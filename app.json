@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "FinFlow",
+    "slug": "finflow",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#6366F1"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.finflow.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#6366F1"
+      },
+      "package": "com.finflow.app"
+    },
+    "web": {},
+    "plugins": [
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "FinFlow needs access to contacts for splitting expenses."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "FinFlow needs access to your photos to scan receipts.",
+          "cameraPermission": "FinFlow needs access to your camera to scan receipts."
+        }
+      ]
+    ]
+  }
+}

@@ -1,0 +1,210 @@
+import React, { useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { COLORS, RADIUS, TYPOGRAPHY, SPACING, coloredShadow } from '../../constants';
+import { createGradient } from '../../constants/gradients';
+import { useSettingsStore } from '../../store/settingsStore';
+
+interface ProgressBarProps {
+  current: number;
+  total: number;
+  label?: string;
+  showPercentage?: boolean;
+  showTicks?: boolean;
+  color?: string;
+  height?: number;
+  animated?: boolean;
+}
+
+const ProgressBar: React.FC<ProgressBarProps> = ({
+  current,
+  total,
+  label,
+  showPercentage = true,
+  showTicks = false,
+  color = COLORS.primary,
+  height = 8,
+  animated = true,
+}) => {
+  const currency = useSettingsStore(state => state.currency);
+  const percentage = total > 0 ? Math.min((current / total) * 100, 100) : 0;
+  const isOverBudget = current > total;
+  const animValue = useRef(new Animated.Value(0)).current;
+
+  // Create gradient from color
+  const fillColor = isOverBudget ? COLORS.danger : color;
+  const fillGradient = createGradient(fillColor, 20);
+
+  // Add glow effect when near completion
+  const showGlow = percentage > 90 && !isOverBudget;
+  const glowShadow = showGlow ? coloredShadow(fillColor) : undefined;
+
+  useEffect(() => {
+    if (animated) {
+      Animated.timing(animValue, {
+        toValue: percentage,
+        duration: 500,
+        useNativeDriver: false,
+      }).start();
+    } else {
+      animValue.setValue(percentage);
+    }
+  }, [percentage, animated]);
+
+  // Render tick marks
+  const renderTicks = () => {
+    if (!showTicks) return null;
+
+    const tickPositions = [25, 50, 75, 100];
+    return (
+      <View style={styles.ticksContainer}>
+        {tickPositions.map((position) => (
+          <View
+            key={position}
+            style={[
+              styles.tick,
+              {
+                left: `${position}%`,
+                opacity: percentage >= position ? 0.3 : 0.5,
+              },
+            ]}
+          />
+        ))}
+      </View>
+    );
+  };
+
+  return (
+    <View
+      style={styles.container}
+      accessibilityRole="progressbar"
+      accessibilityValue={{
+        min: 0,
+        max: 100,
+        now: Math.round(percentage),
+        text: `${Math.round(percentage)}% used`,
+      }}
+      accessibilityLabel={label ? `${label} progress` : 'Progress'}
+    >
+      {label && (
+        <View style={styles.labelContainer}>
+          <Text style={styles.label}>{label}</Text>
+          {showPercentage && (
+            <Text style={[styles.percentage, isOverBudget && styles.overBudget]}>
+              {percentage.toFixed(0)}%
+            </Text>
+          )}
+        </View>
+      )}
+      <View style={[styles.track, { height, borderRadius: RADIUS.sm }]}>
+        {renderTicks()}
+        <Animated.View
+          style={[
+            styles.fill,
+            {
+              width: animated
+                ? animValue.interpolate({
+                    inputRange: [0, 100],
+                    outputRange: ['0%', '100%'],
+                  })
+                : `${Math.min(percentage, 100)}%`,
+              height,
+              borderRadius: RADIUS.sm,
+            },
+            glowShadow,
+          ]}
+        >
+          <LinearGradient
+            colors={fillGradient.colors}
+            start={fillGradient.start}
+            end={fillGradient.end}
+            style={[styles.gradientFill, { borderRadius: RADIUS.sm }]}
+          />
+        </Animated.View>
+      </View>
+      <View style={styles.amountContainer}>
+        <Text style={styles.amount}>
+          {currency} {current.toFixed(2)}
+        </Text>
+        <Text style={styles.total}>
+          of {currency} {total.toFixed(2)}
+        </Text>
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    width: '100%',
+  },
+  labelContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm, // 8
+  },
+  label: {
+    fontSize: TYPOGRAPHY.size.sm, // 13
+    fontWeight: TYPOGRAPHY.weight.semibold, // '600'
+    color: COLORS.text,
+  },
+  percentage: {
+    fontSize: TYPOGRAPHY.size.sm, // 13
+    fontWeight: TYPOGRAPHY.weight.semibold, // '600'
+    color: COLORS.textSecondary,
+  },
+  overBudget: {
+    color: COLORS.danger,
+  },
+  track: {
+    width: '100%',
+    backgroundColor: COLORS.surface,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  ticksContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+  },
+  tick: {
+    position: 'absolute',
+    width: 2,
+    height: '100%',
+    backgroundColor: COLORS.border,
+    transform: [{ translateX: -1 }],
+  },
+  fill: {
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  gradientFill: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  amountContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: SPACING.xs, // 4
+  },
+  amount: {
+    fontSize: TYPOGRAPHY.size.xs, // 11
+    fontWeight: TYPOGRAPHY.weight.semibold, // '600'
+    color: COLORS.text,
+    fontVariant: ['tabular-nums'],
+  },
+  total: {
+    fontSize: TYPOGRAPHY.size.xs, // 11
+    color: COLORS.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+});
+
+export default ProgressBar;

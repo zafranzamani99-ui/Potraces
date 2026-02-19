@@ -1,0 +1,436 @@
+import React, { useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Modal,
+  TextInput,
+  FlatList,
+  Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import * as Contacts from 'expo-contacts';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { Contact } from '../../types';
+import Button from './Button';
+
+interface ContactPickerProps {
+  selectedContacts: Contact[];
+  onSelect: (contacts: Contact[]) => void;
+  mode?: 'single' | 'multi';
+  label?: string;
+}
+
+const ContactPicker: React.FC<ContactPickerProps> = ({
+  selectedContacts,
+  onSelect,
+  mode = 'single',
+  label = 'Contact',
+}) => {
+  const [phoneModalVisible, setPhoneModalVisible] = useState(false);
+  const [manualModalVisible, setManualModalVisible] = useState(false);
+  const [phoneContacts, setPhoneContacts] = useState<Contact[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [manualName, setManualName] = useState('');
+  const [manualPhone, setManualPhone] = useState('');
+  const phoneInputRef = useRef<TextInput>(null);
+
+  const loadPhoneContacts = async () => {
+    const { status } = await Contacts.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission Required',
+        'Please grant contacts permission in Settings to use this feature.'
+      );
+      return;
+    }
+
+    const { data } = await Contacts.getContactsAsync({
+      fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Emails],
+      sort: Contacts.SortTypes.FirstName,
+    });
+
+    const mapped: Contact[] = data
+      .filter((c) => c.name)
+      .map((c) => ({
+        id: c.id || Date.now().toString() + Math.random().toString(36),
+        name: c.name || 'Unknown',
+        phone: c.phoneNumbers?.[0]?.number,
+        email: c.emails?.[0]?.email,
+        isFromPhone: true,
+      }));
+
+    setPhoneContacts(mapped);
+    setPhoneModalVisible(true);
+  };
+
+  const handleSelectPhoneContact = (contact: Contact) => {
+    if (mode === 'single') {
+      onSelect([contact]);
+      setPhoneModalVisible(false);
+    } else {
+      const alreadySelected = selectedContacts.some((c) => c.id === contact.id);
+      if (alreadySelected) {
+        onSelect(selectedContacts.filter((c) => c.id !== contact.id));
+      } else {
+        onSelect([...selectedContacts, contact]);
+      }
+    }
+  };
+
+  const handleAddManual = () => {
+    if (!manualName.trim()) {
+      Alert.alert('Error', 'Please enter a name');
+      return;
+    }
+
+    const contact: Contact = {
+      id: Date.now().toString(),
+      name: manualName.trim(),
+      phone: manualPhone.trim() || undefined,
+      isFromPhone: false,
+    };
+
+    if (mode === 'single') {
+      onSelect([contact]);
+    } else {
+      onSelect([...selectedContacts, contact]);
+    }
+
+    setManualName('');
+    setManualPhone('');
+    setManualModalVisible(false);
+  };
+
+  const handleRemove = (contactId: string) => {
+    onSelect(selectedContacts.filter((c) => c.id !== contactId));
+  };
+
+  const filteredPhoneContacts = phoneContacts.filter((c) =>
+    c.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.label}>{label}</Text>
+
+      {/* Selected contacts pills */}
+      {selectedContacts.length > 0 && (
+        <View style={styles.pillContainer}>
+          {selectedContacts.map((contact) => (
+            <View key={contact.id} style={styles.pill}>
+              <Feather name="user" size={14} color={COLORS.primary} />
+              <Text style={styles.pillText} numberOfLines={1}>{contact.name}</Text>
+              <TouchableOpacity onPress={() => handleRemove(contact.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Feather name="x" size={14} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Action buttons */}
+      <View style={styles.actionRow}>
+        <TouchableOpacity style={styles.actionButton} onPress={loadPhoneContacts} activeOpacity={0.7}>
+          <Feather name="book" size={18} color={COLORS.primary} />
+          <Text style={styles.actionText}>From Contacts</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton} onPress={() => setManualModalVisible(true)} activeOpacity={0.7}>
+          <Feather name="edit-3" size={18} color={COLORS.primary} />
+          <Text style={styles.actionText}>Add Manually</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Phone Contacts Modal */}
+      <Modal visible={phoneModalVisible} animationType="slide" transparent onRequestClose={() => setPhoneModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Contact</Text>
+                <TouchableOpacity onPress={() => { setPhoneModalVisible(false); setSearchQuery(''); }}>
+                  <Feather name="x" size={24} color={COLORS.text} />
+                </TouchableOpacity>
+              </View>
+
+              <TextInput
+                style={styles.searchInput}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search contacts..."
+                placeholderTextColor={COLORS.textSecondary}
+                autoCorrect={false}
+                returnKeyType="search"
+                onSubmitEditing={Keyboard.dismiss}
+              />
+
+              <FlatList
+                data={filteredPhoneContacts}
+                keyExtractor={(item) => item.id}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                renderItem={({ item }) => {
+                  const isSelected = selectedContacts.some((c) => c.id === item.id);
+                  return (
+                    <TouchableOpacity
+                      style={[styles.contactRow, isSelected && styles.contactRowSelected]}
+                      onPress={() => handleSelectPhoneContact(item)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.contactAvatar}>
+                        <Text style={styles.contactAvatarText}>
+                          {item.name.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.contactInfo}>
+                        <Text style={styles.contactName}>{item.name}</Text>
+                        {item.phone && (
+                          <Text style={styles.contactPhone}>{item.phone}</Text>
+                        )}
+                      </View>
+                      {isSelected && (
+                        <Feather name="check-circle" size={20} color={COLORS.success} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Feather name="users" size={32} color={COLORS.textTertiary} />
+                    <Text style={styles.emptyText}>No contacts found</Text>
+                  </View>
+                }
+                showsVerticalScrollIndicator={false}
+                style={{ maxHeight: 400 }}
+              />
+
+              {mode === 'multi' && (
+                <Button
+                  title={`Done (${selectedContacts.length} selected)`}
+                  onPress={() => { setPhoneModalVisible(false); setSearchQuery(''); }}
+                  style={{ marginTop: SPACING.md }}
+                />
+              )}
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Manual Entry Modal */}
+      <Modal visible={manualModalVisible} animationType="slide" transparent onRequestClose={() => setManualModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Add Contact</Text>
+                <TouchableOpacity onPress={() => { setManualModalVisible(false); setManualName(''); setManualPhone(''); }}>
+                  <Feather name="x" size={24} color={COLORS.text} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.inputLabel}>Name <Text style={{ color: COLORS.danger }}>*</Text></Text>
+              <TextInput
+                style={styles.input}
+                value={manualName}
+                onChangeText={setManualName}
+                placeholder="John Doe"
+                placeholderTextColor={COLORS.textSecondary}
+                returnKeyType="next"
+                onSubmitEditing={() => phoneInputRef.current?.focus()}
+              />
+
+              <Text style={styles.inputLabel}>Phone (optional)</Text>
+              <TextInput
+                ref={phoneInputRef}
+                style={styles.input}
+                value={manualPhone}
+                onChangeText={setManualPhone}
+                placeholder="+60 12-345 6789"
+                placeholderTextColor={COLORS.textSecondary}
+                keyboardType="phone-pad"
+                returnKeyType="done"
+                onSubmitEditing={Keyboard.dismiss}
+              />
+
+              <View style={styles.modalActions}>
+                <Button
+                  title="Cancel"
+                  onPress={() => { setManualModalVisible(false); setManualName(''); setManualPhone(''); }}
+                  variant="secondary"
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  title="Add"
+                  onPress={handleAddManual}
+                  icon="check"
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    marginBottom: SPACING.sm,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.lg,
+  },
+  pillContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: withAlpha(COLORS.primary, 0.1),
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+  },
+  pillText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: COLORS.primary,
+    maxWidth: 120,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  actionText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: COLORS.primary,
+  },
+
+  // Modals
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  searchInput: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    fontSize: 16,
+    color: COLORS.text,
+    marginBottom: SPACING.md,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.md,
+  },
+  contactRowSelected: {
+    backgroundColor: withAlpha(COLORS.primary, 0.06),
+  },
+  contactAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: withAlpha(COLORS.primary, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+  },
+  contactAvatarText: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: COLORS.primary,
+  },
+  contactInfo: {
+    flex: 1,
+  },
+  contactName: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: COLORS.text,
+  },
+  contactPhone: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: SPACING['3xl'],
+    gap: SPACING.md,
+  },
+  emptyText: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: COLORS.textSecondary,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.lg,
+  },
+  input: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+});
+
+export default ContactPicker;
