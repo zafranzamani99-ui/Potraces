@@ -16,7 +16,8 @@ import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, EXPENSE_CATEGORIES, BUDGET_PERIODS, withAlpha } from '../../constants';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS, EXPENSE_CATEGORIES, BUDGET_PERIODS, withAlpha } from '../../constants';
+import { FREE_TIER } from '../../constants/premium';
 import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
@@ -26,6 +27,7 @@ import CategoryPicker from '../../components/common/CategoryPicker';
 import PaywallModal from '../../components/common/PaywallModal';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
+import { Budget } from '../../types';
 
 const BudgetPlanning: React.FC = () => {
   const { showToast } = useToast();
@@ -35,6 +37,7 @@ const BudgetPlanning: React.FC = () => {
   const tier = usePremiumStore((s) => s.tier);
   const [modalVisible, setModalVisible] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [category, setCategory] = useState(EXPENSE_CATEGORIES[0].id);
   const [amount, setAmount] = useState('');
   const [period, setPeriod] = useState<'monthly' | 'weekly' | 'yearly'>('monthly');
@@ -66,30 +69,77 @@ const BudgetPlanning: React.FC = () => {
       return;
     }
 
-    const existingBudget = budgets.find((b) => b.category === category);
-    if (existingBudget) {
-      showToast('A budget for this category already exists', 'error');
-      return;
+    if (editingBudget) {
+      const conflicting = budgets.find(
+        (b) => b.category === category && b.id !== editingBudget.id
+      );
+      if (conflicting) {
+        showToast('A budget for this category already exists', 'error');
+        return;
+      }
+      updateBudget(editingBudget.id, {
+        category,
+        allocatedAmount: parseFloat(amount),
+        period,
+      });
+      closeModal();
+      showToast('Budget updated successfully!', 'success');
+    } else {
+      const existingBudget = budgets.find((b) => b.category === category);
+      if (existingBudget) {
+        showToast('A budget for this category already exists', 'error');
+        return;
+      }
+
+      const now = new Date();
+      addBudget({
+        category,
+        allocatedAmount: parseFloat(amount),
+        period,
+        startDate: startOfMonth(now),
+        endDate: endOfMonth(now),
+      });
+      closeModal();
+      showToast('Budget created successfully!', 'success');
     }
+  };
 
-    const now = new Date();
-    addBudget({
-      category,
-      allocatedAmount: parseFloat(amount),
-      period,
-      startDate: startOfMonth(now),
-      endDate: endOfMonth(now),
-    });
+  const handleEdit = (budget: Budget) => {
+    setEditingBudget(budget);
+    setCategory(budget.category);
+    setAmount(budget.allocatedAmount.toString());
+    setPeriod(budget.period);
+    setModalVisible(true);
+  };
 
-    setModalVisible(false);
-    resetForm();
-    showToast('Budget created successfully!', 'success');
+  const handleDelete = (budget: Budget) => {
+    Alert.alert(
+      'Delete Budget',
+      `Are you sure you want to delete this budget?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteBudget(budget.id);
+            showToast('Budget deleted', 'success');
+          },
+        },
+      ]
+    );
   };
 
   const resetForm = () => {
     setAmount('');
     setCategory(EXPENSE_CATEGORIES[0].id);
     setPeriod('monthly');
+    setEditingBudget(null);
+  };
+
+  const closeModal = () => {
+    setModalVisible(false);
+    resetForm();
   };
 
   const totalAllocated = budgets.reduce((sum, b) => sum + b.allocatedAmount, 0);
@@ -132,6 +182,25 @@ const BudgetPlanning: React.FC = () => {
           </Card>
         )}
 
+        {tier === 'free' && budgets.length > FREE_TIER.maxBudgets && (
+          <Card style={styles.overLimitBanner}>
+            <View style={styles.bannerContent}>
+              <Feather name="info" size={18} color={COLORS.warning} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.bannerText}>
+                  You have {budgets.length} budgets (free limit: {FREE_TIER.maxBudgets}).{' '}
+                  <Text
+                    style={styles.bannerLink}
+                    onPress={() => setPaywallVisible(true)}
+                  >
+                    Upgrade to add more.
+                  </Text>
+                </Text>
+              </View>
+            </View>
+          </Card>
+        )}
+
         {budgets.length > 0 ? (
           budgets.map((budget) => {
             const category = EXPENSE_CATEGORIES.find((cat) => cat.id === budget.category);
@@ -152,6 +221,12 @@ const BudgetPlanning: React.FC = () => {
                       {budget.period.charAt(0).toUpperCase() + budget.period.slice(1)} Budget
                     </Text>
                   </View>
+                  <TouchableOpacity onPress={() => handleEdit(budget)} style={styles.cardAction}>
+                    <Feather name="edit-2" size={18} color={COLORS.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDelete(budget)} style={styles.cardAction}>
+                    <Feather name="trash-2" size={18} color={COLORS.danger} />
+                  </TouchableOpacity>
                   <View style={styles.percentageContainer}>
                     <Text
                       style={[
@@ -209,35 +284,37 @@ const BudgetPlanning: React.FC = () => {
         )}
       </ScrollView>
 
-      <Button
-        title={tier === 'free' ? `Create Budget (${budgets.length}/5)` : 'Create Budget'}
-        onPress={() => {
-          if (!canCreateBudget(budgets.length)) {
-            setPaywallVisible(true);
-            return;
-          }
-          setModalVisible(true);
-        }}
-        icon="plus"
-        size="large"
-        style={styles.addButton}
-      />
+      {!(tier === 'free' && budgets.length >= FREE_TIER.maxBudgets) && (
+        <Button
+          title={tier === 'free' ? `Create Budget (${budgets.length}/${FREE_TIER.maxBudgets})` : 'Create Budget'}
+          onPress={() => {
+            if (!canCreateBudget(budgets.length)) {
+              setPaywallVisible(true);
+              return;
+            }
+            setModalVisible(true);
+          }}
+          icon="plus"
+          size="large"
+          style={styles.addButton}
+        />
+      )}
 
       <Modal
         visible={modalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={closeModal}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
         <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+          >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Create Budget</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <Text style={styles.modalTitle}>{editingBudget ? 'Edit Budget' : 'Create Budget'}</Text>
+              <TouchableOpacity onPress={closeModal}>
                 <Feather name="x" size={24} color={COLORS.text} />
               </TouchableOpacity>
             </View>
@@ -289,12 +366,12 @@ const BudgetPlanning: React.FC = () => {
               <View style={styles.modalActions}>
                 <Button
                   title="Cancel"
-                  onPress={() => setModalVisible(false)}
+                  onPress={closeModal}
                   variant="secondary"
                   style={{ flex: 1 }}
                 />
                 <Button
-                  title="Create"
+                  title={editingBudget ? 'Update' : 'Create'}
                   onPress={handleAdd}
                   icon="check"
                   style={{ flex: 1 }}
@@ -302,8 +379,8 @@ const BudgetPlanning: React.FC = () => {
               </View>
             </ScrollView>
           </View>
+          </KeyboardAvoidingView>
         </View>
-        </KeyboardAvoidingView>
       </Modal>
 
       <PaywallModal
@@ -325,15 +402,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    padding: SPACING.lg,
     paddingBottom: 80,
   },
+
+  // Summary
   summaryCard: {
-    marginBottom: 16,
+    marginBottom: SPACING.lg,
   },
   summaryRow: {
     flexDirection: 'row',
-    marginBottom: 16,
+    marginBottom: SPACING.lg,
   },
   summaryItem: {
     flex: 1,
@@ -342,56 +421,58 @@ const styles = StyleSheet.create({
   summaryDivider: {
     width: 1,
     backgroundColor: COLORS.border,
-    marginHorizontal: 16,
+    marginHorizontal: SPACING.lg,
   },
   summaryLabel: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.size.sm,
     color: COLORS.textSecondary,
-    marginBottom: 4,
+    marginBottom: SPACING.xs,
   },
   summaryAmount: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: COLORS.text,
   },
+
+  // Budget cards
   budgetCard: {
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   budgetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: SPACING.lg,
   },
   iconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: RADIUS.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: SPACING.md,
   },
   budgetInfo: {
     flex: 1,
   },
   budgetName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
     marginBottom: 2,
   },
   budgetPeriod: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.size.sm,
     color: COLORS.textSecondary,
   },
   percentageContainer: {
-    paddingHorizontal: 12,
+    paddingHorizontal: SPACING.md,
     paddingVertical: 6,
     backgroundColor: COLORS.surface,
-    borderRadius: 8,
+    borderRadius: RADIUS.md,
   },
   percentage: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: COLORS.text,
   },
   percentageOver: {
@@ -400,69 +481,98 @@ const styles = StyleSheet.create({
   warningContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
-    padding: 12,
+    marginTop: SPACING.md,
+    padding: SPACING.md,
     backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    gap: 8,
+    borderRadius: RADIUS.md,
+    gap: SPACING.sm,
   },
   warningText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
+  cardAction: {
+    padding: SPACING.sm,
+  },
+
+  // Over-limit banner
+  overLimitBanner: {
+    marginBottom: SPACING.md,
+    backgroundColor: withAlpha(COLORS.warning, 0.08),
+    borderWidth: 1,
+    borderColor: withAlpha(COLORS.warning, 0.2),
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  bannerText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: COLORS.text,
+    lineHeight: 20,
+  },
+  bannerLink: {
+    color: COLORS.primary,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+
+  // FAB
   addButton: {
     position: 'absolute',
-    bottom: 16,
-    left: 16,
-    right: 16,
+    bottom: SPACING.lg,
+    left: SPACING.lg,
+    right: SPACING.lg,
   },
+
+  // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: COLORS.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: COLORS.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    padding: SPACING['2xl'],
     maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: SPACING['2xl'],
   },
   modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: COLORS.text,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
-    marginBottom: 8,
-    marginTop: 16,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.lg,
   },
   input: {
     backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
     color: COLORS.text,
   },
   periodContainer: {
     flexDirection: 'row',
-    gap: 8,
+    gap: SPACING.sm,
   },
   periodButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.md,
     borderWidth: 2,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
@@ -473,8 +583,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   periodText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
   },
   periodTextActive: {
@@ -482,8 +592,8 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 24,
+    gap: SPACING.md,
+    marginTop: SPACING['2xl'],
   },
 });
 

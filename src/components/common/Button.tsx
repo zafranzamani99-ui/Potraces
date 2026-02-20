@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import LinearGradient from 'expo-linear-gradient';
+import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SHADOWS, RADIUS, SPACING, TYPOGRAPHY, withAlpha, coloredShadow } from '../../constants';
 import GRADIENTS, { GradientConfig } from '../../constants/gradients';
 import { lightTap } from '../../services/haptics';

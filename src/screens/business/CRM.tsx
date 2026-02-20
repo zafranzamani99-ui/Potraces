@@ -11,10 +11,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  Linking,
+  ActionSheetIOS,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useCRMStore } from '../../store/crmStore';
+import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import {
   COLORS,
@@ -40,6 +43,7 @@ type PaymentStatus = 'unpaid' | 'partial' | 'paid';
 
 interface LocalOrderItem {
   localId: string;
+  productId?: string;
   name: string;
   quantity: string;
   unitPrice: string;
@@ -62,6 +66,7 @@ const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
 const CRM: React.FC = () => {
   const { showToast } = useToast();
   const currency = useSettingsStore((state) => state.currency);
+  const { products } = useBusinessStore();
   const {
     customers,
     orders,
@@ -86,6 +91,7 @@ const CRM: React.FC = () => {
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerCompany, setCustomerCompany] = useState('');
   const [customerNotes, setCustomerNotes] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
 
   // ── Customer detail modal state ─────────────────────────────
   const [detailModalVisible, setDetailModalVisible] = useState(false);
@@ -98,6 +104,8 @@ const CRM: React.FC = () => {
   const [orderItems, setOrderItems] = useState<LocalOrderItem[]>([]);
   const [orderStatus, setOrderStatus] = useState<OrderStatus>('pending');
   const [orderNotes, setOrderNotes] = useState('');
+  const [productPickerOpen, setProductPickerOpen] = useState<string | null>(null); // localId of item being picked
+  const [productPickerSearch, setProductPickerSearch] = useState('');
 
   // ── Payment modal state ─────────────────────────────────────
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
@@ -108,6 +116,7 @@ const CRM: React.FC = () => {
   const phoneRef = useRef<TextInput>(null);
   const emailRef = useRef<TextInput>(null);
   const companyRef = useRef<TextInput>(null);
+  const addressRef = useRef<TextInput>(null);
   const notesRef = useRef<TextInput>(null);
   const paymentAmountRef = useRef<TextInput>(null);
 
@@ -151,6 +160,7 @@ const CRM: React.FC = () => {
     setCustomerPhone('');
     setCustomerEmail('');
     setCustomerCompany('');
+    setCustomerAddress('');
     setCustomerNotes('');
   };
 
@@ -165,6 +175,7 @@ const CRM: React.FC = () => {
     setCustomerPhone(customer.phone || '');
     setCustomerEmail(customer.email || '');
     setCustomerCompany(customer.company || '');
+    setCustomerAddress(customer.address || '');
     setCustomerNotes(customer.notes || '');
     setCustomerModalVisible(true);
   };
@@ -183,6 +194,7 @@ const CRM: React.FC = () => {
         phone: customerPhone.trim() || undefined,
         email: customerEmail.trim() || undefined,
         company: customerCompany.trim() || undefined,
+        address: customerAddress.trim() || undefined,
         notes: customerNotes.trim() || undefined,
       });
       // Update selected customer in detail modal if it is the same one
@@ -193,6 +205,7 @@ const CRM: React.FC = () => {
           phone: customerPhone.trim() || undefined,
           email: customerEmail.trim() || undefined,
           company: customerCompany.trim() || undefined,
+          address: customerAddress.trim() || undefined,
           notes: customerNotes.trim() || undefined,
         });
       }
@@ -203,6 +216,7 @@ const CRM: React.FC = () => {
         phone: customerPhone.trim() || undefined,
         email: customerEmail.trim() || undefined,
         company: customerCompany.trim() || undefined,
+        address: customerAddress.trim() || undefined,
         notes: customerNotes.trim() || undefined,
       });
       showToast('Customer added!', 'success');
@@ -248,19 +262,19 @@ const CRM: React.FC = () => {
     setOrderItems([]);
     setOrderStatus('pending');
     setOrderNotes('');
+    setProductPickerOpen(null);
+    setProductPickerSearch('');
   };
 
   const openAddOrder = (customerId: string) => {
     resetOrderForm();
     setOrderCustomerId(customerId);
+    const firstId = Date.now().toString();
     setOrderItems([
-      {
-        localId: Date.now().toString(),
-        name: '',
-        quantity: '1',
-        unitPrice: '',
-      },
+      { localId: firstId, name: '', quantity: '1', unitPrice: '' },
     ]);
+    setProductPickerOpen(firstId);
+    setProductPickerSearch('');
     setOrderModalVisible(true);
   };
 
@@ -278,18 +292,6 @@ const CRM: React.FC = () => {
     setOrderStatus(order.status);
     setOrderNotes(order.notes || '');
     setOrderModalVisible(true);
-  };
-
-  const handleAddOrderItem = () => {
-    setOrderItems([
-      ...orderItems,
-      {
-        localId: Date.now().toString(),
-        name: '',
-        quantity: '1',
-        unitPrice: '',
-      },
-    ]);
   };
 
   const handleRemoveOrderItem = (localId: string) => {
@@ -432,6 +434,70 @@ const CRM: React.FC = () => {
     return format(new Date(date), 'MMM dd, yyyy');
   };
 
+  // ── Open address in maps ──────────────────────────────────
+  const openInMaps = (address: string) => {
+    const encoded = encodeURIComponent(address);
+    const options = [
+      { label: 'Google Maps', url: `https://www.google.com/maps/search/?api=1&query=${encoded}` },
+      { label: 'Waze', url: `https://waze.com/ul?q=${encoded}&navigate=yes` },
+      ...(Platform.OS === 'ios' ? [{ label: 'Apple Maps', url: `http://maps.apple.com/?q=${encoded}` }] : []),
+    ];
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [...options.map((o) => o.label), 'Cancel'],
+          cancelButtonIndex: options.length,
+          title: 'Open in Maps',
+        },
+        (buttonIndex) => {
+          if (buttonIndex < options.length) {
+            Linking.openURL(options[buttonIndex].url);
+          }
+        }
+      );
+    } else {
+      Alert.alert('Open in Maps', 'Choose a maps app', [
+        ...options.map((o) => ({
+          text: o.label,
+          onPress: () => Linking.openURL(o.url),
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]);
+    }
+  };
+
+  // ── Product picker helpers ─────────────────────────────────
+  const pickerFilteredProducts = useMemo(() => {
+    if (!productPickerSearch.trim()) return products;
+    const q = productPickerSearch.toLowerCase();
+    return products.filter((p) => p.name.toLowerCase().includes(q));
+  }, [products, productPickerSearch]);
+
+  const handleSelectProduct = (localId: string, productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+    setOrderItems(
+      orderItems.map((item) =>
+        item.localId === localId
+          ? { ...item, productId, name: product.name, unitPrice: product.price.toString() }
+          : item
+      )
+    );
+    setProductPickerOpen(null);
+    setProductPickerSearch('');
+  };
+
+  const handleAddProductItem = () => {
+    const newLocalId = Date.now().toString();
+    setOrderItems([
+      ...orderItems,
+      { localId: newLocalId, name: '', quantity: '1', unitPrice: '' },
+    ]);
+    setProductPickerOpen(newLocalId);
+    setProductPickerSearch('');
+  };
+
   // ─── MAIN RENDER ────────────────────────────────────────────
   return (
     <View style={styles.container}>
@@ -520,6 +586,37 @@ const CRM: React.FC = () => {
                         {stats.orderCount} order{stats.orderCount !== 1 ? 's' : ''}
                       </Text>
                     </View>
+                    {/* Quick action icons inline */}
+                    {(customer.phone || customer.address) && (
+                      <View style={styles.quickActions}>
+                        {customer.phone ? (
+                          <TouchableOpacity
+                            style={styles.quickActionBtn}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              Linking.openURL(`tel:${customer.phone}`);
+                            }}
+                            activeOpacity={0.7}
+                            accessibilityLabel={`Call ${customer.name}`}
+                          >
+                            <Feather name="phone" size={14} color={COLORS.business} />
+                          </TouchableOpacity>
+                        ) : null}
+                        {customer.address ? (
+                          <TouchableOpacity
+                            style={styles.quickActionBtn}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              openInMaps(customer.address!);
+                            }}
+                            activeOpacity={0.7}
+                            accessibilityLabel={`Open ${customer.name}'s address in maps`}
+                          >
+                            <Feather name="map-pin" size={14} color={COLORS.business} />
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    )}
                   </View>
 
                   {stats.outstanding > 0 && (
@@ -565,12 +662,11 @@ const CRM: React.FC = () => {
           resetCustomerForm();
         }}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        >
-          <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={[styles.keyboardView, { justifyContent: 'flex-end' }]}
+          >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
@@ -640,6 +736,22 @@ const CRM: React.FC = () => {
                   placeholder="Company name"
                   placeholderTextColor={COLORS.textTertiary}
                   returnKeyType="next"
+                  onSubmitEditing={() => addressRef.current?.focus()}
+                />
+
+                <Text style={styles.formLabel}>Address (for COD)</Text>
+                <TextInput
+                  ref={addressRef}
+                  style={[styles.formInput, styles.textArea]}
+                  value={customerAddress}
+                  onChangeText={setCustomerAddress}
+                  placeholder="Delivery address..."
+                  placeholderTextColor={COLORS.textTertiary}
+                  multiline
+                  numberOfLines={2}
+                  textAlignVertical="top"
+                  blurOnSubmit
+                  returnKeyType="next"
                   onSubmitEditing={() => notesRef.current?.focus()}
                 />
 
@@ -654,6 +766,7 @@ const CRM: React.FC = () => {
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
+                  blurOnSubmit
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -677,8 +790,8 @@ const CRM: React.FC = () => {
                 </View>
               </ScrollView>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* ── Customer Detail Modal ──────────────────────────────── */}
@@ -729,30 +842,48 @@ const CRM: React.FC = () => {
 
                   <View style={styles.contactRow}>
                     {selectedCustomer.phone ? (
-                      <View style={styles.contactItem}>
-                        <Feather
-                          name="phone"
-                          size={14}
-                          color={COLORS.textSecondary}
-                        />
-                        <Text style={styles.contactText}>
+                      <TouchableOpacity
+                        style={styles.contactButton}
+                        onPress={() => Linking.openURL(`tel:${selectedCustomer.phone}`)}
+                        activeOpacity={0.7}
+                        accessibilityLabel={`Call ${selectedCustomer.phone}`}
+                      >
+                        <Feather name="phone" size={14} color={COLORS.business} />
+                        <Text style={styles.contactButtonText}>
                           {selectedCustomer.phone}
                         </Text>
-                      </View>
+                        <Feather name="external-link" size={12} color={COLORS.business} />
+                      </TouchableOpacity>
                     ) : null}
                     {selectedCustomer.email ? (
-                      <View style={styles.contactItem}>
-                        <Feather
-                          name="mail"
-                          size={14}
-                          color={COLORS.textSecondary}
-                        />
-                        <Text style={styles.contactText}>
+                      <TouchableOpacity
+                        style={styles.contactButton}
+                        onPress={() => Linking.openURL(`mailto:${selectedCustomer.email}`)}
+                        activeOpacity={0.7}
+                        accessibilityLabel={`Email ${selectedCustomer.email}`}
+                      >
+                        <Feather name="mail" size={14} color={COLORS.business} />
+                        <Text style={styles.contactButtonText}>
                           {selectedCustomer.email}
                         </Text>
-                      </View>
+                        <Feather name="external-link" size={12} color={COLORS.business} />
+                      </TouchableOpacity>
                     ) : null}
                   </View>
+
+                  {selectedCustomer.address ? (
+                    <TouchableOpacity
+                      style={styles.addressRow}
+                      onPress={() => openInMaps(selectedCustomer.address!)}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="map-pin" size={14} color={COLORS.business} />
+                      <Text style={styles.addressText} numberOfLines={2}>
+                        {selectedCustomer.address}
+                      </Text>
+                      <Feather name="external-link" size={14} color={COLORS.business} />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
 
                 {/* Stats Row */}
@@ -803,7 +934,10 @@ const CRM: React.FC = () => {
                       <Card key={order.id} style={styles.orderCard}>
                         <TouchableOpacity
                           activeOpacity={0.7}
-                          onPress={() => openEditOrder(order)}
+                          onPress={() => {
+                            setDetailModalVisible(false);
+                            openEditOrder(order);
+                          }}
                           accessibilityLabel={`Order from ${formatDate(order.date)}, total ${formatCurrency(order.totalAmount)}`}
                         >
                           <View style={styles.orderHeader}>
@@ -896,7 +1030,10 @@ const CRM: React.FC = () => {
                             order.paymentStatus !== 'paid' && (
                               <TouchableOpacity
                                 style={styles.orderActionButton}
-                                onPress={() => openPaymentModal(order.id)}
+                                onPress={() => {
+                                  setDetailModalVisible(false);
+                                  openPaymentModal(order.id);
+                                }}
                                 activeOpacity={0.7}
                                 accessibilityLabel="Record payment for this order"
                               >
@@ -915,26 +1052,6 @@ const CRM: React.FC = () => {
                                 </Text>
                               </TouchableOpacity>
                             )}
-                          <TouchableOpacity
-                            style={styles.orderActionButton}
-                            onPress={() => openEditOrder(order)}
-                            activeOpacity={0.7}
-                            accessibilityLabel="Edit this order"
-                          >
-                            <Feather
-                              name="edit-2"
-                              size={14}
-                              color={COLORS.business}
-                            />
-                            <Text
-                              style={[
-                                styles.orderActionText,
-                                { color: COLORS.business },
-                              ]}
-                            >
-                              Edit
-                            </Text>
-                          </TouchableOpacity>
                           <TouchableOpacity
                             style={styles.orderActionButton}
                             onPress={() => handleDeleteOrder(order.id)}
@@ -974,7 +1091,10 @@ const CRM: React.FC = () => {
                 <View style={styles.detailActions}>
                   <Button
                     title="Add Order"
-                    onPress={() => openAddOrder(selectedCustomer.id)}
+                    onPress={() => {
+                      setDetailModalVisible(false);
+                      openAddOrder(selectedCustomer.id);
+                    }}
                     icon="plus"
                     style={styles.detailActionButton}
                   />
@@ -1012,12 +1132,11 @@ const CRM: React.FC = () => {
           resetOrderForm();
         }}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        >
-          <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={[styles.keyboardView, { justifyContent: 'flex-end' }]}
+          >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
@@ -1041,54 +1160,122 @@ const CRM: React.FC = () => {
               >
                 {/* Order Items */}
                 <Text style={styles.formLabel}>Items</Text>
-                {orderItems.map((item, index) => (
-                  <View key={item.localId} style={styles.orderItemRow}>
-                    <TextInput
-                      style={[styles.formInput, styles.itemNameInput]}
-                      value={item.name}
-                      onChangeText={(v) =>
-                        handleUpdateOrderItem(item.localId, 'name', v)
-                      }
-                      placeholder="Item name"
-                      placeholderTextColor={COLORS.textTertiary}
-                      returnKeyType="next"
-                    />
-                    <TextInput
-                      style={[styles.formInput, styles.itemQtyInput]}
-                      value={item.quantity}
-                      onChangeText={(v) =>
-                        handleUpdateOrderItem(item.localId, 'quantity', v)
-                      }
-                      placeholder="Qty"
-                      placeholderTextColor={COLORS.textTertiary}
-                      keyboardType="number-pad"
-                      returnKeyType="next"
-                    />
-                    <TextInput
-                      style={[styles.formInput, styles.itemPriceInput]}
-                      value={item.unitPrice}
-                      onChangeText={(v) =>
-                        handleUpdateOrderItem(item.localId, 'unitPrice', v)
-                      }
-                      placeholder="Price"
-                      placeholderTextColor={COLORS.textTertiary}
-                      keyboardType="decimal-pad"
-                      returnKeyType="done"
-                      onSubmitEditing={Keyboard.dismiss}
-                    />
+                {orderItems.map((item) => (
+                  <View key={item.localId} style={styles.orderItemCard}>
+                    {/* Product selector */}
                     <TouchableOpacity
-                      style={styles.removeItemButton}
-                      onPress={() => handleRemoveOrderItem(item.localId)}
-                      accessibilityLabel={`Remove ${item.name || 'item'}`}
+                      style={styles.productSelector}
+                      onPress={() => {
+                        setProductPickerOpen(
+                          productPickerOpen === item.localId ? null : item.localId
+                        );
+                        setProductPickerSearch('');
+                      }}
+                      activeOpacity={0.7}
                     >
-                      <Feather name="x" size={18} color={COLORS.danger} />
+                      <Feather name="package" size={16} color={item.name ? COLORS.business : COLORS.textTertiary} />
+                      <Text
+                        style={[
+                          styles.productSelectorText,
+                          !item.name && { color: COLORS.textTertiary },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {item.name || 'Select product...'}
+                      </Text>
+                      <Feather
+                        name={productPickerOpen === item.localId ? 'chevron-up' : 'chevron-down'}
+                        size={16}
+                        color={COLORS.textSecondary}
+                      />
                     </TouchableOpacity>
+
+                    {/* Product dropdown */}
+                    {productPickerOpen === item.localId && (
+                      <View style={styles.productDropdown}>
+                        <View style={styles.productDropdownSearch}>
+                          <Feather name="search" size={14} color={COLORS.textSecondary} />
+                          <TextInput
+                            style={styles.productDropdownSearchInput}
+                            value={productPickerSearch}
+                            onChangeText={setProductPickerSearch}
+                            placeholder="Search products..."
+                            placeholderTextColor={COLORS.textTertiary}
+                            autoFocus
+                          />
+                          {productPickerSearch.length > 0 && (
+                            <TouchableOpacity onPress={() => setProductPickerSearch('')}>
+                              <Feather name="x" size={14} color={COLORS.textSecondary} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        <ScrollView style={styles.productDropdownList} nestedScrollEnabled>
+                          {pickerFilteredProducts.map((p) => (
+                            <TouchableOpacity
+                              key={p.id}
+                              style={[
+                                styles.productDropdownItem,
+                                item.productId === p.id && styles.productDropdownItemActive,
+                              ]}
+                              onPress={() => handleSelectProduct(item.localId, p.id)}
+                              activeOpacity={0.7}
+                            >
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.productDropdownItemName}>{p.name}</Text>
+                                <Text style={styles.productDropdownItemMeta}>
+                                  {currency} {p.price.toFixed(2)} · {p.stock} in stock
+                                </Text>
+                              </View>
+                              {item.productId === p.id && (
+                                <Feather name="check" size={16} color={COLORS.business} />
+                              )}
+                            </TouchableOpacity>
+                          ))}
+                          {pickerFilteredProducts.length === 0 && (
+                            <View style={styles.productDropdownEmpty}>
+                              <Text style={styles.productDropdownEmptyText}>No products found</Text>
+                            </View>
+                          )}
+                        </ScrollView>
+                      </View>
+                    )}
+
+                    {/* Qty & Price row */}
+                    <View style={styles.orderItemRow}>
+                      <TextInput
+                        style={[styles.formInput, styles.itemQtyInput]}
+                        value={item.quantity}
+                        onChangeText={(v) =>
+                          handleUpdateOrderItem(item.localId, 'quantity', v)
+                        }
+                        placeholder="Qty"
+                        placeholderTextColor={COLORS.textTertiary}
+                        keyboardType="number-pad"
+                      />
+                      <TextInput
+                        style={[styles.formInput, styles.itemPriceInput]}
+                        value={item.unitPrice}
+                        onChangeText={(v) =>
+                          handleUpdateOrderItem(item.localId, 'unitPrice', v)
+                        }
+                        placeholder="Price"
+                        placeholderTextColor={COLORS.textTertiary}
+                        keyboardType="decimal-pad"
+                      />
+                      <TouchableOpacity
+                        style={styles.removeItemButton}
+                        onPress={() => handleRemoveOrderItem(item.localId)}
+                        accessibilityLabel={`Remove ${item.name || 'item'}`}
+                      >
+                        <Feather name="x" size={18} color={COLORS.danger} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))}
 
                 <TouchableOpacity
                   style={styles.addItemRow}
-                  onPress={handleAddOrderItem}
+                  onPress={handleAddProductItem}
                   activeOpacity={0.7}
                   accessibilityLabel="Add another item"
                 >
@@ -1152,6 +1339,7 @@ const CRM: React.FC = () => {
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
+                  blurOnSubmit
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -1175,8 +1363,8 @@ const CRM: React.FC = () => {
                 </View>
               </ScrollView>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* ── Record Payment Modal ───────────────────────────────── */}
@@ -1186,94 +1374,101 @@ const CRM: React.FC = () => {
         transparent
         onRequestClose={() => setPaymentModalVisible(false)}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Record Payment</Text>
-                <TouchableOpacity
-                  onPress={() => setPaymentModalVisible(false)}
-                  accessibilityLabel="Close payment modal"
-                >
-                  <Feather name="x" size={24} color={COLORS.text} />
-                </TouchableOpacity>
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={[styles.keyboardView, { justifyContent: 'flex-end' }]}
+          >
+            <ScrollView
+              contentContainerStyle={{ flexGrow: 1 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Record Payment</Text>
+                  <TouchableOpacity
+                    onPress={() => setPaymentModalVisible(false)}
+                    accessibilityLabel="Close payment modal"
+                  >
+                    <Feather name="x" size={24} color={COLORS.text} />
+                  </TouchableOpacity>
+                </View>
+
+                {(() => {
+                  const order = getPaymentOrder();
+                  if (!order) return null;
+                  const remaining = order.totalAmount - order.paidAmount;
+
+                  return (
+                    <>
+                      <View style={styles.paymentInfoRow}>
+                        <Text style={styles.paymentInfoLabel}>Order Total</Text>
+                        <Text style={styles.paymentInfoValue}>
+                          {formatCurrency(order.totalAmount)}
+                        </Text>
+                      </View>
+                      <View style={styles.paymentInfoRow}>
+                        <Text style={styles.paymentInfoLabel}>Already Paid</Text>
+                        <Text
+                          style={[
+                            styles.paymentInfoValue,
+                            { color: COLORS.success },
+                          ]}
+                        >
+                          {formatCurrency(order.paidAmount)}
+                        </Text>
+                      </View>
+                      <View style={styles.paymentInfoRow}>
+                        <Text style={styles.paymentInfoLabel}>Remaining</Text>
+                        <Text
+                          style={[
+                            styles.paymentInfoValue,
+                            { color: COLORS.warning },
+                          ]}
+                        >
+                          {formatCurrency(remaining)}
+                        </Text>
+                      </View>
+
+                      <Text style={styles.formLabel}>Amount</Text>
+                      <TextInput
+                        ref={paymentAmountRef}
+                        style={styles.formInput}
+                        value={paymentAmount}
+                        onChangeText={setPaymentAmount}
+                        placeholder={`Max ${currency} ${remaining.toFixed(2)}`}
+                        placeholderTextColor={COLORS.textTertiary}
+                        keyboardType="decimal-pad"
+                        returnKeyType="done"
+                        onSubmitEditing={handleRecordPayment}
+                        autoFocus
+                      />
+                    </>
+                  );
+                })()}
+
+                <View style={styles.modalActions}>
+                  <Button
+                    title="Cancel"
+                    onPress={() => setPaymentModalVisible(false)}
+                    variant="outline"
+                    style={styles.actionButton}
+                  />
+                  <Button
+                    title="Record"
+                    onPress={handleRecordPayment}
+                    icon="check"
+                    style={styles.actionButton}
+                  />
+                </View>
               </View>
-
-              {(() => {
-                const order = getPaymentOrder();
-                if (!order) return null;
-                const remaining = order.totalAmount - order.paidAmount;
-
-                return (
-                  <>
-                    <View style={styles.paymentInfoRow}>
-                      <Text style={styles.paymentInfoLabel}>Order Total</Text>
-                      <Text style={styles.paymentInfoValue}>
-                        {formatCurrency(order.totalAmount)}
-                      </Text>
-                    </View>
-                    <View style={styles.paymentInfoRow}>
-                      <Text style={styles.paymentInfoLabel}>Already Paid</Text>
-                      <Text
-                        style={[
-                          styles.paymentInfoValue,
-                          { color: COLORS.success },
-                        ]}
-                      >
-                        {formatCurrency(order.paidAmount)}
-                      </Text>
-                    </View>
-                    <View style={styles.paymentInfoRow}>
-                      <Text style={styles.paymentInfoLabel}>Remaining</Text>
-                      <Text
-                        style={[
-                          styles.paymentInfoValue,
-                          { color: COLORS.warning },
-                        ]}
-                      >
-                        {formatCurrency(remaining)}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.formLabel}>Amount</Text>
-                    <TextInput
-                      ref={paymentAmountRef}
-                      style={styles.formInput}
-                      value={paymentAmount}
-                      onChangeText={setPaymentAmount}
-                      placeholder={`Max ${currency} ${remaining.toFixed(2)}`}
-                      placeholderTextColor={COLORS.textTertiary}
-                      keyboardType="decimal-pad"
-                      returnKeyType="done"
-                      onSubmitEditing={handleRecordPayment}
-                      autoFocus
-                    />
-                  </>
-                );
-              })()}
-
-              <View style={styles.modalActions}>
-                <Button
-                  title="Cancel"
-                  onPress={() => setPaymentModalVisible(false)}
-                  variant="outline"
-                  style={styles.actionButton}
-                />
-                <Button
-                  title="Record"
-                  onPress={handleRecordPayment}
-                  icon="check"
-                  style={styles.actionButton}
-                />
-              </View>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
+
+
+
     </View>
   );
 };
@@ -1385,6 +1580,19 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
     color: COLORS.warning,
   },
+  quickActions: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    marginLeft: SPACING.sm,
+  },
+  quickActionBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(COLORS.business, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   // ── Modals ──────────────────────────────────────────────────
   modalOverlay: {
@@ -1481,16 +1689,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: SPACING.lg,
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
   },
-  contactItem: {
+  contactButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
+    backgroundColor: withAlpha(COLORS.business, 0.06),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
   },
-  contactText: {
+  contactButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: COLORS.business,
   },
 
   // ── Detail Stats ────────────────────────────────────────────
@@ -1613,14 +1826,90 @@ const styles = StyleSheet.create({
   },
 
   // ── Order Form ──────────────────────────────────────────────
+  orderItemCard: {
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    gap: SPACING.sm,
+  },
+  productSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  productSelectorText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    color: COLORS.text,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  productDropdown: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    maxHeight: 200,
+  },
+  productDropdownSearch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  productDropdownSearchInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: COLORS.text,
+    paddingVertical: 2,
+  },
+  productDropdownList: {
+    maxHeight: 150,
+  },
+  productDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  productDropdownItemActive: {
+    backgroundColor: withAlpha(COLORS.business, 0.06),
+  },
+  productDropdownItemName: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: COLORS.text,
+  },
+  productDropdownItemMeta: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: COLORS.textSecondary,
+    marginTop: 1,
+  },
+  productDropdownEmpty: {
+    paddingVertical: SPACING.lg,
+    alignItems: 'center',
+  },
+  productDropdownEmptyText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: COLORS.textTertiary,
+  },
   orderItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  itemNameInput: {
-    flex: 3,
   },
   itemQtyInput: {
     flex: 1,
@@ -1689,6 +1978,24 @@ const styles = StyleSheet.create({
   statusPickerText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+
+  // ── Address ────────────────────────────────────────────────
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    backgroundColor: withAlpha(COLORS.business, 0.06),
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  addressText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: COLORS.business,
   },
 
   // ── Payment Modal ───────────────────────────────────────────

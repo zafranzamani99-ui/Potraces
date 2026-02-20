@@ -4,7 +4,7 @@ import { PieChart, LineChart } from 'react-native-chart-kit';
 import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, EXPENSE_CATEGORIES } from '../../constants';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS, EXPENSE_CATEGORIES, withAlpha } from '../../constants';
 import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
@@ -78,12 +78,12 @@ const PersonalReports: React.FC = () => {
       datasets: [
         {
           data: incomeData,
-          color: (opacity = 1) => `rgba(16, 185, 129, ${opacity})`,
+          color: (opacity = 1) => withAlpha(COLORS.income, opacity),
           strokeWidth: 2,
         },
         {
           data: expenseData,
-          color: (opacity = 1) => `rgba(239, 68, 68, ${opacity})`,
+          color: (opacity = 1) => withAlpha(COLORS.expense, opacity),
           strokeWidth: 2,
         },
       ],
@@ -144,8 +144,8 @@ const PersonalReports: React.FC = () => {
               backgroundGradientFrom: COLORS.background,
               backgroundGradientTo: COLORS.background,
               decimalPlaces: 0,
-              color: (opacity = 1) => `rgba(99, 102, 241, ${opacity})`,
-              labelColor: (opacity = 1) => `rgba(107, 114, 128, ${opacity})`,
+              color: (opacity = 1) => withAlpha(COLORS.primary, opacity),
+              labelColor: (opacity = 1) => withAlpha(COLORS.textSecondary, opacity),
               style: {
                 borderRadius: 16,
               },
@@ -221,18 +221,22 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    padding: SPACING.lg,
   },
+
+  // Charts
   chartTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: COLORS.text,
-    marginBottom: 16,
+    marginBottom: SPACING.lg,
   },
   chart: {
-    marginVertical: 8,
-    borderRadius: 16,
+    marginVertical: SPACING.sm,
+    borderRadius: RADIUS.lg,
   },
+
+  // Stats
   statRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -245,24 +249,26 @@ const styles = StyleSheet.create({
     width: 1,
     height: 40,
     backgroundColor: COLORS.border,
-    marginHorizontal: 16,
+    marginHorizontal: SPACING.lg,
   },
   statValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.size['3xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: COLORS.text,
-    marginBottom: 4,
+    marginBottom: SPACING.xs,
   },
   statLabel: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.size.sm,
     color: COLORS.textSecondary,
     textAlign: 'center',
   },
+
+  // Categories
   categoryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.surface,
   },
@@ -273,16 +279,16 @@ const styles = StyleSheet.create({
   colorDot: {
     width: 12,
     height: 12,
-    borderRadius: 6,
-    marginRight: 12,
+    borderRadius: RADIUS.sm,
+    marginRight: SPACING.md,
   },
   categoryName: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY.size.base,
     color: COLORS.text,
   },
   categoryAmount: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
   },
 });

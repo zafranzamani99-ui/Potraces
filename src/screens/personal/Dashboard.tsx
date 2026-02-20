@@ -17,6 +17,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { format, addDays, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns';
+
 import { useNavigation } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useDebtStore } from '../../store/debtStore';
@@ -47,6 +48,7 @@ const getGreeting = (): string => {
 
 const QUICK_ACTIONS = [
   { key: 'wallets', label: 'Wallets', icon: 'credit-card' as const, screen: 'WalletManagement', color: COLORS.personal },
+  { key: 'savings', label: 'Savings', icon: 'trending-up' as const, screen: 'SavingsTracker', color: '#A06CD5' },
   { key: 'debts', label: 'Debts & Splits', icon: 'users' as const, screen: 'DebtTracking', color: COLORS.warning },
   { key: 'subscriptions', label: 'Subscriptions', icon: 'repeat' as const, screen: 'SubscriptionList', color: COLORS.accent },
   { key: 'reports', label: 'Reports', icon: 'bar-chart-2' as const, screen: 'PersonalReports', color: COLORS.info },
@@ -121,10 +123,11 @@ const PersonalDashboard: React.FC = () => {
 
     const balance = income - expenses;
 
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const upcomingBills = subscriptions.filter(
       (sub) => sub.isActive && isWithinInterval(sub.nextBillingDate, {
-        start: now,
-        end: addDays(now, 7),
+        start: today,
+        end: addDays(today, 8),
       })
     );
 
@@ -145,13 +148,24 @@ const PersonalDashboard: React.FC = () => {
       balance,
       income,
       expenses,
+      transactionCount: monthlyTransactions.length,
       upcomingBills: upcomingBills.length,
+      upcomingBillsList: upcomingBills,
       upcomingTotal: totalUpcoming,
       budgetProgress: totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0,
       youOwe,
       owedToYou,
     };
   }, [transactions, subscriptions, budgets, debts]);
+
+  const heroBalance = wallets.length > 0
+    ? wallets.reduce((sum, w) => sum + w.balance, 0)
+    : stats.balance;
+
+  const heroBreakdown = [
+    { label: 'Income', value: stats.income, icon: 'arrow-down' as const },
+    { label: 'Expenses', value: stats.expenses, icon: 'arrow-up' as const },
+  ];
 
   const recentTransactions = useMemo(() => {
     return transactions.slice(0, 5);
@@ -266,7 +280,7 @@ const PersonalDashboard: React.FC = () => {
   };
 
   const handleQuickAction = (screen: string) => {
-    if (screen === 'PersonalReports' || screen === 'SubscriptionList' || screen === 'DebtTracking' || screen === 'WalletManagement') {
+    if (screen === 'PersonalReports' || screen === 'SubscriptionList' || screen === 'DebtTracking' || screen === 'WalletManagement' || screen === 'SavingsTracker') {
       navigation.getParent()?.navigate(screen);
     } else {
       navigation.navigate(screen);
@@ -290,7 +304,7 @@ const PersonalDashboard: React.FC = () => {
           <Text style={styles.dateText}>{format(new Date(), 'EEEE, MMMM d')}</Text>
         </Animated.View>
 
-        {/* Hero Card - Total Balance */}
+        {/* Hero Card */}
         {loading ? (
           <SkeletonLoader
             shape="box"
@@ -299,50 +313,75 @@ const PersonalDashboard: React.FC = () => {
             style={{ marginBottom: SPACING.lg }}
           />
         ) : (
-          <Animated.View style={makeStaggerStyle(anim1)}>
+          <Animated.View style={[{ marginBottom: SPACING.lg }, makeStaggerStyle(anim1)]}>
             <HeroCard
               gradient={GRADIENTS.personalHero}
               title="Total Balance"
-              amount={stats.balance}
+              amount={heroBalance}
               currency={currency}
-              subtitle="Updated just now"
-              breakdown={[
-                { label: 'Income', value: stats.income, icon: 'arrow-down' },
-                { label: 'Expenses', value: stats.expenses, icon: 'arrow-up' },
-              ]}
-              style={{ marginBottom: SPACING.lg }}
+              subtitle="Tap for account overview"
+              breakdown={heroBreakdown}
+              onPress={() => {
+                lightTap();
+                navigation.getParent()?.navigate('AccountOverview');
+              }}
             />
           </Animated.View>
         )}
 
-        {/* Secondary Stats */}
+        {/* Upcoming Bills */}
         {loading ? (
-          <View style={styles.statsGrid}>
-            <SkeletonLoader shape="box" width="47%" height={100} />
-            <SkeletonLoader shape="box" width="47%" height={100} />
-          </View>
+          <SkeletonLoader shape="box" width="100%" height={100} style={{ marginBottom: SPACING.md }} />
         ) : (
-          <Animated.View style={[styles.statsGrid, makeStaggerStyle(anim2)]}>
-            <StatCard
-              title="Upcoming Bills"
-              value={`${stats.upcomingBills}`}
-              icon="calendar"
-              iconColor={COLORS.warning}
-              subtitle={`${currency} ${stats.upcomingTotal.toFixed(2)} total`}
-            />
-            <StatCard
-              title="Budget Used"
-              value={`${stats.budgetProgress.toFixed(0)}%`}
-              icon="pie-chart"
-              iconColor={
-                stats.budgetProgress > 100
-                  ? COLORS.danger
-                  : stats.budgetProgress > 90
-                  ? COLORS.warning
-                  : COLORS.success
-              }
-              subtitle={stats.budgetProgress > 0 ? 'This month' : 'Not set'}
-            />
+          <Animated.View style={[{ marginBottom: SPACING.md }, makeStaggerStyle(anim2)]}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                lightTap();
+                navigation.getParent()?.navigate('SubscriptionList');
+              }}
+            >
+              {stats.upcomingBillsList.length > 0 ? (
+                <Card>
+                  <View style={styles.upcomingHeader}>
+                    <Feather name="calendar" size={18} color={COLORS.warning} />
+                    <Text style={styles.upcomingTitle}>Upcoming Bills</Text>
+                    <Feather name="chevron-right" size={16} color={COLORS.textSecondary} />
+                  </View>
+                  {stats.upcomingBillsList.slice(0, 3).map((sub) => {
+                    const daysUntil = Math.ceil(
+                      (sub.nextBillingDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                    );
+                    return (
+                      <View key={sub.id} style={styles.upcomingItem}>
+                        <Text style={styles.upcomingName} numberOfLines={1}>{sub.name}</Text>
+                        <Text style={styles.upcomingDays}>{daysUntil <= 0 ? 'Today' : `${daysUntil}d`}</Text>
+                        <Text style={styles.upcomingAmount}>{currency} {sub.amount.toFixed(2)}</Text>
+                      </View>
+                    );
+                  })}
+                  <View style={styles.upcomingFooter}>
+                    <Text style={styles.upcomingFooterTotal}>
+                      Total: {currency} {stats.upcomingTotal.toFixed(2)}
+                    </Text>
+                    {stats.upcomingBillsList.length > 3 && (
+                      <Text style={styles.upcomingFooterMore}>
+                        +{stats.upcomingBillsList.length - 3} more
+                      </Text>
+                    )}
+                  </View>
+                </Card>
+              ) : (
+                <Card>
+                  <View style={styles.upcomingHeader}>
+                    <Feather name="calendar" size={18} color={COLORS.warning} />
+                    <Text style={styles.upcomingTitle}>Upcoming Bills</Text>
+                    <Feather name="chevron-right" size={16} color={COLORS.textSecondary} />
+                  </View>
+                  <Text style={styles.upcomingEmpty}>No bills due soon — tap to manage subscriptions</Text>
+                </Card>
+              )}
+            </TouchableOpacity>
           </Animated.View>
         )}
 
@@ -367,35 +406,46 @@ const PersonalDashboard: React.FC = () => {
 
         {stats.budgetProgress > 0 && (
           <Animated.View style={makeStaggerStyle(anim3)}>
-            <Card>
-              <View style={styles.budgetHeader}>
-                <Text style={styles.budgetTitle}>Budget Overview</Text>
-                <Text
-                  style={[
-                    styles.budgetPercentage,
-                    stats.budgetProgress > 90 && styles.budgetWarning,
-                  ]}
-                >
-                  {stats.budgetProgress.toFixed(0)}%
-                </Text>
-              </View>
-              <View style={styles.budgetBar}>
-                <View
-                  style={[
-                    styles.budgetFill,
-                    {
-                      width: `${Math.min(stats.budgetProgress, 100)}%`,
-                      backgroundColor:
-                        stats.budgetProgress > 100
-                          ? COLORS.danger
-                          : stats.budgetProgress > 90
-                          ? COLORS.warning
-                          : COLORS.success,
-                    },
-                  ]}
-                />
-              </View>
-            </Card>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                lightTap();
+                navigation.navigate('BudgetPlanning');
+              }}
+            >
+              <Card>
+                <View style={styles.budgetHeader}>
+                  <Text style={styles.budgetTitle}>Budget Overview</Text>
+                  <View style={styles.budgetHeaderRight}>
+                    <Text
+                      style={[
+                        styles.budgetPercentage,
+                        stats.budgetProgress > 90 && styles.budgetWarning,
+                      ]}
+                    >
+                      {stats.budgetProgress.toFixed(0)}%
+                    </Text>
+                    <Feather name="chevron-right" size={16} color={COLORS.textSecondary} />
+                  </View>
+                </View>
+                <View style={styles.budgetBar}>
+                  <View
+                    style={[
+                      styles.budgetFill,
+                      {
+                        width: `${Math.min(stats.budgetProgress, 100)}%`,
+                        backgroundColor:
+                          stats.budgetProgress > 100
+                            ? COLORS.danger
+                            : stats.budgetProgress > 90
+                            ? COLORS.warning
+                            : COLORS.success,
+                      },
+                    ]}
+                  />
+                </View>
+              </Card>
+            </TouchableOpacity>
           </Animated.View>
         )}
 
@@ -499,11 +549,11 @@ const PersonalDashboard: React.FC = () => {
           setEditingTransaction(null);
         }}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
-          <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+          >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Edit Transaction</Text>
@@ -619,8 +669,8 @@ const PersonalDashboard: React.FC = () => {
                 </View>
               </ScrollView>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
     </View>
   );
@@ -659,6 +709,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.md,
   },
+  budgetHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
   budgetTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
@@ -681,6 +736,69 @@ const styles = StyleSheet.create({
   budgetFill: {
     height: SPACING.sm,
     borderRadius: RADIUS.xs,
+  },
+
+  // Upcoming Bills
+  upcomingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  upcomingTitle: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: COLORS.text,
+  },
+  upcomingEmpty: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    paddingVertical: SPACING.md,
+  },
+  upcomingFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    marginTop: SPACING.xs,
+  },
+  upcomingFooterTotal: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: COLORS.text,
+  },
+  upcomingFooterMore: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: COLORS.primary,
+  },
+  upcomingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.xs,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  upcomingName: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: COLORS.text,
+  },
+  upcomingDays: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: COLORS.warning,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    marginRight: SPACING.sm,
+  },
+  upcomingAmount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: COLORS.text,
+    fontVariant: ['tabular-nums'],
   },
 
   // Quick Actions
@@ -741,62 +859,62 @@ const styles = StyleSheet.create({
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: COLORS.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: COLORS.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    padding: SPACING['2xl'],
     maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: SPACING['2xl'],
   },
   modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: COLORS.text,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
-    marginBottom: 8,
-    marginTop: 16,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.lg,
   },
   input: {
     backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
     color: COLORS.text,
   },
   typeContainer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: SPACING.md,
   },
   typeButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.md,
     borderWidth: 2,
     backgroundColor: COLORS.surface,
-    gap: 8,
+    gap: SPACING.sm,
   },
   typeButtonActive: {},
   typeText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
   },
   typeTextActive: {
@@ -804,13 +922,14 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 24,
+    gap: SPACING.md,
+    marginTop: SPACING['2xl'],
   },
   deleteButton: {
     flex: 1,
     borderColor: COLORS.danger,
   },
+
 });
 
 export default PersonalDashboard;

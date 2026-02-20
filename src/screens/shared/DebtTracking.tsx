@@ -662,8 +662,8 @@ const DebtTracking: React.FC = () => {
 
       {/* ── Add/Edit Debt Modal ──────────────────────────────── */}
       <Modal visible={debtModalVisible} animationType="slide" transparent onRequestClose={() => { setDebtModalVisible(false); resetDebtForm(); }}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-          <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editingDebtId ? 'Edit Debt' : 'Add Debt'}</Text>
@@ -743,14 +743,14 @@ const DebtTracking: React.FC = () => {
                 </View>
               </ScrollView>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* ── Add/Edit Split Modal ─────────────────────────────── */}
       <Modal visible={splitModalVisible} animationType="slide" transparent onRequestClose={() => { setSplitModalVisible(false); resetSplitForm(); }}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-          <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editingSplitId ? 'Edit Split' : 'Split Expense'}</Text>
@@ -914,62 +914,75 @@ const DebtTracking: React.FC = () => {
                 </View>
               </ScrollView>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* ── Record Payment Modal ─────────────────────────────── */}
-      <Modal visible={paymentModalVisible} animationType="slide" transparent onRequestClose={() => setPaymentModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Record Payment</Text>
-                <TouchableOpacity onPress={() => setPaymentModalVisible(false)}>
-                  <Feather name="x" size={24} color={COLORS.text} />
-                </TouchableOpacity>
-              </View>
+      <Modal
+        visible={paymentModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setPaymentModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+          >
+            <ScrollView
+              contentContainerStyle={{ flexGrow: 1 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Record Payment</Text>
+                  <TouchableOpacity
+                    onPress={() => setPaymentModalVisible(false)}
+                  >
+                    <Feather name="x" size={24} color={COLORS.text} />
+                  </TouchableOpacity>
+                </View>
 
-              <Text style={styles.formLabel}>Amount</Text>
-              <TextInput
-                style={styles.formInput}
-                value={paymentAmount}
-                onChangeText={setPaymentAmount}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                placeholderTextColor={COLORS.textSecondary}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              <Text style={styles.formLabel}>Note (optional)</Text>
-              <TextInput
-                style={styles.formInput}
-                value={paymentNote}
-                onChangeText={setPaymentNote}
-                placeholder="Payment via bank transfer"
-                placeholderTextColor={COLORS.textSecondary}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              <View style={styles.modalActions}>
-                <Button
-                  title="Cancel"
-                  onPress={() => setPaymentModalVisible(false)}
-                  variant="secondary"
-                  style={{ flex: 1 }}
+                <Text style={styles.formLabel}>Amount</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={paymentAmount}
+                  onChangeText={setPaymentAmount}
+                  placeholder="Enter amount"
+                  keyboardType="decimal-pad"
+                  returnKeyType="done"
+                  onSubmitEditing={handleRecordPayment}
                 />
-                <Button
-                  title="Record"
-                  onPress={handleRecordPayment}
-                  icon="check"
-                  style={{ flex: 1 }}
+
+                <Text style={styles.formLabel}>Note</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={paymentNote}
+                  onChangeText={setPaymentNote}
+                  placeholder="Optional note"
+                  returnKeyType="done"
+                  onSubmitEditing={handleRecordPayment}
                 />
+
+                <View style={styles.modalActions}>
+                  <Button
+                    title="Cancel"
+                    onPress={() => setPaymentModalVisible(false)}
+                    variant="secondary"
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    title="Record"
+                    onPress={handleRecordPayment}
+                    icon="check"
+                    style={{ flex: 1 }}
+                  />
+                </View>
               </View>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* ── Split Detail Modal ───────────────────────────────── */}
@@ -1309,81 +1322,81 @@ const styles = StyleSheet.create({
   // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: COLORS.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: COLORS.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    padding: SPACING['2xl'],
     maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: SPACING['2xl'],
   },
   modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: COLORS.text,
   },
   modalActions: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 24,
+    gap: SPACING.md,
+    marginTop: SPACING['2xl'],
   },
 
   // Form elements
   formLabel: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
-    marginBottom: 8,
-    marginTop: 16,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.lg,
   },
   formInput: {
     backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
     color: COLORS.text,
   },
   typeContainer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: SPACING.md,
   },
   typeButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 8,
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.sm,
     borderWidth: 2,
     backgroundColor: COLORS.surface,
   },
   typeText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
   },
   methodContainer: {
     flexDirection: 'row',
-    gap: 8,
+    gap: SPACING.sm,
   },
   methodButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: 8,
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.sm,
     borderWidth: 2,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
@@ -1393,12 +1406,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   methodText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
   },
   methodTextActive: {
-    color: '#fff',
+    color: COLORS.background,
   },
 
   // Custom split
@@ -1420,10 +1433,10 @@ const styles = StyleSheet.create({
   customInput: {
     width: 100,
     backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 16,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: COLORS.text,
     textAlign: 'right',
   },

@@ -543,8 +543,8 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   formLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.textSecondary,
     marginBottom: SPACING.xs,
     marginTop: SPACING.md,

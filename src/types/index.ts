@@ -13,6 +13,8 @@ export type RootStackParamList = {
   DebtTracking: { receiptData?: { vendor: string; total: number; items: { name: string; amount: number }[] } } | undefined;
   ReceiptScanner: undefined;
   WalletManagement: undefined;
+  AccountOverview: undefined;
+  SavingsTracker: undefined;
 };
 
 export type PersonalStackParamList = {
@@ -51,10 +53,14 @@ export interface Subscription {
   name: string;
   amount: number;
   billingCycle: 'monthly' | 'yearly' | 'weekly';
+  startDate: Date;
   nextBillingDate: Date;
   category: string;
   isActive: boolean;
   reminderDays: number;
+  isInstallment: boolean;
+  totalInstallments?: number;
+  completedInstallments?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -89,6 +95,8 @@ export interface Sale {
   id: string;
   items: SaleItem[];
   totalAmount: number;
+  discount?: number;
+  subtotalBeforeDiscount?: number;
   paymentMethod: 'cash' | 'digital' | 'card';
   customerName?: string;
   date: Date;
@@ -206,6 +214,7 @@ export interface Customer {
   phone?: string;
   email?: string;
   company?: string;
+  address?: string;
   notes?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -310,6 +319,36 @@ export interface ChartData {
     data: number[];
     color?: (opacity: number) => string;
   }[];
+}
+
+// Savings / Investment Types
+export type SavingsAccountType = 'tng_plus' | 'robo_crypto' | 'esa' | 'bank' | 'other';
+
+export interface SavingsSnapshot {
+  id: string;
+  value: number;
+  note?: string;
+  date: Date;
+}
+
+export interface SavingsAccount {
+  id: string;
+  name: string;
+  type: SavingsAccountType;
+  description?: string;
+  initialInvestment: number;
+  currentValue: number;
+  history: SavingsSnapshot[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SavingsState {
+  accounts: SavingsAccount[];
+  addAccount: (account: Omit<SavingsAccount, 'id' | 'history' | 'createdAt' | 'updatedAt'>) => void;
+  updateAccount: (id: string, updates: Partial<SavingsAccount>) => void;
+  deleteAccount: (id: string) => void;
+  addSnapshot: (accountId: string, value: number, note?: string) => void;
 }
 
 // Wallet Types

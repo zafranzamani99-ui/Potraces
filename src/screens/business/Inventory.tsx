@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,11 +12,12 @@ import {
   Platform,
   Keyboard,
   ListRenderItemInfo,
+  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
 import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
@@ -26,7 +27,7 @@ import { useToast } from '../../context/ToastContext';
 
 const Inventory: React.FC = () => {
   const { showToast } = useToast();
-  const { products, addProduct, updateProduct } = useBusinessStore();
+  const { products, addProduct, updateProduct, deleteProduct } = useBusinessStore();
   const currency = useSettingsStore(state => state.currency);
   const [modalVisible, setModalVisible] = useState(false);
   const [stockModalVisible, setStockModalVisible] = useState(false);
@@ -39,6 +40,29 @@ const Inventory: React.FC = () => {
   const [stock, setStock] = useState('');
   const [lowStockThreshold, setLowStockThreshold] = useState('10');
   const [category, setCategory] = useState(PRODUCT_CATEGORIES[0].id);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  const availableCategories = useMemo(() => {
+    const usedIds = new Set(products.map((p) => p.category));
+    return PRODUCT_CATEGORIES.filter((c) => usedIds.has(c.id));
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    let result = products;
+    if (selectedCategory) {
+      result = result.filter((p) => p.category === selectedCategory);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.category.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [products, selectedCategory, searchQuery]);
 
   const handleAdd = () => {
     if (!name.trim()) {
@@ -100,6 +124,26 @@ const Inventory: React.FC = () => {
     setSelectedProductId(productId);
     setStockQuantity('');
     setStockModalVisible(true);
+  };
+
+  const handleDelete = (productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+    Alert.alert(
+      'Delete Product',
+      `Are you sure you want to delete "${product.name}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteProduct(productId);
+            showToast(`${product.name} deleted`, 'success');
+          },
+        },
+      ]
+    );
   };
 
   const confirmAddStock = () => {
@@ -166,8 +210,73 @@ const Inventory: React.FC = () => {
           </Card>
         )}
 
-        {products.length > 0 ? (
-          products.map((product) => {
+        {/* Category filter tabs */}
+        {availableCategories.length > 1 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryTabs}
+            style={styles.categoryTabsContainer}
+          >
+            <TouchableOpacity
+              style={[styles.categoryTab, selectedCategory === null && styles.categoryTabActive]}
+              onPress={() => setSelectedCategory(null)}
+            >
+              <Feather
+                name="grid"
+                size={14}
+                color={selectedCategory === null ? '#fff' : COLORS.textSecondary}
+              />
+              <Text
+                style={[styles.categoryTabText, selectedCategory === null && styles.categoryTabTextActive]}
+              >
+                All
+              </Text>
+            </TouchableOpacity>
+            {availableCategories.map((cat) => (
+              <TouchableOpacity
+                key={cat.id}
+                style={[styles.categoryTab, selectedCategory === cat.id && styles.categoryTabActive]}
+                onPress={() => setSelectedCategory(cat.id)}
+              >
+                <Feather
+                  name={cat.icon as keyof typeof Feather.glyphMap}
+                  size={14}
+                  color={selectedCategory === cat.id ? '#fff' : COLORS.textSecondary}
+                />
+                <Text
+                  style={[styles.categoryTabText, selectedCategory === cat.id && styles.categoryTabTextActive]}
+                >
+                  {cat.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* Search bar */}
+        {products.length > 0 && (
+          <View style={styles.searchContainer}>
+            <Feather name="search" size={18} color={COLORS.textSecondary} />
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search products..."
+              placeholderTextColor={COLORS.textSecondary}
+              returnKeyType="search"
+              onSubmitEditing={Keyboard.dismiss}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Feather name="x" size={18} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {filteredProducts.length > 0 ? (
+          filteredProducts.map((product) => {
             const cat = PRODUCT_CATEGORIES.find((c) => c.id === product.category);
             const isLowStock = product.stock > 0 && product.stock <= product.lowStockThreshold;
             const isOutOfStock = product.stock === 0;
@@ -189,6 +298,12 @@ const Inventory: React.FC = () => {
                     onPress={() => handleEdit(product.id)}
                   >
                     <Feather name="edit-2" size={18} color={COLORS.business} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={() => handleDelete(product.id)}
+                  >
+                    <Feather name="trash-2" size={18} color={COLORS.danger} />
                   </TouchableOpacity>
                 </View>
 
@@ -248,6 +363,14 @@ const Inventory: React.FC = () => {
               </Card>
             );
           })
+        ) : products.length > 0 ? (
+          <View style={styles.noResults}>
+            <Feather name="search" size={40} color={COLORS.textSecondary} />
+            <Text style={styles.noResultsTitle}>No results found</Text>
+            <Text style={styles.noResultsText}>
+              Try a different search term or category
+            </Text>
+          </View>
         ) : (
           <EmptyState
             icon="package"
@@ -276,11 +399,11 @@ const Inventory: React.FC = () => {
         transparent
         onRequestClose={() => setModalVisible(false)}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
         <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+          >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
@@ -333,7 +456,7 @@ const Inventory: React.FC = () => {
                     onSubmitEditing={Keyboard.dismiss}
                   />
                 </View>
-                <View style={{ width: 16 }} />
+                <View style={{ width: SPACING.lg }} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>
                     Cost <Text style={styles.required}>*</Text>
@@ -367,7 +490,7 @@ const Inventory: React.FC = () => {
                     onSubmitEditing={Keyboard.dismiss}
                   />
                 </View>
-                <View style={{ width: 16 }} />
+                <View style={{ width: SPACING.lg }} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>Low Stock Alert</Text>
                   <TextInput
@@ -402,8 +525,8 @@ const Inventory: React.FC = () => {
               </View>
             </ScrollView>
           </View>
+          </KeyboardAvoidingView>
         </View>
-        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -412,11 +535,11 @@ const Inventory: React.FC = () => {
         transparent
         onRequestClose={() => setStockModalVisible(false)}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
         <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+          >
           <View style={[styles.modalContent, { maxHeight: 300 }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add Stock</Text>
@@ -456,8 +579,8 @@ const Inventory: React.FC = () => {
               />
             </View>
           </View>
+          </KeyboardAvoidingView>
         </View>
-        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -472,64 +595,120 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    padding: SPACING.lg,
     paddingBottom: 80,
   },
+
+  // Category tabs
+  categoryTabsContainer: {
+    maxHeight: 44,
+    marginBottom: SPACING.md,
+  },
+  categoryTabs: {
+    gap: SPACING.sm,
+    paddingRight: SPACING.lg,
+  },
+  categoryTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  categoryTabActive: {
+    backgroundColor: COLORS.business,
+    borderColor: COLORS.business,
+  },
+  categoryTabText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: COLORS.textSecondary,
+  },
+  categoryTabTextActive: {
+    color: '#fff',
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+
+  // Search
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
+    gap: SPACING.sm,
+    ...SHADOWS.sm,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
+    color: COLORS.text,
+  },
+
+  // Alerts
   alertCard: {
     backgroundColor: withAlpha(COLORS.warning, 0.06),
     borderLeftWidth: 4,
     borderLeftColor: COLORS.warning,
-    marginBottom: 12,
-    gap: 8,
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
   },
   alertRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: SPACING.sm,
   },
   alertText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
+
+  // Product cards
   productCard: {
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   productHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   iconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: RADIUS.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: SPACING.md,
   },
   productInfo: {
     flex: 1,
   },
   productName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
     marginBottom: 2,
   },
   productCategory: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.size.sm,
     color: COLORS.textSecondary,
   },
   editButton: {
-    padding: 8,
+    padding: SPACING.sm,
   },
   divider: {
     height: 1,
     backgroundColor: COLORS.border,
-    marginVertical: 12,
+    marginVertical: SPACING.md,
   },
   productDetails: {
-    gap: 8,
+    gap: SPACING.sm,
   },
   detailRow: {
     flexDirection: 'row',
@@ -537,85 +716,109 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   detailLabel: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.size.sm,
     color: COLORS.textSecondary,
   },
   detailValue: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
   },
+
+  // Stock
   stockSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   stockLabel: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.size.sm,
     color: COLORS.textSecondary,
-    marginBottom: 4,
+    marginBottom: SPACING.xs,
   },
   stockValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: COLORS.text,
   },
   stockWarning: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY.size.xs,
     color: COLORS.warning,
     marginTop: 2,
   },
   stockOutOfStock: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY.size.xs,
     color: COLORS.danger,
-    fontWeight: '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     marginTop: 2,
   },
+
+  // No results
+  noResults: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING['5xl'],
+    gap: SPACING.sm,
+  },
+  noResultsTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: COLORS.text,
+    marginTop: SPACING.sm,
+  },
+  noResultsText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: COLORS.textSecondary,
+  },
+
+  // FAB
   addButton: {
     position: 'absolute',
-    bottom: 16,
-    left: 16,
-    right: 16,
+    bottom: SPACING.lg,
+    left: SPACING.lg,
+    right: SPACING.lg,
   },
+
+  // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: COLORS.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: COLORS.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    padding: SPACING['2xl'],
     maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: SPACING['2xl'],
   },
   modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: COLORS.text,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
-    marginBottom: 8,
-    marginTop: 16,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.lg,
   },
   required: {
     color: COLORS.danger,
   },
   input: {
     backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
     color: COLORS.text,
   },
   row: {
@@ -623,8 +826,8 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 24,
+    gap: SPACING.md,
+    marginTop: SPACING['2xl'],
   },
 });
 

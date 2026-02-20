@@ -104,6 +104,7 @@ export const usePersonalStore = create<PersonalState>()(
         })),
         subscriptions: state.subscriptions.map((s) => ({
           ...s,
+          startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
           nextBillingDate: s.nextBillingDate instanceof Date ? s.nextBillingDate.toISOString() : s.nextBillingDate,
           createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
           updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
@@ -126,9 +127,12 @@ export const usePersonalStore = create<PersonalState>()(
           }));
           state.subscriptions = state.subscriptions.map((s: any) => ({
             ...s,
+            startDate: s.startDate ? new Date(s.startDate) : new Date(s.createdAt),
             nextBillingDate: new Date(s.nextBillingDate),
             createdAt: new Date(s.createdAt),
             updatedAt: new Date(s.updatedAt),
+            isInstallment: s.isInstallment ?? false,
+            completedInstallments: s.completedInstallments ?? 0,
           }));
           state.budgets = state.budgets.map((b: any) => ({
             ...b,

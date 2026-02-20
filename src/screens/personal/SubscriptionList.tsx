@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,21 +8,24 @@ import {
   Alert,
   Modal,
   TouchableOpacity,
+  Switch,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { format, addDays, addWeeks, addMonths, addYears } from 'date-fns';
+import { format, addWeeks, addMonths, addYears } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, EXPENSE_CATEGORIES, BILLING_CYCLES, withAlpha } from '../../constants';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, EXPENSE_CATEGORIES, BILLING_CYCLES, withAlpha } from '../../constants';
 import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
+import ProgressBar from '../../components/common/ProgressBar';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import { useToast } from '../../context/ToastContext';
+import { lightTap } from '../../services/haptics';
 
 const SubscriptionList: React.FC = () => {
   const { showToast } = useToast();
@@ -35,6 +38,39 @@ const SubscriptionList: React.FC = () => {
   const [category, setCategory] = useState(EXPENSE_CATEGORIES[0].id);
   const [billingCycle, setBillingCycle] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
   const [reminderDays, setReminderDays] = useState('3');
+  const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [isInstallment, setIsInstallment] = useState(false);
+  const [totalInstallments, setTotalInstallments] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [sortBy, setSortBy] = useState<'name' | 'amount' | 'date'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  const filteredSortedSubs = useMemo(() => {
+    let result = [...subscriptions];
+
+    if (filterStatus === 'active') result = result.filter((s) => s.isActive);
+    if (filterStatus === 'inactive') result = result.filter((s) => !s.isActive);
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          s.category.toLowerCase().includes(q)
+      );
+    }
+
+    result.sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === 'amount') cmp = a.amount - b.amount;
+      else if (sortBy === 'name') cmp = a.name.localeCompare(b.name);
+      else cmp = a.nextBillingDate.getTime() - b.nextBillingDate.getTime();
+      return sortOrder === 'asc' ? cmp : -cmp;
+    });
+
+    return result;
+  }, [subscriptions, filterStatus, searchQuery, sortBy, sortOrder]);
 
   const handleEdit = (id: string) => {
     const subscription = subscriptions.find((s) => s.id === id);
@@ -45,6 +81,9 @@ const SubscriptionList: React.FC = () => {
     setCategory(subscription.category);
     setBillingCycle(subscription.billingCycle);
     setReminderDays(subscription.reminderDays.toString());
+    setStartDate(format(subscription.startDate, 'yyyy-MM-dd'));
+    setIsInstallment(subscription.isInstallment || false);
+    setTotalInstallments(subscription.totalInstallments?.toString() || '');
     setModalVisible(true);
   };
 
@@ -59,34 +98,81 @@ const SubscriptionList: React.FC = () => {
       return;
     }
 
+    const parsedStartDate = new Date(startDate);
+    const validStartDate = isNaN(parsedStartDate.getTime()) ? new Date() : parsedStartDate;
+
     if (editingId) {
       const existing = subscriptions.find((s) => s.id === editingId);
+      // Recalculate nextBillingDate if start date or billing cycle changed
+      const startDateChanged = existing && validStartDate.getTime() !== existing.startDate.getTime();
+      const cycleChanged = existing && billingCycle !== existing.billingCycle;
+      let nextBillingDate = existing?.nextBillingDate || new Date();
+      if (startDateChanged || cycleChanged) {
+        const now = new Date();
+        if (validStartDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+          nextBillingDate = validStartDate;
+        } else {
+          let next = validStartDate;
+          while (next < now) {
+            switch (billingCycle) {
+              case 'weekly': next = addWeeks(next, 1); break;
+              case 'yearly': next = addYears(next, 1); break;
+              default: next = addMonths(next, 1); break;
+            }
+          }
+          nextBillingDate = next;
+        }
+      }
       updateSubscription(editingId, {
         name: name.trim(),
         amount: parseFloat(amount),
         category,
         billingCycle,
         reminderDays: parseInt(reminderDays) || 3,
-        nextBillingDate: existing?.nextBillingDate || new Date(),
+        startDate: validStartDate,
+        isInstallment,
+        ...(isInstallment && {
+          totalInstallments: parseInt(totalInstallments) || 1,
+        }),
+        ...(!isInstallment && {
+          totalInstallments: undefined,
+          completedInstallments: undefined,
+        }),
+        nextBillingDate,
       });
       showToast('Subscription updated successfully!', 'success');
     } else {
       const nextBilling = (() => {
         const now = new Date();
-        switch (billingCycle) {
-          case 'weekly': return addWeeks(now, 1);
-          case 'yearly': return addYears(now, 1);
-          default: return addMonths(now, 1);
+        // If start date is today or in the future, first billing is on start date
+        if (validStartDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+          return validStartDate;
         }
+        // If start date is in the past, roll forward until next billing is in the future
+        let next = validStartDate;
+        while (next < now) {
+          switch (billingCycle) {
+            case 'weekly': next = addWeeks(next, 1); break;
+            case 'yearly': next = addYears(next, 1); break;
+            default: next = addMonths(next, 1); break;
+          }
+        }
+        return next;
       })();
       addSubscription({
         name: name.trim(),
         amount: parseFloat(amount),
         category,
         billingCycle,
+        startDate: validStartDate,
         nextBillingDate: nextBilling,
         isActive: true,
         reminderDays: parseInt(reminderDays) || 3,
+        isInstallment,
+        ...(isInstallment && {
+          totalInstallments: parseInt(totalInstallments) || 1,
+          completedInstallments: 0,
+        }),
       });
       showToast('Subscription added successfully!', 'success');
     }
@@ -102,6 +188,9 @@ const SubscriptionList: React.FC = () => {
     setCategory(EXPENSE_CATEGORIES[0].id);
     setBillingCycle('monthly');
     setReminderDays('3');
+    setStartDate(format(new Date(), 'yyyy-MM-dd'));
+    setIsInstallment(false);
+    setTotalInstallments('');
   };
 
   const handleDelete = (id: string, name: string) => {
@@ -153,8 +242,71 @@ const SubscriptionList: React.FC = () => {
           </Card>
         )}
 
-        {subscriptions.length > 0 ? (
-          subscriptions.map((subscription) => {
+        {/* Search bar */}
+        {subscriptions.length > 0 && (
+          <View style={styles.searchContainer}>
+            <Feather name="search" size={18} color={COLORS.textSecondary} />
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search subscriptions..."
+              placeholderTextColor={COLORS.textSecondary}
+              returnKeyType="search"
+              onSubmitEditing={Keyboard.dismiss}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Feather name="x" size={18} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* Filter + Sort */}
+        {subscriptions.length > 0 && (
+          <View style={styles.filterSortRow}>
+            <View style={styles.filterRow}>
+              {(['all', 'active', 'inactive'] as const).map((f) => (
+                <TouchableOpacity
+                  key={f}
+                  style={[styles.filterChip, filterStatus === f && styles.filterChipActive]}
+                  onPress={() => setFilterStatus(f)}
+                >
+                  <Text style={[styles.filterChipText, filterStatus === f && styles.filterChipTextActive]}>
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.sortRow}>
+              {(['date', 'amount', 'name'] as const).map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.sortChip, sortBy === s && styles.sortChipActive]}
+                  onPress={() => {
+                    if (sortBy === s) {
+                      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+                    } else {
+                      setSortBy(s);
+                      setSortOrder('asc');
+                    }
+                  }}
+                >
+                  <Text style={[styles.sortChipText, sortBy === s && styles.sortChipTextActive]}>
+                    {s === 'date' ? 'Date' : s === 'amount' ? 'Amount' : 'Name'}
+                  </Text>
+                  {sortBy === s && (
+                    <Feather name={sortOrder === 'asc' ? 'arrow-up' : 'arrow-down'} size={10} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {filteredSortedSubs.length > 0 ? (
+          filteredSortedSubs.map((subscription) => {
             const category = EXPENSE_CATEGORIES.find((cat) => cat.id === subscription.category);
             const daysUntil = Math.ceil(
               (subscription.nextBillingDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
@@ -202,10 +354,46 @@ const SubscriptionList: React.FC = () => {
                       {daysUntil >= 0 && ` (${daysUntil}d)`}
                     </Text>
                   </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Started</Text>
+                    <Text style={styles.detailValue}>
+                      {format(subscription.startDate, 'MMM dd, yyyy')}
+                    </Text>
+                  </View>
+                  {subscription.isInstallment && subscription.totalInstallments && (
+                    <>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Installment</Text>
+                        <Text style={styles.detailValue}>
+                          {subscription.completedInstallments || 0}/{subscription.totalInstallments} payments
+                        </Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Remaining</Text>
+                        <Text style={styles.detailValue}>
+                          {currency} {(
+                            subscription.amount *
+                            (subscription.totalInstallments - (subscription.completedInstallments || 0))
+                          ).toFixed(2)}
+                        </Text>
+                      </View>
+                      <ProgressBar
+                        current={subscription.completedInstallments || 0}
+                        total={subscription.totalInstallments}
+                        color={COLORS.primary}
+                      />
+                    </>
+                  )}
                 </View>
               </Card>
             );
           })
+        ) : subscriptions.length > 0 ? (
+          <View style={styles.noResults}>
+            <Feather name="search" size={40} color={COLORS.textSecondary} />
+            <Text style={styles.noResultsTitle}>No results found</Text>
+            <Text style={styles.noResultsText}>Try a different search or filter</Text>
+          </View>
         ) : (
           <EmptyState
             icon="repeat"
@@ -231,11 +419,11 @@ const SubscriptionList: React.FC = () => {
         transparent
         onRequestClose={() => { setModalVisible(false); resetForm(); }}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
         <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+          >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editingId ? 'Edit Subscription' : 'Add Subscription'}</Text>
@@ -298,6 +486,17 @@ const SubscriptionList: React.FC = () => {
                 ))}
               </View>
 
+              <Text style={styles.label}>Start Date</Text>
+              <TextInput
+                style={styles.input}
+                value={startDate}
+                onChangeText={setStartDate}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={COLORS.textSecondary}
+                returnKeyType="done"
+                onSubmitEditing={Keyboard.dismiss}
+              />
+
               <Text style={styles.label}>Reminder (days before)</Text>
               <TextInput
                 style={styles.input}
@@ -309,6 +508,35 @@ const SubscriptionList: React.FC = () => {
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
+
+              <View style={styles.installmentToggleRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.installmentLabel}>Installment</Text>
+                  <Text style={styles.installmentHint}>Toggle on for fixed-payment plans</Text>
+                </View>
+                <Switch
+                  value={isInstallment}
+                  onValueChange={(val) => { lightTap(); setIsInstallment(val); }}
+                  trackColor={{ false: COLORS.border, true: COLORS.success }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+
+              {isInstallment && (
+                <>
+                  <Text style={styles.label}>Total Installments</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={totalInstallments}
+                    onChangeText={setTotalInstallments}
+                    placeholder="e.g. 24"
+                    keyboardType="number-pad"
+                    placeholderTextColor={COLORS.textSecondary}
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                  />
+                </>
+              )}
 
               <View style={styles.modalActions}>
                 <Button
@@ -326,8 +554,8 @@ const SubscriptionList: React.FC = () => {
               </View>
             </ScrollView>
           </View>
+          </KeyboardAvoidingView>
         </View>
-        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -342,65 +570,145 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    padding: SPACING.lg,
     paddingBottom: 80,
   },
+
+  // Search
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
+    ...SHADOWS.sm,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
+    color: COLORS.text,
+  },
+
+  // Filter + Sort
+  filterSortRow: {
+    marginBottom: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  filterChip: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.personal,
+    borderColor: COLORS.personal,
+  },
+  filterChipText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: COLORS.textSecondary,
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+  sortRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  sortChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  sortChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  sortChipText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: COLORS.textSecondary,
+  },
+  sortChipTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // Summary
   summaryCard: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: SPACING.lg,
   },
   summaryLabel: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.size.sm,
     color: COLORS.textSecondary,
-    marginBottom: 4,
+    marginBottom: SPACING.xs,
   },
   summaryAmount: {
-    fontSize: 36,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.size['4xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: COLORS.text,
-    marginBottom: 4,
+    marginBottom: SPACING.xs,
   },
   summarySubtext: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY.size.xs,
     color: COLORS.textSecondary,
   },
+
+  // Subscription cards
   subscriptionCard: {
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   subscriptionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   iconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: RADIUS.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: SPACING.md,
   },
   subscriptionInfo: {
     flex: 1,
   },
   subscriptionName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
     marginBottom: 2,
   },
   subscriptionCategory: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.size.sm,
     color: COLORS.textSecondary,
   },
   editButton: {
-    padding: 8,
+    padding: SPACING.sm,
   },
   deleteButton: {
-    padding: 8,
+    padding: SPACING.sm,
   },
   subscriptionDetails: {
-    gap: 8,
+    gap: SPACING.sm,
   },
   detailRow: {
     flexDirection: 'row',
@@ -408,70 +716,92 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   detailLabel: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.size.sm,
     color: COLORS.textSecondary,
   },
   detailValue: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
   },
   duesSoon: {
     color: COLORS.danger,
   },
+
+  // No results
+  noResults: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING['5xl'],
+    gap: SPACING.sm,
+  },
+  noResultsTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: COLORS.text,
+    marginTop: SPACING.sm,
+  },
+  noResultsText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: COLORS.textSecondary,
+  },
+
+  // FAB
   addButton: {
     position: 'absolute',
-    bottom: 16,
-    left: 16,
-    right: 16,
+    bottom: SPACING.lg,
+    left: SPACING.lg,
+    right: SPACING.lg,
   },
+
+  // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: COLORS.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: COLORS.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    padding: SPACING['2xl'],
     maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: SPACING['2xl'],
   },
   modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: COLORS.text,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
-    marginBottom: 8,
-    marginTop: 16,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.lg,
   },
   input: {
     backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
     color: COLORS.text,
   },
   cycleContainer: {
     flexDirection: 'row',
-    gap: 8,
+    gap: SPACING.sm,
   },
   cycleButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.md,
     borderWidth: 2,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
@@ -482,17 +812,33 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   cycleText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.text,
   },
   cycleTextActive: {
     color: '#fff',
   },
+  installmentToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+    paddingVertical: SPACING.sm,
+  },
+  installmentLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: COLORS.text,
+  },
+  installmentHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
   modalActions: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 24,
+    gap: SPACING.md,
+    marginTop: SPACING['2xl'],
   },
 });
 
