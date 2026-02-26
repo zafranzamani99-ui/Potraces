@@ -9,16 +9,16 @@ import {
   SectionList,
   Modal,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   Keyboard,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { format, isSameDay } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, EXPENSE_CATEGORIES, INCOME_CATEGORIES, withAlpha } from '../../constants';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCategories } from '../../hooks/useCategories';
 import TransactionItem from '../../components/common/TransactionItem';
 import EmptyState from '../../components/common/EmptyState';
 import Button from '../../components/common/Button';
@@ -44,6 +44,8 @@ const TransactionsList: React.FC = () => {
   const deductFromWallet = useWalletStore((s) => s.deductFromWallet);
   const addToWallet = useWalletStore((s) => s.addToWallet);
   const { showToast } = useToast();
+  const expenseCategories = useCategories('expense');
+  const incomeCategories = useCategories('income');
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
@@ -118,7 +120,7 @@ const TransactionsList: React.FC = () => {
     return { income, expenses, net: income - expenses };
   }, [filteredTransactions]);
 
-  const editCategories = editType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const editCategories = editType === 'expense' ? expenseCategories : incomeCategories;
 
   const handleEditTransaction = (transaction: Transaction) => {
     setEditingTransaction(transaction);
@@ -210,7 +212,7 @@ const TransactionsList: React.FC = () => {
 
   const handleEditTypeChange = (newType: 'expense' | 'income') => {
     setEditType(newType);
-    const newCategories = newType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+    const newCategories = newType === 'expense' ? expenseCategories : incomeCategories;
     setEditCategory(newCategories[0].id);
   };
 
@@ -370,10 +372,6 @@ const TransactionsList: React.FC = () => {
         }}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1, justifyContent: 'flex-end' }}
-          >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Edit Transaction</Text>
@@ -385,7 +383,7 @@ const TransactionsList: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <Text style={styles.editLabel}>Type</Text>
                 <View style={styles.typeContainer}>
                   <TouchableOpacity
@@ -487,9 +485,8 @@ const TransactionsList: React.FC = () => {
                     style={{ flex: 1 }}
                   />
                 </View>
-              </ScrollView>
+              </KeyboardAwareScrollView>
             </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
     </View>

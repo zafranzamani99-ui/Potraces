@@ -9,10 +9,9 @@ import {
   Image,
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Keyboard,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
@@ -216,17 +215,12 @@ const ReceiptScanner: React.FC = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <ScrollView
+    <View style={{ flex: 1 }}>
+      <KeyboardAwareScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
       >
         {/* Hero / Capture Section */}
         {!imageUri && (
@@ -422,7 +416,7 @@ const ReceiptScanner: React.FC = () => {
             </View>
           </>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <PaywallModal
         visible={paywallVisible}
@@ -430,7 +424,7 @@ const ReceiptScanner: React.FC = () => {
         feature="scan"
         currentUsage={15 - getRemainingScans()}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 

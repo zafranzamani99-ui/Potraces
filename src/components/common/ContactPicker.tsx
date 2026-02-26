@@ -9,8 +9,6 @@ import {
   FlatList,
   Alert,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
@@ -147,7 +145,6 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
 
       {/* Phone Contacts Modal */}
       <Modal visible={phoneModalVisible} animationType="slide" transparent onRequestClose={() => setPhoneModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
@@ -217,12 +214,10 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
               )}
             </View>
           </View>
-        </KeyboardAvoidingView>
       </Modal>
 
       {/* Manual Entry Modal */}
       <Modal visible={manualModalVisible} animationType="slide" transparent onRequestClose={() => setManualModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
@@ -272,7 +267,6 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
               </View>
             </View>
           </View>
-        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

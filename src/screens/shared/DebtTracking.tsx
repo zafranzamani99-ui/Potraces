@@ -8,11 +8,11 @@ import {
   Modal,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Keyboard,
   ActionSheetIOS,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { format } from 'date-fns';
@@ -27,7 +27,6 @@ import {
   SPLIT_METHODS,
   DEBT_TYPES,
   DEBT_STATUSES,
-  EXPENSE_CATEGORIES,
   withAlpha,
 } from '../../constants';
 import ModeToggle from '../../components/common/ModeToggle';
@@ -663,7 +662,6 @@ const DebtTracking: React.FC = () => {
       {/* ── Add/Edit Debt Modal ──────────────────────────────── */}
       <Modal visible={debtModalVisible} animationType="slide" transparent onRequestClose={() => { setDebtModalVisible(false); resetDebtForm(); }}>
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editingDebtId ? 'Edit Debt' : 'Add Debt'}</Text>
@@ -672,7 +670,7 @@ const DebtTracking: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <ContactPicker
                   selectedContacts={debtContacts}
                   onSelect={setDebtContacts}
@@ -741,16 +739,14 @@ const DebtTracking: React.FC = () => {
                     style={{ flex: 1 }}
                   />
                 </View>
-              </ScrollView>
+              </KeyboardAwareScrollView>
             </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
 
       {/* ── Add/Edit Split Modal ─────────────────────────────── */}
       <Modal visible={splitModalVisible} animationType="slide" transparent onRequestClose={() => { setSplitModalVisible(false); resetSplitForm(); }}>
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editingSplitId ? 'Edit Split' : 'Split Expense'}</Text>
@@ -759,7 +755,7 @@ const DebtTracking: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <Text style={styles.formLabel}>Description</Text>
                 <TextInput
                   style={styles.formInput}
@@ -912,9 +908,8 @@ const DebtTracking: React.FC = () => {
                     style={{ flex: 1 }}
                   />
                 </View>
-              </ScrollView>
+              </KeyboardAwareScrollView>
             </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -926,14 +921,6 @@ const DebtTracking: React.FC = () => {
         onRequestClose={() => setPaymentModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1, justifyContent: 'flex-end' }}
-          >
-            <ScrollView
-              contentContainerStyle={{ flexGrow: 1 }}
-              keyboardShouldPersistTaps="handled"
-            >
               <View style={styles.modalContent}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Record Payment</Text>
@@ -944,6 +931,9 @@ const DebtTracking: React.FC = () => {
                   </TouchableOpacity>
                 </View>
 
+                <KeyboardAwareScrollView
+                  keyboardShouldPersistTaps="handled"
+                >
                 <Text style={styles.formLabel}>Amount</Text>
                 <TextInput
                   style={styles.formInput}
@@ -979,9 +969,8 @@ const DebtTracking: React.FC = () => {
                     style={{ flex: 1 }}
                   />
                 </View>
+                </KeyboardAwareScrollView>
               </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
 

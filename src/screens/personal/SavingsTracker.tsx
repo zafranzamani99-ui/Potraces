@@ -8,10 +8,9 @@ import {
   Modal,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Keyboard,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -460,10 +459,6 @@ const SavingsTracker: React.FC = () => {
         }}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1, justifyContent: 'flex-end' }}
-          >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
@@ -479,10 +474,9 @@ const SavingsTracker: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView
+              <KeyboardAwareScrollView
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
               >
                 <Text style={styles.label}>Account Name</Text>
                 <TextInput
@@ -623,9 +617,8 @@ const SavingsTracker: React.FC = () => {
                     style={{ flex: 1 }}
                   />
                 </View>
-              </ScrollView>
+              </KeyboardAwareScrollView>
             </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -637,10 +630,6 @@ const SavingsTracker: React.FC = () => {
         onRequestClose={() => setUpdateModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1, justifyContent: 'flex-end' }}
-          >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Update Value</Text>
@@ -663,10 +652,9 @@ const SavingsTracker: React.FC = () => {
                 </View>
               )}
 
-              <ScrollView
+              <KeyboardAwareScrollView
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
               >
                 <Text style={styles.label}>New Value</Text>
                 <TextInput
@@ -738,9 +726,8 @@ const SavingsTracker: React.FC = () => {
                     style={{ flex: 1 }}
                   />
                 </View>
-              </ScrollView>
+              </KeyboardAwareScrollView>
             </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -871,7 +858,7 @@ const styles = StyleSheet.create({
   heroGradient: {
     padding: SPACING['2xl'],
     borderRadius: RADIUS.xl,
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING['2xl'],
     ...SHADOWS.xl,
   },
   heroLabel: {
@@ -922,7 +909,7 @@ const styles = StyleSheet.create({
 
   // Account Card
   accountCard: {
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.xl,
   },
   accountHeader: {
     flexDirection: 'row',

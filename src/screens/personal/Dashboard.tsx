@@ -10,10 +10,9 @@ import {
   Modal,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Keyboard,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { format, addDays, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns';
@@ -22,7 +21,8 @@ import { useNavigation } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, EXPENSE_CATEGORIES, INCOME_CATEGORIES, withAlpha } from '../../constants';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
 import StatCard from '../../components/common/StatCard';
 import Card from '../../components/common/Card';
@@ -60,6 +60,8 @@ const PersonalDashboard: React.FC = () => {
   const { transactions, subscriptions, budgets, updateTransaction, deleteTransaction } = usePersonalStore();
   const { debts } = useDebtStore();
   const currency = useSettingsStore(state => state.currency);
+  const expenseCategories = useCategories('expense');
+  const incomeCategories = useCategories('income');
   const wallets = useWalletStore((s) => s.wallets);
   const deductFromWallet = useWalletStore((s) => s.deductFromWallet);
   const addToWallet = useWalletStore((s) => s.addToWallet);
@@ -180,7 +182,7 @@ const PersonalDashboard: React.FC = () => {
     }, 1000);
   }, []);
 
-  const editCategories = editType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const editCategories = editType === 'expense' ? expenseCategories : incomeCategories;
 
   const handleEditTransaction = (transaction: Transaction) => {
     setEditingTransaction(transaction);
@@ -275,7 +277,7 @@ const PersonalDashboard: React.FC = () => {
 
   const handleEditTypeChange = (newType: 'expense' | 'income') => {
     setEditType(newType);
-    const newCategories = newType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+    const newCategories = newType === 'expense' ? expenseCategories : incomeCategories;
     setEditCategory(newCategories[0].id);
   };
 
@@ -550,10 +552,6 @@ const PersonalDashboard: React.FC = () => {
         }}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1, justifyContent: 'flex-end' }}
-          >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Edit Transaction</Text>
@@ -565,7 +563,7 @@ const PersonalDashboard: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <Text style={styles.label}>Type</Text>
                 <View style={styles.typeContainer}>
                   <TouchableOpacity
@@ -667,9 +665,8 @@ const PersonalDashboard: React.FC = () => {
                     style={{ flex: 1 }}
                   />
                 </View>
-              </ScrollView>
+              </KeyboardAwareScrollView>
             </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
     </View>

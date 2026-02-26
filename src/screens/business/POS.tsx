@@ -8,11 +8,11 @@ import {
   TextInput,
   Modal,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   Animated,
   Dimensions,
+  Pressable,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -272,11 +272,7 @@ const POS: React.FC = () => {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+    <View style={styles.container}>
       <ModeToggle />
       <Confetti active={showConfetti} />
       <View style={styles.content}>
@@ -540,7 +536,11 @@ const POS: React.FC = () => {
           </ScrollView>
 
           {/* Cart footer */}
-          <View style={styles.cartFooter}>
+          <Pressable
+            style={styles.cartFooter}
+            onPress={!cartExpanded && cart.length > 0 ? expandCart : undefined}
+            disabled={cartExpanded || cart.length === 0}
+          >
             {/* Discount section — only when expanded & has items */}
             {cartExpanded && cart.length > 0 && (
               <View style={styles.discountSection}>
@@ -633,7 +633,7 @@ const POS: React.FC = () => {
               gradient={GRADIENTS.success}
               disabled={cart.length === 0}
             />
-          </View>
+          </Pressable>
         </Animated.View>
       </View>
 
@@ -650,14 +650,11 @@ const POS: React.FC = () => {
         }}
       >
         <BlurView intensity={80} style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.modalKeyboardView}
-          >
+          <View style={styles.modalKeyboardView}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Checkout</Text>
 
-              <ScrollView
+              <KeyboardAwareScrollView
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
                 style={{ width: '100%' }}
@@ -852,12 +849,12 @@ const POS: React.FC = () => {
                   variant="secondary"
                   style={styles.cancelButton}
                 />
-              </ScrollView>
+              </KeyboardAwareScrollView>
             </View>
-          </KeyboardAvoidingView>
+          </View>
         </BlurView>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 
@@ -967,14 +964,14 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   productName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: COLORS.text,
     marginBottom: SPACING.sm,
   },
   productPrice: {
     fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: COLORS.business,
   },
   productStock: {

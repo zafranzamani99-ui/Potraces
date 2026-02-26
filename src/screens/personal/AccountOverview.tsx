@@ -29,9 +29,9 @@ import {
   TYPOGRAPHY,
   RADIUS,
   SHADOWS,
-  EXPENSE_CATEGORIES,
   withAlpha,
 } from '../../constants';
+import { useCategories } from '../../hooks/useCategories';
 import GRADIENTS from '../../constants/gradients';
 import Card from '../../components/common/Card';
 import ProgressBar from '../../components/common/ProgressBar';
@@ -44,6 +44,7 @@ const AccountOverview: React.FC = () => {
   const currency = useSettingsStore((s) => s.currency);
   const wallets = useWalletStore((s) => s.wallets);
   const savingsAccounts = useSavingsStore((s) => s.accounts);
+  const expenseCategories = useCategories('expense');
 
   // ── Stagger entrance animations ──
   const anims = useRef(
@@ -126,7 +127,7 @@ const AccountOverview: React.FC = () => {
       .sort(([, a], [, b]) => b - a)
       .slice(0, 5)
       .map(([cat, amount]) => {
-        const catInfo = EXPENSE_CATEGORIES.find((c) => c.id === cat);
+        const catInfo = expenseCategories.find((c) => c.id === cat);
         return {
           id: cat,
           name: catInfo?.name || cat,

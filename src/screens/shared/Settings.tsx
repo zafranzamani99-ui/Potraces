@@ -1,17 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   Switch,
   TouchableOpacity,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Keyboard,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -29,6 +27,7 @@ import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import GradientButton from '../../components/common/GradientButton';
+import CategoryManager from '../../components/common/CategoryManager';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 
@@ -44,6 +43,9 @@ const Settings: React.FC = () => {
   const getRemainingScans = usePremiumStore((s) => s.getRemainingScans);
   const walletCount = useWalletStore((s) => s.wallets.length);
   const budgetCount = usePersonalStore((s) => s.budgets.length);
+
+  const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
+  const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income'>('expense');
 
   const {
     userName,
@@ -133,18 +135,13 @@ const Settings: React.FC = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+    <View style={styles.container}>
       <ModeToggle />
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
       >
         {/* Profile */}
         <Text style={styles.sectionHeader}>Profile</Text>
@@ -243,6 +240,50 @@ const Settings: React.FC = () => {
             />
           </View>
         </Card>
+
+        {/* Categories */}
+        <Text style={styles.sectionHeader}>Categories</Text>
+        <Card style={styles.card}>
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => {
+              lightTap();
+              setCategoryManagerType('expense');
+              setCategoryManagerVisible(true);
+            }}
+            activeOpacity={0.6}
+          >
+            <View style={styles.settingLabelRow}>
+              <Feather name="tag" size={18} color={COLORS.textSecondary} />
+              <Text style={styles.settingLabel}>Expense Categories</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={COLORS.textTertiary} />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => {
+              lightTap();
+              setCategoryManagerType('income');
+              setCategoryManagerVisible(true);
+            }}
+            activeOpacity={0.6}
+          >
+            <View style={styles.settingLabelRow}>
+              <Feather name="tag" size={18} color={COLORS.textSecondary} />
+              <Text style={styles.settingLabel}>Income Categories</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={COLORS.textTertiary} />
+          </TouchableOpacity>
+        </Card>
+
+        <CategoryManager
+          visible={categoryManagerVisible}
+          onClose={() => setCategoryManagerVisible(false)}
+          type={categoryManagerType}
+        />
 
         {/* Subscription */}
         <Text style={styles.sectionHeader}>Subscription</Text>
@@ -379,8 +420,8 @@ const Settings: React.FC = () => {
         </Card>
 
         <View style={{ height: SPACING['3xl'] }} />
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 };
 

@@ -9,12 +9,11 @@ import {
   RADIUS,
   SHADOWS,
   ICON_SIZE,
-  EXPENSE_CATEGORIES,
-  INCOME_CATEGORIES,
   withAlpha
 } from '../../constants';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useWalletStore } from '../../store/walletStore';
+import { useCategories } from '../../hooks/useCategories';
 import { Transaction } from '../../types';
 import { lightTap } from '../../services/haptics';
 
@@ -27,7 +26,9 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress 
   const currency = useSettingsStore(state => state.currency);
   const wallets = useWalletStore((s) => s.wallets);
   const wallet = transaction.walletId ? wallets.find((w) => w.id === transaction.walletId) : null;
-  const categories = transaction.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const expenseCategories = useCategories('expense');
+  const incomeCategories = useCategories('income');
+  const categories = transaction.type === 'expense' ? expenseCategories : incomeCategories;
   const category = categories.find((cat) => cat.id === transaction.category);
   const isExpense = transaction.type === 'expense';
 

@@ -3,18 +3,16 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
   Keyboard,
-  TouchableWithoutFeedback,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, EXPENSE_CATEGORIES, INCOME_CATEGORIES, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCategories } from '../../hooks/useCategories';
 import GRADIENTS from '../../constants/gradients';
 import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
@@ -37,8 +35,10 @@ const ExpenseEntry: React.FC = () => {
   const deductFromWallet = useWalletStore((s) => s.deductFromWallet);
   const addToWallet = useWalletStore((s) => s.addToWallet);
   const [type, setType] = useState<'expense' | 'income'>('expense');
+  const expenseCategories = useCategories('expense');
+  const incomeCategories = useCategories('income');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState(EXPENSE_CATEGORIES[0].id);
+  const [category, setCategory] = useState(expenseCategories[0]?.id || 'food');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(
@@ -46,7 +46,7 @@ const ExpenseEntry: React.FC = () => {
   );
   const [showConfetti, setShowConfetti] = useState(false);
 
-  const categories = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const categories = type === 'expense' ? expenseCategories : incomeCategories;
 
   const handleSubmit = () => {
     if (!amount || parseFloat(amount) <= 0) {
@@ -93,24 +93,19 @@ const ExpenseEntry: React.FC = () => {
 
   const handleTypeChange = (newType: 'expense' | 'income') => {
     setType(newType);
-    const newCategories = newType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+    const newCategories = newType === 'expense' ? expenseCategories : incomeCategories;
     setCategory(newCategories[0].id);
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+    <View style={styles.container}>
       <ModeToggle />
       <Confetti active={showConfetti} />
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
       >
         <Card>
           <Text style={styles.label}>Type</Text>
@@ -255,8 +250,8 @@ const ExpenseEntry: React.FC = () => {
           gradient={type === 'expense' ? GRADIENTS.danger : GRADIENTS.success}
           style={styles.submitButton}
         />
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 };
 

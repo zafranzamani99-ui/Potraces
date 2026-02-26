@@ -4,7 +4,8 @@ import { PieChart, LineChart } from 'react-native-chart-kit';
 import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, EXPENSE_CATEGORIES, withAlpha } from '../../constants';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
@@ -14,6 +15,7 @@ const screenWidth = Dimensions.get('window').width;
 const PersonalReports: React.FC = () => {
   const { transactions, subscriptions } = usePersonalStore();
   const currency = useSettingsStore(state => state.currency);
+  const expenseCategories = useCategories('expense');
 
   const categoryData = useMemo(() => {
     const now = new Date();
@@ -33,7 +35,7 @@ const PersonalReports: React.FC = () => {
 
     return Object.entries(categoryTotals)
       .map(([category, amount]) => {
-        const cat = EXPENSE_CATEGORIES.find((c) => c.id === category);
+        const cat = expenseCategories.find((c) => c.id === category);
         return {
           name: cat?.name || category,
           amount,
@@ -44,7 +46,7 @@ const PersonalReports: React.FC = () => {
       })
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 6);
-  }, [transactions]);
+  }, [transactions, expenseCategories]);
 
   const trendData = useMemo(() => {
     const months = [];

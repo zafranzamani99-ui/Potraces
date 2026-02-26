@@ -8,12 +8,12 @@ import {
   Modal,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Keyboard,
   Linking,
   ActionSheetIOS,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useCRMStore } from '../../store/crmStore';
@@ -418,6 +418,7 @@ const CRM: React.FC = () => {
     Keyboard.dismiss();
     addOrderPayment(paymentOrderId, amount);
     setPaymentModalVisible(false);
+    setDetailModalVisible(true);
     showToast('Payment recorded!', 'success');
   };
 
@@ -509,7 +510,12 @@ const CRM: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         {/* Stats Summary Row */}
-        <View style={styles.statsRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.statsRow}
+          nestedScrollEnabled
+        >
           <StatCard
             title="Customers"
             value={globalStats.totalCustomers.toString()}
@@ -528,7 +534,7 @@ const CRM: React.FC = () => {
             icon="alert-circle"
             iconColor={COLORS.warning}
           />
-        </View>
+        </ScrollView>
 
         {/* Search Bar */}
         <View style={styles.searchContainer}>
@@ -663,10 +669,6 @@ const CRM: React.FC = () => {
         }}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={[styles.keyboardView, { justifyContent: 'flex-end' }]}
-          >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
@@ -683,10 +685,9 @@ const CRM: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView
+              <KeyboardAwareScrollView
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
               >
                 <Text style={styles.formLabel}>Name *</Text>
                 <TextInput
@@ -788,9 +789,8 @@ const CRM: React.FC = () => {
                     style={styles.actionButton}
                   />
                 </View>
-              </ScrollView>
+              </KeyboardAwareScrollView>
             </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -1133,10 +1133,6 @@ const CRM: React.FC = () => {
         }}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={[styles.keyboardView, { justifyContent: 'flex-end' }]}
-          >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
@@ -1153,10 +1149,9 @@ const CRM: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView
+              <KeyboardAwareScrollView
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
               >
                 {/* Order Items */}
                 <Text style={styles.formLabel}>Items</Text>
@@ -1361,9 +1356,8 @@ const CRM: React.FC = () => {
                     style={styles.actionButton}
                   />
                 </View>
-              </ScrollView>
+              </KeyboardAwareScrollView>
             </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -1375,25 +1369,21 @@ const CRM: React.FC = () => {
         onRequestClose={() => setPaymentModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={[styles.keyboardView, { justifyContent: 'flex-end' }]}
-          >
-            <ScrollView
-              contentContainerStyle={{ flexGrow: 1 }}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View style={styles.modalContent}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Record Payment</Text>
-                  <TouchableOpacity
-                    onPress={() => setPaymentModalVisible(false)}
-                    accessibilityLabel="Close payment modal"
-                  >
-                    <Feather name="x" size={24} color={COLORS.text} />
-                  </TouchableOpacity>
-                </View>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Record Payment</Text>
+                <TouchableOpacity
+                  onPress={() => setPaymentModalVisible(false)}
+                  accessibilityLabel="Close payment modal"
+                >
+                  <Feather name="x" size={24} color={COLORS.text} />
+                </TouchableOpacity>
+              </View>
 
+              <KeyboardAwareScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
                 {(() => {
                   const order = getPaymentOrder();
                   if (!order) return null;
@@ -1461,9 +1451,8 @@ const CRM: React.FC = () => {
                     style={styles.actionButton}
                   />
                 </View>
-              </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
+              </KeyboardAwareScrollView>
+            </View>
         </View>
       </Modal>
 
@@ -1486,15 +1475,11 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     paddingBottom: 80,
   },
-  keyboardView: {
-    flex: 1,
-  },
-
   // ── Stats Row ───────────────────────────────────────────────
   statsRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
-    marginBottom: SPACING.lg,
+    paddingBottom: SPACING.lg,
   },
 
   // ── Search ──────────────────────────────────────────────────

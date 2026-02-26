@@ -9,15 +9,15 @@ import {
   Modal,
   TouchableOpacity,
   Switch,
-  KeyboardAvoidingView,
-  Platform,
   Keyboard,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { format, addWeeks, addMonths, addYears } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, EXPENSE_CATEGORIES, BILLING_CYCLES, withAlpha } from '../../constants';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, BILLING_CYCLES, withAlpha } from '../../constants';
+import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
@@ -33,9 +33,10 @@ const SubscriptionList: React.FC = () => {
   const currency = useSettingsStore(state => state.currency);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const expenseCategories = useCategories('expense');
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState(EXPENSE_CATEGORIES[0].id);
+  const [category, setCategory] = useState(expenseCategories[0]?.id || 'food');
   const [billingCycle, setBillingCycle] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
   const [reminderDays, setReminderDays] = useState('3');
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -185,7 +186,7 @@ const SubscriptionList: React.FC = () => {
     setEditingId(null);
     setName('');
     setAmount('');
-    setCategory(EXPENSE_CATEGORIES[0].id);
+    setCategory(expenseCategories[0].id);
     setBillingCycle('monthly');
     setReminderDays('3');
     setStartDate(format(new Date(), 'yyyy-MM-dd'));
@@ -307,7 +308,7 @@ const SubscriptionList: React.FC = () => {
 
         {filteredSortedSubs.length > 0 ? (
           filteredSortedSubs.map((subscription) => {
-            const category = EXPENSE_CATEGORIES.find((cat) => cat.id === subscription.category);
+            const category = expenseCategories.find((cat) => cat.id === subscription.category);
             const daysUntil = Math.ceil(
               (subscription.nextBillingDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
             );
@@ -420,10 +421,6 @@ const SubscriptionList: React.FC = () => {
         onRequestClose={() => { setModalVisible(false); resetForm(); }}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1, justifyContent: 'flex-end' }}
-          >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editingId ? 'Edit Subscription' : 'Add Subscription'}</Text>
@@ -432,7 +429,7 @@ const SubscriptionList: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={styles.label}>Name</Text>
               <TextInput
                 style={styles.input}
@@ -456,7 +453,7 @@ const SubscriptionList: React.FC = () => {
               />
 
               <CategoryPicker
-                categories={EXPENSE_CATEGORIES}
+                categories={expenseCategories}
                 selectedId={category}
                 onSelect={setCategory}
                 label="Category"
@@ -552,9 +549,8 @@ const SubscriptionList: React.FC = () => {
                   style={{ flex: 1 }}
                 />
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
     </View>

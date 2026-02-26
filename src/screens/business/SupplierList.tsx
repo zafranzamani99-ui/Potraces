@@ -7,11 +7,10 @@ import {
   TextInput,
   Modal,
   TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
   Keyboard,
   Alert,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
@@ -257,10 +256,6 @@ const SupplierList: React.FC = () => {
         onRequestClose={() => { setModalVisible(false); resetForm(); }}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1, justifyContent: 'flex-end' }}
-          >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editingId ? 'Edit Supplier' : 'Add Supplier'}</Text>
@@ -269,7 +264,7 @@ const SupplierList: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={styles.label}>
                 Supplier Name <Text style={styles.required}>*</Text>
               </Text>
@@ -352,9 +347,8 @@ const SupplierList: React.FC = () => {
                   style={{ flex: 1 }}
                 />
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
     </View>

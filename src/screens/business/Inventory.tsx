@@ -8,18 +8,18 @@ import {
   TextInput,
   Modal,
   TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
   Keyboard,
   ListRenderItemInfo,
   Alert,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
 import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
+import FAB from '../../components/common/FAB';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 import CategoryPicker from '../../components/common/CategoryPicker';
@@ -75,8 +75,8 @@ const Inventory: React.FC = () => {
       return;
     }
 
-    if (!cost || parseFloat(cost) < 0) {
-      showToast('Please enter a valid cost', 'error');
+    if (cost && parseFloat(cost) < 0) {
+      showToast('Cost cannot be negative', 'error');
       return;
     }
 
@@ -88,7 +88,7 @@ const Inventory: React.FC = () => {
     const productData = {
       name: name.trim(),
       price: parseFloat(price),
-      cost: parseFloat(cost),
+      cost: cost ? parseFloat(cost) : 0,
       stock: parseInt(stock),
       lowStockThreshold: parseInt(lowStockThreshold) || 10,
       category,
@@ -382,15 +382,14 @@ const Inventory: React.FC = () => {
         )}
       </ScrollView>
 
-      <Button
-        title="Add Product"
+      <FAB
         onPress={() => {
           resetForm();
           setModalVisible(true);
         }}
         icon="plus"
-        size="large"
-        style={styles.addButton}
+        color={COLORS.success}
+        style={{ right: undefined, left: SPACING['2xl'] }}
       />
 
       <Modal
@@ -400,10 +399,6 @@ const Inventory: React.FC = () => {
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1, justifyContent: 'flex-end' }}
-          >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
@@ -419,7 +414,7 @@ const Inventory: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={styles.label}>
                 Product Name <Text style={styles.required}>*</Text>
               </Text>
@@ -458,9 +453,7 @@ const Inventory: React.FC = () => {
                 </View>
                 <View style={{ width: SPACING.lg }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>
-                    Cost <Text style={styles.required}>*</Text>
-                  </Text>
+                  <Text style={styles.label}>Cost</Text>
                   <TextInput
                     style={styles.input}
                     value={cost}
@@ -523,9 +516,8 @@ const Inventory: React.FC = () => {
                   style={{ flex: 1 }}
                 />
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -536,10 +528,6 @@ const Inventory: React.FC = () => {
         onRequestClose={() => setStockModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1, justifyContent: 'flex-end' }}
-          >
           <View style={[styles.modalContent, { maxHeight: 300 }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add Stock</Text>
@@ -579,7 +567,6 @@ const Inventory: React.FC = () => {
               />
             </View>
           </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
     </View>
@@ -769,14 +756,6 @@ const styles = StyleSheet.create({
   noResultsText: {
     fontSize: TYPOGRAPHY.size.sm,
     color: COLORS.textSecondary,
-  },
-
-  // FAB
-  addButton: {
-    position: 'absolute',
-    bottom: SPACING.lg,
-    left: SPACING.lg,
-    right: SPACING.lg,
   },
 
   // Modal

@@ -8,15 +8,15 @@ import {
   Alert,
   Modal,
   TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
   Keyboard,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, EXPENSE_CATEGORIES, BUDGET_PERIODS, withAlpha } from '../../constants';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, withAlpha } from '../../constants';
+import { useCategories } from '../../hooks/useCategories';
 import { FREE_TIER } from '../../constants/premium';
 import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
@@ -38,7 +38,8 @@ const BudgetPlanning: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
-  const [category, setCategory] = useState(EXPENSE_CATEGORIES[0].id);
+  const expenseCategories = useCategories('expense');
+  const [category, setCategory] = useState(expenseCategories[0]?.id || 'food');
   const [amount, setAmount] = useState('');
   const [period, setPeriod] = useState<'monthly' | 'weekly' | 'yearly'>('monthly');
 
@@ -132,7 +133,7 @@ const BudgetPlanning: React.FC = () => {
 
   const resetForm = () => {
     setAmount('');
-    setCategory(EXPENSE_CATEGORIES[0].id);
+    setCategory(expenseCategories[0].id);
     setPeriod('monthly');
     setEditingBudget(null);
   };
@@ -203,7 +204,7 @@ const BudgetPlanning: React.FC = () => {
 
         {budgets.length > 0 ? (
           budgets.map((budget) => {
-            const category = EXPENSE_CATEGORIES.find((cat) => cat.id === budget.category);
+            const category = expenseCategories.find((cat) => cat.id === budget.category);
             const percentage =
               budget.allocatedAmount > 0
                 ? (budget.spentAmount / budget.allocatedAmount) * 100
@@ -307,10 +308,6 @@ const BudgetPlanning: React.FC = () => {
         onRequestClose={closeModal}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1, justifyContent: 'flex-end' }}
-          >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editingBudget ? 'Edit Budget' : 'Create Budget'}</Text>
@@ -319,9 +316,9 @@ const BudgetPlanning: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <CategoryPicker
-                categories={EXPENSE_CATEGORIES}
+                categories={expenseCategories}
                 selectedId={category}
                 onSelect={setCategory}
                 label="Category"
@@ -377,9 +374,8 @@ const BudgetPlanning: React.FC = () => {
                   style={{ flex: 1 }}
                 />
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
-          </KeyboardAvoidingView>
         </View>
       </Modal>
 

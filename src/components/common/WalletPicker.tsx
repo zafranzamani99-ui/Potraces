@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,10 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const selectedWallet = wallets.find((w) => w.id === selectedId);
+  const sortedWallets = useMemo(
+    () => [...wallets].sort((a, b) => (a.isDefault === b.isDefault ? 0 : a.isDefault ? -1 : 1)),
+    [wallets]
+  );
 
   if (wallets.length === 0) return null;
 
@@ -90,7 +94,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
               </TouchableOpacity>
             </View>
             <FlatList
-              data={wallets}
+              data={sortedWallets}
               keyExtractor={(item) => item.id}
               showsVerticalScrollIndicator={false}
               renderItem={({ item }) => {

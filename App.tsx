@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import RootNavigator from './src/navigation/RootNavigator';
 import { COLORS, SPACING, TYPOGRAPHY } from './src/constants';
 import { ToastProvider } from './src/context/ToastContext';
@@ -38,12 +39,18 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <ToastProvider>
-          <StatusBar style="auto" />
-          <RootNavigator />
-        </ToastProvider>
-      </GestureHandlerRootView>
+      <KeyboardProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <View style={{ flex: 1 }}>
+              <ToastProvider>
+                <StatusBar style="auto" />
+                <RootNavigator />
+              </ToastProvider>
+            </View>
+          </TouchableWithoutFeedback>
+        </GestureHandlerRootView>
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }
