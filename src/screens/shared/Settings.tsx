@@ -19,7 +19,7 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useAppStore } from '../../store/appStore';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useWalletStore } from '../../store/walletStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { FREE_TIER, PREMIUM_CONFIG } from '../../constants/premium';
 import { RootStackParamList } from '../../types';
 import ModeToggle from '../../components/common/ModeToggle';
@@ -35,6 +35,7 @@ const Settings: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
   const mode = useAppStore((state) => state.mode);
+  const setMode = useAppStore((state) => state.setMode);
   const incomeType = useBusinessStore((s) => s.incomeType);
   const tier = usePremiumStore((s) => s.tier);
   const subscribe = usePremiumStore((s) => s.subscribe);
@@ -51,11 +52,13 @@ const Settings: React.FC = () => {
     currency,
     hapticEnabled,
     notificationsEnabled,
+    businessModeEnabled,
     defaultMode,
     setUserName,
     setCurrency,
     setHapticEnabled,
     setNotificationsEnabled,
+    setBusinessModeEnabled,
     setDefaultMode,
     clearAllData,
   } = useSettingsStore();
@@ -180,24 +183,28 @@ const Settings: React.FC = () => {
             </View>
           </TouchableOpacity>
 
-          <View style={styles.divider} />
+          {businessModeEnabled && (
+            <>
+              <View style={styles.divider} />
 
-          <TouchableOpacity
-            style={styles.settingRow}
-            onPress={handleDefaultModePress}
-            activeOpacity={0.6}
-          >
-            <View style={styles.settingLabelRow}>
-              <Feather name="layout" size={18} color={CALM.textSecondary} />
-              <Text style={styles.settingLabel}>Default Mode</Text>
-            </View>
-            <View style={styles.valueRow}>
-              <Text style={styles.settingValue}>
-                {defaultMode === 'personal' ? 'Personal' : 'Business'}
-              </Text>
-              <Feather name="chevron-right" size={18} color={CALM.neutral} />
-            </View>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.settingRow}
+                onPress={handleDefaultModePress}
+                activeOpacity={0.6}
+              >
+                <View style={styles.settingLabelRow}>
+                  <Feather name="layout" size={18} color={CALM.textSecondary} />
+                  <Text style={styles.settingLabel}>Default Mode</Text>
+                </View>
+                <View style={styles.valueRow}>
+                  <Text style={styles.settingValue}>
+                    {defaultMode === 'personal' ? 'Personal' : 'Business'}
+                  </Text>
+                  <Feather name="chevron-right" size={18} color={CALM.neutral} />
+                </View>
+              </TouchableOpacity>
+            </>
+          )}
 
           <View style={styles.divider} />
 
@@ -238,10 +245,38 @@ const Settings: React.FC = () => {
               thumbColor="#FFFFFF"
             />
           </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.settingLabelRow}>
+                <Feather name="briefcase" size={18} color={CALM.textSecondary} />
+                <Text style={styles.settingLabel}>Business Mode</Text>
+              </View>
+              <Text style={styles.settingDescription}>
+                Enable to switch between Personal and Business modes
+              </Text>
+            </View>
+            <Switch
+              value={businessModeEnabled}
+              onValueChange={(value) => {
+                lightTap();
+                setBusinessModeEnabled(value);
+                if (!value) setMode('personal');
+                showToast(
+                  value ? 'Business mode enabled' : 'Business mode disabled',
+                  'success'
+                );
+              }}
+              trackColor={{ false: CALM.border, true: CALM.positive }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
         </Card>
 
         {/* Business Income Type */}
-        {mode === 'business' && (
+        {businessModeEnabled && mode === 'business' && (
           <>
             <Text style={styles.sectionHeader}>Business Setup</Text>
             <Card style={styles.card}>
@@ -299,7 +334,7 @@ const Settings: React.FC = () => {
             activeOpacity={0.6}
           >
             <View style={styles.settingLabelRow}>
-              <Feather name="tag" size={18} color={CALM.textSecondary} />
+              <Feather name="trending-up" size={18} color={CALM.textSecondary} />
               <Text style={styles.settingLabel}>Income Categories</Text>
             </View>
             <Feather name="chevron-right" size={18} color={CALM.neutral} />
@@ -478,6 +513,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: SPACING.sm,
+    minHeight: 44,
   },
   settingLabelRow: {
     flexDirection: 'row',
@@ -488,6 +524,12 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.textPrimary,
+  },
+  settingDescription: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+    marginTop: 2,
+    marginLeft: 18 + SPACING.md,
   },
   valueRow: {
     flexDirection: 'row',

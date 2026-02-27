@@ -18,6 +18,12 @@ import NewOrder from '../screens/seller/NewOrder';
 import Products from '../screens/seller/Products';
 import PastSeasons from '../screens/seller/PastSeasons';
 
+// Stall screens
+import StallDashboard from '../screens/stall/Dashboard';
+import SellScreen from '../screens/stall/SellScreen';
+import SessionHistory from '../screens/stall/SessionHistory';
+import RegularCustomers from '../screens/stall/RegularCustomers';
+
 // Legacy screens (still used as fallback)
 import POS from '../screens/business/POS';
 import CRM from '../screens/business/CRM';
@@ -38,6 +44,11 @@ const ICON_MAP: Record<string, keyof typeof Feather.glyphMap> = {
   SellerNewOrder: 'plus-circle',
   SellerProducts: 'package',
   SellerSeasons: 'calendar',
+  // Stall
+  StallDashboard: 'home',
+  StallSell: 'shopping-bag',
+  StallHistory: 'clock',
+  StallRegulars: 'heart',
   Clients: 'users',
   LogIncome: 'plus-circle',
   Costs: 'tool',
@@ -68,6 +79,16 @@ const BusinessNavigator: React.FC = () => {
             <Tab.Screen name="SellerNewOrder" component={NewOrder} options={{ title: 'New Order' }} />
             <Tab.Screen name="SellerProducts" component={Products} options={{ title: 'Products' }} />
             <Tab.Screen name="SellerSeasons" component={PastSeasons} options={{ title: 'Seasons' }} />
+          </>
+        );
+
+      case 'stall':
+        return (
+          <>
+            <Tab.Screen name="StallDashboard" component={StallDashboard} options={{ title: 'Home' }} />
+            <Tab.Screen name="StallHistory" component={SessionHistory} options={{ title: 'History' }} />
+            <Tab.Screen name="StallSell" component={SellScreen} options={{ title: 'Sell' }} />
+            <Tab.Screen name="StallRegulars" component={RegularCustomers} options={{ title: 'Regulars' }} />
           </>
         );
 

@@ -8,6 +8,7 @@ import {
   Alert,
   Modal,
   TouchableOpacity,
+  Pressable,
   Keyboard,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -302,8 +303,8 @@ const BudgetPlanning: React.FC = () => {
         transparent
         onRequestClose={closeModal}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <Pressable style={styles.modalOverlay} onPress={() => { closeModal(); }}>
+          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editingBudget ? 'Edit Budget' : 'Create Budget'}</Text>
               <TouchableOpacity onPress={closeModal}>
@@ -359,7 +360,7 @@ const BudgetPlanning: React.FC = () => {
                 <Button
                   title="Cancel"
                   onPress={closeModal}
-                  variant="secondary"
+                  variant="outline"
                   style={{ flex: 1 }}
                 />
                 <Button
@@ -371,7 +372,7 @@ const BudgetPlanning: React.FC = () => {
               </View>
             </KeyboardAwareScrollView>
           </View>
-        </View>
+        </Pressable>
       </Modal>
 
       <PaywallModal
@@ -421,7 +422,7 @@ const styles = StyleSheet.create({
   },
   summaryAmount: {
     fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.bold,
+    fontWeight: '300',
     color: CALM.textPrimary,
   },
 
@@ -483,7 +484,11 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   cardAction: {
-    padding: SPACING.sm,
+    padding: SPACING.md,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
 
   // Over-limit banner
@@ -519,7 +524,7 @@ const styles = StyleSheet.create({
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -554,6 +559,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
     color: CALM.textPrimary,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   periodContainer: {
     flexDirection: 'row',

@@ -114,7 +114,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
             activeOpacity={1}
             onPress={() => setDropdownOpen(false)}
           >
-            <View style={styles.dropdownModal}>
+            <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
               <View style={styles.dropdownHeader}>
                 <Text style={styles.dropdownTitle}>
                   {label || 'Select Category'}

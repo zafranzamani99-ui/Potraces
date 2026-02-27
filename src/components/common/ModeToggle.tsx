@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { useAppStore } from '../../store/appStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { COLORS, CALM, SPACING, TYPOGRAPHY, RADIUS, ANIMATION } from '../../constants';
 import { selectionChanged } from '../../services/haptics';
 
@@ -12,6 +13,7 @@ const THUMB_HEIGHT = TRACK_HEIGHT - THUMB_PADDING * 2;
 
 const ModeToggle: React.FC = () => {
   const { mode, setMode } = useAppStore();
+  const businessModeEnabled = useSettingsStore((s) => s.businessModeEnabled);
   const slideAnim = useRef(new Animated.Value(mode === 'business' ? 1 : 0)).current;
 
   useEffect(() => {
@@ -27,6 +29,8 @@ const ModeToggle: React.FC = () => {
     selectionChanged();
     setMode(newMode);
   };
+
+  if (!businessModeEnabled) return null;
 
   const translateX = slideAnim.interpolate({
     inputRange: [0, 1],

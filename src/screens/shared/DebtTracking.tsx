@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   Modal,
   TextInput,
   Alert,
@@ -16,6 +17,8 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { format } from 'date-fns';
+import * as ImagePicker from 'expo-image-picker';
+import { scanReceipt } from '../../services/receiptScanner';
 import { useDebtStore } from '../../store/debtStore';
 import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -104,6 +107,7 @@ const DebtTracking: React.FC = () => {
   // Split detail modal state
   const [splitDetailVisible, setSplitDetailVisible] = useState(false);
   const [selectedSplit, setSelectedSplit] = useState<SplitExpense | null>(null);
+  const [scanningReceipt, setScanningReceipt] = useState(false);
 
   // Filtered data
   const modeDebts = useMemo(() => debts.filter((d) => d.mode === mode), [debts, mode]);
@@ -259,7 +263,7 @@ const DebtTracking: React.FC = () => {
     setSplitAmount(split.totalAmount.toString());
     setSplitMethod(split.splitMethod);
     setSplitContacts(split.participants.map((p) => p.contact));
-    setSplitPaidBy([split.paidBy]);
+    setSplitPaidBy(split.paidBy ? [split.paidBy] : []);
     if (split.splitMethod === 'custom') {
       const amounts: Record<string, string> = {};
       split.participants.forEach((p) => { amounts[p.contact.id] = p.amount.toString(); });
@@ -284,11 +288,6 @@ const DebtTracking: React.FC = () => {
       showToast('Please add at least 2 participants', 'error');
       return;
     }
-    if (splitPaidBy.length === 0) {
-      showToast('Please select who paid', 'error');
-      return;
-    }
-
     const total = parseFloat(splitAmount);
     let participants: SplitParticipant[] = [];
 
@@ -326,11 +325,13 @@ const DebtTracking: React.FC = () => {
       }));
     }
 
-    // Mark the payer as paid
-    const payerId = splitPaidBy[0].id;
-    participants = participants.map((p) =>
-      p.contact.id === payerId ? { ...p, isPaid: true } : p
-    );
+    // Mark the payer as paid (if selected)
+    if (splitPaidBy.length > 0) {
+      const payerId = splitPaidBy[0].id;
+      participants = participants.map((p) =>
+        p.contact.id === payerId ? { ...p, isPaid: true } : p
+      );
+    }
 
     if (editingSplitId) {
       updateSplit(editingSplitId, {
@@ -339,7 +340,7 @@ const DebtTracking: React.FC = () => {
         splitMethod,
         participants,
         items: splitMethod === 'item_based' ? splitItems : [],
-        paidBy: splitPaidBy[0],
+        paidBy: splitPaidBy.length > 0 ? splitPaidBy[0] : undefined,
       });
       showToast('Split updated!', 'success');
     } else {
@@ -349,7 +350,7 @@ const DebtTracking: React.FC = () => {
         splitMethod,
         participants,
         items: splitMethod === 'item_based' ? splitItems : [],
-        paidBy: splitPaidBy[0],
+        paidBy: splitPaidBy.length > 0 ? splitPaidBy[0] : undefined,
         mode,
       });
       showToast('Split created!', 'success');
@@ -398,6 +399,50 @@ const DebtTracking: React.FC = () => {
           : [...item.assignedTo, contact],
       };
     }));
+  };
+
+  // ── Receipt Scan for Item-based Split ─────────────────────
+  const handleScanReceipt = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      showToast('Camera permission is required', 'error');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    setScanningReceipt(true);
+    try {
+      const receipt = await scanReceipt(result.assets[0].uri);
+      if (receipt.items.length > 0) {
+        setSplitItems((prev) => [
+          ...prev,
+          ...receipt.items.map((item) => ({
+            name: item.name,
+            amount: item.amount,
+            assignedTo: [] as Contact[],
+          })),
+        ]);
+        if (!splitAmount || parseFloat(splitAmount) === 0) {
+          setSplitAmount(receipt.total.toFixed(2));
+        }
+        if (!splitDescription.trim() && receipt.vendor) {
+          setSplitDescription(receipt.vendor);
+        }
+        showToast(`${receipt.items.length} items scanned`, 'success');
+      } else {
+        showToast('No items found on receipt', 'error');
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Scan failed', 'error');
+    } finally {
+      setScanningReceipt(false);
+    }
   };
 
   // ── FAB Action ─────────────────────────────────────────────
@@ -509,6 +554,7 @@ const DebtTracking: React.FC = () => {
                         <View style={styles.debtInfo}>
                           <Text style={styles.debtName}>{debt.contact.name}</Text>
                           <Text style={styles.debtDesc} numberOfLines={1}>{debt.description}</Text>
+                          <Text style={styles.debtTimestamp}>{format(debt.createdAt, 'MMM dd, yyyy · HH:mm')}{debt.dueDate ? `  ·  Due ${format(debt.dueDate, 'MMM dd')}` : ''}</Text>
                         </View>
                         <View style={styles.debtAmountCol}>
                           <Text style={[styles.debtAmount, { color: typeConfig.color }]}>
@@ -586,7 +632,7 @@ const DebtTracking: React.FC = () => {
                         <View style={styles.splitInfo}>
                           <Text style={styles.splitTitle}>{split.description}</Text>
                           <Text style={styles.splitSubtext}>
-                            Paid by {split.paidBy.name} - {format(split.createdAt, 'MMM dd')}
+                            {split.paidBy ? `Paid by ${split.paidBy.name} · ` : ''}{format(split.createdAt, 'MMM dd, yyyy · HH:mm')}
                           </Text>
                         </View>
                         <Text style={styles.splitAmount}>{currency} {split.totalAmount.toFixed(2)}</Text>
@@ -661,8 +707,8 @@ const DebtTracking: React.FC = () => {
 
       {/* ── Add/Edit Debt Modal ──────────────────────────────── */}
       <Modal visible={debtModalVisible} animationType="slide" transparent onRequestClose={() => { setDebtModalVisible(false); resetDebtForm(); }}>
-        <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+        <Pressable style={styles.modalOverlay} onPress={() => { setDebtModalVisible(false); resetDebtForm(); }}>
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editingDebtId ? 'Edit Debt' : 'Add Debt'}</Text>
                 <TouchableOpacity onPress={() => { setDebtModalVisible(false); resetDebtForm(); }}>
@@ -729,7 +775,7 @@ const DebtTracking: React.FC = () => {
                   <Button
                     title="Cancel"
                     onPress={() => { setDebtModalVisible(false); resetDebtForm(); }}
-                    variant="secondary"
+                    variant="outline"
                     style={{ flex: 1 }}
                   />
                   <Button
@@ -741,13 +787,13 @@ const DebtTracking: React.FC = () => {
                 </View>
               </KeyboardAwareScrollView>
             </View>
-        </View>
+        </Pressable>
       </Modal>
 
       {/* ── Add/Edit Split Modal ─────────────────────────────── */}
       <Modal visible={splitModalVisible} animationType="slide" transparent onRequestClose={() => { setSplitModalVisible(false); resetSplitForm(); }}>
-        <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+        <Pressable style={styles.modalOverlay} onPress={() => { setSplitModalVisible(false); resetSplitForm(); }}>
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editingSplitId ? 'Edit Split' : 'Split Expense'}</Text>
                 <TouchableOpacity onPress={() => { setSplitModalVisible(false); resetSplitForm(); }}>
@@ -838,7 +884,19 @@ const DebtTracking: React.FC = () => {
                 {/* Item-based split */}
                 {splitMethod === 'item_based' && (
                   <View style={styles.customSection}>
-                    <Text style={styles.formLabel}>Items</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.formLabel}>Items</Text>
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingHorizontal: 10, backgroundColor: withAlpha(CALM.accent, 0.08), borderRadius: RADIUS.sm }}
+                        onPress={handleScanReceipt}
+                        disabled={scanningReceipt}
+                      >
+                        <Feather name="camera" size={14} color={CALM.accent} />
+                        <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.accent, fontWeight: TYPOGRAPHY.weight.medium }}>
+                          {scanningReceipt ? 'Scanning...' : 'Scan Receipt'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                     <View style={styles.addItemRow}>
                       <TextInput
                         style={[styles.formInput, { flex: 2 }]}
@@ -898,7 +956,7 @@ const DebtTracking: React.FC = () => {
                   <Button
                     title="Cancel"
                     onPress={() => { setSplitModalVisible(false); resetSplitForm(); }}
-                    variant="secondary"
+                    variant="outline"
                     style={{ flex: 1 }}
                   />
                   <Button
@@ -910,7 +968,7 @@ const DebtTracking: React.FC = () => {
                 </View>
               </KeyboardAwareScrollView>
             </View>
-        </View>
+        </Pressable>
       </Modal>
 
       {/* ── Record Payment Modal ─────────────────────────────── */}
@@ -920,8 +978,8 @@ const DebtTracking: React.FC = () => {
         transparent
         onRequestClose={() => setPaymentModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
+        <Pressable style={styles.modalOverlay} onPress={() => setPaymentModalVisible(false)}>
+              <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Record Payment</Text>
                   <TouchableOpacity
@@ -959,7 +1017,7 @@ const DebtTracking: React.FC = () => {
                   <Button
                     title="Cancel"
                     onPress={() => setPaymentModalVisible(false)}
-                    variant="secondary"
+                    variant="outline"
                     style={{ flex: 1 }}
                   />
                   <Button
@@ -971,13 +1029,13 @@ const DebtTracking: React.FC = () => {
                 </View>
                 </KeyboardAwareScrollView>
               </View>
-        </View>
+        </Pressable>
       </Modal>
 
       {/* ── Split Detail Modal ───────────────────────────────── */}
       <Modal visible={splitDetailVisible} animationType="slide" transparent onRequestClose={() => setSplitDetailVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <Pressable style={styles.modalOverlay} onPress={() => setSplitDetailVisible(false)}>
+          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Split Details</Text>
               <TouchableOpacity onPress={() => setSplitDetailVisible(false)}>
@@ -989,7 +1047,7 @@ const DebtTracking: React.FC = () => {
               <ScrollView showsVerticalScrollIndicator={false}>
                 <Text style={styles.detailTitle}>{selectedSplit.description}</Text>
                 <Text style={styles.detailSubtext}>
-                  Total: {currency} {selectedSplit.totalAmount.toFixed(2)} - Paid by {selectedSplit.paidBy.name}
+                  Total: {currency} {selectedSplit.totalAmount.toFixed(2)}{selectedSplit.paidBy ? ` · Paid by ${selectedSplit.paidBy.name}` : ''}
                 </Text>
 
                 <View style={styles.participantList}>
@@ -1036,13 +1094,13 @@ const DebtTracking: React.FC = () => {
                 <Button
                   title="Close"
                   onPress={() => setSplitDetailVisible(false)}
-                  variant="secondary"
+                  variant="outline"
                   style={{ marginTop: SPACING.lg }}
                 />
               </ScrollView>
             )}
           </View>
-        </View>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -1171,6 +1229,11 @@ const styles = StyleSheet.create({
   debtDesc: {
     fontSize: TYPOGRAPHY.size.sm,
     color: CALM.textSecondary,
+  },
+  debtTimestamp: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.neutral,
+    marginTop: 2,
   },
   debtAmountCol: {
     alignItems: 'flex-end',
@@ -1317,7 +1380,7 @@ const styles = StyleSheet.create({
   // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(17, 24, 39, 0.6)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {

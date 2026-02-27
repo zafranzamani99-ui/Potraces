@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: TYPOGRAPHY.size['3xl'],
-    fontWeight: TYPOGRAPHY.weight.bold,
+    fontWeight: '300',
     color: CALM.textPrimary,
     marginBottom: SPACING.xs,
   },

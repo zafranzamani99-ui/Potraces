@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   Modal,
 } from 'react-native';
@@ -62,8 +63,8 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <View style={styles.modal}>
+      <Pressable style={styles.overlay} onPress={onClose}>
+        <View style={styles.modal} onStartShouldSetResponder={() => true}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.crownCircle}>
@@ -121,7 +122,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </Pressable>
     </Modal>
   );
 };

@@ -7,9 +7,9 @@ import { CategoryOption } from '../types';
 
 export const COLORS = {
   // Brand
-  primary: '#5B4FE9',
+  primary: '#4F5104',
   secondary: '#22C993',
-  accent: '#FF6B9D',
+  accent: '#DEAB22',
 
   // Semantic – psychology-driven
   expense: '#5E72E4',       // calm blue — reduces financial anxiety
@@ -21,7 +21,7 @@ export const COLORS = {
   error: '#F5365C',
 
   // Mode accent
-  personal: '#5B4FE9',
+  personal: '#4F5104',
   business: '#22C993',
 
   // Surfaces
@@ -41,20 +41,20 @@ export const COLORS = {
   borderLight: '#F1F3F9',
 
   // Charts
-  chart1: '#5B4FE9',
+  chart1: '#4F5104',
   chart2: '#2DCE89',
   chart3: '#FB8C3C',
-  chart4: '#FF6B9D',
-  chart5: '#11CDEF',
-  chart6: '#A06CD5',
+  chart4: '#DEAB22',
+  chart5: '#B2780A',
+  chart6: '#B8AFBC',
 };
 
 // ─── DARK MODE COLORS ───────────────────────────────────────────
 export const COLORS_DARK = {
   // Brand colors remain same for brand consistency
-  primary: '#5B4FE9',
+  primary: '#4F5104',
   secondary: '#22C993',
-  accent: '#FF6B9D',
+  accent: '#DEAB22',
 
   // Semantic colors remain same for accessibility
   expense: '#5E72E4',
@@ -66,7 +66,7 @@ export const COLORS_DARK = {
   error: '#F5365C',
 
   // Mode accent (same)
-  personal: '#5B4FE9',
+  personal: '#4F5104',
   business: '#22C993',
 
   // Surfaces (dark)
@@ -86,12 +86,12 @@ export const COLORS_DARK = {
   borderLight: '#252B3B',
 
   // Charts (same for data consistency)
-  chart1: '#5B4FE9',
+  chart1: '#4F5104',
   chart2: '#2DCE89',
   chart3: '#FB8C3C',
-  chart4: '#FF6B9D',
-  chart5: '#11CDEF',
-  chart6: '#A06CD5',
+  chart4: '#DEAB22',
+  chart5: '#B2780A',
+  chart6: '#B8AFBC',
 };
 
 // ─── TYPOGRAPHY ─────────────────────────────────────────────
@@ -246,7 +246,7 @@ export const EXPENSE_CATEGORIES: CategoryOption[] = [
   { id: 'entertainment', name: 'Entertainment', icon: 'film', color: '#A06CD5' },
   { id: 'bills', name: 'Bills & Utilities', icon: 'file-text', color: '#22C993' },
   { id: 'health', name: 'Healthcare', icon: 'heart', color: '#FF5757' },
-  { id: 'education', name: 'Education', icon: 'book', color: '#5B4FE9' },
+  { id: 'education', name: 'Education', icon: 'book', color: '#4F5104' },
   { id: 'family', name: 'Family', icon: 'users', color: '#2DCE89' },
   { id: 'subscription', name: 'Subscriptions', icon: 'repeat', color: '#FB8C3C' },
   { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#9CA3B4' },
@@ -255,7 +255,7 @@ export const EXPENSE_CATEGORIES: CategoryOption[] = [
 export const INCOME_CATEGORIES: CategoryOption[] = [
   { id: 'salary', name: 'Salary', icon: 'dollar-sign', color: '#2DCE89' },
   { id: 'freelance', name: 'Freelance', icon: 'briefcase', color: '#5E72E4' },
-  { id: 'business', name: 'Business', icon: 'trending-up', color: '#5B4FE9' },
+  { id: 'business', name: 'Business', icon: 'trending-up', color: '#4F5104' },
   { id: 'investment', name: 'Investment', icon: 'pie-chart', color: '#A06CD5' },
   { id: 'gift', name: 'Gift', icon: 'gift', color: '#FF6B9D' },
   { id: 'other', name: 'Other', icon: 'plus-circle', color: '#9CA3B4' },
@@ -268,7 +268,7 @@ export const BUSINESS_EXPENSE_CATEGORIES: CategoryOption[] = [
   { id: 'marketing', name: 'Marketing & Ads', icon: 'target', color: '#FF6B9D' },
   { id: 'utilities', name: 'Utilities', icon: 'zap', color: '#22C993' },
   { id: 'office', name: 'Office Supplies', icon: 'clipboard', color: '#A06CD5' },
-  { id: 'travel', name: 'Travel & Meetings', icon: 'map-pin', color: '#5B4FE9' },
+  { id: 'travel', name: 'Travel & Meetings', icon: 'map-pin', color: '#4F5104' },
   { id: 'insurance', name: 'Insurance', icon: 'shield', color: '#FF5757' },
   { id: 'maintenance', name: 'Maintenance', icon: 'tool', color: '#FB8C3C' },
   { id: 'professional', name: 'Professional Services', icon: 'briefcase', color: '#5E72E4' },
@@ -282,7 +282,7 @@ export const BUSINESS_INCOME_CATEGORIES: CategoryOption[] = [
   { id: 'consulting', name: 'Consulting', icon: 'message-circle', color: '#A06CD5' },
   { id: 'commission', name: 'Commission', icon: 'percent', color: '#FB8C3C' },
   { id: 'rental', name: 'Rental Income', icon: 'home', color: '#22C993' },
-  { id: 'interest', name: 'Interest & Returns', icon: 'trending-up', color: '#5B4FE9' },
+  { id: 'interest', name: 'Interest & Returns', icon: 'trending-up', color: '#4F5104' },
   { id: 'other', name: 'Other', icon: 'plus-circle', color: '#9CA3B4' },
 ];
 
@@ -291,7 +291,7 @@ export const PRODUCT_CATEGORIES: CategoryOption[] = [
   { id: 'clothing', name: 'Clothing', icon: 'shopping-bag', color: '#A06CD5' },
   { id: 'electronics', name: 'Electronics', icon: 'smartphone', color: '#5E72E4' },
   { id: 'accessories', name: 'Accessories', icon: 'watch', color: '#FB8C3C' },
-  { id: 'books', name: 'Books', icon: 'book', color: '#5B4FE9' },
+  { id: 'books', name: 'Books', icon: 'book', color: '#4F5104' },
   { id: 'toys', name: 'Toys', icon: 'gift', color: '#FF6B9D' },
   { id: 'health', name: 'Health & Beauty', icon: 'heart', color: '#2DCE89' },
   { id: 'home', name: 'Home & Garden', icon: 'home', color: '#22C993' },
@@ -328,7 +328,7 @@ export const DEBT_TYPES = [
 ];
 
 export const DEBT_STATUSES = [
-  { label: 'Pending', value: 'pending', color: '#5B4FE9' },
+  { label: 'Pending', value: 'pending', color: '#4F5104' },
   { label: 'Partial', value: 'partial', color: '#8E8E93' },
   { label: 'Settled', value: 'settled', color: '#2E7D5B' },
 ];
@@ -354,11 +354,14 @@ export const CALM = {
   surface: '#FFFFFF',
   textPrimary: '#1A1A1A',
   textSecondary: '#6B6B6B',
-  accent: '#5B4FE9',
+  accent: '#4F5104',
   positive: '#2E7D5B',
-  neutral: '#8E8E93',
+  neutral: '#B8AFBC',
   border: '#E5E5E3',
   highlight: '#FFF7E6',
+  gold: '#DEAB22',
+  bronze: '#B2780A',
+  deepOlive: '#332D03',
 };
 
 // ─── TYPE SCALE ────────────────────────────────────────────

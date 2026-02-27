@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   Modal,
   TextInput,
   Alert,
@@ -453,8 +454,8 @@ const SavingsTracker: React.FC = () => {
           resetForm();
         }}
       >
-        <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+        <Pressable style={styles.modalOverlay} onPress={() => { setModalVisible(false); resetForm(); }}>
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
                   {editingAccount ? 'Edit Account' : 'Add Account'}
@@ -602,7 +603,7 @@ const SavingsTracker: React.FC = () => {
                       setModalVisible(false);
                       resetForm();
                     }}
-                    variant="secondary"
+                    variant="outline"
                     style={{ flex: 1 }}
                   />
                   <Button
@@ -614,7 +615,7 @@ const SavingsTracker: React.FC = () => {
                 </View>
               </KeyboardAwareScrollView>
             </View>
-        </View>
+        </Pressable>
       </Modal>
 
       {/* ── Update Value Modal ── */}
@@ -624,8 +625,8 @@ const SavingsTracker: React.FC = () => {
         transparent
         onRequestClose={() => setUpdateModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+        <Pressable style={styles.modalOverlay} onPress={() => { setUpdateModalVisible(false); }}>
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Update Value</Text>
                 <TouchableOpacity
@@ -711,7 +712,7 @@ const SavingsTracker: React.FC = () => {
                   <Button
                     title="Cancel"
                     onPress={() => setUpdateModalVisible(false)}
-                    variant="secondary"
+                    variant="outline"
                     style={{ flex: 1 }}
                   />
                   <Button
@@ -723,7 +724,7 @@ const SavingsTracker: React.FC = () => {
                 </View>
               </KeyboardAwareScrollView>
             </View>
-        </View>
+        </Pressable>
       </Modal>
 
       {/* ── Full History Modal ── */}
@@ -733,8 +734,8 @@ const SavingsTracker: React.FC = () => {
         transparent
         onRequestClose={() => setHistoryModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+        <Pressable style={styles.modalOverlay} onPress={() => { setHistoryModalVisible(false); }}>
+          <View style={[styles.modalContent, { maxHeight: '80%' }]} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 {historyAccount?.name || 'History'}
@@ -829,7 +830,7 @@ const SavingsTracker: React.FC = () => {
                 })}
             </ScrollView>
           </View>
-        </View>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -939,6 +940,10 @@ const styles = StyleSheet.create({
   },
   iconBtn: {
     padding: SPACING.sm,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Value section

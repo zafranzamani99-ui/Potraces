@@ -6,6 +6,7 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  Pressable,
   Modal,
   TextInput,
   Alert,
@@ -13,14 +14,13 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { format, addDays, isWithinInterval, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { format, addDays, isWithinInterval, startOfMonth, endOfMonth, subMonths, getDaysInMonth } from 'date-fns';
 
 import { useNavigation } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-// COLORS.personal / COLORS.business kept for mode accent navigation only
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
 import StatCard from '../../components/common/StatCard';
@@ -46,13 +46,15 @@ const getGreeting = (): string => {
 };
 
 const QUICK_ACTIONS = [
-  { key: 'wallets', label: 'Wallets', icon: 'credit-card' as const, screen: 'WalletManagement', color: COLORS.personal },
+  { key: 'wallets', label: 'Wallets', icon: 'credit-card' as const, screen: 'WalletManagement', color: CALM.accent },
   { key: 'savings', label: 'Savings', icon: 'trending-up' as const, screen: 'SavingsTracker', color: '#A06CD5' },
   { key: 'debts', label: 'Debts & Splits', icon: 'users' as const, screen: 'DebtTracking', color: CALM.neutral },
   { key: 'subscriptions', label: 'Commitments', icon: 'repeat' as const, screen: 'SubscriptionList', color: CALM.accent },
   { key: 'reports', label: 'Reports', icon: 'bar-chart-2' as const, screen: 'PersonalReports', color: CALM.accent },
   { key: 'scan', label: 'Scan Receipt', icon: 'camera' as const, screen: 'ReceiptScanner', color: CALM.positive },
   { key: 'chat', label: 'Money Chat', icon: 'message-circle' as const, screen: 'MoneyChat', color: CALM.accent },
+  { key: 'goals', label: 'My Goals', icon: 'target' as const, screen: 'Goals', color: '#E67E22' },
+  { key: 'pulse', label: 'Financial Pulse', icon: 'activity' as const, screen: 'FinancialPulse', color: '#9B59B6' },
 ];
 
 const PersonalDashboard: React.FC = () => {
@@ -66,6 +68,7 @@ const PersonalDashboard: React.FC = () => {
   const deductFromWallet = useWalletStore((s) => s.deductFromWallet);
   const addToWallet = useWalletStore((s) => s.addToWallet);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [showAllQuickActions, setShowAllQuickActions] = useState(false);
   const navigation = useNavigation<any>();
 
   // Transaction edit modal state
@@ -156,6 +159,58 @@ const PersonalDashboard: React.FC = () => {
   const recentTransactions = useMemo(() => {
     return transactions.slice(0, 5);
   }, [transactions]);
+
+  // ─── Insight strip data ───────────────────────────────────
+  const insightStrip = useMemo(() => {
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+    const daysInMonth = getDaysInMonth(now);
+
+    // Savings rate
+    const savingsRate =
+      stats.income > 0
+        ? Math.round(((stats.income - stats.expenses) / stats.income) * 100)
+        : 0;
+    const savingsColor =
+      savingsRate > 20 ? CALM.positive : savingsRate > 0 ? CALM.accent : CALM.neutral;
+
+    // Spending velocity
+    const lastMonthExpenses = stats.prevMonthTransactions
+      .filter((t) => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0);
+    const monthProgress = dayOfMonth / daysInMonth;
+    let velocityPercent = 0;
+    if (lastMonthExpenses > 0 && monthProgress > 0) {
+      velocityPercent = Math.round(
+        (stats.expenses / lastMonthExpenses) * (1 / monthProgress) * 100
+      );
+    }
+    const velocityColor =
+      velocityPercent < 90
+        ? CALM.positive
+        : velocityPercent > 110
+        ? CALM.neutral
+        : CALM.accent;
+
+    // Upcoming bills (next 7 days)
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekLater = addDays(today, 7);
+    const upcomingWeek = subscriptions.filter(
+      (sub) =>
+        sub.isActive &&
+        isWithinInterval(sub.nextBillingDate, { start: today, end: weekLater })
+    );
+    const upcomingTotal = upcomingWeek.reduce((sum, sub) => sum + sub.amount, 0);
+
+    return {
+      savingsRate,
+      savingsColor,
+      velocityPercent,
+      velocityColor,
+      upcomingCount: upcomingWeek.length,
+      upcomingTotal,
+    };
+  }, [stats, subscriptions]);
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
@@ -263,7 +318,7 @@ const PersonalDashboard: React.FC = () => {
   };
 
   const handleQuickAction = (screen: string) => {
-    if (screen === 'PersonalReports' || screen === 'SubscriptionList' || screen === 'DebtTracking' || screen === 'WalletManagement' || screen === 'SavingsTracker' || screen === 'MoneyChat') {
+    if (screen === 'PersonalReports' || screen === 'SubscriptionList' || screen === 'DebtTracking' || screen === 'WalletManagement' || screen === 'SavingsTracker' || screen === 'MoneyChat' || screen === 'Goals' || screen === 'FinancialPulse') {
       navigation.getParent()?.navigate(screen);
     } else {
       navigation.navigate(screen);
@@ -298,7 +353,135 @@ const PersonalDashboard: React.FC = () => {
         {/* Zone 4 — Insight */}
         <Text style={styles.insight}>{insight}</Text>
 
-        {/* Everything else in collapsible Details */}
+        {/* Zone 5 — Insight Strip */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.insightStripRow}
+          style={styles.insightStripScroll}
+        >
+          {/* Savings Rate */}
+          <TouchableOpacity
+            style={[styles.insightCard, { borderLeftColor: insightStrip.savingsColor }]}
+            activeOpacity={0.7}
+            onPress={() => {
+              lightTap();
+              navigation.getParent()?.navigate('SavingsTracker');
+            }}
+            accessibilityLabel={`Savings rate: ${insightStrip.savingsRate} percent`}
+          >
+            <View style={[styles.insightIconBg, { backgroundColor: withAlpha(insightStrip.savingsColor, 0.12) }]}>
+              <Feather name="trending-up" size={14} color={insightStrip.savingsColor} />
+            </View>
+            <Text style={[styles.insightValue, { color: insightStrip.savingsColor }]}>
+              Saving {insightStrip.savingsRate}%
+            </Text>
+            <Text style={styles.insightLabel}>this month</Text>
+          </TouchableOpacity>
+
+          {/* Spending Velocity */}
+          <TouchableOpacity
+            style={[styles.insightCard, { borderLeftColor: insightStrip.velocityColor }]}
+            activeOpacity={0.7}
+            onPress={() => {
+              lightTap();
+              navigation.getParent()?.navigate('FinancialPulse');
+            }}
+            accessibilityLabel={`Spending velocity: ${insightStrip.velocityPercent} percent of usual pace`}
+          >
+            <View style={[styles.insightIconBg, { backgroundColor: withAlpha(insightStrip.velocityColor, 0.12) }]}>
+              <Feather name="zap" size={14} color={insightStrip.velocityColor} />
+            </View>
+            <Text style={[styles.insightValue, { color: insightStrip.velocityColor }]}>
+              {insightStrip.velocityPercent}% pace
+            </Text>
+            <Text style={styles.insightLabel}>of usual spending</Text>
+          </TouchableOpacity>
+
+          {/* Upcoming Bills */}
+          <TouchableOpacity
+            style={[styles.insightCard, { borderLeftColor: CALM.accent }]}
+            activeOpacity={0.7}
+            onPress={() => {
+              lightTap();
+              navigation.getParent()?.navigate('SubscriptionList');
+            }}
+            accessibilityLabel={`${insightStrip.upcomingCount} bills totalling ${currency} ${insightStrip.upcomingTotal.toFixed(2)} due this week`}
+          >
+            <View style={[styles.insightIconBg, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
+              <Feather name="calendar" size={14} color={CALM.accent} />
+            </View>
+            <Text style={[styles.insightValue, { color: CALM.accent }]}>
+              {insightStrip.upcomingCount} {insightStrip.upcomingCount === 1 ? 'bill' : 'bills'}
+            </Text>
+            <Text style={styles.insightLabel}>
+              {currency} {insightStrip.upcomingTotal.toFixed(2)}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+
+        {/* Quick Actions - always visible */}
+        <View style={styles.quickActionsSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.detailSectionTitle}>Quick Actions</Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                lightTap();
+                setShowAllQuickActions(!showAllQuickActions);
+              }}
+            >
+              <Text style={styles.seeAll}>{showAllQuickActions ? 'Show Less' : 'See All'}</Text>
+            </TouchableOpacity>
+          </View>
+          {showAllQuickActions ? (
+            <View style={styles.quickActionsGrid}>
+              {QUICK_ACTIONS.map((action) => (
+                <TouchableOpacity
+                  key={action.key}
+                  style={styles.quickActionButton}
+                  onPress={() => handleQuickAction(action.screen)}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[styles.quickActionIconBg, { backgroundColor: withAlpha(action.color, 0.12) }]}
+                  >
+                    <Feather name={action.icon} size={18} color={action.color} />
+                  </View>
+                  <Text style={styles.quickActionLabel} numberOfLines={2}>
+                    {action.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickActionsRow}
+            >
+              {QUICK_ACTIONS.map((action) => (
+                <TouchableOpacity
+                  key={action.key}
+                  style={styles.quickActionButton}
+                  onPress={() => handleQuickAction(action.screen)}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[styles.quickActionIconBg, { backgroundColor: withAlpha(action.color, 0.12) }]}
+                  >
+                    <Feather name={action.icon} size={18} color={action.color} />
+                  </View>
+                  <Text style={styles.quickActionLabel} numberOfLines={2}>
+                    {action.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+
+        {/* Details section */}
         <CollapsibleSection title="Details" defaultOpen={false}>
           {/* Upcoming Bills */}
           <TouchableOpacity
@@ -404,34 +587,6 @@ const PersonalDashboard: React.FC = () => {
             </TouchableOpacity>
           )}
 
-          {/* Quick Actions */}
-          <View style={styles.quickActionsSection}>
-            <Text style={styles.detailSectionTitle}>Quick Actions</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.quickActionsRow}
-            >
-              {QUICK_ACTIONS.map((action) => (
-                <TouchableOpacity
-                  key={action.key}
-                  style={styles.quickActionButton}
-                  onPress={() => handleQuickAction(action.screen)}
-                  activeOpacity={0.7}
-                >
-                  <View
-                    style={[styles.quickActionIconBg, { backgroundColor: withAlpha(action.color, 0.12) }]}
-                  >
-                    <Feather name={action.icon} size={18} color={action.color} />
-                  </View>
-                  <Text style={styles.quickActionLabel} numberOfLines={2}>
-                    {action.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-
           {/* Recent Transactions */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -478,8 +633,8 @@ const PersonalDashboard: React.FC = () => {
           setEditingTransaction(null);
         }}
       >
-        <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+        <Pressable style={styles.modalOverlay} onPress={() => { setEditModalVisible(false); setEditingTransaction(null); }}>
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Edit Transaction</Text>
                 <TouchableOpacity onPress={() => {
@@ -581,7 +736,7 @@ const PersonalDashboard: React.FC = () => {
                   <Button
                     title="Delete"
                     onPress={handleDeleteTransaction}
-                    variant="secondary"
+                    variant="danger"
                     icon="trash-2"
                     style={styles.deleteButton}
                   />
@@ -594,7 +749,7 @@ const PersonalDashboard: React.FC = () => {
                 </View>
               </KeyboardAwareScrollView>
             </View>
-        </View>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -636,6 +791,43 @@ const styles = StyleSheet.create({
     lineHeight: TYPE.insight.lineHeight,
     color: CALM.textSecondary,
     marginBottom: SPACING.lg,
+  },
+
+  // Zone 5 — Insight Strip
+  insightStripScroll: {
+    marginBottom: SPACING.lg,
+    marginHorizontal: -SPACING.lg,
+  },
+  insightStripRow: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  insightCard: {
+    width: 140,
+    padding: SPACING.md,
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    borderLeftWidth: 3,
+  },
+  insightIconBg: {
+    width: 28,
+    height: 28,
+    borderRadius: RADIUS.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.sm,
+  },
+  insightValue: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    marginBottom: 2,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  insightLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
   },
 
   // Detail sections
@@ -759,6 +951,12 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     marginTop: SPACING.sm,
   },
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
   quickActionButton: {
     width: 80,
     backgroundColor: CALM.surface,
@@ -777,11 +975,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   quickActionLabel: {
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.textPrimary,
     textAlign: 'center',
-    lineHeight: 13,
+    lineHeight: 14,
   },
 
   // Section

@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Modal,
-  FlatList,
   TextInput,
   Alert,
   Keyboard,
 } from 'react-native';
+import DraggableFlatList, {
+  ScaleDecorator,
+  RenderItemParams,
+} from 'react-native-draggable-flatlist';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCategoryStore } from '../../store/categoryStore';
@@ -28,7 +32,7 @@ const ICON_OPTIONS: string[] = [
 
 const COLOR_OPTIONS: string[] = [
   '#FF6B9D', '#5E72E4', '#FB8C3C', '#A06CD5', '#22C993',
-  '#FF5757', '#5B4FE9', '#2DCE89', '#11CDEF', '#9CA3B4',
+  '#4F5104', '#DEAB22', '#B2780A', '#332D03', '#B8AFBC',
 ];
 
 interface CategoryManagerProps {
@@ -46,7 +50,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
 }) => {
   const { showToast } = useToast();
   const categories = useCategories(type, mode);
-  const { updateCategoryOverride, addCustomCategory, deleteCustomCategory } =
+  const { updateCategoryOverride, addCustomCategory, deleteCustomCategory, setCategoryOrder } =
     useCategoryStore();
 
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -132,33 +136,45 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
     ]);
   };
 
-  const renderCategory = ({ item }: { item: CategoryOption }) => (
-    <TouchableOpacity
-      style={styles.categoryRow}
-      onPress={() => openEdit(item)}
-      activeOpacity={0.6}
-    >
-      <View
+  const handleDragEnd = useCallback(({ data }: { data: CategoryOption[] }) => {
+    lightTap();
+    setCategoryOrder(type, data.map((c) => c.id), mode);
+  }, [type, mode, setCategoryOrder]);
+
+  const renderCategory = useCallback(({ item, drag, isActive }: RenderItemParams<CategoryOption>) => (
+    <ScaleDecorator>
+      <TouchableOpacity
         style={[
-          styles.categoryIcon,
-          { backgroundColor: withAlpha(item.color, 0.15) },
+          styles.categoryRow,
+          isActive && styles.categoryRowDragging,
         ]}
+        onPress={() => openEdit(item)}
+        onLongPress={drag}
+        delayLongPress={150}
+        activeOpacity={0.6}
       >
-        <Feather
-          name={item.icon as keyof typeof Feather.glyphMap}
-          size={20}
-          color={item.color}
-        />
-      </View>
-      <View style={styles.categoryInfo}>
-        <Text style={styles.categoryName}>{item.name}</Text>
-        {isCustom(item.id) && (
-          <Text style={styles.customBadge}>Custom</Text>
-        )}
-      </View>
-      <Feather name="edit-2" size={16} color={CALM.neutral} />
-    </TouchableOpacity>
-  );
+        <View
+          style={[
+            styles.categoryIcon,
+            { backgroundColor: withAlpha(item.color, 0.15) },
+          ]}
+        >
+          <Feather
+            name={item.icon as keyof typeof Feather.glyphMap}
+            size={20}
+            color={item.color}
+          />
+        </View>
+        <View style={styles.categoryInfo}>
+          <Text style={styles.categoryName}>{item.name}</Text>
+          {isCustom(item.id) && (
+            <Text style={styles.customBadge}>Custom</Text>
+          )}
+        </View>
+        <Feather name="menu" size={18} color={isActive ? CALM.accent : CALM.neutral} />
+      </TouchableOpacity>
+    </ScaleDecorator>
+  ), []);
 
   return (
     <Modal
@@ -182,13 +198,19 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
             </TouchableOpacity>
           </View>
 
-          <FlatList
-            data={categories}
-            keyExtractor={(item) => item.id}
-            renderItem={renderCategory}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContent}
-          />
+          <Text style={styles.dragHint}>Hold & drag to reorder</Text>
+
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <DraggableFlatList
+              data={categories}
+              keyExtractor={(item) => item.id}
+              renderItem={renderCategory}
+              onDragEnd={handleDragEnd}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.listContent}
+              activationDistance={5}
+            />
+          </GestureHandlerRootView>
 
           <TouchableOpacity style={styles.addButton} onPress={openNew}>
             <Feather name="plus" size={18} color={CALM.accent} />
@@ -345,6 +367,12 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.bold,
     color: CALM.textPrimary,
   },
+  dragHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.neutral,
+    textAlign: 'center',
+    paddingTop: SPACING.sm,
+  },
   listContent: {
     padding: SPACING.sm,
   },
@@ -355,6 +383,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     gap: SPACING.md,
     borderRadius: RADIUS.md,
+    backgroundColor: CALM.surface,
+  },
+  categoryRowDragging: {
+    backgroundColor: withAlpha(CALM.accent, 0.06),
+    borderWidth: 1,
+    borderColor: withAlpha(CALM.accent, 0.2),
   },
   categoryIcon: {
     width: 40,

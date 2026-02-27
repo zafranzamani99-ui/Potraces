@@ -6,6 +6,7 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
+  Pressable,
   SectionList,
   Modal,
   Alert,
@@ -17,8 +18,7 @@ import { Feather } from '@expo/vector-icons';
 import { format, isSameDay } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-// COLORS.personal kept for mode accent navigation only
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
 import TransactionItem from '../../components/common/TransactionItem';
 import EmptyState from '../../components/common/EmptyState';
@@ -292,7 +292,7 @@ const TransactionsList: React.FC = () => {
               <Feather
                 name={sortOrder === 'asc' ? 'arrow-up' : 'arrow-down'}
                 size={12}
-                color={COLORS.personal}
+                color={CALM.accent}
               />
             )}
           </TouchableOpacity>
@@ -372,8 +372,8 @@ const TransactionsList: React.FC = () => {
           setEditingTransaction(null);
         }}
       >
-        <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+        <Pressable style={styles.modalOverlay} onPress={() => { setEditModalVisible(false); setEditingTransaction(null); }}>
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Edit Transaction</Text>
                 <TouchableOpacity onPress={() => {
@@ -475,7 +475,7 @@ const TransactionsList: React.FC = () => {
                   <Button
                     title="Delete"
                     onPress={handleDeleteTransaction}
-                    variant="secondary"
+                    variant="danger"
                     icon="trash-2"
                     style={styles.deleteButton}
                   />
@@ -488,7 +488,7 @@ const TransactionsList: React.FC = () => {
                 </View>
               </KeyboardAwareScrollView>
             </View>
-        </View>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -531,10 +531,11 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.surface,
     borderWidth: 1,
     borderColor: CALM.border,
+    minHeight: 44,
   },
   filterChipActive: {
-    backgroundColor: COLORS.personal,
-    borderColor: COLORS.personal,
+    backgroundColor: CALM.accent,
+    borderColor: CALM.accent,
   },
   filterChipText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -549,12 +550,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(COLORS.personal, 0.1),
+    backgroundColor: withAlpha(CALM.accent, 0.1),
   },
   summaryText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.personal,
+    color: CALM.accent,
   },
   totalsBar: {
     flexDirection: 'row',
@@ -630,10 +631,11 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.surface,
     borderWidth: 1,
     borderColor: CALM.border,
+    minHeight: 44,
   },
   sortChipActive: {
-    backgroundColor: withAlpha(COLORS.personal, 0.1),
-    borderColor: COLORS.personal,
+    backgroundColor: withAlpha(CALM.accent, 0.1),
+    borderColor: CALM.accent,
   },
   sortChipText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -641,7 +643,7 @@ const styles = StyleSheet.create({
     color: CALM.textSecondary,
   },
   sortChipTextActive: {
-    color: COLORS.personal,
+    color: CALM.accent,
   },
 
   // Modal

@@ -6,7 +6,8 @@ import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { IncomeType } from '../../types';
 
 const TILES: { type: IncomeType; label: string; sublabel: string }[] = [
-  { type: 'seller', label: 'Selling products', sublabel: 'stall, online shop,\nfood, market' },
+  { type: 'seller', label: 'Selling products', sublabel: 'online shop,\nmade-to-order, kuih raya' },
+  { type: 'stall', label: 'Stall / walk-in', sublabel: 'pasar malam,\nroadside, bazaar' },
   { type: 'freelance', label: 'Freelance / gigs', sublabel: 'design, tutor,\ncontent, dev' },
   { type: 'parttime', label: 'Part-time job', sublabel: 'side income\nalongside main job' },
   { type: 'rider', label: 'Delivery rider', sublabel: 'Grab, Foodpanda,\nLalamove, others' },

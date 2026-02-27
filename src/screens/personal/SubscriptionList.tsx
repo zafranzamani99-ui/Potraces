@@ -8,6 +8,7 @@ import {
   Alert,
   Modal,
   TouchableOpacity,
+  Pressable,
   Switch,
   Keyboard,
 } from 'react-native';
@@ -16,7 +17,7 @@ import { Feather } from '@expo/vector-icons';
 import { format, addWeeks, addMonths, addYears } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, CALM, SPACING, TYPOGRAPHY, RADIUS, BILLING_CYCLES, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, BILLING_CYCLES, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
@@ -421,8 +422,8 @@ const SubscriptionList: React.FC = () => {
         transparent
         onRequestClose={() => { setModalVisible(false); resetForm(); }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <Pressable style={styles.modalOverlay} onPress={() => { setModalVisible(false); resetForm(); }}>
+          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editingId ? 'Edit Commitment' : 'Add Commitment'}</Text>
               <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }}>
@@ -540,7 +541,7 @@ const SubscriptionList: React.FC = () => {
                 <Button
                   title="Cancel"
                   onPress={() => { setModalVisible(false); resetForm(); }}
-                  variant="secondary"
+                  variant="outline"
                   style={{ flex: 1 }}
                 />
                 <Button
@@ -552,7 +553,7 @@ const SubscriptionList: React.FC = () => {
               </View>
             </KeyboardAwareScrollView>
           </View>
-        </View>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -608,8 +609,8 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
   },
   filterChipActive: {
-    backgroundColor: COLORS.personal,
-    borderColor: COLORS.personal,
+    backgroundColor: CALM.accent,
+    borderColor: CALM.accent,
   },
   filterChipText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -634,6 +635,7 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.surface,
     borderWidth: 1,
     borderColor: CALM.border,
+    minHeight: 44,
   },
   sortChipActive: {
     backgroundColor: CALM.accent,
@@ -660,7 +662,7 @@ const styles = StyleSheet.create({
   },
   summaryAmount: {
     fontSize: TYPOGRAPHY.size['4xl'],
-    fontWeight: TYPOGRAPHY.weight.bold,
+    fontWeight: '300',
     color: CALM.textPrimary,
     marginBottom: SPACING.xs,
   },
@@ -701,9 +703,17 @@ const styles = StyleSheet.create({
   },
   editButton: {
     padding: SPACING.sm,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   deleteButton: {
     padding: SPACING.sm,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   subscriptionDetails: {
     gap: SPACING.sm,
@@ -755,7 +765,7 @@ const styles = StyleSheet.create({
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -790,6 +800,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
     color: CALM.textPrimary,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   cycleContainer: {
     flexDirection: 'row',

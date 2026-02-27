@@ -83,7 +83,7 @@ const SIZE_CONFIG: Record<
   { height: number; paddingH: number; fontSize: number; iconSize: number }
 > = {
   small: {
-    height: 36,
+    height: 44,
     paddingH: SPACING.md,
     fontSize: TYPOGRAPHY.size.sm,
     iconSize: 16,

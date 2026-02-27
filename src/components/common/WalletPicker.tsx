@@ -86,7 +86,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
           activeOpacity={1}
           onPress={() => setDropdownOpen(false)}
         >
-          <View style={styles.modal}>
+          <View style={styles.modal} onStartShouldSetResponder={() => true}>
             <View style={styles.header}>
               <Text style={styles.title}>{label || 'Select Wallet'}</Text>
               <TouchableOpacity onPress={() => setDropdownOpen(false)}>

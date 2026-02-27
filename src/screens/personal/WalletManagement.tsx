@@ -8,6 +8,7 @@ import {
   Modal,
   TextInput,
   Alert,
+  Pressable,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
@@ -230,8 +231,8 @@ const WalletManagement: React.FC = () => {
         animationType="slide"
         onRequestClose={() => { setModalVisible(false); resetForm(); }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <Pressable style={styles.modalOverlay} onPress={() => { setModalVisible(false); resetForm(); }}>
+          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 {editingWallet ? 'Edit Wallet' : 'New Wallet'}
@@ -334,7 +335,7 @@ const WalletManagement: React.FC = () => {
               style={styles.saveBtn}
             />
           </View>
-        </View>
+        </Pressable>
       </Modal>
 
       {/* Paywall */}
@@ -354,7 +355,7 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.background,
   },
   scrollContent: {
-    padding: SPACING.xl,
+    padding: SPACING.lg,
     paddingBottom: 100,
   },
   summaryCard: {
@@ -455,9 +456,9 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
   },
   actionBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: RADIUS.md,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: CALM.background,
     alignItems: 'center',
     justifyContent: 'center',

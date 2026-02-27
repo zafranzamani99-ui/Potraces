@@ -4,12 +4,15 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  TouchableWithoutFeedback,
+  Pressable,
   Modal,
   TextInput,
   FlatList,
   Alert,
   Keyboard,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
@@ -145,8 +148,8 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
 
       {/* Phone Contacts Modal */}
       <Modal visible={phoneModalVisible} animationType="slide" transparent onRequestClose={() => setPhoneModalVisible(false)}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+          <Pressable style={styles.modalOverlay} onPress={() => setPhoneModalVisible(false)}>
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Select Contact</Text>
                 <TouchableOpacity onPress={() => { setPhoneModalVisible(false); setSearchQuery(''); }}>
@@ -213,13 +216,14 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                 />
               )}
             </View>
-          </View>
+          </Pressable>
       </Modal>
 
       {/* Manual Entry Modal */}
       <Modal visible={manualModalVisible} animationType="slide" transparent onRequestClose={() => setManualModalVisible(false)}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+            <View style={styles.manualModalSheet} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Add Contact</Text>
                 <TouchableOpacity onPress={() => { setManualModalVisible(false); setManualName(''); setManualPhone(''); }}>
@@ -227,46 +231,54 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.inputLabel}>Name <Text style={{ color: CALM.neutral }}>*</Text></Text>
-              <TextInput
-                style={styles.input}
-                value={manualName}
-                onChangeText={setManualName}
-                placeholder="John Doe"
-                placeholderTextColor={CALM.textSecondary}
-                returnKeyType="next"
-                onSubmitEditing={() => phoneInputRef.current?.focus()}
-              />
-
-              <Text style={styles.inputLabel}>Phone (optional)</Text>
-              <TextInput
-                ref={phoneInputRef}
-                style={styles.input}
-                value={manualPhone}
-                onChangeText={setManualPhone}
-                placeholder="+60 12-345 6789"
-                placeholderTextColor={CALM.textSecondary}
-                keyboardType="phone-pad"
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              <View style={styles.modalActions}>
-                <Button
-                  title="Cancel"
-                  onPress={() => { setManualModalVisible(false); setManualName(''); setManualPhone(''); }}
-                  variant="secondary"
-                  style={{ flex: 1 }}
+              <KeyboardAwareScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                bottomOffset={20}
+              >
+                <Text style={styles.inputLabel}>Name <Text style={{ color: CALM.neutral }}>*</Text></Text>
+                <TextInput
+                  style={styles.input}
+                  value={manualName}
+                  onChangeText={setManualName}
+                  placeholder="John Doe"
+                  placeholderTextColor={CALM.textSecondary}
+                  returnKeyType="next"
+                  autoFocus
+                  onSubmitEditing={() => phoneInputRef.current?.focus()}
                 />
-                <Button
-                  title="Add"
-                  onPress={handleAddManual}
-                  icon="check"
-                  style={{ flex: 1 }}
+
+                <Text style={styles.inputLabel}>Phone (optional)</Text>
+                <TextInput
+                  ref={phoneInputRef}
+                  style={styles.input}
+                  value={manualPhone}
+                  onChangeText={setManualPhone}
+                  placeholder="+60 12-345 6789"
+                  placeholderTextColor={CALM.textSecondary}
+                  keyboardType="phone-pad"
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
                 />
-              </View>
+
+                <View style={styles.modalActions}>
+                  <Button
+                    title="Cancel"
+                    onPress={() => { setManualModalVisible(false); setManualName(''); setManualPhone(''); }}
+                    variant="outline"
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    title="Add"
+                    onPress={handleAddManual}
+                    icon="check"
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </KeyboardAwareScrollView>
             </View>
           </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );
@@ -338,6 +350,14 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     padding: 24,
     maxHeight: '85%',
+    borderWidth: 1,
+    borderColor: CALM.border,
+  },
+  manualModalSheet: {
+    backgroundColor: CALM.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
     borderWidth: 1,
     borderColor: CALM.border,
   },
@@ -421,6 +441,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     color: CALM.textPrimary,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   modalActions: {
     flexDirection: 'row',

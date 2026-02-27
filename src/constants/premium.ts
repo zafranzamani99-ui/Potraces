@@ -36,12 +36,12 @@ export const WALLET_ICONS = [
 
 // Wallet color presets
 export const WALLET_COLORS = [
-  '#5B4FE9',
+  '#4F5104',
   '#2DCE89',
-  '#F5365C',
+  '#B2780A',
   '#FB8C3C',
-  '#11CDEF',
-  '#8B7CFF',
+  '#DEAB22',
+  '#332D03',
   '#1DE9B6',
-  '#FF6B9D',
+  '#B8AFBC',
 ] as const;

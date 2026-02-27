@@ -1,13 +1,13 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
-import { COLORS, SHADOWS, TYPOGRAPHY } from '../constants';
+import { COLORS, CALM, TYPOGRAPHY } from '../constants';
 import GRADIENTS from '../constants/gradients';
 import CustomTabBar from '../components/navigation/CustomTabBar';
 
 import PersonalDashboard from '../screens/personal/Dashboard';
 import ExpenseEntry from '../screens/personal/ExpenseEntry';
-import ReceiptScanner from '../screens/shared/ReceiptScanner';
+import MoneyChat from '../screens/personal/MoneyChat';
 import BudgetPlanning from '../screens/personal/BudgetPlanning';
 import Settings from '../screens/shared/Settings';
 
@@ -20,7 +20,7 @@ const PersonalNavigator: React.FC = () => {
         <CustomTabBar
           {...props}
           accentColor={COLORS.personal}
-          centerButtonGradient={GRADIENTS.primary.colors as [string, string]}
+          centerButtonGradient={GRADIENTS.personalHero.colors as [string, string]}
         />
       )}
       screenOptions={({ route }) => ({
@@ -37,8 +37,8 @@ const PersonalNavigator: React.FC = () => {
             case 'ExpenseEntry':
               iconName = 'plus-circle';
               break;
-            case 'ReceiptScanner':
-              iconName = 'camera';
+            case 'MoneyChat':
+              iconName = 'message-circle';
               break;
             case 'Settings':
               iconName = 'settings';
@@ -48,15 +48,14 @@ const PersonalNavigator: React.FC = () => {
           return <Feather name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: COLORS.personal,
-        tabBarInactiveTintColor: COLORS.textTertiary,
+        tabBarInactiveTintColor: CALM.neutral,
         tabBarShowLabel: false,
         headerStyle: {
-          backgroundColor: COLORS.personal,
-          ...SHADOWS.md,
+          backgroundColor: CALM.background,
         },
-        headerTintColor: '#fff',
+        headerTintColor: CALM.textPrimary,
         headerTitleStyle: {
-          fontWeight: TYPOGRAPHY.weight.bold as '700',
+          fontWeight: TYPOGRAPHY.weight.semibold as '600',
           fontSize: TYPOGRAPHY.size.lg,
         },
       })}
@@ -77,9 +76,9 @@ const PersonalNavigator: React.FC = () => {
         options={{ title: 'Add' }}
       />
       <Tab.Screen
-        name="ReceiptScanner"
-        component={ReceiptScanner}
-        options={{ title: 'Scan' }}
+        name="MoneyChat"
+        component={MoneyChat}
+        options={{ title: 'Chat' }}
       />
       <Tab.Screen
         name="Settings"

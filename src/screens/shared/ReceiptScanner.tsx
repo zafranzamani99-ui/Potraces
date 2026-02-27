@@ -570,9 +570,9 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   addItemBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.sm,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: CALM.accent,
     alignItems: 'center',
     justifyContent: 'center',

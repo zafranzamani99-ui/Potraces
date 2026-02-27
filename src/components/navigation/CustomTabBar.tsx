@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
     textAlign: 'center',
   },
@@ -176,19 +176,14 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.xl,
-    ...Platform.select({
-      ios: {
-        shadowColor: CALM.accent,
-        shadowOpacity: 0.4,
-      },
-      android: {
-        elevation: 12,
-      },
-    }),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
   },
   centerLabel: {
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.textPrimary,
     marginTop: 2,

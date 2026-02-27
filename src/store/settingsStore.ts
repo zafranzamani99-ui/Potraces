@@ -15,11 +15,13 @@ interface SettingsState {
   currency: string;
   hapticEnabled: boolean;
   notificationsEnabled: boolean;
+  businessModeEnabled: boolean;
   defaultMode: 'personal' | 'business';
   setUserName: (name: string) => void;
   setCurrency: (currency: string) => void;
   setHapticEnabled: (enabled: boolean) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
+  setBusinessModeEnabled: (enabled: boolean) => void;
   setDefaultMode: (mode: 'personal' | 'business') => void;
   clearAllData: () => void;
 }
@@ -31,12 +33,14 @@ export const useSettingsStore = create<SettingsState>()(
       currency: 'RM',
       hapticEnabled: true,
       notificationsEnabled: true,
+      businessModeEnabled: false,
       defaultMode: 'personal',
 
       setUserName: (userName) => set({ userName }),
       setCurrency: (currency) => set({ currency }),
       setHapticEnabled: (hapticEnabled) => set({ hapticEnabled }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
+      setBusinessModeEnabled: (businessModeEnabled) => set({ businessModeEnabled }),
       setDefaultMode: (defaultMode) => set({ defaultMode }),
 
       clearAllData: () => {
@@ -44,6 +48,7 @@ export const useSettingsStore = create<SettingsState>()(
           transactions: [],
           subscriptions: [],
           budgets: [],
+          goals: [],
         });
 
         useBusinessStore.setState({
@@ -82,6 +87,7 @@ export const useSettingsStore = create<SettingsState>()(
           currency: 'RM',
           hapticEnabled: true,
           notificationsEnabled: true,
+          businessModeEnabled: false,
           defaultMode: 'personal',
         });
       },

@@ -9,6 +9,7 @@ export const usePersonalStore = create<PersonalState>()(
       transactions: [],
       subscriptions: [],
       budgets: [],
+      goals: [],
 
       addTransaction: (transaction) =>
         set((state) => ({
@@ -110,6 +111,68 @@ export const usePersonalStore = create<PersonalState>()(
             ...state.transactions,
           ],
         })),
+
+      addGoal: (goal) =>
+        set((state) => ({
+          goals: [
+            {
+              ...goal,
+              id: Date.now().toString(),
+              currentAmount: 0,
+              contributions: [],
+              milestones: [
+                { percentage: 25, label: 'Quarter way!', reached: false },
+                { percentage: 50, label: 'Halfway there!', reached: false },
+                { percentage: 75, label: 'Almost!', reached: false },
+                { percentage: 100, label: 'Goal reached!', reached: false },
+              ],
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+            ...state.goals,
+          ],
+        })),
+
+      updateGoal: (id, updates) =>
+        set((state) => ({
+          goals: state.goals.map((goal) =>
+            goal.id === id
+              ? { ...goal, ...updates, updatedAt: new Date() }
+              : goal
+          ),
+        })),
+
+      deleteGoal: (id) =>
+        set((state) => ({
+          goals: state.goals.filter((g) => g.id !== id),
+        })),
+
+      contributeToGoal: (goalId, amount, note) =>
+        set((state) => ({
+          goals: state.goals.map((goal) => {
+            if (goal.id !== goalId) return goal;
+            const newContribution = {
+              id: Date.now().toString(),
+              amount,
+              note,
+              date: new Date(),
+            };
+            const newCurrentAmount = goal.currentAmount + amount;
+            const updatedMilestones = goal.milestones.map((m) => {
+              if (!m.reached && newCurrentAmount >= (m.percentage / 100) * goal.targetAmount) {
+                return { ...m, reached: true, reachedAt: new Date() };
+              }
+              return m;
+            });
+            return {
+              ...goal,
+              currentAmount: newCurrentAmount,
+              contributions: [...goal.contributions, newContribution],
+              milestones: updatedMilestones,
+              updatedAt: new Date(),
+            };
+          }),
+        })),
     }),
     {
       name: 'personal-storage',
@@ -135,6 +198,20 @@ export const usePersonalStore = create<PersonalState>()(
           createdAt: b.createdAt instanceof Date ? b.createdAt.toISOString() : b.createdAt,
           updatedAt: b.updatedAt instanceof Date ? b.updatedAt.toISOString() : b.updatedAt,
         })),
+        goals: state.goals.map((g) => ({
+          ...g,
+          deadline: g.deadline instanceof Date ? g.deadline.toISOString() : g.deadline,
+          contributions: g.contributions.map((c) => ({
+            ...c,
+            date: c.date instanceof Date ? c.date.toISOString() : c.date,
+          })),
+          milestones: g.milestones.map((m) => ({
+            ...m,
+            reachedAt: m.reachedAt instanceof Date ? m.reachedAt.toISOString() : m.reachedAt,
+          })),
+          createdAt: g.createdAt instanceof Date ? g.createdAt.toISOString() : g.createdAt,
+          updatedAt: g.updatedAt instanceof Date ? g.updatedAt.toISOString() : g.updatedAt,
+        })),
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -159,6 +236,20 @@ export const usePersonalStore = create<PersonalState>()(
             endDate: new Date(b.endDate),
             createdAt: new Date(b.createdAt),
             updatedAt: new Date(b.updatedAt),
+          }));
+          state.goals = (state.goals || []).map((g: any) => ({
+            ...g,
+            deadline: g.deadline ? new Date(g.deadline) : undefined,
+            contributions: (g.contributions || []).map((c: any) => ({
+              ...c,
+              date: new Date(c.date),
+            })),
+            milestones: (g.milestones || []).map((m: any) => ({
+              ...m,
+              reachedAt: m.reachedAt ? new Date(m.reachedAt) : undefined,
+            })),
+            createdAt: new Date(g.createdAt),
+            updatedAt: new Date(g.updatedAt),
           }));
         }
       },

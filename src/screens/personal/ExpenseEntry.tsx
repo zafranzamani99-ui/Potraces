@@ -15,7 +15,7 @@ import { Audio } from 'expo-av';
 
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
@@ -491,6 +491,7 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.surface,
     borderWidth: 1,
     borderColor: CALM.border,
+    minHeight: 44,
   },
   modePillActive: {
     backgroundColor: CALM.accent,

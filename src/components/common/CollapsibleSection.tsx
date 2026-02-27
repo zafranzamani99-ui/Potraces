@@ -9,6 +9,7 @@ import {
   Platform,
   UIManager,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { TYPE, SPACING, CALM } from '../../constants';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -37,9 +38,13 @@ export default function CollapsibleSection({
     <View style={styles.container}>
       <TouchableOpacity onPress={toggle} style={styles.header} activeOpacity={0.6}>
         <Text style={styles.headerText}>
-          {isOpen ? '- ' : '+ '}
           {title}
         </Text>
+        <Feather
+          name={isOpen ? 'chevron-down' : 'chevron-right'}
+          size={16}
+          color={CALM.textSecondary}
+        />
       </TouchableOpacity>
       {isOpen && <View style={styles.content}>{children}</View>}
     </View>
@@ -51,7 +56,11 @@ const styles = StyleSheet.create({
     marginVertical: SPACING.sm,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: SPACING.md,
+    minHeight: 44,
   },
   headerText: {
     fontSize: TYPE.label.fontSize,

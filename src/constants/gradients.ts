@@ -17,7 +17,7 @@ export interface GradientConfig {
 export const GRADIENTS = {
   // Personal mode hero
   personalHero: {
-    colors: [COLORS.personal, '#8B7CFF'],
+    colors: [COLORS.personal, '#DEAB22'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   } as GradientConfig,
@@ -33,7 +33,7 @@ export const GRADIENTS = {
   // For CTA buttons and primary actions
 
   primary: {
-    colors: ['#5B4FE9', '#8B7CFF'],
+    colors: ['#4F5104', '#B2780A'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 0 },
   } as GradientConfig,
@@ -78,7 +78,7 @@ export const GRADIENTS = {
   } as GradientConfig,
 
   neutralCard: {
-    colors: [withAlpha('#5B4FE9', 0.08), withAlpha('#5B4FE9', 0.02)],
+    colors: [withAlpha('#4F5104', 0.08), withAlpha('#4F5104', 0.02)],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   } as GradientConfig,

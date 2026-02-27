@@ -2,7 +2,7 @@
 export type AppMode = 'personal' | 'business';
 
 // Business Income Types
-export type IncomeType = 'seller' | 'freelance' | 'parttime' | 'rider' | 'mixed';
+export type IncomeType = 'seller' | 'stall' | 'freelance' | 'parttime' | 'rider' | 'mixed';
 
 export type IncomeStream = {
   id: string;
@@ -143,6 +143,113 @@ export interface SellerState {
   };
 }
 
+// ─── STALL TYPES ──────────────────────────────────────────
+export type SessionCondition = 'good' | 'slow' | 'rainy' | 'hot' | 'normal';
+export type StallPaymentMethod = 'cash' | 'qr';
+
+export interface StallProduct {
+  id: string;
+  name: string;
+  price: number;
+  isActive: boolean;
+  totalSold: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface StallSale {
+  id: string;
+  sessionId: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  paymentMethod: StallPaymentMethod;
+  regularCustomerId?: string;
+  timestamp: Date;
+}
+
+export interface StallSession {
+  id: string;
+  name?: string;
+  startedAt: Date;
+  closedAt?: Date;
+  isActive: boolean;
+  condition?: SessionCondition;
+  sales: StallSale[];
+  productsSnapshot: { productId: string; productName: string; startQty: number; remainingQty: number }[];
+  totalRevenue: number;
+  totalCash: number;
+  totalQR: number;
+  note?: string;
+  transferredToPersonal?: boolean;
+  transferAmount?: number;
+}
+
+export interface RegularCustomer {
+  id: string;
+  name: string;
+  usualOrder?: string;
+  visitCount: number;
+  lastVisit?: Date;
+  note?: string;
+  createdAt: Date;
+}
+
+export interface StallState {
+  sessions: StallSession[];
+  activeSessionId: string | null;
+  products: StallProduct[];
+  regularCustomers: RegularCustomer[];
+
+  // Session actions
+  startSession: (name?: string, productSetup?: { productId: string; startQty: number }[]) => string;
+  closeSession: (condition?: SessionCondition, note?: string) => void;
+  getActiveSession: () => StallSession | null;
+
+  // Sale actions
+  addSale: (sale: Omit<StallSale, 'id' | 'sessionId' | 'timestamp'>) => void;
+  removeSale: (saleId: string) => void;
+
+  // Product actions
+  addProduct: (product: Omit<StallProduct, 'id' | 'totalSold' | 'createdAt' | 'updatedAt'>) => void;
+  updateProduct: (id: string, updates: Partial<StallProduct>) => void;
+  deleteProduct: (id: string) => void;
+
+  // Regular customer actions
+  addRegularCustomer: (customer: Omit<RegularCustomer, 'id' | 'visitCount' | 'createdAt'>) => void;
+  updateRegularCustomer: (id: string, updates: Partial<RegularCustomer>) => void;
+  deleteRegularCustomer: (id: string) => void;
+  recordVisit: (customerId: string) => void;
+
+  // Derived data
+  getSessionSummary: (sessionId: string) => {
+    totalRevenue: number;
+    totalCash: number;
+    totalQR: number;
+    saleCount: number;
+    productBreakdown: { productName: string; qtySold: number; revenue: number }[];
+    avgSaleValue: number;
+    duration: number; // minutes
+  };
+  getProductPerformance: (productId: string) => {
+    totalSold: number;
+    totalRevenue: number;
+    sessionsAppeared: number;
+    avgPerSession: number;
+  };
+  getLifetimeStats: () => {
+    totalSessions: number;
+    totalRevenue: number;
+    avgPerSession: number;
+    bestSession: StallSession | null;
+  };
+
+  // Transfer bridge
+  markSessionTransferred: (sessionId: string, amount: number) => void;
+}
+
 // Navigation Types
 export type RootStackParamList = {
   PersonalMain: undefined;
@@ -168,6 +275,13 @@ export type RootStackParamList = {
   SellerProducts: undefined;
   SeasonSummary: { seasonId?: string } | undefined;
   PastSeasons: undefined;
+  Goals: undefined;
+  FinancialPulse: undefined;
+  // Stall screens
+  StallSessionSetup: undefined;
+  StallCloseSession: undefined;
+  StallSessionSummary: { sessionId: string };
+  StallProducts: undefined;
 };
 
 export type PersonalStackParamList = {
@@ -190,6 +304,11 @@ export type BusinessStackParamList = {
   SellerNewOrder: undefined;
   SellerProducts: undefined;
   SellerSeasons: undefined;
+  // Stall tabs
+  StallDashboard: undefined;
+  StallSell: undefined;
+  StallHistory: undefined;
+  StallRegulars: undefined;
 };
 
 export interface Transaction {
@@ -247,6 +366,35 @@ export interface Budget {
   period: 'monthly' | 'weekly' | 'yearly';
   startDate: Date;
   endDate: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface GoalContribution {
+  id: string;
+  amount: number;
+  note?: string;
+  date: Date;
+}
+
+export interface GoalMilestone {
+  percentage: number; // 25, 50, 75, 100
+  label: string;
+  reached: boolean;
+  reachedAt?: Date;
+}
+
+export interface Goal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  deadline?: Date;
+  category: string;
+  icon: string;
+  color: string;
+  contributions: GoalContribution[];
+  milestones: GoalMilestone[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -358,7 +506,7 @@ export interface SplitExpense {
   splitMethod: SplitMethod;
   participants: SplitParticipant[];
   items: SplitItem[];
-  paidBy: Contact;
+  paidBy?: Contact;
   category?: string;
   mode: AppMode;
   createdAt: Date;
@@ -437,6 +585,7 @@ export interface PersonalState {
   transactions: Transaction[];
   subscriptions: Subscription[];
   budgets: Budget[];
+  goals: Goal[];
   addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
@@ -447,6 +596,10 @@ export interface PersonalState {
   deleteSubscription: (id: string) => void;
   deleteBudget: (id: string) => void;
   addTransferIncome: (transfer: Transfer) => void;
+  addGoal: (goal: Omit<Goal, 'id' | 'currentAmount' | 'contributions' | 'milestones' | 'createdAt' | 'updatedAt'>) => void;
+  updateGoal: (id: string, updates: Partial<Goal>) => void;
+  deleteGoal: (id: string) => void;
+  contributeToGoal: (goalId: string, amount: number, note?: string) => void;
 }
 
 export interface BusinessState {

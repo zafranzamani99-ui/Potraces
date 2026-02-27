@@ -25,6 +25,11 @@ interface CategoryState {
   businessIncomeCategoryOverrides: Record<string, CategoryOverride>;
   customBusinessExpenseCategories: CategoryOption[];
   customBusinessIncomeCategories: CategoryOption[];
+  // Order
+  expenseCategoryOrder: string[];
+  incomeCategoryOrder: string[];
+  businessExpenseCategoryOrder: string[];
+  businessIncomeCategoryOrder: string[];
 
   updateCategoryOverride: (
     type: 'expense' | 'income',
@@ -42,6 +47,11 @@ interface CategoryState {
     id: string,
     mode?: 'personal' | 'business'
   ) => void;
+  setCategoryOrder: (
+    type: 'expense' | 'income',
+    order: string[],
+    mode?: 'personal' | 'business'
+  ) => void;
   getExpenseCategories: (mode?: 'personal' | 'business') => CategoryOption[];
   getIncomeCategories: (mode?: 'personal' | 'business') => CategoryOption[];
 }
@@ -57,6 +67,10 @@ export const useCategoryStore = create<CategoryState>()(
       businessIncomeCategoryOverrides: {},
       customBusinessExpenseCategories: [],
       customBusinessIncomeCategories: [],
+      expenseCategoryOrder: [],
+      incomeCategoryOrder: [],
+      businessExpenseCategoryOrder: [],
+      businessIncomeCategoryOrder: [],
 
       updateCategoryOverride: (type, id, updates, mode = 'personal') =>
         set((state) => {
@@ -110,36 +124,69 @@ export const useCategoryStore = create<CategoryState>()(
           };
         }),
 
+      setCategoryOrder: (type, order, mode = 'personal') =>
+        set(() => {
+          const key =
+            mode === 'business'
+              ? type === 'expense'
+                ? 'businessExpenseCategoryOrder'
+                : 'businessIncomeCategoryOrder'
+              : type === 'expense'
+                ? 'expenseCategoryOrder'
+                : 'incomeCategoryOrder';
+          return { [key]: order };
+        }),
+
       getExpenseCategories: (mode = 'personal') => {
         const state = get();
+        let cats: CategoryOption[];
+        let order: string[];
         if (mode === 'business') {
           const defaults = BUSINESS_EXPENSE_CATEGORIES.map((cat) => ({
             ...cat,
             ...state.businessExpenseCategoryOverrides[cat.id],
           }));
-          return [...defaults, ...state.customBusinessExpenseCategories];
+          cats = [...defaults, ...state.customBusinessExpenseCategories];
+          order = state.businessExpenseCategoryOrder;
+        } else {
+          const defaults = EXPENSE_CATEGORIES.map((cat) => ({
+            ...cat,
+            ...state.expenseCategoryOverrides[cat.id],
+          }));
+          cats = [...defaults, ...state.customExpenseCategories];
+          order = state.expenseCategoryOrder;
         }
-        const defaults = EXPENSE_CATEGORIES.map((cat) => ({
-          ...cat,
-          ...state.expenseCategoryOverrides[cat.id],
-        }));
-        return [...defaults, ...state.customExpenseCategories];
+        if (order.length > 0) {
+          const orderMap = new Map(order.map((id, i) => [id, i]));
+          cats.sort((a, b) => (orderMap.get(a.id) ?? 999) - (orderMap.get(b.id) ?? 999));
+        }
+        return cats;
       },
 
       getIncomeCategories: (mode = 'personal') => {
         const state = get();
+        let cats: CategoryOption[];
+        let order: string[];
         if (mode === 'business') {
           const defaults = BUSINESS_INCOME_CATEGORIES.map((cat) => ({
             ...cat,
             ...state.businessIncomeCategoryOverrides[cat.id],
           }));
-          return [...defaults, ...state.customBusinessIncomeCategories];
+          cats = [...defaults, ...state.customBusinessIncomeCategories];
+          order = state.businessIncomeCategoryOrder;
+        } else {
+          const defaults = INCOME_CATEGORIES.map((cat) => ({
+            ...cat,
+            ...state.incomeCategoryOverrides[cat.id],
+          }));
+          cats = [...defaults, ...state.customIncomeCategories];
+          order = state.incomeCategoryOrder;
         }
-        const defaults = INCOME_CATEGORIES.map((cat) => ({
-          ...cat,
-          ...state.incomeCategoryOverrides[cat.id],
-        }));
-        return [...defaults, ...state.customIncomeCategories];
+        if (order.length > 0) {
+          const orderMap = new Map(order.map((id, i) => [id, i]));
+          cats.sort((a, b) => (orderMap.get(a.id) ?? 999) - (orderMap.get(b.id) ?? 999));
+        }
+        return cats;
       },
     }),
     {
@@ -154,6 +201,10 @@ export const useCategoryStore = create<CategoryState>()(
         businessIncomeCategoryOverrides: state.businessIncomeCategoryOverrides,
         customBusinessExpenseCategories: state.customBusinessExpenseCategories,
         customBusinessIncomeCategories: state.customBusinessIncomeCategories,
+        expenseCategoryOrder: state.expenseCategoryOrder,
+        incomeCategoryOrder: state.incomeCategoryOrder,
+        businessExpenseCategoryOrder: state.businessExpenseCategoryOrder,
+        businessIncomeCategoryOrder: state.businessIncomeCategoryOrder,
       }),
     }
   )

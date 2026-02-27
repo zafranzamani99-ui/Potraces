@@ -22,7 +22,6 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useSavingsStore } from '../../store/savingsStore';
 import {
-  COLORS,
   CALM,
   TYPE,
   SPACING,
@@ -30,7 +29,6 @@ import {
   RADIUS,
   withAlpha,
 } from '../../constants';
-// COLORS.personal / COLORS.business kept for mode accent navigation only
 import { useCategories } from '../../hooks/useCategories';
 import Card from '../../components/common/Card';
 import ProgressBar from '../../components/common/ProgressBar';
@@ -325,8 +323,8 @@ const AccountOverview: React.FC = () => {
         >
           <Card>
             <View style={styles.sectionHeader}>
-              <View style={[styles.sectionIconBg, { backgroundColor: withAlpha(COLORS.personal, 0.12) }]}>
-                <Feather name="credit-card" size={16} color={COLORS.personal} />
+              <View style={[styles.sectionIconBg, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
+                <Feather name="credit-card" size={16} color={CALM.accent} />
               </View>
               <Text style={styles.sectionTitle}>Wallets</Text>
               <Feather name="chevron-right" size={16} color={CALM.textSecondary} />
@@ -535,8 +533,8 @@ const AccountOverview: React.FC = () => {
         >
           <Card>
             <View style={styles.sectionHeader}>
-              <View style={[styles.sectionIconBg, { backgroundColor: withAlpha('#A06CD5', 0.12) }]}>
-                <Feather name="trending-up" size={16} color="#A06CD5" />
+              <View style={[styles.sectionIconBg, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
+                <Feather name="trending-up" size={16} color={CALM.accent} />
               </View>
               <Text style={styles.sectionTitle}>Savings</Text>
               <Feather name="chevron-right" size={16} color={CALM.textSecondary} />
@@ -785,7 +783,7 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   defaultBadge: {
-    backgroundColor: withAlpha(COLORS.personal, 0.1),
+    backgroundColor: withAlpha(CALM.accent, 0.1),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.full,
@@ -793,7 +791,7 @@ const styles = StyleSheet.create({
   defaultBadgeText: {
     fontSize: 9,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.personal,
+    color: CALM.accent,
     textTransform: 'uppercase',
   },
   walletBalance: {
