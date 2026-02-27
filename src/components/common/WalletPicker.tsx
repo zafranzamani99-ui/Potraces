@@ -8,7 +8,7 @@ import {
   FlatList,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { Wallet } from '../../types';
 import { lightTap } from '../../services/haptics';
 
@@ -72,7 +72,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
             <Text style={styles.placeholder}>Select wallet</Text>
           )}
         </View>
-        <Feather name="chevron-down" size={20} color={COLORS.textSecondary} />
+        <Feather name="chevron-down" size={20} color={CALM.textSecondary} />
       </TouchableOpacity>
 
       <Modal
@@ -90,7 +90,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
             <View style={styles.header}>
               <Text style={styles.title}>{label || 'Select Wallet'}</Text>
               <TouchableOpacity onPress={() => setDropdownOpen(false)}>
-                <Feather name="x" size={22} color={COLORS.text} />
+                <Feather name="x" size={22} color={CALM.textPrimary} />
               </TouchableOpacity>
             </View>
             <FlatList
@@ -172,19 +172,19 @@ const styles = StyleSheet.create({
   label: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.md,
   },
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   selectedRow: {
     flexDirection: 'row',
@@ -205,18 +205,18 @@ const styles = StyleSheet.create({
   walletName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   walletBalance: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginTop: 1,
   },
   placeholder: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.textTertiary,
+    color: CALM.neutral,
   },
   overlay: {
     flex: 1,
@@ -225,10 +225,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
   },
   modal: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
-    ...SHADOWS.xl,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   header: {
     flexDirection: 'row',
@@ -236,12 +237,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: CALM.border,
   },
   title: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   item: {
     flexDirection: 'row',
@@ -263,15 +264,15 @@ const styles = StyleSheet.create({
   itemName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   itemBalance: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginTop: 1,
   },
   defaultBadge: {
-    backgroundColor: withAlpha(COLORS.personal, 0.1),
+    backgroundColor: withAlpha(CALM.accent, 0.1),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.sm,
@@ -279,7 +280,7 @@ const styles = StyleSheet.create({
   defaultText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.personal,
+    color: CALM.accent,
   },
 });
 

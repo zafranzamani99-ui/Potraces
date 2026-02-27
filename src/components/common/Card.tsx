@@ -6,35 +6,30 @@ import {
   ViewStyle,
   Animated,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { COLORS, SHADOWS, RADIUS, SPACING, withAlpha } from '../../constants';
-import GRADIENTS, { GradientConfig } from '../../constants/gradients';
+import { CALM, RADIUS, SPACING } from '../../constants';
 import { lightTap } from '../../services/haptics';
 
 // ─── TYPES ──────────────────────────────────────────────────
-type CardVariant = 'elevated' | 'outlined' | 'filled' | 'glass';
-type CardElevation = 'sm' | 'md' | 'lg';
+type CardVariant = 'elevated' | 'outlined' | 'filled';
 
 interface CardProps {
   children: React.ReactNode;
   variant?: CardVariant;
-  elevation?: CardElevation;
   onPress?: () => void;
-  gradient?: GradientConfig;
   borderRadius?: keyof typeof RADIUS;
   style?: ViewStyle;
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  // gradient prop kept for API compat but ignored
+  gradient?: any;
+  elevation?: any;
 }
 
 // ─── COMPONENT ──────────────────────────────────────────────
 const Card: React.FC<CardProps> = ({
   children,
   variant = 'elevated',
-  elevation = 'sm',
   onPress,
-  gradient,
   borderRadius = 'xl',
   style,
   accessibilityLabel,
@@ -43,7 +38,6 @@ const Card: React.FC<CardProps> = ({
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const radiusValue = RADIUS[borderRadius];
 
-  // ── Press animation (only when tappable) ──
   const handlePressIn = useCallback(() => {
     if (!onPress) return;
     Animated.spring(scaleAnim, {
@@ -70,118 +64,46 @@ const Card: React.FC<CardProps> = ({
     onPress();
   }, [onPress]);
 
-  // ── Variant-specific styles ──
   const variantStyle: ViewStyle = (() => {
     switch (variant) {
       case 'outlined':
         return {
-          backgroundColor: gradient ? 'transparent' : COLORS.background,
+          backgroundColor: CALM.surface,
           borderWidth: 1,
-          borderColor: COLORS.border,
+          borderColor: CALM.border,
         };
       case 'filled':
         return {
-          backgroundColor: gradient ? 'transparent' : COLORS.surface,
-        };
-      case 'glass':
-        return {
-          backgroundColor: 'transparent',
-          overflow: 'hidden',
+          backgroundColor: CALM.background,
+          borderWidth: 1,
+          borderColor: CALM.border,
         };
       case 'elevated':
       default:
         return {
-          backgroundColor: gradient ? 'transparent' : COLORS.card,
-          ...SHADOWS[elevation],
+          backgroundColor: CALM.surface,
+          borderWidth: 1,
+          borderColor: CALM.border,
         };
     }
   })();
 
-  // Render card content with appropriate wrapper
-  const renderContent = () => {
-    // Glass variant with blur effect
-    if (variant === 'glass') {
-      return (
-        <Animated.View
-          style={[
-            styles.base,
-            variantStyle,
-            {
-              borderRadius: radiusValue,
-              transform: [{ scale: scaleAnim }],
-            },
-            style,
-          ]}
-        >
-          <BlurView
-            intensity={60}
-            style={[
-              styles.blurContainer,
-              {
-                borderRadius: radiusValue,
-                backgroundColor: withAlpha(COLORS.card, 0.7),
-                borderWidth: 1,
-                borderColor: withAlpha('#fff', 0.15),
-              },
-            ]}
-          >
-            <View style={styles.glassContent}>{children}</View>
-          </BlurView>
-        </Animated.View>
-      );
-    }
+  const content = (
+    <Animated.View
+      style={[
+        styles.base,
+        variantStyle,
+        {
+          borderRadius: radiusValue,
+          transform: [{ scale: scaleAnim }],
+        },
+        style,
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
 
-    // Gradient background variant
-    if (gradient) {
-      return (
-        <Animated.View
-          style={[
-            styles.base,
-            variantStyle,
-            {
-              borderRadius: radiusValue,
-              transform: [{ scale: scaleAnim }],
-              overflow: 'hidden',
-            },
-            style,
-          ]}
-        >
-          <LinearGradient
-            colors={gradient.colors}
-            start={gradient.start}
-            end={gradient.end}
-            style={[
-              styles.gradientContainer,
-              { borderRadius: radiusValue },
-            ]}
-          >
-            {children}
-          </LinearGradient>
-        </Animated.View>
-      );
-    }
-
-    // Standard variant
-    return (
-      <Animated.View
-        style={[
-          styles.base,
-          variantStyle,
-          {
-            borderRadius: radiusValue,
-            transform: [{ scale: scaleAnim }],
-          },
-          style,
-        ]}
-      >
-        {children}
-      </Animated.View>
-    );
-  };
-
-  const content = renderContent();
-
-  // If pressable, wrap in Pressable
   if (onPress) {
     return (
       <Pressable
@@ -200,19 +122,9 @@ const Card: React.FC<CardProps> = ({
   return content;
 };
 
-// ─── STYLES ─────────────────────────────────────────────────
 const styles = StyleSheet.create({
   base: {
-    padding: SPACING.lg, // 16
-  },
-  gradientContainer: {
     padding: SPACING.lg,
-  },
-  blurContainer: {
-    padding: SPACING.lg,
-  },
-  glassContent: {
-    // Wrapper for blur content to prevent clipping
   },
 });
 

@@ -6,12 +6,9 @@ import {
   StyleSheet,
   Modal,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
-import GRADIENTS from '../../constants/gradients';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { FREE_TIER, PREMIUM_CONFIG } from '../../constants/premium';
-import GradientButton from './GradientButton';
 import { usePremiumStore } from '../../store/premiumStore';
 
 type PaywallFeature = 'wallet' | 'budget' | 'scan';
@@ -67,13 +64,8 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
     >
       <View style={styles.overlay}>
         <View style={styles.modal}>
-          {/* Header with gradient */}
-          <LinearGradient
-            colors={GRADIENTS.premium.colors as [string, string]}
-            start={GRADIENTS.premium.start}
-            end={GRADIENTS.premium.end}
-            style={styles.header}
-          >
+          {/* Header */}
+          <View style={styles.header}>
             <View style={styles.crownCircle}>
               <Feather name="award" size={28} color="#FFB347" />
             </View>
@@ -83,7 +75,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
                 ? `You've used ${currentUsage}/${config.freeLimit} free ${config.unit}`
                 : `Free plan allows ${config.freeLimit} ${config.unit}`}
             </Text>
-          </LinearGradient>
+          </View>
 
           {/* Comparison */}
           <View style={styles.body}>
@@ -102,14 +94,9 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
 
               {/* Premium tier */}
               <View style={[styles.tierCard, styles.premiumTierCard]}>
-                <LinearGradient
-                  colors={GRADIENTS.premium.colors as [string, string]}
-                  start={GRADIENTS.premium.start}
-                  end={GRADIENTS.premium.end}
-                  style={styles.premiumBadge}
-                >
+                <View style={styles.premiumBadge}>
                   <Text style={styles.premiumBadgeText}>Premium</Text>
-                </LinearGradient>
+                </View>
                 <View style={styles.tierFeatures}>
                   <TierRow icon="credit-card" text="Unlimited wallets" check />
                   <TierRow icon="pie-chart" text="Unlimited budgets" check />
@@ -121,14 +108,12 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
             </View>
 
             {/* Subscribe button */}
-            <GradientButton
-              title={`Subscribe - ${PREMIUM_CONFIG.currency} ${PREMIUM_CONFIG.price}/${PREMIUM_CONFIG.period}`}
-              onPress={handleSubscribe}
-              gradient={GRADIENTS.premium}
-              size="large"
-              icon="award"
-              textStyle={{ color: '#333' }}
-            />
+            <TouchableOpacity style={styles.subscribeButton} onPress={handleSubscribe}>
+              <Feather name="award" size={18} color="#FFFFFF" />
+              <Text style={styles.subscribeText}>
+                {`Subscribe - ${PREMIUM_CONFIG.currency} ${PREMIUM_CONFIG.price}/${PREMIUM_CONFIG.period}`}
+              </Text>
+            </TouchableOpacity>
 
             {/* Dismiss */}
             <TouchableOpacity style={styles.dismissBtn} onPress={onClose}>
@@ -153,12 +138,12 @@ const TierRow: React.FC<{
     <Feather
       name={check ? 'check-circle' : cross ? 'x-circle' : icon}
       size={14}
-      color={check ? COLORS.income : cross ? COLORS.textTertiary : COLORS.textSecondary}
+      color={check ? CALM.positive : cross ? CALM.neutral : CALM.textSecondary}
     />
     <Text
       style={[
         styles.tierRowText,
-        cross && { color: COLORS.textTertiary, textDecorationLine: 'line-through' },
+        cross && { color: CALM.neutral, textDecorationLine: 'line-through' },
       ]}
     >
       {text}
@@ -175,15 +160,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   modal: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
-    ...SHADOWS.xl,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   header: {
     alignItems: 'center',
     paddingVertical: SPACING['2xl'],
     paddingHorizontal: SPACING.xl,
+    backgroundColor: CALM.accent,
   },
   crownCircle: {
     width: 56,
@@ -197,13 +184,13 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#333',
+    color: '#FFFFFF',
     marginBottom: SPACING.xs,
   },
   headerSubtitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: 'rgba(51, 51, 51, 0.7)',
+    color: 'rgba(255, 255, 255, 0.8)',
     textAlign: 'center',
   },
   body: {
@@ -216,11 +203,11 @@ const styles = StyleSheet.create({
   },
   tierCard: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   premiumTierCard: {
     borderColor: '#FFB347',
@@ -229,7 +216,7 @@ const styles = StyleSheet.create({
   tierLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.sm,
     textAlign: 'center',
   },
@@ -239,11 +226,12 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: RADIUS.sm,
     marginBottom: SPACING.sm,
+    backgroundColor: CALM.accent,
   },
   premiumBadgeText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#333',
+    color: '#FFFFFF',
   },
   tierFeatures: {
     gap: SPACING.sm,
@@ -256,8 +244,22 @@ const styles = StyleSheet.create({
   tierRowText: {
     fontSize: 11,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     flex: 1,
+  },
+  subscribeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    backgroundColor: CALM.accent,
+    paddingVertical: SPACING.lg,
+    borderRadius: RADIUS.md,
+  },
+  subscribeText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: '#FFFFFF',
   },
   dismissBtn: {
     alignItems: 'center',
@@ -267,7 +269,7 @@ const styles = StyleSheet.create({
   dismissText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.textTertiary,
+    color: CALM.neutral,
   },
 });
 

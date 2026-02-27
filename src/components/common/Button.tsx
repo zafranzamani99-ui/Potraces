@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { useCallback, useRef } from 'react';
 import {
   Pressable,
   Text,
@@ -10,9 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SHADOWS, RADIUS, SPACING, TYPOGRAPHY, withAlpha, coloredShadow } from '../../constants';
-import GRADIENTS, { GradientConfig } from '../../constants/gradients';
+import { CALM, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
 import { lightTap } from '../../services/haptics';
 
 // ─── TYPES ──────────────────────────────────────────────────
@@ -30,7 +28,7 @@ interface ButtonProps {
   loading?: boolean;
   fullWidth?: boolean;
   haptic?: boolean;
-  gradient?: GradientConfig;
+  gradient?: any; // kept for API compat, ignored
   style?: ViewStyle;
   textStyle?: TextStyle;
   accessibilityLabel?: string;
@@ -40,77 +38,70 @@ interface ButtonProps {
 // ─── VARIANT COLOURS ────────────────────────────────────────
 const VARIANT_CONFIG: Record<
   ButtonVariant,
-  {
-    bg: string;
-    text: string;
-    border: string;
-    filled: boolean;
-  }
+  { bg: string; text: string; border: string; filled: boolean }
 > = {
   primary: {
-    bg: COLORS.primary,
+    bg: CALM.accent,
     text: '#FFFFFF',
-    border: COLORS.primary,
+    border: CALM.accent,
     filled: true,
   },
   secondary: {
-    bg: COLORS.secondary,
+    bg: CALM.positive,
     text: '#FFFFFF',
-    border: COLORS.secondary,
+    border: CALM.positive,
     filled: true,
   },
   outline: {
     bg: 'transparent',
-    text: COLORS.primary,
-    border: COLORS.primary,
+    text: CALM.accent,
+    border: CALM.accent,
     filled: false,
   },
   ghost: {
     bg: 'transparent',
-    text: COLORS.primary,
+    text: CALM.accent,
     border: 'transparent',
     filled: false,
   },
   danger: {
-    bg: COLORS.danger,
+    bg: CALM.neutral,
     text: '#FFFFFF',
-    border: COLORS.danger,
+    border: CALM.neutral,
     filled: true,
   },
   success: {
-    bg: COLORS.success,
+    bg: CALM.positive,
     text: '#FFFFFF',
-    border: COLORS.success,
+    border: CALM.positive,
     filled: true,
   },
 };
 
-// ─── SIZE CONFIG (Fitts's Law — larger targets are easier to hit) ─
 const SIZE_CONFIG: Record<
   ButtonSize,
   { height: number; paddingH: number; fontSize: number; iconSize: number }
 > = {
   small: {
     height: 36,
-    paddingH: SPACING.md,         // 12
-    fontSize: TYPOGRAPHY.size.sm,  // 13
+    paddingH: SPACING.md,
+    fontSize: TYPOGRAPHY.size.sm,
     iconSize: 16,
   },
   medium: {
     height: 48,
-    paddingH: SPACING.xl,         // 20
-    fontSize: TYPOGRAPHY.size.base, // 15
+    paddingH: SPACING.xl,
+    fontSize: TYPOGRAPHY.size.base,
     iconSize: 18,
   },
   large: {
     height: 56,
-    paddingH: SPACING['2xl'],     // 24
-    fontSize: TYPOGRAPHY.size.lg,  // 17
+    paddingH: SPACING['2xl'],
+    fontSize: TYPOGRAPHY.size.lg,
     iconSize: 20,
   },
 };
 
-// ─── COMPONENT ──────────────────────────────────────────────
 const Button: React.FC<ButtonProps> = ({
   title,
   onPress,
@@ -122,42 +113,16 @@ const Button: React.FC<ButtonProps> = ({
   loading = false,
   fullWidth = false,
   haptic = true,
-  gradient,
   style,
   textStyle,
   accessibilityLabel,
   accessibilityHint,
 }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const shimmerAnim = useRef(new Animated.Value(0)).current;
-
   const variantCfg = VARIANT_CONFIG[variant];
   const sizeCfg = SIZE_CONFIG[size];
   const isDisabled = disabled || loading;
 
-  // Shimmer animation for gradient buttons when loading
-  useEffect(() => {
-    if (loading && gradient) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(shimmerAnim, {
-            toValue: 1,
-            duration: 1200,
-            useNativeDriver: true,
-          }),
-          Animated.timing(shimmerAnim, {
-            toValue: 0,
-            duration: 1200,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    } else {
-      shimmerAnim.setValue(0);
-    }
-  }, [loading, gradient, shimmerAnim]);
-
-  // ── Press animation ──
   const handlePressIn = useCallback(() => {
     Animated.spring(scaleAnim, {
       toValue: 0.96,
@@ -178,67 +143,26 @@ const Button: React.FC<ButtonProps> = ({
 
   const handlePress = useCallback(() => {
     if (isDisabled) return;
-    if (haptic) {
-      lightTap();
-    }
+    if (haptic) lightTap();
     onPress();
   }, [isDisabled, haptic, onPress]);
 
-  // ── Derived styles ──
   const containerStyle: ViewStyle = {
     height: sizeCfg.height,
     paddingHorizontal: sizeCfg.paddingH,
-    backgroundColor: gradient ? 'transparent' : variantCfg.bg,
+    backgroundColor: variantCfg.bg,
     borderColor: variantCfg.border,
     borderWidth: variant === 'outline' ? 1.5 : 0,
     alignSelf: fullWidth ? 'stretch' : 'auto',
   };
 
-  const labelColor = gradient || variantCfg.filled ? '#FFFFFF' : variantCfg.text;
-  const indicatorColor = gradient || variantCfg.filled ? '#FFFFFF' : COLORS.primary;
+  const labelColor = variantCfg.filled ? '#FFFFFF' : variantCfg.text;
+  const indicatorColor = variantCfg.filled ? '#FFFFFF' : CALM.accent;
 
-  // Colored shadow for gradient buttons
-  const gradientShadow = gradient && !isDisabled
-    ? coloredShadow(gradient.colors[0])
-    : undefined;
-
-  // ── Render icon helper ──
   const renderIcon = () => {
     if (loading || !icon) return null;
-    return (
-      <Feather
-        name={icon}
-        size={sizeCfg.iconSize}
-        color={labelColor}
-      />
-    );
+    return <Feather name={icon} size={sizeCfg.iconSize} color={labelColor} />;
   };
-
-  // Render button content
-  const buttonContent = (
-    <>
-      {loading ? (
-        <ActivityIndicator size="small" color={indicatorColor} />
-      ) : (
-        <View style={styles.content}>
-          {iconPosition === 'left' && renderIcon()}
-          <Text
-            style={[
-              styles.label,
-              {
-                fontSize: sizeCfg.fontSize,
-                color: labelColor,
-              },
-              textStyle,
-            ]}
-          >
-            {title}
-          </Text>
-          {iconPosition === 'right' && renderIcon()}
-        </View>
-      )}
-    </>
-  );
 
   return (
     <Animated.View
@@ -255,8 +179,6 @@ const Button: React.FC<ButtonProps> = ({
         style={[
           styles.base,
           containerStyle,
-          variant !== 'ghost' && variant !== 'outline' && !gradient && SHADOWS.sm,
-          gradientShadow,
           isDisabled && styles.disabled,
           style,
         ]}
@@ -265,53 +187,40 @@ const Button: React.FC<ButtonProps> = ({
         accessibilityHint={accessibilityHint}
         accessibilityState={{ disabled: isDisabled, busy: loading }}
       >
-        {gradient ? (
-          <Animated.View style={{ opacity: loading && gradient ? shimmerAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [1, 0.7],
-          }) : 1 }}>
-            <LinearGradient
-              colors={gradient.colors}
-              start={gradient.start}
-              end={gradient.end}
+        {loading ? (
+          <ActivityIndicator size="small" color={indicatorColor} />
+        ) : (
+          <View style={styles.content}>
+            {iconPosition === 'left' && renderIcon()}
+            <Text
               style={[
-                styles.gradientContainer,
-                {
-                  height: sizeCfg.height,
-                  paddingHorizontal: sizeCfg.paddingH,
-                  borderRadius: RADIUS.md,
-                },
+                styles.label,
+                { fontSize: sizeCfg.fontSize, color: labelColor },
+                textStyle,
               ]}
             >
-              {buttonContent}
-            </LinearGradient>
-          </Animated.View>
-        ) : (
-          buttonContent
+              {title}
+            </Text>
+            {iconPosition === 'right' && renderIcon()}
+          </View>
         )}
       </Pressable>
     </Animated.View>
   );
 };
 
-// ─── STYLES ─────────────────────────────────────────────────
 const styles = StyleSheet.create({
   base: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADIUS.md, // 10
+    borderRadius: RADIUS.md,
     overflow: 'hidden',
-  },
-  gradientContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   content: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm, // 8
+    gap: SPACING.sm,
   },
   label: {
     fontWeight: TYPOGRAPHY.weight.semibold,

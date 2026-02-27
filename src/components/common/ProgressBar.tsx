@@ -1,8 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, CALM, RADIUS, TYPOGRAPHY, SPACING } from '../../constants';
-import { createGradient } from '../../constants/gradients';
+import { CALM, RADIUS, TYPOGRAPHY, SPACING } from '../../constants';
 import { useSettingsStore } from '../../store/settingsStore';
 
 interface ProgressBarProps {
@@ -22,7 +20,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   label,
   showPercentage = true,
   showTicks = false,
-  color = COLORS.primary,
+  color = CALM.accent,
   height = 8,
   animated = true,
 }) => {
@@ -30,9 +28,6 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   const percentage = total > 0 ? Math.min((current / total) * 100, 100) : 0;
   const isOverBudget = current > total;
   const animValue = useRef(new Animated.Value(0)).current;
-
-  // Single calm fill color — no red/danger
-  const fillGradient = createGradient(CALM.accent, 20);
 
   useEffect(() => {
     if (animated) {
@@ -108,11 +103,8 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
             },
           ]}
         >
-          <LinearGradient
-            colors={fillGradient.colors}
-            start={fillGradient.start}
-            end={fillGradient.end}
-            style={[styles.gradientFill, { borderRadius: RADIUS.sm }]}
+          <View
+            style={[styles.solidFill, { borderRadius: RADIUS.sm, backgroundColor: CALM.accent }]}
           />
         </Animated.View>
       </View>
@@ -141,19 +133,19 @@ const styles = StyleSheet.create({
   label: {
     fontSize: TYPOGRAPHY.size.sm, // 13
     fontWeight: TYPOGRAPHY.weight.semibold, // '600'
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   percentage: {
     fontSize: TYPOGRAPHY.size.sm, // 13
     fontWeight: TYPOGRAPHY.weight.semibold, // '600'
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   overBudget: {
     color: CALM.neutral,
   },
   track: {
     width: '100%',
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -169,14 +161,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 2,
     height: '100%',
-    backgroundColor: COLORS.border,
+    backgroundColor: CALM.border,
     transform: [{ translateX: -1 }],
   },
   fill: {
     overflow: 'hidden',
     position: 'relative',
   },
-  gradientFill: {
+  solidFill: {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -191,12 +183,12 @@ const styles = StyleSheet.create({
   amount: {
     fontSize: TYPOGRAPHY.size.xs, // 11
     fontWeight: TYPOGRAPHY.weight.semibold, // '600'
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   total: {
     fontSize: TYPOGRAPHY.size.xs, // 11
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     fontVariant: ['tabular-nums'],
   },
 });

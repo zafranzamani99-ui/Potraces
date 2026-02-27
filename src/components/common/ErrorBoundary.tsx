@@ -1,7 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import Button from './Button';
 
 interface Props {
@@ -55,7 +55,7 @@ class ErrorBoundary extends Component<Props, State> {
       return (
         <View style={styles.container}>
           <View style={styles.iconContainer}>
-            <Feather name="alert-triangle" size={64} color={COLORS.danger} />
+            <Feather name="alert-triangle" size={64} color={CALM.neutral} />
           </View>
           <Text style={styles.title}>Something Went Wrong</Text>
           <Text style={styles.message}>
@@ -82,13 +82,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: SPACING['2xl'],
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.background,
   },
   iconContainer: {
     width: 120,
     height: 120,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.xl,
@@ -96,13 +96,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.md,
     textAlign: 'center',
   },
   message: {
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING.xl,
     lineHeight: 22,

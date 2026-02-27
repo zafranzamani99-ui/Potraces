@@ -21,7 +21,7 @@ import { usePersonalStore } from '../../store/personalStore';
 import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import PaywallModal from '../../components/common/PaywallModal';
@@ -226,7 +226,7 @@ const ReceiptScanner: React.FC = () => {
         {!imageUri && (
           <Card style={styles.heroCard}>
             <View style={styles.heroIcon}>
-              <Feather name="camera" size={48} color={COLORS.primary} />
+              <Feather name="camera" size={48} color={CALM.accent} />
             </View>
             <Text style={styles.heroTitle}>Scan a Receipt</Text>
             <Text style={styles.heroSubtitle}>
@@ -240,15 +240,15 @@ const ReceiptScanner: React.FC = () => {
 
             <View style={styles.captureButtons}>
               <TouchableOpacity style={styles.captureButton} onPress={handleTakePhoto} activeOpacity={0.7}>
-                <View style={[styles.captureIcon, { backgroundColor: withAlpha(COLORS.primary, 0.12) }]}>
-                  <Feather name="camera" size={24} color={COLORS.primary} />
+                <View style={[styles.captureIcon, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
+                  <Feather name="camera" size={24} color={CALM.accent} />
                 </View>
                 <Text style={styles.captureLabel}>Take Photo</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.captureButton} onPress={handlePickImage} activeOpacity={0.7}>
-                <View style={[styles.captureIcon, { backgroundColor: withAlpha(COLORS.secondary, 0.12) }]}>
-                  <Feather name="image" size={24} color={COLORS.secondary} />
+                <View style={[styles.captureIcon, { backgroundColor: withAlpha(CALM.positive, 0.12) }]}>
+                  <Feather name="image" size={24} color={CALM.positive} />
                 </View>
                 <Text style={styles.captureLabel}>From Gallery</Text>
               </TouchableOpacity>
@@ -262,7 +262,7 @@ const ReceiptScanner: React.FC = () => {
             <View style={styles.previewHeader}>
               <Text style={styles.sectionTitle}>Receipt Image</Text>
               <TouchableOpacity onPress={handleReset} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Feather name="x-circle" size={22} color={COLORS.danger} />
+                <Feather name="x-circle" size={22} color={CALM.neutral} />
               </TouchableOpacity>
             </View>
             <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="contain" />
@@ -281,7 +281,7 @@ const ReceiptScanner: React.FC = () => {
         {/* Loading State */}
         {loading && (
           <Card style={styles.loadingCard}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
+            <ActivityIndicator size="large" color={CALM.accent} />
             <Text style={styles.loadingText}>AI is extracting receipt data...</Text>
             <Text style={styles.loadingSubtext}>This may take a few seconds</Text>
           </Card>
@@ -299,14 +299,14 @@ const ReceiptScanner: React.FC = () => {
                 value={editVendor}
                 onChangeText={setEditVendor}
                 placeholder="Store name"
-                placeholderTextColor={COLORS.textSecondary}
+                placeholderTextColor={CALM.textSecondary}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
 
               {receipt.date && (
                 <View style={styles.metaRow}>
-                  <Feather name="calendar" size={14} color={COLORS.textSecondary} />
+                  <Feather name="calendar" size={14} color={CALM.textSecondary} />
                   <Text style={styles.metaText}>{receipt.date}</Text>
                 </View>
               )}
@@ -329,7 +329,7 @@ const ReceiptScanner: React.FC = () => {
                     onSubmitEditing={Keyboard.dismiss}
                   />
                   <TouchableOpacity onPress={() => handleRemoveItem(index)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Feather name="trash-2" size={18} color={COLORS.danger} />
+                    <Feather name="trash-2" size={18} color={CALM.neutral} />
                   </TouchableOpacity>
                 </View>
               ))}
@@ -341,7 +341,7 @@ const ReceiptScanner: React.FC = () => {
                   value={newItemName}
                   onChangeText={setNewItemName}
                   placeholder="New item"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="next"
                 />
                 <TextInput
@@ -350,7 +350,7 @@ const ReceiptScanner: React.FC = () => {
                   onChangeText={setNewItemAmount}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -431,7 +431,7 @@ const ReceiptScanner: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   scrollContent: {
     padding: SPACING.lg,
@@ -447,7 +447,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: withAlpha(COLORS.primary, 0.1),
+    backgroundColor: withAlpha(CALM.accent, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.lg,
@@ -455,12 +455,12 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.sm,
   },
   heroSubtitle: {
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: SPACING.xl,
@@ -469,7 +469,7 @@ const styles = StyleSheet.create({
   scanLimitText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.warning,
+    color: CALM.neutral,
     marginBottom: SPACING.md,
   },
   captureButtons: {
@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
   captureLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
 
   // Preview
@@ -507,7 +507,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 300,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: CALM.background,
   },
 
   // Loading
@@ -519,11 +519,11 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   loadingSubtext: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
 
   // Data
@@ -533,23 +533,25 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.md,
   },
   formLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.xs,
     marginTop: SPACING.md,
   },
   formInput: {
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   metaRow: {
     flexDirection: 'row',
@@ -559,7 +561,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   itemRow: {
     flexDirection: 'row',
@@ -571,7 +573,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: RADIUS.sm,
-    backgroundColor: COLORS.primary,
+    backgroundColor: CALM.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -581,7 +583,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xl,
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: CALM.border,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -591,24 +593,24 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   summaryValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   totalRow: {
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: CALM.border,
     marginTop: SPACING.sm,
   },
   totalLabel: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   totalInputContainer: {
     flexDirection: 'row',
@@ -618,19 +620,21 @@ const styles = StyleSheet.create({
   totalCurrency: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   totalInput: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
     minWidth: 80,
     textAlign: 'right',
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
 
   // Actions

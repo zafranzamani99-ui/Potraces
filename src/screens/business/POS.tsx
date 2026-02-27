@@ -14,16 +14,13 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useBusinessStore } from '../../store/businessStore';
 import { useCRMStore } from '../../store/crmStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, PAYMENT_METHODS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
-import GRADIENTS from '../../constants/gradients';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, PAYMENT_METHODS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
 import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
-import GradientButton from '../../components/common/GradientButton';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 import Confetti from '../../components/common/Confetti';
@@ -106,7 +103,7 @@ const POS: React.FC = () => {
     const categoryIds = [...new Set(products.map((p) => p.category))];
     return categoryIds.map((id) => {
       const cat = PRODUCT_CATEGORIES.find((c) => c.id === id);
-      return cat || { id, name: id, icon: 'grid', color: COLORS.textSecondary };
+      return cat || { id, name: id, icon: 'grid', color: CALM.textSecondary };
     });
   }, [products]);
 
@@ -304,7 +301,7 @@ const POS: React.FC = () => {
                 <Feather
                   name="grid"
                   size={14}
-                  color={selectedCategory === null ? '#fff' : COLORS.textSecondary}
+                  color={selectedCategory === null ? '#fff' : CALM.textSecondary}
                 />
                 <Text
                   style={[styles.categoryTabText, selectedCategory === null && styles.categoryTabTextActive]}
@@ -321,7 +318,7 @@ const POS: React.FC = () => {
                   <Feather
                     name={cat.icon as keyof typeof Feather.glyphMap}
                     size={14}
-                    color={selectedCategory === cat.id ? '#fff' : COLORS.textSecondary}
+                    color={selectedCategory === cat.id ? '#fff' : CALM.textSecondary}
                   />
                   <Text
                     style={[styles.categoryTabText, selectedCategory === cat.id && styles.categoryTabTextActive]}
@@ -335,19 +332,19 @@ const POS: React.FC = () => {
 
           {/* Search */}
           <View style={styles.searchContainer}>
-            <Feather name="search" size={20} color={COLORS.textSecondary} />
+            <Feather name="search" size={20} color={CALM.textSecondary} />
             <TextInput
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Search products..."
-              placeholderTextColor={COLORS.textSecondary}
+              placeholderTextColor={CALM.textSecondary}
               returnKeyType="search"
               onSubmitEditing={Keyboard.dismiss}
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Feather name="x" size={20} color={COLORS.textSecondary} />
+                <Feather name="x" size={20} color={CALM.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
@@ -373,12 +370,7 @@ const POS: React.FC = () => {
                     activeOpacity={0.7}
                     disabled={product.stock <= 0}
                   >
-                    <LinearGradient
-                      colors={[withAlpha(COLORS.business, 0.08), 'transparent']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.productGradient}
-                    >
+                    <View style={styles.productInner}>
                       <Text style={styles.productName} numberOfLines={2}>
                         {product.name}
                       </Text>
@@ -391,8 +383,8 @@ const POS: React.FC = () => {
                           size={12}
                           color={
                             product.stock <= product.lowStockThreshold
-                              ? COLORS.warning
-                              : COLORS.textSecondary
+                              ? CALM.neutral
+                              : CALM.textSecondary
                           }
                         />
                         <Text
@@ -404,7 +396,7 @@ const POS: React.FC = () => {
                           {product.stock}
                         </Text>
                       </View>
-                    </LinearGradient>
+                    </View>
                   </TouchableOpacity>
                   {inCartQty > 0 && (
                     <View style={styles.cartBadge}>
@@ -429,7 +421,7 @@ const POS: React.FC = () => {
               <Feather
                 name={cartExpanded ? 'chevron-right' : 'chevron-left'}
                 size={18}
-                color={COLORS.business}
+                color={CALM.accent}
               />
               <Text style={styles.cartTitle}>
                 {cartExpanded ? 'Review Order' : `Cart (${cart.length})`}
@@ -463,7 +455,7 @@ const POS: React.FC = () => {
                         {item.productName}
                       </Text>
                       <TouchableOpacity onPress={() => removeFromCart(item.productId)}>
-                        <Feather name="trash-2" size={18} color={COLORS.danger} />
+                        <Feather name="trash-2" size={18} color={CALM.neutral} />
                       </TouchableOpacity>
                     </View>
                     <View style={styles.cartItemExpandedBottom}>
@@ -475,14 +467,14 @@ const POS: React.FC = () => {
                           style={styles.quantityButtonExpanded}
                           onPress={() => updateQuantity(item.productId, item.quantity - 1)}
                         >
-                          <Feather name="minus" size={16} color={COLORS.text} />
+                          <Feather name="minus" size={16} color={CALM.textPrimary} />
                         </TouchableOpacity>
                         <Text style={styles.quantityTextExpanded}>{item.quantity}</Text>
                         <TouchableOpacity
                           style={styles.quantityButtonExpanded}
                           onPress={() => updateQuantity(item.productId, item.quantity + 1)}
                         >
-                          <Feather name="plus" size={16} color={COLORS.text} />
+                          <Feather name="plus" size={16} color={CALM.textPrimary} />
                         </TouchableOpacity>
                       </View>
                       <Text style={styles.cartItemTotalExpanded}>
@@ -506,14 +498,14 @@ const POS: React.FC = () => {
                         style={styles.quantityButton}
                         onPress={() => updateQuantity(item.productId, item.quantity - 1)}
                       >
-                        <Feather name="minus" size={16} color={COLORS.text} />
+                        <Feather name="minus" size={16} color={CALM.textPrimary} />
                       </TouchableOpacity>
                       <Text style={styles.quantityText}>{item.quantity}</Text>
                       <TouchableOpacity
                         style={styles.quantityButton}
                         onPress={() => updateQuantity(item.productId, item.quantity + 1)}
                       >
-                        <Feather name="plus" size={16} color={COLORS.text} />
+                        <Feather name="plus" size={16} color={CALM.textPrimary} />
                       </TouchableOpacity>
                     </View>
                     <View style={styles.cartItemTotal}>
@@ -521,7 +513,7 @@ const POS: React.FC = () => {
                         {currency} {item.totalPrice.toFixed(2)}
                       </Text>
                       <TouchableOpacity onPress={() => removeFromCart(item.productId)}>
-                        <Feather name="trash-2" size={16} color={COLORS.danger} />
+                        <Feather name="trash-2" size={16} color={CALM.neutral} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -534,7 +526,7 @@ const POS: React.FC = () => {
                 activeOpacity={0.7}
                 accessibilityLabel="Tap to expand cart"
               >
-                <Feather name="shopping-cart" size={48} color={COLORS.textSecondary} />
+                <Feather name="shopping-cart" size={48} color={CALM.textSecondary} />
                 <Text style={styles.emptyCartText}>Cart is empty</Text>
               </TouchableOpacity>
             )}
@@ -563,7 +555,7 @@ const POS: React.FC = () => {
                       <Feather
                         name="percent"
                         size={14}
-                        color={discountType === 'percentage' ? '#fff' : COLORS.textSecondary}
+                        color={discountType === 'percentage' ? '#fff' : CALM.textSecondary}
                       />
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -577,7 +569,7 @@ const POS: React.FC = () => {
                         style={{
                           fontSize: TYPOGRAPHY.size.xs,
                           fontWeight: TYPOGRAPHY.weight.bold,
-                          color: discountType === 'fixed' ? '#fff' : COLORS.textSecondary,
+                          color: discountType === 'fixed' ? '#fff' : CALM.textSecondary,
                         }}
                       >
                         {currency}
@@ -590,7 +582,7 @@ const POS: React.FC = () => {
                   value={discountValue}
                   onChangeText={setDiscountValue}
                   placeholder={discountType === 'percentage' ? '0%' : '0.00'}
-                  placeholderTextColor={COLORS.textTertiary}
+                  placeholderTextColor={CALM.neutral}
                   keyboardType="decimal-pad"
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
@@ -610,10 +602,10 @@ const POS: React.FC = () => {
               )}
               {getDiscountAmount() > 0 && (
                 <View style={styles.totalRow}>
-                  <Text style={[styles.totalRowLabel, { color: COLORS.success }]}>
+                  <Text style={[styles.totalRowLabel, { color: CALM.positive }]}>
                     Discount{discountType === 'percentage' ? ` (${discountValue}%)` : ''}
                   </Text>
-                  <Text style={[styles.totalRowValue, { color: COLORS.success }]}>
+                  <Text style={[styles.totalRowValue, { color: CALM.positive }]}>
                     -{currency} {getDiscountAmount().toFixed(2)}
                   </Text>
                 </View>
@@ -631,12 +623,11 @@ const POS: React.FC = () => {
               </View>
             </View>
 
-            <GradientButton
+            <Button
               title="Checkout"
               onPress={() => setPaymentModalVisible(true)}
               icon="credit-card"
               size="large"
-              gradient={GRADIENTS.success}
               disabled={cart.length === 0}
             />
           </Pressable>
@@ -677,12 +668,12 @@ const POS: React.FC = () => {
                       <Feather
                         name={selectedCustomer ? 'user' : 'user-plus'}
                         size={16}
-                        color={selectedCustomer ? COLORS.business : COLORS.textSecondary}
+                        color={selectedCustomer ? CALM.accent : CALM.textSecondary}
                       />
                       <Text
                         style={[
                           styles.customerDropdownText,
-                          selectedCustomer && { color: COLORS.text, fontWeight: TYPOGRAPHY.weight.semibold },
+                          selectedCustomer && { color: CALM.textPrimary, fontWeight: TYPOGRAPHY.weight.semibold },
                         ]}
                         numberOfLines={1}
                       >
@@ -693,25 +684,25 @@ const POS: React.FC = () => {
                       <Feather
                         name={customerDropdownOpen ? 'chevron-up' : 'chevron-down'}
                         size={16}
-                        color={COLORS.textSecondary}
+                        color={CALM.textSecondary}
                       />
                     </TouchableOpacity>
 
                     {customerDropdownOpen && (
                       <View style={styles.customerDropdownList}>
                         <View style={styles.customerSearchContainer}>
-                          <Feather name="search" size={14} color={COLORS.textSecondary} />
+                          <Feather name="search" size={14} color={CALM.textSecondary} />
                           <TextInput
                             style={styles.customerSearchInput}
                             value={customerSearchQuery}
                             onChangeText={setCustomerSearchQuery}
                             placeholder="Search customers..."
-                            placeholderTextColor={COLORS.textTertiary}
+                            placeholderTextColor={CALM.neutral}
                             autoFocus
                           />
                           {customerSearchQuery.length > 0 && (
                             <TouchableOpacity onPress={() => setCustomerSearchQuery('')}>
-                              <Feather name="x" size={14} color={COLORS.textSecondary} />
+                              <Feather name="x" size={14} color={CALM.textSecondary} />
                             </TouchableOpacity>
                           )}
                         </View>
@@ -725,8 +716,8 @@ const POS: React.FC = () => {
                               setCustomerSearchQuery('');
                             }}
                           >
-                            <Feather name="x-circle" size={16} color={COLORS.textSecondary} />
-                            <Text style={[styles.customerDropdownItemText, { color: COLORS.textSecondary }]}>
+                            <Feather name="x-circle" size={16} color={CALM.textSecondary} />
+                            <Text style={[styles.customerDropdownItemText, { color: CALM.textSecondary }]}>
                               None
                             </Text>
                           </TouchableOpacity>
@@ -747,7 +738,7 @@ const POS: React.FC = () => {
                             <Feather
                               name="user"
                               size={16}
-                              color={c.id === selectedCustomerId ? COLORS.business : COLORS.textSecondary}
+                              color={c.id === selectedCustomerId ? CALM.accent : CALM.textSecondary}
                             />
                             <View style={{ flex: 1 }}>
                               <Text style={styles.customerDropdownItemText}>{c.name}</Text>
@@ -758,7 +749,7 @@ const POS: React.FC = () => {
                               )}
                             </View>
                             {c.id === selectedCustomerId && (
-                              <Feather name="check" size={16} color={COLORS.business} />
+                              <Feather name="check" size={16} color={CALM.accent} />
                             )}
                           </TouchableOpacity>
                         ))}
@@ -803,8 +794,8 @@ const POS: React.FC = () => {
                   </View>
                   {getDiscountAmount() > 0 && (
                     <View style={styles.totalRow}>
-                      <Text style={[styles.totalRowLabel, { color: COLORS.success }]}>Discount</Text>
-                      <Text style={[styles.totalRowValue, { color: COLORS.success }]}>
+                      <Text style={[styles.totalRowLabel, { color: CALM.positive }]}>Discount</Text>
+                      <Text style={[styles.totalRowValue, { color: CALM.positive }]}>
                         -{currency} {getDiscountAmount().toFixed(2)}
                       </Text>
                     </View>
@@ -826,20 +817,15 @@ const POS: React.FC = () => {
                       onPress={() => handleCheckout(method.value as 'cash' | 'digital' | 'card')}
                       activeOpacity={0.8}
                     >
-                      <LinearGradient
-                        colors={GRADIENTS.businessIcon.colors}
-                        start={GRADIENTS.businessIcon.start}
-                        end={GRADIENTS.businessIcon.end}
-                        style={styles.paymentIconContainer}
-                      >
+                      <View style={styles.paymentIconContainer}>
                         <Feather
                           name={method.icon as keyof typeof Feather.glyphMap}
                           size={32}
-                          color={COLORS.business}
+                          color={CALM.accent}
                         />
-                      </LinearGradient>
+                      </View>
                       <Text style={styles.paymentLabel}>{method.label}</Text>
-                      <Feather name="chevron-right" size={20} color={COLORS.textSecondary} />
+                      <Feather name="chevron-right" size={20} color={CALM.textSecondary} />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -867,7 +853,7 @@ const POS: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   content: {
     flex: 1,
@@ -885,7 +871,7 @@ const styles = StyleSheet.create({
   },
   backdropInner: {
     flex: 1,
-    backgroundColor: withAlpha(COLORS.text, 0.3),
+    backgroundColor: 'rgba(0,0,0,0.4)',
     borderRadius: RADIUS.lg,
   },
 
@@ -905,18 +891,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   categoryTabActive: {
-    backgroundColor: COLORS.business,
-    borderColor: COLORS.business,
+    backgroundColor: CALM.accent,
+    borderColor: CALM.accent,
   },
   categoryTabText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   categoryTabTextActive: {
     color: '#fff',
@@ -927,17 +913,19 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     marginBottom: SPACING.lg,
     gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   searchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
 
   // Product grid
@@ -956,12 +944,13 @@ const styles = StyleSheet.create({
   },
   productButton: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
-    ...SHADOWS.sm,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
-  productGradient: {
+  productInner: {
     flex: 1,
     padding: SPACING.lg,
     justifyContent: 'space-between',
@@ -972,13 +961,13 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.sm,
   },
   productPrice: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.business,
+    color: CALM.accent,
   },
   productStock: {
     flexDirection: 'row',
@@ -988,10 +977,10 @@ const styles = StyleSheet.create({
   },
   productStockText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   productStockLow: {
-    color: COLORS.warning,
+    color: CALM.neutral,
   },
   cartBadge: {
     position: 'absolute',
@@ -1000,12 +989,11 @@ const styles = StyleSheet.create({
     minWidth: 22,
     height: 22,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.business,
+    backgroundColor: CALM.accent,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
     zIndex: 2,
-    ...SHADOWS.md,
   },
   cartBadgeText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1015,9 +1003,9 @@ const styles = StyleSheet.create({
 
   // ── Cart ──
   cartSection: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderLeftWidth: 1,
-    borderLeftColor: COLORS.border,
+    borderLeftColor: CALM.border,
   },
   cartHeader: {
     flexDirection: 'row',
@@ -1025,7 +1013,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: CALM.border,
   },
   cartHeaderLeft: {
     flexDirection: 'row',
@@ -1036,11 +1024,11 @@ const styles = StyleSheet.create({
   cartTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   clearCart: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.danger,
+    color: CALM.neutral,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   cartScroll: {
@@ -1057,7 +1045,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.surface,
+    borderBottomColor: CALM.border,
   },
   cartItemInfo: {
     flex: 1,
@@ -1065,12 +1053,12 @@ const styles = StyleSheet.create({
   cartItemName: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: 2,
   },
   cartItemPrice: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   quantityControls: {
     flexDirection: 'row',
@@ -1082,14 +1070,16 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   quantityText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     minWidth: SPACING['2xl'],
     textAlign: 'center',
   },
@@ -1100,14 +1090,14 @@ const styles = StyleSheet.create({
   cartItemTotalText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
 
   // Expanded cart items
   cartItemExpanded: {
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.surface,
+    borderBottomColor: CALM.border,
   },
   cartItemExpandedTop: {
     flexDirection: 'row',
@@ -1119,7 +1109,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginRight: SPACING.md,
   },
   cartItemExpandedBottom: {
@@ -1129,7 +1119,7 @@ const styles = StyleSheet.create({
   },
   cartItemPriceExpanded: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   quantityControlsExpanded: {
     flexDirection: 'row',
@@ -1140,23 +1130,23 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   quantityTextExpanded: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     minWidth: 30,
     textAlign: 'center',
   },
   cartItemTotalExpanded: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.business,
+    color: CALM.accent,
   },
 
   // Empty cart
@@ -1168,7 +1158,7 @@ const styles = StyleSheet.create({
   },
   emptyCartText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginTop: SPACING.md,
   },
 
@@ -1176,7 +1166,7 @@ const styles = StyleSheet.create({
   cartFooter: {
     padding: SPACING.lg,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: CALM.border,
     gap: SPACING.md,
   },
 
@@ -1184,7 +1174,7 @@ const styles = StyleSheet.create({
   discountSection: {
     paddingBottom: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: CALM.border,
   },
   discountHeader: {
     flexDirection: 'row',
@@ -1195,13 +1185,15 @@ const styles = StyleSheet.create({
   discountLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   discountTypeToggle: {
     flexDirection: 'row',
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   discountTypeButton: {
     paddingHorizontal: SPACING.md,
@@ -1210,16 +1202,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   discountTypeActive: {
-    backgroundColor: COLORS.business,
+    backgroundColor: CALM.accent,
     borderRadius: RADIUS.md,
   },
   discountInput: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
 
   // Totals
@@ -1233,29 +1227,29 @@ const styles = StyleSheet.create({
   },
   totalRowLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   totalRowValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   totalRowFinal: {
     marginTop: SPACING.xs,
     paddingTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: CALM.border,
   },
   totalLabel: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   totalAmount: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.business,
+    color: CALM.accent,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1273,21 +1267,20 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   modalContent: {
-    backgroundColor: withAlpha(COLORS.background, 0.95),
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS['2xl'],
     borderWidth: 1,
-    borderColor: withAlpha('#fff', 0.1),
+    borderColor: CALM.border,
     padding: SPACING['3xl'],
     width: '100%',
     maxWidth: 480,
     maxHeight: '90%',
     alignItems: 'center',
-    ...SHADOWS['2xl'],
   },
   modalTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.lg,
   },
   modalSection: {
@@ -1297,7 +1290,7 @@ const styles = StyleSheet.create({
   modalSectionTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.sm,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -1308,24 +1301,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   customerDropdownText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   customerDropdownList: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.md,
     marginTop: SPACING.xs,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
     maxHeight: 240,
   },
   customerSearchContainer: {
@@ -1335,12 +1328,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: CALM.border,
   },
   customerSearchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     paddingVertical: 2,
   },
   customerDropdownScroll: {
@@ -1352,7 +1345,7 @@ const styles = StyleSheet.create({
   },
   customerDropdownEmptyText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textTertiary,
+    color: CALM.neutral,
   },
   customerDropdownItem: {
     flexDirection: 'row',
@@ -1361,27 +1354,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: CALM.border,
   },
   customerDropdownItemActive: {
-    backgroundColor: withAlpha(COLORS.business, 0.06),
+    backgroundColor: withAlpha(CALM.accent, 0.06),
   },
   customerDropdownItemText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   customerDropdownItemSub: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginTop: 1,
   },
 
   // Order summary
   orderSummaryBox: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   orderSummaryItem: {
     flexDirection: 'row',
@@ -1391,18 +1386,18 @@ const styles = StyleSheet.create({
   orderItemName: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   orderItemQty: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginHorizontal: SPACING.md,
     fontVariant: ['tabular-nums'],
   },
   orderItemTotal: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1415,12 +1410,12 @@ const styles = StyleSheet.create({
   modalTotalLabel: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   modalAmount: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.business,
+    color: CALM.accent,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1433,12 +1428,12 @@ const styles = StyleSheet.create({
   paymentButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     gap: SPACING.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   paymentIconContainer: {
     width: 56,
@@ -1446,12 +1441,13 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: withAlpha(CALM.accent, 0.08),
   },
   paymentLabel: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   cancelButton: {
     width: '100%',

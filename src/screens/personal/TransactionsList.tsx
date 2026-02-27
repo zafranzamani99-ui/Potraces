@@ -17,7 +17,8 @@ import { Feather } from '@expo/vector-icons';
 import { format, isSameDay } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { COLORS, CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+// COLORS.personal kept for mode accent navigation only
 import { useCategories } from '../../hooks/useCategories';
 import TransactionItem from '../../components/common/TransactionItem';
 import EmptyState from '../../components/common/EmptyState';
@@ -220,18 +221,18 @@ const TransactionsList: React.FC = () => {
     <View style={styles.container}>
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <Feather name="search" size={18} color={COLORS.textSecondary} />
+        <Feather name="search" size={18} color={CALM.textSecondary} />
         <TextInput
           style={styles.searchInput}
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholder="Search transactions..."
-          placeholderTextColor={COLORS.textSecondary}
+          placeholderTextColor={CALM.textSecondary}
           returnKeyType="search"
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Feather name="x-circle" size={18} color={COLORS.textSecondary} />
+            <Feather name="x-circle" size={18} color={CALM.textSecondary} />
           </TouchableOpacity>
         )}
       </View>
@@ -302,14 +303,14 @@ const TransactionsList: React.FC = () => {
       <View style={styles.totalsBar}>
         <View style={styles.totalItem}>
           <Text style={styles.totalLabel}>Income</Text>
-          <Text style={[styles.totalValue, { color: COLORS.income }]}>
+          <Text style={[styles.totalValue, { color: CALM.positive }]}>
             {currency} {totals.income.toFixed(2)}
           </Text>
         </View>
         <View style={styles.totalDivider} />
         <View style={styles.totalItem}>
           <Text style={styles.totalLabel}>Expenses</Text>
-          <Text style={[styles.totalValue, { color: COLORS.expense }]}>
+          <Text style={[styles.totalValue, { color: CALM.textPrimary }]}>
             {currency} {totals.expenses.toFixed(2)}
           </Text>
         </View>
@@ -319,7 +320,7 @@ const TransactionsList: React.FC = () => {
           <Text
             style={[
               styles.totalValue,
-              { color: totals.net >= 0 ? COLORS.success : COLORS.danger },
+              { color: totals.net >= 0 ? CALM.positive : CALM.neutral },
             ]}
           >
             {currency} {totals.net.toFixed(2)}
@@ -379,7 +380,7 @@ const TransactionsList: React.FC = () => {
                   setEditModalVisible(false);
                   setEditingTransaction(null);
                 }}>
-                  <Feather name="x" size={24} color={COLORS.text} />
+                  <Feather name="x" size={24} color={CALM.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -389,15 +390,15 @@ const TransactionsList: React.FC = () => {
                   <TouchableOpacity
                     style={[
                       styles.typeButton,
-                      editType === 'expense' && [styles.typeButtonActive, { backgroundColor: COLORS.expense }],
-                      { borderColor: COLORS.expense },
+                      editType === 'expense' && [styles.typeButtonActive, { backgroundColor: CALM.accent }],
+                      { borderColor: CALM.accent },
                     ]}
                     onPress={() => handleEditTypeChange('expense')}
                   >
                     <Feather
                       name="arrow-down-circle"
                       size={20}
-                      color={editType === 'expense' ? COLORS.background : COLORS.expense}
+                      color={editType === 'expense' ? '#FFFFFF' : CALM.accent}
                     />
                     <Text style={[styles.typeText, editType === 'expense' && styles.typeTextActive]}>
                       Expense
@@ -407,15 +408,15 @@ const TransactionsList: React.FC = () => {
                   <TouchableOpacity
                     style={[
                       styles.typeButton,
-                      editType === 'income' && [styles.typeButtonActive, { backgroundColor: COLORS.success }],
-                      { borderColor: COLORS.success },
+                      editType === 'income' && [styles.typeButtonActive, { backgroundColor: CALM.positive }],
+                      { borderColor: CALM.positive },
                     ]}
                     onPress={() => handleEditTypeChange('income')}
                   >
                     <Feather
                       name="arrow-up-circle"
                       size={20}
-                      color={editType === 'income' ? COLORS.background : COLORS.success}
+                      color={editType === 'income' ? '#FFFFFF' : CALM.positive}
                     />
                     <Text style={[styles.typeText, editType === 'income' && styles.typeTextActive]}>
                       Income
@@ -430,7 +431,7 @@ const TransactionsList: React.FC = () => {
                   onChangeText={setEditAmount}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -456,7 +457,7 @@ const TransactionsList: React.FC = () => {
                   value={editDescription}
                   onChangeText={setEditDescription}
                   placeholder="What was this for?"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                 />
 
                 <Text style={styles.editLabel}>Tags (optional)</Text>
@@ -465,7 +466,7 @@ const TransactionsList: React.FC = () => {
                   value={editTags}
                   onChangeText={setEditTags}
                   placeholder="personal, family, work"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -496,24 +497,24 @@ const TransactionsList: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.md,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
     gap: SPACING.sm,
   },
   searchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     paddingVertical: SPACING.md,
   },
   filterRow: {
@@ -527,9 +528,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   filterChipActive: {
     backgroundColor: COLORS.personal,
@@ -538,7 +539,7 @@ const styles = StyleSheet.create({
   filterChipText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   filterChipTextActive: {
     color: '#FFFFFF',
@@ -562,8 +563,10 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     marginBottom: SPACING.sm,
     padding: SPACING.md,
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   totalItem: {
     flex: 1,
@@ -572,7 +575,7 @@ const styles = StyleSheet.create({
   totalLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: 2,
   },
   totalValue: {
@@ -583,17 +586,17 @@ const styles = StyleSheet.create({
   totalDivider: {
     width: 1,
     height: 28,
-    backgroundColor: COLORS.border,
+    backgroundColor: CALM.border,
   },
   sectionHeader: {
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   sectionHeaderText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   listContent: {
     paddingBottom: SPACING.lg,
@@ -615,7 +618,7 @@ const styles = StyleSheet.create({
   sortLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   sortChip: {
     flexDirection: 'row',
@@ -624,9 +627,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   sortChipActive: {
     backgroundColor: withAlpha(COLORS.personal, 0.1),
@@ -635,7 +638,7 @@ const styles = StyleSheet.create({
   sortChipText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   sortChipTextActive: {
     color: COLORS.personal,
@@ -644,11 +647,11 @@ const styles = StyleSheet.create({
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
@@ -663,22 +666,24 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   editLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
   editInput: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   typeContainer: {
     flexDirection: 'row',
@@ -693,17 +698,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.md,
     borderWidth: 2,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     gap: SPACING.sm,
   },
   typeButtonActive: {},
   typeText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   typeTextActive: {
-    color: COLORS.background,
+    color: '#FFFFFF',
   },
   modalActions: {
     flexDirection: 'row',
@@ -712,7 +717,7 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     flex: 1,
-    borderColor: COLORS.danger,
+    borderColor: CALM.neutral,
   },
 });
 

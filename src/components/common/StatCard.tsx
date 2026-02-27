@@ -1,10 +1,8 @@
-import React, { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import Card from './Card';
-import { COLORS, withAlpha, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
-import GRADIENTS, { GradientConfig } from '../../constants/gradients';
+import { CALM, withAlpha, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { lightTap } from '../../services/haptics';
 
 interface StatCardProps {
@@ -16,54 +14,20 @@ interface StatCardProps {
   trend?: 'up' | 'down';
   trendValue?: string;
   onPress?: () => void;
-  backgroundGradient?: GradientConfig;
+  backgroundGradient?: any; // kept for API compat, ignored
 }
 
 const StatCard: React.FC<StatCardProps> = ({
   title,
   value,
   icon,
-  iconColor = COLORS.primary,
+  iconColor = CALM.accent,
   subtitle,
   trend,
   trendValue,
   onPress,
-  backgroundGradient,
 }) => {
-  const arrowBounceAnim = useRef(new Animated.Value(0)).current;
-
-  // Bounce animation for trend arrow on mount
-  useEffect(() => {
-    if (trend) {
-      Animated.sequence([
-        Animated.timing(arrowBounceAnim, {
-          toValue: -4,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.spring(arrowBounceAnim, {
-          toValue: 0,
-          friction: 3,
-          tension: 40,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [trend, arrowBounceAnim]);
-
-  // Create gradient for icon background based on iconColor
-  const iconGradient: GradientConfig = {
-    colors: [withAlpha(iconColor, 0.25), withAlpha(iconColor, 0.08)],
-    start: { x: 0, y: 0 },
-    end: { x: 1, y: 1 },
-  };
-
-  const trendColor = trend === 'up' ? COLORS.income : COLORS.expense;
-  const trendGradient: GradientConfig = {
-    colors: [withAlpha(trendColor, 0.2), withAlpha(trendColor, 0.1)],
-    start: { x: 0, y: 0 },
-    end: { x: 1, y: 0 },
-  };
+  const trendColor = trend === 'up' ? CALM.positive : CALM.neutral;
 
   const handlePress = () => {
     if (onPress) {
@@ -75,51 +39,34 @@ const StatCard: React.FC<StatCardProps> = ({
   return (
     <Card
       style={styles.card}
-      elevation="md"
       onPress={onPress ? handlePress : undefined}
-      gradient={backgroundGradient}
       accessibilityLabel={`${title}: ${value}${subtitle ? `, ${subtitle}` : ''}`}
-      accessibilityRole={onPress ? 'button' : undefined}
-      accessibilityHint={onPress ? 'Tap to view details' : undefined}
     >
       <View style={styles.header}>
-        <LinearGradient
-          colors={iconGradient.colors}
-          start={iconGradient.start}
-          end={iconGradient.end}
-          style={styles.iconContainer}
+        <View
+          style={[
+            styles.iconContainer,
+            { backgroundColor: withAlpha(iconColor, 0.12) },
+          ]}
         >
           <Feather name={icon} size={24} color={iconColor} />
-        </LinearGradient>
+        </View>
         {trend && trendValue && (
-          <LinearGradient
-            colors={trendGradient.colors}
-            start={trendGradient.start}
-            end={trendGradient.end}
-            style={styles.trendBadge}
+          <View
+            style={[
+              styles.trendBadge,
+              { backgroundColor: withAlpha(trendColor, 0.12) },
+            ]}
           >
-            <Animated.View
-              style={{
-                transform: [
-                  {
-                    translateY: trend === 'up' ? arrowBounceAnim : arrowBounceAnim.interpolate({
-                      inputRange: [-4, 0],
-                      outputRange: [4, 0],
-                    }),
-                  },
-                ],
-              }}
-            >
-              <Feather
-                name={trend === 'up' ? 'trending-up' : 'trending-down'}
-                size={14}
-                color={trendColor}
-              />
-            </Animated.View>
+            <Feather
+              name={trend === 'up' ? 'trending-up' : 'trending-down'}
+              size={14}
+              color={trendColor}
+            />
             <Text style={[styles.trendText, { color: trendColor }]}>
               {trendValue}
             </Text>
-          </LinearGradient>
+          </View>
         )}
       </View>
       <Text style={styles.title}>{title}</Text>
@@ -161,17 +108,17 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.xs,
   },
   value: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   subtitle: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginTop: SPACING.xs,
   },
 });

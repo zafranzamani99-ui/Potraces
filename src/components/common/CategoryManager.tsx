@@ -11,7 +11,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCategoryStore } from '../../store/categoryStore';
 import { useCategories } from '../../hooks/useCategories';
 import { CategoryOption } from '../../types';
@@ -156,7 +156,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
           <Text style={styles.customBadge}>Custom</Text>
         )}
       </View>
-      <Feather name="edit-2" size={16} color={COLORS.textTertiary} />
+      <Feather name="edit-2" size={16} color={CALM.neutral} />
     </TouchableOpacity>
   );
 
@@ -178,7 +178,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
               {type === 'expense' ? 'Expense' : 'Income'} Categories
             </Text>
             <TouchableOpacity onPress={onClose}>
-              <Feather name="x" size={22} color={COLORS.text} />
+              <Feather name="x" size={22} color={CALM.textPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -191,7 +191,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
           />
 
           <TouchableOpacity style={styles.addButton} onPress={openNew}>
-            <Feather name="plus" size={18} color={COLORS.primary} />
+            <Feather name="plus" size={18} color={CALM.accent} />
             <Text style={styles.addButtonText}>Add Custom Category</Text>
           </TouchableOpacity>
         </View>
@@ -218,7 +218,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                 {isNewCategory ? 'New Category' : 'Edit Category'}
               </Text>
               <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Feather name="x" size={22} color={COLORS.text} />
+                <Feather name="x" size={22} color={CALM.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -230,7 +230,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                 value={editName}
                 onChangeText={setEditName}
                 placeholder="Category name"
-                placeholderTextColor={COLORS.textTertiary}
+                placeholderTextColor={CALM.neutral}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
@@ -256,7 +256,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                     <Feather
                       name={iconName as keyof typeof Feather.glyphMap}
                       size={20}
-                      color={editIcon === iconName ? editColor : COLORS.textSecondary}
+                      color={editIcon === iconName ? editColor : CALM.textSecondary}
                     />
                   </TouchableOpacity>
                 ))}
@@ -294,7 +294,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                   style={styles.deleteButton}
                   onPress={handleDelete}
                 >
-                  <Feather name="trash-2" size={16} color={COLORS.danger} />
+                  <Feather name="trash-2" size={16} color={CALM.neutral} />
                   <Text style={styles.deleteText}>Delete</Text>
                 </TouchableOpacity>
               )}
@@ -319,16 +319,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
   },
   modal: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '70%',
-    ...SHADOWS.xl,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   editModal: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '80%',
-    ...SHADOWS.xl,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   header: {
     flexDirection: 'row',
@@ -336,12 +338,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: CALM.border,
   },
   title: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   listContent: {
     padding: SPACING.sm,
@@ -367,11 +369,11 @@ const styles = StyleSheet.create({
   categoryName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   customBadge: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.primary,
+    color: CALM.accent,
     fontWeight: TYPOGRAPHY.weight.medium,
     marginTop: 1,
   },
@@ -382,12 +384,12 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     padding: SPACING.lg,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: CALM.border,
   },
   addButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.primary,
+    color: CALM.accent,
   },
   editContent: {
     padding: SPACING.lg,
@@ -395,19 +397,19 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.md,
   },
   input: {
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
-    backgroundColor: COLORS.surface,
+    color: CALM.textPrimary,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   iconGrid: {
     flexDirection: 'row',
@@ -420,7 +422,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderWidth: 2,
     borderColor: 'transparent',
   },
@@ -437,7 +439,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   colorSelected: {
-    borderColor: COLORS.text,
+    borderColor: CALM.textPrimary,
     borderWidth: 3,
   },
   editActions: {
@@ -447,7 +449,7 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     gap: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: CALM.border,
   },
   deleteButton: {
     flexDirection: 'row',
@@ -456,19 +458,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.md,
-    backgroundColor: withAlpha('#F5365C', 0.1),
+    backgroundColor: withAlpha(CALM.neutral, 0.1),
     marginRight: 'auto',
   },
   deleteText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.danger,
+    color: CALM.neutral,
   },
   saveButton: {
     paddingHorizontal: SPACING['2xl'],
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primary,
+    backgroundColor: CALM.accent,
   },
   saveText: {
     fontSize: TYPOGRAPHY.size.base,

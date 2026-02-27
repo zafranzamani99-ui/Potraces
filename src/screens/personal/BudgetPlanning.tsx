@@ -15,7 +15,7 @@ import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, CALM, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
 import { FREE_TIER } from '../../constants/premium';
 import ModeToggle from '../../components/common/ModeToggle';
@@ -186,7 +186,7 @@ const BudgetPlanning: React.FC = () => {
         {tier === 'free' && budgets.length > FREE_TIER.maxBudgets && (
           <Card style={styles.overLimitBanner}>
             <View style={styles.bannerContent}>
-              <Feather name="info" size={18} color={COLORS.warning} />
+              <Feather name="info" size={18} color={CALM.accent} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.bannerText}>
                   You have {budgets.length} budgets (free limit: {FREE_TIER.maxBudgets}).{' '}
@@ -213,7 +213,7 @@ const BudgetPlanning: React.FC = () => {
             return (
               <Card key={budget.id} style={styles.budgetCard}>
                 <View style={styles.budgetHeader}>
-                  <View style={[styles.iconContainer, { backgroundColor: category?.color ? withAlpha(category.color, 0.12) : COLORS.surface }]}>
+                  <View style={[styles.iconContainer, { backgroundColor: category?.color ? withAlpha(category.color, 0.12) : CALM.background }]}>
                     <Feather name={(category?.icon as keyof typeof Feather.glyphMap) || 'pie-chart'} size={20} color={category?.color} />
                   </View>
                   <View style={styles.budgetInfo}>
@@ -223,7 +223,7 @@ const BudgetPlanning: React.FC = () => {
                     </Text>
                   </View>
                   <TouchableOpacity onPress={() => handleEdit(budget)} style={styles.cardAction}>
-                    <Feather name="edit-2" size={18} color={COLORS.primary} />
+                    <Feather name="edit-2" size={18} color={CALM.accent} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleDelete(budget)} style={styles.cardAction}>
                     <Feather name="trash-2" size={18} color={CALM.neutral} />
@@ -243,7 +243,7 @@ const BudgetPlanning: React.FC = () => {
                 <ProgressBar
                   current={budget.spentAmount}
                   total={budget.allocatedAmount}
-                  color={category?.color || COLORS.primary}
+                  color={category?.color || CALM.accent}
                 />
 
                 {percentage > 90 && (
@@ -307,7 +307,7 @@ const BudgetPlanning: React.FC = () => {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editingBudget ? 'Edit Budget' : 'Create Budget'}</Text>
               <TouchableOpacity onPress={closeModal}>
-                <Feather name="x" size={24} color={COLORS.text} />
+                <Feather name="x" size={24} color={CALM.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -327,7 +327,7 @@ const BudgetPlanning: React.FC = () => {
                 onChangeText={setAmount}
                 placeholder="0.00"
                 keyboardType="decimal-pad"
-                placeholderTextColor={COLORS.textSecondary}
+                placeholderTextColor={CALM.textSecondary}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
@@ -387,7 +387,7 @@ const BudgetPlanning: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   scrollView: {
     flex: 1,
@@ -411,18 +411,18 @@ const styles = StyleSheet.create({
   },
   summaryDivider: {
     width: 1,
-    backgroundColor: COLORS.border,
+    backgroundColor: CALM.border,
     marginHorizontal: SPACING.lg,
   },
   summaryLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.xs,
   },
   summaryAmount: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
 
   // Budget cards
@@ -448,23 +448,23 @@ const styles = StyleSheet.create({
   budgetName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: 2,
   },
   budgetPeriod: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   percentageContainer: {
     paddingHorizontal: SPACING.md,
     paddingVertical: 6,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
   },
   percentage: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   percentageOver: {
     color: CALM.neutral,
@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: SPACING.md,
     padding: SPACING.md,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     gap: SPACING.sm,
   },
@@ -489,9 +489,9 @@ const styles = StyleSheet.create({
   // Over-limit banner
   overLimitBanner: {
     marginBottom: SPACING.md,
-    backgroundColor: withAlpha(COLORS.warning, 0.08),
+    backgroundColor: withAlpha(CALM.accent, 0.08),
     borderWidth: 1,
-    borderColor: withAlpha(COLORS.warning, 0.2),
+    borderColor: withAlpha(CALM.accent, 0.2),
   },
   bannerContent: {
     flexDirection: 'row',
@@ -500,11 +500,11 @@ const styles = StyleSheet.create({
   },
   bannerText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     lineHeight: 20,
   },
   bannerLink: {
-    color: COLORS.primary,
+    color: CALM.accent,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
@@ -519,11 +519,11 @@ const styles = StyleSheet.create({
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
@@ -538,22 +538,22 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   label: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
   input: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   periodContainer: {
     flexDirection: 'row',
@@ -565,18 +565,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.md,
     borderWidth: 2,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    borderColor: CALM.border,
+    backgroundColor: CALM.background,
     alignItems: 'center',
   },
   periodButtonActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primary,
+    borderColor: CALM.accent,
+    backgroundColor: CALM.accent,
   },
   periodText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   periodTextActive: {
     color: '#fff',

@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { format, addDays, isWithinInterval, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 
 import { useNavigation } from '@react-navigation/native';
@@ -21,6 +20,7 @@ import { usePersonalStore } from '../../store/personalStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { COLORS, CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+// COLORS.personal / COLORS.business kept for mode accent navigation only
 import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
 import StatCard from '../../components/common/StatCard';
@@ -48,10 +48,10 @@ const getGreeting = (): string => {
 const QUICK_ACTIONS = [
   { key: 'wallets', label: 'Wallets', icon: 'credit-card' as const, screen: 'WalletManagement', color: COLORS.personal },
   { key: 'savings', label: 'Savings', icon: 'trending-up' as const, screen: 'SavingsTracker', color: '#A06CD5' },
-  { key: 'debts', label: 'Debts & Splits', icon: 'users' as const, screen: 'DebtTracking', color: COLORS.warning },
-  { key: 'subscriptions', label: 'Commitments', icon: 'repeat' as const, screen: 'SubscriptionList', color: COLORS.accent },
-  { key: 'reports', label: 'Reports', icon: 'bar-chart-2' as const, screen: 'PersonalReports', color: COLORS.info },
-  { key: 'scan', label: 'Scan Receipt', icon: 'camera' as const, screen: 'ReceiptScanner', color: COLORS.success },
+  { key: 'debts', label: 'Debts & Splits', icon: 'users' as const, screen: 'DebtTracking', color: CALM.neutral },
+  { key: 'subscriptions', label: 'Commitments', icon: 'repeat' as const, screen: 'SubscriptionList', color: CALM.accent },
+  { key: 'reports', label: 'Reports', icon: 'bar-chart-2' as const, screen: 'PersonalReports', color: CALM.accent },
+  { key: 'scan', label: 'Scan Receipt', icon: 'camera' as const, screen: 'ReceiptScanner', color: CALM.positive },
   { key: 'chat', label: 'Money Chat', icon: 'message-circle' as const, screen: 'MoneyChat', color: CALM.accent },
 ];
 
@@ -419,14 +419,11 @@ const PersonalDashboard: React.FC = () => {
                   onPress={() => handleQuickAction(action.screen)}
                   activeOpacity={0.7}
                 >
-                  <LinearGradient
-                    colors={[withAlpha(action.color, 0.15), withAlpha(action.color, 0.05)]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.quickActionIconGradient}
+                  <View
+                    style={[styles.quickActionIconBg, { backgroundColor: withAlpha(action.color, 0.12) }]}
                   >
                     <Feather name={action.icon} size={18} color={action.color} />
-                  </LinearGradient>
+                  </View>
                   <Text style={styles.quickActionLabel} numberOfLines={2}>
                     {action.label}
                   </Text>
@@ -489,7 +486,7 @@ const PersonalDashboard: React.FC = () => {
                   setEditModalVisible(false);
                   setEditingTransaction(null);
                 }}>
-                  <Feather name="x" size={24} color={COLORS.text} />
+                  <Feather name="x" size={24} color={CALM.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -540,7 +537,7 @@ const PersonalDashboard: React.FC = () => {
                   onChangeText={setEditAmount}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -566,7 +563,7 @@ const PersonalDashboard: React.FC = () => {
                   value={editDescription}
                   onChangeText={setEditDescription}
                   placeholder="What was this for?"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                 />
 
                 <Text style={styles.label}>Tags (optional)</Text>
@@ -575,7 +572,7 @@ const PersonalDashboard: React.FC = () => {
                   value={editTags}
                   onChangeText={setEditTags}
                   placeholder="personal, family, work"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -772,7 +769,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.xs,
   },
-  quickActionIconGradient: {
+  quickActionIconBg: {
     width: 40,
     height: 40,
     borderRadius: RADIUS.md,
@@ -806,11 +803,11 @@ const styles = StyleSheet.create({
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
@@ -825,22 +822,24 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   label: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
   input: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   typeContainer: {
     flexDirection: 'row',
@@ -855,14 +854,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.md,
     borderWidth: 2,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     gap: SPACING.sm,
   },
   typeButtonActive: {},
   typeText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   typeTextActive: {
     color: '#fff',

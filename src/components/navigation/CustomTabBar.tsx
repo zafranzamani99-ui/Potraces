@@ -4,7 +4,7 @@ import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SPACING, RADIUS, SHADOWS, TYPOGRAPHY } from '../../constants';
+import { COLORS, CALM, SPACING, RADIUS, SHADOWS, TYPOGRAPHY } from '../../constants';
 
 interface CustomTabBarProps extends BottomTabBarProps {
   accentColor: string;
@@ -112,12 +112,12 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
             <Feather
               name={iconName}
               size={24}
-              color={isFocused ? accentColor : COLORS.textTertiary}
+              color={isFocused ? accentColor : CALM.neutral}
             />
             <Text
               style={[
                 styles.tabLabel,
-                { color: isFocused ? accentColor : COLORS.textTertiary },
+                { color: isFocused ? accentColor : CALM.neutral },
               ]}
               numberOfLines={1}
             >
@@ -144,9 +144,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: COLORS.card,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.xl,
-    ...SHADOWS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   tabButton: {
     flex: 1,
@@ -178,7 +179,7 @@ const styles = StyleSheet.create({
     ...SHADOWS.xl,
     ...Platform.select({
       ios: {
-        shadowColor: COLORS.primary,
+        shadowColor: CALM.accent,
         shadowOpacity: 0.4,
       },
       android: {
@@ -189,7 +190,7 @@ const styles = StyleSheet.create({
   centerLabel: {
     fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginTop: 2,
     textAlign: 'center',
   },

@@ -13,21 +13,18 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useAppStore } from '../../store/appStore';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useWalletStore } from '../../store/walletStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import GRADIENTS from '../../constants/gradients';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { FREE_TIER, PREMIUM_CONFIG } from '../../constants/premium';
 import { RootStackParamList } from '../../types';
 import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
-import GradientButton from '../../components/common/GradientButton';
 import CategoryManager from '../../components/common/CategoryManager';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
@@ -150,14 +147,14 @@ const Settings: React.FC = () => {
         <Card style={styles.card}>
           <View style={styles.settingRow}>
             <View style={styles.settingLabelRow}>
-              <Feather name="user" size={18} color={COLORS.textSecondary} />
+              <Feather name="user" size={18} color={CALM.textSecondary} />
               <Text style={styles.settingLabel}>Name</Text>
             </View>
             <TextInput
               value={userName}
               onChangeText={setUserName}
               placeholder="Enter your name"
-              placeholderTextColor={COLORS.textTertiary}
+              placeholderTextColor={CALM.neutral}
               style={styles.input}
               returnKeyType="done"
               onSubmitEditing={Keyboard.dismiss}
@@ -174,12 +171,12 @@ const Settings: React.FC = () => {
             activeOpacity={0.6}
           >
             <View style={styles.settingLabelRow}>
-              <Feather name="dollar-sign" size={18} color={COLORS.textSecondary} />
+              <Feather name="dollar-sign" size={18} color={CALM.textSecondary} />
               <Text style={styles.settingLabel}>Currency</Text>
             </View>
             <View style={styles.valueRow}>
               <Text style={styles.settingValue}>{currency}</Text>
-              <Feather name="chevron-right" size={18} color={COLORS.textTertiary} />
+              <Feather name="chevron-right" size={18} color={CALM.neutral} />
             </View>
           </TouchableOpacity>
 
@@ -191,14 +188,14 @@ const Settings: React.FC = () => {
             activeOpacity={0.6}
           >
             <View style={styles.settingLabelRow}>
-              <Feather name="layout" size={18} color={COLORS.textSecondary} />
+              <Feather name="layout" size={18} color={CALM.textSecondary} />
               <Text style={styles.settingLabel}>Default Mode</Text>
             </View>
             <View style={styles.valueRow}>
               <Text style={styles.settingValue}>
                 {defaultMode === 'personal' ? 'Personal' : 'Business'}
               </Text>
-              <Feather name="chevron-right" size={18} color={COLORS.textTertiary} />
+              <Feather name="chevron-right" size={18} color={CALM.neutral} />
             </View>
           </TouchableOpacity>
 
@@ -206,7 +203,7 @@ const Settings: React.FC = () => {
 
           <View style={styles.settingRow}>
             <View style={styles.settingLabelRow}>
-              <Feather name="smartphone" size={18} color={COLORS.textSecondary} />
+              <Feather name="smartphone" size={18} color={CALM.textSecondary} />
               <Text style={styles.settingLabel}>Haptic Feedback</Text>
             </View>
             <Switch
@@ -215,7 +212,7 @@ const Settings: React.FC = () => {
                 setHapticEnabled(value);
                 if (value) lightTap();
               }}
-              trackColor={{ false: COLORS.border, true: COLORS.success }}
+              trackColor={{ false: CALM.border, true: CALM.positive }}
               thumbColor="#FFFFFF"
             />
           </View>
@@ -224,7 +221,7 @@ const Settings: React.FC = () => {
 
           <View style={styles.settingRow}>
             <View style={styles.settingLabelRow}>
-              <Feather name="bell" size={18} color={COLORS.textSecondary} />
+              <Feather name="bell" size={18} color={CALM.textSecondary} />
               <Text style={styles.settingLabel}>Notifications</Text>
             </View>
             <Switch
@@ -237,7 +234,7 @@ const Settings: React.FC = () => {
                   'success'
                 );
               }}
-              trackColor={{ false: COLORS.border, true: COLORS.success }}
+              trackColor={{ false: CALM.border, true: CALM.positive }}
               thumbColor="#FFFFFF"
             />
           </View>
@@ -257,14 +254,14 @@ const Settings: React.FC = () => {
                 activeOpacity={0.6}
               >
                 <View style={styles.settingLabelRow}>
-                  <Feather name="briefcase" size={18} color={COLORS.textSecondary} />
+                  <Feather name="briefcase" size={18} color={CALM.textSecondary} />
                   <Text style={styles.settingLabel}>Change Income Type</Text>
                 </View>
                 <View style={styles.valueRow}>
                   <Text style={styles.settingValue}>
                     {incomeType || 'not set'}
                   </Text>
-                  <Feather name="chevron-right" size={18} color={COLORS.textTertiary} />
+                  <Feather name="chevron-right" size={18} color={CALM.neutral} />
                 </View>
               </TouchableOpacity>
             </Card>
@@ -284,10 +281,10 @@ const Settings: React.FC = () => {
             activeOpacity={0.6}
           >
             <View style={styles.settingLabelRow}>
-              <Feather name="tag" size={18} color={COLORS.textSecondary} />
+              <Feather name="tag" size={18} color={CALM.textSecondary} />
               <Text style={styles.settingLabel}>Expense Categories</Text>
             </View>
-            <Feather name="chevron-right" size={18} color={COLORS.textTertiary} />
+            <Feather name="chevron-right" size={18} color={CALM.neutral} />
           </TouchableOpacity>
 
           <View style={styles.divider} />
@@ -302,10 +299,10 @@ const Settings: React.FC = () => {
             activeOpacity={0.6}
           >
             <View style={styles.settingLabelRow}>
-              <Feather name="tag" size={18} color={COLORS.textSecondary} />
+              <Feather name="tag" size={18} color={CALM.textSecondary} />
               <Text style={styles.settingLabel}>Income Categories</Text>
             </View>
-            <Feather name="chevron-right" size={18} color={COLORS.textTertiary} />
+            <Feather name="chevron-right" size={18} color={CALM.neutral} />
           </TouchableOpacity>
         </Card>
 
@@ -321,15 +318,10 @@ const Settings: React.FC = () => {
         <Card style={styles.card}>
           {tier === 'premium' ? (
             <View style={styles.premiumStatusRow}>
-              <LinearGradient
-                colors={GRADIENTS.premium.colors as [string, string]}
-                start={GRADIENTS.premium.start}
-                end={GRADIENTS.premium.end}
-                style={styles.premiumBadge}
-              >
-                <Feather name="award" size={14} color="#333" />
+              <View style={styles.premiumBadge}>
+                <Feather name="award" size={14} color="#fff" />
                 <Text style={styles.premiumBadgeText}>Premium</Text>
-              </LinearGradient>
+              </View>
               <TouchableOpacity
                 onPress={() => {
                   Alert.alert(
@@ -357,38 +349,39 @@ const Settings: React.FC = () => {
               <View style={styles.usageLimits}>
                 <View style={styles.usageRow}>
                   <View style={styles.settingLabelRow}>
-                    <Feather name="credit-card" size={16} color={COLORS.textSecondary} />
+                    <Feather name="credit-card" size={16} color={CALM.textSecondary} />
                     <Text style={styles.usageLabel}>Wallets</Text>
                   </View>
                   <Text style={styles.usageValue}>{walletCount}/{FREE_TIER.maxWallets}</Text>
                 </View>
                 <View style={styles.usageRow}>
                   <View style={styles.settingLabelRow}>
-                    <Feather name="pie-chart" size={16} color={COLORS.textSecondary} />
+                    <Feather name="pie-chart" size={16} color={CALM.textSecondary} />
                     <Text style={styles.usageLabel}>Budgets</Text>
                   </View>
                   <Text style={styles.usageValue}>{budgetCount}/{FREE_TIER.maxBudgets}</Text>
                 </View>
                 <View style={styles.usageRow}>
                   <View style={styles.settingLabelRow}>
-                    <Feather name="camera" size={16} color={COLORS.textSecondary} />
+                    <Feather name="camera" size={16} color={CALM.textSecondary} />
                     <Text style={styles.usageLabel}>Scans this month</Text>
                   </View>
                   <Text style={styles.usageValue}>{getRemainingScans()} left</Text>
                 </View>
               </View>
-              <GradientButton
-                title={`Subscribe - ${PREMIUM_CONFIG.currency} ${PREMIUM_CONFIG.price}/${PREMIUM_CONFIG.period}`}
+              <TouchableOpacity
+                style={styles.subscribeButton}
                 onPress={() => {
                   subscribe();
                   showToast('Welcome to Premium!', 'success');
                 }}
-                gradient={GRADIENTS.premium}
-                size="medium"
-                icon="award"
-                textStyle={{ color: '#333' }}
-                style={{ marginTop: SPACING.md }}
-              />
+                activeOpacity={0.7}
+              >
+                <Feather name="award" size={18} color="#fff" />
+                <Text style={styles.subscribeButtonText}>
+                  Subscribe - {PREMIUM_CONFIG.currency} {PREMIUM_CONFIG.price}/{PREMIUM_CONFIG.period}
+                </Text>
+              </TouchableOpacity>
             </>
           )}
         </Card>
@@ -459,7 +452,7 @@ const Settings: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   scrollView: {
     flex: 1,
@@ -470,7 +463,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: SPACING.sm,
@@ -494,7 +487,7 @@ const styles = StyleSheet.create({
   settingLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   valueRow: {
     flexDirection: 'row',
@@ -503,11 +496,11 @@ const styles = StyleSheet.create({
   },
   settingValue: {
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   input: {
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     textAlign: 'right',
     flex: 1,
     marginLeft: SPACING.lg,
@@ -515,7 +508,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: COLORS.borderLight,
+    backgroundColor: CALM.border,
     marginVertical: SPACING.xs,
   },
   premiumStatusRow: {
@@ -530,16 +523,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.md,
+    backgroundColor: CALM.accent,
   },
   premiumBadgeText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#333',
+    color: '#fff',
   },
   unsubscribeText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.danger,
+    color: CALM.neutral,
   },
   usageLimits: {
     gap: SPACING.sm,
@@ -553,13 +547,28 @@ const styles = StyleSheet.create({
   usageLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   usageValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     fontVariant: ['tabular-nums'],
+  },
+  subscribeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    backgroundColor: CALM.accent,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.md,
+  },
+  subscribeButtonText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: '#fff',
   },
 });
 

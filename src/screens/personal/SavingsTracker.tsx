@@ -12,16 +12,15 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useSavingsStore } from '../../store/savingsStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import {
-  COLORS,
+  CALM,
+  TYPE,
   SPACING,
   TYPOGRAPHY,
   RADIUS,
-  SHADOWS,
   withAlpha,
 } from '../../constants';
 import ModeToggle from '../../components/common/ModeToggle';
@@ -33,6 +32,7 @@ import { SavingsAccount, SavingsAccountType } from '../../types';
 
 const MAX_ACCOUNTS = 5;
 
+// Account type colors are data colors (rule 16 — keep them)
 const SAVINGS_TYPES: {
   id: SavingsAccountType;
   name: string;
@@ -207,14 +207,9 @@ const SavingsTracker: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Portfolio Hero ── */}
+        {/* ── Portfolio Hero (bordered card, no gradient) ── */}
         {accounts.length > 0 && (
-          <LinearGradient
-            colors={['#5B4FE9', '#8B7CFF']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.heroGradient}
-          >
+          <View style={styles.heroCard}>
             <Text style={styles.heroLabel}>Total Portfolio</Text>
             <Text style={styles.heroAmount}>
               {currency} {portfolio.totalCurrent.toFixed(2)}
@@ -236,8 +231,8 @@ const SavingsTracker: React.FC = () => {
                     {
                       color:
                         portfolio.totalGain >= 0
-                          ? '#A5F3C0'
-                          : '#FCA5A5',
+                          ? CALM.positive
+                          : CALM.neutral,
                     },
                   ]}
                 >
@@ -254,8 +249,8 @@ const SavingsTracker: React.FC = () => {
                     {
                       color:
                         portfolio.totalReturn >= 0
-                          ? '#A5F3C0'
-                          : '#FCA5A5',
+                          ? CALM.positive
+                          : CALM.neutral,
                     },
                   ]}
                 >
@@ -268,7 +263,7 @@ const SavingsTracker: React.FC = () => {
             <Text style={styles.heroCounter}>
               {accounts.length}/{MAX_ACCOUNTS} accounts
             </Text>
-          </LinearGradient>
+          </View>
         )}
 
         {/* ── Account Cards ── */}
@@ -325,13 +320,13 @@ const SavingsTracker: React.FC = () => {
                     onPress={() => openEdit(account)}
                     style={styles.iconBtn}
                   >
-                    <Feather name="edit-2" size={16} color={COLORS.primary} />
+                    <Feather name="edit-2" size={16} color={CALM.accent} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleDelete(account)}
                     style={styles.iconBtn}
                   >
-                    <Feather name="trash-2" size={16} color={COLORS.danger} />
+                    <Feather name="trash-2" size={16} color={CALM.neutral} />
                   </TouchableOpacity>
                 </View>
 
@@ -346,35 +341,35 @@ const SavingsTracker: React.FC = () => {
                     </Text>
                   </View>
                   <View style={styles.gainContainer}>
-                    <LinearGradient
-                      colors={
-                        gain >= 0
-                          ? [withAlpha(COLORS.success, 0.12), withAlpha(COLORS.success, 0.04)]
-                          : [withAlpha(COLORS.danger, 0.12), withAlpha(COLORS.danger, 0.04)]
-                      }
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.gainBadge}
+                    <View
+                      style={[
+                        styles.gainBadge,
+                        {
+                          backgroundColor: gain >= 0
+                            ? withAlpha(CALM.positive, 0.08)
+                            : withAlpha(CALM.neutral, 0.08),
+                        },
+                      ]}
                     >
                       <Feather
                         name={gain >= 0 ? 'arrow-up-right' : 'arrow-down-right'}
                         size={14}
-                        color={gain >= 0 ? COLORS.success : COLORS.danger}
+                        color={gain >= 0 ? CALM.positive : CALM.neutral}
                       />
                       <Text
                         style={[
                           styles.gainText,
-                          { color: gain >= 0 ? COLORS.success : COLORS.danger },
+                          { color: gain >= 0 ? CALM.positive : CALM.neutral },
                         ]}
                       >
                         {gain >= 0 ? '+' : ''}
                         {returnPct.toFixed(1)}%
                       </Text>
-                    </LinearGradient>
+                    </View>
                     <Text
                       style={[
                         styles.gainAbsolute,
-                        { color: gain >= 0 ? COLORS.success : COLORS.danger },
+                        { color: gain >= 0 ? CALM.positive : CALM.neutral },
                       ]}
                     >
                       {gain >= 0 ? '+' : ''}
@@ -385,7 +380,7 @@ const SavingsTracker: React.FC = () => {
 
                 {/* Last updated + change */}
                 <View style={styles.lastUpdatedRow}>
-                  <Feather name="clock" size={12} color={COLORS.textTertiary} />
+                  <Feather name="clock" size={12} color={CALM.neutral} />
                   <Text style={styles.lastUpdatedText}>
                     {lastSnapshot
                       ? `Updated ${formatDistanceToNow(lastSnapshot.date, { addSuffix: true })}`
@@ -395,7 +390,7 @@ const SavingsTracker: React.FC = () => {
                     <Text
                       style={[
                         styles.lastChangeText,
-                        { color: lastChange >= 0 ? COLORS.success : COLORS.danger },
+                        { color: lastChange >= 0 ? CALM.positive : CALM.neutral },
                       ]}
                     >
                       {lastChange >= 0 ? '+' : ''}
@@ -411,7 +406,7 @@ const SavingsTracker: React.FC = () => {
                     onPress={() => openUpdateValue(account)}
                     activeOpacity={0.7}
                   >
-                    <Feather name="refresh-cw" size={14} color={COLORS.primary} />
+                    <Feather name="refresh-cw" size={14} color={CALM.accent} />
                     <Text style={styles.updateValueText}>Update Value</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -419,7 +414,7 @@ const SavingsTracker: React.FC = () => {
                     onPress={() => openHistory(account)}
                     activeOpacity={0.7}
                   >
-                    <Feather name="list" size={14} color={COLORS.textSecondary} />
+                    <Feather name="list" size={14} color={CALM.textSecondary} />
                     <Text style={styles.historyBtnText}>History</Text>
                   </TouchableOpacity>
                 </View>
@@ -470,7 +465,7 @@ const SavingsTracker: React.FC = () => {
                     resetForm();
                   }}
                 >
-                  <Feather name="x" size={24} color={COLORS.text} />
+                  <Feather name="x" size={24} color={CALM.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -484,7 +479,7 @@ const SavingsTracker: React.FC = () => {
                   value={name}
                   onChangeText={setName}
                   placeholder="e.g. My TNG GO+, Wahed Invest"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="next"
                 />
 
@@ -515,7 +510,7 @@ const SavingsTracker: React.FC = () => {
                   <Feather
                     name={typeDropdownOpen ? 'chevron-up' : 'chevron-down'}
                     size={20}
-                    color={COLORS.textSecondary}
+                    color={CALM.textSecondary}
                   />
                 </TouchableOpacity>
 
@@ -547,13 +542,13 @@ const SavingsTracker: React.FC = () => {
                           <Text
                             style={[
                               styles.dropdownItemText,
-                              isSelected && { color: COLORS.primary, fontWeight: TYPOGRAPHY.weight.bold },
+                              isSelected && { color: CALM.accent, fontWeight: TYPOGRAPHY.weight.bold },
                             ]}
                           >
                             {type.name}
                           </Text>
                           {isSelected && (
-                            <Feather name="check" size={16} color={COLORS.primary} />
+                            <Feather name="check" size={16} color={CALM.accent} />
                           )}
                         </TouchableOpacity>
                       );
@@ -570,7 +565,7 @@ const SavingsTracker: React.FC = () => {
                       value={description}
                       onChangeText={setDescription}
                       placeholder="e.g. Stashaway, Gold, Mutual Fund"
-                      placeholderTextColor={COLORS.textSecondary}
+                      placeholderTextColor={CALM.textSecondary}
                       returnKeyType="next"
                     />
                   </>
@@ -583,7 +578,7 @@ const SavingsTracker: React.FC = () => {
                   onChangeText={setInitialInvestment}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -595,7 +590,7 @@ const SavingsTracker: React.FC = () => {
                   onChangeText={setCurrentValue}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -636,7 +631,7 @@ const SavingsTracker: React.FC = () => {
                 <TouchableOpacity
                   onPress={() => setUpdateModalVisible(false)}
                 >
-                  <Feather name="x" size={24} color={COLORS.text} />
+                  <Feather name="x" size={24} color={CALM.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -663,7 +658,7 @@ const SavingsTracker: React.FC = () => {
                   onChangeText={setNewValue}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="next"
                   autoFocus
                 />
@@ -674,7 +669,7 @@ const SavingsTracker: React.FC = () => {
                   value={updateNote}
                   onChangeText={setUpdateNote}
                   placeholder="e.g. Monthly update, market change"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -698,7 +693,7 @@ const SavingsTracker: React.FC = () => {
                               styles.updatePreviewValue,
                               {
                                 color:
-                                  diff >= 0 ? COLORS.success : COLORS.danger,
+                                  diff >= 0 ? CALM.positive : CALM.neutral,
                               },
                             ]}
                           >
@@ -747,7 +742,7 @@ const SavingsTracker: React.FC = () => {
               <TouchableOpacity
                 onPress={() => setHistoryModalVisible(false)}
               >
-                <Feather name="x" size={24} color={COLORS.text} />
+                <Feather name="x" size={24} color={CALM.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -774,8 +769,8 @@ const SavingsTracker: React.FC = () => {
                         color:
                           historyAccount.currentValue >=
                           historyAccount.initialInvestment
-                            ? COLORS.success
-                            : COLORS.danger,
+                            ? CALM.positive
+                            : CALM.neutral,
                       },
                     ]}
                   >
@@ -820,7 +815,7 @@ const SavingsTracker: React.FC = () => {
                               styles.historyItemDiff,
                               {
                                 color:
-                                  diff >= 0 ? COLORS.success : COLORS.danger,
+                                  diff >= 0 ? CALM.positive : CALM.neutral,
                               },
                             ]}
                           >
@@ -840,11 +835,11 @@ const SavingsTracker: React.FC = () => {
   );
 };
 
-// ─── STYLES ──────────────────────────────────────────────────
+// ── STYLES ──────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   scrollView: {
     flex: 1,
@@ -854,29 +849,31 @@ const styles = StyleSheet.create({
     paddingBottom: 80,
   },
 
-  // Hero
-  heroGradient: {
+  // Hero (bordered card, no gradient)
+  heroCard: {
     padding: SPACING['2xl'],
     borderRadius: RADIUS.xl,
     marginBottom: SPACING['2xl'],
-    ...SHADOWS.xl,
+    backgroundColor: CALM.surface,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   heroLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: withAlpha('#FFFFFF', 0.8),
+    color: CALM.textSecondary,
     marginBottom: SPACING.xs,
   },
   heroAmount: {
-    fontSize: TYPOGRAPHY.size['3xl'],
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#FFFFFF',
+    fontSize: TYPE.amount.fontSize,
+    fontWeight: TYPE.amount.fontWeight,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
     marginBottom: SPACING.lg,
   },
   heroStatsRow: {
     flexDirection: 'row',
-    backgroundColor: withAlpha('#FFFFFF', 0.15),
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
   },
@@ -887,22 +884,22 @@ const styles = StyleSheet.create({
   },
   heroStatDivider: {
     width: 1,
-    backgroundColor: withAlpha('#FFFFFF', 0.2),
+    backgroundColor: CALM.border,
   },
   heroStatSmallLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: withAlpha('#FFFFFF', 0.7),
+    color: CALM.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   heroStatSmallValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#FFFFFF',
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   heroCounter: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: withAlpha('#FFFFFF', 0.6),
+    color: CALM.neutral,
     textAlign: 'right',
     marginTop: SPACING.sm,
   },
@@ -930,7 +927,7 @@ const styles = StyleSheet.create({
   accountName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: 2,
   },
   accountTypeBadge: {
@@ -954,12 +951,12 @@ const styles = StyleSheet.create({
   valueCurrent: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   valueInvested: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginTop: 2,
   },
   gainContainer: {
@@ -992,13 +989,13 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingVertical: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: CALM.border,
     marginBottom: SPACING.sm,
   },
   lastUpdatedText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textTertiary,
+    color: CALM.neutral,
   },
   lastChangeText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1018,13 +1015,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.xs,
     paddingVertical: SPACING.sm,
-    backgroundColor: withAlpha(COLORS.primary, 0.08),
+    backgroundColor: withAlpha(CALM.accent, 0.08),
     borderRadius: RADIUS.md,
   },
   updateValueText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.primary,
+    color: CALM.accent,
   },
   historyBtn: {
     flex: 1,
@@ -1033,15 +1030,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.xs,
     paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    borderColor: CALM.border,
   },
   historyBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
 
   // FAB
@@ -1055,11 +1052,11 @@ const styles = StyleSheet.create({
   // Modal shared
   modalOverlay: {
     flex: 1,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
@@ -1074,22 +1071,24 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   label: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
   input: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   modalActions: {
     flexDirection: 'row',
@@ -1102,12 +1101,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   dropdownTriggerLeft: {
     flexDirection: 'row',
@@ -1124,14 +1123,14 @@ const styles = StyleSheet.create({
   dropdownTriggerText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   dropdownList: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     marginTop: SPACING.xs,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
     overflow: 'hidden',
   },
   dropdownItem: {
@@ -1141,10 +1140,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: CALM.border,
   },
   dropdownItemSelected: {
-    backgroundColor: withAlpha(COLORS.primary, 0.06),
+    backgroundColor: withAlpha(CALM.accent, 0.06),
   },
   dropdownItemIcon: {
     width: 32,
@@ -1157,12 +1156,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
 
   // Update value modal context
   updateContext: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -1170,15 +1169,15 @@ const styles = StyleSheet.create({
   updateContextName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: 2,
   },
   updateContextPrev: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   updatePreview: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginTop: SPACING.lg,
@@ -1186,7 +1185,7 @@ const styles = StyleSheet.create({
   },
   updatePreviewLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: 4,
   },
   updatePreviewValue: {
@@ -1198,7 +1197,7 @@ const styles = StyleSheet.create({
   // History modal
   historyHeaderSummary: {
     flexDirection: 'row',
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.lg,
@@ -1210,13 +1209,13 @@ const styles = StyleSheet.create({
   },
   historyHeaderLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   historyHeaderValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   historyItem: {
@@ -1225,7 +1224,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: CALM.border,
   },
   historyItemLeft: {
     flex: 1,
@@ -1233,11 +1232,11 @@ const styles = StyleSheet.create({
   historyItemDate: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   historyItemTime: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginTop: 1,
   },
   historyItemRight: {
@@ -1246,7 +1245,7 @@ const styles = StyleSheet.create({
   historyItemValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   historyItemDiff: {

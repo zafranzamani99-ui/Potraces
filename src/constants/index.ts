@@ -323,14 +323,14 @@ export const SPLIT_METHODS = [
 ];
 
 export const DEBT_TYPES = [
-  { label: 'I Owe', value: 'i_owe', icon: 'arrow-up-circle', color: '#F5365C' },
-  { label: 'They Owe Me', value: 'they_owe', icon: 'arrow-down-circle', color: '#2DCE89' },
+  { label: 'I Owe', value: 'i_owe', icon: 'arrow-up-circle', color: '#8E8E93' },
+  { label: 'They Owe Me', value: 'they_owe', icon: 'arrow-down-circle', color: '#2E7D5B' },
 ];
 
 export const DEBT_STATUSES = [
-  { label: 'Pending', value: 'pending', color: '#FB8C3C' },
-  { label: 'Partial', value: 'partial', color: '#5E72E4' },
-  { label: 'Settled', value: 'settled', color: '#2DCE89' },
+  { label: 'Pending', value: 'pending', color: '#5B4FE9' },
+  { label: 'Partial', value: 'partial', color: '#8E8E93' },
+  { label: 'Settled', value: 'settled', color: '#2E7D5B' },
 ];
 
 export const RECEIPT_SCANNER_CONFIG = {

@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import Button from './Button';
 
 interface EmptyStateProps {
@@ -36,16 +36,12 @@ const EmptyState: React.FC<EmptyStateProps> = ({
       accessibilityLabel={`${title}. ${message}`}
     >
       <View style={styles.iconContainer}>
-        <Feather name={icon} size={64} color={COLORS.textSecondary} />
+        <Feather name={icon} size={64} color={CALM.border} />
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
       {actionLabel && onAction && (
-        <Button
-          title={actionLabel}
-          onPress={onAction}
-          style={styles.button}
-        />
+        <Button title={actionLabel} onPress={onAction} style={styles.button} />
       )}
     </Animated.View>
   );
@@ -62,7 +58,9 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
+    borderWidth: 1,
+    borderColor: CALM.border,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: SPACING['2xl'],
@@ -70,20 +68,18 @@ const styles = StyleSheet.create({
   title: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.sm,
     textAlign: 'center',
   },
   message: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING['2xl'],
     lineHeight: 20,
   },
-  button: {
-    marginTop: SPACING.sm,
-  },
+  button: { marginTop: SPACING.sm },
 });
 
 export default EmptyState;

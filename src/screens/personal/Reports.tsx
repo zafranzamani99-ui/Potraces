@@ -4,7 +4,7 @@ import { PieChart, LineChart } from 'react-native-chart-kit';
 import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
@@ -39,8 +39,8 @@ const PersonalReports: React.FC = () => {
         return {
           name: cat?.name || category,
           amount,
-          color: cat?.color || COLORS.chart1,
-          legendFontColor: COLORS.text,
+          color: cat?.color || CALM.accent,           // keep chart data colors
+          legendFontColor: CALM.textPrimary,
           legendFontSize: 12,
         };
       })
@@ -80,12 +80,12 @@ const PersonalReports: React.FC = () => {
       datasets: [
         {
           data: incomeData,
-          color: (opacity = 1) => withAlpha(COLORS.income, opacity),
+          color: (opacity = 1) => withAlpha(CALM.positive, opacity),  // income = positive
           strokeWidth: 2,
         },
         {
           data: expenseData,
-          color: (opacity = 1) => withAlpha(COLORS.expense, opacity),
+          color: (opacity = 1) => withAlpha(CALM.textPrimary, opacity), // expense = primary text
           strokeWidth: 2,
         },
       ],
@@ -142,12 +142,12 @@ const PersonalReports: React.FC = () => {
             width={screenWidth - 64}
             height={220}
             chartConfig={{
-              backgroundColor: COLORS.background,
-              backgroundGradientFrom: COLORS.background,
-              backgroundGradientTo: COLORS.background,
+              backgroundColor: CALM.surface,
+              backgroundGradientFrom: CALM.surface,
+              backgroundGradientTo: CALM.surface,
               decimalPlaces: 0,
-              color: (opacity = 1) => withAlpha(COLORS.primary, opacity),
-              labelColor: (opacity = 1) => withAlpha(COLORS.textSecondary, opacity),
+              color: (opacity = 1) => withAlpha(CALM.accent, opacity),
+              labelColor: (opacity = 1) => withAlpha(CALM.textSecondary, opacity),
               style: {
                 borderRadius: 16,
               },
@@ -217,7 +217,7 @@ const PersonalReports: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   scrollView: {
     flex: 1,
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
   chartTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.lg,
   },
   chart: {
@@ -250,18 +250,18 @@ const styles = StyleSheet.create({
   statDivider: {
     width: 1,
     height: 40,
-    backgroundColor: COLORS.border,
+    backgroundColor: CALM.border,
     marginHorizontal: SPACING.lg,
   },
   statValue: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.xs,
   },
   statLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     textAlign: 'center',
   },
 
@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.surface,
+    borderBottomColor: CALM.border,
   },
   categoryInfo: {
     flexDirection: 'row',
@@ -286,12 +286,12 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   categoryAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
 });
 

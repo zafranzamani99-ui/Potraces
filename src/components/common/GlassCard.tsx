@@ -7,7 +7,7 @@ import {
   Animated,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { COLORS, SHADOWS, RADIUS, SPACING, withAlpha } from '../../constants';
+import { CALM, RADIUS, SPACING, withAlpha } from '../../constants';
 import { lightTap } from '../../services/haptics';
 
 // ─── TYPES ──────────────────────────────────────────────────
@@ -32,24 +32,22 @@ const VARIANT_CONFIG: Record<
     intensity: number;
     backgroundColor: string;
     borderColor: string;
-    shadow?: typeof SHADOWS.lg;
   }
 > = {
   frosted: {
     intensity: 80,
-    backgroundColor: withAlpha(COLORS.card, 0.7),
+    backgroundColor: withAlpha(CALM.surface, 0.7),
     borderColor: withAlpha('#FFFFFF', 0.2),
   },
   tinted: {
     intensity: 60,
-    backgroundColor: withAlpha(COLORS.surface, 0.8),
-    borderColor: withAlpha(COLORS.primary, 0.3),
+    backgroundColor: withAlpha(CALM.background, 0.8),
+    borderColor: withAlpha(CALM.accent, 0.3),
   },
   elevated: {
     intensity: 40,
-    backgroundColor: withAlpha(COLORS.card, 0.9),
+    backgroundColor: withAlpha(CALM.surface, 0.9),
     borderColor: withAlpha('#FFFFFF', 0.15),
-    shadow: SHADOWS.lg,
   },
 };
 
@@ -132,7 +130,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
             backgroundColor: variantCfg.backgroundColor,
             borderColor: variantCfg.borderColor,
           },
-          variantCfg.shadow,
+          { borderWidth: 1, borderColor: CALM.border },
         ]}
       >
         {children}

@@ -2,16 +2,7 @@ import React, { useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import {
-  COLORS,
-  CALM,
-  SPACING,
-  TYPOGRAPHY,
-  RADIUS,
-  SHADOWS,
-  ICON_SIZE,
-  withAlpha
-} from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, ICON_SIZE, withAlpha } from '../../constants';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useCategories } from '../../hooks/useCategories';
@@ -37,21 +28,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress 
 
   const handlePressIn = () => {
     lightTap();
-    Animated.spring(scaleAnim, {
-      toValue: 0.98,
-      useNativeDriver: true,
-      speed: 50,
-      bounciness: 4,
-    }).start();
+    Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true, speed: 50, bounciness: 4 }).start();
   };
 
   const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      speed: 50,
-      bounciness: 4,
-    }).start();
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 50, bounciness: 4 }).start();
   };
 
   return (
@@ -65,22 +46,17 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress 
       accessibilityLabel={`${category?.name || transaction.category} transaction: ${currency} ${transaction.amount.toFixed(2)}`}
       accessibilityHint={onPress ? "Double tap to view details" : undefined}
     >
-      <Animated.View
-        style={[
-          styles.container,
-          { transform: [{ scale: scaleAnim }] }
-        ]}
-      >
+      <Animated.View style={[styles.container, { transform: [{ scale: scaleAnim }] }]}>
         <View
           style={[
             styles.iconContainer,
-            { backgroundColor: category?.color ? withAlpha(category.color, 0.12) : COLORS.surface }
+            { backgroundColor: category?.color ? withAlpha(category.color, 0.12) : CALM.background }
           ]}
         >
           <Feather
             name={(category?.icon as keyof typeof Feather.glyphMap) || 'dollar-sign'}
             size={ICON_SIZE.sm}
-            color={category?.color || COLORS.text}
+            color={category?.color || CALM.textPrimary}
           />
         </View>
         <View style={styles.details}>
@@ -88,37 +64,22 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress 
             <Text style={styles.category}>{category?.name || transaction.category}</Text>
             {transaction.emotionalFlag && <View style={styles.emotionalDot} />}
           </View>
-          <Text style={styles.description} numberOfLines={1}>
-            {transaction.description}
-          </Text>
+          <Text style={styles.description} numberOfLines={1}>{transaction.description}</Text>
           <Text style={styles.date}>{format(transaction.date, 'MMM dd, yyyy • HH:mm')}</Text>
           {wallet && (
             <View style={styles.walletBadge}>
-              <Feather
-                name={wallet.icon as keyof typeof Feather.glyphMap}
-                size={10}
-                color={wallet.color}
-              />
-              <Text style={[styles.walletBadgeText, { color: wallet.color }]}>
-                {wallet.name}
-              </Text>
+              <Feather name={wallet.icon as keyof typeof Feather.glyphMap} size={10} color={wallet.color} />
+              <Text style={[styles.walletBadgeText, { color: wallet.color }]}>{wallet.name}</Text>
             </View>
           )}
         </View>
         <View style={styles.amountContainer}>
-          <Text
-            style={[
-              styles.amount,
-              { color: CALM.textPrimary },
-            ]}
-          >
+          <Text style={styles.amount}>
             {isExpense ? '-' : '+'}{currency} {transaction.amount.toFixed(2)}
           </Text>
           {transaction.tags && transaction.tags.length > 0 && (
             <View style={styles.tagContainer}>
-              <Text style={styles.tag} numberOfLines={1}>
-                {transaction.tags[0]}
-              </Text>
+              <Text style={styles.tag} numberOfLines={1}>{transaction.tags[0]}</Text>
             </View>
           )}
         </View>
@@ -131,11 +92,12 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.card,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
-    ...SHADOWS.sm,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   iconContainer: {
     width: ICON_SIZE.xl,
@@ -145,66 +107,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: SPACING.md,
   },
-  details: {
-    flex: 1,
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  emotionalDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: CALM.accent,
-  },
+  details: { flex: 1 },
+  categoryRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  emotionalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: CALM.accent },
   category: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.xs / 2,
   },
-  description: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xs / 2,
-  },
-  date: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textTertiary,
-  },
-  amountContainer: {
-    alignItems: 'flex-end',
-  },
+  description: { fontSize: TYPOGRAPHY.size.sm, color: CALM.textSecondary, marginBottom: SPACING.xs / 2 },
+  date: { fontSize: TYPOGRAPHY.size.xs, color: CALM.neutral },
+  amountContainer: { alignItems: 'flex-end' },
   amount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
     marginBottom: SPACING.xs,
   },
   tagContainer: {
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: CALM.background,
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs / 2,
     borderRadius: RADIUS.xs,
     maxWidth: 80,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
-  tag: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.textSecondary,
-  },
-  walletBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    marginTop: 2,
-  },
-  walletBadgeText: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
+  tag: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium, color: CALM.textSecondary },
+  walletBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
+  walletBadgeText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.medium },
 });
 
 export default React.memo(TransactionItem);

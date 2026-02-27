@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { useAppStore } from '../../store/appStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, ANIMATION } from '../../constants';
+import { COLORS, CALM, SPACING, TYPOGRAPHY, RADIUS, ANIMATION } from '../../constants';
 import { selectionChanged } from '../../services/haptics';
 
 const TRACK_WIDTH = 240;
@@ -40,13 +40,13 @@ const ModeToggle: React.FC = () => {
 
   const personalTextColor = slideAnim.interpolate({
     inputRange: [0, 0.5],
-    outputRange: ['#FFFFFF', COLORS.textSecondary],
+    outputRange: ['#FFFFFF', CALM.textSecondary],
     extrapolate: 'clamp',
   });
 
   const businessTextColor = slideAnim.interpolate({
     inputRange: [0.5, 1],
-    outputRange: [COLORS.textSecondary, '#FFFFFF'],
+    outputRange: [CALM.textSecondary, '#FFFFFF'],
     extrapolate: 'clamp',
   });
 
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     width: TRACK_WIDTH,
     height: TRACK_HEIGHT,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: CALM.background,
     flexDirection: 'row',
     position: 'relative',
   },
@@ -110,7 +110,8 @@ const styles = StyleSheet.create({
     width: THUMB_WIDTH,
     height: THUMB_HEIGHT,
     borderRadius: RADIUS.lg - 2,
-    ...SHADOWS.sm,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   labelButton: {
     flex: 1,

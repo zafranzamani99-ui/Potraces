@@ -16,7 +16,7 @@ import { Feather } from '@expo/vector-icons';
 import { format, addWeeks, addMonths, addYears } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, BILLING_CYCLES, withAlpha } from '../../constants';
+import { COLORS, CALM, SPACING, TYPOGRAPHY, RADIUS, BILLING_CYCLES, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
@@ -246,19 +246,19 @@ const SubscriptionList: React.FC = () => {
         {/* Search bar */}
         {subscriptions.length > 0 && (
           <View style={styles.searchContainer}>
-            <Feather name="search" size={18} color={COLORS.textSecondary} />
+            <Feather name="search" size={18} color={CALM.textSecondary} />
             <TextInput
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Search commitments..."
-              placeholderTextColor={COLORS.textSecondary}
+              placeholderTextColor={CALM.textSecondary}
               returnKeyType="search"
               onSubmitEditing={Keyboard.dismiss}
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Feather name="x" size={18} color={COLORS.textSecondary} />
+                <Feather name="x" size={18} color={CALM.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
@@ -316,7 +316,7 @@ const SubscriptionList: React.FC = () => {
             return (
               <Card key={subscription.id} style={styles.subscriptionCard}>
                 <View style={styles.subscriptionHeader}>
-                  <View style={[styles.iconContainer, { backgroundColor: category?.color ? withAlpha(category.color, 0.12) : COLORS.surface }]}>
+                  <View style={[styles.iconContainer, { backgroundColor: category?.color ? withAlpha(category.color, 0.12) : CALM.background }]}>
                     <Feather name={(category?.icon as keyof typeof Feather.glyphMap) || 'repeat'} size={20} color={category?.color} />
                   </View>
                   <View style={styles.subscriptionInfo}>
@@ -327,7 +327,7 @@ const SubscriptionList: React.FC = () => {
                     onPress={() => handleEdit(subscription.id)}
                     style={styles.editButton}
                   >
-                    <Feather name="edit-2" size={18} color={COLORS.primary} />
+                    <Feather name="edit-2" size={18} color={CALM.accent} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleDelete(subscription.id, subscription.name)}
@@ -382,7 +382,7 @@ const SubscriptionList: React.FC = () => {
                       <ProgressBar
                         current={subscription.completedInstallments || 0}
                         total={subscription.totalInstallments}
-                        color={COLORS.primary}
+                        color={CALM.accent}
                       />
                     </>
                   )}
@@ -392,7 +392,7 @@ const SubscriptionList: React.FC = () => {
           })
         ) : subscriptions.length > 0 ? (
           <View style={styles.noResults}>
-            <Feather name="search" size={40} color={COLORS.textSecondary} />
+            <Feather name="search" size={40} color={CALM.textSecondary} />
             <Text style={styles.noResultsTitle}>No results found</Text>
             <Text style={styles.noResultsText}>Try a different search or filter</Text>
           </View>
@@ -426,7 +426,7 @@ const SubscriptionList: React.FC = () => {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editingId ? 'Edit Commitment' : 'Add Commitment'}</Text>
               <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }}>
-                <Feather name="x" size={24} color={COLORS.text} />
+                <Feather name="x" size={24} color={CALM.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -437,7 +437,7 @@ const SubscriptionList: React.FC = () => {
                 value={name}
                 onChangeText={setName}
                 placeholder="Netflix, Spotify, etc."
-                placeholderTextColor={COLORS.textSecondary}
+                placeholderTextColor={CALM.textSecondary}
                 returnKeyType="next"
               />
 
@@ -448,7 +448,7 @@ const SubscriptionList: React.FC = () => {
                 onChangeText={setAmount}
                 placeholder="0.00"
                 keyboardType="decimal-pad"
-                placeholderTextColor={COLORS.textSecondary}
+                placeholderTextColor={CALM.textSecondary}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
@@ -490,7 +490,7 @@ const SubscriptionList: React.FC = () => {
                 value={startDate}
                 onChangeText={setStartDate}
                 placeholder="YYYY-MM-DD"
-                placeholderTextColor={COLORS.textSecondary}
+                placeholderTextColor={CALM.textSecondary}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
@@ -502,7 +502,7 @@ const SubscriptionList: React.FC = () => {
                 onChangeText={setReminderDays}
                 placeholder="3"
                 keyboardType="number-pad"
-                placeholderTextColor={COLORS.textSecondary}
+                placeholderTextColor={CALM.textSecondary}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
@@ -515,7 +515,7 @@ const SubscriptionList: React.FC = () => {
                 <Switch
                   value={isInstallment}
                   onValueChange={(val) => { lightTap(); setIsInstallment(val); }}
-                  trackColor={{ false: COLORS.border, true: COLORS.success }}
+                  trackColor={{ false: CALM.border, true: CALM.positive }}
                   thumbColor="#FFFFFF"
                 />
               </View>
@@ -529,7 +529,7 @@ const SubscriptionList: React.FC = () => {
                     onChangeText={setTotalInstallments}
                     placeholder="e.g. 24"
                     keyboardType="number-pad"
-                    placeholderTextColor={COLORS.textSecondary}
+                    placeholderTextColor={CALM.textSecondary}
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
                   />
@@ -561,7 +561,7 @@ const SubscriptionList: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   scrollView: {
     flex: 1,
@@ -575,18 +575,19 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.md,
     gap: SPACING.sm,
-    ...SHADOWS.sm,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   searchInput: {
     flex: 1,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
 
   // Filter + Sort
@@ -602,9 +603,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   filterChipActive: {
     backgroundColor: COLORS.personal,
@@ -613,7 +614,7 @@ const styles = StyleSheet.create({
   filterChipText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   filterChipTextActive: {
     color: '#FFFFFF',
@@ -630,18 +631,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   sortChipActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: CALM.accent,
+    borderColor: CALM.accent,
   },
   sortChipText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   sortChipTextActive: {
     color: '#FFFFFF',
@@ -654,18 +655,18 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.xs,
   },
   summaryAmount: {
     fontSize: TYPOGRAPHY.size['4xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.xs,
   },
   summarySubtext: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
 
   // Subscription cards
@@ -691,12 +692,12 @@ const styles = StyleSheet.create({
   subscriptionName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: 2,
   },
   subscriptionCategory: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   editButton: {
     padding: SPACING.sm,
@@ -714,12 +715,12 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   detailValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   duesSoon: {
     color: CALM.neutral,
@@ -735,12 +736,12 @@ const styles = StyleSheet.create({
   noResultsTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginTop: SPACING.sm,
   },
   noResultsText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
 
   // FAB
@@ -754,11 +755,11 @@ const styles = StyleSheet.create({
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
@@ -773,22 +774,22 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   label: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
   input: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   cycleContainer: {
     flexDirection: 'row',
@@ -800,18 +801,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.md,
     borderWidth: 2,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    borderColor: CALM.border,
+    backgroundColor: CALM.background,
     alignItems: 'center',
   },
   cycleButtonActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primary,
+    borderColor: CALM.accent,
+    backgroundColor: CALM.accent,
   },
   cycleText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   cycleTextActive: {
     color: '#fff',
@@ -825,11 +826,11 @@ const styles = StyleSheet.create({
   installmentLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   installmentHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginTop: 2,
   },
   modalActions: {

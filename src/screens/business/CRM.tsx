@@ -20,11 +20,10 @@ import { useCRMStore } from '../../store/crmStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import {
-  COLORS,
+  CALM,
   SPACING,
   TYPOGRAPHY,
   RADIUS,
-  SHADOWS,
   withAlpha,
 } from '../../constants';
 import ModeToggle from '../../components/common/ModeToggle';
@@ -50,15 +49,15 @@ interface LocalOrderItem {
 
 // ─── STATUS COLORS ────────────────────────────────────────────
 const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
-  pending: COLORS.warning,
-  completed: COLORS.success,
-  cancelled: COLORS.danger,
+  pending: CALM.neutral,
+  completed: CALM.positive,
+  cancelled: CALM.neutral,
 };
 
 const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
-  unpaid: COLORS.danger,
-  partial: COLORS.warning,
-  paid: COLORS.success,
+  unpaid: CALM.neutral,
+  partial: CALM.neutral,
+  paid: CALM.positive,
 };
 
 // ─── COMPONENT ────────────────────────────────────────────────
@@ -524,24 +523,24 @@ const CRM: React.FC = () => {
         {/* Stats Summary Row */}
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
-            <View style={[styles.statIconWrap, { backgroundColor: withAlpha(COLORS.business, 0.12) }]}>
-              <Feather name="users" size={18} color={COLORS.business} />
+            <View style={[styles.statIconWrap, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
+              <Feather name="users" size={18} color={CALM.accent} />
             </View>
             <Text style={styles.statValue}>{globalStats.totalCustomers}</Text>
             <Text style={styles.statLabel}>Customers</Text>
           </View>
           <View style={styles.statBox}>
-            <View style={[styles.statIconWrap, { backgroundColor: withAlpha(COLORS.success, 0.12) }]}>
-              <Feather name="dollar-sign" size={18} color={COLORS.success} />
+            <View style={[styles.statIconWrap, { backgroundColor: withAlpha(CALM.positive, 0.12) }]}>
+              <Feather name="dollar-sign" size={18} color={CALM.positive} />
             </View>
             <Text style={styles.statValue}>{formatCurrency(globalStats.revenue)}</Text>
             <Text style={styles.statLabel}>Revenue</Text>
           </View>
           <View style={styles.statBox}>
-            <View style={[styles.statIconWrap, { backgroundColor: withAlpha(COLORS.warning, 0.12) }]}>
-              <Feather name="alert-circle" size={18} color={COLORS.warning} />
+            <View style={[styles.statIconWrap, { backgroundColor: withAlpha(CALM.neutral, 0.12) }]}>
+              <Feather name="alert-circle" size={18} color={CALM.neutral} />
             </View>
-            <Text style={[styles.statValue, globalStats.outstanding > 0 && { color: COLORS.warning }]}>
+            <Text style={[styles.statValue, globalStats.outstanding > 0 && { color: CALM.neutral }]}>
               {formatCurrency(globalStats.outstanding)}
             </Text>
             <Text style={styles.statLabel}>Outstanding</Text>
@@ -553,7 +552,7 @@ const CRM: React.FC = () => {
           <Feather
             name="search"
             size={18}
-            color={COLORS.textSecondary}
+            color={CALM.textSecondary}
             style={styles.searchIcon}
           />
           <TextInput
@@ -561,7 +560,7 @@ const CRM: React.FC = () => {
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search customers..."
-            placeholderTextColor={COLORS.textTertiary}
+            placeholderTextColor={CALM.neutral}
             returnKeyType="search"
             clearButtonMode="while-editing"
           />
@@ -617,7 +616,7 @@ const CRM: React.FC = () => {
                             activeOpacity={0.7}
                             accessibilityLabel={`Call ${customer.name}`}
                           >
-                            <Feather name="phone" size={14} color={COLORS.business} />
+                            <Feather name="phone" size={14} color={CALM.accent} />
                           </TouchableOpacity>
                         ) : null}
                         {customer.address ? (
@@ -630,7 +629,7 @@ const CRM: React.FC = () => {
                             activeOpacity={0.7}
                             accessibilityLabel={`Open ${customer.name}'s address in maps`}
                           >
-                            <Feather name="map-pin" size={14} color={COLORS.business} />
+                            <Feather name="map-pin" size={14} color={CALM.accent} />
                           </TouchableOpacity>
                         ) : null}
                       </View>
@@ -642,7 +641,7 @@ const CRM: React.FC = () => {
                       <Feather
                         name="alert-circle"
                         size={14}
-                        color={COLORS.warning}
+                        color={CALM.neutral}
                       />
                       <Text style={styles.outstandingText}>
                         {formatCurrency(stats.outstanding)} outstanding
@@ -667,7 +666,7 @@ const CRM: React.FC = () => {
       <FAB
         onPress={openAddCustomer}
         icon="plus"
-        color={COLORS.business}
+        color={CALM.accent}
       />
 
       {/* ── Add/Edit Customer Modal ────────────────────────────── */}
@@ -693,7 +692,7 @@ const CRM: React.FC = () => {
                   }}
                   accessibilityLabel="Close modal"
                 >
-                  <Feather name="x" size={24} color={COLORS.text} />
+                  <Feather name="x" size={24} color={CALM.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -707,7 +706,7 @@ const CRM: React.FC = () => {
                   value={customerName}
                   onChangeText={setCustomerName}
                   placeholder="Customer name"
-                  placeholderTextColor={COLORS.textTertiary}
+                  placeholderTextColor={CALM.neutral}
                   returnKeyType="next"
                   onSubmitEditing={() => phoneRef.current?.focus()}
                   autoCapitalize="words"
@@ -720,7 +719,7 @@ const CRM: React.FC = () => {
                   value={customerPhone}
                   onChangeText={setCustomerPhone}
                   placeholder="Phone number"
-                  placeholderTextColor={COLORS.textTertiary}
+                  placeholderTextColor={CALM.neutral}
                   keyboardType="phone-pad"
                   returnKeyType="next"
                   onSubmitEditing={() => emailRef.current?.focus()}
@@ -733,7 +732,7 @@ const CRM: React.FC = () => {
                   value={customerEmail}
                   onChangeText={setCustomerEmail}
                   placeholder="Email address"
-                  placeholderTextColor={COLORS.textTertiary}
+                  placeholderTextColor={CALM.neutral}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   returnKeyType="next"
@@ -747,7 +746,7 @@ const CRM: React.FC = () => {
                   value={customerCompany}
                   onChangeText={setCustomerCompany}
                   placeholder="Company name"
-                  placeholderTextColor={COLORS.textTertiary}
+                  placeholderTextColor={CALM.neutral}
                   returnKeyType="next"
                   onSubmitEditing={() => addressRef.current?.focus()}
                 />
@@ -759,7 +758,7 @@ const CRM: React.FC = () => {
                   value={customerAddress}
                   onChangeText={setCustomerAddress}
                   placeholder="Delivery address..."
-                  placeholderTextColor={COLORS.textTertiary}
+                  placeholderTextColor={CALM.neutral}
                   multiline
                   numberOfLines={2}
                   textAlignVertical="top"
@@ -775,7 +774,7 @@ const CRM: React.FC = () => {
                   value={customerNotes}
                   onChangeText={setCustomerNotes}
                   placeholder="Additional notes..."
-                  placeholderTextColor={COLORS.textTertiary}
+                  placeholderTextColor={CALM.neutral}
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
@@ -827,7 +826,7 @@ const CRM: React.FC = () => {
                 }}
                 accessibilityLabel="Close customer details"
               >
-                <Feather name="x" size={24} color={COLORS.text} />
+                <Feather name="x" size={24} color={CALM.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -860,11 +859,11 @@ const CRM: React.FC = () => {
                         activeOpacity={0.7}
                         accessibilityLabel={`Call ${selectedCustomer.phone}`}
                       >
-                        <Feather name="phone" size={14} color={COLORS.business} />
+                        <Feather name="phone" size={14} color={CALM.accent} />
                         <Text style={styles.contactButtonText}>
                           {selectedCustomer.phone}
                         </Text>
-                        <Feather name="external-link" size={12} color={COLORS.business} />
+                        <Feather name="external-link" size={12} color={CALM.accent} />
                       </TouchableOpacity>
                     ) : null}
                     {selectedCustomer.email ? (
@@ -874,11 +873,11 @@ const CRM: React.FC = () => {
                         activeOpacity={0.7}
                         accessibilityLabel={`Email ${selectedCustomer.email}`}
                       >
-                        <Feather name="mail" size={14} color={COLORS.business} />
+                        <Feather name="mail" size={14} color={CALM.accent} />
                         <Text style={styles.contactButtonText}>
                           {selectedCustomer.email}
                         </Text>
-                        <Feather name="external-link" size={12} color={COLORS.business} />
+                        <Feather name="external-link" size={12} color={CALM.accent} />
                       </TouchableOpacity>
                     ) : null}
                   </View>
@@ -889,11 +888,11 @@ const CRM: React.FC = () => {
                       onPress={() => openInMaps(selectedCustomer.address!)}
                       activeOpacity={0.7}
                     >
-                      <Feather name="map-pin" size={14} color={COLORS.business} />
+                      <Feather name="map-pin" size={14} color={CALM.accent} />
                       <Text style={styles.addressText} numberOfLines={2}>
                         {selectedCustomer.address}
                       </Text>
-                      <Feather name="external-link" size={14} color={COLORS.business} />
+                      <Feather name="external-link" size={14} color={CALM.accent} />
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -921,7 +920,7 @@ const CRM: React.FC = () => {
                         <Text
                           style={[
                             styles.detailStatValue,
-                            stats.outstanding > 0 && { color: COLORS.warning },
+                            stats.outstanding > 0 && { color: CALM.neutral },
                           ]}
                         >
                           {formatCurrency(stats.outstanding)}
@@ -1028,7 +1027,7 @@ const CRM: React.FC = () => {
                               <ProgressBar
                                 current={order.paidAmount}
                                 total={order.totalAmount}
-                                color={COLORS.business}
+                                color={CALM.accent}
                                 height={6}
                                 showPercentage={false}
                               />
@@ -1052,12 +1051,12 @@ const CRM: React.FC = () => {
                                 <Feather
                                   name="credit-card"
                                   size={14}
-                                  color={COLORS.success}
+                                  color={CALM.positive}
                                 />
                                 <Text
                                   style={[
                                     styles.orderActionText,
-                                    { color: COLORS.success },
+                                    { color: CALM.positive },
                                   ]}
                                 >
                                   Pay
@@ -1073,12 +1072,12 @@ const CRM: React.FC = () => {
                             <Feather
                               name="trash-2"
                               size={14}
-                              color={COLORS.danger}
+                              color={CALM.neutral}
                             />
                             <Text
                               style={[
                                 styles.orderActionText,
-                                { color: COLORS.danger },
+                                { color: CALM.neutral },
                               ]}
                             >
                               Delete
@@ -1093,7 +1092,7 @@ const CRM: React.FC = () => {
                     <Feather
                       name="inbox"
                       size={32}
-                      color={COLORS.textTertiary}
+                      color={CALM.neutral}
                     />
                     <Text style={styles.noOrdersText}>No orders yet</Text>
                   </View>
@@ -1157,7 +1156,7 @@ const CRM: React.FC = () => {
                   }}
                   accessibilityLabel="Close order modal"
                 >
-                  <Feather name="x" size={24} color={COLORS.text} />
+                  <Feather name="x" size={24} color={CALM.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -1180,11 +1179,11 @@ const CRM: React.FC = () => {
                       }}
                       activeOpacity={0.7}
                     >
-                      <Feather name="package" size={16} color={item.name ? COLORS.business : COLORS.textTertiary} />
+                      <Feather name="package" size={16} color={item.name ? CALM.accent : CALM.neutral} />
                       <Text
                         style={[
                           styles.productSelectorText,
-                          !item.name && { color: COLORS.textTertiary },
+                          !item.name && { color: CALM.neutral },
                         ]}
                         numberOfLines={1}
                       >
@@ -1193,7 +1192,7 @@ const CRM: React.FC = () => {
                       <Feather
                         name={productPickerOpen === item.localId ? 'chevron-up' : 'chevron-down'}
                         size={16}
-                        color={COLORS.textSecondary}
+                        color={CALM.textSecondary}
                       />
                     </TouchableOpacity>
 
@@ -1201,18 +1200,18 @@ const CRM: React.FC = () => {
                     {productPickerOpen === item.localId && (
                       <View style={styles.productDropdown}>
                         <View style={styles.productDropdownSearch}>
-                          <Feather name="search" size={14} color={COLORS.textSecondary} />
+                          <Feather name="search" size={14} color={CALM.textSecondary} />
                           <TextInput
                             style={styles.productDropdownSearchInput}
                             value={productPickerSearch}
                             onChangeText={setProductPickerSearch}
                             placeholder="Search products..."
-                            placeholderTextColor={COLORS.textTertiary}
+                            placeholderTextColor={CALM.neutral}
                             autoFocus
                           />
                           {productPickerSearch.length > 0 && (
                             <TouchableOpacity onPress={() => setProductPickerSearch('')}>
-                              <Feather name="x" size={14} color={COLORS.textSecondary} />
+                              <Feather name="x" size={14} color={CALM.textSecondary} />
                             </TouchableOpacity>
                           )}
                         </View>
@@ -1234,7 +1233,7 @@ const CRM: React.FC = () => {
                                 </Text>
                               </View>
                               {item.productId === p.id && (
-                                <Feather name="check" size={16} color={COLORS.business} />
+                                <Feather name="check" size={16} color={CALM.accent} />
                               )}
                             </TouchableOpacity>
                           ))}
@@ -1256,7 +1255,7 @@ const CRM: React.FC = () => {
                           handleUpdateOrderItem(item.localId, 'quantity', v)
                         }
                         placeholder="Qty"
-                        placeholderTextColor={COLORS.textTertiary}
+                        placeholderTextColor={CALM.neutral}
                         keyboardType="number-pad"
                       />
                       <TextInput
@@ -1266,7 +1265,7 @@ const CRM: React.FC = () => {
                           handleUpdateOrderItem(item.localId, 'unitPrice', v)
                         }
                         placeholder="Price"
-                        placeholderTextColor={COLORS.textTertiary}
+                        placeholderTextColor={CALM.neutral}
                         keyboardType="decimal-pad"
                       />
                       <TouchableOpacity
@@ -1274,7 +1273,7 @@ const CRM: React.FC = () => {
                         onPress={() => handleRemoveOrderItem(item.localId)}
                         accessibilityLabel={`Remove ${item.name || 'item'}`}
                       >
-                        <Feather name="x" size={18} color={COLORS.danger} />
+                        <Feather name="x" size={18} color={CALM.neutral} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1286,7 +1285,7 @@ const CRM: React.FC = () => {
                   activeOpacity={0.7}
                   accessibilityLabel="Add another item"
                 >
-                  <Feather name="plus" size={18} color={COLORS.business} />
+                  <Feather name="plus" size={18} color={CALM.accent} />
                   <Text style={styles.addItemText}>Add Item</Text>
                 </TouchableOpacity>
 
@@ -1342,7 +1341,7 @@ const CRM: React.FC = () => {
                   value={orderNotes}
                   onChangeText={setOrderNotes}
                   placeholder="Order notes..."
-                  placeholderTextColor={COLORS.textTertiary}
+                  placeholderTextColor={CALM.neutral}
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
@@ -1388,7 +1387,7 @@ const CRM: React.FC = () => {
                   onPress={() => setPaymentModalVisible(false)}
                   accessibilityLabel="Close payment modal"
                 >
-                  <Feather name="x" size={24} color={COLORS.text} />
+                  <Feather name="x" size={24} color={CALM.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -1414,7 +1413,7 @@ const CRM: React.FC = () => {
                         <Text
                           style={[
                             styles.paymentInfoValue,
-                            { color: COLORS.success },
+                            { color: CALM.positive },
                           ]}
                         >
                           {formatCurrency(order.paidAmount)}
@@ -1425,7 +1424,7 @@ const CRM: React.FC = () => {
                         <Text
                           style={[
                             styles.paymentInfoValue,
-                            { color: COLORS.warning },
+                            { color: CALM.neutral },
                           ]}
                         >
                           {formatCurrency(remaining)}
@@ -1439,7 +1438,7 @@ const CRM: React.FC = () => {
                         value={paymentAmount}
                         onChangeText={setPaymentAmount}
                         placeholder={`Max ${currency} ${remaining.toFixed(2)}`}
-                        placeholderTextColor={COLORS.textTertiary}
+                        placeholderTextColor={CALM.neutral}
                         keyboardType="decimal-pad"
                         returnKeyType="done"
                         onSubmitEditing={handleRecordPayment}
@@ -1478,7 +1477,7 @@ const CRM: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   scrollView: {
     flex: 1,
@@ -1495,12 +1494,13 @@ const styles = StyleSheet.create({
   },
   statBox: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     alignItems: 'center',
     gap: SPACING.xs,
-    ...SHADOWS.sm,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   statIconWrap: {
     width: 36,
@@ -1513,13 +1513,13 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'] as any,
     textAlign: 'center',
   },
   statLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     textAlign: 'center',
   },
 
@@ -1527,11 +1527,12 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
-    ...SHADOWS.sm,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   searchIcon: {
     marginRight: SPACING.sm,
@@ -1540,7 +1541,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
 
   // ── Customer Cards ──────────────────────────────────────────
@@ -1555,7 +1556,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: withAlpha(COLORS.business, 0.15),
+    backgroundColor: withAlpha(CALM.accent, 0.15),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
@@ -1563,7 +1564,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.business,
+    color: CALM.accent,
   },
   customerInfo: {
     flex: 1,
@@ -1571,12 +1572,12 @@ const styles = StyleSheet.create({
   customerName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: 2,
   },
   customerCompany: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   customerStats: {
     alignItems: 'flex-end',
@@ -1585,12 +1586,12 @@ const styles = StyleSheet.create({
   customerRevenue: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   customerOrderCount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   outstandingRow: {
     flexDirection: 'row',
@@ -1599,12 +1600,12 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     paddingTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: CALM.border,
   },
   outstandingText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.warning,
+    color: CALM.neutral,
   },
   quickActions: {
     flexDirection: 'row',
@@ -1615,7 +1616,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(COLORS.business, 0.08),
+    backgroundColor: withAlpha(CALM.accent, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1623,11 +1624,11 @@ const styles = StyleSheet.create({
   // ── Modals ──────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     padding: SPACING['2xl'],
@@ -1645,7 +1646,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   modalActions: {
     flexDirection: 'row',
@@ -1661,17 +1662,19 @@ const styles = StyleSheet.create({
   formLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
   formInput: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   textArea: {
     minHeight: 80,
@@ -1690,7 +1693,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: withAlpha(COLORS.business, 0.15),
+    backgroundColor: withAlpha(CALM.accent, 0.15),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.md,
@@ -1698,17 +1701,17 @@ const styles = StyleSheet.create({
   detailAvatarText: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.business,
+    color: CALM.accent,
   },
   detailName: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.xs,
   },
   detailCompany: {
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.md,
   },
   contactRow: {
@@ -1722,23 +1725,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    backgroundColor: withAlpha(COLORS.business, 0.06),
+    backgroundColor: withAlpha(CALM.accent, 0.06),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     paddingVertical: 6,
   },
   contactButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.business,
+    color: CALM.accent,
   },
 
   // ── Detail Stats ────────────────────────────────────────────
   detailStatsRow: {
     flexDirection: 'row',
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     marginBottom: SPACING['2xl'],
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   detailStatItem: {
     flex: 1,
@@ -1747,17 +1752,17 @@ const styles = StyleSheet.create({
   detailStatValue: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
     marginBottom: SPACING.xs,
   },
   detailStatLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   detailStatDivider: {
     width: 1,
-    backgroundColor: COLORS.border,
+    backgroundColor: CALM.border,
     marginHorizontal: SPACING.sm,
   },
 
@@ -1765,7 +1770,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.sm,
   },
 
@@ -1785,13 +1790,13 @@ const styles = StyleSheet.create({
   },
   orderDate: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: 2,
   },
   orderTotal: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   orderBadges: {
@@ -1809,7 +1814,7 @@ const styles = StyleSheet.create({
   },
   orderItemsSummary: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.sm,
   },
   orderProgressContainer: {
@@ -1821,7 +1826,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: CALM.border,
   },
   orderActionButton: {
     flexDirection: 'row',
@@ -1839,7 +1844,7 @@ const styles = StyleSheet.create({
   },
   noOrdersText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textTertiary,
+    color: CALM.neutral,
   },
 
   // ── Detail Actions ──────────────────────────────────────────
@@ -1855,7 +1860,7 @@ const styles = StyleSheet.create({
   orderItemCard: {
     marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     gap: SPACING.sm,
@@ -1864,24 +1869,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   productSelectorText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   productDropdown: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
     maxHeight: 200,
   },
   productDropdownSearch: {
@@ -1891,12 +1896,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: CALM.border,
   },
   productDropdownSearchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     paddingVertical: 2,
   },
   productDropdownList: {
@@ -1909,19 +1914,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: CALM.border,
   },
   productDropdownItemActive: {
-    backgroundColor: withAlpha(COLORS.business, 0.06),
+    backgroundColor: withAlpha(CALM.accent, 0.06),
   },
   productDropdownItemName: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   productDropdownItemMeta: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginTop: 1,
   },
   productDropdownEmpty: {
@@ -1930,7 +1935,7 @@ const styles = StyleSheet.create({
   },
   productDropdownEmptyText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textTertiary,
+    color: CALM.neutral,
   },
   orderItemRow: {
     flexDirection: 'row',
@@ -1951,7 +1956,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(COLORS.danger, 0.08),
+    backgroundColor: withAlpha(CALM.neutral, 0.08),
   },
   addItemRow: {
     flexDirection: 'row',
@@ -1963,13 +1968,13 @@ const styles = StyleSheet.create({
   addItemText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.business,
+    color: CALM.accent,
   },
   orderTotalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: withAlpha(COLORS.business, 0.08),
+    backgroundColor: withAlpha(CALM.accent, 0.08),
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
@@ -1978,12 +1983,12 @@ const styles = StyleSheet.create({
   orderTotalLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   orderTotalValue: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.business,
+    color: CALM.accent,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1999,7 +2004,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.md,
     borderWidth: 1.5,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.surface,
   },
   statusPickerText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -2013,7 +2018,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     gap: SPACING.sm,
     marginTop: SPACING.md,
-    backgroundColor: withAlpha(COLORS.business, 0.06),
+    backgroundColor: withAlpha(CALM.accent, 0.06),
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
@@ -2021,7 +2026,7 @@ const styles = StyleSheet.create({
   addressText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.business,
+    color: CALM.accent,
   },
 
   // ── Payment Modal ───────────────────────────────────────────
@@ -2031,16 +2036,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: CALM.border,
   },
   paymentInfoLabel: {
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   paymentInfoValue: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 });

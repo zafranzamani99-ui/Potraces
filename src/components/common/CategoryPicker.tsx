@@ -9,7 +9,7 @@ import {
   FlatList,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { CategoryOption } from '../../types';
 import { lightTap } from '../../services/haptics';
 
@@ -40,7 +40,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
         {
           borderColor: category.color,
           backgroundColor:
-            selectedId === category.id ? category.color : COLORS.surface,
+            selectedId === category.id ? category.color : CALM.background,
         },
         layout === 'grid' && styles.gridItem,
       ]}
@@ -56,7 +56,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
         style={[
           styles.categoryText,
           {
-            color: selectedId === category.id ? '#fff' : COLORS.text,
+            color: selectedId === category.id ? '#fff' : CALM.textPrimary,
           },
         ]}
       >
@@ -99,7 +99,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
               {selectedCategory?.name || 'Select category'}
             </Text>
           </View>
-          <Feather name="chevron-down" size={20} color={COLORS.textSecondary} />
+          <Feather name="chevron-down" size={20} color={CALM.textSecondary} />
         </TouchableOpacity>
 
         {/* Dropdown modal */}
@@ -120,7 +120,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
                   {label || 'Select Category'}
                 </Text>
                 <TouchableOpacity onPress={() => setDropdownOpen(false)}>
-                  <Feather name="x" size={22} color={COLORS.text} />
+                  <Feather name="x" size={22} color={CALM.textPrimary} />
                 </TouchableOpacity>
               </View>
               <FlatList
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.md,
   },
   scrollContent: {
@@ -249,12 +249,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   dropdownSelected: {
     flexDirection: 'row',
@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
   dropdownText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   dropdownOverlay: {
     flex: 1,
@@ -281,10 +281,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
   },
   dropdownModal: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
-    ...SHADOWS.xl,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   dropdownHeader: {
     flexDirection: 'row',
@@ -292,12 +293,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: CALM.border,
   },
   dropdownTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   dropdownItem: {
     flexDirection: 'row',
@@ -317,7 +318,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
 });
 

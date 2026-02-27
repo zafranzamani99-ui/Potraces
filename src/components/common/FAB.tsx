@@ -3,7 +3,7 @@
 // bottom-right corner with a spring-animated press scale and haptic
 // feedback for satisfying tactile response.
 //
-// Design tokens: COLORS.primary, SHADOWS.lg, RADIUS.full, SPACING.
+// Design tokens: CALM.accent, CALM.border, RADIUS.full, SPACING.
 
 import React, { useRef, useCallback } from 'react';
 import {
@@ -13,7 +13,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { COLORS, SHADOWS, RADIUS, SPACING } from '../../constants';
+import { CALM, RADIUS, SPACING } from '../../constants';
 import { lightTap } from '../../services/haptics';
 
 // ─── Props ─────────────────────────────────────────────────
@@ -23,7 +23,7 @@ interface FABProps {
   onPress: () => void;
   /** Feather icon name displayed in the centre (default: "plus"). */
   icon?: keyof typeof Feather.glyphMap;
-  /** Background colour of the button (default: COLORS.primary). */
+  /** Background colour of the button (default: CALM.accent). */
   color?: string;
   /** Optional style overrides for the outer container. */
   style?: ViewStyle;
@@ -40,7 +40,7 @@ const PRESSED_SCALE = 0.9;
 const FAB: React.FC<FABProps> = ({
   onPress,
   icon = 'plus',
-  color = COLORS.primary,
+  color = CALM.accent,
   style,
 }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -103,8 +103,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: SPACING['2xl'],   // 24px
     right: SPACING['2xl'],    // 24px
-    // SHADOWS.lg values applied individually for StyleSheet compatibility
-    ...SHADOWS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   button: {
     width: FAB_SIZE,

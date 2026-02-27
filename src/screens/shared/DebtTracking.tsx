@@ -20,7 +20,7 @@ import { useDebtStore } from '../../store/debtStore';
 import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import {
-  COLORS,
+  CALM,
   SPACING,
   TYPOGRAPHY,
   RADIUS,
@@ -444,21 +444,21 @@ const DebtTracking: React.FC = () => {
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>You Owe</Text>
-              <Text style={[styles.summaryAmount, { color: COLORS.danger }]}>
+              <Text style={[styles.summaryAmount, { color: CALM.neutral }]}>
                 {currency} {balanceSummary.youOwe.toFixed(2)}
               </Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>Owed to You</Text>
-              <Text style={[styles.summaryAmount, { color: COLORS.success }]}>
+              <Text style={[styles.summaryAmount, { color: CALM.positive }]}>
                 {currency} {balanceSummary.owedToYou.toFixed(2)}
               </Text>
             </View>
           </View>
           <View style={styles.netBalanceRow}>
             <Text style={styles.netLabel}>Net Balance</Text>
-            <Text style={[styles.netAmount, { color: balanceSummary.net >= 0 ? COLORS.success : COLORS.danger }]}>
+            <Text style={[styles.netAmount, { color: balanceSummary.net >= 0 ? CALM.positive : CALM.neutral }]}>
               {balanceSummary.net >= 0 ? '+' : ''}{currency} {balanceSummary.net.toFixed(2)}
             </Text>
           </View>
@@ -471,7 +471,7 @@ const DebtTracking: React.FC = () => {
             onPress={() => setActiveTab('debts')}
             activeOpacity={0.7}
           >
-            <Feather name="users" size={16} color={activeTab === 'debts' ? '#fff' : COLORS.text} />
+            <Feather name="users" size={16} color={activeTab === 'debts' ? '#fff' : CALM.textPrimary} />
             <Text style={[styles.tabText, activeTab === 'debts' && styles.tabTextActive]}>
               Debts ({modeDebts.length})
             </Text>
@@ -481,7 +481,7 @@ const DebtTracking: React.FC = () => {
             onPress={() => setActiveTab('splits')}
             activeOpacity={0.7}
           >
-            <Feather name="scissors" size={16} color={activeTab === 'splits' ? '#fff' : COLORS.text} />
+            <Feather name="scissors" size={16} color={activeTab === 'splits' ? '#fff' : CALM.textPrimary} />
             <Text style={[styles.tabText, activeTab === 'splits' && styles.tabTextActive]}>
               Splits ({modeSplits.length})
             </Text>
@@ -543,8 +543,8 @@ const DebtTracking: React.FC = () => {
                           onPress={() => openPaymentModal(debt.id)}
                           activeOpacity={0.7}
                         >
-                          <Feather name="plus-circle" size={16} color={COLORS.success} />
-                          <Text style={[styles.debtActionText, { color: COLORS.success }]}>Record Payment</Text>
+                          <Feather name="plus-circle" size={16} color={CALM.positive} />
+                          <Text style={[styles.debtActionText, { color: CALM.positive }]}>Record Payment</Text>
                         </TouchableOpacity>
                       )}
                       <TouchableOpacity
@@ -552,8 +552,8 @@ const DebtTracking: React.FC = () => {
                         onPress={() => handleDeleteDebt(debt.id)}
                         activeOpacity={0.7}
                       >
-                        <Feather name="trash-2" size={16} color={COLORS.danger} />
-                        <Text style={[styles.debtActionText, { color: COLORS.danger }]}>Delete</Text>
+                        <Feather name="trash-2" size={16} color={CALM.neutral} />
+                        <Text style={[styles.debtActionText, { color: CALM.neutral }]}>Delete</Text>
                       </TouchableOpacity>
                     </View>
                   </Card>
@@ -594,9 +594,9 @@ const DebtTracking: React.FC = () => {
                     </TouchableOpacity>
 
                     <View style={styles.splitMeta}>
-                      <View style={[styles.methodPill, { backgroundColor: withAlpha(COLORS.primary, 0.08) }]}>
-                        <Feather name={methodConfig?.icon as any || 'users'} size={14} color={COLORS.primary} />
-                        <Text style={[styles.methodPillText, { color: COLORS.primary }]}>{methodConfig?.label}</Text>
+                      <View style={[styles.methodPill, { backgroundColor: withAlpha(CALM.accent, 0.08) }]}>
+                        <Feather name={methodConfig?.icon as any || 'users'} size={14} color={CALM.accent} />
+                        <Text style={[styles.methodPillText, { color: CALM.accent }]}>{methodConfig?.label}</Text>
                       </View>
                       <Text style={styles.participantCount}>
                         {paidCount}/{split.participants.length} paid
@@ -609,7 +609,7 @@ const DebtTracking: React.FC = () => {
                           <Text style={[styles.participantChipText, p.isPaid && styles.participantChipTextPaid]} numberOfLines={1}>
                             {p.contact.name.split(' ')[0]}
                           </Text>
-                          {p.isPaid && <Feather name="check" size={12} color={COLORS.success} />}
+                          {p.isPaid && <Feather name="check" size={12} color={CALM.positive} />}
                         </View>
                       ))}
                       {split.participants.length > 4 && (
@@ -625,16 +625,16 @@ const DebtTracking: React.FC = () => {
                         onPress={() => handleEditSplit(split)}
                         activeOpacity={0.7}
                       >
-                        <Feather name="edit-2" size={16} color={COLORS.primary} />
-                        <Text style={[styles.debtActionText, { color: COLORS.primary }]}>Edit</Text>
+                        <Feather name="edit-2" size={16} color={CALM.accent} />
+                        <Text style={[styles.debtActionText, { color: CALM.accent }]}>Edit</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.debtActionButton}
                         onPress={() => handleDeleteSplit(split.id)}
                         activeOpacity={0.7}
                       >
-                        <Feather name="trash-2" size={16} color={COLORS.danger} />
-                        <Text style={[styles.debtActionText, { color: COLORS.danger }]}>Delete</Text>
+                        <Feather name="trash-2" size={16} color={CALM.neutral} />
+                        <Text style={[styles.debtActionText, { color: CALM.neutral }]}>Delete</Text>
                       </TouchableOpacity>
                     </View>
                   </Card>
@@ -656,7 +656,7 @@ const DebtTracking: React.FC = () => {
       <FAB
         onPress={handleFABPress}
         icon="plus"
-        color={mode === 'personal' ? COLORS.personal : COLORS.business}
+        color={CALM.accent}
       />
 
       {/* ── Add/Edit Debt Modal ──────────────────────────────── */}
@@ -666,7 +666,7 @@ const DebtTracking: React.FC = () => {
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editingDebtId ? 'Edit Debt' : 'Add Debt'}</Text>
                 <TouchableOpacity onPress={() => { setDebtModalVisible(false); resetDebtForm(); }}>
-                  <Feather name="x" size={24} color={COLORS.text} />
+                  <Feather name="x" size={24} color={CALM.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -709,7 +709,7 @@ const DebtTracking: React.FC = () => {
                   onChangeText={setDebtAmount}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -720,7 +720,7 @@ const DebtTracking: React.FC = () => {
                   value={debtDescription}
                   onChangeText={setDebtDescription}
                   placeholder="What for?"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -751,7 +751,7 @@ const DebtTracking: React.FC = () => {
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editingSplitId ? 'Edit Split' : 'Split Expense'}</Text>
                 <TouchableOpacity onPress={() => { setSplitModalVisible(false); resetSplitForm(); }}>
-                  <Feather name="x" size={24} color={COLORS.text} />
+                  <Feather name="x" size={24} color={CALM.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -762,7 +762,7 @@ const DebtTracking: React.FC = () => {
                   value={splitDescription}
                   onChangeText={setSplitDescription}
                   placeholder="Dinner, trip, etc."
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -774,7 +774,7 @@ const DebtTracking: React.FC = () => {
                   onChangeText={setSplitAmount}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={COLORS.textSecondary}
+                  placeholderTextColor={CALM.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -790,7 +790,7 @@ const DebtTracking: React.FC = () => {
                       <Feather
                         name={m.icon as any}
                         size={16}
-                        color={splitMethod === m.value ? '#fff' : COLORS.text}
+                        color={splitMethod === m.value ? '#fff' : CALM.textPrimary}
                       />
                       <Text style={[styles.methodText, splitMethod === m.value && styles.methodTextActive]}>
                         {m.label}
@@ -826,7 +826,7 @@ const DebtTracking: React.FC = () => {
                           onChangeText={(v) => setCustomAmounts({ ...customAmounts, [c.id]: v })}
                           placeholder="0.00"
                           keyboardType="decimal-pad"
-                          placeholderTextColor={COLORS.textSecondary}
+                          placeholderTextColor={CALM.textSecondary}
                           returnKeyType="done"
                           onSubmitEditing={Keyboard.dismiss}
                         />
@@ -845,7 +845,7 @@ const DebtTracking: React.FC = () => {
                         value={newItemName}
                         onChangeText={setNewItemName}
                         placeholder="Item name"
-                        placeholderTextColor={COLORS.textSecondary}
+                        placeholderTextColor={CALM.textSecondary}
                         returnKeyType="next"
                       />
                       <TextInput
@@ -854,7 +854,7 @@ const DebtTracking: React.FC = () => {
                         onChangeText={setNewItemAmount}
                         placeholder="0.00"
                         keyboardType="decimal-pad"
-                        placeholderTextColor={COLORS.textSecondary}
+                        placeholderTextColor={CALM.textSecondary}
                         returnKeyType="done"
                         onSubmitEditing={Keyboard.dismiss}
                       />
@@ -869,7 +869,7 @@ const DebtTracking: React.FC = () => {
                           <Text style={styles.itemName}>{item.name}</Text>
                           <Text style={styles.itemAmount}>{currency} {item.amount.toFixed(2)}</Text>
                           <TouchableOpacity onPress={() => setSplitItems(splitItems.filter((_, i) => i !== index))}>
-                            <Feather name="x" size={16} color={COLORS.danger} />
+                            <Feather name="x" size={16} color={CALM.neutral} />
                           </TouchableOpacity>
                         </View>
                         <Text style={styles.assignLabel}>Assign to:</Text>
@@ -927,7 +927,7 @@ const DebtTracking: React.FC = () => {
                   <TouchableOpacity
                     onPress={() => setPaymentModalVisible(false)}
                   >
-                    <Feather name="x" size={24} color={COLORS.text} />
+                    <Feather name="x" size={24} color={CALM.textPrimary} />
                   </TouchableOpacity>
                 </View>
 
@@ -981,7 +981,7 @@ const DebtTracking: React.FC = () => {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Split Details</Text>
               <TouchableOpacity onPress={() => setSplitDetailVisible(false)}>
-                <Feather name="x" size={24} color={COLORS.text} />
+                <Feather name="x" size={24} color={CALM.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -996,8 +996,8 @@ const DebtTracking: React.FC = () => {
                   {selectedSplit.participants.map((p) => (
                     <View key={p.contact.id} style={styles.participantRow}>
                       <View style={styles.participantRowLeft}>
-                        <View style={[styles.participantAvatar, { backgroundColor: withAlpha(p.isPaid ? COLORS.success : COLORS.warning, 0.12) }]}>
-                          <Text style={[styles.participantAvatarText, { color: p.isPaid ? COLORS.success : COLORS.warning }]}>
+                        <View style={[styles.participantAvatar, { backgroundColor: withAlpha(p.isPaid ? CALM.positive : CALM.neutral, 0.12) }]}>
+                          <Text style={[styles.participantAvatarText, { color: p.isPaid ? CALM.positive : CALM.neutral }]}>
                             {p.contact.name.charAt(0).toUpperCase()}
                           </Text>
                         </View>
@@ -1007,13 +1007,13 @@ const DebtTracking: React.FC = () => {
                         </View>
                       </View>
                       {p.isPaid ? (
-                        <View style={[styles.paidBadge, { backgroundColor: withAlpha(COLORS.success, 0.12) }]}>
-                          <Feather name="check" size={14} color={COLORS.success} />
-                          <Text style={[styles.paidBadgeText, { color: COLORS.success }]}>Paid</Text>
+                        <View style={[styles.paidBadge, { backgroundColor: withAlpha(CALM.positive, 0.12) }]}>
+                          <Feather name="check" size={14} color={CALM.positive} />
+                          <Text style={[styles.paidBadgeText, { color: CALM.positive }]}>Paid</Text>
                         </View>
                       ) : (
                         <TouchableOpacity
-                          style={[styles.markPaidButton, { borderColor: COLORS.success }]}
+                          style={[styles.markPaidButton, { borderColor: CALM.positive }]}
                           onPress={() => {
                             markSplitParticipantPaid(selectedSplit.id, p.contact.id);
                             setSelectedSplit({
@@ -1026,7 +1026,7 @@ const DebtTracking: React.FC = () => {
                           }}
                           activeOpacity={0.7}
                         >
-                          <Text style={[styles.markPaidText, { color: COLORS.success }]}>Mark Paid</Text>
+                          <Text style={[styles.markPaidText, { color: CALM.positive }]}>Mark Paid</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1051,7 +1051,7 @@ const DebtTracking: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   scrollView: {
     flex: 1,
@@ -1075,12 +1075,12 @@ const styles = StyleSheet.create({
   },
   summaryDivider: {
     width: 1,
-    backgroundColor: COLORS.border,
+    backgroundColor: CALM.border,
     marginHorizontal: SPACING.lg,
   },
   summaryLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.xs,
   },
   summaryAmount: {
@@ -1094,12 +1094,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: CALM.border,
   },
   netLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   netAmount: {
     fontSize: TYPOGRAPHY.size.xl,
@@ -1121,15 +1121,18 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   tabActive: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: CALM.accent,
+    borderColor: CALM.accent,
   },
   tabText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   tabTextActive: {
     color: '#fff',
@@ -1162,12 +1165,12 @@ const styles = StyleSheet.create({
   debtName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: 2,
   },
   debtDesc: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   debtAmountCol: {
     alignItems: 'flex-end',
@@ -1207,7 +1210,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: CALM.border,
   },
   debtActionButton: {
     flexDirection: 'row',
@@ -1236,17 +1239,17 @@ const styles = StyleSheet.create({
   splitTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: 2,
   },
   splitSubtext: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
   },
   splitAmount: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   splitMeta: {
@@ -1269,7 +1272,7 @@ const styles = StyleSheet.create({
   },
   participantCount: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   splitParticipants: {
@@ -1285,19 +1288,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   participantChipPaid: {
-    backgroundColor: withAlpha(COLORS.success, 0.1),
+    backgroundColor: withAlpha(CALM.positive, 0.1),
+    borderColor: withAlpha(CALM.positive, 0.3),
   },
   participantChipText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     maxWidth: 80,
   },
   participantChipTextPaid: {
-    color: COLORS.success,
+    color: CALM.positive,
   },
   splitActions: {
     flexDirection: 'row',
@@ -1305,17 +1311,17 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: CALM.border,
   },
 
   // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: 'rgba(17, 24, 39, 0.6)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
@@ -1330,7 +1336,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   modalActions: {
     flexDirection: 'row',
@@ -1342,17 +1348,19 @@ const styles = StyleSheet.create({
   formLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
   formInput: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   typeContainer: {
     flexDirection: 'row',
@@ -1367,12 +1375,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.sm,
     borderWidth: 2,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.surface,
   },
   typeText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   methodContainer: {
     flexDirection: 'row',
@@ -1387,20 +1395,20 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.sm,
     borderWidth: 2,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    borderColor: CALM.border,
+    backgroundColor: CALM.surface,
   },
   methodButtonActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primary,
+    borderColor: CALM.accent,
+    backgroundColor: CALM.accent,
   },
   methodText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   methodTextActive: {
-    color: COLORS.background,
+    color: '#fff',
   },
 
   // Custom split
@@ -1417,17 +1425,19 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   customInput: {
     width: 100,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     fontSize: TYPOGRAPHY.size.base,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     textAlign: 'right',
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
 
   // Item-based split
@@ -1441,15 +1451,17 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primary,
+    backgroundColor: CALM.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   itemCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
   itemHeader: {
     flexDirection: 'row',
@@ -1461,17 +1473,17 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   itemAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   assignLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.xs,
   },
   assignChips: {
@@ -1483,34 +1495,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CALM.border,
   },
   assignChipActive: {
-    backgroundColor: withAlpha(COLORS.primary, 0.12),
-    borderColor: COLORS.primary,
+    backgroundColor: withAlpha(CALM.accent, 0.12),
+    borderColor: CALM.accent,
   },
   assignChipText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     maxWidth: 80,
   },
   assignChipTextActive: {
-    color: COLORS.primary,
+    color: CALM.accent,
   },
 
   // Split Detail
   detailTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     marginBottom: SPACING.xs,
   },
   detailSubtext: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     marginBottom: SPACING.lg,
   },
   participantList: {
@@ -1541,11 +1553,11 @@ const styles = StyleSheet.create({
   participantName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   participantAmount: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   paidBadge: {
