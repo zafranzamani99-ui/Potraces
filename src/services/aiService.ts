@@ -1,4 +1,4 @@
-import { AIMessage, Transaction, IncomeType, BusinessTransaction, RiderCost, Client } from '../types';
+import { AIMessage, Transaction, IncomeType, BusinessTransaction, RiderCost, Client, SellerProduct } from '../types';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants';
 
 const API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '';
@@ -195,6 +195,48 @@ export async function askBusinessQuestion(
       messages,
       400
     );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse a WhatsApp message into order items using AI.
+ * Used when local parsing (parseWhatsAppOrder) can't match products.
+ * Returns structured items array or null on failure.
+ */
+export interface ParsedWhatsAppItem {
+  productName: string;
+  quantity: number;
+  unit: string;
+}
+
+export async function parseWhatsAppOrderAI(
+  message: string,
+  products: SellerProduct[]
+): Promise<ParsedWhatsAppItem[] | null> {
+  try {
+    const productList = products
+      .filter((p) => p.isActive)
+      .map((p) => `${p.name} (${p.unit}, RM ${p.pricePerUnit})`)
+      .join(', ');
+
+    const result = await callAnthropic(
+      `You are a WhatsApp order parser for a Malaysian home-based food seller.\nThe seller's products: ${productList}\n\nGiven a WhatsApp message (often in Malay), extract the order items.\nReturn JSON array only. Each item: { "productName": string (exact name from product list), "quantity": number, "unit": string }.\nIf a product in the message doesn't match any known product, use the name as written.\nCommon Malay patterns: "nak order" = want to order, "dan" = and, "tin/bekas/balang/kotak" = container types.\nIf quantity is not specified, default to 1.\nReturn [] if the message is not an order.`,
+      [{ role: 'user', content: message }],
+      512
+    );
+
+    if (!result) return null;
+
+    const parsed = JSON.parse(result);
+    if (!Array.isArray(parsed)) return null;
+
+    return parsed.map((item: any) => ({
+      productName: String(item.productName || ''),
+      quantity: Number(item.quantity) || 1,
+      unit: String(item.unit || 'piece'),
+    }));
   } catch {
     return null;
   }

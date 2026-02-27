@@ -23,6 +23,11 @@ import LogIncome from '../screens/business/LogIncome';
 import ClientList from '../screens/business/ClientList';
 import RiderCostsScreen from '../screens/business/RiderCosts';
 import IncomeStreamsScreen from '../screens/business/IncomeStreams';
+import SellerNewOrder from '../screens/seller/NewOrder';
+import SellerProducts from '../screens/seller/Products';
+import SeasonSummary from '../screens/seller/SeasonSummary';
+import PastSeasons from '../screens/seller/PastSeasons';
+import SellerOrderList from '../screens/seller/OrderList';
 
 const Stack = createStackNavigator();
 
@@ -480,6 +485,156 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Income Streams',
+            headerStyle: { backgroundColor: COLORS.business },
+            headerTintColor: '#fff',
+            headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="SellerNewOrder"
+          component={SellerNewOrder}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'New Order',
+            headerStyle: { backgroundColor: COLORS.business },
+            headerTintColor: '#fff',
+            headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="SellerOrderList"
+          component={SellerOrderList}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Orders',
+            headerStyle: { backgroundColor: COLORS.business },
+            headerTintColor: '#fff',
+            headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="SellerProducts"
+          component={SellerProducts}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Products',
+            headerStyle: { backgroundColor: COLORS.business },
+            headerTintColor: '#fff',
+            headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="SeasonSummary"
+          component={SeasonSummary}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Season',
+            headerStyle: { backgroundColor: COLORS.business },
+            headerTintColor: '#fff',
+            headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="PastSeasons"
+          component={PastSeasons}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Seasons',
             headerStyle: { backgroundColor: COLORS.business },
             headerTintColor: '#fff',
             headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },

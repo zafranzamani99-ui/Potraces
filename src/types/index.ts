@@ -50,6 +50,99 @@ export type Transfer = {
   date: Date;
 };
 
+// ─── SELLER TYPES ─────────────────────────────────────────
+export type OrderStatus = 'pending' | 'confirmed' | 'ready' | 'delivered' | 'paid';
+
+export interface SellerProduct {
+  id: string;
+  name: string;
+  pricePerUnit: number;
+  costPerUnit?: number;
+  unit: string; // 'tin', 'bekas', 'balang', 'pack', 'piece'
+  isActive: boolean;
+  totalSold: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SellerOrderItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  unit: string;
+}
+
+export interface SellerOrder {
+  id: string;
+  items: SellerOrderItem[];
+  customerName?: string;
+  customerPhone?: string;
+  totalAmount: number;
+  status: OrderStatus;
+  isPaid: boolean;
+  note?: string;
+  rawWhatsApp?: string;
+  date: Date;
+  deliveryDate?: Date;
+  seasonId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Season {
+  id: string;
+  name: string;
+  startDate: Date;
+  endDate?: Date;
+  isActive: boolean;
+  note?: string;
+  createdAt: Date;
+}
+
+export interface IngredientCost {
+  id: string;
+  productId?: string;
+  description: string;
+  amount: number;
+  date: Date;
+  seasonId?: string;
+}
+
+export interface SellerState {
+  products: SellerProduct[];
+  orders: SellerOrder[];
+  seasons: Season[];
+  ingredientCosts: IngredientCost[];
+
+  addProduct: (product: Omit<SellerProduct, 'id' | 'totalSold' | 'createdAt' | 'updatedAt'>) => void;
+  updateProduct: (id: string, updates: Partial<SellerProduct>) => void;
+  deleteProduct: (id: string) => void;
+
+  addOrder: (order: Omit<SellerOrder, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateOrderStatus: (id: string, status: OrderStatus) => void;
+  markOrderPaid: (id: string) => void;
+  deleteOrder: (id: string) => void;
+
+  addSeason: (season: Omit<Season, 'id' | 'createdAt'>) => void;
+  endSeason: (id: string) => void;
+  getActiveSeason: () => Season | null;
+
+  addIngredientCost: (cost: Omit<IngredientCost, 'id'>) => void;
+  deleteIngredientCost: (id: string) => void;
+
+  getSeasonOrders: (seasonId: string) => SellerOrder[];
+  getSeasonCosts: (seasonId: string) => IngredientCost[];
+  getSeasonStats: (seasonId: string) => {
+    totalOrders: number;
+    totalIncome: number;
+    totalCosts: number;
+    kept: number;
+    unpaidCount: number;
+    unpaidAmount: number;
+  };
+}
+
 // Navigation Types
 export type RootStackParamList = {
   PersonalMain: undefined;
@@ -70,6 +163,11 @@ export type RootStackParamList = {
   ClientList: undefined;
   RiderCosts: undefined;
   IncomeStreams: undefined;
+  SellerNewOrder: undefined;
+  SellerOrderList: undefined;
+  SellerProducts: undefined;
+  SeasonSummary: { seasonId?: string } | undefined;
+  PastSeasons: undefined;
 };
 
 export type PersonalStackParamList = {
@@ -87,6 +185,11 @@ export type BusinessStackParamList = {
   Inventory: undefined;
   Settings: undefined;
   LogIncome: undefined;
+  // Seller tabs
+  SellerOrders: undefined;
+  SellerNewOrder: undefined;
+  SellerProducts: undefined;
+  SellerSeasons: undefined;
 };
 
 export interface Transaction {
