@@ -1,259 +1,190 @@
-# Potraces - Dual-Mode Finance Management
+# Potraces
 
-A React Native mobile application that seamlessly combines **Personal Finance Management** and **Business POS System** in one app. Perfect for individuals managing their personal finances and small business owners (especially street vendors and market sellers) who need a simple, fast point-of-sale system.
+A money app that doesn't make you feel bad about money.
 
-## Features
+Potraces is built for Malaysians who earn in different ways — salary, freelance, delivery rides, home-based selling, or all of the above. It tracks what comes in and what goes out, and talks to you like a friend, not a financial advisor.
 
-### Personal Mode
-
-- **Dashboard**: Balance overview, upcoming bills, budget status, and recent transactions
-- **Expense Tracking**: Quick transaction entry with categories, tags, and notes
-- **Subscription Manager**: Track recurring expenses with renewal reminders
-- **Budget Planning**: Category-based budgets with progress tracking and overspend alerts
-- **Reports**: Visual analytics with charts showing spending trends and category breakdowns
-
-### Business Mode
-
-- **POS Dashboard**: Today's sales total, payment method breakdown, and inventory alerts
-- **Point of Sale**: Large-button interface optimized for quick sales with offline support
-- **Supplier Management**: Track supplier contacts, purchase history, and payment terms
-- **Inventory**: Product management with stock levels and low-stock alerts
-- **Business Reports**: Sales analytics, top-selling products, and profit margins
-
-### Shared Features
-
-- **Mode Toggle**: Easy switch between Personal and Business modes
-- **Separate Wallets**: Personal and business finances kept distinct
-- **Offline Support**: All data stored locally with AsyncStorage
-- **Visual Analytics**: Charts and graphs for both personal and business data
-
-## Tech Stack
-
-- **Framework**: React Native with Expo
-- **Language**: TypeScript
-- **State Management**: Zustand with persistence
-- **Navigation**: React Navigation (Stack + Bottom Tabs)
-- **Charts**: React Native Chart Kit
-- **Storage**: AsyncStorage
-- **Icons**: Expo Vector Icons (Feather)
-- **Date Handling**: date-fns
-
-## Project Structure
-
-```
-Potraces/
-├── src/
-│   ├── components/
-│   │   └── common/           # Reusable UI components
-│   │       ├── Button.tsx
-│   │       ├── Card.tsx
-│   │       ├── CategoryPicker.tsx
-│   │       ├── EmptyState.tsx
-│   │       ├── ModeToggle.tsx
-│   │       ├── ProgressBar.tsx
-│   │       ├── StatCard.tsx
-│   │       └── TransactionItem.tsx
-│   ├── constants/
-│   │   └── index.ts          # Colors, categories, config
-│   ├── navigation/
-│   │   ├── RootNavigator.tsx
-│   │   ├── PersonalNavigator.tsx
-│   │   └── BusinessNavigator.tsx
-│   ├── screens/
-│   │   ├── personal/         # Personal finance screens
-│   │   │   ├── Dashboard.tsx
-│   │   │   ├── ExpenseEntry.tsx
-│   │   │   ├── SubscriptionList.tsx
-│   │   │   ├── BudgetPlanning.tsx
-│   │   │   └── Reports.tsx
-│   │   └── business/         # Business POS screens
-│   │       ├── Dashboard.tsx
-│   │       ├── POS.tsx
-│   │       ├── SupplierList.tsx
-│   │       ├── Inventory.tsx
-│   │       └── Reports.tsx
-│   ├── store/
-│   │   ├── appStore.ts       # App mode state
-│   │   ├── personalStore.ts  # Personal finance state
-│   │   └── businessStore.ts  # Business state
-│   └── types/
-│       └── index.ts          # TypeScript definitions
-├── App.tsx                   # Entry point
-├── app.json                  # Expo configuration
-├── package.json
-├── tsconfig.json
-└── babel.config.js
-```
-
-## Installation
-
-### Prerequisites
-
-- Node.js (v16 or higher)
-- npm or yarn
-- Expo CLI: `npm install -g expo-cli`
-- iOS Simulator (Mac only) or Android Studio (for Android emulator)
-- Expo Go app on your physical device (optional)
-
-### Setup Instructions
-
-1. **Clone or navigate to the project directory**:
-   ```bash
-   cd Potraces
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Start the development server**:
-   ```bash
-   npm start
-   ```
-
-4. **Run on your device**:
-   - **iOS Simulator** (Mac only): Press `i` in the terminal
-   - **Android Emulator**: Press `a` in the terminal
-   - **Physical Device**: Scan the QR code with Expo Go app
-
-## Usage Guide
-
-### Getting Started
-
-1. **Launch the app** - You'll start in Personal Mode by default
-2. **Toggle modes** - Use the mode switcher at the top to switch between Personal and Business
-
-### Personal Mode Workflow
-
-1. **Add Transactions**: Use the "Add Expense" tab to record income or expenses
-2. **Track Subscriptions**: Add your recurring subscriptions (Netflix, Spotify, etc.)
-3. **Set Budgets**: Create category budgets to control spending
-4. **View Reports**: Check your spending patterns and trends
-
-### Business Mode Workflow
-
-1. **Add Products**: Go to Inventory and add your products with prices and stock
-2. **Make Sales**: Use the POS tab to quickly process sales
-3. **Track Suppliers**: Add supplier information for restocking
-4. **Monitor Performance**: Check Reports for sales analytics
-
-## Key Features Explained
-
-### Offline-First Architecture
-
-All data is stored locally using AsyncStorage with Zustand persistence middleware. This means:
-- The app works without internet connection
-- Data persists between app restarts
-- Fast performance with no network delays
-
-### Smart Budget Tracking
-
-Budgets automatically calculate spent amounts based on transactions in the same category and period. Visual progress bars show spending status with color-coded warnings.
-
-### Low Stock Alerts
-
-The inventory system tracks stock levels and alerts you when products are running low or out of stock, helping prevent missed sales.
-
-### Dual-Mode Design
-
-Separate state management for Personal and Business ensures your personal finances never mix with business transactions, maintaining clear financial boundaries.
-
-## Customization
-
-### Changing Colors
-
-Edit `src/constants/index.ts` to customize the color scheme:
-
-```typescript
-export const COLORS = {
-  primary: '#6366F1',    // Your primary color
-  secondary: '#10B981',  // Your secondary color
-  // ... other colors
-};
-```
-
-### Adding Categories
-
-Add new expense or product categories in `src/constants/index.ts`:
-
-```typescript
-export const EXPENSE_CATEGORIES: CategoryOption[] = [
-  { id: 'custom', name: 'Custom Category', icon: 'star', color: '#FF6B6B' },
-  // ... existing categories
-];
-```
-
-### Adjusting Low Stock Threshold
-
-Modify the default threshold in `src/constants/index.ts`:
-
-```typescript
-export const APP_CONFIG = {
-  lowStockThreshold: 10,  // Change this value
-  // ... other config
-};
-```
-
-## Future Enhancements
-
-### Planned Features
-
-- [ ] Cloud sync (Firebase/Supabase integration)
-- [ ] Receipt scanning with OCR
-- [ ] Multi-currency support
-- [ ] Export reports to PDF/Excel
-- [ ] QR code payment integration
-- [ ] Multi-user/employee accounts
-- [ ] Advanced analytics with AI insights
-- [ ] Backup and restore functionality
-- [ ] Dark mode support
-- [ ] Biometric authentication
-
-### Payment Gateway Integration
-
-For production use, consider integrating:
-- **Malaysia**: FPX, Touch 'n Go eWallet, GrabPay
-- **Global**: Stripe, PayPal, Square
-- **Crypto**: Bitcoin, Ethereum (for tech-savvy users)
-
-## Contributing
-
-This is a personal project, but suggestions and feedback are welcome! If you find bugs or have feature requests, please document them clearly.
-
-## Troubleshooting
-
-### Common Issues
-
-**App won't start**:
-```bash
-npm install
-npx expo start --clear
-```
-
-**Metro bundler issues**:
-```bash
-rm -rf node_modules
-npm install
-```
-
-**TypeScript errors**:
-```bash
-npx tsc --noEmit
-```
-
-**Storage not persisting**:
-- Check if AsyncStorage is properly linked
-- Clear app data and restart
-
-## License
-
-MIT License - Feel free to use this project for personal or commercial purposes.
-
-## Credits
-
-Built with React Native, Expo, and Zustand. Charts powered by React Native Chart Kit.
+No "profit". No "loss". No "you should save more". Just honest numbers and calm observations.
 
 ---
 
-**Made for individuals and small business owners who want simple, effective financial management.**
+## What this app does
+
+### Personal Mode
+
+Your daily money — salary, spending, subscriptions, savings.
+
+- **Calm dashboard** — your balance in large, quiet type. A week timeline. One insight about your month. Everything else tucked away until you need it.
+- **Smart transaction entry** — type "nasi lemak 8.50", take a photo of a receipt, or speak it. AI parses it into a transaction. You confirm and save.
+- **Money Chat** — ask questions about your spending in plain language. "Where does most of my money go?" "Am I spending more this month?" Powered by Claude Haiku.
+- **Commitments** — subscriptions and installments tracked with gentle renewal reminders. No overdue warnings in red.
+- **Budget planning** — set limits by category. When you're close, it says "getting close", not "danger".
+- **Wallets** — separate balances for cash, bank, e-wallet. Move money between them.
+- **Savings tracker** — TNG+, ASB, robo-advisors, crypto. Log snapshots of value over time.
+- **Debt & splits** — track who owes who. Split bills by equal, custom, or by item.
+- **Receipt scanner** — Google Cloud Vision OCR extracts items and total from receipt photos.
+- **Reports** — spending by category, trends over time. No judgment.
+
+### Business Mode
+
+Your earnings — however they come in. The app adapts to how you actually work.
+
+When you first enter business mode, you pick your income type. The entire interface changes to match:
+
+| Income type | Who it's for | What changes |
+|---|---|---|
+| **Seller** | Home-based food sellers, kuih makers | Orders, products, seasons, WhatsApp parsing |
+| **Freelance** | Designers, writers, tutors | Client tracking, payment history, averages |
+| **Part-time** | Workers with a main job + side income | Main vs side split, stream tracking |
+| **Rider** | Grab, Foodpanda, Lalamove riders | Gross vs costs (petrol, maintenance), net kept |
+| **Mixed** | Multiple income streams | Color-coded streams, combined total |
+
+**The bottom navigation changes per income type.** A seller sees Orders / New Order / Products / Seasons. A rider sees Costs / Log Income / Reports. Each setup gets exactly the tabs it needs.
+
+#### Seller Mode (detailed)
+
+Built for the mak cik who takes Raya orders on WhatsApp and makes kuih from her kitchen.
+
+- **WhatsApp order parsing** — paste a message like "nak order semperit kuning 2 tin dan jem tart 1 tin" and it becomes a structured order. Local Malay-aware parser tries first, AI fallback if needed.
+- **Order pipeline** — pending > confirmed > ready > delivered > paid. Track every order's status.
+- **Products** — your catalog of things you make. Price per unit, cost per unit, "kept per unit" calculated automatically. Log ingredient costs directly.
+- **Seasons** — Raya, CNY, Deepavali, or any peak period. Start a season, track all orders and costs within it, end it when it's done.
+- **Season summary** — the most emotional screen in the app. Shows what you kept in large type, how many orders you fulfilled, how many customers trusted your food. Speaks to the work you put in.
+- **Unpaid tracking** — how many orders are still unpaid and how much is pending. No shame, just numbers.
+
+#### Shared business features
+
+- **Log income** — text or voice input, AI parsed. After saving, a gentle prompt to transfer some to personal (auto-dismisses).
+- **Money Chat** — works in business mode too. "How was this month compared to last?" "Can I afford a new phone?" AI understands irregular income.
+- **AI insights** — one passive observation about your month. "Slower than last month. That happens." "Weekends were your strongest days." Never advice, never "you should".
+- **Transfer bridge** — move money from business to personal wallet with one tap.
+
+---
+
+## Design philosophy
+
+**Calm, not anxious.** The app uses a muted palette (`#F9F9F7` background, `#5B4FE9` accent). No red for expenses. No danger colors. Amounts are shown in large, light type (48px, weight 200) — meant to be read, not feared.
+
+**Honest, not preachy.** The AI never says "you should", "you must", or "discipline". It observes. "Most of your money went to food." "Quieter than last time. That happens between seasons." If your month was slow, it normalizes it instead of alarming you.
+
+**Malaysian context.** RM currency. Malay language support in WhatsApp parsing and voice input (ms-MY primary, en-MY alternate). Categories that make sense here — nasi lemak, not avocado toast.
+
+**Language rules (non-negotiable):**
+- Never use: profit, loss, revenue, ROI, inventory
+- Always use: kept, came in, went out, costs, products
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Framework | React Native + Expo SDK 54 |
+| Language | TypeScript |
+| State | Zustand with AsyncStorage persistence |
+| Navigation | React Navigation (Stack + Bottom Tabs) |
+| AI | Claude Haiku via Anthropic REST API |
+| OCR | Google Cloud Vision |
+| Speech | Google Cloud Speech-to-Text |
+| Voice recording | expo-av |
+| Date handling | date-fns |
+| Icons | Feather (via @expo/vector-icons) |
+
+---
+
+## Project structure
+
+```
+src/
+├── components/
+│   ├── common/              # WeekBar, CollapsibleSection, ModeToggle,
+│   │                        # TransactionItem, ProgressBar, CategoryManager
+│   └── navigation/          # CustomTabBar
+├── constants/
+│   ├── index.ts             # COLORS, CALM, TYPE, SPACING, categories
+│   └── gradients.ts         # Gradient configs
+├── navigation/
+│   ├── RootNavigator.tsx    # Stack navigator (all routes)
+│   ├── PersonalNavigator.tsx # Personal bottom tabs
+│   └── BusinessNavigator.tsx # Dynamic bottom tabs per income type
+├── screens/
+│   ├── personal/            # Dashboard, ExpenseEntry, MoneyChat,
+│   │                        # BudgetPlanning, SubscriptionList, etc.
+│   ├── business/            # Dashboard (5 variants), Setup, LogIncome,
+│   │                        # ClientList, RiderCosts, IncomeStreams, etc.
+│   ├── seller/              # Dashboard, NewOrder, OrderList, Products,
+│   │                        # SeasonSummary, PastSeasons
+│   └── shared/              # Settings, DebtTracking, ReceiptScanner
+├── services/
+│   ├── aiService.ts         # Claude Haiku: parse text, receipts,
+│   │                        # WhatsApp orders, money Q&A
+│   ├── ocrService.ts        # Google Vision OCR
+│   └── speechService.ts     # Google Speech-to-Text
+├── store/
+│   ├── appStore.ts          # Mode toggle (personal/business)
+│   ├── personalStore.ts     # Transactions, subscriptions, budgets
+│   ├── businessStore.ts     # Income type, business transactions,
+│   │                        # clients, rider costs, streams, transfers
+│   └── sellerStore.ts       # Products, orders, seasons, ingredient costs
+├── utils/
+│   ├── enrichTransaction.ts # Time/day/size/frequency/emotional context
+│   ├── explainMonth.ts      # Personal month insights
+│   ├── explainBusinessMonth.ts # Business month insights
+│   ├── explainSellerMonth.ts   # Seller month insights
+│   ├── parseWhatsAppOrder.ts   # Local Malay-aware WhatsApp parser
+│   ├── calculateBuffer.ts     # "X months covered" from savings
+│   └── transferBridge.ts      # Business > personal transfer helper
+└── types/
+    └── index.ts             # All TypeScript definitions
+```
+
+---
+
+## Setup
+
+```bash
+# Clone
+git clone https://github.com/zafranzamani99-ui/Potraces.git
+cd Potraces
+
+# Install
+npm install
+
+# Environment variables (create .env)
+EXPO_PUBLIC_ANTHROPIC_API_KEY=your_claude_api_key
+EXPO_PUBLIC_GOOGLE_VISION_API_KEY=your_vision_api_key
+EXPO_PUBLIC_GOOGLE_SPEECH_API_KEY=your_speech_api_key
+
+# Run
+npm start
+```
+
+Scan the QR code with Expo Go, or press `i` for iOS simulator / `a` for Android emulator.
+
+The app works without API keys — AI features (text parsing, receipt scanning, voice input, Money Chat) will gracefully return empty and let you enter things manually.
+
+---
+
+## What's next
+
+- Cloud sync for multi-device
+- Export season summaries as shareable images
+- Ingredient cost templates (so you don't re-enter tepung every time)
+- Repeat order from past customers
+- Dark mode
+- Bahasa Malaysia full UI translation
+
+---
+
+## Who this is for
+
+Malaysians who:
+- Earn irregularly and are tired of apps that assume a steady paycheck
+- Sell kuih from home and track orders on WhatsApp
+- Ride for Grab and want to know what they actually keep after petrol
+- Freelance and juggle multiple clients with different payment timelines
+- Just want to see their money without feeling bad about it
+
+---
+
+Built with care for people whose relationship with money is complicated. Because most people's is.
