@@ -91,6 +91,25 @@ export const usePersonalStore = create<PersonalState>()(
         set((state) => ({
           budgets: state.budgets.filter((b) => b.id !== id),
         })),
+
+      addTransferIncome: (transfer) =>
+        set((state) => ({
+          transactions: [
+            {
+              id: `transfer-${transfer.id}`,
+              amount: transfer.amount,
+              category: 'from business',
+              description: transfer.note || 'Transfer from business',
+              date: transfer.date instanceof Date ? transfer.date : new Date(transfer.date),
+              type: 'income' as const,
+              mode: 'personal' as const,
+              inputMethod: 'manual' as const,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+            ...state.transactions,
+          ],
+        })),
     }),
     {
       name: 'personal-storage',

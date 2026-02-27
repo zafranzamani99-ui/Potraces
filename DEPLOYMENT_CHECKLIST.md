@@ -1,4 +1,4 @@
-# FinFlow - Production Deployment Checklist
+# Potraces - Production Deployment Checklist
 
 ## ✅ Critical Issues Fixed
 
@@ -56,8 +56,8 @@ Update `app.json` or `app.config.js`:
 ```json
 {
   "expo": {
-    "name": "FinFlow",
-    "slug": "finflow",
+    "name": "Potraces",
+    "slug": "potraces",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -75,14 +75,14 @@ Update `app.json` or `app.config.js`:
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.finflow"
+      "bundleIdentifier": "com.yourcompany.potraces"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#5B4FE9"
       },
-      "package": "com.yourcompany.finflow",
+      "package": "com.yourcompany.potraces",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE"
@@ -234,7 +234,7 @@ cd android && ./gradlew assembleRelease
 ## 📱 Store Listing Information
 
 ### App Name
-FinFlow - Personal & Business Finance
+Potraces - Personal & Business Finance
 
 ### Short Description
 Professional financial management for both personal budgets and business operations. Track expenses, manage inventory, handle sales, and monitor budgets - all in one beautiful app.
@@ -274,7 +274,7 @@ Finance
 
 ## 🎉 Ready for Production!
 
-Your FinFlow app is now production-ready with:
+Your Potraces app is now production-ready with:
 - ✨ CIMB OCTO-inspired premium design
 - 🎨 Gradients, glassmorphism, and smooth animations
 - 🔒 Proper error handling and validation

@@ -9,7 +9,7 @@ This directory should contain the app's visual assets referenced in `app.json`.
 - **icon.png** (1024x1024px)
   - Main app icon
   - Should be square with no transparency
-  - Represents FinFlow brand
+  - Represents Potraces brand
 
 - **adaptive-icon.png** (1024x1024px, Android only)
   - Android adaptive icon foreground

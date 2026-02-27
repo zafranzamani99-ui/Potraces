@@ -31,7 +31,6 @@ import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
-import StatCard from '../../components/common/StatCard';
 import ProgressBar from '../../components/common/ProgressBar';
 import FAB from '../../components/common/FAB';
 import { useToast } from '../../context/ToastContext';
@@ -122,16 +121,24 @@ const CRM: React.FC = () => {
 
   // ── Computed data ───────────────────────────────────────────
   const filteredCustomers = useMemo(() => {
-    if (!searchQuery.trim()) return customers;
-    const q = searchQuery.toLowerCase();
-    return customers.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        (c.company && c.company.toLowerCase().includes(q)) ||
-        (c.phone && c.phone.includes(q)) ||
-        (c.email && c.email.toLowerCase().includes(q))
-    );
-  }, [customers, searchQuery]);
+    let list = customers;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          (c.company && c.company.toLowerCase().includes(q)) ||
+          (c.phone && c.phone.includes(q)) ||
+          (c.email && c.email.toLowerCase().includes(q))
+      );
+    }
+    // Sort: customers with outstanding (pending) orders first
+    return [...list].sort((a, b) => {
+      const aStats = getCustomerStats(a.id);
+      const bStats = getCustomerStats(b.id);
+      return bStats.outstanding - aStats.outstanding;
+    });
+  }, [customers, searchQuery, orders]);
 
   const globalStats = useMemo(() => {
     const totalCustomers = customers.length;
@@ -417,6 +424,11 @@ const CRM: React.FC = () => {
 
     Keyboard.dismiss();
     addOrderPayment(paymentOrderId, amount);
+    // Refresh selectedCustomer from store so detail modal shows updated data
+    if (selectedCustomer) {
+      const fresh = useCRMStore.getState().customers.find((c) => c.id === selectedCustomer.id);
+      if (fresh) setSelectedCustomer(fresh);
+    }
     setPaymentModalVisible(false);
     setDetailModalVisible(true);
     showToast('Payment recorded!', 'success');
@@ -510,31 +522,31 @@ const CRM: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         {/* Stats Summary Row */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.statsRow}
-          nestedScrollEnabled
-        >
-          <StatCard
-            title="Customers"
-            value={globalStats.totalCustomers.toString()}
-            icon="users"
-            iconColor={COLORS.business}
-          />
-          <StatCard
-            title="Revenue"
-            value={formatCurrency(globalStats.revenue)}
-            icon="dollar-sign"
-            iconColor={COLORS.success}
-          />
-          <StatCard
-            title="Outstanding"
-            value={formatCurrency(globalStats.outstanding)}
-            icon="alert-circle"
-            iconColor={COLORS.warning}
-          />
-        </ScrollView>
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <View style={[styles.statIconWrap, { backgroundColor: withAlpha(COLORS.business, 0.12) }]}>
+              <Feather name="users" size={18} color={COLORS.business} />
+            </View>
+            <Text style={styles.statValue}>{globalStats.totalCustomers}</Text>
+            <Text style={styles.statLabel}>Customers</Text>
+          </View>
+          <View style={styles.statBox}>
+            <View style={[styles.statIconWrap, { backgroundColor: withAlpha(COLORS.success, 0.12) }]}>
+              <Feather name="dollar-sign" size={18} color={COLORS.success} />
+            </View>
+            <Text style={styles.statValue}>{formatCurrency(globalStats.revenue)}</Text>
+            <Text style={styles.statLabel}>Revenue</Text>
+          </View>
+          <View style={styles.statBox}>
+            <View style={[styles.statIconWrap, { backgroundColor: withAlpha(COLORS.warning, 0.12) }]}>
+              <Feather name="alert-circle" size={18} color={COLORS.warning} />
+            </View>
+            <Text style={[styles.statValue, globalStats.outstanding > 0 && { color: COLORS.warning }]}>
+              {formatCurrency(globalStats.outstanding)}
+            </Text>
+            <Text style={styles.statLabel}>Outstanding</Text>
+          </View>
+        </View>
 
         {/* Search Bar */}
         <View style={styles.searchContainer}>
@@ -1479,7 +1491,36 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
-    paddingBottom: SPACING.lg,
+    marginBottom: SPACING.lg,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    alignItems: 'center',
+    gap: SPACING.xs,
+    ...SHADOWS.sm,
+  },
+  statIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.xs,
+  },
+  statValue: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: COLORS.text,
+    fontVariant: ['tabular-nums'] as any,
+    textAlign: 'center',
+  },
+  statLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
   },
 
   // ── Search ──────────────────────────────────────────────────

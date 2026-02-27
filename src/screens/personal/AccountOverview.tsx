@@ -697,13 +697,13 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING.lg,
+    gap: SPACING.lg,
   },
 
   // Hero
   heroGradient: {
     padding: SPACING['2xl'],
     borderRadius: RADIUS.xl,
-    marginBottom: SPACING.lg,
     ...SHADOWS.xl,
   },
   heroLabel: {
@@ -764,7 +764,6 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: SPACING.md,
-    marginBottom: SPACING.md,
   },
   comparisonCard: {
     flex: 1,

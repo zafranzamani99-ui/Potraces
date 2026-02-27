@@ -15,7 +15,7 @@ import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, withAlpha } from '../../constants';
+import { COLORS, CALM, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
 import { FREE_TIER } from '../../constants/premium';
 import ModeToggle from '../../components/common/ModeToggle';
@@ -167,7 +167,7 @@ const BudgetPlanning: React.FC = () => {
                 <Text
                   style={[
                     styles.summaryAmount,
-                    { color: totalSpent > totalAllocated ? COLORS.expense : COLORS.success },
+                    { color: totalSpent > totalAllocated ? CALM.neutral : CALM.positive },
                   ]}
                 >
                   {currency} {totalSpent.toFixed(2)}
@@ -226,7 +226,7 @@ const BudgetPlanning: React.FC = () => {
                     <Feather name="edit-2" size={18} color={COLORS.primary} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleDelete(budget)} style={styles.cardAction}>
-                    <Feather name="trash-2" size={18} color={COLORS.danger} />
+                    <Feather name="trash-2" size={18} color={CALM.neutral} />
                   </TouchableOpacity>
                   <View style={styles.percentageContainer}>
                     <Text
@@ -248,20 +248,15 @@ const BudgetPlanning: React.FC = () => {
 
                 {percentage > 90 && (
                   <View style={styles.warningContainer}>
-                    <Feather
-                      name="alert-circle"
-                      size={16}
-                      color={percentage > 100 ? COLORS.danger : COLORS.warning}
-                    />
                     <Text
                       style={[
                         styles.warningText,
-                        { color: percentage > 100 ? COLORS.danger : COLORS.warning },
+                        { color: CALM.neutral },
                       ]}
                     >
                       {percentage > 100
-                        ? `Over budget by ${currency} ${(budget.spentAmount - budget.allocatedAmount).toFixed(2)}`
-                        : `Approaching budget limit`}
+                        ? `${currency} ${(budget.spentAmount - budget.allocatedAmount).toFixed(2)} over this period`
+                        : `Getting close`}
                     </Text>
                   </View>
                 )}
@@ -472,7 +467,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   percentageOver: {
-    color: COLORS.expense,
+    color: CALM.neutral,
   },
   warningContainer: {
     flexDirection: 'row',

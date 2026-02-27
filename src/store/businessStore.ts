@@ -2,14 +2,23 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BusinessState } from '../types';
+import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 
 export const useBusinessStore = create<BusinessState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       products: [],
       sales: [],
       suppliers: [],
+      incomeType: null,
+      businessSetupComplete: false,
+      businessTransactions: [],
+      clients: [],
+      riderCosts: [],
+      incomeStreams: [],
+      transfers: [],
 
+      // Existing actions
       addProduct: (product) =>
         set((state) => ({
           products: [
@@ -92,6 +101,85 @@ export const useBusinessStore = create<BusinessState>()(
         set((state) => ({
           suppliers: state.suppliers.filter((s) => s.id !== id),
         })),
+
+      // New business mode actions
+      setIncomeType: (type) =>
+        set({ incomeType: type }),
+
+      completeSetup: () =>
+        set({ businessSetupComplete: true }),
+
+      addBusinessTransaction: (tx) =>
+        set((state) => ({
+          businessTransactions: [
+            { ...tx, id: Date.now().toString() },
+            ...state.businessTransactions,
+          ],
+        })),
+
+      addClient: (client) =>
+        set((state) => ({
+          clients: [
+            {
+              ...client,
+              id: Date.now().toString(),
+              totalPaid: 0,
+              paymentHistory: [],
+            },
+            ...state.clients,
+          ],
+        })),
+
+      logClientPayment: (clientId, amount, date) =>
+        set((state) => ({
+          clients: state.clients.map((c) =>
+            c.id === clientId
+              ? {
+                  ...c,
+                  totalPaid: c.totalPaid + amount,
+                  lastPaid: date,
+                  paymentHistory: [
+                    { date, amount },
+                    ...c.paymentHistory,
+                  ],
+                }
+              : c
+          ),
+        })),
+
+      addRiderCost: (cost) =>
+        set((state) => ({
+          riderCosts: [
+            { ...cost, id: Date.now().toString() },
+            ...state.riderCosts,
+          ],
+        })),
+
+      addIncomeStream: (stream) =>
+        set((state) => ({
+          incomeStreams: [
+            { ...stream, id: Date.now().toString() },
+            ...state.incomeStreams,
+          ],
+        })),
+
+      addTransfer: (transfer) =>
+        set((state) => ({
+          transfers: [transfer, ...state.transfers],
+        })),
+
+      getTotalTransferredToPersonal: (month) => {
+        const state = get();
+        const start = startOfMonth(month);
+        const end = endOfMonth(month);
+        return state.transfers
+          .filter(
+            (t) =>
+              t.toMode === 'personal' &&
+              isWithinInterval(t.date instanceof Date ? t.date : new Date(t.date), { start, end })
+          )
+          .reduce((sum, t) => sum + t.amount, 0);
+      },
     }),
     {
       name: 'business-storage',
@@ -114,6 +202,29 @@ export const useBusinessStore = create<BusinessState>()(
           createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
           updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
         })),
+        incomeType: state.incomeType,
+        businessSetupComplete: state.businessSetupComplete,
+        businessTransactions: state.businessTransactions.map((t) => ({
+          ...t,
+          date: t.date instanceof Date ? t.date.toISOString() : t.date,
+        })),
+        clients: state.clients.map((c) => ({
+          ...c,
+          lastPaid: c.lastPaid instanceof Date ? c.lastPaid.toISOString() : c.lastPaid,
+          paymentHistory: c.paymentHistory.map((p) => ({
+            ...p,
+            date: p.date instanceof Date ? p.date.toISOString() : p.date,
+          })),
+        })),
+        riderCosts: state.riderCosts.map((r) => ({
+          ...r,
+          date: r.date instanceof Date ? r.date.toISOString() : r.date,
+        })),
+        incomeStreams: state.incomeStreams,
+        transfers: state.transfers.map((t) => ({
+          ...t,
+          date: t.date instanceof Date ? t.date.toISOString() : t.date,
+        })),
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -133,6 +244,26 @@ export const useBusinessStore = create<BusinessState>()(
             lastPurchaseDate: s.lastPurchaseDate ? new Date(s.lastPurchaseDate) : undefined,
             createdAt: new Date(s.createdAt),
             updatedAt: new Date(s.updatedAt),
+          }));
+          state.businessTransactions = (state.businessTransactions || []).map((t: any) => ({
+            ...t,
+            date: new Date(t.date),
+          }));
+          state.clients = (state.clients || []).map((c: any) => ({
+            ...c,
+            lastPaid: c.lastPaid ? new Date(c.lastPaid) : undefined,
+            paymentHistory: (c.paymentHistory || []).map((p: any) => ({
+              ...p,
+              date: new Date(p.date),
+            })),
+          }));
+          state.riderCosts = (state.riderCosts || []).map((r: any) => ({
+            ...r,
+            date: new Date(r.date),
+          }));
+          state.transfers = (state.transfers || []).map((t: any) => ({
+            ...t,
+            date: new Date(t.date),
           }));
         }
       },

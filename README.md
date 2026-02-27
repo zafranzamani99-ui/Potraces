@@ -1,4 +1,4 @@
-# FinFlow - Dual-Mode Finance Management
+# Potraces - Dual-Mode Finance Management
 
 A React Native mobile application that seamlessly combines **Personal Finance Management** and **Business POS System** in one app. Perfect for individuals managing their personal finances and small business owners (especially street vendors and market sellers) who need a simple, fast point-of-sale system.
 
@@ -41,7 +41,7 @@ A React Native mobile application that seamlessly combines **Personal Finance Ma
 ## Project Structure
 
 ```
-FinFlow/
+Potraces/
 ├── src/
 │   ├── components/
 │   │   └── common/           # Reusable UI components
@@ -99,7 +99,7 @@ FinFlow/
 
 1. **Clone or navigate to the project directory**:
    ```bash
-   cd FinFlow
+   cd Potraces
    ```
 
 2. **Install dependencies**:

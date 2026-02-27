@@ -1,6 +1,6 @@
-# FinFlow - Quick Start Guide
+# Potraces - Quick Start Guide
 
-Get FinFlow running in under 5 minutes!
+Get Potraces running in under 5 minutes!
 
 ## Prerequisites Check
 
@@ -137,4 +137,4 @@ npx expo start --clear
 
 ---
 
-**You're ready to go! Start tracking your finances and managing your business with FinFlow.**
+**You're ready to go! Start tracking your finances and managing your business with Potraces.**

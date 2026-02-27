@@ -261,6 +261,31 @@ export const INCOME_CATEGORIES: CategoryOption[] = [
   { id: 'other', name: 'Other', icon: 'plus-circle', color: '#9CA3B4' },
 ];
 
+export const BUSINESS_EXPENSE_CATEGORIES: CategoryOption[] = [
+  { id: 'rent', name: 'Rent & Lease', icon: 'home', color: '#5E72E4' },
+  { id: 'inventory', name: 'Inventory / COGS', icon: 'package', color: '#FB8C3C' },
+  { id: 'payroll', name: 'Payroll & Wages', icon: 'users', color: '#2DCE89' },
+  { id: 'marketing', name: 'Marketing & Ads', icon: 'target', color: '#FF6B9D' },
+  { id: 'utilities', name: 'Utilities', icon: 'zap', color: '#22C993' },
+  { id: 'office', name: 'Office Supplies', icon: 'clipboard', color: '#A06CD5' },
+  { id: 'travel', name: 'Travel & Meetings', icon: 'map-pin', color: '#5B4FE9' },
+  { id: 'insurance', name: 'Insurance', icon: 'shield', color: '#FF5757' },
+  { id: 'maintenance', name: 'Maintenance', icon: 'tool', color: '#FB8C3C' },
+  { id: 'professional', name: 'Professional Services', icon: 'briefcase', color: '#5E72E4' },
+  { id: 'shipping', name: 'Shipping & Delivery', icon: 'truck', color: '#9CA3B4' },
+  { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#9CA3B4' },
+];
+
+export const BUSINESS_INCOME_CATEGORIES: CategoryOption[] = [
+  { id: 'sales', name: 'Sales Revenue', icon: 'shopping-cart', color: '#2DCE89' },
+  { id: 'services', name: 'Service Income', icon: 'tool', color: '#5E72E4' },
+  { id: 'consulting', name: 'Consulting', icon: 'message-circle', color: '#A06CD5' },
+  { id: 'commission', name: 'Commission', icon: 'percent', color: '#FB8C3C' },
+  { id: 'rental', name: 'Rental Income', icon: 'home', color: '#22C993' },
+  { id: 'interest', name: 'Interest & Returns', icon: 'trending-up', color: '#5B4FE9' },
+  { id: 'other', name: 'Other', icon: 'plus-circle', color: '#9CA3B4' },
+];
+
 export const PRODUCT_CATEGORIES: CategoryOption[] = [
   { id: 'food', name: 'Food & Beverages', icon: 'coffee', color: '#FF6B9D' },
   { id: 'clothing', name: 'Clothing', icon: 'shopping-bag', color: '#A06CD5' },
@@ -320,6 +345,30 @@ export const APP_CONFIG = {
   lowStockThreshold: 10,
   reminderDaysBeforeBilling: 3,
   offlineSyncInterval: 300000,
+};
+
+// ─── CALM DESIGN SYSTEM ────────────────────────────────────
+// Anxiety-reducing palette — no red anywhere.
+export const CALM = {
+  background: '#F9F9F7',
+  surface: '#FFFFFF',
+  textPrimary: '#1A1A1A',
+  textSecondary: '#6B6B6B',
+  accent: '#5B4FE9',
+  positive: '#2E7D5B',
+  neutral: '#8E8E93',
+  border: '#E5E5E3',
+  highlight: '#FFF7E6',
+};
+
+// ─── TYPE SCALE ────────────────────────────────────────────
+export const TYPE = {
+  hero: { fontSize: 48, fontWeight: '200' as const },
+  insight: { fontSize: 14, lineHeight: 22 },
+  label: { fontSize: 12, color: '#6B6B6B', textTransform: 'uppercase' as const, letterSpacing: 1 },
+  balance: { fontSize: 36, fontWeight: '300' as const },
+  muted: { fontSize: 12, color: '#8E8E93' },
+  amount: { fontSize: 48, fontWeight: '200' as const },
 };
 
 // ─── HELPERS ────────────────────────────────────────────────

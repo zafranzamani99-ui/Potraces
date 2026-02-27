@@ -16,7 +16,7 @@ import { Feather } from '@expo/vector-icons';
 import { format, addWeeks, addMonths, addYears } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, BILLING_CYCLES, withAlpha } from '../../constants';
+import { COLORS, CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, BILLING_CYCLES, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
@@ -238,7 +238,7 @@ const SubscriptionList: React.FC = () => {
             <Text style={styles.summaryLabel}>Monthly Total</Text>
             <Text style={styles.summaryAmount}>{currency} {totalMonthly.toFixed(2)}</Text>
             <Text style={styles.summarySubtext}>
-              {subscriptions.filter((s) => s.isActive).length} active subscriptions
+              {subscriptions.filter((s) => s.isActive).length} active commitments
             </Text>
           </Card>
         )}
@@ -251,7 +251,7 @@ const SubscriptionList: React.FC = () => {
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search subscriptions..."
+              placeholder="Search commitments..."
               placeholderTextColor={COLORS.textSecondary}
               returnKeyType="search"
               onSubmitEditing={Keyboard.dismiss}
@@ -333,7 +333,7 @@ const SubscriptionList: React.FC = () => {
                     onPress={() => handleDelete(subscription.id, subscription.name)}
                     style={styles.deleteButton}
                   >
-                    <Feather name="trash-2" size={18} color={COLORS.danger} />
+                    <Feather name="trash-2" size={18} color={CALM.neutral} />
                   </TouchableOpacity>
                 </View>
 
@@ -349,10 +349,11 @@ const SubscriptionList: React.FC = () => {
                     </Text>
                   </View>
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Next Billing</Text>
+                    <Text style={styles.detailLabel}>Next Renewal</Text>
                     <Text style={[styles.detailValue, daysUntil <= 3 && styles.duesSoon]}>
-                      {format(subscription.nextBillingDate, 'MMM dd, yyyy')}
-                      {daysUntil >= 0 && ` (${daysUntil}d)`}
+                      {daysUntil < 0
+                        ? 'Pending renewal'
+                        : `Renews in ${daysUntil}d`}
                     </Text>
                   </View>
                   <View style={styles.detailRow}>
@@ -398,16 +399,16 @@ const SubscriptionList: React.FC = () => {
         ) : (
           <EmptyState
             icon="repeat"
-            title="No Subscriptions"
-            message="Track your recurring expenses by adding your subscriptions"
-            actionLabel="Add Subscription"
+            title="No Commitments"
+            message="Track your recurring expenses by adding your commitments"
+            actionLabel="Add Commitment"
             onAction={() => setModalVisible(true)}
           />
         )}
       </ScrollView>
 
       <Button
-        title="Add Subscription"
+        title="Add Commitment"
         onPress={() => setModalVisible(true)}
         icon="plus"
         size="large"
@@ -423,7 +424,7 @@ const SubscriptionList: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingId ? 'Edit Subscription' : 'Add Subscription'}</Text>
+              <Text style={styles.modalTitle}>{editingId ? 'Edit Commitment' : 'Add Commitment'}</Text>
               <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }}>
                 <Feather name="x" size={24} color={COLORS.text} />
               </TouchableOpacity>
@@ -721,7 +722,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   duesSoon: {
-    color: COLORS.danger,
+    color: CALM.neutral,
   },
 
   // No results

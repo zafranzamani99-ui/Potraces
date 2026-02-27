@@ -17,6 +17,12 @@ import ReceiptScanner from '../screens/shared/ReceiptScanner';
 import WalletManagement from '../screens/personal/WalletManagement';
 import AccountOverview from '../screens/personal/AccountOverview';
 import SavingsTracker from '../screens/personal/SavingsTracker';
+import MoneyChat from '../screens/personal/MoneyChat';
+import BusinessSetup from '../screens/business/Setup';
+import LogIncome from '../screens/business/LogIncome';
+import ClientList from '../screens/business/ClientList';
+import RiderCostsScreen from '../screens/business/RiderCosts';
+import IncomeStreamsScreen from '../screens/business/IncomeStreams';
 
 const Stack = createStackNavigator();
 
@@ -138,7 +144,7 @@ const RootNavigator: React.FC = () => {
           component={SubscriptionList}
           options={({ navigation }) => ({
             headerShown: true,
-            headerTitle: 'Subscriptions',
+            headerTitle: 'Commitments',
             headerStyle: { backgroundColor: COLORS.personal },
             headerTintColor: '#fff',
             headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
@@ -332,6 +338,161 @@ const RootNavigator: React.FC = () => {
                     navigation.reset({
                       index: 0,
                       routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="MoneyChat"
+          component={MoneyChat}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Money Chat',
+            headerStyle: { backgroundColor: mode === 'personal' ? COLORS.personal : COLORS.business },
+            headerTintColor: '#fff',
+            headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="BusinessSetup"
+          component={BusinessSetup}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="LogIncome"
+          component={LogIncome}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Log Income',
+            headerStyle: { backgroundColor: COLORS.business },
+            headerTintColor: '#fff',
+            headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="ClientList"
+          component={ClientList}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Clients',
+            headerStyle: { backgroundColor: COLORS.business },
+            headerTintColor: '#fff',
+            headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="RiderCosts"
+          component={RiderCostsScreen}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Costs',
+            headerStyle: { backgroundColor: COLORS.business },
+            headerTintColor: '#fff',
+            headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="IncomeStreams"
+          component={IncomeStreamsScreen}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Income Streams',
+            headerStyle: { backgroundColor: COLORS.business },
+            headerTintColor: '#fff',
+            headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
                     });
                   }
                 }}

@@ -1,11 +1,10 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   RefreshControl,
-  Animated,
   TouchableOpacity,
   Modal,
   TextInput,
@@ -15,13 +14,13 @@ import {
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { format, addDays, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns';
+import { format, addDays, isWithinInterval, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 
 import { useNavigation } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { COLORS, CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
 import StatCard from '../../components/common/StatCard';
@@ -31,13 +30,13 @@ import EmptyState from '../../components/common/EmptyState';
 import Button from '../../components/common/Button';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
-import HeroCard from '../../components/common/HeroCard';
-import SkeletonLoader from '../../components/common/SkeletonLoader';
-import GRADIENTS from '../../constants/gradients';
+import WeekBar from '../../components/common/WeekBar';
+import CollapsibleSection from '../../components/common/CollapsibleSection';
 import { useWalletStore } from '../../store/walletStore';
 import { useToast } from '../../context/ToastContext';
 import { Transaction } from '../../types';
 import { lightTap } from '../../services/haptics';
+import { explainMonth } from '../../utils/explainMonth';
 
 const getGreeting = (): string => {
   const hour = new Date().getHours();
@@ -50,9 +49,10 @@ const QUICK_ACTIONS = [
   { key: 'wallets', label: 'Wallets', icon: 'credit-card' as const, screen: 'WalletManagement', color: COLORS.personal },
   { key: 'savings', label: 'Savings', icon: 'trending-up' as const, screen: 'SavingsTracker', color: '#A06CD5' },
   { key: 'debts', label: 'Debts & Splits', icon: 'users' as const, screen: 'DebtTracking', color: COLORS.warning },
-  { key: 'subscriptions', label: 'Subscriptions', icon: 'repeat' as const, screen: 'SubscriptionList', color: COLORS.accent },
+  { key: 'subscriptions', label: 'Commitments', icon: 'repeat' as const, screen: 'SubscriptionList', color: COLORS.accent },
   { key: 'reports', label: 'Reports', icon: 'bar-chart-2' as const, screen: 'PersonalReports', color: COLORS.info },
   { key: 'scan', label: 'Scan Receipt', icon: 'camera' as const, screen: 'ReceiptScanner', color: COLORS.success },
+  { key: 'chat', label: 'Money Chat', icon: 'message-circle' as const, screen: 'MoneyChat', color: CALM.accent },
 ];
 
 const PersonalDashboard: React.FC = () => {
@@ -66,7 +66,6 @@ const PersonalDashboard: React.FC = () => {
   const deductFromWallet = useWalletStore((s) => s.deductFromWallet);
   const addToWallet = useWalletStore((s) => s.addToWallet);
   const [refreshing, setRefreshing] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
   const navigation = useNavigation<any>();
 
   // Transaction edit modal state
@@ -78,33 +77,6 @@ const PersonalDashboard: React.FC = () => {
   const [editType, setEditType] = useState<'expense' | 'income'>('expense');
   const [editTags, setEditTags] = useState('');
   const [editWalletId, setEditWalletId] = useState<string | null>(null);
-
-  // Stagger entrance animations
-  const anim1 = useRef(new Animated.Value(0)).current;
-  const anim2 = useRef(new Animated.Value(0)).current;
-  const anim3 = useRef(new Animated.Value(0)).current;
-  const anim4 = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.stagger(80, [
-      Animated.timing(anim1, { toValue: 1, duration: 350, useNativeDriver: true }),
-      Animated.timing(anim2, { toValue: 1, duration: 350, useNativeDriver: true }),
-      Animated.timing(anim3, { toValue: 1, duration: 350, useNativeDriver: true }),
-      Animated.timing(anim4, { toValue: 1, duration: 350, useNativeDriver: true }),
-    ]).start();
-  }, []);
-
-  const makeStaggerStyle = (anim: Animated.Value) => ({
-    opacity: anim,
-    transform: [
-      {
-        translateY: anim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [20, 0],
-        }),
-      },
-    ],
-  });
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -146,10 +118,19 @@ const PersonalDashboard: React.FC = () => {
       .filter((d) => d.type === 'they_owe' && d.status !== 'settled')
       .reduce((sum, d) => sum + (d.totalAmount - d.paidAmount), 0);
 
+    // Previous month transactions for explainMonth
+    const prevMonthStart = startOfMonth(subMonths(now, 1));
+    const prevMonthEnd = endOfMonth(subMonths(now, 1));
+    const prevMonthTransactions = transactions.filter((t) =>
+      isWithinInterval(t.date, { start: prevMonthStart, end: prevMonthEnd })
+    );
+
     return {
       balance,
       income,
       expenses,
+      monthlyTransactions,
+      prevMonthTransactions,
       transactionCount: monthlyTransactions.length,
       upcomingBills: upcomingBills.length,
       upcomingBillsList: upcomingBills,
@@ -164,10 +145,13 @@ const PersonalDashboard: React.FC = () => {
     ? wallets.reduce((sum, w) => sum + w.balance, 0)
     : stats.balance;
 
-  const heroBreakdown = [
-    { label: 'Income', value: stats.income, icon: 'arrow-down' as const },
-    { label: 'Expenses', value: stats.expenses, icon: 'arrow-up' as const },
-  ];
+  const netThisMonth = stats.income - stats.expenses;
+
+  // Insight from explainMonth
+  const insight = useMemo(
+    () => explainMonth(stats.monthlyTransactions, stats.prevMonthTransactions),
+    [stats.monthlyTransactions, stats.prevMonthTransactions]
+  );
 
   const recentTransactions = useMemo(() => {
     return transactions.slice(0, 5);
@@ -175,10 +159,8 @@ const PersonalDashboard: React.FC = () => {
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
-    setLoading(true);
     setTimeout(() => {
       setRefreshing(false);
-      setLoading(false);
     }, 1000);
   }, []);
 
@@ -257,7 +239,6 @@ const PersonalDashboard: React.FC = () => {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            // Reverse wallet balance on delete
             if (editingTransaction.walletId) {
               if (editingTransaction.type === 'expense') {
                 addToWallet(editingTransaction.walletId, editingTransaction.amount);
@@ -282,7 +263,7 @@ const PersonalDashboard: React.FC = () => {
   };
 
   const handleQuickAction = (screen: string) => {
-    if (screen === 'PersonalReports' || screen === 'SubscriptionList' || screen === 'DebtTracking' || screen === 'WalletManagement' || screen === 'SavingsTracker') {
+    if (screen === 'PersonalReports' || screen === 'SubscriptionList' || screen === 'DebtTracking' || screen === 'WalletManagement' || screen === 'SavingsTracker' || screen === 'MoneyChat') {
       navigation.getParent()?.navigate(screen);
     } else {
       navigation.navigate(screen);
@@ -300,114 +281,97 @@ const PersonalDashboard: React.FC = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Personalized greeting */}
-        <Animated.View style={makeStaggerStyle(anim1)}>
-          <Text style={styles.greeting}>{getGreeting()}</Text>
-          <Text style={styles.dateText}>{format(new Date(), 'EEEE, MMMM d')}</Text>
-        </Animated.View>
+        {/* Zone 1 — Greeting (small) */}
+        <Text style={styles.greeting}>{getGreeting()}</Text>
 
-        {/* Hero Card */}
-        {loading ? (
-          <SkeletonLoader
-            shape="box"
-            width="100%"
-            height={200}
-            style={{ marginBottom: SPACING.lg }}
-          />
-        ) : (
-          <Animated.View style={[{ marginBottom: SPACING.lg }, makeStaggerStyle(anim1)]}>
-            <HeroCard
-              gradient={GRADIENTS.personalHero}
-              title="Total Balance"
-              amount={heroBalance}
-              currency={currency}
-              subtitle="Tap for account overview"
-              breakdown={heroBreakdown}
-              onPress={() => {
-                lightTap();
-                navigation.getParent()?.navigate('AccountOverview');
-              }}
-            />
-          </Animated.View>
-        )}
+        {/* Zone 2 — Balance (the hero) */}
+        <Text style={styles.balanceAmount}>
+          {currency} {heroBalance.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </Text>
+        <Text style={styles.netMonth}>
+          {netThisMonth >= 0 ? '+' : ''}{currency} {netThisMonth.toFixed(2)} this month
+        </Text>
 
-        {/* Upcoming Bills */}
-        {loading ? (
-          <SkeletonLoader shape="box" width="100%" height={100} style={{ marginBottom: SPACING.md }} />
-        ) : (
-          <Animated.View style={[{ marginBottom: SPACING.md }, makeStaggerStyle(anim2)]}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                lightTap();
-                navigation.getParent()?.navigate('SubscriptionList');
-              }}
-            >
-              {stats.upcomingBillsList.length > 0 ? (
-                <Card>
-                  <View style={styles.upcomingHeader}>
-                    <Feather name="calendar" size={18} color={COLORS.warning} />
-                    <Text style={styles.upcomingTitle}>Upcoming Bills</Text>
-                    <Feather name="chevron-right" size={16} color={COLORS.textSecondary} />
-                  </View>
-                  {stats.upcomingBillsList.slice(0, 3).map((sub) => {
-                    const daysUntil = Math.ceil(
-                      (sub.nextBillingDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-                    );
-                    return (
-                      <View key={sub.id} style={styles.upcomingItem}>
-                        <Text style={styles.upcomingName} numberOfLines={1}>{sub.name}</Text>
-                        <Text style={styles.upcomingDays}>{daysUntil <= 0 ? 'Today' : `${daysUntil}d`}</Text>
-                        <Text style={styles.upcomingAmount}>{currency} {sub.amount.toFixed(2)}</Text>
-                      </View>
-                    );
-                  })}
-                  <View style={styles.upcomingFooter}>
-                    <Text style={styles.upcomingFooterTotal}>
-                      Total: {currency} {stats.upcomingTotal.toFixed(2)}
+        {/* Zone 3 — Week Timeline */}
+        <WeekBar transactions={transactions} />
+
+        {/* Zone 4 — Insight */}
+        <Text style={styles.insight}>{insight}</Text>
+
+        {/* Everything else in collapsible Details */}
+        <CollapsibleSection title="Details" defaultOpen={false}>
+          {/* Upcoming Bills */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              lightTap();
+              navigation.getParent()?.navigate('SubscriptionList');
+            }}
+          >
+            {stats.upcomingBillsList.length > 0 ? (
+              <Card style={styles.detailCard}>
+                <View style={styles.upcomingHeader}>
+                  <Feather name="calendar" size={18} color={CALM.neutral} />
+                  <Text style={styles.upcomingTitle}>Upcoming Bills</Text>
+                  <Feather name="chevron-right" size={16} color={CALM.textSecondary} />
+                </View>
+                {stats.upcomingBillsList.slice(0, 3).map((sub) => {
+                  const daysUntil = Math.ceil(
+                    (sub.nextBillingDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                  );
+                  return (
+                    <View key={sub.id} style={styles.upcomingItem}>
+                      <Text style={styles.upcomingName} numberOfLines={1}>{sub.name}</Text>
+                      <Text style={styles.upcomingDays}>{daysUntil <= 0 ? 'Today' : `${daysUntil}d`}</Text>
+                      <Text style={styles.upcomingAmount}>{currency} {sub.amount.toFixed(2)}</Text>
+                    </View>
+                  );
+                })}
+                <View style={styles.upcomingFooter}>
+                  <Text style={styles.upcomingFooterTotal}>
+                    Total: {currency} {stats.upcomingTotal.toFixed(2)}
+                  </Text>
+                  {stats.upcomingBillsList.length > 3 && (
+                    <Text style={styles.upcomingFooterMore}>
+                      +{stats.upcomingBillsList.length - 3} more
                     </Text>
-                    {stats.upcomingBillsList.length > 3 && (
-                      <Text style={styles.upcomingFooterMore}>
-                        +{stats.upcomingBillsList.length - 3} more
-                      </Text>
-                    )}
-                  </View>
-                </Card>
-              ) : (
-                <Card>
-                  <View style={styles.upcomingHeader}>
-                    <Feather name="calendar" size={18} color={COLORS.warning} />
-                    <Text style={styles.upcomingTitle}>Upcoming Bills</Text>
-                    <Feather name="chevron-right" size={16} color={COLORS.textSecondary} />
-                  </View>
-                  <Text style={styles.upcomingEmpty}>No bills due soon — tap to manage subscriptions</Text>
-                </Card>
-              )}
-            </TouchableOpacity>
-          </Animated.View>
-        )}
+                  )}
+                </View>
+              </Card>
+            ) : (
+              <Card style={styles.detailCard}>
+                <View style={styles.upcomingHeader}>
+                  <Feather name="calendar" size={18} color={CALM.neutral} />
+                  <Text style={styles.upcomingTitle}>Upcoming Bills</Text>
+                  <Feather name="chevron-right" size={16} color={CALM.textSecondary} />
+                </View>
+                <Text style={styles.upcomingEmpty}>No bills due soon</Text>
+              </Card>
+            )}
+          </TouchableOpacity>
 
-        {(stats.youOwe > 0 || stats.owedToYou > 0) && (
-          <Animated.View style={[styles.statsGrid, makeStaggerStyle(anim2)]}>
-            <StatCard
-              title="You Owe"
-              value={`${currency} ${stats.youOwe.toFixed(2)}`}
-              icon="arrow-up-circle"
-              iconColor={COLORS.danger}
-              subtitle="Outstanding"
-            />
-            <StatCard
-              title="Owed to You"
-              value={`${currency} ${stats.owedToYou.toFixed(2)}`}
-              icon="arrow-down-circle"
-              iconColor={COLORS.success}
-              subtitle="Outstanding"
-            />
-          </Animated.View>
-        )}
+          {/* Debt Stats */}
+          {(stats.youOwe > 0 || stats.owedToYou > 0) && (
+            <View style={styles.statsGrid}>
+              <StatCard
+                title="You Owe"
+                value={`${currency} ${stats.youOwe.toFixed(2)}`}
+                icon="arrow-up-circle"
+                iconColor={CALM.neutral}
+                subtitle="Outstanding"
+              />
+              <StatCard
+                title="Owed to You"
+                value={`${currency} ${stats.owedToYou.toFixed(2)}`}
+                icon="arrow-down-circle"
+                iconColor={CALM.positive}
+                subtitle="Outstanding"
+              />
+            </View>
+          )}
 
-        {stats.budgetProgress > 0 && (
-          <Animated.View style={makeStaggerStyle(anim3)}>
+          {/* Budget Overview */}
+          {stats.budgetProgress > 0 && (
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() => {
@@ -415,19 +379,14 @@ const PersonalDashboard: React.FC = () => {
                 navigation.navigate('BudgetPlanning');
               }}
             >
-              <Card>
+              <Card style={styles.detailCard}>
                 <View style={styles.budgetHeader}>
                   <Text style={styles.budgetTitle}>Budget Overview</Text>
                   <View style={styles.budgetHeaderRight}>
-                    <Text
-                      style={[
-                        styles.budgetPercentage,
-                        stats.budgetProgress > 90 && styles.budgetWarning,
-                      ]}
-                    >
+                    <Text style={styles.budgetPercentage}>
                       {stats.budgetProgress.toFixed(0)}%
                     </Text>
-                    <Feather name="chevron-right" size={16} color={COLORS.textSecondary} />
+                    <Feather name="chevron-right" size={16} color={CALM.textSecondary} />
                   </View>
                 </View>
                 <View style={styles.budgetBar}>
@@ -436,42 +395,18 @@ const PersonalDashboard: React.FC = () => {
                       styles.budgetFill,
                       {
                         width: `${Math.min(stats.budgetProgress, 100)}%`,
-                        backgroundColor:
-                          stats.budgetProgress > 100
-                            ? COLORS.danger
-                            : stats.budgetProgress > 90
-                            ? COLORS.warning
-                            : COLORS.success,
+                        backgroundColor: CALM.accent,
                       },
                     ]}
                   />
                 </View>
               </Card>
             </TouchableOpacity>
-          </Animated.View>
-        )}
+          )}
 
-        {/* Quick Actions */}
-        <Animated.View style={[styles.quickActionsSection, makeStaggerStyle(anim3)]}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Quick Actions</Text>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                lightTap();
-                navigation.getParent()?.navigate('TransactionsList');
-              }}
-            >
-              <Text style={styles.seeAll}>View All</Text>
-            </TouchableOpacity>
-          </View>
-          {loading ? (
-            <View style={styles.quickActionsRow}>
-              {[...Array(4)].map((_, i) => (
-                <SkeletonLoader key={i} shape="box" width={78} height={80} />
-              ))}
-            </View>
-          ) : (
+          {/* Quick Actions */}
+          <View style={styles.quickActionsSection}>
+            <Text style={styles.detailSectionTitle}>Quick Actions</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -498,47 +433,42 @@ const PersonalDashboard: React.FC = () => {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-          )}
-        </Animated.View>
-
-        <Animated.View style={[styles.section, makeStaggerStyle(anim4)]}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Transactions</Text>
-            {transactions.length > 0 && !loading && (
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => {
-                  lightTap();
-                  navigation.getParent()?.navigate('TransactionsList');
-                }}
-              >
-                <Text style={styles.seeAll}>See All</Text>
-              </TouchableOpacity>
-            )}
           </View>
 
-          {loading ? (
-            <>
-              <SkeletonLoader shape="line" height={60} style={{ marginBottom: SPACING.sm }} />
-              <SkeletonLoader shape="line" height={60} style={{ marginBottom: SPACING.sm }} />
-              <SkeletonLoader shape="line" height={60} />
-            </>
-          ) : recentTransactions.length > 0 ? (
-            recentTransactions.map((transaction) => (
-              <TransactionItem
-                key={transaction.id}
-                transaction={transaction}
-                onPress={() => handleEditTransaction(transaction)}
+          {/* Recent Transactions */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.detailSectionTitle}>Recent Transactions</Text>
+              {transactions.length > 0 && (
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    lightTap();
+                    navigation.getParent()?.navigate('TransactionsList');
+                  }}
+                >
+                  <Text style={styles.seeAll}>See All</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {recentTransactions.length > 0 ? (
+              recentTransactions.map((transaction) => (
+                <TransactionItem
+                  key={transaction.id}
+                  transaction={transaction}
+                  onPress={() => handleEditTransaction(transaction)}
+                />
+              ))
+            ) : (
+              <EmptyState
+                icon="inbox"
+                title="No Transactions Yet"
+                message="Start tracking your expenses by adding your first transaction"
               />
-            ))
-          ) : (
-            <EmptyState
-              icon="inbox"
-              title="No Transactions Yet"
-              message="Start tracking your expenses by adding your first transaction"
-            />
-          )}
-        </Animated.View>
+            )}
+          </View>
+        </CollapsibleSection>
       </ScrollView>
 
       {/* Transaction Edit Modal */}
@@ -569,15 +499,15 @@ const PersonalDashboard: React.FC = () => {
                   <TouchableOpacity
                     style={[
                       styles.typeButton,
-                      editType === 'expense' && [styles.typeButtonActive, { backgroundColor: COLORS.expense }],
-                      { borderColor: COLORS.expense },
+                      editType === 'expense' && [styles.typeButtonActive, { backgroundColor: CALM.accent }],
+                      { borderColor: CALM.accent },
                     ]}
                     onPress={() => handleEditTypeChange('expense')}
                   >
                     <Feather
                       name="arrow-down-circle"
                       size={20}
-                      color={editType === 'expense' ? '#fff' : COLORS.expense}
+                      color={editType === 'expense' ? '#fff' : CALM.accent}
                     />
                     <Text style={[styles.typeText, editType === 'expense' && styles.typeTextActive]}>
                       Expense
@@ -587,15 +517,15 @@ const PersonalDashboard: React.FC = () => {
                   <TouchableOpacity
                     style={[
                       styles.typeButton,
-                      editType === 'income' && [styles.typeButtonActive, { backgroundColor: COLORS.success }],
-                      { borderColor: COLORS.success },
+                      editType === 'income' && [styles.typeButtonActive, { backgroundColor: CALM.positive }],
+                      { borderColor: CALM.positive },
                     ]}
                     onPress={() => handleEditTypeChange('income')}
                   >
                     <Feather
                       name="arrow-up-circle"
                       size={20}
-                      color={editType === 'income' ? '#fff' : COLORS.success}
+                      color={editType === 'income' ? '#fff' : CALM.positive}
                     />
                     <Text style={[styles.typeText, editType === 'income' && styles.typeTextActive]}>
                       Income
@@ -676,7 +606,7 @@ const PersonalDashboard: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   scrollView: {
     flex: 1,
@@ -684,22 +614,49 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: SPACING.lg,
   },
+
+  // Zone 1 — Greeting
   greeting: {
-    fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
-    marginBottom: 2,
-  },
-  dateText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    ...TYPE.muted,
     marginBottom: SPACING.lg,
   },
+
+  // Zone 2 — Balance
+  balanceAmount: {
+    fontSize: TYPE.amount.fontSize,
+    fontWeight: TYPE.amount.fontWeight,
+    color: CALM.textPrimary,
+    marginBottom: SPACING.xs,
+  },
+  netMonth: {
+    ...TYPE.muted,
+    marginBottom: SPACING.lg,
+  },
+
+  // Zone 4 — Insight
+  insight: {
+    fontSize: TYPE.insight.fontSize,
+    lineHeight: TYPE.insight.lineHeight,
+    color: CALM.textSecondary,
+    marginBottom: SPACING.lg,
+  },
+
+  // Detail sections
+  detailCard: {
+    marginBottom: SPACING.md,
+  },
+  detailSectionTitle: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+  },
+
   statsGrid: {
     flexDirection: 'row',
     gap: SPACING.md,
     marginBottom: SPACING.md,
   },
+
   budgetHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -714,19 +671,16 @@ const styles = StyleSheet.create({
   budgetTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   budgetPercentage: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.success,
-  },
-  budgetWarning: {
-    color: COLORS.warning,
+    color: CALM.accent,
   },
   budgetBar: {
     height: SPACING.sm,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.border,
     borderRadius: RADIUS.xs,
     overflow: 'hidden',
   },
@@ -746,11 +700,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   upcomingEmpty: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.textSecondary,
+    color: CALM.textSecondary,
     textAlign: 'center',
     paddingVertical: SPACING.md,
   },
@@ -760,47 +714,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: CALM.border,
     marginTop: SPACING.xs,
   },
   upcomingFooterTotal: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   upcomingFooterMore: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.primary,
+    color: CALM.accent,
   },
   upcomingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: SPACING.xs,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: CALM.border,
   },
   upcomingName: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.text,
+    color: CALM.textPrimary,
   },
   upcomingDays: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: COLORS.warning,
+    color: CALM.neutral,
     fontWeight: TYPOGRAPHY.weight.semibold,
     marginRight: SPACING.sm,
   },
   upcomingAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
   // Quick Actions
   quickActionsSection: {
     marginBottom: SPACING.md,
+    marginTop: SPACING.sm,
   },
   quickActionsRow: {
     flexDirection: 'row',
@@ -809,7 +764,7 @@ const styles = StyleSheet.create({
   },
   quickActionButton: {
     width: 80,
-    backgroundColor: COLORS.background,
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xs,
@@ -827,7 +782,7 @@ const styles = StyleSheet.create({
   quickActionLabel: {
     fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
+    color: CALM.textPrimary,
     textAlign: 'center',
     lineHeight: 13,
   },
@@ -842,14 +797,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.md,
   },
-  sectionTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
-  },
   seeAll: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: COLORS.primary,
+    color: CALM.accent,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
@@ -924,9 +874,8 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     flex: 1,
-    borderColor: COLORS.danger,
+    borderColor: CALM.neutral,
   },
-
 });
 
 export default PersonalDashboard;

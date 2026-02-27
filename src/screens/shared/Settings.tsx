@@ -16,6 +16,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
+import { useBusinessStore } from '../../store/businessStore';
 import { useAppStore } from '../../store/appStore';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useWalletStore } from '../../store/walletStore';
@@ -37,6 +38,7 @@ const Settings: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
   const mode = useAppStore((state) => state.mode);
+  const incomeType = useBusinessStore((s) => s.incomeType);
   const tier = usePremiumStore((s) => s.tier);
   const subscribe = usePremiumStore((s) => s.subscribe);
   const unsubscribe = usePremiumStore((s) => s.unsubscribe);
@@ -241,6 +243,34 @@ const Settings: React.FC = () => {
           </View>
         </Card>
 
+        {/* Business Income Type */}
+        {mode === 'business' && (
+          <>
+            <Text style={styles.sectionHeader}>Business Setup</Text>
+            <Card style={styles.card}>
+              <TouchableOpacity
+                style={styles.settingRow}
+                onPress={() => {
+                  lightTap();
+                  navigation.navigate('BusinessSetup');
+                }}
+                activeOpacity={0.6}
+              >
+                <View style={styles.settingLabelRow}>
+                  <Feather name="briefcase" size={18} color={COLORS.textSecondary} />
+                  <Text style={styles.settingLabel}>Change Income Type</Text>
+                </View>
+                <View style={styles.valueRow}>
+                  <Text style={styles.settingValue}>
+                    {incomeType || 'not set'}
+                  </Text>
+                  <Feather name="chevron-right" size={18} color={COLORS.textTertiary} />
+                </View>
+              </TouchableOpacity>
+            </Card>
+          </>
+        )}
+
         {/* Categories */}
         <Text style={styles.sectionHeader}>Categories</Text>
         <Card style={styles.card}>
@@ -283,6 +313,7 @@ const Settings: React.FC = () => {
           visible={categoryManagerVisible}
           onClose={() => setCategoryManagerVisible(false)}
           type={categoryManagerType}
+          mode={mode}
         />
 
         {/* Subscription */}
@@ -410,7 +441,7 @@ const Settings: React.FC = () => {
         <Card style={styles.card}>
           <View style={styles.settingRow}>
             <Text style={styles.settingLabel}>App</Text>
-            <Text style={styles.settingValue}>FinFlow</Text>
+            <Text style={styles.settingValue}>Potraces</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.settingRow}>

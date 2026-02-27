@@ -1,6 +1,55 @@
 // Core App Types
 export type AppMode = 'personal' | 'business';
 
+// Business Income Types
+export type IncomeType = 'seller' | 'freelance' | 'parttime' | 'rider' | 'mixed';
+
+export type IncomeStream = {
+  id: string;
+  label: string;
+  type: IncomeType;
+  color?: string;
+};
+
+export type BusinessTransaction = {
+  id: string;
+  date: Date;
+  amount: number;
+  type: 'income' | 'cost';
+  streamId?: string;
+  clientId?: string;
+  note?: string;
+  rawInput?: string;
+  inputMethod?: 'manual' | 'text' | 'voice';
+  category?: string;
+};
+
+export type Client = {
+  id: string;
+  name: string;
+  totalPaid: number;
+  lastPaid?: Date;
+  paymentHistory: { date: Date; amount: number }[];
+};
+
+export type RiderCost = {
+  id: string;
+  date: Date;
+  type: 'petrol' | 'maintenance' | 'data' | 'other';
+  amount: number;
+  note?: string;
+};
+
+export type Transfer = {
+  id: string;
+  amount: number;
+  fromMode: 'business' | 'personal';
+  toMode: 'business' | 'personal';
+  note?: string;
+  linkedBusinessTxId?: string;
+  date: Date;
+};
+
 // Navigation Types
 export type RootStackParamList = {
   PersonalMain: undefined;
@@ -15,6 +64,12 @@ export type RootStackParamList = {
   WalletManagement: undefined;
   AccountOverview: undefined;
   SavingsTracker: undefined;
+  MoneyChat: undefined;
+  BusinessSetup: undefined;
+  LogIncome: undefined;
+  ClientList: undefined;
+  RiderCosts: undefined;
+  IncomeStreams: undefined;
 };
 
 export type PersonalStackParamList = {
@@ -31,6 +86,7 @@ export type BusinessStackParamList = {
   CRM: undefined;
   Inventory: undefined;
   Settings: undefined;
+  LogIncome: undefined;
 };
 
 export interface Transaction {
@@ -44,8 +100,23 @@ export interface Transaction {
   walletId?: string;
   receiptUrl?: string;
   tags?: string[];
+  // AI enrichment fields
+  timeContext?: 'morning' | 'afternoon' | 'night';
+  dayContext?: 'weekday' | 'weekend';
+  sizeContext?: 'tiny' | 'medium' | 'heavy';
+  frequencyContext?: 'isolated' | 'clustered';
+  emotionalFlag?: boolean;
+  rawInput?: string;
+  inputMethod?: 'manual' | 'text' | 'photo' | 'voice';
+  confidence?: 'high' | 'low';
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface AIMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
 }
 
 export interface Subscription {
@@ -272,12 +343,20 @@ export interface PersonalState {
   updateBudget: (id: string, updates: Partial<Budget>) => void;
   deleteSubscription: (id: string) => void;
   deleteBudget: (id: string) => void;
+  addTransferIncome: (transfer: Transfer) => void;
 }
 
 export interface BusinessState {
   products: Product[];
   sales: Sale[];
   suppliers: Supplier[];
+  incomeType: IncomeType | null;
+  businessSetupComplete: boolean;
+  businessTransactions: BusinessTransaction[];
+  clients: Client[];
+  riderCosts: RiderCost[];
+  incomeStreams: IncomeStream[];
+  transfers: Transfer[];
   addProduct: (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateProduct: (id: string, updates: Partial<Product>) => void;
   addSale: (sale: Omit<Sale, 'id' | 'createdAt' | 'updatedAt' | 'isSynced'>) => void;
@@ -285,6 +364,15 @@ export interface BusinessState {
   updateSupplier: (id: string, updates: Partial<Supplier>) => void;
   deleteProduct: (id: string) => void;
   deleteSupplier: (id: string) => void;
+  setIncomeType: (type: IncomeType) => void;
+  completeSetup: () => void;
+  addBusinessTransaction: (tx: Omit<BusinessTransaction, 'id'>) => void;
+  addClient: (client: Omit<Client, 'id' | 'totalPaid' | 'paymentHistory'>) => void;
+  logClientPayment: (clientId: string, amount: number, date: Date) => void;
+  addRiderCost: (cost: Omit<RiderCost, 'id'>) => void;
+  addIncomeStream: (stream: Omit<IncomeStream, 'id'>) => void;
+  addTransfer: (transfer: Transfer) => void;
+  getTotalTransferredToPersonal: (month: Date) => number;
 }
 
 export interface DebtState {

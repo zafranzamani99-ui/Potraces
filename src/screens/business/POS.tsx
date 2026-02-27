@@ -442,9 +442,14 @@ const POS: React.FC = () => {
             )}
           </View>
 
-          {/* Cart items */}
-          <ScrollView
+          {/* Cart items — tap anywhere in collapsed cart to expand */}
+          <Pressable
+            onPress={!cartExpanded && cart.length > 0 ? expandCart : undefined}
+            disabled={cartExpanded || cart.length === 0}
             style={styles.cartScroll}
+          >
+          <ScrollView
+            style={{ flex: 1 }}
             contentContainerStyle={styles.cartContent}
             showsVerticalScrollIndicator={false}
           >
@@ -534,6 +539,7 @@ const POS: React.FC = () => {
               </TouchableOpacity>
             )}
           </ScrollView>
+          </Pressable>
 
           {/* Cart footer */}
           <Pressable
@@ -964,14 +970,14 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   productName: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: COLORS.text,
     marginBottom: SPACING.sm,
   },
   productPrice: {
     fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: COLORS.business,
   },
   productStock: {

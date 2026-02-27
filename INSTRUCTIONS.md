@@ -2,12 +2,12 @@
 
 ### **1. Clone the repository**
 ```bash
-git clone https://github.com/zafranzamani99-ui/FinFlow.git
+git clone https://github.com/zafranzamani99-ui/Potraces.git
 ```
 
 ### **2. Navigate to the project directory**
 ```bash
-cd FinFlow
+cd Potraces
 ```
 
 ### **3. Install dependencies**

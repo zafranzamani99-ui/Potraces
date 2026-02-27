@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "FinFlow",
-    "slug": "finflow",
+    "name": "Potraces",
+    "slug": "potraces",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -14,27 +14,27 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.finflow.app"
+      "bundleIdentifier": "com.potraces.app"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#6366F1"
       },
-      "package": "com.finflow.app"
+      "package": "com.potraces.app"
     },
     "web": {},
     "plugins": [
       [
         "expo-contacts",
         {
-          "contactsPermission": "FinFlow needs access to contacts for splitting expenses."
+          "contactsPermission": "Potraces needs access to contacts for splitting expenses."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "FinFlow needs access to your photos to scan receipts.",
-          "cameraPermission": "FinFlow needs access to your camera to scan receipts."
+          "photosPermission": "Potraces needs access to your photos to scan receipts.",
+          "cameraPermission": "Potraces needs access to your camera to scan receipts."
         }
       ]
     ]

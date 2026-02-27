@@ -1,403 +1,326 @@
-import React, { useMemo, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-  TouchableOpacity,
-  Animated,
-} from 'react-native';
-import { format, isToday } from 'date-fns';
-import { Feather } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
+import { Feather } from '@expo/vector-icons';
 import { useBusinessStore } from '../../store/businessStore';
-import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { COLORS, SHADOWS, RADIUS, SPACING, TYPOGRAPHY, withAlpha } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { BusinessTransaction, RiderCost } from '../../types';
+import { explainBusinessMonth } from '../../utils/explainBusinessMonth';
+import WeekBar from '../../components/common/WeekBar';
 import ModeToggle from '../../components/common/ModeToggle';
-import StatCard from '../../components/common/StatCard';
-import Card from '../../components/common/Card';
-import EmptyState from '../../components/common/EmptyState';
-import Confetti from '../../components/common/Confetti';
-import HeroCard from '../../components/common/HeroCard';
-import SkeletonLoader from '../../components/common/SkeletonLoader';
-import GlassCard from '../../components/common/GlassCard';
-import GRADIENTS from '../../constants/gradients';
-
-const QUICK_ACTIONS = [
-  { key: 'crm', label: 'Customers', icon: 'user-check' as const, screen: 'CRM', color: COLORS.info },
-  { key: 'debts', label: 'Debts & Splits', icon: 'users' as const, screen: 'DebtTracking', color: COLORS.warning },
-  { key: 'scan', label: 'Scan Receipt', icon: 'camera' as const, screen: 'ReceiptScanner', color: COLORS.accent },
-  { key: 'reports', label: 'Reports', icon: 'bar-chart-2' as const, screen: 'BusinessReports', color: COLORS.primary },
-];
 
 const BusinessDashboard: React.FC = () => {
-  const { sales, products } = useBusinessStore();
-  const { debts } = useDebtStore();
-  const currency = useSettingsStore(state => state.currency);
-  const [refreshing, setRefreshing] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
-  const [celebrate, setCelebrate] = React.useState(false);
-  const prevCountRef = useRef(0);
+  const {
+    incomeType,
+    businessSetupComplete,
+    businessTransactions,
+    clients,
+    riderCosts,
+    incomeStreams,
+    getTotalTransferredToPersonal,
+  } = useBusinessStore();
+  const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
 
-  // Animated count-up scale/opacity for today's total
-  const countUpAnim = useRef(new Animated.Value(0)).current;
+  const now = new Date();
+  const monthStart = startOfMonth(now);
+  const monthEnd = endOfMonth(now);
+  const prevStart = startOfMonth(subMonths(now, 1));
+  const prevEnd = endOfMonth(subMonths(now, 1));
 
-  const todayStats = useMemo(() => {
-    const todaySales = sales.filter((s) => isToday(s.date));
+  const inRange = (d: Date, start: Date, end: Date) =>
+    isWithinInterval(d instanceof Date ? d : new Date(d), { start, end });
 
-    const totalSales = todaySales.reduce((sum, s) => sum + s.totalAmount, 0);
-    const cashSales = todaySales
-      .filter((s) => s.paymentMethod === 'cash')
-      .reduce((sum, s) => sum + s.totalAmount, 0);
-    const digitalSales = todaySales
-      .filter((s) => s.paymentMethod === 'digital')
-      .reduce((sum, s) => sum + s.totalAmount, 0);
-    const cardSales = todaySales
-      .filter((s) => s.paymentMethod === 'card')
-      .reduce((sum, s) => sum + s.totalAmount, 0);
+  const currentTxns = useMemo(
+    () => businessTransactions.filter((t) => inRange(t.date, monthStart, monthEnd)),
+    [businessTransactions]
+  );
+  const previousTxns = useMemo(
+    () => businessTransactions.filter((t) => inRange(t.date, prevStart, prevEnd)),
+    [businessTransactions]
+  );
+  const currentRiderCosts = useMemo(
+    () => riderCosts.filter((r) => inRange(r.date, monthStart, monthEnd)),
+    [riderCosts]
+  );
 
-    return {
-      count: todaySales.length,
-      total: totalSales,
-      cash: cashSales,
-      digital: digitalSales,
-      card: cardSales,
-    };
-  }, [sales]);
+  const currentIncome = currentTxns.filter((t) => t.type === 'income');
+  const currentCosts = currentTxns.filter((t) => t.type === 'cost');
+  const totalIncome = currentIncome.reduce((s, t) => s + t.amount, 0);
+  const totalCostsTx = currentCosts.reduce((s, t) => s + t.amount, 0);
+  const totalRiderCosts = currentRiderCosts.reduce((s, r) => s + r.amount, 0);
+  const totalCosts = totalCostsTx + totalRiderCosts;
+  const net = totalIncome - totalCosts;
 
-  // Celebrate first sale of the day
-  useEffect(() => {
-    if (prevCountRef.current === 0 && todayStats.count > 0) {
-      setCelebrate(true);
-      setTimeout(() => setCelebrate(false), 100);
+  const transferredThisMonth = getTotalTransferredToPersonal(now);
+
+  // AI insight
+  const insight = useMemo(
+    () =>
+      incomeType
+        ? explainBusinessMonth(currentTxns, previousTxns, incomeType, currentRiderCosts)
+        : null,
+    [currentTxns, previousTxns, incomeType, currentRiderCosts]
+  );
+
+  // Zone 1 label
+  const netLabel = (() => {
+    switch (incomeType) {
+      case 'seller':
+      case 'rider':
+        return 'KEPT THIS MONTH';
+      case 'freelance':
+      case 'parttime':
+        return 'EARNED THIS MONTH';
+      case 'mixed':
+        return 'TOTAL IN';
+      default:
+        return 'THIS MONTH';
     }
-    prevCountRef.current = todayStats.count;
-  }, [todayStats.count]);
+  })();
 
-  // Trigger count-up animation when todayStats.total changes
-  useEffect(() => {
-    countUpAnim.setValue(0);
-    Animated.timing(countUpAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
-  }, [todayStats.total, countUpAnim]);
+  // Build transactions for WeekBar (map to personal Transaction shape)
+  const weekBarTxns = useMemo(
+    () =>
+      currentIncome.map((t) => ({
+        id: t.id,
+        amount: t.amount,
+        category: t.category || 'income',
+        description: t.note || '',
+        date: t.date,
+        type: 'income' as const,
+        mode: 'business' as const,
+        createdAt: t.date,
+        updatedAt: t.date,
+      })),
+    [currentIncome]
+  );
 
-  const inventoryStats = useMemo(() => {
-    const lowStock = products.filter(
-      (p) => p.stock <= p.lowStockThreshold && p.stock > 0
+  // Freelance: 6-month average
+  const monthlyAverage = useMemo(() => {
+    let total = 0;
+    let months = 0;
+    for (let i = 0; i < 6; i++) {
+      const ms = startOfMonth(subMonths(now, i));
+      const me = endOfMonth(subMonths(now, i));
+      const monthIncome = businessTransactions
+        .filter((t) => t.type === 'income' && inRange(t.date, ms, me))
+        .reduce((s, t) => s + t.amount, 0);
+      if (monthIncome > 0) months++;
+      total += monthIncome;
+    }
+    return months > 0 ? total / months : 0;
+  }, [businessTransactions]);
+
+  // Redirect to setup if not complete
+  if (!businessSetupComplete || !incomeType) {
+    // Navigate to setup on next tick
+    React.useEffect(() => {
+      navigation.getParent()?.navigate('BusinessSetup');
+    }, []);
+    return (
+      <View style={styles.container}>
+        <ModeToggle />
+      </View>
     );
-    const outOfStock = products.filter((p) => p.stock === 0);
+  }
 
-    return {
-      lowStock: lowStock.length,
-      outOfStock: outOfStock.length,
-      totalProducts: products.length,
-    };
-  }, [products]);
+  const renderVariantContent = () => {
+    switch (incomeType) {
+      case 'seller':
+        return (
+          <View style={styles.variantSection}>
+            <View style={styles.sideBySide}>
+              <View style={styles.sideItem}>
+                <Text style={styles.sideLabel}>came in</Text>
+                <Text style={styles.sideValue}>{currency} {totalIncome.toFixed(2)}</Text>
+              </View>
+              <View style={styles.sideItem}>
+                <Text style={styles.sideLabel}>costs</Text>
+                <Text style={styles.sideValue}>{currency} {totalCosts.toFixed(2)}</Text>
+              </View>
+            </View>
+            <Text style={styles.keptLine}>you kept {currency} {net.toFixed(2)}.</Text>
+          </View>
+        );
 
-  const debtStats = useMemo(() => {
-    const businessDebts = debts.filter((d) => d.mode === 'business');
-    const youOwe = businessDebts
-      .filter((d) => d.type === 'i_owe' && d.status !== 'settled')
-      .reduce((sum, d) => sum + (d.totalAmount - d.paidAmount), 0);
-    const owedToYou = businessDebts
-      .filter((d) => d.type === 'they_owe' && d.status !== 'settled')
-      .reduce((sum, d) => sum + (d.totalAmount - d.paidAmount), 0);
-    return { youOwe, owedToYou };
-  }, [debts]);
+      case 'freelance': {
+        const activeClients = clients.filter((c) => c.totalPaid > 0);
+        const lastPayment = activeClients
+          .flatMap((c) => c.paymentHistory.map((p) => ({ ...p, clientName: c.name })))
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+        return (
+          <View style={styles.variantSection}>
+            <Text style={styles.insightLine}>
+              {activeClients.length} client{activeClients.length !== 1 ? 's' : ''} &middot;{' '}
+              {currency} {monthlyAverage.toFixed(0)} average monthly across last 6 months.
+            </Text>
+            {lastPayment && (
+              <Text style={styles.labelLine}>
+                Last: {lastPayment.clientName} &middot; {currency} {lastPayment.amount.toFixed(2)}
+              </Text>
+            )}
+          </View>
+        );
+      }
 
-  const recentSales = useMemo(() => {
-    return sales.slice(0, 5);
-  }, [sales]);
+      case 'parttime': {
+        const mainIncome = currentIncome
+          .filter((t) => !t.streamId || t.streamId === 'main')
+          .reduce((s, t) => s + t.amount, 0);
+        const sideIncome = currentIncome
+          .filter((t) => t.streamId && t.streamId !== 'main')
+          .reduce((s, t) => s + t.amount, 0);
+        const sidePct = totalIncome > 0 ? ((sideIncome / totalIncome) * 100).toFixed(0) : '0';
+        return (
+          <View style={styles.variantSection}>
+            <Text style={styles.insightLine}>main job: {currency} {mainIncome.toFixed(2)}</Text>
+            <Text style={styles.insightLine}>side income: {currency} {sideIncome.toFixed(2)}</Text>
+            {sideIncome > 0 && (
+              <Text style={styles.labelLine}>
+                side income was {sidePct}% of your total this month.
+              </Text>
+            )}
+          </View>
+        );
+      }
 
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    setLoading(true);
-    setTimeout(() => {
-      setRefreshing(false);
-      setLoading(false);
-    }, 1000);
-  }, []);
+      case 'rider':
+        return (
+          <View style={styles.variantSection}>
+            <View style={styles.sideBySide}>
+              <View style={styles.sideItem}>
+                <Text style={styles.sideLabel}>grossed</Text>
+                <Text style={styles.sideValue}>{currency} {totalIncome.toFixed(2)}</Text>
+              </View>
+              <View style={styles.sideItem}>
+                <Text style={styles.sideLabel}>costs</Text>
+                <Text style={styles.sideValue}>{currency} {totalCosts.toFixed(2)}</Text>
+              </View>
+            </View>
+            <Text style={styles.riderKept}>
+              after petrol and costs, you kept {currency} {net.toFixed(2)}.
+            </Text>
+          </View>
+        );
 
-  const handleQuickAction = (screen: string) => {
-    if (screen === 'BusinessReports' || screen === 'SupplierList' || screen === 'DebtTracking' || screen === 'ReceiptScanner') {
-      navigation.getParent()?.navigate(screen);
-    } else {
-      navigation.navigate(screen);
+      case 'mixed':
+        return (
+          <View style={styles.variantSection}>
+            {incomeStreams.map((stream) => {
+              const streamTotal = currentIncome
+                .filter((t) => t.streamId === stream.id)
+                .reduce((s, t) => s + t.amount, 0);
+              return (
+                <View key={stream.id} style={styles.streamRow}>
+                  {stream.color && <View style={[styles.streamDot, { backgroundColor: stream.color }]} />}
+                  <Text style={styles.streamLabel}>{stream.label}</Text>
+                  <Text style={styles.streamAmount}>{currency} {streamTotal.toFixed(2)}</Text>
+                </View>
+              );
+            })}
+            <View style={styles.streamTotalRow}>
+              <Text style={styles.streamTotalLabel}>total</Text>
+              <Text style={styles.streamTotalAmount}>{currency} {totalIncome.toFixed(2)}</Text>
+            </View>
+          </View>
+        );
+
+      default:
+        return null;
     }
   };
-
-  // Animated interpolations for the count-up hero
-  const amountScale = countUpAnim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0.85, 1.05, 1],
-  });
-  const amountOpacity = countUpAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
-  });
 
   return (
     <View style={styles.container}>
       <ModeToggle />
-
-      <Confetti active={celebrate} />
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
       >
-        {/* Today's Sales Hero Card */}
-        {loading ? (
-          <SkeletonLoader
-            shape="box"
-            width="100%"
-            height={200}
-            style={{ marginBottom: SPACING.md }}
-          />
-        ) : (
-          <HeroCard
-            gradient={GRADIENTS.businessHero}
-            title="Today's Sales"
-            amount={todayStats.total}
-            currency={currency}
-            subtitle={`${todayStats.count} ${todayStats.count === 1 ? 'transaction' : 'transactions'}`}
-            breakdown={[
-              { label: 'Cash', value: todayStats.cash, icon: 'dollar-sign' },
-              { label: 'Digital', value: todayStats.digital, icon: 'smartphone' },
-              { label: 'Card', value: todayStats.card, icon: 'credit-card' },
-            ]}
-            style={{ marginBottom: SPACING.md }}
-          />
-        )}
+        {/* Zone 1 — Net */}
+        <Text style={styles.netLabel}>{netLabel}</Text>
+        <Text style={styles.netAmount}>
+          {currency} {(incomeType === 'rider' ? net : totalIncome).toFixed(2)}
+        </Text>
 
-        {/* Debt Summary */}
-        {loading ? (
-          <View style={styles.statsGrid}>
-            <SkeletonLoader shape="box" width="47%" height={100} />
-            <SkeletonLoader shape="box" width="47%" height={100} />
-          </View>
-        ) : (
-          (debtStats.youOwe > 0 || debtStats.owedToYou > 0) && (
-            <View style={styles.statsGrid}>
-              <StatCard
-                title="You Owe"
-                value={`${currency} ${debtStats.youOwe.toFixed(2)}`}
-                icon="arrow-up-circle"
-                iconColor={COLORS.danger}
-                subtitle="Outstanding"
-              />
-              <StatCard
-                title="Owed to You"
-                value={`${currency} ${debtStats.owedToYou.toFixed(2)}`}
-                icon="arrow-down-circle"
-                iconColor={COLORS.success}
-                subtitle="Outstanding"
-              />
-            </View>
-          )
-        )}
+        {/* Zone 2 — WeekBar */}
+        <View style={styles.weekBarSection}>
+          <WeekBar transactions={weekBarTxns} />
+        </View>
+
+        {/* Zone 3 — AI Insight */}
+        {insight && <Text style={styles.insightText}>{insight}</Text>}
+
+        {/* Zone 4 — Variant Content */}
+        {renderVariantContent()}
 
         {/* Quick Actions */}
-        <View style={styles.quickActionsSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.quickActionsTitle}>Quick Actions</Text>
+        <View style={styles.quickActions}>
+          <TouchableOpacity
+            style={styles.quickAction}
+            onPress={() => navigation.getParent()?.navigate('LogIncome')}
+          >
+            <Feather name="plus" size={20} color={CALM.accent} />
+            <Text style={styles.quickActionText}>Log Income</Text>
+          </TouchableOpacity>
+
+          {incomeType === 'freelance' && (
             <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => navigation.getParent()?.navigate('BusinessReports')}
+              style={styles.quickAction}
+              onPress={() => navigation.getParent()?.navigate('ClientList')}
             >
-              <Text style={styles.seeAll}>View All</Text>
+              <Feather name="users" size={20} color={CALM.accent} />
+              <Text style={styles.quickActionText}>Clients</Text>
             </TouchableOpacity>
-          </View>
-          {loading ? (
-            <View style={styles.quickActionsRow}>
-              {[...Array(4)].map((_, i) => (
-                <SkeletonLoader key={i} shape="box" width={78} height={80} />
-              ))}
-            </View>
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.quickActionsRow}
-            >
-              {QUICK_ACTIONS.map((action) => (
-                <TouchableOpacity
-                  key={action.key}
-                  style={styles.quickActionButton}
-                  onPress={() => handleQuickAction(action.screen)}
-                  activeOpacity={0.7}
-                >
-                  <LinearGradient
-                    colors={[withAlpha(action.color, 0.15), withAlpha(action.color, 0.05)]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.quickActionIconGradient}
-                  >
-                    <Feather name={action.icon} size={18} color={action.color} />
-                  </LinearGradient>
-                  <Text style={styles.quickActionLabel} numberOfLines={2}>
-                    {action.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
           )}
+
+          {incomeType === 'rider' && (
+            <TouchableOpacity
+              style={styles.quickAction}
+              onPress={() => navigation.getParent()?.navigate('RiderCosts')}
+            >
+              <Feather name="tool" size={20} color={CALM.accent} />
+              <Text style={styles.quickActionText}>Costs</Text>
+            </TouchableOpacity>
+          )}
+
+          {incomeType === 'mixed' && (
+            <TouchableOpacity
+              style={styles.quickAction}
+              onPress={() => navigation.getParent()?.navigate('IncomeStreams')}
+            >
+              <Feather name="layers" size={20} color={CALM.accent} />
+              <Text style={styles.quickActionText}>Streams</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={styles.quickAction}
+            onPress={() => navigation.getParent()?.navigate('MoneyChat')}
+          >
+            <Feather name="message-circle" size={20} color={CALM.accent} />
+            <Text style={styles.quickActionText}>Money Chat</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Inventory Alerts */}
-        {!loading && (inventoryStats.lowStock > 0 || inventoryStats.outOfStock > 0) && (
-          <GlassCard variant="tinted" style={styles.alertCard}>
-            <LinearGradient
-              colors={[COLORS.warning, withAlpha(COLORS.warning, 0.7)]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={styles.alertBorderGradient}
-            />
-            <View style={styles.alertHeader}>
-              <Feather name="alert-triangle" size={20} color={COLORS.warning} />
-              <Text style={styles.alertTitle}>Inventory Alerts</Text>
-            </View>
-            {inventoryStats.lowStock > 0 && (
-              <Text style={styles.alertText}>
-                {inventoryStats.lowStock}{' '}
-                {inventoryStats.lowStock === 1 ? 'item is' : 'items are'} running low on stock
-              </Text>
-            )}
-            {inventoryStats.outOfStock > 0 && (
-              <Animated.Text style={[styles.alertText, styles.alertTextDanger]}>
-                {inventoryStats.outOfStock}{' '}
-                {inventoryStats.outOfStock === 1 ? 'item is' : 'items are'} out of stock
-              </Animated.Text>
-            )}
-          </GlassCard>
+        {/* Transfer line */}
+        {transferredThisMonth > 0 && (
+          <Text style={styles.transferLine}>
+            {currency} {transferredThisMonth.toFixed(2)} moved to personal this month
+          </Text>
         )}
 
-        {/* Recent Sales */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Sales</Text>
-            {sales.length > 0 && !loading && (
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => navigation.getParent()?.navigate('BusinessReports')}
-              >
-                <Text style={styles.seeAll}>See All</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {loading ? (
-            <>
-              <SkeletonLoader shape="line" height={90} style={{ marginBottom: SPACING.sm }} />
-              <SkeletonLoader shape="line" height={90} style={{ marginBottom: SPACING.sm }} />
-              <SkeletonLoader shape="line" height={90} />
-            </>
-          ) : recentSales.length > 0 ? (
-            recentSales.map((sale) => (
-              <Card key={sale.id} style={styles.saleCard}>
-                <LinearGradient
-                  colors={[
-                    withAlpha(COLORS.business, 0.05),
-                    withAlpha(COLORS.business, 0.02),
-                  ]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.saleGradientOverlay}
-                />
-                <View style={styles.saleHeader}>
-                  <View style={styles.saleInfo}>
-                    <Text style={styles.saleId}>
-                      Sale #{sale.id.substring(0, 8)}
-                    </Text>
-                    <Text style={styles.saleDate}>
-                      {format(sale.date, 'MMM dd, yyyy • HH:mm')}
-                    </Text>
-                  </View>
-                  <Text style={styles.saleAmount}>
-                    {currency} {sale.totalAmount.toFixed(2)}
-                  </Text>
-                </View>
-                <View style={styles.saleDetails}>
-                  <LinearGradient
-                    colors={
-                      sale.paymentMethod === 'cash'
-                        ? [withAlpha(COLORS.income, 0.2), withAlpha(COLORS.income, 0.1)]
-                        : sale.paymentMethod === 'digital'
-                        ? [withAlpha(COLORS.info, 0.2), withAlpha(COLORS.info, 0.1)]
-                        : [withAlpha(COLORS.accent, 0.2), withAlpha(COLORS.accent, 0.1)]
-                    }
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.paymentChip}
-                  >
-                    <Feather
-                      name={
-                        sale.paymentMethod === 'cash'
-                          ? 'dollar-sign'
-                          : sale.paymentMethod === 'digital'
-                          ? 'smartphone'
-                          : 'credit-card'
-                      }
-                      size={14}
-                      color={
-                        sale.paymentMethod === 'cash'
-                          ? COLORS.income
-                          : sale.paymentMethod === 'digital'
-                          ? COLORS.info
-                          : COLORS.accent
-                      }
-                    />
-                    <Text
-                      style={[
-                        styles.saleDetailText,
-                        {
-                          color:
-                            sale.paymentMethod === 'cash'
-                              ? COLORS.income
-                              : sale.paymentMethod === 'digital'
-                              ? COLORS.info
-                              : COLORS.accent,
-                        },
-                      ]}
-                    >
-                      {sale.paymentMethod.charAt(0).toUpperCase() +
-                        sale.paymentMethod.slice(1)}
-                    </Text>
-                  </LinearGradient>
-                  <View style={styles.saleDetail}>
-                    <Feather name="package" size={14} color={COLORS.textSecondary} />
-                    <Text style={styles.saleDetailText}>
-                      {sale.items.length} {sale.items.length === 1 ? 'item' : 'items'}
-                    </Text>
-                  </View>
-                  {!sale.isSynced && (
-                    <View style={styles.notSyncedPill}>
-                      <Feather name="wifi-off" size={12} color={COLORS.warning} />
-                      <Text style={styles.notSyncedText}>Not synced</Text>
-                    </View>
-                  )}
-                </View>
-              </Card>
-            ))
-          ) : (
-            <EmptyState
-              icon="shopping-cart"
-              title="No Sales Yet"
-              message="Start making sales with the POS to see them here"
-            />
-          )}
-        </View>
+        {/* Change setup link */}
+        <TouchableOpacity
+          onPress={() => navigation.getParent()?.navigate('BusinessSetup')}
+          style={styles.changeSetup}
+        >
+          <Text style={styles.changeSetupText}>not the right setup? change it.</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -406,194 +329,158 @@ const BusinessDashboard: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: CALM.background,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING.lg,
+    padding: SPACING['2xl'],
+    paddingBottom: SPACING['5xl'],
   },
 
-  // ── Stats Grid ─────────────────────────────────────────────
-  statsGrid: {
+  // Zone 1
+  netLabel: {
+    ...TYPE.label,
+    marginBottom: SPACING.xs,
+  },
+  netAmount: {
+    ...TYPE.amount,
+    color: CALM.textPrimary,
+    marginBottom: SPACING.lg,
+  },
+
+  // Zone 2
+  weekBarSection: {
+    marginBottom: SPACING.lg,
+  },
+
+  // Zone 3
+  insightText: {
+    ...TYPE.insight,
+    color: CALM.textSecondary,
+    marginBottom: SPACING.xl,
+  },
+
+  // Zone 4 variants
+  variantSection: {
+    marginBottom: SPACING.xl,
+  },
+  sideBySide: {
     flexDirection: 'row',
-    gap: SPACING.md,
+    gap: SPACING.xl,
     marginBottom: SPACING.md,
   },
-
-  // ── Quick Actions ─────────────────────────────────────────
-  quickActionsSection: {
-    marginBottom: SPACING.md,
-  },
-  quickActionsTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
-  },
-  quickActionsRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-  },
-  quickActionButton: {
-    width: 80,
-    backgroundColor: COLORS.background,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xs,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-  },
-  quickActionIconGradient: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickActionLabel: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
-    textAlign: 'center',
-    lineHeight: 13,
-  },
-
-  // ── Inventory Alerts ───────────────────────────────────────
-  alertCard: {
-    marginBottom: SPACING.md,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  alertBorderGradient: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-  },
-  alertHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  alertTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
-  },
-  alertText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.regular,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
-  },
-  alertTextDanger: {
-    color: COLORS.danger,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-
-  // ── Section / Recent Sales ─────────────────────────────────
-  section: {
-    marginTop: SPACING.sm,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  sectionTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.text,
-  },
-  seeAll: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.business,
-  },
-
-  // ── Sale Card ──────────────────────────────────────────────
-  saleCard: {
-    marginBottom: SPACING.sm,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  saleGradientOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  saleHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: SPACING.sm,
-  },
-  saleInfo: {
+  sideItem: {
     flex: 1,
   },
-  saleId: {
-    fontSize: TYPOGRAPHY.size.lg,
+  sideLabel: {
+    ...TYPE.label,
+    marginBottom: SPACING.xs,
+  },
+  sideValue: {
+    ...TYPE.insight,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.text,
-    marginBottom: 2,
+    color: CALM.textPrimary,
   },
-  saleDate: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.regular,
-    color: COLORS.textSecondary,
+  keptLine: {
+    ...TYPE.insight,
+    color: CALM.textSecondary,
   },
-  saleAmount: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: COLORS.business,
-    fontVariant: ['tabular-nums'],
+  riderKept: {
+    fontSize: 20,
+    fontWeight: '300' as const,
+    color: CALM.textPrimary,
+    marginTop: SPACING.sm,
   },
-  saleDetails: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    alignItems: 'center',
-    flexWrap: 'wrap',
+  insightLine: {
+    ...TYPE.insight,
+    color: CALM.textPrimary,
+    marginBottom: SPACING.xs,
   },
-  saleDetail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  saleDetailText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  paymentChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
+  labelLine: {
+    ...TYPE.label,
+    marginTop: SPACING.sm,
   },
 
-  // ── Not-Synced Pill ────────────────────────────────────────
-  notSyncedPill: {
+  // Mixed streams
+  streamRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    backgroundColor: withAlpha(COLORS.warning, 0.1),
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
   },
-  notSyncedText: {
-    fontSize: TYPOGRAPHY.size.xs,
+  streamDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  streamLabel: {
+    ...TYPE.insight,
+    color: CALM.textPrimary,
+    flex: 1,
+  },
+  streamAmount: {
+    ...TYPE.insight,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: COLORS.warning,
+    color: CALM.textPrimary,
+  },
+  streamTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: CALM.border,
+    paddingTop: SPACING.md,
+    marginTop: SPACING.sm,
+  },
+  streamTotalLabel: {
+    ...TYPE.label,
+  },
+  streamTotalAmount: {
+    ...TYPE.insight,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.textPrimary,
+  },
+
+  // Quick actions
+  quickActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.md,
+    marginBottom: SPACING.xl,
+  },
+  quickAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+  },
+  quickActionText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
+  },
+
+  // Transfer
+  transferLine: {
+    ...TYPE.muted,
+    color: CALM.textSecondary,
+    marginBottom: SPACING.lg,
+  },
+
+  // Change setup
+  changeSetup: {
+    alignItems: 'center',
+    paddingVertical: SPACING.lg,
+  },
+  changeSetupText: {
+    ...TYPE.muted,
+    color: CALM.textSecondary,
   },
 });
 

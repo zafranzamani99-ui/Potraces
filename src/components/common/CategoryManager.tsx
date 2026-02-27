@@ -35,15 +35,17 @@ interface CategoryManagerProps {
   visible: boolean;
   onClose: () => void;
   type: 'expense' | 'income';
+  mode?: 'personal' | 'business';
 }
 
 const CategoryManager: React.FC<CategoryManagerProps> = ({
   visible,
   onClose,
   type,
+  mode,
 }) => {
   const { showToast } = useToast();
-  const categories = useCategories(type);
+  const categories = useCategories(type, mode);
   const { updateCategoryOverride, addCustomCategory, deleteCustomCategory } =
     useCategoryStore();
 
@@ -89,23 +91,23 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
         name: trimmedName,
         icon: editIcon,
         color: editColor,
-      });
+      }, mode);
       showToast('Category added', 'success');
     } else if (editingCategory) {
       if (isCustom(editingCategory.id)) {
         // For custom categories, delete old and add updated
-        deleteCustomCategory(type, editingCategory.id);
+        deleteCustomCategory(type, editingCategory.id, mode);
         addCustomCategory(type, {
           name: trimmedName,
           icon: editIcon,
           color: editColor,
-        });
+        }, mode);
       } else {
         // For default categories, save as override
         updateCategoryOverride(type, editingCategory.id, {
           name: trimmedName,
           icon: editIcon,
-        });
+        }, mode);
       }
       showToast('Category updated', 'success');
     }
@@ -122,7 +124,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
-          deleteCustomCategory(type, editingCategory.id);
+          deleteCustomCategory(type, editingCategory.id, mode);
           setEditModalVisible(false);
           showToast('Category deleted', 'success');
         },

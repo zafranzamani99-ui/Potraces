@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, RADIUS, TYPOGRAPHY, SPACING, coloredShadow } from '../../constants';
+import { COLORS, CALM, RADIUS, TYPOGRAPHY, SPACING } from '../../constants';
 import { createGradient } from '../../constants/gradients';
 import { useSettingsStore } from '../../store/settingsStore';
 
@@ -31,13 +31,8 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   const isOverBudget = current > total;
   const animValue = useRef(new Animated.Value(0)).current;
 
-  // Create gradient from color
-  const fillColor = isOverBudget ? COLORS.danger : color;
-  const fillGradient = createGradient(fillColor, 20);
-
-  // Add glow effect when near completion
-  const showGlow = percentage > 90 && !isOverBudget;
-  const glowShadow = showGlow ? coloredShadow(fillColor) : undefined;
+  // Single calm fill color — no red/danger
+  const fillGradient = createGradient(CALM.accent, 20);
 
   useEffect(() => {
     if (animated) {
@@ -111,7 +106,6 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
               height,
               borderRadius: RADIUS.sm,
             },
-            glowShadow,
           ]}
         >
           <LinearGradient
@@ -155,7 +149,7 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   overBudget: {
-    color: COLORS.danger,
+    color: CALM.neutral,
   },
   track: {
     width: '100%',

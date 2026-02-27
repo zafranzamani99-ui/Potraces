@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import {
   COLORS,
+  CALM,
   SPACING,
   TYPOGRAPHY,
   RADIUS,
@@ -83,7 +84,10 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress 
           />
         </View>
         <View style={styles.details}>
-          <Text style={styles.category}>{category?.name || transaction.category}</Text>
+          <View style={styles.categoryRow}>
+            <Text style={styles.category}>{category?.name || transaction.category}</Text>
+            {transaction.emotionalFlag && <View style={styles.emotionalDot} />}
+          </View>
           <Text style={styles.description} numberOfLines={1}>
             {transaction.description}
           </Text>
@@ -105,7 +109,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress 
           <Text
             style={[
               styles.amount,
-              { color: isExpense ? COLORS.expense : COLORS.income },
+              { color: CALM.textPrimary },
             ]}
           >
             {isExpense ? '-' : '+'}{currency} {transaction.amount.toFixed(2)}
@@ -143,6 +147,17 @@ const styles = StyleSheet.create({
   },
   details: {
     flex: 1,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  emotionalDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: CALM.accent,
   },
   category: {
     fontSize: TYPOGRAPHY.size.base,

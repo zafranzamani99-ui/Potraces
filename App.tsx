@@ -32,7 +32,7 @@ export default function App() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Loading FinFlow...</Text>
+        <Text style={styles.loadingText}>Loading Potraces...</Text>
       </View>
     );
   }
