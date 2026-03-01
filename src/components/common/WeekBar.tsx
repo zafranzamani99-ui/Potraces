@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { Transaction } from '../../types';
 import { CALM, TYPE, SPACING, RADIUS } from '../../constants';
+import { useSettingsStore } from '../../store/settingsStore';
 
 interface WeekBarProps {
   transactions: Transaction[];
@@ -21,6 +22,7 @@ function getISOWeek(date: Date): number {
 }
 
 export default function WeekBar({ transactions }: WeekBarProps) {
+  const currency = useSettingsStore((s) => s.currency);
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
 
   const weeks: WeekData[] = useMemo(() => {
@@ -77,7 +79,7 @@ export default function WeekBar({ transactions }: WeekBarProps) {
               </View>
               <Text style={styles.weekLabel}>{week.weekLabel}</Text>
               {isSelected && (
-                <Text style={styles.totalText}>RM {week.total.toFixed(0)}</Text>
+                <Text style={styles.totalText}>{currency} {week.total.toFixed(0)}</Text>
               )}
             </TouchableOpacity>
           );

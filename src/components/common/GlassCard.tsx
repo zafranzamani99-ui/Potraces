@@ -1,6 +1,5 @@
 import React, { useCallback, useRef } from 'react';
 import {
-  View,
   Pressable,
   StyleSheet,
   ViewStyle,
@@ -52,24 +51,6 @@ const VARIANT_CONFIG: Record<
 };
 
 // ─── COMPONENT ──────────────────────────────────────────────
-/**
- * GlassCard - Glassmorphism card with blur effect
- *
- * Features:
- * - BlurView with configurable intensity and tint
- * - Three variants: frosted (heavy blur), tinted (colored), elevated (with shadow)
- * - Optional press animation when onPress provided
- * - Semi-transparent background with subtle border
- *
- * @example
- * <GlassCard variant="frosted">
- *   <Text>Frosted glass content</Text>
- * </GlassCard>
- *
- * <GlassCard variant="elevated" onPress={() => console.log('Pressed')}>
- *   <Text>Tappable glass card</Text>
- * </GlassCard>
- */
 const GlassCard: React.FC<GlassCardProps> = ({
   children,
   variant = 'frosted',
@@ -80,32 +61,30 @@ const GlassCard: React.FC<GlassCardProps> = ({
   accessibilityLabel,
   accessibilityHint,
 }) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
 
   // ── Get variant configuration ──
   const variantCfg = VARIANT_CONFIG[variant];
   const blurIntensity = intensity ?? variantCfg.intensity;
 
-  // ── Press animation (only when tappable) ──
+  // ── Press animation: 150ms opacity pulse to 0.7, no scale bounce ──
   const handlePressIn = useCallback(() => {
     if (!onPress) return;
-    Animated.spring(scaleAnim, {
-      toValue: 0.98,
+    Animated.timing(opacityAnim, {
+      toValue: 0.7,
+      duration: 150,
       useNativeDriver: true,
-      speed: 50,
-      bounciness: 6,
     }).start();
-  }, [scaleAnim, onPress]);
+  }, [opacityAnim, onPress]);
 
   const handlePressOut = useCallback(() => {
     if (!onPress) return;
-    Animated.spring(scaleAnim, {
+    Animated.timing(opacityAnim, {
       toValue: 1,
+      duration: 150,
       useNativeDriver: true,
-      speed: 50,
-      bounciness: 6,
     }).start();
-  }, [scaleAnim, onPress]);
+  }, [opacityAnim, onPress]);
 
   const handlePress = useCallback(() => {
     if (!onPress) return;
@@ -117,7 +96,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
   const content = (
     <Animated.View
       style={[
-        { transform: [{ scale: scaleAnim }] },
+        { opacity: opacityAnim },
         style,
       ]}
     >
@@ -130,7 +109,6 @@ const GlassCard: React.FC<GlassCardProps> = ({
             backgroundColor: variantCfg.backgroundColor,
             borderColor: variantCfg.borderColor,
           },
-          { borderWidth: 1, borderColor: CALM.border },
         ]}
       >
         {children}

@@ -623,7 +623,7 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.background,
   },
   content: {
-    padding: SPACING.lg,
+    padding: SPACING['2xl'],
     gap: SPACING.lg,
   },
 

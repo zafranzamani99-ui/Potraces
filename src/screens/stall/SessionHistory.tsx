@@ -18,11 +18,11 @@ import { StallSession, SessionCondition } from '../../types';
 
 // ─── Condition badge colors ─────────────────────────────
 const CONDITION_CONFIG: Record<SessionCondition, { label: string; bg: string; text: string }> = {
-  good: { label: 'good', bg: '#E8F5E9', text: '#2E7D5B' },
-  slow: { label: 'slow', bg: '#FFF3E0', text: '#B2780A' },
-  rainy: { label: 'rainy', bg: '#E3F2FD', text: '#1565C0' },
-  hot: { label: 'hot', bg: '#FFF7E6', text: '#D84315' },
-  normal: { label: 'normal', bg: '#F5F5F5', text: CALM.textSecondary },
+  good: { label: 'good', bg: CALM.bronze + '15', text: CALM.bronze },
+  slow: { label: 'slow', bg: CALM.gold + '15', text: CALM.gold },
+  rainy: { label: 'rainy', bg: CALM.textSecondary + '15', text: CALM.textSecondary },
+  hot: { label: 'hot', bg: CALM.gold + '15', text: CALM.gold },
+  normal: { label: 'normal', bg: CALM.border, text: CALM.textSecondary },
 };
 
 const SessionHistory: React.FC = () => {
@@ -44,7 +44,7 @@ const SessionHistory: React.FC = () => {
   );
 
   const lifetimeStats = useMemo(() => getLifetimeStats(), [sessions]);
-  const insight = useMemo(() => explainStallHistory(sessions), [sessions]);
+  const insight = useMemo(() => explainStallHistory(closedSessions), [closedSessions]);
 
   const formatDuration = (minutes: number): string => {
     if (minutes < 60) return `${minutes}m`;

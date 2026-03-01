@@ -23,7 +23,7 @@ import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
-import Confetti from '../../components/common/Confetti';
+
 import { SaleItem } from '../../types';
 import { useToast } from '../../context/ToastContext';
 import { successNotification } from '../../services/haptics';
@@ -43,7 +43,6 @@ const POS: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-  const [showConfetti, setShowConfetti] = useState(false);
 
   // Discount state
   const [discountValue, setDiscountValue] = useState('');
@@ -248,11 +247,9 @@ const POS: React.FC = () => {
     setCustomerDropdownOpen(false);
     setCustomerSearchQuery('');
     setPaymentModalVisible(false);
-    setShowConfetti(true);
-    setTimeout(() => setShowConfetti(false), 100);
     collapseCart();
     successNotification();
-    showToast('Sale completed successfully!', 'success');
+    showToast('Sale completed.', 'success');
   };
 
   if (products.length === 0) {
@@ -271,7 +268,6 @@ const POS: React.FC = () => {
   return (
     <View style={styles.container}>
       <ModeToggle />
-      <Confetti active={showConfetti} />
       <View style={styles.content}>
         {/* ── Products Section ── */}
         <View style={styles.productsSection}>
@@ -421,7 +417,7 @@ const POS: React.FC = () => {
               <Feather
                 name={cartExpanded ? 'chevron-right' : 'chevron-left'}
                 size={18}
-                color={CALM.accent}
+                color={CALM.bronze}
               />
               <Text style={styles.cartTitle}>
                 {cartExpanded ? 'Review Order' : `Cart (${cart.length})`}
@@ -637,7 +633,7 @@ const POS: React.FC = () => {
       {/* ── Checkout Modal ── */}
       <Modal
         visible={paymentModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => {
           setPaymentModalVisible(false);
@@ -668,7 +664,7 @@ const POS: React.FC = () => {
                       <Feather
                         name={selectedCustomer ? 'user' : 'user-plus'}
                         size={16}
-                        color={selectedCustomer ? CALM.accent : CALM.textSecondary}
+                        color={selectedCustomer ? CALM.bronze : CALM.textSecondary}
                       />
                       <Text
                         style={[
@@ -738,7 +734,7 @@ const POS: React.FC = () => {
                             <Feather
                               name="user"
                               size={16}
-                              color={c.id === selectedCustomerId ? CALM.accent : CALM.textSecondary}
+                              color={c.id === selectedCustomerId ? CALM.bronze : CALM.textSecondary}
                             />
                             <View style={{ flex: 1 }}>
                               <Text style={styles.customerDropdownItemText}>{c.name}</Text>
@@ -749,7 +745,7 @@ const POS: React.FC = () => {
                               )}
                             </View>
                             {c.id === selectedCustomerId && (
-                              <Feather name="check" size={16} color={CALM.accent} />
+                              <Feather name="check" size={16} color={CALM.bronze} />
                             )}
                           </TouchableOpacity>
                         ))}
@@ -821,7 +817,7 @@ const POS: React.FC = () => {
                         <Feather
                           name={method.icon as keyof typeof Feather.glyphMap}
                           size={32}
-                          color={CALM.accent}
+                          color={CALM.bronze}
                         />
                       </View>
                       <Text style={styles.paymentLabel}>{method.label}</Text>
@@ -896,8 +892,8 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
   },
   categoryTabActive: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: CALM.bronze,
+    borderColor: CALM.bronze,
   },
   categoryTabText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -967,7 +963,7 @@ const styles = StyleSheet.create({
   productPrice: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
   productStock: {
     flexDirection: 'row',
@@ -989,7 +985,7 @@ const styles = StyleSheet.create({
     minWidth: 22,
     height: 22,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
@@ -1146,7 +1142,7 @@ const styles = StyleSheet.create({
   cartItemTotalExpanded: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
 
   // Empty cart
@@ -1202,7 +1198,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   discountTypeActive: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.md,
   },
   discountInput: {
@@ -1249,7 +1245,7 @@ const styles = StyleSheet.create({
   totalAmount: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: CALM.bronze,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1357,7 +1353,7 @@ const styles = StyleSheet.create({
     borderBottomColor: CALM.border,
   },
   customerDropdownItemActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.06),
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
   },
   customerDropdownItemText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1415,7 +1411,7 @@ const styles = StyleSheet.create({
   modalAmount: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: CALM.bronze,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1441,7 +1437,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
   },
   paymentLabel: {
     flex: 1,

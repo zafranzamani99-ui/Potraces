@@ -174,7 +174,7 @@ const CloseSession: React.FC = () => {
                   <Feather
                     name={cond.icon as any}
                     size={16}
-                    color={isSelected ? CALM.accent : CALM.textSecondary}
+                    color={isSelected ? CALM.bronze : CALM.textSecondary}
                   />
                   <Text
                     style={[
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   conditionPillSelected: {
-    borderColor: CALM.accent,
+    borderColor: CALM.bronze,
     backgroundColor: CALM.highlight,
   },
   conditionText: {
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     color: CALM.textSecondary,
   },
   conditionTextSelected: {
-    color: CALM.accent,
+    color: CALM.bronze,
   },
 
   // ─── Note ────────────────────────────────────────────────────
@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
 
   // ─── Actions ─────────────────────────────────────────────────
   closeButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
   backLinkText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
 });
 

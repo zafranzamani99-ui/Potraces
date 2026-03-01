@@ -45,7 +45,7 @@ const Settings: React.FC = () => {
   const budgetCount = usePersonalStore((s) => s.budgets.length);
 
   const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
-  const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income'>('expense');
+  const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment'>('expense');
 
   const {
     userName,
@@ -263,7 +263,10 @@ const Settings: React.FC = () => {
               onValueChange={(value) => {
                 lightTap();
                 setBusinessModeEnabled(value);
-                if (!value) setMode('personal');
+                if (!value) {
+                  navigation.goBack();
+                  setMode('personal');
+                }
                 showToast(
                   value ? 'Business mode enabled' : 'Business mode disabled',
                   'success'
@@ -336,6 +339,24 @@ const Settings: React.FC = () => {
             <View style={styles.settingLabelRow}>
               <Feather name="trending-up" size={18} color={CALM.textSecondary} />
               <Text style={styles.settingLabel}>Income Categories</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={CALM.neutral} />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => {
+              lightTap();
+              setCategoryManagerType('investment');
+              setCategoryManagerVisible(true);
+            }}
+            activeOpacity={0.6}
+          >
+            <View style={styles.settingLabelRow}>
+              <Feather name="pie-chart" size={18} color={CALM.textSecondary} />
+              <Text style={styles.settingLabel}>Investment Categories</Text>
             </View>
             <Feather name="chevron-right" size={18} color={CALM.neutral} />
           </TouchableOpacity>

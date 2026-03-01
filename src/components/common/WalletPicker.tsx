@@ -11,6 +11,7 @@ import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { Wallet } from '../../types';
 import { lightTap } from '../../services/haptics';
+import { useSettingsStore } from '../../store/settingsStore';
 
 interface WalletPickerProps {
   wallets: Wallet[];
@@ -25,6 +26,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
   onSelect,
   label,
 }) => {
+  const currency = useSettingsStore((s) => s.currency);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const selectedWallet = wallets.find((w) => w.id === selectedId);
   const sortedWallets = useMemo(
@@ -64,7 +66,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
               <View style={styles.textGroup}>
                 <Text style={styles.walletName}>{selectedWallet.name}</Text>
                 <Text style={styles.walletBalance}>
-                  RM {selectedWallet.balance.toFixed(2)}
+                  {currency} {selectedWallet.balance.toFixed(2)}
                 </Text>
               </View>
             </>
@@ -143,7 +145,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
                         {item.name}
                       </Text>
                       <Text style={styles.itemBalance}>
-                        RM {item.balance.toFixed(2)}
+                        {currency} {item.balance.toFixed(2)}
                       </Text>
                     </View>
                     {item.isDefault && (

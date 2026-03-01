@@ -35,28 +35,26 @@ const Card: React.FC<CardProps> = ({
   accessibilityLabel,
   accessibilityHint,
 }) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
   const radiusValue = RADIUS[borderRadius];
 
   const handlePressIn = useCallback(() => {
     if (!onPress) return;
-    Animated.spring(scaleAnim, {
-      toValue: 0.98,
+    Animated.timing(opacityAnim, {
+      toValue: 0.7,
+      duration: 150,
       useNativeDriver: true,
-      speed: 50,
-      bounciness: 4,
     }).start();
-  }, [scaleAnim, onPress]);
+  }, [opacityAnim, onPress]);
 
   const handlePressOut = useCallback(() => {
     if (!onPress) return;
-    Animated.spring(scaleAnim, {
+    Animated.timing(opacityAnim, {
       toValue: 1,
+      duration: 150,
       useNativeDriver: true,
-      speed: 50,
-      bounciness: 4,
     }).start();
-  }, [scaleAnim, onPress]);
+  }, [opacityAnim, onPress]);
 
   const handlePress = useCallback(() => {
     if (!onPress) return;
@@ -95,7 +93,7 @@ const Card: React.FC<CardProps> = ({
         variantStyle,
         {
           borderRadius: radiusValue,
-          transform: [{ scale: scaleAnim }],
+          opacity: opacityAnim,
         },
         style,
       ]}

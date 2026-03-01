@@ -279,7 +279,7 @@ const PersonalDashboard: React.FC = () => {
 
     setEditModalVisible(false);
     setEditingTransaction(null);
-    showToast('Transaction updated successfully!', 'success');
+    showToast('transaction updated.', 'success');
   };
 
   const handleDeleteTransaction = () => {
@@ -626,7 +626,7 @@ const PersonalDashboard: React.FC = () => {
       {/* Transaction Edit Modal */}
       <Modal
         visible={editModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => {
           setEditModalVisible(false);
@@ -764,7 +764,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING.lg,
+    padding: SPACING['2xl'],
   },
 
   // Zone 1 — Greeting
@@ -796,10 +796,10 @@ const styles = StyleSheet.create({
   // Zone 5 — Insight Strip
   insightStripScroll: {
     marginBottom: SPACING.lg,
-    marginHorizontal: -SPACING.lg,
+    marginHorizontal: -SPACING['2xl'],
   },
   insightStripRow: {
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING['2xl'],
     gap: SPACING.sm,
   },
   insightCard: {

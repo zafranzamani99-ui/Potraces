@@ -9,6 +9,13 @@ import { useCRMStore } from './crmStore';
 import { useAppStore } from './appStore';
 import { useWalletStore } from './walletStore';
 import { usePremiumStore } from './premiumStore';
+import { useStallStore } from './stallStore';
+import { useSellerStore } from './sellerStore';
+import { useCategoryStore } from './categoryStore';
+import { useFreelancerStore } from './freelancerStore';
+import { usePartTimeStore } from './partTimeStore';
+import { useOnTheRoadStore } from './onTheRoadStore';
+import { useMixedStore } from './mixedStore';
 
 interface SettingsState {
   userName: string;
@@ -52,9 +59,39 @@ export const useSettingsStore = create<SettingsState>()(
         });
 
         useBusinessStore.setState({
+          incomeType: null,
+          businessSetupComplete: false,
+          businessTransactions: [],
+          clients: [],
+          riderCosts: [],
+          incomeStreams: [],
+          transfers: [],
           products: [],
           sales: [],
           suppliers: [],
+        });
+
+        useStallStore.setState({
+          sessions: [],
+          activeSessionId: null,
+          products: [],
+          regularCustomers: [],
+        });
+
+        useSellerStore.setState({
+          products: [],
+          orders: [],
+          seasons: [],
+          ingredientCosts: [],
+        });
+
+        useCategoryStore.setState({
+          customExpenseCategories: [],
+          customIncomeCategories: [],
+          expenseCategoryOverrides: {},
+          incomeCategoryOverrides: {},
+          expenseCategoryOrder: [],
+          incomeCategoryOrder: [],
         });
 
         useDebtStore.setState({
@@ -66,6 +103,23 @@ export const useSettingsStore = create<SettingsState>()(
         useCRMStore.setState({
           customers: [],
           orders: [],
+        });
+
+        useFreelancerStore.setState({
+          clients: [],
+        });
+
+        usePartTimeStore.setState({
+          jobDetails: { jobName: '', setupComplete: false },
+        });
+
+        useOnTheRoadStore.setState({
+          roadDetails: { description: '', vehicleType: 'motorcycle', setupComplete: false },
+        });
+
+        useMixedStore.setState({
+          mixedDetails: { streams: [], hasRoadCosts: false, setupComplete: false },
+          lastUsedStream: null,
         });
 
         useWalletStore.setState({

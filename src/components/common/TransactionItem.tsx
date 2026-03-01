@@ -24,15 +24,15 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress 
   const category = categories.find((cat) => cat.id === transaction.category);
   const isExpense = transaction.type === 'expense';
 
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
     lightTap();
-    Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true, speed: 50, bounciness: 4 }).start();
+    Animated.timing(opacityAnim, { toValue: 0.7, duration: 150, useNativeDriver: true }).start();
   };
 
   const handlePressOut = () => {
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 50, bounciness: 4 }).start();
+    Animated.timing(opacityAnim, { toValue: 1, duration: 150, useNativeDriver: true }).start();
   };
 
   return (
@@ -46,7 +46,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress 
       accessibilityLabel={`${category?.name || transaction.category} transaction: ${currency} ${transaction.amount.toFixed(2)}`}
       accessibilityHint={onPress ? "Double tap to view details" : undefined}
     >
-      <Animated.View style={[styles.container, { transform: [{ scale: scaleAnim }] }]}>
+      <Animated.View style={[styles.container, { opacity: opacityAnim }]}>
         <View
           style={[
             styles.iconContainer,

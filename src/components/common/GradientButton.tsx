@@ -34,7 +34,7 @@ const SIZE_CONFIG: Record<
   ButtonSize,
   { height: number; paddingH: number; fontSize: number; iconSize: number }
 > = {
-  small: { height: 36, paddingH: SPACING.md, fontSize: TYPOGRAPHY.size.sm, iconSize: 16 },
+  small: { height: 44, paddingH: SPACING.md, fontSize: TYPOGRAPHY.size.sm, iconSize: 16 },
   medium: { height: 48, paddingH: SPACING.xl, fontSize: TYPOGRAPHY.size.base, iconSize: 18 },
   large: { height: 56, paddingH: SPACING['2xl'], fontSize: TYPOGRAPHY.size.lg, iconSize: 20 },
 };
@@ -52,17 +52,25 @@ const GradientButton: React.FC<GradientButtonProps> = ({
   accessibilityLabel,
   accessibilityHint,
 }) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
   const sizeCfg = SIZE_CONFIG[size];
   const isDisabled = disabled || loading;
 
   const handlePressIn = useCallback(() => {
-    Animated.spring(scaleAnim, { toValue: 0.95, useNativeDriver: true, speed: 50, bounciness: 6 }).start();
-  }, [scaleAnim]);
+    Animated.timing(opacityAnim, {
+      toValue: 0.7,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  }, [opacityAnim]);
 
   const handlePressOut = useCallback(() => {
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 50, bounciness: 6 }).start();
-  }, [scaleAnim]);
+    Animated.timing(opacityAnim, {
+      toValue: 1,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  }, [opacityAnim]);
 
   const handlePress = useCallback(() => {
     if (isDisabled) return;
@@ -76,7 +84,7 @@ const GradientButton: React.FC<GradientButtonProps> = ({
   };
 
   return (
-    <Animated.View style={[{ transform: [{ scale: scaleAnim }] }, style]}>
+    <Animated.View style={[{ opacity: opacityAnim }, style]}>
       <Pressable
         onPress={handlePress}
         onPressIn={handlePressIn}

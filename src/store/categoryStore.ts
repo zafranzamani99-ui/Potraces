@@ -7,7 +7,10 @@ import {
   INCOME_CATEGORIES,
   BUSINESS_EXPENSE_CATEGORIES,
   BUSINESS_INCOME_CATEGORIES,
+  INVESTMENT_CATEGORIES,
 } from '../constants';
+
+type CategoryType = 'expense' | 'income' | 'investment';
 
 interface CategoryOverride {
   name?: string;
@@ -25,35 +28,60 @@ interface CategoryState {
   businessIncomeCategoryOverrides: Record<string, CategoryOverride>;
   customBusinessExpenseCategories: CategoryOption[];
   customBusinessIncomeCategories: CategoryOption[];
+  // Investment
+  investmentCategoryOverrides: Record<string, CategoryOverride>;
+  customInvestmentCategories: CategoryOption[];
   // Order
   expenseCategoryOrder: string[];
   incomeCategoryOrder: string[];
   businessExpenseCategoryOrder: string[];
   businessIncomeCategoryOrder: string[];
+  investmentCategoryOrder: string[];
 
   updateCategoryOverride: (
-    type: 'expense' | 'income',
+    type: CategoryType,
     id: string,
     updates: CategoryOverride,
     mode?: 'personal' | 'business'
   ) => void;
   addCustomCategory: (
-    type: 'expense' | 'income',
+    type: CategoryType,
     category: Omit<CategoryOption, 'id'>,
     mode?: 'personal' | 'business'
   ) => void;
   deleteCustomCategory: (
-    type: 'expense' | 'income',
+    type: CategoryType,
     id: string,
     mode?: 'personal' | 'business'
   ) => void;
   setCategoryOrder: (
-    type: 'expense' | 'income',
+    type: CategoryType,
     order: string[],
     mode?: 'personal' | 'business'
   ) => void;
   getExpenseCategories: (mode?: 'personal' | 'business') => CategoryOption[];
   getIncomeCategories: (mode?: 'personal' | 'business') => CategoryOption[];
+  getInvestmentCategories: () => CategoryOption[];
+}
+
+function resolveKey(
+  type: CategoryType,
+  mode: 'personal' | 'business',
+  prefix: 'overrides' | 'custom' | 'order'
+): string {
+  if (type === 'investment') {
+    if (prefix === 'overrides') return 'investmentCategoryOverrides';
+    if (prefix === 'custom') return 'customInvestmentCategories';
+    return 'investmentCategoryOrder';
+  }
+  if (mode === 'business') {
+    if (prefix === 'overrides') return type === 'expense' ? 'businessExpenseCategoryOverrides' : 'businessIncomeCategoryOverrides';
+    if (prefix === 'custom') return type === 'expense' ? 'customBusinessExpenseCategories' : 'customBusinessIncomeCategories';
+    return type === 'expense' ? 'businessExpenseCategoryOrder' : 'businessIncomeCategoryOrder';
+  }
+  if (prefix === 'overrides') return type === 'expense' ? 'expenseCategoryOverrides' : 'incomeCategoryOverrides';
+  if (prefix === 'custom') return type === 'expense' ? 'customExpenseCategories' : 'customIncomeCategories';
+  return type === 'expense' ? 'expenseCategoryOrder' : 'incomeCategoryOrder';
 }
 
 export const useCategoryStore = create<CategoryState>()(
@@ -67,25 +95,24 @@ export const useCategoryStore = create<CategoryState>()(
       businessIncomeCategoryOverrides: {},
       customBusinessExpenseCategories: [],
       customBusinessIncomeCategories: [],
+      investmentCategoryOverrides: {},
+      customInvestmentCategories: [],
       expenseCategoryOrder: [],
       incomeCategoryOrder: [],
       businessExpenseCategoryOrder: [],
       businessIncomeCategoryOrder: [],
+      investmentCategoryOrder: [],
 
       updateCategoryOverride: (type, id, updates, mode = 'personal') =>
         set((state) => {
-          const key =
-            mode === 'business'
-              ? type === 'expense'
-                ? 'businessExpenseCategoryOverrides'
-                : 'businessIncomeCategoryOverrides'
-              : type === 'expense'
-                ? 'expenseCategoryOverrides'
-                : 'incomeCategoryOverrides';
+          const key = resolveKey(type, mode, 'overrides') as keyof Pick<CategoryState,
+            'expenseCategoryOverrides' | 'incomeCategoryOverrides' |
+            'businessExpenseCategoryOverrides' | 'businessIncomeCategoryOverrides' |
+            'investmentCategoryOverrides'>;
           return {
             [key]: {
-              ...state[key],
-              [id]: { ...state[key][id], ...updates },
+              ...(state[key] as Record<string, CategoryOverride>),
+              [id]: { ...(state[key] as Record<string, CategoryOverride>)[id], ...updates },
             },
           };
         }),
@@ -96,44 +123,29 @@ export const useCategoryStore = create<CategoryState>()(
             ...category,
             id: `custom_${Date.now()}`,
           };
-          const key =
-            mode === 'business'
-              ? type === 'expense'
-                ? 'customBusinessExpenseCategories'
-                : 'customBusinessIncomeCategories'
-              : type === 'expense'
-                ? 'customExpenseCategories'
-                : 'customIncomeCategories';
+          const key = resolveKey(type, mode, 'custom') as keyof Pick<CategoryState,
+            'customExpenseCategories' | 'customIncomeCategories' |
+            'customBusinessExpenseCategories' | 'customBusinessIncomeCategories' |
+            'customInvestmentCategories'>;
           return {
-            [key]: [...state[key], newCat],
+            [key]: [...(state[key] as CategoryOption[]), newCat],
           };
         }),
 
       deleteCustomCategory: (type, id, mode = 'personal') =>
         set((state) => {
-          const key =
-            mode === 'business'
-              ? type === 'expense'
-                ? 'customBusinessExpenseCategories'
-                : 'customBusinessIncomeCategories'
-              : type === 'expense'
-                ? 'customExpenseCategories'
-                : 'customIncomeCategories';
+          const key = resolveKey(type, mode, 'custom') as keyof Pick<CategoryState,
+            'customExpenseCategories' | 'customIncomeCategories' |
+            'customBusinessExpenseCategories' | 'customBusinessIncomeCategories' |
+            'customInvestmentCategories'>;
           return {
-            [key]: state[key].filter((c) => c.id !== id),
+            [key]: (state[key] as CategoryOption[]).filter((c) => c.id !== id),
           };
         }),
 
       setCategoryOrder: (type, order, mode = 'personal') =>
         set(() => {
-          const key =
-            mode === 'business'
-              ? type === 'expense'
-                ? 'businessExpenseCategoryOrder'
-                : 'businessIncomeCategoryOrder'
-              : type === 'expense'
-                ? 'expenseCategoryOrder'
-                : 'incomeCategoryOrder';
+          const key = resolveKey(type, mode, 'order');
           return { [key]: order };
         }),
 
@@ -188,6 +200,21 @@ export const useCategoryStore = create<CategoryState>()(
         }
         return cats;
       },
+
+      getInvestmentCategories: () => {
+        const state = get();
+        const defaults = INVESTMENT_CATEGORIES.map((cat) => ({
+          ...cat,
+          ...state.investmentCategoryOverrides[cat.id],
+        }));
+        const cats = [...defaults, ...state.customInvestmentCategories];
+        const order = state.investmentCategoryOrder;
+        if (order.length > 0) {
+          const orderMap = new Map(order.map((id, i) => [id, i]));
+          cats.sort((a, b) => (orderMap.get(a.id) ?? 999) - (orderMap.get(b.id) ?? 999));
+        }
+        return cats;
+      },
     }),
     {
       name: 'category-storage',
@@ -201,10 +228,13 @@ export const useCategoryStore = create<CategoryState>()(
         businessIncomeCategoryOverrides: state.businessIncomeCategoryOverrides,
         customBusinessExpenseCategories: state.customBusinessExpenseCategories,
         customBusinessIncomeCategories: state.customBusinessIncomeCategories,
+        investmentCategoryOverrides: state.investmentCategoryOverrides,
+        customInvestmentCategories: state.customInvestmentCategories,
         expenseCategoryOrder: state.expenseCategoryOrder,
         incomeCategoryOrder: state.incomeCategoryOrder,
         businessExpenseCategoryOrder: state.businessExpenseCategoryOrder,
         businessIncomeCategoryOrder: state.businessIncomeCategoryOrder,
+        investmentCategoryOrder: state.investmentCategoryOrder,
       }),
     }
   )

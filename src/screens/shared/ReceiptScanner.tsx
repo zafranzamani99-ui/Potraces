@@ -187,6 +187,7 @@ const ReceiptScanner: React.FC = () => {
       mode,
       walletId: selectedWalletId || undefined,
       receiptUrl: imageUri || undefined,
+      inputMethod: 'photo',
     });
 
     if (selectedWalletId) {

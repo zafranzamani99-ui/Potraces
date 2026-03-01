@@ -29,38 +29,28 @@ import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 import { useToast } from '../../context/ToastContext';
-import { SavingsAccount, SavingsAccountType } from '../../types';
+import { useCategories } from '../../hooks/useCategories';
+import { SavingsAccount } from '../../types';
+import { CategoryOption } from '../../types';
 
 const MAX_ACCOUNTS = 5;
 
-// Account type colors are data colors (rule 16 — keep them)
-const SAVINGS_TYPES: {
-  id: SavingsAccountType;
-  name: string;
-  icon: keyof typeof Feather.glyphMap;
-  color: string;
-}[] = [
-  { id: 'tng_plus', name: 'TNG+', icon: 'smartphone', color: '#005ABD' },
-  { id: 'robo_crypto', name: 'Robo Crypto', icon: 'cpu', color: '#F7931A' },
-  { id: 'esa', name: 'ESA', icon: 'shield', color: '#2DCE89' },
-  { id: 'bank', name: 'Bank', icon: 'home', color: '#5E72E4' },
-  { id: 'other', name: 'Other', icon: 'briefcase', color: '#9CA3B4' },
-];
-
-const getTypeInfo = (type: SavingsAccountType) =>
-  SAVINGS_TYPES.find((t) => t.id === type) || SAVINGS_TYPES[4];
+const FALLBACK_TYPE: CategoryOption = { id: 'other', name: 'Other', icon: 'briefcase', color: '#9CA3B4' };
 
 const SavingsTracker: React.FC = () => {
   const { showToast } = useToast();
   const { accounts, addAccount, updateAccount, deleteAccount, addSnapshot } =
     useSavingsStore();
   const currency = useSettingsStore((s) => s.currency);
+  const investmentTypes = useCategories('investment');
+  const getTypeInfo = (typeId: string): CategoryOption =>
+    investmentTypes.find((t) => t.id === typeId) || FALLBACK_TYPE;
 
   // Add / Edit modal
   const [modalVisible, setModalVisible] = useState(false);
   const [editingAccount, setEditingAccount] = useState<SavingsAccount | null>(null);
   const [name, setName] = useState('');
-  const [selectedType, setSelectedType] = useState<SavingsAccountType>('tng_plus');
+  const [selectedType, setSelectedType] = useState(investmentTypes[0]?.id || 'tng_plus');
   const [description, setDescription] = useState('');
   const [initialInvestment, setInitialInvestment] = useState('');
   const [currentValue, setCurrentValue] = useState('');
@@ -138,7 +128,7 @@ const SavingsTracker: React.FC = () => {
       updateAccount(editingAccount.id, {
         name: name.trim(),
         type: selectedType,
-        description: selectedType === 'other' ? description.trim() : undefined,
+        description: (selectedType === 'other' || selectedType.startsWith('custom_')) ? description.trim() : undefined,
         initialInvestment: inv,
         currentValue: cur,
       });
@@ -147,7 +137,7 @@ const SavingsTracker: React.FC = () => {
       addAccount({
         name: name.trim(),
         type: selectedType,
-        description: selectedType === 'other' ? description.trim() : undefined,
+        description: (selectedType === 'other' || selectedType.startsWith('custom_')) ? description.trim() : undefined,
         initialInvestment: inv,
         currentValue: cur,
       });
@@ -298,7 +288,7 @@ const SavingsTracker: React.FC = () => {
                       { backgroundColor: withAlpha(info.color, 0.12) },
                     ]}
                   >
-                    <Feather name={info.icon} size={20} color={info.color} />
+                    <Feather name={info.icon as keyof typeof Feather.glyphMap} size={20} color={info.color} />
                   </View>
                   <View style={styles.accountInfo}>
                     <Text style={styles.accountName} numberOfLines={1}>
@@ -447,7 +437,7 @@ const SavingsTracker: React.FC = () => {
       {/* ── Add / Edit Modal ── */}
       <Modal
         visible={modalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => {
           setModalVisible(false);
@@ -499,7 +489,7 @@ const SavingsTracker: React.FC = () => {
                       ]}
                     >
                       <Feather
-                        name={getTypeInfo(selectedType).icon}
+                        name={getTypeInfo(selectedType).icon as keyof typeof Feather.glyphMap}
                         size={16}
                         color={getTypeInfo(selectedType).color}
                       />
@@ -517,7 +507,7 @@ const SavingsTracker: React.FC = () => {
 
                 {typeDropdownOpen && (
                   <View style={styles.dropdownList}>
-                    {SAVINGS_TYPES.map((type) => {
+                    {investmentTypes.map((type) => {
                       const isSelected = selectedType === type.id;
                       return (
                         <TouchableOpacity
@@ -538,7 +528,7 @@ const SavingsTracker: React.FC = () => {
                               { backgroundColor: withAlpha(type.color, 0.12) },
                             ]}
                           >
-                            <Feather name={type.icon} size={16} color={type.color} />
+                            <Feather name={type.icon as keyof typeof Feather.glyphMap} size={16} color={type.color} />
                           </View>
                           <Text
                             style={[
@@ -557,8 +547,8 @@ const SavingsTracker: React.FC = () => {
                   </View>
                 )}
 
-                {/* Description for "Other" type */}
-                {selectedType === 'other' && (
+                {/* Description for "Other" or custom types */}
+                {(selectedType === 'other' || selectedType.startsWith('custom_')) && (
                   <>
                     <Text style={styles.label}>Description</Text>
                     <TextInput
@@ -621,7 +611,7 @@ const SavingsTracker: React.FC = () => {
       {/* ── Update Value Modal ── */}
       <Modal
         visible={updateModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => setUpdateModalVisible(false)}
       >
@@ -730,7 +720,7 @@ const SavingsTracker: React.FC = () => {
       {/* ── Full History Modal ── */}
       <Modal
         visible={historyModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => setHistoryModalVisible(false)}
       >
@@ -846,7 +836,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING.lg,
+    padding: SPACING['2xl'],
     paddingBottom: 80,
   },
 

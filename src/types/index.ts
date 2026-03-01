@@ -22,6 +22,14 @@ export type BusinessTransaction = {
   rawInput?: string;
   inputMethod?: 'manual' | 'text' | 'voice';
   category?: string;
+  gapFromLastPayment?: number; // days since last payment from same client
+  incomeStream?: 'main' | 'side'; // part-time mode: main job vs side income
+  // On-the-road mode fields
+  roadTransactionType?: 'earning' | 'cost';
+  costCategory?: CostCategory;
+  costCategoryOther?: string;
+  platform?: string;
+  streamLabel?: string;         // mixed mode: user-defined stream label
 };
 
 export type Client = {
@@ -31,6 +39,37 @@ export type Client = {
   lastPaid?: Date;
   paymentHistory: { date: Date; amount: number }[];
 };
+
+export interface FreelancerClient {
+  id: string;
+  name: string;
+  contact?: string;
+  notes?: string;
+  createdAt: string; // ISO date
+  isAutoDetected: boolean;
+}
+
+export interface PartTimeJobDetails {
+  jobName: string;
+  expectedMonthlyPay?: number;
+  payDay?: number; // 1-31
+  setupComplete: boolean;
+}
+
+export interface OnTheRoadDetails {
+  description: string;
+  vehicleType: 'car' | 'motorcycle' | 'bicycle' | 'other';
+  vehicleOther?: string;
+  setupComplete: boolean;
+}
+
+export type CostCategory = 'petrol' | 'maintenance' | 'data' | 'toll' | 'parking' | 'insurance' | 'other';
+
+export interface MixedModeDetails {
+  streams: string[];
+  hasRoadCosts: boolean;
+  setupComplete: boolean;
+}
 
 export type RiderCost = {
   id: string;
@@ -109,11 +148,21 @@ export interface IngredientCost {
   seasonId?: string;
 }
 
+export interface SellerCustomer {
+  id: string;
+  name: string;
+  phone?: string;
+  address?: string;
+  note?: string;
+  createdAt: Date;
+}
+
 export interface SellerState {
   products: SellerProduct[];
   orders: SellerOrder[];
   seasons: Season[];
   ingredientCosts: IngredientCost[];
+  sellerCustomers: SellerCustomer[];
 
   addProduct: (product: Omit<SellerProduct, 'id' | 'totalSold' | 'createdAt' | 'updatedAt'>) => void;
   updateProduct: (id: string, updates: Partial<SellerProduct>) => void;
@@ -121,7 +170,9 @@ export interface SellerState {
 
   addOrder: (order: Omit<SellerOrder, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
+  updateOrder: (id: string, updates: Partial<Pick<SellerOrder, 'customerName' | 'note' | 'deliveryDate' | 'customerPhone'>>) => void;
   markOrderPaid: (id: string) => void;
+  markOrdersPaid: (ids: string[]) => void;
   deleteOrder: (id: string) => void;
 
   addSeason: (season: Omit<Season, 'id' | 'createdAt'>) => void;
@@ -130,6 +181,10 @@ export interface SellerState {
 
   addIngredientCost: (cost: Omit<IngredientCost, 'id'>) => void;
   deleteIngredientCost: (id: string) => void;
+
+  addSellerCustomer: (customer: Omit<SellerCustomer, 'id' | 'createdAt'>) => void;
+  updateSellerCustomer: (id: string, updates: Partial<SellerCustomer>) => void;
+  deleteSellerCustomer: (id: string) => void;
 
   getSeasonOrders: (seasonId: string) => SellerOrder[];
   getSeasonCosts: (seasonId: string) => IngredientCost[];
@@ -270,18 +325,41 @@ export type RootStackParamList = {
   ClientList: undefined;
   RiderCosts: undefined;
   IncomeStreams: undefined;
-  SellerNewOrder: undefined;
+  SellerNewOrder: { customerName?: string; customerPhone?: string; customerAddress?: string } | undefined;
   SellerOrderList: undefined;
   SellerProducts: undefined;
   SeasonSummary: { seasonId?: string } | undefined;
   PastSeasons: undefined;
   Goals: undefined;
   FinancialPulse: undefined;
+  SellerSettings: undefined;
   // Stall screens
   StallSessionSetup: undefined;
   StallCloseSession: undefined;
   StallSessionSummary: { sessionId: string };
   StallProducts: undefined;
+  // Freelancer screens
+  FreelancerClientList: undefined;
+  FreelancerClientDetail: { clientId: string };
+  FreelancerAddPayment: undefined;
+  FreelancerReports: undefined;
+  // Part-time screens
+  PartTimeSetup: undefined;
+  PartTimeAddIncome: { preSelectMain?: boolean } | undefined;
+  PartTimeIncomeHistory: undefined;
+  PartTimeReports: undefined;
+  // On-the-road screens
+  OnTheRoadSetup: undefined;
+  OnTheRoadAddEarnings: undefined;
+  OnTheRoadAddCost: undefined;
+  OnTheRoadCostHistory: { filter?: string } | undefined;
+  OnTheRoadReports: undefined;
+  // Mixed mode screens
+  MixedSetup: undefined;
+  MixedAddIncome: undefined;
+  MixedAddCost: undefined;
+  MixedStreamHistory: { filter?: string } | undefined;
+  MixedReports: undefined;
 };
 
 export type PersonalStackParamList = {
@@ -300,10 +378,12 @@ export type BusinessStackParamList = {
   Settings: undefined;
   LogIncome: undefined;
   // Seller tabs
-  SellerOrders: undefined;
-  SellerNewOrder: undefined;
+  SellerOrders: { initialFilter?: string } | undefined;
+  SellerNewOrder: { customerName?: string; customerPhone?: string; customerAddress?: string } | undefined;
   SellerProducts: undefined;
   SellerSeasons: undefined;
+  SellerCustomers: undefined;
+  SellerManage: undefined;
   // Stall tabs
   StallDashboard: undefined;
   StallSell: undefined;
@@ -665,8 +745,8 @@ export interface ChartData {
   }[];
 }
 
-// Savings / Investment Types
-export type SavingsAccountType = 'tng_plus' | 'robo_crypto' | 'esa' | 'bank' | 'other';
+// Savings / Investment Types (string to support custom investment categories)
+export type SavingsAccountType = string;
 
 export interface SavingsSnapshot {
   id: string;

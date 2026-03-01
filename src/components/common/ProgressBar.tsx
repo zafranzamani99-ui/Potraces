@@ -104,7 +104,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
           ]}
         >
           <View
-            style={[styles.solidFill, { borderRadius: RADIUS.sm, backgroundColor: CALM.accent }]}
+            style={[styles.solidFill, { borderRadius: RADIUS.sm, backgroundColor: color }]}
           />
         </Animated.View>
       </View>

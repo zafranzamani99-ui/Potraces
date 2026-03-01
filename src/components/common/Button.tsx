@@ -118,28 +118,26 @@ const Button: React.FC<ButtonProps> = ({
   accessibilityLabel,
   accessibilityHint,
 }) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
   const variantCfg = VARIANT_CONFIG[variant];
   const sizeCfg = SIZE_CONFIG[size];
   const isDisabled = disabled || loading;
 
   const handlePressIn = useCallback(() => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.96,
+    Animated.timing(opacityAnim, {
+      toValue: 0.7,
+      duration: 150,
       useNativeDriver: true,
-      speed: 50,
-      bounciness: 4,
     }).start();
-  }, [scaleAnim]);
+  }, [opacityAnim]);
 
   const handlePressOut = useCallback(() => {
-    Animated.spring(scaleAnim, {
+    Animated.timing(opacityAnim, {
       toValue: 1,
+      duration: 150,
       useNativeDriver: true,
-      speed: 50,
-      bounciness: 4,
     }).start();
-  }, [scaleAnim]);
+  }, [opacityAnim]);
 
   const handlePress = useCallback(() => {
     if (isDisabled) return;
@@ -167,7 +165,7 @@ const Button: React.FC<ButtonProps> = ({
   return (
     <Animated.View
       style={{
-        transform: [{ scale: scaleAnim }],
+        opacity: opacityAnim,
         alignSelf: fullWidth ? 'stretch' : 'auto',
       }}
     >

@@ -301,8 +301,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   checkboxActive: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: CALM.bronze,
+    borderColor: CALM.bronze,
   },
   productInfo: {
     flex: 1,
@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
 
   // ─── Actions ─────────────────────────────────────────────────
   startButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',

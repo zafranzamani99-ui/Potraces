@@ -262,7 +262,7 @@ const RegularCustomers: React.FC = () => {
             <Feather
               name={showAddForm ? 'x' : 'plus'}
               size={20}
-              color={CALM.accent}
+              color={CALM.bronze}
             />
           </TouchableOpacity>
         </View>
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.accent,
+    borderColor: CALM.bronze,
     padding: SPACING.lg,
     gap: SPACING.md,
     marginBottom: SPACING.sm,
@@ -409,7 +409,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   addSaveButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
     color: CALM.textSecondary,
   },
   saveAction: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,

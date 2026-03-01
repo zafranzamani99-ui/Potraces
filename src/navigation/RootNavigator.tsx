@@ -1,7 +1,7 @@
 import React from 'react';
 import { TouchableOpacity } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator, CardStyleInterpolators, TransitionSpecs } from '@react-navigation/stack';
+import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 import { Feather } from '@expo/vector-icons';
 import { useAppStore } from '../store/appStore';
 import { COLORS, CALM } from '../constants';
@@ -21,6 +21,7 @@ import MoneyChat from '../screens/personal/MoneyChat';
 import Goals from '../screens/personal/Goals';
 import FinancialPulse from '../screens/personal/FinancialPulse';
 import BusinessSetup from '../screens/business/Setup';
+import Settings from '../screens/shared/Settings';
 import LogIncome from '../screens/business/LogIncome';
 import ClientList from '../screens/business/ClientList';
 import RiderCostsScreen from '../screens/business/RiderCosts';
@@ -34,6 +35,30 @@ import StallSessionSetup from '../screens/stall/SessionSetup';
 import StallCloseSession from '../screens/stall/CloseSession';
 import StallSessionSummary from '../screens/stall/SessionSummary';
 import StallProducts from '../screens/stall/StallProducts';
+import FreelancerClientDetail from '../screens/business/freelancer/ClientDetail';
+import FreelancerAddPayment from '../screens/business/freelancer/AddPayment';
+import FreelancerReports from '../screens/business/freelancer/FreelancerReports';
+import FreelancerClientListScreen from '../screens/business/freelancer/ClientList';
+
+// Part-time screens
+import PartTimeSetup from '../screens/business/parttime/PartTimeSetup';
+import PartTimeAddIncome from '../screens/business/parttime/AddIncome';
+import PartTimeIncomeHistory from '../screens/business/parttime/IncomeHistory';
+import PartTimeReports from '../screens/business/parttime/PartTimeReports';
+
+// On-the-road screens
+import OnTheRoadSetup from '../screens/business/ontheroad/OnTheRoadSetup';
+import OnTheRoadAddEarnings from '../screens/business/ontheroad/AddEarnings';
+import OnTheRoadAddCost from '../screens/business/ontheroad/AddCost';
+import OnTheRoadCostHistory from '../screens/business/ontheroad/CostHistory';
+import OnTheRoadReports from '../screens/business/ontheroad/OnTheRoadReports';
+
+// Mixed screens
+import MixedSetup from '../screens/business/mixed/MixedSetup';
+import MixedAddIncome from '../screens/business/mixed/AddIncome';
+import MixedAddCost from '../screens/business/mixed/AddCost';
+import MixedStreamHistory from '../screens/business/mixed/StreamHistory';
+import MixedReports from '../screens/business/mixed/MixedReports';
 
 const Stack = createStackNavigator();
 
@@ -45,14 +70,8 @@ const RootNavigator: React.FC = () => {
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
-          // Add smooth iOS-style transitions
           cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
           gestureEnabled: true,
-          gestureDirection: 'horizontal',
-          transitionSpec: {
-            open: TransitionSpecs.TransitionIOSSpec,
-            close: TransitionSpecs.TransitionIOSSpec,
-          },
         }}
       >
         {mode === 'personal' ? (
@@ -696,6 +715,36 @@ const RootNavigator: React.FC = () => {
           })}
         />
         <Stack.Screen
+          name="SellerSettings"
+          component={Settings}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Settings',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
           name="PastSeasons"
           component={PastSeasons}
           options={({ navigation }) => ({
@@ -821,6 +870,546 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Products',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="FreelancerClientList"
+          component={FreelancerClientListScreen}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Clients',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="FreelancerClientDetail"
+          component={FreelancerClientDetail}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Client',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="FreelancerAddPayment"
+          component={FreelancerAddPayment}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Log Payment',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="FreelancerReports"
+          component={FreelancerReports}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Reports',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="PartTimeSetup"
+          component={PartTimeSetup}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Job Details',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="PartTimeAddIncome"
+          component={PartTimeAddIncome}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Log Income',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="PartTimeIncomeHistory"
+          component={PartTimeIncomeHistory}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Income History',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="PartTimeReports"
+          component={PartTimeReports}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Reports',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="OnTheRoadSetup"
+          component={OnTheRoadSetup}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Road Details',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="OnTheRoadAddEarnings"
+          component={OnTheRoadAddEarnings}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Log Earnings',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="OnTheRoadAddCost"
+          component={OnTheRoadAddCost}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Log Cost',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="OnTheRoadCostHistory"
+          component={OnTheRoadCostHistory}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Costs',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="OnTheRoadReports"
+          component={OnTheRoadReports}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Reports',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="MixedSetup"
+          component={MixedSetup}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Stream Setup',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="MixedAddIncome"
+          component={MixedAddIncome}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Log Income',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="MixedAddCost"
+          component={MixedAddCost}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Log Cost',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="MixedStreamHistory"
+          component={MixedStreamHistory}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'History',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="MixedReports"
+          component={MixedReports}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Reports',
             headerStyle: { backgroundColor: CALM.background },
             headerTintColor: CALM.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },

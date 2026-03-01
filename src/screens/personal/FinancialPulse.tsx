@@ -29,7 +29,7 @@ import EmptyState from '../../components/common/EmptyState';
 
 // ─── HELPER: Wellness label based on score ────────────────
 const getWellnessLabel = (score: number): string => {
-  if (score >= 80) return "You're doing great";
+  if (score >= 80) return 'Strong position';
   if (score >= 60) return 'Solid foundation';
   if (score >= 40) return 'Steady progress';
   if (score >= 20) return 'Getting started';
@@ -651,7 +651,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING.lg,
+    padding: SPACING['2xl'],
   },
 
   // Section labels: TYPE.label style

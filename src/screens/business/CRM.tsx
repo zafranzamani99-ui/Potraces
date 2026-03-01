@@ -523,8 +523,8 @@ const CRM: React.FC = () => {
         {/* Stats Summary Row */}
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
-            <View style={[styles.statIconWrap, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
-              <Feather name="users" size={18} color={CALM.accent} />
+            <View style={[styles.statIconWrap, { backgroundColor: withAlpha(CALM.bronze, 0.12) }]}>
+              <Feather name="users" size={18} color={CALM.bronze} />
             </View>
             <Text style={styles.statValue}>{globalStats.totalCustomers}</Text>
             <Text style={styles.statLabel}>Customers</Text>
@@ -616,7 +616,7 @@ const CRM: React.FC = () => {
                             activeOpacity={0.7}
                             accessibilityLabel={`Call ${customer.name}`}
                           >
-                            <Feather name="phone" size={14} color={CALM.accent} />
+                            <Feather name="phone" size={14} color={CALM.bronze} />
                           </TouchableOpacity>
                         ) : null}
                         {customer.address ? (
@@ -629,7 +629,7 @@ const CRM: React.FC = () => {
                             activeOpacity={0.7}
                             accessibilityLabel={`Open ${customer.name}'s address in maps`}
                           >
-                            <Feather name="map-pin" size={14} color={CALM.accent} />
+                            <Feather name="map-pin" size={14} color={CALM.bronze} />
                           </TouchableOpacity>
                         ) : null}
                       </View>
@@ -666,13 +666,13 @@ const CRM: React.FC = () => {
       <FAB
         onPress={openAddCustomer}
         icon="plus"
-        color={CALM.accent}
+        color={CALM.bronze}
       />
 
       {/* ── Add/Edit Customer Modal ────────────────────────────── */}
       <Modal
         visible={customerModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => {
           setCustomerModalVisible(false);
@@ -808,7 +808,7 @@ const CRM: React.FC = () => {
       {/* ── Customer Detail Modal ──────────────────────────────── */}
       <Modal
         visible={detailModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => {
           setDetailModalVisible(false);
@@ -859,11 +859,11 @@ const CRM: React.FC = () => {
                         activeOpacity={0.7}
                         accessibilityLabel={`Call ${selectedCustomer.phone}`}
                       >
-                        <Feather name="phone" size={14} color={CALM.accent} />
+                        <Feather name="phone" size={14} color={CALM.bronze} />
                         <Text style={styles.contactButtonText}>
                           {selectedCustomer.phone}
                         </Text>
-                        <Feather name="external-link" size={12} color={CALM.accent} />
+                        <Feather name="external-link" size={12} color={CALM.bronze} />
                       </TouchableOpacity>
                     ) : null}
                     {selectedCustomer.email ? (
@@ -873,11 +873,11 @@ const CRM: React.FC = () => {
                         activeOpacity={0.7}
                         accessibilityLabel={`Email ${selectedCustomer.email}`}
                       >
-                        <Feather name="mail" size={14} color={CALM.accent} />
+                        <Feather name="mail" size={14} color={CALM.bronze} />
                         <Text style={styles.contactButtonText}>
                           {selectedCustomer.email}
                         </Text>
-                        <Feather name="external-link" size={12} color={CALM.accent} />
+                        <Feather name="external-link" size={12} color={CALM.bronze} />
                       </TouchableOpacity>
                     ) : null}
                   </View>
@@ -888,11 +888,11 @@ const CRM: React.FC = () => {
                       onPress={() => openInMaps(selectedCustomer.address!)}
                       activeOpacity={0.7}
                     >
-                      <Feather name="map-pin" size={14} color={CALM.accent} />
+                      <Feather name="map-pin" size={14} color={CALM.bronze} />
                       <Text style={styles.addressText} numberOfLines={2}>
                         {selectedCustomer.address}
                       </Text>
-                      <Feather name="external-link" size={14} color={CALM.accent} />
+                      <Feather name="external-link" size={14} color={CALM.bronze} />
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -1027,7 +1027,7 @@ const CRM: React.FC = () => {
                               <ProgressBar
                                 current={order.paidAmount}
                                 total={order.totalAmount}
-                                color={CALM.accent}
+                                color={CALM.bronze}
                                 height={6}
                                 showPercentage={false}
                               />
@@ -1136,7 +1136,7 @@ const CRM: React.FC = () => {
       {/* ── Add/Edit Order Modal ───────────────────────────────── */}
       <Modal
         visible={orderModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => {
           setOrderModalVisible(false);
@@ -1179,7 +1179,7 @@ const CRM: React.FC = () => {
                       }}
                       activeOpacity={0.7}
                     >
-                      <Feather name="package" size={16} color={item.name ? CALM.accent : CALM.neutral} />
+                      <Feather name="package" size={16} color={item.name ? CALM.bronze : CALM.neutral} />
                       <Text
                         style={[
                           styles.productSelectorText,
@@ -1233,7 +1233,7 @@ const CRM: React.FC = () => {
                                 </Text>
                               </View>
                               {item.productId === p.id && (
-                                <Feather name="check" size={16} color={CALM.accent} />
+                                <Feather name="check" size={16} color={CALM.bronze} />
                               )}
                             </TouchableOpacity>
                           ))}
@@ -1285,7 +1285,7 @@ const CRM: React.FC = () => {
                   activeOpacity={0.7}
                   accessibilityLabel="Add another item"
                 >
-                  <Feather name="plus" size={18} color={CALM.accent} />
+                  <Feather name="plus" size={18} color={CALM.bronze} />
                   <Text style={styles.addItemText}>Add Item</Text>
                 </TouchableOpacity>
 
@@ -1375,7 +1375,7 @@ const CRM: React.FC = () => {
       {/* ── Record Payment Modal ───────────────────────────────── */}
       <Modal
         visible={paymentModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => setPaymentModalVisible(false)}
       >
@@ -1556,7 +1556,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: withAlpha(CALM.accent, 0.15),
+    backgroundColor: withAlpha(CALM.bronze, 0.15),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
@@ -1564,7 +1564,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
   customerInfo: {
     flex: 1,
@@ -1616,7 +1616,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1693,7 +1693,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: withAlpha(CALM.accent, 0.15),
+    backgroundColor: withAlpha(CALM.bronze, 0.15),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.md,
@@ -1701,7 +1701,7 @@ const styles = StyleSheet.create({
   detailAvatarText: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
   detailName: {
     fontSize: TYPOGRAPHY.size.xl,
@@ -1725,14 +1725,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    backgroundColor: withAlpha(CALM.accent, 0.06),
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     paddingVertical: 6,
   },
   contactButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
 
   // ── Detail Stats ────────────────────────────────────────────
@@ -1917,7 +1917,7 @@ const styles = StyleSheet.create({
     borderBottomColor: CALM.border,
   },
   productDropdownItemActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.06),
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
   },
   productDropdownItemName: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1968,13 +1968,13 @@ const styles = StyleSheet.create({
   addItemText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
   orderTotalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
@@ -1988,7 +1988,7 @@ const styles = StyleSheet.create({
   orderTotalValue: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: CALM.bronze,
     fontVariant: ['tabular-nums'],
   },
 
@@ -2018,7 +2018,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     gap: SPACING.sm,
     marginTop: SPACING.md,
-    backgroundColor: withAlpha(CALM.accent, 0.06),
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
@@ -2026,7 +2026,7 @@ const styles = StyleSheet.create({
   addressText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
 
   // ── Payment Modal ───────────────────────────────────────────

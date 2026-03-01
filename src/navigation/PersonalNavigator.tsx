@@ -2,7 +2,6 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import { COLORS, CALM, TYPOGRAPHY } from '../constants';
-import GRADIENTS from '../constants/gradients';
 import CustomTabBar from '../components/navigation/CustomTabBar';
 
 import PersonalDashboard from '../screens/personal/Dashboard';
@@ -20,7 +19,6 @@ const PersonalNavigator: React.FC = () => {
         <CustomTabBar
           {...props}
           accentColor={COLORS.personal}
-          centerButtonGradient={GRADIENTS.personalHero.colors as [string, string]}
         />
       )}
       screenOptions={({ route }) => ({

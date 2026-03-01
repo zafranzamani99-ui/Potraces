@@ -706,7 +706,7 @@ const DebtTracking: React.FC = () => {
       />
 
       {/* ── Add/Edit Debt Modal ──────────────────────────────── */}
-      <Modal visible={debtModalVisible} animationType="slide" transparent onRequestClose={() => { setDebtModalVisible(false); resetDebtForm(); }}>
+      <Modal visible={debtModalVisible} animationType="fade" transparent onRequestClose={() => { setDebtModalVisible(false); resetDebtForm(); }}>
         <Pressable style={styles.modalOverlay} onPress={() => { setDebtModalVisible(false); resetDebtForm(); }}>
             <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
@@ -791,7 +791,7 @@ const DebtTracking: React.FC = () => {
       </Modal>
 
       {/* ── Add/Edit Split Modal ─────────────────────────────── */}
-      <Modal visible={splitModalVisible} animationType="slide" transparent onRequestClose={() => { setSplitModalVisible(false); resetSplitForm(); }}>
+      <Modal visible={splitModalVisible} animationType="fade" transparent onRequestClose={() => { setSplitModalVisible(false); resetSplitForm(); }}>
         <Pressable style={styles.modalOverlay} onPress={() => { setSplitModalVisible(false); resetSplitForm(); }}>
             <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
@@ -974,7 +974,7 @@ const DebtTracking: React.FC = () => {
       {/* ── Record Payment Modal ─────────────────────────────── */}
       <Modal
         visible={paymentModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => setPaymentModalVisible(false)}
       >
@@ -1033,7 +1033,7 @@ const DebtTracking: React.FC = () => {
       </Modal>
 
       {/* ── Split Detail Modal ───────────────────────────────── */}
-      <Modal visible={splitDetailVisible} animationType="slide" transparent onRequestClose={() => setSplitDetailVisible(false)}>
+      <Modal visible={splitDetailVisible} animationType="fade" transparent onRequestClose={() => setSplitDetailVisible(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setSplitDetailVisible(false)}>
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>

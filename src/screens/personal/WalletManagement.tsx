@@ -15,6 +15,7 @@ import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { WALLET_ICONS, WALLET_COLORS } from '../../constants/premium';
 import { useWalletStore } from '../../store/walletStore';
 import { usePremiumStore } from '../../store/premiumStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
@@ -22,6 +23,7 @@ import PaywallModal from '../../components/common/PaywallModal';
 import { lightTap } from '../../services/haptics';
 
 const WalletManagement: React.FC = () => {
+  const currency = useSettingsStore((s) => s.currency);
   const wallets = useWalletStore((s) => s.wallets);
   const addWallet = useWalletStore((s) => s.addWallet);
   const updateWallet = useWalletStore((s) => s.updateWallet);
@@ -133,7 +135,7 @@ const WalletManagement: React.FC = () => {
             <View style={styles.summaryTextContainer}>
               <Text style={styles.summaryLabel}>Total Balance</Text>
               <Text style={styles.summaryAmount}>
-                RM {totalBalance.toFixed(2)}
+                {currency} {totalBalance.toFixed(2)}
               </Text>
             </View>
             <View style={styles.walletCount}>
@@ -180,7 +182,7 @@ const WalletManagement: React.FC = () => {
                       )}
                     </View>
                     <Text style={styles.walletBalance}>
-                      RM {wallet.balance.toFixed(2)}
+                      {currency} {wallet.balance.toFixed(2)}
                     </Text>
                   </View>
                   <View style={styles.walletActions}>
@@ -228,7 +230,7 @@ const WalletManagement: React.FC = () => {
       <Modal
         visible={modalVisible}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => { setModalVisible(false); resetForm(); }}
       >
         <Pressable style={styles.modalOverlay} onPress={() => { setModalVisible(false); resetForm(); }}>
@@ -355,7 +357,7 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.background,
   },
   scrollContent: {
-    padding: SPACING.lg,
+    padding: SPACING['2xl'],
     paddingBottom: 100,
   },
   summaryCard: {

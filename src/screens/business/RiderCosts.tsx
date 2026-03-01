@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   },
   keptValue: {
     fontSize: 20,
-    fontWeight: '300' as const,
+    fontWeight: TYPOGRAPHY.weight.light,
     color: CALM.textPrimary,
   },
   listContent: {
@@ -236,8 +236,8 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
   },
   typeChipSelected: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: CALM.bronze,
+    borderColor: CALM.bronze,
   },
   typeChipText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
   },
   doneButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     margin: SPACING.lg,

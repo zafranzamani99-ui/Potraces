@@ -139,7 +139,7 @@ const StallProducts: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Add a new product"
           >
-            <Feather name="plus" size={18} color={CALM.accent} />
+            <Feather name="plus" size={18} color={CALM.bronze} />
             <Text style={styles.addButtonText}>add product</Text>
           </TouchableOpacity>
         )}
@@ -159,7 +159,7 @@ const StallProducts: React.FC = () => {
                   <Feather
                     name={product.isActive ? 'check-circle' : 'circle'}
                     size={20}
-                    color={product.isActive ? CALM.accent : CALM.neutral}
+                    color={product.isActive ? CALM.bronze : CALM.neutral}
                   />
                 </TouchableOpacity>
 
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   saveButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING['2xl'],
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     backgroundColor: CALM.surface,
     borderWidth: 1,
-    borderColor: CALM.accent,
+    borderColor: CALM.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     minHeight: 48,
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
 
   // ─── Product list ──────────────────────────────────────────

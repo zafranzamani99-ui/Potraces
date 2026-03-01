@@ -179,7 +179,7 @@ const TransactionsList: React.FC = () => {
 
     setEditModalVisible(false);
     setEditingTransaction(null);
-    showToast('Transaction updated successfully!', 'success');
+    showToast('transaction updated.', 'success');
   };
 
   const handleDeleteTransaction = () => {
@@ -365,7 +365,7 @@ const TransactionsList: React.FC = () => {
       {/* Transaction Edit Modal */}
       <Modal
         visible={editModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => {
           setEditModalVisible(false);
@@ -503,7 +503,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: CALM.surface,
-    marginHorizontal: SPACING.lg,
+    marginHorizontal: SPACING['2xl'],
     marginTop: SPACING.md,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.md,
@@ -520,7 +520,7 @@ const styles = StyleSheet.create({
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING['2xl'],
     marginTop: SPACING.md,
     gap: SPACING.sm,
   },
@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
   totalsBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: SPACING.lg,
+    marginHorizontal: SPACING['2xl'],
     marginTop: SPACING.md,
     marginBottom: SPACING.sm,
     padding: SPACING.md,
@@ -590,7 +590,7 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.border,
   },
   sectionHeader: {
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING['2xl'],
     paddingVertical: SPACING.sm,
     backgroundColor: CALM.background,
   },
@@ -605,14 +605,14 @@ const styles = StyleSheet.create({
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING['2xl'],
   },
 
   // Sort
   sortRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING['2xl'],
     marginTop: SPACING.sm,
     gap: SPACING.sm,
   },

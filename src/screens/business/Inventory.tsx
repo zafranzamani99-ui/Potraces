@@ -297,7 +297,7 @@ const Inventory: React.FC = () => {
                     style={styles.editButton}
                     onPress={() => handleEdit(product.id)}
                   >
-                    <Feather name="edit-2" size={18} color={CALM.accent} />
+                    <Feather name="edit-2" size={18} color={CALM.bronze} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.editButton}
@@ -394,7 +394,7 @@ const Inventory: React.FC = () => {
 
       <Modal
         visible={modalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => setModalVisible(false)}
       >
@@ -607,8 +607,8 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
   },
   categoryTabActive: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: CALM.bronze,
+    borderColor: CALM.bronze,
   },
   categoryTabText: {
     fontSize: TYPOGRAPHY.size.xs,

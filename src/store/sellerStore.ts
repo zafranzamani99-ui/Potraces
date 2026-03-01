@@ -10,6 +10,7 @@ export const useSellerStore = create<SellerState>()(
       orders: [],
       seasons: [],
       ingredientCosts: [],
+      sellerCustomers: [],
 
       // ─── Products ───────────────────────────────────────
       addProduct: (product) =>
@@ -70,7 +71,14 @@ export const useSellerStore = create<SellerState>()(
       updateOrderStatus: (id, status) =>
         set((state) => ({
           orders: state.orders.map((o) =>
-            o.id === id ? { ...o, status, updatedAt: new Date() } : o
+            o.id === id ? { ...o, status, isPaid: status === 'paid', updatedAt: new Date() } : o
+          ),
+        })),
+
+      updateOrder: (id, updates) =>
+        set((state) => ({
+          orders: state.orders.map((o) =>
+            o.id === id ? { ...o, ...updates, updatedAt: new Date() } : o
           ),
         })),
 
@@ -78,6 +86,13 @@ export const useSellerStore = create<SellerState>()(
         set((state) => ({
           orders: state.orders.map((o) =>
             o.id === id ? { ...o, isPaid: true, status: 'paid' as OrderStatus, updatedAt: new Date() } : o
+          ),
+        })),
+
+      markOrdersPaid: (ids) =>
+        set((state) => ({
+          orders: state.orders.map((o) =>
+            ids.includes(o.id) ? { ...o, isPaid: true, status: 'paid' as OrderStatus, updatedAt: new Date() } : o
           ),
         })),
 
@@ -123,6 +138,27 @@ export const useSellerStore = create<SellerState>()(
       deleteIngredientCost: (id) =>
         set((state) => ({
           ingredientCosts: state.ingredientCosts.filter((c) => c.id !== id),
+        })),
+
+      // ─── Seller Customers ────────────────────────────────
+      addSellerCustomer: (customer) =>
+        set((state) => ({
+          sellerCustomers: [
+            { ...customer, id: Date.now().toString(), createdAt: new Date() },
+            ...state.sellerCustomers,
+          ],
+        })),
+
+      updateSellerCustomer: (id, updates) =>
+        set((state) => ({
+          sellerCustomers: state.sellerCustomers.map((c) =>
+            c.id === id ? { ...c, ...updates } : c
+          ),
+        })),
+
+      deleteSellerCustomer: (id) =>
+        set((state) => ({
+          sellerCustomers: state.sellerCustomers.filter((c) => c.id !== id),
         })),
 
       // ─── Derived Data ──────────────────────────────────
@@ -178,6 +214,10 @@ export const useSellerStore = create<SellerState>()(
           ...c,
           date: c.date instanceof Date ? c.date.toISOString() : c.date,
         })),
+        sellerCustomers: state.sellerCustomers.map((c) => ({
+          ...c,
+          createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : c.createdAt,
+        })),
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -202,6 +242,10 @@ export const useSellerStore = create<SellerState>()(
           state.ingredientCosts = state.ingredientCosts.map((c: any) => ({
             ...c,
             date: new Date(c.date),
+          }));
+          state.sellerCustomers = (state.sellerCustomers || []).map((c: any) => ({
+            ...c,
+            createdAt: new Date(c.createdAt),
           }));
         }
       },

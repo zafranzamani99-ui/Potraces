@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Text, TextStyle, Animated, Easing } from 'react-native';
 
 // ─── TYPES ──────────────────────────────────────────────────
@@ -14,25 +14,6 @@ interface AnimatedNumberProps {
 }
 
 // ─── COMPONENT ──────────────────────────────────────────────
-/**
- * AnimatedNumber - Smoothly animates number changes
- *
- * Features:
- * - Count-up/count-down animation for number changes
- * - Configurable duration and easing
- * - Currency formatting support
- * - Spring animation option for natural feel
- * - Callback on animation complete
- *
- * @example
- * <AnimatedNumber
- *   value={balance}
- *   duration={800}
- *   decimals={2}
- *   prefix="RM "
- *   style={styles.balanceText}
- * />
- */
 const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   value,
   duration = 600,
@@ -43,14 +24,25 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   easing = 'easeOut',
   onComplete,
 }) => {
-  const animatedValue = useRef(new Animated.Value(0)).current;
-  const prevValue = useRef(0);
-  const displayValue = useRef(0);
+  const animatedValue = useRef(new Animated.Value(value)).current;
+  const prevValue = useRef(value);
+  const [displayText, setDisplayText] = useState(
+    `${prefix}${value.toFixed(decimals)}${suffix}`
+  );
+
+  // Stabilize onComplete to avoid infinite re-render when passed inline
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const stableOnComplete = useCallback(() => {
+    onCompleteRef.current?.();
+  }, []);
 
   useEffect(() => {
-    // Update previous value
-    const current = prevValue.current;
+    const from = prevValue.current;
     prevValue.current = value;
+
+    // Set starting point before animation
+    animatedValue.setValue(from);
 
     // Select easing function
     const easingFunc = (() => {
@@ -66,6 +58,11 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
       }
     })();
 
+    // Listen to animated value changes to update display text
+    const listenerId = animatedValue.addListener(({ value: v }) => {
+      setDisplayText(`${prefix}${v.toFixed(decimals)}${suffix}`);
+    });
+
     // Animate the value change
     if (easing === 'spring') {
       Animated.spring(animatedValue, {
@@ -73,34 +70,29 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
         useNativeDriver: false,
         speed: 12,
         bounciness: 4,
-      }).start(onComplete);
+      }).start(stableOnComplete);
     } else {
       Animated.timing(animatedValue, {
         toValue: value,
         duration,
         easing: easingFunc,
         useNativeDriver: false,
-      }).start(onComplete);
+      }).start(stableOnComplete);
     }
 
-    // Set initial value for interpolation
-    animatedValue.setValue(current);
-  }, [value, duration, easing, onComplete]);
-
-  // Format the animated value
-  const formattedValue = animatedValue.interpolate({
-    inputRange: [0, value || 1],
-    outputRange: [`${prefix}${(0).toFixed(decimals)}${suffix}`, `${prefix}${value.toFixed(decimals)}${suffix}`],
-  });
+    return () => {
+      animatedValue.removeListener(listenerId);
+    };
+  }, [value, duration, easing]);
 
   return (
-    <Animated.Text
+    <Text
       style={style}
       accessibilityRole="text"
       accessibilityLabel={`${prefix}${value.toFixed(decimals)}${suffix}`}
     >
-      {formattedValue}
-    </Animated.Text>
+      {displayText}
+    </Text>
   );
 };
 

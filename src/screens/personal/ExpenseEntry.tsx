@@ -22,7 +22,7 @@ import Button from '../../components/common/Button';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import Card from '../../components/common/Card';
-import Confetti from '../../components/common/Confetti';
+
 import { useWalletStore } from '../../store/walletStore';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, successNotification } from '../../services/haptics';
@@ -62,7 +62,6 @@ const ExpenseEntry: React.FC = () => {
   const [confidence, setConfidence] = useState<'high' | 'low' | null>(null);
   const [rawInput, setRawInput] = useState('');
   const [inputMethod, setInputMethod] = useState<Transaction['inputMethod']>('manual');
-  const [showConfetti, setShowConfetti] = useState(false);
 
   // Text input for NLP
   const [textInput, setTextInput] = useState('');
@@ -251,10 +250,8 @@ const ExpenseEntry: React.FC = () => {
     setConfidence(null);
     setInputMethod('manual');
 
-    setShowConfetti(true);
-    setTimeout(() => setShowConfetti(false), 100);
     successNotification();
-    showToast(`${type === 'expense' ? 'Expense' : 'Income'} added successfully!`, 'success');
+    showToast(`${type === 'expense' ? 'Expense' : 'Income'} added.`, 'success');
   };
 
   const handleTypeChange = (newType: 'expense' | 'income') => {
@@ -266,7 +263,6 @@ const ExpenseEntry: React.FC = () => {
   return (
     <View style={styles.container}>
       <ModeToggle />
-      <Confetti active={showConfetti} />
       <KeyboardAwareScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -471,7 +467,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING.lg,
+    padding: SPACING['2xl'],
   },
 
   // Mode selector

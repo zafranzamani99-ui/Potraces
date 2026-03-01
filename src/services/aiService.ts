@@ -1,4 +1,4 @@
-import { AIMessage, Transaction, IncomeType, BusinessTransaction, RiderCost, Client, SellerProduct } from '../types';
+import { AIMessage, Transaction, IncomeType, BusinessTransaction, RiderCost, Client, SellerProduct, FreelancerClient, PartTimeJobDetails, OnTheRoadDetails, MixedModeDetails } from '../types';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants';
 
 const API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '';
@@ -51,6 +51,17 @@ async function callAnthropic(
 }
 
 /**
+ * Strip markdown JSON fences from AI response.
+ * Claude often wraps JSON in ```json ... ``` blocks.
+ */
+function stripJsonFences(text: string): string {
+  const trimmed = text.trim();
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+  if (fenceMatch) return fenceMatch[1].trim();
+  return trimmed;
+}
+
+/**
  * Parse natural language text into a transaction.
  * Never throws — returns null on failure.
  */
@@ -66,9 +77,11 @@ export async function parseTextInput(
 
     if (!result) return null;
 
-    const json = JSON.parse(result);
+    const json = JSON.parse(stripJsonFences(result));
+    const amount = Number(json.amount) || 0;
+    if (amount <= 0) return null;
     return {
-      amount: Number(json.amount) || 0,
+      amount,
       category: String(json.category || ''),
       description: String(json.description || ''),
       type: json.type === 'income' ? 'income' : 'expense',
@@ -95,9 +108,11 @@ export async function parseReceiptText(
 
     if (!result) return null;
 
-    const json = JSON.parse(result);
+    const json = JSON.parse(stripJsonFences(result));
+    const amount = Number(json.amount) || 0;
+    if (amount <= 0) return null;
     return {
-      amount: Number(json.amount) || 0,
+      amount,
       category: String(json.category || ''),
       description: String(json.description || ''),
       type: 'expense',
@@ -229,7 +244,7 @@ export async function parseWhatsAppOrderAI(
 
     if (!result) return null;
 
-    const parsed = JSON.parse(result);
+    const parsed = JSON.parse(stripJsonFences(result));
     if (!Array.isArray(parsed)) return null;
 
     return parsed.map((item: any) => ({
@@ -237,6 +252,479 @@ export async function parseWhatsAppOrderAI(
       quantity: Number(item.quantity) || 1,
       unit: String(item.unit || 'piece'),
     }));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build context string for freelancer-mode AI calls.
+ */
+export function buildFreelancerContext(
+  payments: BusinessTransaction[],
+  clients: FreelancerClient[],
+  sixMonthAverage: number,
+  currentMonthTotal: number,
+  getClientAverageGap?: (clientId: string) => number | null
+): string {
+  const now = new Date();
+  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+  const recentPayments = payments
+    .filter((t) => {
+      const d = t.date instanceof Date ? t.date : new Date(t.date);
+      return d >= ninetyDaysAgo && t.type === 'income';
+    })
+    .slice(0, 30);
+
+  const activeClients = clients.filter((c) => {
+    const lastPay = payments.find(
+      (t) => t.clientId === c.id && t.type === 'income'
+    );
+    if (!lastPay) return false;
+    const d = lastPay.date instanceof Date ? lastPay.date : new Date(lastPay.date);
+    return d >= ninetyDaysAgo;
+  });
+
+  const quietClients = clients.filter((c) => !activeClients.includes(c));
+
+  let ctx = `Freelancer mode. 6-month average monthly: RM ${sixMonthAverage.toFixed(0)}. This month so far: RM ${currentMonthTotal.toFixed(0)}. ${activeClients.length} active client(s), ${quietClients.length} quiet.`;
+
+  if (recentPayments.length > 0) {
+    const paymentLines = recentPayments
+      .map((t) => {
+        const d = t.date instanceof Date ? t.date : new Date(t.date);
+        const clientName = clients.find((c) => c.id === t.clientId)?.name || 'unknown';
+        return `RM ${t.amount} from ${clientName} on ${d.toISOString().slice(0, 10)}`;
+      })
+      .join('; ');
+    ctx += ` Recent: ${paymentLines}.`;
+  }
+
+  if (getClientAverageGap) {
+    const gapInfo = activeClients
+      .map((c) => {
+        const avg = getClientAverageGap(c.id);
+        return avg !== null ? `${c.name}: ~${avg}d between payments` : null;
+      })
+      .filter(Boolean);
+    if (gapInfo.length > 0) {
+      ctx += ` Gaps: ${gapInfo.join(', ')}.`;
+    }
+  }
+
+  // Check single client concentration
+  if (recentPayments.length > 0) {
+    const clientTotals: Record<string, number> = {};
+    for (const t of recentPayments) {
+      const key = t.clientId || 'unknown';
+      clientTotals[key] = (clientTotals[key] || 0) + t.amount;
+    }
+    const total = Object.values(clientTotals).reduce((a, b) => a + b, 0);
+    const topClient = Object.entries(clientTotals).sort((a, b) => b[1] - a[1])[0];
+    if (topClient && total > 0 && topClient[1] / total > 0.7) {
+      const name = clients.find((c) => c.id === topClient[0])?.name || 'one client';
+      ctx += ` Note: ${name} accounts for ${Math.round((topClient[1] / total) * 100)}% of recent income.`;
+    }
+  }
+
+  return ctx;
+}
+
+const FREELANCER_SYSTEM_PROMPT = `This person freelances for a living. Irregular income is their normal — never treat it as a problem.
+Never suggest they need more clients, more hustle, or higher rates unless they directly ask.
+If asked about financial planning, use their 6-month average as the planning number, not current month.
+Never use: revenue, sales, pipeline, billable hours, utilization, invoice.
+Always use: earned, came in, payments, clients, work.
+Malaysian context. Mix of English and Malay is natural. Under 4 sentences. No jargon.`;
+
+/**
+ * Ask a freelancer-context question with conversation history.
+ * Never throws — returns null on failure.
+ */
+export async function askFreelancerQuestion(
+  question: string,
+  context: {
+    payments: BusinessTransaction[];
+    clients: FreelancerClient[];
+    sixMonthAverage: number;
+    currentMonthTotal: number;
+    getClientAverageGap?: (clientId: string) => number | null;
+  },
+  history: AIMessage[]
+): Promise<string | null> {
+  try {
+    const contextStr = buildFreelancerContext(
+      context.payments,
+      context.clients,
+      context.sixMonthAverage,
+      context.currentMonthTotal,
+      context.getClientAverageGap
+    );
+
+    const messages: { role: 'user' | 'assistant'; content: string }[] = [
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user' as const, content: question },
+    ];
+
+    return await callAnthropic(
+      `${FREELANCER_SYSTEM_PROMPT}\n\n${contextStr}`,
+      messages,
+      400
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build context string for part-time-mode AI calls.
+ */
+export function buildPartTimeContext(
+  transactions: BusinessTransaction[],
+  jobDetails: PartTimeJobDetails,
+  currentMonthMain: number,
+  currentMonthSide: number,
+  averageSidePercentage: number
+): string {
+  const now = new Date();
+  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+  const recentIncome = transactions
+    .filter((t) => {
+      const d = t.date instanceof Date ? t.date : new Date(t.date);
+      return d >= ninetyDaysAgo && t.type === 'income';
+    })
+    .slice(0, 30);
+
+  const total = currentMonthMain + currentMonthSide;
+  const sidePercentage = total > 0 ? Math.round((currentMonthSide / total) * 100) : 0;
+
+  let ctx = `Part-time mode.`;
+
+  if (jobDetails.jobName) {
+    ctx += ` Main job: ${jobDetails.jobName}.`;
+  }
+  if (jobDetails.expectedMonthlyPay) {
+    ctx += ` Expected monthly pay: RM ${jobDetails.expectedMonthlyPay.toFixed(0)}.`;
+  }
+
+  ctx += ` This month: main job RM ${currentMonthMain.toFixed(0)}, side income RM ${currentMonthSide.toFixed(0)} (${sidePercentage}% side).`;
+  ctx += ` 6-month average side share: ${averageSidePercentage.toFixed(0)}%.`;
+
+  if (jobDetails.payDay) {
+    const dayOfMonth = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const effectivePayDay = Math.min(jobDetails.payDay, daysInMonth);
+    const mainLogged = currentMonthMain > 0;
+
+    if (dayOfMonth > effectivePayDay) {
+      ctx += mainLogged
+        ? ` Pay day passed, main job income logged.`
+        : ` Pay day passed, main job income NOT yet logged.`;
+    } else {
+      ctx += ` Pay day in ${effectivePayDay - dayOfMonth} days.`;
+    }
+  }
+
+  const allDates = transactions.filter((t) => t.type === 'income').map((t) => {
+    const d = t.date instanceof Date ? t.date : new Date(t.date);
+    return `${d.getFullYear()}-${d.getMonth()}`;
+  });
+  const uniqueMonths = new Set(allDates).size;
+  ctx += ` ${uniqueMonths} month(s) of data available.`;
+
+  if (recentIncome.length > 0) {
+    const lines = recentIncome
+      .map((t) => {
+        const d = t.date instanceof Date ? t.date : new Date(t.date);
+        const stream = t.incomeStream || 'unknown';
+        return `RM ${t.amount} (${stream}) on ${d.toISOString().slice(0, 10)}`;
+      })
+      .join('; ');
+    ctx += ` Recent: ${lines}.`;
+  }
+
+  return ctx;
+}
+
+const PARTTIME_SYSTEM_PROMPT = `This person has a main job and earns side income. Both are normal parts of their financial life.
+Never celebrate side income as "hustling" or "grinding." It is just another income stream.
+Never suggest they should do more side work or optimize their time.
+If side income is higher than their main job, state it as a plain observation, not an achievement.
+The main job is the anchor for financial planning. Side income is additional context.
+Never use: hustle, grind, side hustle, passive income, moonlighting, extra income.
+Always use: main job, side income, came in, earned, streams.
+Malaysian context. Mix of English and Malay is natural. Under 4 sentences. No jargon.`;
+
+/**
+ * Ask a part-time-context question with conversation history.
+ * Never throws — returns null on failure.
+ */
+export async function askPartTimeQuestion(
+  question: string,
+  context: {
+    transactions: BusinessTransaction[];
+    jobDetails: PartTimeJobDetails;
+    currentMonthMain: number;
+    currentMonthSide: number;
+    averageSidePercentage: number;
+  },
+  history: AIMessage[]
+): Promise<string | null> {
+  try {
+    const contextStr = buildPartTimeContext(
+      context.transactions,
+      context.jobDetails,
+      context.currentMonthMain,
+      context.currentMonthSide,
+      context.averageSidePercentage
+    );
+
+    const messages: { role: 'user' | 'assistant'; content: string }[] = [
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user' as const, content: question },
+    ];
+
+    return await callAnthropic(
+      `${PARTTIME_SYSTEM_PROMPT}\n\n${contextStr}`,
+      messages,
+      400
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build context string for on-the-road-mode AI calls.
+ */
+export function buildOnTheRoadContext(
+  transactions: BusinessTransaction[],
+  roadDetails: OnTheRoadDetails,
+  currentMonthEarned: number,
+  currentMonthCosts: number,
+  currentMonthNet: number,
+  costsByCategory: Record<string, number>,
+  sixMonthAverageNet: number,
+  earningsByPlatform: Record<string, number>
+): string {
+  const now = new Date();
+  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+  const recentTxns = transactions
+    .filter((t) => {
+      const d = t.date instanceof Date ? t.date : new Date(t.date);
+      return d >= ninetyDaysAgo && t.roadTransactionType;
+    })
+    .slice(0, 40);
+
+  let ctx = `On-the-road mode.`;
+
+  if (roadDetails.description) {
+    ctx += ` Description: ${roadDetails.description}.`;
+  }
+  ctx += ` Vehicle: ${roadDetails.vehicleType === 'other' && roadDetails.vehicleOther ? roadDetails.vehicleOther : roadDetails.vehicleType}.`;
+  ctx += ` This month: earned RM ${currentMonthEarned.toFixed(0)}, costs RM ${currentMonthCosts.toFixed(0)}, kept RM ${currentMonthNet.toFixed(0)}.`;
+  ctx += ` 6-month average net: RM ${sixMonthAverageNet.toFixed(0)}.`;
+
+  const costPercentage = currentMonthEarned > 0 ? (currentMonthCosts / currentMonthEarned) * 100 : 0;
+  ctx += ` Cost ratio this month: ${costPercentage.toFixed(0)}%.`;
+
+  const categoryEntries = Object.entries(costsByCategory).sort((a, b) => b[1] - a[1]);
+  if (categoryEntries.length > 0) {
+    ctx += ` Cost breakdown: ${categoryEntries.map(([cat, amt]) => `${cat} RM ${amt.toFixed(0)}`).join(', ')}.`;
+    ctx += ` Highest cost: ${categoryEntries[0][0]}.`;
+  }
+
+  const platformEntries = Object.entries(earningsByPlatform);
+  if (platformEntries.length > 0) {
+    ctx += ` Earnings by platform: ${platformEntries.map(([p, amt]) => `${p} RM ${amt.toFixed(0)}`).join(', ')}.`;
+  }
+
+  if (recentTxns.length > 0) {
+    const lines = recentTxns
+      .map((t) => {
+        const d = t.date instanceof Date ? t.date : new Date(t.date);
+        const type = t.roadTransactionType === 'earning' ? '+' : '-';
+        const cat = t.costCategory ? ` (${t.costCategory})` : '';
+        const plat = t.platform ? ` [${t.platform}]` : '';
+        return `${type}RM ${t.amount}${cat}${plat} on ${d.toISOString().slice(0, 10)}`;
+      })
+      .join('; ');
+    ctx += ` Recent: ${lines}.`;
+  }
+
+  return ctx;
+}
+
+const ONTHEROAD_SYSTEM_PROMPT = `This person earns on the road — they may be a Grab driver, delivery rider, runner, personal shopper, or similar gig worker.
+Costs like petrol, tolls, parking, data, and maintenance are the normal cost of doing this work. Never treat them as problems to fix.
+The number that matters most is what they kept (net earnings), not what they earned (gross).
+Never suggest they should work more hours, take more trips, drive more efficiently, or optimize routes.
+If costs increased, state it as an observation with the biggest category. Never frame it as a warning.
+If net earnings dropped, stay silent or be neutral. Never alarm.
+Never use: expenses, profit, loss, overhead, margin, operating costs, burn rate, revenue, sales.
+Always use: earned, costs, kept, came in, went out, net.
+Malaysian context. Mix of English and Malay is natural. Under 4 sentences. No jargon.`;
+
+/**
+ * Ask an on-the-road-context question with conversation history.
+ * Never throws — returns null on failure.
+ */
+export async function askOnTheRoadQuestion(
+  question: string,
+  context: {
+    transactions: BusinessTransaction[];
+    roadDetails: OnTheRoadDetails;
+    currentMonthEarned: number;
+    currentMonthCosts: number;
+    currentMonthNet: number;
+    costsByCategory: Record<string, number>;
+    sixMonthAverageNet: number;
+    earningsByPlatform: Record<string, number>;
+  },
+  history: AIMessage[]
+): Promise<string | null> {
+  try {
+    const contextStr = buildOnTheRoadContext(
+      context.transactions,
+      context.roadDetails,
+      context.currentMonthEarned,
+      context.currentMonthCosts,
+      context.currentMonthNet,
+      context.costsByCategory,
+      context.sixMonthAverageNet,
+      context.earningsByPlatform
+    );
+
+    const messages: { role: 'user' | 'assistant'; content: string }[] = [
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user' as const, content: question },
+    ];
+
+    return await callAnthropic(
+      `${ONTHEROAD_SYSTEM_PROMPT}\n\n${contextStr}`,
+      messages,
+      400
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build context string for mixed-mode AI calls.
+ */
+export function buildMixedContext(
+  transactions: BusinessTransaction[],
+  mixedDetails: MixedModeDetails,
+  currentMonthTotal: number,
+  currentMonthByStream: Record<string, number>,
+  currentMonthCosts: number,
+  streamConsistency: Array<{ stream: string; monthsActive: number; total: number }>,
+  sixMonthAverageTotal: number
+): string {
+  const now = new Date();
+  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+  const recentTxns = transactions
+    .filter((t) => {
+      const d = t.date instanceof Date ? t.date : new Date(t.date);
+      return d >= ninetyDaysAgo;
+    })
+    .slice(0, 40);
+
+  let ctx = `Mixed mode. ${mixedDetails.streams.length} income streams defined: ${mixedDetails.streams.join(', ')}.`;
+  ctx += ` This month total: RM ${currentMonthTotal.toFixed(0)}.`;
+
+  const streamEntries = Object.entries(currentMonthByStream).sort((a, b) => b[1] - a[1]);
+  if (streamEntries.length > 0) {
+    ctx += ` By stream: ${streamEntries.map(([s, amt]) => `${s} RM ${amt.toFixed(0)}`).join(', ')}.`;
+  }
+
+  ctx += ` 6-month average total: RM ${sixMonthAverageTotal.toFixed(0)}.`;
+
+  const activeStreamsCount = streamEntries.filter(([_, amt]) => amt > 0).length;
+  ctx += ` Active streams this month: ${activeStreamsCount}.`;
+
+  if (streamConsistency.length > 0) {
+    ctx += ` Consistency: ${streamConsistency.map((s) => `${s.stream} (${s.monthsActive}/6 months, RM ${s.total.toFixed(0)} total)`).join(', ')}.`;
+    ctx += ` Most consistent: ${streamConsistency[0].stream}.`;
+  }
+
+  if (streamEntries.length > 0) {
+    ctx += ` Top earner this month: ${streamEntries[0][0]}.`;
+  }
+
+  if (mixedDetails.hasRoadCosts && currentMonthCosts > 0) {
+    ctx += ` Road costs this month: RM ${currentMonthCosts.toFixed(0)}.`;
+    ctx += ` Net after costs: RM ${(currentMonthTotal - currentMonthCosts).toFixed(0)}.`;
+  }
+
+  if (recentTxns.length > 0) {
+    const lines = recentTxns
+      .filter((t) => t.type === 'income' || t.roadTransactionType === 'earning')
+      .map((t) => {
+        const d = t.date instanceof Date ? t.date : new Date(t.date);
+        const stream = t.streamLabel || 'untagged';
+        return `RM ${t.amount} from ${stream} on ${d.toISOString().slice(0, 10)}`;
+      })
+      .join('; ');
+    if (lines) ctx += ` Recent income: ${lines}.`;
+  }
+
+  return ctx;
+}
+
+const MIXED_SYSTEM_PROMPT = `This person earns from multiple sources. Having several income streams is completely normal and a strength, not a sign of being scattered or unfocused.
+Never suggest they should focus on one stream, drop underperforming streams, or optimize their income mix.
+Never rank their streams as "main" or "side" — they are all just streams. Treat them equally.
+If one stream dominates, state it as a simple observation. If a new stream appears, note it neutrally.
+The most useful thing is helping them see the overall picture of where money came from.
+If they ask about planning, use their 6-month average total as the planning number.
+Never use: diversified, portfolio, revenue streams, income optimization, primary, secondary, main income, side income, hustle, grind.
+Always use: streams, sources, came in from, earned from, what came in, kept.
+Malaysian context. Mix of English and Malay is natural. Under 4 sentences. No jargon.`;
+
+/**
+ * Ask a mixed-mode-context question with conversation history.
+ * Never throws — returns null on failure.
+ */
+export async function askMixedQuestion(
+  question: string,
+  context: {
+    transactions: BusinessTransaction[];
+    mixedDetails: MixedModeDetails;
+    currentMonthTotal: number;
+    currentMonthByStream: Record<string, number>;
+    currentMonthCosts: number;
+    streamConsistency: Array<{ stream: string; monthsActive: number; total: number }>;
+    sixMonthAverageTotal: number;
+  },
+  history: AIMessage[]
+): Promise<string | null> {
+  try {
+    const contextStr = buildMixedContext(
+      context.transactions,
+      context.mixedDetails,
+      context.currentMonthTotal,
+      context.currentMonthByStream,
+      context.currentMonthCosts,
+      context.streamConsistency,
+      context.sixMonthAverageTotal
+    );
+
+    const messages: { role: 'user' | 'assistant'; content: string }[] = [
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user' as const, content: question },
+    ];
+
+    return await callAnthropic(
+      `${MIXED_SYSTEM_PROMPT}\n\n${contextStr}`,
+      messages,
+      400
+    );
   } catch {
     return null;
   }

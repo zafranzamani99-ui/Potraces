@@ -142,7 +142,7 @@ const SubscriptionList: React.FC = () => {
         }),
         nextBillingDate,
       });
-      showToast('Subscription updated successfully!', 'success');
+      showToast('subscription updated.', 'success');
     } else {
       const nextBilling = (() => {
         const now = new Date();
@@ -176,7 +176,7 @@ const SubscriptionList: React.FC = () => {
           completedInstallments: 0,
         }),
       });
-      showToast('Subscription added successfully!', 'success');
+      showToast('subscription added.', 'success');
     }
 
     setModalVisible(false);
@@ -418,7 +418,7 @@ const SubscriptionList: React.FC = () => {
 
       <Modal
         visible={modalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => { setModalVisible(false); resetForm(); }}
       >
@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING.lg,
+    padding: SPACING['2xl'],
     paddingBottom: 80,
   },
 

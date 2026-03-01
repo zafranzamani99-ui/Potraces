@@ -117,8 +117,7 @@ const LogIncome: React.FC = () => {
     const numAmount = parseFloat(amount);
     if (!numAmount || numAmount <= 0) return;
 
-    const txId = Date.now().toString();
-    addBusinessTransaction({
+    const txId = addBusinessTransaction({
       date: new Date(),
       amount: numAmount,
       type: 'income',
@@ -128,7 +127,7 @@ const LogIncome: React.FC = () => {
       inputMethod: mode === 'voice' ? 'voice' : textInput ? 'text' : 'manual',
     });
 
-    setLastTxId(txId);
+    setLastTxId(txId || '');
     setSaved(true);
     setShowTransferPrompt(true);
     setTransferAmount(amount);
@@ -305,7 +304,7 @@ const LogIncome: React.FC = () => {
             onPressOut={handleVoiceStop}
             activeOpacity={0.7}
           >
-            <Feather name="mic" size={32} color={isRecording ? '#fff' : CALM.accent} />
+            <Feather name="mic" size={32} color={isRecording ? '#fff' : CALM.bronze} />
             <Text style={[styles.voiceHint, isRecording && styles.voiceHintRecording]}>
               {isRecording ? 'listening...' : 'hold to speak'}
             </Text>
@@ -314,7 +313,7 @@ const LogIncome: React.FC = () => {
 
         {isProcessing && (
           <View style={styles.processingRow}>
-            <ActivityIndicator size="small" color={CALM.accent} />
+            <ActivityIndicator size="small" color={CALM.bronze} />
             <Text style={styles.processingText}>processing...</Text>
           </View>
         )}
@@ -416,8 +415,8 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
   },
   pillActive: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: CALM.bronze,
+    borderColor: CALM.bronze,
   },
   pillText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -447,7 +446,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.full,
   },
   parseButtonText: {
@@ -469,8 +468,8 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   voiceButtonRecording: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: CALM.bronze,
+    borderColor: CALM.bronze,
   },
   voiceHint: {
     ...TYPE.muted,
@@ -489,7 +488,7 @@ const styles = StyleSheet.create({
   },
   processingText: {
     ...TYPE.muted,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
 
   // Note
@@ -524,8 +523,8 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
   },
   streamChipSelected: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: CALM.bronze,
+    borderColor: CALM.bronze,
   },
   streamChipText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -537,7 +536,7 @@ const styles = StyleSheet.create({
 
   // Save
   saveButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',
@@ -583,7 +582,7 @@ const styles = StyleSheet.create({
   transferLinkText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
   transferInput: {
     ...TYPE.insight,
@@ -623,8 +622,8 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
   },
   costTypeSelected: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: CALM.bronze,
+    borderColor: CALM.bronze,
   },
   costTypeText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -646,7 +645,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   costSaveButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xl,
@@ -666,7 +665,7 @@ const styles = StyleSheet.create({
   anotherText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
 });
 

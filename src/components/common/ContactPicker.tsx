@@ -147,7 +147,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
       </View>
 
       {/* Phone Contacts Modal */}
-      <Modal visible={phoneModalVisible} animationType="slide" transparent onRequestClose={() => setPhoneModalVisible(false)}>
+      <Modal visible={phoneModalVisible} animationType="fade" transparent onRequestClose={() => setPhoneModalVisible(false)}>
           <Pressable style={styles.modalOverlay} onPress={() => setPhoneModalVisible(false)}>
             <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
@@ -220,7 +220,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
       </Modal>
 
       {/* Manual Entry Modal */}
-      <Modal visible={manualModalVisible} animationType="slide" transparent onRequestClose={() => setManualModalVisible(false)}>
+      <Modal visible={manualModalVisible} animationType="fade" transparent onRequestClose={() => setManualModalVisible(false)}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
             <View style={styles.manualModalSheet} onStartShouldSetResponder={() => true}>

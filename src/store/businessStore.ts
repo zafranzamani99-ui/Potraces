@@ -109,13 +109,16 @@ export const useBusinessStore = create<BusinessState>()(
       completeSetup: () =>
         set({ businessSetupComplete: true }),
 
-      addBusinessTransaction: (tx) =>
+      addBusinessTransaction: (tx) => {
+        const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
         set((state) => ({
           businessTransactions: [
-            { ...tx, id: Date.now().toString() },
+            { ...tx, id },
             ...state.businessTransactions,
           ],
-        })),
+        }));
+        return id;
+      },
 
       addClient: (client) =>
         set((state) => ({

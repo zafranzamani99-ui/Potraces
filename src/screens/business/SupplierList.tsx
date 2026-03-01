@@ -154,7 +154,7 @@ const SupplierList: React.FC = () => {
             <Card key={supplier.id} style={styles.supplierCard}>
               <View style={styles.supplierHeader}>
                 <View style={styles.iconContainer}>
-                  <Feather name="truck" size={24} color={CALM.accent} />
+                  <Feather name="truck" size={24} color={CALM.bronze} />
                 </View>
                 <View style={styles.supplierInfo}>
                   <Text style={styles.supplierName}>{supplier.name}</Text>
@@ -164,7 +164,7 @@ const SupplierList: React.FC = () => {
                 </View>
                 <View style={styles.cardActions}>
                   <TouchableOpacity onPress={() => handleEdit(supplier.id)} style={styles.actionButton}>
-                    <Feather name="edit-2" size={18} color={CALM.accent} />
+                    <Feather name="edit-2" size={18} color={CALM.bronze} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleDelete(supplier.id, supplier.name)} style={styles.actionButton}>
                     <Feather name="trash-2" size={18} color={CALM.neutral} />
@@ -251,7 +251,7 @@ const SupplierList: React.FC = () => {
 
       <Modal
         visible={modalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => { setModalVisible(false); resetForm(); }}
       >
@@ -400,7 +400,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: RADIUS['2xl'],
-    backgroundColor: withAlpha(CALM.accent, 0.12),
+    backgroundColor: withAlpha(CALM.bronze, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,

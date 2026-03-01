@@ -1,28 +1,27 @@
 import { CategoryOption } from '../types';
 
 // ─── DESIGN TOKENS ──────────────────────────────────────────
-// Custom brand palette — intentionally NOT Tailwind defaults.
-// Psychology: blue for expenses (calming), green for income (growth),
-// red reserved strictly for errors / true danger.
+// CALM design system — anxiety-reducing, no red, no green success.
+// Aligned to frontend-design.md spec.
 
 export const COLORS = {
-  // Brand
+  // Brand — olive palette
   primary: '#4F5104',
-  secondary: '#22C993',
+  secondary: '#B2780A',
   accent: '#DEAB22',
 
-  // Semantic – psychology-driven
+  // Semantic – calm, non-alarming
   expense: '#5E72E4',       // calm blue — reduces financial anxiety
-  income: '#2DCE89',        // vibrant green — positive reinforcement
-  danger: '#F5365C',        // true errors only
-  warning: '#FB8C3C',       // warm orange — gentle
-  info: '#11CDEF',
-  success: '#2DCE89',
-  error: '#F5365C',
+  income: '#4F5104',        // olive — neutral direction indicator
+  danger: '#B8AFBC',        // neutral — no red ever
+  warning: '#DEAB22',       // warm gold — gentle
+  info: '#6BA3BE',
+  success: '#4F5104',       // olive accent — no green as success
+  error: '#B8AFBC',         // neutral — no red ever
 
   // Mode accent
-  personal: '#4F5104',
-  business: '#22C993',
+  personal: '#4F5104',      // olive green
+  business: '#B2780A',      // warm bronze (yellow-orange, muted)
 
   // Surfaces
   background: '#FFFFFF',
@@ -40,34 +39,34 @@ export const COLORS = {
   border: '#E4E7F0',
   borderLight: '#F1F3F9',
 
-  // Charts
+  // Charts — palette-aligned, no red, no bright green
   chart1: '#4F5104',
-  chart2: '#2DCE89',
-  chart3: '#FB8C3C',
-  chart4: '#DEAB22',
-  chart5: '#B2780A',
+  chart2: '#B2780A',
+  chart3: '#DEAB22',
+  chart4: '#6BA3BE',
+  chart5: '#A06CD5',
   chart6: '#B8AFBC',
 };
 
 // ─── DARK MODE COLORS ───────────────────────────────────────────
 export const COLORS_DARK = {
-  // Brand colors remain same for brand consistency
+  // Brand colors — olive palette
   primary: '#4F5104',
-  secondary: '#22C993',
+  secondary: '#B2780A',
   accent: '#DEAB22',
 
-  // Semantic colors remain same for accessibility
+  // Semantic colors — calm
   expense: '#5E72E4',
-  income: '#2DCE89',
-  danger: '#F5365C',
-  warning: '#FB8C3C',
-  info: '#11CDEF',
-  success: '#2DCE89',
-  error: '#F5365C',
+  income: '#4F5104',
+  danger: '#B8AFBC',
+  warning: '#DEAB22',
+  info: '#6BA3BE',
+  success: '#4F5104',
+  error: '#B8AFBC',
 
-  // Mode accent (same)
+  // Mode accent
   personal: '#4F5104',
-  business: '#22C993',
+  business: '#B2780A',
 
   // Surfaces (dark)
   background: '#0F1419',
@@ -85,12 +84,12 @@ export const COLORS_DARK = {
   border: '#2D3548',
   borderLight: '#252B3B',
 
-  // Charts (same for data consistency)
+  // Charts
   chart1: '#4F5104',
-  chart2: '#2DCE89',
-  chart3: '#FB8C3C',
-  chart4: '#DEAB22',
-  chart5: '#B2780A',
+  chart2: '#B2780A',
+  chart3: '#DEAB22',
+  chart4: '#6BA3BE',
+  chart5: '#A06CD5',
   chart6: '#B8AFBC',
 };
 
@@ -108,6 +107,8 @@ export const TYPOGRAPHY = {
     '5xl': 48,
   },
   weight: {
+    extraLight: '200' as const,
+    light: '300' as const,
     regular: '400' as const,
     medium: '500' as const,
     semibold: '600' as const,
@@ -139,13 +140,13 @@ export const ICON_SIZE = {
   '2xl': 56,
 };
 
-// ─── SPACING (8 px grid) ───────────────────────────────────
+// ─── SPACING (8pt grid) ───────────────────────────────────
 export const SPACING = {
   xs: 4,
   sm: 8,
-  md: 12,
+  md: 16,
   lg: 16,
-  xl: 20,
+  xl: 24,
   '2xl': 24,
   '3xl': 32,
   '4xl': 40,
@@ -166,6 +167,7 @@ export const RADIUS = {
 };
 
 // ─── SHADOWS ────────────────────────────────────────────────
+// Spec: no drop shadows with opacity above 0.06
 export const SHADOWS = {
   none: {
     shadowColor: 'transparent',
@@ -179,45 +181,45 @@ export const SHADOWS = {
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
     shadowRadius: 3,
-    elevation: 2,
+    elevation: 1,
   },
   md: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.07,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 2,
   },
   lg: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.06,
     shadowRadius: 16,
-    elevation: 8,
+    elevation: 3,
   },
   xl: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.14,
+    shadowOpacity: 0.06,
     shadowRadius: 24,
-    elevation: 12,
+    elevation: 4,
   },
   '2xl': {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.06,
     shadowRadius: 32,
-    elevation: 16,
+    elevation: 5,
   },
 };
 
-// Helper function for colored shadows
+// Helper function for colored shadows — capped at 0.06 per spec
 export const coloredShadow = (color: string) => ({
   shadowColor: color,
   shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.3,
+  shadowOpacity: 0.06,
   shadowRadius: 12,
-  elevation: 6,
+  elevation: 2,
 });
 
 // ─── BLUR VALUES ────────────────────────────────────────────────
@@ -232,69 +234,82 @@ export const BLUR = {
 // ─── ANIMATION ──────────────────────────────────────────────
 export const ANIMATION = {
   fast: 150,
-  normal: 280,
+  normal: 200,
   slow: 450,
 };
 
 // ─── CATEGORIES ─────────────────────────────────────────────
-// Updated with vibrant, distinct colours per category.
+// Calm palette — no red, no orange, no bright green.
 
 export const EXPENSE_CATEGORIES: CategoryOption[] = [
-  { id: 'food', name: 'Food & Dining', icon: 'coffee', color: '#FF6B9D' },
+  { id: 'food', name: 'Food & Dining', icon: 'coffee', color: '#C4956A' },
   { id: 'transport', name: 'Transportation', icon: 'truck', color: '#5E72E4' },
-  { id: 'shopping', name: 'Shopping', icon: 'shopping-bag', color: '#FB8C3C' },
+  { id: 'shopping', name: 'Shopping', icon: 'shopping-bag', color: '#DEAB22' },
   { id: 'entertainment', name: 'Entertainment', icon: 'film', color: '#A06CD5' },
-  { id: 'bills', name: 'Bills & Utilities', icon: 'file-text', color: '#22C993' },
-  { id: 'health', name: 'Healthcare', icon: 'heart', color: '#FF5757' },
-  { id: 'education', name: 'Education', icon: 'book', color: '#4F5104' },
-  { id: 'family', name: 'Family', icon: 'users', color: '#2DCE89' },
-  { id: 'subscription', name: 'Subscriptions', icon: 'repeat', color: '#FB8C3C' },
+  { id: 'bills', name: 'Bills & Utilities', icon: 'file-text', color: '#4F5104' },
+  { id: 'health', name: 'Healthcare', icon: 'heart', color: '#6BA3BE' },
+  { id: 'education', name: 'Education', icon: 'book', color: '#8B7355' },
+  { id: 'family', name: 'Family', icon: 'users', color: '#7C8DA4' },
+  { id: 'subscription', name: 'Subscriptions', icon: 'repeat', color: '#7C5CFC' },
   { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#9CA3B4' },
 ];
 
 export const INCOME_CATEGORIES: CategoryOption[] = [
-  { id: 'salary', name: 'Salary', icon: 'dollar-sign', color: '#2DCE89' },
+  { id: 'salary', name: 'Salary', icon: 'dollar-sign', color: '#4F5104' },
   { id: 'freelance', name: 'Freelance', icon: 'briefcase', color: '#5E72E4' },
-  { id: 'business', name: 'Business', icon: 'trending-up', color: '#4F5104' },
+  { id: 'business', name: 'Business', icon: 'trending-up', color: '#B2780A' },
   { id: 'investment', name: 'Investment', icon: 'pie-chart', color: '#A06CD5' },
-  { id: 'gift', name: 'Gift', icon: 'gift', color: '#FF6B9D' },
+  { id: 'gift', name: 'Gift', icon: 'gift', color: '#C4956A' },
+  { id: 'from business', name: 'From Business', icon: 'refresh-cw', color: '#6BA3BE' },
   { id: 'other', name: 'Other', icon: 'plus-circle', color: '#9CA3B4' },
 ];
 
 export const BUSINESS_EXPENSE_CATEGORIES: CategoryOption[] = [
   { id: 'rent', name: 'Rent & Lease', icon: 'home', color: '#5E72E4' },
-  { id: 'inventory', name: 'Inventory / COGS', icon: 'package', color: '#FB8C3C' },
-  { id: 'payroll', name: 'Payroll & Wages', icon: 'users', color: '#2DCE89' },
-  { id: 'marketing', name: 'Marketing & Ads', icon: 'target', color: '#FF6B9D' },
-  { id: 'utilities', name: 'Utilities', icon: 'zap', color: '#22C993' },
+  { id: 'inventory', name: 'Inventory / COGS', icon: 'package', color: '#DEAB22' },
+  { id: 'payroll', name: 'Payroll & Wages', icon: 'users', color: '#4F5104' },
+  { id: 'marketing', name: 'Marketing & Ads', icon: 'target', color: '#C4956A' },
+  { id: 'utilities', name: 'Utilities', icon: 'zap', color: '#6BA3BE' },
   { id: 'office', name: 'Office Supplies', icon: 'clipboard', color: '#A06CD5' },
-  { id: 'travel', name: 'Travel & Meetings', icon: 'map-pin', color: '#4F5104' },
-  { id: 'insurance', name: 'Insurance', icon: 'shield', color: '#FF5757' },
-  { id: 'maintenance', name: 'Maintenance', icon: 'tool', color: '#FB8C3C' },
-  { id: 'professional', name: 'Professional Services', icon: 'briefcase', color: '#5E72E4' },
-  { id: 'shipping', name: 'Shipping & Delivery', icon: 'truck', color: '#9CA3B4' },
+  { id: 'travel', name: 'Travel & Meetings', icon: 'map-pin', color: '#8B7355' },
+  { id: 'insurance', name: 'Insurance', icon: 'shield', color: '#7C8DA4' },
+  { id: 'maintenance', name: 'Maintenance', icon: 'tool', color: '#B2780A' },
+  { id: 'professional', name: 'Professional Services', icon: 'briefcase', color: '#7C5CFC' },
+  { id: 'shipping', name: 'Shipping & Delivery', icon: 'truck', color: '#6BA3BE' },
   { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#9CA3B4' },
 ];
 
 export const BUSINESS_INCOME_CATEGORIES: CategoryOption[] = [
-  { id: 'sales', name: 'Sales Revenue', icon: 'shopping-cart', color: '#2DCE89' },
+  { id: 'sales', name: 'Sales Revenue', icon: 'shopping-cart', color: '#4F5104' },
   { id: 'services', name: 'Service Income', icon: 'tool', color: '#5E72E4' },
   { id: 'consulting', name: 'Consulting', icon: 'message-circle', color: '#A06CD5' },
-  { id: 'commission', name: 'Commission', icon: 'percent', color: '#FB8C3C' },
-  { id: 'rental', name: 'Rental Income', icon: 'home', color: '#22C993' },
-  { id: 'interest', name: 'Interest & Returns', icon: 'trending-up', color: '#4F5104' },
+  { id: 'commission', name: 'Commission', icon: 'percent', color: '#DEAB22' },
+  { id: 'rental', name: 'Rental Income', icon: 'home', color: '#6BA3BE' },
+  { id: 'interest', name: 'Interest & Returns', icon: 'trending-up', color: '#B2780A' },
   { id: 'other', name: 'Other', icon: 'plus-circle', color: '#9CA3B4' },
 ];
 
+export const INVESTMENT_CATEGORIES: CategoryOption[] = [
+  { id: 'tng_plus', name: 'TNG+', icon: 'smartphone', color: '#005ABD' },
+  { id: 'robo_crypto', name: 'Robo Crypto', icon: 'cpu', color: '#B2780A' },
+  { id: 'esa', name: 'ESA', icon: 'shield', color: '#6BA3BE' },
+  { id: 'bank', name: 'Bank', icon: 'home', color: '#5E72E4' },
+  { id: 'asb', name: 'ASB', icon: 'lock', color: '#4F5104' },
+  { id: 'tabung_haji', name: 'Tabung Haji', icon: 'book', color: '#DEAB22' },
+  { id: 'stocks', name: 'Stocks', icon: 'trending-up', color: '#A06CD5' },
+  { id: 'gold', name: 'Gold', icon: 'star', color: '#C4956A' },
+  { id: 'other', name: 'Other', icon: 'briefcase', color: '#9CA3B4' },
+];
+
 export const PRODUCT_CATEGORIES: CategoryOption[] = [
-  { id: 'food', name: 'Food & Beverages', icon: 'coffee', color: '#FF6B9D' },
+  { id: 'food', name: 'Food & Beverages', icon: 'coffee', color: '#C4956A' },
   { id: 'clothing', name: 'Clothing', icon: 'shopping-bag', color: '#A06CD5' },
   { id: 'electronics', name: 'Electronics', icon: 'smartphone', color: '#5E72E4' },
-  { id: 'accessories', name: 'Accessories', icon: 'watch', color: '#FB8C3C' },
-  { id: 'books', name: 'Books', icon: 'book', color: '#4F5104' },
-  { id: 'toys', name: 'Toys', icon: 'gift', color: '#FF6B9D' },
-  { id: 'health', name: 'Health & Beauty', icon: 'heart', color: '#2DCE89' },
-  { id: 'home', name: 'Home & Garden', icon: 'home', color: '#22C993' },
+  { id: 'accessories', name: 'Accessories', icon: 'watch', color: '#DEAB22' },
+  { id: 'books', name: 'Books', icon: 'book', color: '#8B7355' },
+  { id: 'toys', name: 'Toys', icon: 'gift', color: '#7C5CFC' },
+  { id: 'health', name: 'Health & Beauty', icon: 'heart', color: '#6BA3BE' },
+  { id: 'home', name: 'Home & Garden', icon: 'home', color: '#4F5104' },
   { id: 'other', name: 'Other', icon: 'grid', color: '#9CA3B4' },
 ];
 
@@ -324,13 +339,13 @@ export const SPLIT_METHODS = [
 
 export const DEBT_TYPES = [
   { label: 'I Owe', value: 'i_owe', icon: 'arrow-up-circle', color: '#8E8E93' },
-  { label: 'They Owe Me', value: 'they_owe', icon: 'arrow-down-circle', color: '#2E7D5B' },
+  { label: 'They Owe Me', value: 'they_owe', icon: 'arrow-down-circle', color: '#4F5104' },
 ];
 
 export const DEBT_STATUSES = [
   { label: 'Pending', value: 'pending', color: '#4F5104' },
   { label: 'Partial', value: 'partial', color: '#8E8E93' },
-  { label: 'Settled', value: 'settled', color: '#2E7D5B' },
+  { label: 'Settled', value: 'settled', color: '#B2780A' },
 ];
 
 export const RECEIPT_SCANNER_CONFIG = {
@@ -348,30 +363,46 @@ export const APP_CONFIG = {
 };
 
 // ─── CALM DESIGN SYSTEM ────────────────────────────────────
-// Anxiety-reducing palette — no red anywhere.
+// Olive palette: #332D03, #4F5104, #B2780A, #DEAB22, #B8AFBC
 export const CALM = {
   background: '#F9F9F7',
   surface: '#FFFFFF',
   textPrimary: '#1A1A1A',
   textSecondary: '#6B6B6B',
-  accent: '#4F5104',
-  positive: '#2E7D5B',
+  textMuted: '#A0A0A0',
+  accent: '#4F5104',        // olive green — one per screen
+  positive: '#4F5104',      // olive (no green as success)
   neutral: '#B8AFBC',
-  border: '#E5E5E3',
+  border: '#EBEBEB',
+  bar: '#D4D4D4',
+  barActive: '#4F5104',
   highlight: '#FFF7E6',
   gold: '#DEAB22',
   bronze: '#B2780A',
   deepOlive: '#332D03',
+  lavender: '#B8AFBC',
+};
+
+// ─── BUSINESS SEMANTIC COLORS ──────────────────────────────
+// Seller/business mode needs visual clarity — profit, loss, unpaid,
+// overdue must stand out, not blend into muted CALM palette.
+export const BIZ = {
+  profit: '#332D03',        // deep olive — earned value, authoritative
+  loss: '#B2780A',          // bronze — loss / negative, warm warning
+  overdue: '#332D03',       // deep olive — most urgent state
+  unpaid: '#B2780A',        // bronze — needs payment
+  pending: '#8B6914',       // warm amber — awaiting action
 };
 
 // ─── TYPE SCALE ────────────────────────────────────────────
+// Spec: numbers use tabular figures, large balances fontWeight 200-300
 export const TYPE = {
-  hero: { fontSize: 48, fontWeight: '200' as const },
+  hero: { fontSize: 48, fontWeight: '200' as const, fontVariant: ['tabular-nums'] as ('tabular-nums')[] },
   insight: { fontSize: 14, lineHeight: 22 },
   label: { fontSize: 12, color: '#6B6B6B', textTransform: 'uppercase' as const, letterSpacing: 1 },
-  balance: { fontSize: 36, fontWeight: '300' as const },
-  muted: { fontSize: 12, color: '#8E8E93' },
-  amount: { fontSize: 48, fontWeight: '200' as const },
+  balance: { fontSize: 36, fontWeight: '300' as const, fontVariant: ['tabular-nums'] as ('tabular-nums')[] },
+  muted: { fontSize: 12, color: '#A0A0A0' },
+  amount: { fontSize: 48, fontWeight: '200' as const, fontVariant: ['tabular-nums'] as ('tabular-nums')[] },
 };
 
 // ─── HELPERS ────────────────────────────────────────────────

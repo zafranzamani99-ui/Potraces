@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
@@ -6,7 +6,7 @@ import { Feather } from '@expo/vector-icons';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
-import { BusinessTransaction, RiderCost } from '../../types';
+import type { BusinessTransaction, RiderCost } from '../../types';
 import { explainBusinessMonth } from '../../utils/explainBusinessMonth';
 import WeekBar from '../../components/common/WeekBar';
 import ModeToggle from '../../components/common/ModeToggle';
@@ -115,11 +115,13 @@ const BusinessDashboard: React.FC = () => {
   }, [businessTransactions]);
 
   // Redirect to setup if not complete
-  if (!businessSetupComplete || !incomeType) {
-    // Navigate to setup on next tick
-    React.useEffect(() => {
+  useEffect(() => {
+    if (!businessSetupComplete || !incomeType) {
       navigation.getParent()?.navigate('BusinessSetup');
-    }, []);
+    }
+  }, [businessSetupComplete, incomeType]);
+
+  if (!businessSetupComplete || !incomeType) {
     return (
       <View style={styles.container}>
         <ModeToggle />
@@ -264,7 +266,7 @@ const BusinessDashboard: React.FC = () => {
             style={styles.quickAction}
             onPress={() => navigation.getParent()?.navigate('LogIncome')}
           >
-            <Feather name="plus" size={20} color={CALM.accent} />
+            <Feather name="plus" size={20} color={CALM.bronze} />
             <Text style={styles.quickActionText}>Log Income</Text>
           </TouchableOpacity>
 
@@ -273,7 +275,7 @@ const BusinessDashboard: React.FC = () => {
               style={styles.quickAction}
               onPress={() => navigation.getParent()?.navigate('ClientList')}
             >
-              <Feather name="users" size={20} color={CALM.accent} />
+              <Feather name="users" size={20} color={CALM.bronze} />
               <Text style={styles.quickActionText}>Clients</Text>
             </TouchableOpacity>
           )}
@@ -283,7 +285,7 @@ const BusinessDashboard: React.FC = () => {
               style={styles.quickAction}
               onPress={() => navigation.getParent()?.navigate('RiderCosts')}
             >
-              <Feather name="tool" size={20} color={CALM.accent} />
+              <Feather name="tool" size={20} color={CALM.bronze} />
               <Text style={styles.quickActionText}>Costs</Text>
             </TouchableOpacity>
           )}
@@ -293,7 +295,7 @@ const BusinessDashboard: React.FC = () => {
               style={styles.quickAction}
               onPress={() => navigation.getParent()?.navigate('IncomeStreams')}
             >
-              <Feather name="layers" size={20} color={CALM.accent} />
+              <Feather name="layers" size={20} color={CALM.bronze} />
               <Text style={styles.quickActionText}>Streams</Text>
             </TouchableOpacity>
           )}
@@ -302,7 +304,7 @@ const BusinessDashboard: React.FC = () => {
             style={styles.quickAction}
             onPress={() => navigation.getParent()?.navigate('MoneyChat')}
           >
-            <Feather name="message-circle" size={20} color={CALM.accent} />
+            <Feather name="message-circle" size={20} color={CALM.bronze} />
             <Text style={styles.quickActionText}>Money Chat</Text>
           </TouchableOpacity>
         </View>
@@ -389,7 +391,7 @@ const styles = StyleSheet.create({
   },
   riderKept: {
     fontSize: 20,
-    fontWeight: '300' as const,
+    fontWeight: TYPOGRAPHY.weight.light,
     color: CALM.textPrimary,
     marginTop: SPACING.sm,
   },

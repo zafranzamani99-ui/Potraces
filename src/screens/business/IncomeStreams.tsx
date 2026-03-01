@@ -15,7 +15,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { IncomeStream } from '../../types';
 
-const PRESET_COLORS = ['#5B4FE9', '#2E7D5B', '#E9964F', '#E94F6E', '#4FC3E9', '#8E8E93'];
+const PRESET_COLORS = ['#4F5104', '#B2780A', '#DEAB22', '#6BA3BE', '#C4956A', '#B8AFBC'];
 
 const IncomeStreamsScreen: React.FC = () => {
   const { incomeStreams, businessTransactions, addIncomeStream } = useBusinessStore();
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     margin: SPACING.lg,
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
   modalConfirm: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.md,
   },
   modalConfirmText: {

@@ -83,7 +83,7 @@ const ClientList: React.FC = () => {
           setShowPayment(true);
         }}
       >
-        <Feather name="plus" size={14} color={CALM.accent} />
+        <Feather name="plus" size={14} color={CALM.bronze} />
         <Text style={styles.logPaymentText}>log payment</Text>
       </TouchableOpacity>
 
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
   },
   logPaymentText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.accent,
+    color: CALM.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   historySection: {
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     margin: SPACING.lg,
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
   modalConfirm: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.md,
   },
   modalConfirmText: {

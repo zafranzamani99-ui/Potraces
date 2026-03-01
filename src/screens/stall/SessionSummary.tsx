@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useStallStore } from '../../store/stallStore';
 import { useBusinessStore } from '../../store/businessStore';
+import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallSession } from '../../utils/explainStallSession';
 import { RootStackParamList } from '../../types';
@@ -27,6 +28,7 @@ const SessionSummary: React.FC = () => {
 
   const { sessions, getSessionSummary, getLifetimeStats, markSessionTransferred } = useStallStore();
   const addTransfer = useBusinessStore((s) => s.addTransfer);
+  const addTransferIncome = usePersonalStore((s) => s.addTransferIncome);
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
 
@@ -85,14 +87,16 @@ const SessionSummary: React.FC = () => {
     if (isNaN(amount) || amount <= 0) return;
 
     markSessionTransferred(sessionId, amount);
-    addTransfer({
-      id: Date.now().toString(),
+    const transfer = {
+      id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
       amount,
-      fromMode: 'business',
-      toMode: 'personal',
+      fromMode: 'business' as const,
+      toMode: 'personal' as const,
       note: `stall: ${session.name || format(session.startedAt, 'dd MMM')}`,
       date: new Date(),
-    });
+    };
+    addTransfer(transfer);
+    addTransferIncome(transfer);
     setTransferDone(true);
 
     // Fade out after 3 seconds
@@ -343,7 +347,7 @@ const SessionSummary: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Share session summary via WhatsApp or other apps"
         >
-          <Feather name="share" size={18} color={CALM.accent} />
+          <Feather name="share" size={18} color={CALM.bronze} />
           <Text style={styles.shareButtonText}>share summary</Text>
         </TouchableOpacity>
 
@@ -587,7 +591,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   transferButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -637,7 +641,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     backgroundColor: CALM.surface,
     borderWidth: 1,
-    borderColor: CALM.accent,
+    borderColor: CALM.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     minHeight: 48,
@@ -646,10 +650,10 @@ const styles = StyleSheet.create({
   shareButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
   doneButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',
@@ -681,7 +685,7 @@ const styles = StyleSheet.create({
   doneButtonEmptyText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
 });
 

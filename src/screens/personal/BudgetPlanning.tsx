@@ -63,7 +63,7 @@ const BudgetPlanning: React.FC = () => {
         updateBudget(budget.id, { spentAmount: spent });
       }
     });
-  }, [transactions, budgets]);
+  }, [transactions]);
 
   const handleAdd = () => {
     if (!amount || parseFloat(amount) <= 0) {
@@ -85,7 +85,7 @@ const BudgetPlanning: React.FC = () => {
         period,
       });
       closeModal();
-      showToast('Budget updated successfully!', 'success');
+      showToast('budget updated.', 'success');
     } else {
       const existingBudget = budgets.find((b) => b.category === category);
       if (existingBudget) {
@@ -102,7 +102,7 @@ const BudgetPlanning: React.FC = () => {
         endDate: endOfMonth(now),
       });
       closeModal();
-      showToast('Budget created successfully!', 'success');
+      showToast('budget created.', 'success');
     }
   };
 
@@ -299,7 +299,7 @@ const BudgetPlanning: React.FC = () => {
 
       <Modal
         visible={modalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={closeModal}
       >
@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING.lg,
+    padding: SPACING['2xl'],
     paddingBottom: 80,
   },
 

@@ -14,10 +14,9 @@ export const explainStallSession = (session: StallSession): string | null => {
     return 'quiet session — sometimes that happens.';
   }
 
-  const duration = Math.round(
-    (session.closedAt.getTime() - session.startedAt.getTime()) / 60000
-  );
-  const avgSale = totalRevenue / saleCount;
+  const closedAt = session.closedAt instanceof Date ? session.closedAt : new Date(session.closedAt);
+  const startedAt = session.startedAt instanceof Date ? session.startedAt : new Date(session.startedAt);
+  const duration = Math.round((closedAt.getTime() - startedAt.getTime()) / 60000);
 
   // Count product breakdown
   const productCounts: Record<string, { name: string; qty: number; revenue: number }> = {};
@@ -67,7 +66,7 @@ export const explainStallSession = (session: StallSession): string | null => {
   }
 
   // Cash vs QR ratio
-  const qrRatio = totalQR / totalRevenue;
+  const qrRatio = totalRevenue > 0 ? totalQR / totalRevenue : 0;
   if (qrRatio > 0.6 && saleCount > 3) {
     lines.push('mostly QR payments today.');
   } else if (qrRatio < 0.2 && saleCount > 3 && totalQR > 0) {
@@ -79,6 +78,10 @@ export const explainStallSession = (session: StallSession): string | null => {
     lines.push('rainy day, but you showed up.');
   } else if (condition === 'slow') {
     lines.push('slow day — that\'s okay.');
+  } else if (condition === 'hot') {
+    lines.push('hot day — you pushed through.');
+  } else if (condition === 'good') {
+    lines.push('good day out there.');
   }
 
   // Big session

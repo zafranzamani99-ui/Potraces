@@ -1,9 +1,9 @@
 // ─── FLOATING ACTION BUTTON ────────────────────────────────
 // Primary screen-level action trigger (56 x 56). Positioned at the
-// bottom-right corner with a spring-animated press scale and haptic
+// bottom-right corner with a 150ms opacity pulse and haptic
 // feedback for satisfying tactile response.
 //
-// Design tokens: CALM.accent, CALM.border, RADIUS.full, SPACING.
+// Design tokens: CALM.accent, RADIUS.full, SPACING.
 
 import React, { useRef, useCallback } from 'react';
 import {
@@ -19,13 +19,9 @@ import { lightTap } from '../../services/haptics';
 // ─── Props ─────────────────────────────────────────────────
 
 interface FABProps {
-  /** Callback fired on press. */
   onPress: () => void;
-  /** Feather icon name displayed in the centre (default: "plus"). */
   icon?: keyof typeof Feather.glyphMap;
-  /** Background colour of the button (default: CALM.accent). */
   color?: string;
-  /** Optional style overrides for the outer container. */
   style?: ViewStyle;
 }
 
@@ -33,7 +29,6 @@ interface FABProps {
 
 const FAB_SIZE = 56; // 56 x 56 -- meets 44pt minimum touch target
 const ICON_SIZE = 24;
-const PRESSED_SCALE = 0.9;
 
 // ─── Component ─────────────────────────────────────────────
 
@@ -43,27 +38,25 @@ const FAB: React.FC<FABProps> = ({
   color = CALM.accent,
   style,
 }) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
 
-  // ── Interaction handlers ──────────────────────────────────
+  // ── Interaction handlers: 150ms opacity pulse to 0.7 ──
 
   const handlePressIn = useCallback(() => {
-    Animated.spring(scaleAnim, {
-      toValue: PRESSED_SCALE,
+    Animated.timing(opacityAnim, {
+      toValue: 0.7,
+      duration: 150,
       useNativeDriver: true,
-      speed: 50,
-      bounciness: 4,
     }).start();
-  }, [scaleAnim]);
+  }, [opacityAnim]);
 
   const handlePressOut = useCallback(() => {
-    Animated.spring(scaleAnim, {
+    Animated.timing(opacityAnim, {
       toValue: 1,
+      duration: 150,
       useNativeDriver: true,
-      speed: 20,
-      bounciness: 6,
     }).start();
-  }, [scaleAnim]);
+  }, [opacityAnim]);
 
   const handlePress = useCallback(() => {
     lightTap();
@@ -76,7 +69,7 @@ const FAB: React.FC<FABProps> = ({
     <Animated.View
       style={[
         styles.container,
-        { transform: [{ scale: scaleAnim }] },
+        { opacity: opacityAnim },
         style,
       ]}
       accessible
@@ -103,13 +96,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: SPACING['2xl'],   // 24px
     right: SPACING['2xl'],    // 24px
-    borderWidth: 1,
-    borderColor: CALM.border,
+    borderRadius: RADIUS.full,
   },
   button: {
     width: FAB_SIZE,
     height: FAB_SIZE,
-    borderRadius: RADIUS.full, // fully round
+    borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
   },

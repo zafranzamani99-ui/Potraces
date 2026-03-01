@@ -1,8 +1,8 @@
 import { COLORS, withAlpha } from './index';
 
 /**
- * Gradient definitions for premium UI effects
- * Used with expo-linear-gradient LinearGradient component
+ * Gradient definitions — olive palette aligned.
+ * No red, no bright green, no orange.
  */
 
 export interface GradientConfig {
@@ -12,25 +12,23 @@ export interface GradientConfig {
 }
 
 // ─── HERO GRADIENTS ─────────────────────────────────────────────
-// Bold gradients for main dashboard hero sections
 
 export const GRADIENTS = {
-  // Personal mode hero
+  // Personal mode hero (olive → gold)
   personalHero: {
     colors: [COLORS.personal, '#DEAB22'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   } as GradientConfig,
 
-  // Business mode hero
+  // Business mode hero (bronze → gold)
   businessHero: {
-    colors: [COLORS.business, '#1DE9B6'],
+    colors: [COLORS.business, '#DEAB22'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   } as GradientConfig,
 
   // ─── BUTTON GRADIENTS ───────────────────────────────────────────
-  // For CTA buttons and primary actions
 
   primary: {
     colors: ['#4F5104', '#B2780A'],
@@ -39,31 +37,30 @@ export const GRADIENTS = {
   } as GradientConfig,
 
   success: {
-    colors: ['#2DCE89', '#1DE9B6'],
+    colors: ['#4F5104', '#DEAB22'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 0 },
   } as GradientConfig,
 
   danger: {
-    colors: ['#F5365C', '#FF6B9D'],
+    colors: ['#B8AFBC', '#9CA3B4'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 0 },
   } as GradientConfig,
 
   warning: {
-    colors: ['#FB8C3C', '#FFB15C'],
+    colors: ['#DEAB22', '#B2780A'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 0 },
   } as GradientConfig,
 
   info: {
-    colors: ['#11CDEF', '#5FDEF5'],
+    colors: ['#6BA3BE', '#8BBDD0'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 0 },
   } as GradientConfig,
 
   // ─── CARD GRADIENTS ─────────────────────────────────────────────
-  // Subtle gradients for card backgrounds
 
   incomeCard: {
     colors: [withAlpha(COLORS.income, 0.15), withAlpha(COLORS.income, 0.05)],
@@ -84,7 +81,6 @@ export const GRADIENTS = {
   } as GradientConfig,
 
   // ─── ICON GRADIENTS ─────────────────────────────────────────────
-  // For gradient icon backgrounds in StatCards, etc.
 
   personalIcon: {
     colors: [withAlpha(COLORS.personal, 0.2), withAlpha(COLORS.personal, 0.1)],
@@ -117,7 +113,6 @@ export const GRADIENTS = {
   } as GradientConfig,
 
   // ─── SHIMMER GRADIENT ───────────────────────────────────────────
-  // For skeleton loading screens
 
   shimmer: {
     colors: [
@@ -140,7 +135,6 @@ export const GRADIENTS = {
   } as GradientConfig,
 
   // ─── OVERLAY GRADIENTS ──────────────────────────────────────────
-  // For modal backdrops and overlays
 
   modalOverlay: {
     colors: ['rgba(17, 24, 39, 0)', 'rgba(17, 24, 39, 0.8)'],
@@ -161,31 +155,29 @@ export const GRADIENTS = {
   } as GradientConfig,
 
   // ─── STATUS GRADIENTS ───────────────────────────────────────────
-  // For status badges and indicators
 
   pending: {
-    colors: ['#FB8C3C', '#FFB15C'],
+    colors: ['#DEAB22', '#B2780A'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 0 },
   } as GradientConfig,
 
   completed: {
-    colors: ['#2DCE89', '#1DE9B6'],
+    colors: ['#4F5104', '#DEAB22'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 0 },
   } as GradientConfig,
 
   cancelled: {
-    colors: ['#F5365C', '#FF6B9D'],
+    colors: ['#B8AFBC', '#9CA3B4'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 0 },
   } as GradientConfig,
 
   // ─── PREMIUM GRADIENT ─────────────────────────────────────────
-  // Gold gradient for premium/subscription UI
 
   premium: {
-    colors: ['#FFB347', '#FFCC33'],
+    colors: ['#DEAB22', '#B2780A'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 0 },
   } as GradientConfig,
@@ -196,7 +188,6 @@ export const createGradient = (
   baseColor: string,
   lighten: number = 20
 ): GradientConfig => {
-  // Simple lightening by adding to hex values
   const hex = baseColor.replace('#', '');
   const r = Math.min(255, parseInt(hex.slice(0, 2), 16) + lighten);
   const g = Math.min(255, parseInt(hex.slice(2, 4), 16) + lighten);

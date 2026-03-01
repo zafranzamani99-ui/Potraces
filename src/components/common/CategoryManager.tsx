@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   Keyboard,
+  Dimensions,
 } from 'react-native';
 import DraggableFlatList, {
   ScaleDecorator,
@@ -31,14 +32,14 @@ const ICON_OPTIONS: string[] = [
 ];
 
 const COLOR_OPTIONS: string[] = [
-  '#FF6B9D', '#5E72E4', '#FB8C3C', '#A06CD5', '#22C993',
-  '#4F5104', '#DEAB22', '#B2780A', '#332D03', '#B8AFBC',
+  '#4F5104', '#5E72E4', '#DEAB22', '#A06CD5', '#6BA3BE',
+  '#B2780A', '#C4956A', '#7C5CFC', '#332D03', '#B8AFBC',
 ];
 
 interface CategoryManagerProps {
   visible: boolean;
   onClose: () => void;
-  type: 'expense' | 'income';
+  type: 'expense' | 'income' | 'investment';
   mode?: 'personal' | 'business';
 }
 
@@ -191,7 +192,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
         <View style={styles.modal} onStartShouldSetResponder={() => true}>
           <View style={styles.header}>
             <Text style={styles.title}>
-              {type === 'expense' ? 'Expense' : 'Income'} Categories
+              {type === 'expense' ? 'Expense' : type === 'income' ? 'Income' : 'Investment'} Categories
             </Text>
             <TouchableOpacity onPress={onClose}>
               <Feather name="x" size={22} color={CALM.textPrimary} />
@@ -200,7 +201,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
 
           <Text style={styles.dragHint}>Hold & drag to reorder</Text>
 
-          <GestureHandlerRootView style={{ flex: 1 }}>
+          <GestureHandlerRootView style={{ maxHeight: Dimensions.get('window').height * 0.45 }}>
             <DraggableFlatList
               data={categories}
               keyExtractor={(item) => item.id}
@@ -223,7 +224,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
       <Modal
         visible={editModalVisible}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setEditModalVisible(false)}
       >
         <TouchableOpacity

@@ -163,7 +163,7 @@ const BusinessReports: React.FC = () => {
               backgroundGradientFrom: CALM.surface,
               backgroundGradientTo: CALM.surface,
               decimalPlaces: 0,
-              color: (opacity = 1) => withAlpha(CALM.accent, opacity),
+              color: (opacity = 1) => withAlpha(CALM.bronze, opacity),
               labelColor: (opacity = 1) => withAlpha(CALM.textSecondary, opacity),
               style: {
                 borderRadius: 16,
@@ -294,7 +294,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(CALM.accent, 0.12),
+    backgroundColor: withAlpha(CALM.bronze, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
@@ -302,7 +302,7 @@ const styles = StyleSheet.create({
   rankText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
   productInfo: {
     flex: 1,
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
   productRevenue: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
 
   // Metrics

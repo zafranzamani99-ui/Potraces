@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
   },
   tileSelected: {
-    borderColor: CALM.accent,
+    borderColor: CALM.bronze,
     borderWidth: 2,
   },
   fullWidthTile: {
@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   confirmButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',

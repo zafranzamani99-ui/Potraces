@@ -1,14 +1,13 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, CALM, SPACING, RADIUS, SHADOWS, TYPOGRAPHY } from '../../constants';
+import { CALM, SPACING, RADIUS, TYPOGRAPHY } from '../../constants';
 
 interface CustomTabBarProps extends BottomTabBarProps {
   accentColor: string;
-  centerButtonGradient?: [string, string];
+  centerButtonGradient?: [string, string]; // kept for API compat, ignored
 }
 
 const CustomTabBar: React.FC<CustomTabBarProps> = ({
@@ -16,7 +15,6 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
   descriptors,
   navigation,
   accentColor,
-  centerButtonGradient = [accentColor, accentColor],
 }) => {
   const insets = useSafeAreaInsets();
   const centerIndex = Math.floor(state.routes.length / 2);
@@ -28,7 +26,7 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
         {
           marginHorizontal: SPACING.lg,
           marginBottom: SPACING.sm,
-          height: 72 + Math.max(insets.bottom, SPACING.sm),
+          height: 80 + Math.max(insets.bottom, SPACING.sm),
           paddingBottom: Math.max(insets.bottom, SPACING.sm),
         },
       ]}
@@ -80,16 +78,12 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
                 onPress={onPress}
                 onLongPress={onLongPress}
                 style={styles.centerButtonTouchable}
-                activeOpacity={0.8}
+                activeOpacity={0.7}
               >
-                <LinearGradient
-                  colors={centerButtonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.centerButton}
-                >
+                {/* Solid accent — no gradient per spec */}
+                <View style={[styles.centerButton, { backgroundColor: accentColor }]}>
                   <Feather name={iconName} size={26} color="#FFFFFF" />
-                </LinearGradient>
+                </View>
                 <Text style={styles.centerLabel}>
                   {label}
                 </Text>
@@ -112,17 +106,20 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
             <Feather
               name={iconName}
               size={24}
-              color={isFocused ? accentColor : CALM.neutral}
+              color={isFocused ? accentColor : CALM.textMuted}
             />
-            <Text
-              style={[
-                styles.tabLabel,
-                { color: isFocused ? accentColor : CALM.neutral },
-              ]}
-              numberOfLines={1}
-            >
-              {label}
-            </Text>
+            {/* Spec: no tab labels on inactive tabs — icon only, label on active */}
+            {isFocused && (
+              <Text
+                style={[
+                  styles.tabLabel,
+                  { color: accentColor },
+                ]}
+                numberOfLines={1}
+              >
+                {label}
+              </Text>
+            )}
           </TouchableOpacity>
         );
       })}
@@ -154,6 +151,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: SPACING.sm,
+    minHeight: 44, // minimum touch target
     gap: 2,
   },
   tabLabel: {

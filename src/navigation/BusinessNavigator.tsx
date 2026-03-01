@@ -1,8 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
-import { COLORS, SHADOWS, TYPOGRAPHY } from '../constants';
-import GRADIENTS from '../constants/gradients';
+import { COLORS, CALM, TYPOGRAPHY } from '../constants';
 import CustomTabBar from '../components/navigation/CustomTabBar';
 import { useBusinessStore } from '../store/businessStore';
 
@@ -15,8 +14,8 @@ import BusinessReports from '../screens/business/Reports';
 import SellerDashboard from '../screens/seller/Dashboard';
 import OrderList from '../screens/seller/OrderList';
 import NewOrder from '../screens/seller/NewOrder';
-import Products from '../screens/seller/Products';
-import PastSeasons from '../screens/seller/PastSeasons';
+import SellerCustomers from '../screens/seller/Customers';
+import SellerManage from '../screens/seller/Manage';
 
 // Stall screens
 import StallDashboard from '../screens/stall/Dashboard';
@@ -35,6 +34,19 @@ import RiderCostsScreen from '../screens/business/RiderCosts';
 import IncomeStreamsScreen from '../screens/business/IncomeStreams';
 import LogIncome from '../screens/business/LogIncome';
 
+// Freelancer screens
+import FreelancerDashboard from '../screens/business/freelancer/FreelancerDashboard';
+import FreelancerClientList from '../screens/business/freelancer/ClientList';
+
+// Part-time screens
+import PartTimeDashboard from '../screens/business/parttime/PartTimeDashboard';
+
+// On-the-road screens
+import OnTheRoadDashboard from '../screens/business/ontheroad/OnTheRoadDashboard';
+
+// Mixed screens
+import MixedDashboard from '../screens/business/mixed/MixedDashboard';
+
 const Tab = createBottomTabNavigator();
 
 const ICON_MAP: Record<string, keyof typeof Feather.glyphMap> = {
@@ -42,14 +54,19 @@ const ICON_MAP: Record<string, keyof typeof Feather.glyphMap> = {
   SellerHome: 'home',
   SellerOrders: 'clipboard',
   SellerNewOrder: 'plus-circle',
-  SellerProducts: 'package',
-  SellerSeasons: 'calendar',
+  SellerCustomers: 'users',
+  SellerManage: 'grid',
   // Stall
   StallDashboard: 'home',
   StallSell: 'shopping-bag',
   StallHistory: 'clock',
   StallRegulars: 'heart',
   Clients: 'users',
+  FreelancerHome: 'home',
+  FreelancerClients: 'users',
+  PartTimeHome: 'home',
+  OnTheRoadHome: 'home',
+  MixedHome: 'home',
   LogIncome: 'plus-circle',
   Costs: 'tool',
   Streams: 'layers',
@@ -77,8 +94,8 @@ const BusinessNavigator: React.FC = () => {
             <Tab.Screen name="SellerHome" component={SellerDashboard} options={{ title: 'Home' }} />
             <Tab.Screen name="SellerOrders" component={OrderList} options={{ title: 'Orders' }} />
             <Tab.Screen name="SellerNewOrder" component={NewOrder} options={{ title: 'New Order' }} />
-            <Tab.Screen name="SellerProducts" component={Products} options={{ title: 'Products' }} />
-            <Tab.Screen name="SellerSeasons" component={PastSeasons} options={{ title: 'Seasons' }} />
+            <Tab.Screen name="SellerCustomers" component={SellerCustomers} options={{ title: 'Customers' }} />
+            <Tab.Screen name="SellerManage" component={SellerManage} options={{ title: 'Manage' }} />
           </>
         );
 
@@ -89,16 +106,15 @@ const BusinessNavigator: React.FC = () => {
             <Tab.Screen name="StallHistory" component={SessionHistory} options={{ title: 'History' }} />
             <Tab.Screen name="StallSell" component={SellScreen} options={{ title: 'Sell' }} />
             <Tab.Screen name="StallRegulars" component={RegularCustomers} options={{ title: 'Regulars' }} />
+            <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
           </>
         );
 
       case 'freelance':
         return (
           <>
-            <Tab.Screen name="Dashboard" component={BusinessDashboard} options={{ title: 'Home' }} />
-            <Tab.Screen name="Clients" component={ClientList} options={{ title: 'Clients' }} />
-            <Tab.Screen name="LogIncome" component={LogIncome} options={{ title: 'Log' }} />
-            <Tab.Screen name="Reports" component={BusinessReports} options={{ title: 'Reports' }} />
+            <Tab.Screen name="FreelancerHome" component={FreelancerDashboard} options={{ title: 'Home' }} />
+            <Tab.Screen name="FreelancerClients" component={FreelancerClientList} options={{ title: 'Clients' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
           </>
         );
@@ -106,10 +122,7 @@ const BusinessNavigator: React.FC = () => {
       case 'rider':
         return (
           <>
-            <Tab.Screen name="Dashboard" component={BusinessDashboard} options={{ title: 'Home' }} />
-            <Tab.Screen name="Costs" component={RiderCostsScreen} options={{ title: 'Costs' }} />
-            <Tab.Screen name="LogIncome" component={LogIncome} options={{ title: 'Log' }} />
-            <Tab.Screen name="Reports" component={BusinessReports} options={{ title: 'Reports' }} />
+            <Tab.Screen name="OnTheRoadHome" component={OnTheRoadDashboard} options={{ title: 'Home' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
           </>
         );
@@ -117,10 +130,7 @@ const BusinessNavigator: React.FC = () => {
       case 'parttime':
         return (
           <>
-            <Tab.Screen name="Dashboard" component={BusinessDashboard} options={{ title: 'Home' }} />
-            <Tab.Screen name="Streams" component={IncomeStreamsScreen} options={{ title: 'Streams' }} />
-            <Tab.Screen name="LogIncome" component={LogIncome} options={{ title: 'Log' }} />
-            <Tab.Screen name="Reports" component={BusinessReports} options={{ title: 'Reports' }} />
+            <Tab.Screen name="PartTimeHome" component={PartTimeDashboard} options={{ title: 'Home' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
           </>
         );
@@ -128,10 +138,7 @@ const BusinessNavigator: React.FC = () => {
       case 'mixed':
         return (
           <>
-            <Tab.Screen name="Dashboard" component={BusinessDashboard} options={{ title: 'Home' }} />
-            <Tab.Screen name="Streams" component={IncomeStreamsScreen} options={{ title: 'Streams' }} />
-            <Tab.Screen name="LogIncome" component={LogIncome} options={{ title: 'Log' }} />
-            <Tab.Screen name="Reports" component={BusinessReports} options={{ title: 'Reports' }} />
+            <Tab.Screen name="MixedHome" component={MixedDashboard} options={{ title: 'Home' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
           </>
         );
@@ -156,22 +163,20 @@ const BusinessNavigator: React.FC = () => {
         <CustomTabBar
           {...props}
           accentColor={COLORS.business}
-          centerButtonGradient={GRADIENTS.businessHero.colors as [string, string]}
         />
       )}
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color, size }: { color: string; size: number }) =>
           getIcon(route.name, color, size),
         tabBarActiveTintColor: COLORS.business,
-        tabBarInactiveTintColor: COLORS.textTertiary,
+        tabBarInactiveTintColor: CALM.textMuted,
         tabBarShowLabel: false,
         headerStyle: {
-          backgroundColor: COLORS.business,
-          ...SHADOWS.md,
+          backgroundColor: CALM.background,
         },
-        headerTintColor: '#fff',
+        headerTintColor: CALM.textPrimary,
         headerTitleStyle: {
-          fontWeight: TYPOGRAPHY.weight.bold as '700',
+          fontWeight: TYPOGRAPHY.weight.semibold as '600',
           fontSize: TYPOGRAPHY.size.lg,
         },
       })}

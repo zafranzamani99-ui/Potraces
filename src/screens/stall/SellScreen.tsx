@@ -17,7 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
-import Confetti from '../../components/common/Confetti';
+
 import { successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 
@@ -41,7 +41,6 @@ const SellScreen: React.FC = () => {
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showConfetti, setShowConfetti] = useState(false);
 
   // Discount state
   const [discountValue, setDiscountValue] = useState('');
@@ -197,10 +196,8 @@ const SellScreen: React.FC = () => {
       setCart([]);
       setDiscountValue('');
       collapseCart();
-      setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 100);
       successNotification();
-      showToast('Sale recorded!', 'success');
+      showToast('Sale recorded.', 'success');
     },
     [cart, session, addSale, collapseCart, showToast, discountValue, discountType],
   );
@@ -242,7 +239,7 @@ const SellScreen: React.FC = () => {
             onPress={() => navigation.getParent()?.navigate('StallProducts')}
             accessibilityLabel="Go to products management"
           >
-            <Feather name="plus" size={16} color={CALM.accent} />
+            <Feather name="plus" size={16} color={CALM.bronze} />
             <Text style={styles.addProductsText}>manage products</Text>
           </TouchableOpacity>
         </View>
@@ -253,8 +250,6 @@ const SellScreen: React.FC = () => {
   // ─── Main selling UI ────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
-      <Confetti active={showConfetti} />
-
       {/* Session total — full width, sticky top */}
       <View style={styles.sessionHeader}>
         <View style={styles.sessionHeaderRow}>
@@ -388,7 +383,7 @@ const SellScreen: React.FC = () => {
               <Feather
                 name={cartExpanded ? 'chevron-right' : 'chevron-left'}
                 size={18}
-                color={CALM.accent}
+                color={CALM.bronze}
               />
               <Text style={styles.cartTitle}>
                 {cartExpanded ? 'Review Order' : `Cart (${cart.length})`}
@@ -747,7 +742,7 @@ const styles = StyleSheet.create({
   productPrice: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
   productStock: {
     flexDirection: 'row',
@@ -773,7 +768,7 @@ const styles = StyleSheet.create({
     minWidth: 22,
     height: 22,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
@@ -940,7 +935,7 @@ const styles = StyleSheet.create({
   cartItemTotalExpanded: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: CALM.bronze,
     fontVariant: ['tabular-nums'],
   },
 
@@ -997,7 +992,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   discountTypeActive: {
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.md,
   },
   discountInput: {
@@ -1044,7 +1039,7 @@ const styles = StyleSheet.create({
   totalAmount: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: CALM.bronze,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1077,7 +1072,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.sm,
     minHeight: 52,
-    backgroundColor: CALM.accent,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
   },
   qrButtonDisabled: {
@@ -1115,13 +1110,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.accent,
+    borderColor: CALM.bronze,
     minHeight: 44,
   },
   addProductsText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: CALM.bronze,
   },
 });
 

@@ -29,7 +29,7 @@ import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import ProgressBar from '../../components/common/ProgressBar';
 import EmptyState from '../../components/common/EmptyState';
-import Confetti from '../../components/common/Confetti';
+
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import { Goal } from '../../types';
@@ -70,12 +70,12 @@ const MILESTONE_LABELS: Record<number, string> = {
 };
 
 // ── ENCOURAGING MESSAGES ──────────────────────────────────────
-const getEncouragingMessage = (percentage: number): string => {
-  if (percentage >= 100) return 'You did it! Amazing work!';
-  if (percentage >= 75) return 'So close! Keep going!';
-  if (percentage >= 50) return 'Halfway there! Great momentum!';
-  if (percentage >= 25) return 'Great start! Keep it up!';
-  return 'Every ringgit counts!';
+const getObservation = (percentage: number): string => {
+  if (percentage >= 100) return 'goal reached.';
+  if (percentage >= 75) return 'almost there.';
+  if (percentage >= 50) return 'halfway.';
+  if (percentage >= 25) return 'a quarter saved.';
+  return '';
 };
 
 const MAX_GOALS = 10;
@@ -83,8 +83,11 @@ const MAX_GOALS = 10;
 // ── MAIN COMPONENT ────────────────────────────────────────────
 const Goals: React.FC = () => {
   const { showToast } = useToast();
-  const { goals, addGoal, updateGoal, deleteGoal, contributeToGoal } =
-    usePersonalStore() as any;
+  const goals = usePersonalStore((s) => s.goals);
+  const addGoal = usePersonalStore((s) => s.addGoal);
+  const updateGoal = usePersonalStore((s) => s.updateGoal);
+  const deleteGoal = usePersonalStore((s) => s.deleteGoal);
+  const contributeToGoal = usePersonalStore((s) => s.contributeToGoal);
   const currency = useSettingsStore((s) => s.currency);
 
   // ── Add/Edit Goal Modal state ──
@@ -101,9 +104,6 @@ const Goals: React.FC = () => {
   const [contributingGoal, setContributingGoal] = useState<Goal | null>(null);
   const [contributeAmount, setContributeAmount] = useState('');
   const [contributeNote, setContributeNote] = useState('');
-
-  // ── Confetti state ──
-  const [showConfetti, setShowConfetti] = useState(false);
 
   // ── Derived data ──
   const goalsList: Goal[] = goals || [];
@@ -183,7 +183,7 @@ const Goals: React.FC = () => {
         icon: goalIcon,
         color: goalColor,
       });
-      showToast('Goal updated!', 'success');
+      showToast('goal updated.', 'success');
     } else {
       addGoal({
         name: goalName.trim(),
@@ -193,7 +193,7 @@ const Goals: React.FC = () => {
         icon: goalIcon,
         color: goalColor,
       });
-      showToast('Goal created! Let the journey begin!', 'success');
+      showToast('goal created.', 'success');
     }
 
     setGoalModalVisible(false);
@@ -277,23 +277,22 @@ const Goals: React.FC = () => {
       (pct) => newPercentage >= pct
     ).length;
 
-    // If a new milestone was crossed, celebrate!
+    // Calm milestone notification — no confetti, no celebration
     if (milestonesAfter > milestonesBefore) {
-      setShowConfetti(true);
       const crossedPct = [25, 50, 75, 100].find(
         (pct) =>
           newPercentage >= pct &&
           contributingGoal.currentAmount / contributingGoal.targetAmount * 100 < pct
       );
       if (crossedPct === 100) {
-        showToast('Congratulations! Goal reached!', 'success');
+        showToast('Goal reached.', 'success');
       } else if (crossedPct) {
-        showToast(`Milestone reached: ${crossedPct}%! ${getEncouragingMessage(crossedPct)}`, 'success');
+        showToast(`${crossedPct}% milestone.`, 'success');
       } else {
-        showToast('Contribution added!', 'success');
+        showToast('Contribution added.', 'success');
       }
     } else {
-      showToast('Contribution added! Keep going!', 'success');
+      showToast('Contribution added.', 'success');
     }
 
     setContributeModalVisible(false);
@@ -357,19 +356,6 @@ const Goals: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Confetti overlay */}
-      <Confetti active={showConfetti} />
-      {showConfetti && (
-        // Auto-dismiss confetti after animation
-        <View
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-          onLayout={() => {
-            setTimeout(() => setShowConfetti(false), 3000);
-          }}
-        />
-      )}
-
       <ModeToggle />
 
       <ScrollView
@@ -506,11 +492,11 @@ const Goals: React.FC = () => {
                   </View>
                 </View>
 
-                {/* ── Encouraging message ── */}
+                {/* ── Calm observation ── */}
                 <Text style={styles.encouragingText}>
                   {isCompleted
-                    ? 'You did it! Amazing work!'
-                    : `You're ${percentage.toFixed(0)}% there! ${getEncouragingMessage(percentage)}`}
+                    ? 'goal reached.'
+                    : `${percentage.toFixed(0)}% — ${getObservation(percentage)}`}
                 </Text>
 
                 {/* ── Progress Bar ── */}
@@ -603,7 +589,7 @@ const Goals: React.FC = () => {
       {/* ── Add / Edit Goal Modal ── */}
       <Modal
         visible={goalModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={closeGoalModal}
       >
@@ -766,7 +752,7 @@ const Goals: React.FC = () => {
       {/* ── Contribute Modal ── */}
       <Modal
         visible={contributeModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={closeContributeModal}
       >
@@ -872,7 +858,7 @@ const Goals: React.FC = () => {
                         )}
                         {newPct >= 100 && (
                           <Text style={styles.contributePreviewCelebrate}>
-                            Goal will be reached!
+                            Goal will be reached.
                           </Text>
                         )}
                       </>
@@ -924,7 +910,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING.lg,
+    padding: SPACING['2xl'],
     paddingBottom: 80,
   },
 
