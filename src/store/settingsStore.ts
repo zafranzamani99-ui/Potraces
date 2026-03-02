@@ -83,6 +83,7 @@ export const useSettingsStore = create<SettingsState>()(
           orders: [],
           seasons: [],
           ingredientCosts: [],
+          customUnits: [],
         });
 
         useCategoryStore.setState({

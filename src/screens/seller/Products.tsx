@@ -10,14 +10,18 @@ import {
   Switch,
   Alert,
   Animated,
+  Keyboard,
+  Pressable,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { SellerProduct, IngredientCost } from '../../types';
 
-const UNIT_OPTIONS = ['tin', 'bekas', 'balang', 'pack', 'piece', 'kotak', 'biji', 'keping'];
+const DEFAULT_UNITS = ['tin', 'bekas', 'balang', 'pack', 'piece', 'kotak', 'biji', 'keping'];
 
 // Animated product card wrapper with stagger fade-in
 const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }> = ({
@@ -54,8 +58,15 @@ const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }
 const Products: React.FC = () => {
   const { products, ingredientCosts, addProduct, updateProduct, deleteProduct, addIngredientCost } =
     useSellerStore();
+  const customUnits = useSellerStore((s) => s.customUnits);
   const activeSeason = useSellerStore((s) => s.getActiveSeason());
   const currency = useSettingsStore((s) => s.currency);
+  const navigation = useNavigation<any>();
+
+  const allUnits = useMemo(
+    () => [...DEFAULT_UNITS, ...customUnits],
+    [customUnits]
+  );
 
   const [showAdd, setShowAdd] = useState(false);
   const [showCostModal, setShowCostModal] = useState<string | null>(null);
@@ -289,129 +300,158 @@ const Products: React.FC = () => {
 
       {/* Add product modal */}
       <Modal visible={showAdd} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>new product</Text>
+        <Pressable style={styles.modalOverlay} onPress={Keyboard.dismiss}>
+          <KeyboardAwareScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.modalTitle}>new product</Text>
 
-            <TextInput
-              style={styles.modalInput}
-              value={newName}
-              onChangeText={setNewName}
-              placeholder="e.g. semperit kuning"
-              placeholderTextColor={CALM.textSecondary}
-              autoFocus
-            />
+              <TextInput
+                style={styles.modalInput}
+                value={newName}
+                onChangeText={setNewName}
+                placeholder="e.g. semperit kuning"
+                placeholderTextColor={CALM.textSecondary}
+                autoFocus
+              />
 
-            <View style={styles.modalRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalLabel}>price per unit</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={newPrice}
-                  onChangeText={setNewPrice}
-                  placeholder="0.00"
-                  placeholderTextColor={CALM.textSecondary}
-                  keyboardType="decimal-pad"
-                />
+              <View style={styles.modalRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalLabel}>price per unit</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={newPrice}
+                    onChangeText={setNewPrice}
+                    placeholder="0.00"
+                    placeholderTextColor={CALM.textSecondary}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalLabel}>cost per unit (optional)</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={newCostPerUnit}
+                    onChangeText={setNewCostPerUnit}
+                    placeholder="0.00"
+                    placeholderTextColor={CALM.textSecondary}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalLabel}>cost per unit (optional)</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={newCostPerUnit}
-                  onChangeText={setNewCostPerUnit}
-                  placeholder="0.00"
-                  placeholderTextColor={CALM.textSecondary}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-            </View>
 
-            <Text style={styles.modalLabel}>unit</Text>
-            <View style={styles.unitPicker}>
-              {UNIT_OPTIONS.map((u) => (
+              <Text style={styles.modalLabel}>unit</Text>
+              <View style={styles.unitPicker}>
+                {allUnits.map((u) => (
+                  <TouchableOpacity
+                    key={u}
+                    style={[styles.unitChip, newUnit === u && styles.unitChipActive]}
+                    activeOpacity={0.7}
+                    onPress={() => setNewUnit(u)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select unit: ${u}`}
+                  >
+                    <Text style={[styles.unitChipText, newUnit === u && styles.unitChipTextActive]}>
+                      {u}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={styles.customUnitLink}
+                onPress={() => {
+                  setShowAdd(false);
+                  navigation.getParent()?.navigate('Settings');
+                }}
+                accessibilityRole="link"
+                accessibilityLabel="Add custom units in Settings"
+              >
+                <Text style={styles.customUnitLinkText}>
+                  Need a different unit? Add custom units in Settings
+                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.modalActions}>
                 <TouchableOpacity
-                  key={u}
-                  style={[styles.unitChip, newUnit === u && styles.unitChipActive]}
+                  onPress={() => setShowAdd(false)}
+                  style={styles.modalCancel}
                   activeOpacity={0.7}
-                  onPress={() => setNewUnit(u)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Select unit: ${u}`}
+                  accessibilityLabel="Cancel"
                 >
-                  <Text style={[styles.unitChipText, newUnit === u && styles.unitChipTextActive]}>
-                    {u}
-                  </Text>
+                  <Text style={styles.modalCancelText}>cancel</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => setShowAdd(false)}
-                style={styles.modalCancel}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-              >
-                <Text style={styles.modalCancelText}>cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleAddProduct}
-                style={styles.modalConfirm}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Add product"
-              >
-                <Text style={styles.modalConfirmText}>add</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+                <TouchableOpacity
+                  onPress={handleAddProduct}
+                  style={styles.modalConfirm}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add product"
+                >
+                  <Text style={styles.modalConfirmText}>add</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAwareScrollView>
+        </Pressable>
       </Modal>
 
       {/* Log cost modal */}
       <Modal visible={!!showCostModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>log ingredient cost</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={costDescription}
-              onChangeText={setCostDescription}
-              placeholder="e.g. tepung, gula, mentega"
-              placeholderTextColor={CALM.textSecondary}
-              autoFocus
-            />
-            <TextInput
-              style={styles.modalInput}
-              value={costAmount}
-              onChangeText={setCostAmount}
-              placeholder="amount (RM)"
-              placeholderTextColor={CALM.textSecondary}
-              keyboardType="decimal-pad"
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => setShowCostModal(null)}
-                style={styles.modalCancel}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-              >
-                <Text style={styles.modalCancelText}>cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleAddCost}
-                style={styles.modalConfirm}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Log cost"
-              >
-                <Text style={styles.modalConfirmText}>log</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+        <Pressable style={styles.modalOverlay} onPress={Keyboard.dismiss}>
+          <KeyboardAwareScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.modalTitle}>log ingredient cost</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={costDescription}
+                onChangeText={setCostDescription}
+                placeholder="e.g. tepung, gula, mentega"
+                placeholderTextColor={CALM.textSecondary}
+                autoFocus
+              />
+              <TextInput
+                style={styles.modalInput}
+                value={costAmount}
+                onChangeText={setCostAmount}
+                placeholder="amount (RM)"
+                placeholderTextColor={CALM.textSecondary}
+                keyboardType="decimal-pad"
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  onPress={() => setShowCostModal(null)}
+                  style={styles.modalCancel}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                >
+                  <Text style={styles.modalCancelText}>cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleAddCost}
+                  style={styles.modalConfirm}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Log cost"
+                >
+                  <Text style={styles.modalConfirmText}>log</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAwareScrollView>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -660,10 +700,23 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium, // 500
   },
 
+  // -- Custom unit link -----------------------------------------------
+  customUnitLink: {
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  customUnitLinkText: {
+    fontSize: TYPOGRAPHY.size.xs,       // 11
+    color: CALM.bronze,                 // #B2780A
+  },
+
   // -- Modal --------------------------------------------------------
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalScrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: SPACING['2xl'],           // 24pt

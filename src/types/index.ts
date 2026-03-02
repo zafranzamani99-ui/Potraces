@@ -163,6 +163,7 @@ export interface SellerState {
   seasons: Season[];
   ingredientCosts: IngredientCost[];
   sellerCustomers: SellerCustomer[];
+  customUnits: string[];
 
   addProduct: (product: Omit<SellerProduct, 'id' | 'totalSold' | 'createdAt' | 'updatedAt'>) => void;
   updateProduct: (id: string, updates: Partial<SellerProduct>) => void;
@@ -185,6 +186,9 @@ export interface SellerState {
   addSellerCustomer: (customer: Omit<SellerCustomer, 'id' | 'createdAt'>) => void;
   updateSellerCustomer: (id: string, updates: Partial<SellerCustomer>) => void;
   deleteSellerCustomer: (id: string) => void;
+
+  addCustomUnit: (unit: string) => void;
+  deleteCustomUnit: (unit: string) => void;
 
   getSeasonOrders: (seasonId: string) => SellerOrder[];
   getSeasonCosts: (seasonId: string) => IngredientCost[];

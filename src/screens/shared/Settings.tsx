@@ -26,6 +26,7 @@ import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import CategoryManager from '../../components/common/CategoryManager';
+import UnitManager from '../../components/common/UnitManager';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 
@@ -46,6 +47,7 @@ const Settings: React.FC = () => {
 
   const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
   const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment'>('expense');
+  const [unitManagerVisible, setUnitManagerVisible] = useState(false);
 
   const {
     userName,
@@ -360,6 +362,23 @@ const Settings: React.FC = () => {
             </View>
             <Feather name="chevron-right" size={18} color={CALM.neutral} />
           </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => {
+              lightTap();
+              setUnitManagerVisible(true);
+            }}
+            activeOpacity={0.6}
+          >
+            <View style={styles.settingLabelRow}>
+              <Feather name="box" size={18} color={CALM.textSecondary} />
+              <Text style={styles.settingLabel}>Custom Units</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={CALM.neutral} />
+          </TouchableOpacity>
         </Card>
 
         <CategoryManager
@@ -367,6 +386,11 @@ const Settings: React.FC = () => {
           onClose={() => setCategoryManagerVisible(false)}
           type={categoryManagerType}
           mode={mode}
+        />
+
+        <UnitManager
+          visible={unitManagerVisible}
+          onClose={() => setUnitManagerVisible(false)}
         />
 
         {/* Subscription */}

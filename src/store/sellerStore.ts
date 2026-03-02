@@ -11,6 +11,7 @@ export const useSellerStore = create<SellerState>()(
       seasons: [],
       ingredientCosts: [],
       sellerCustomers: [],
+      customUnits: [],
 
       // ─── Products ───────────────────────────────────────
       addProduct: (product) =>
@@ -161,6 +162,19 @@ export const useSellerStore = create<SellerState>()(
           sellerCustomers: state.sellerCustomers.filter((c) => c.id !== id),
         })),
 
+      // ─── Custom Units ─────────────────────────────────
+      addCustomUnit: (unit) =>
+        set((state) => {
+          const normalized = unit.trim().toLowerCase();
+          if (!normalized || state.customUnits.includes(normalized)) return state;
+          return { customUnits: [...state.customUnits, normalized] };
+        }),
+
+      deleteCustomUnit: (unit) =>
+        set((state) => ({
+          customUnits: state.customUnits.filter((u) => u !== unit),
+        })),
+
       // ─── Derived Data ──────────────────────────────────
       getSeasonOrders: (seasonId) => {
         return get().orders.filter((o) => o.seasonId === seasonId);
@@ -218,6 +232,7 @@ export const useSellerStore = create<SellerState>()(
           ...c,
           createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : c.createdAt,
         })),
+        customUnits: state.customUnits,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -247,6 +262,7 @@ export const useSellerStore = create<SellerState>()(
             ...c,
             createdAt: new Date(c.createdAt),
           }));
+          state.customUnits = state.customUnits || [];
         }
       },
     }
