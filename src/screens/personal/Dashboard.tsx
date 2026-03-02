@@ -33,6 +33,8 @@ import WalletPicker from '../../components/common/WalletPicker';
 import WeekBar from '../../components/common/WeekBar';
 import CollapsibleSection from '../../components/common/CollapsibleSection';
 import { useWalletStore } from '../../store/walletStore';
+import { useSellerStore } from '../../store/sellerStore';
+import { useBusinessStore } from '../../store/businessStore';
 import { useToast } from '../../context/ToastContext';
 import { Transaction } from '../../types';
 import { lightTap } from '../../services/haptics';
@@ -60,6 +62,8 @@ const QUICK_ACTIONS = [
 const PersonalDashboard: React.FC = () => {
   const { showToast } = useToast();
   const { transactions, subscriptions, budgets, updateTransaction, deleteTransaction } = usePersonalStore();
+  const unmarkOrdersTransferred = useSellerStore((s) => s.unmarkOrdersTransferred);
+  const deleteTransfer = useBusinessStore((s) => s.deleteTransfer);
   const { debts } = useDebtStore();
   const currency = useSettingsStore(state => state.currency);
   const expenseCategories = useCategories('expense');
@@ -285,9 +289,14 @@ const PersonalDashboard: React.FC = () => {
   const handleDeleteTransaction = () => {
     if (!editingTransaction) return;
 
+    const isTransferLinked = editingTransaction.id.startsWith('transfer-');
+    const transferId = isTransferLinked ? editingTransaction.id.replace('transfer-', '') : null;
+
     Alert.alert(
       'Delete Transaction',
-      'Are you sure you want to delete this transaction?',
+      isTransferLinked
+        ? 'This income was transferred from seller mode. Deleting it will allow you to re-transfer those orders.\n\nDelete anyway?'
+        : 'Are you sure you want to delete this transaction?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -300,6 +309,10 @@ const PersonalDashboard: React.FC = () => {
               } else {
                 deductFromWallet(editingTransaction.walletId, editingTransaction.amount);
               }
+            }
+            if (isTransferLinked && transferId) {
+              unmarkOrdersTransferred(transferId);
+              deleteTransfer(transferId);
             }
             deleteTransaction(editingTransaction.id);
             setEditModalVisible(false);

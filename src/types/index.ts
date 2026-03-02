@@ -125,6 +125,8 @@ export interface SellerOrder {
   date: Date;
   deliveryDate?: Date;
   seasonId?: string;
+  transferredToPersonal?: boolean;
+  transferId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -136,6 +138,7 @@ export interface Season {
   endDate?: Date;
   isActive: boolean;
   note?: string;
+  costBudget?: number;
   createdAt: Date;
 }
 
@@ -146,6 +149,8 @@ export interface IngredientCost {
   amount: number;
   date: Date;
   seasonId?: string;
+  syncedToPersonal?: boolean;
+  personalTransactionId?: string;
 }
 
 export interface SellerCustomer {
@@ -175,13 +180,18 @@ export interface SellerState {
   markOrderPaid: (id: string) => void;
   markOrdersPaid: (ids: string[]) => void;
   deleteOrder: (id: string) => void;
+  markOrdersTransferred: (ids: string[], transferId: string) => void;
+  unmarkOrdersTransferred: (transferId: string) => void;
 
   addSeason: (season: Omit<Season, 'id' | 'createdAt'>) => void;
   endSeason: (id: string) => void;
   getActiveSeason: () => Season | null;
+  updateSeasonBudget: (seasonId: string, budget: number | undefined) => void;
 
-  addIngredientCost: (cost: Omit<IngredientCost, 'id'>) => void;
+  addIngredientCost: (cost: Omit<IngredientCost, 'id'>) => string;
+  updateIngredientCost: (id: string, updates: Partial<IngredientCost>) => void;
   deleteIngredientCost: (id: string) => void;
+  markCostSynced: (id: string, personalTransactionId: string) => void;
 
   addSellerCustomer: (customer: Omit<SellerCustomer, 'id' | 'createdAt'>) => void;
   updateSellerCustomer: (id: string, updates: Partial<SellerCustomer>) => void;
@@ -189,6 +199,12 @@ export interface SellerState {
 
   addCustomUnit: (unit: string) => void;
   deleteCustomUnit: (unit: string) => void;
+  renameCustomUnit: (oldName: string, newName: string) => void;
+  hiddenUnits: string[];
+  hideUnit: (unit: string) => void;
+  unhideUnit: (unit: string) => void;
+  unitOrder: string[];
+  setUnitOrder: (order: string[]) => void;
 
   getSeasonOrders: (seasonId: string) => SellerOrder[];
   getSeasonCosts: (seasonId: string) => IngredientCost[];
@@ -670,7 +686,7 @@ export interface PersonalState {
   subscriptions: Subscription[];
   budgets: Budget[];
   goals: Goal[];
-  addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>) => string;
   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
   addSubscription: (subscription: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt'>) => void;
@@ -712,6 +728,7 @@ export interface BusinessState {
   addRiderCost: (cost: Omit<RiderCost, 'id'>) => void;
   addIncomeStream: (stream: Omit<IncomeStream, 'id'>) => void;
   addTransfer: (transfer: Transfer) => void;
+  deleteTransfer: (id: string) => void;
   getTotalTransferredToPersonal: (month: Date) => number;
 }
 

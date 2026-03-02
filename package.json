@@ -18,7 +18,7 @@
     "@react-navigation/stack": "^7.4.8",
     "date-fns": "^3.6.0",
     "expo": "~54.0.0",
-    "expo-av": "~16.0.8",
+    "expo-audio": "~1.1.1",
     "expo-blur": "^15.0.8",
     "expo-clipboard": "~8.0.8",
     "expo-contacts": "~15.0.11",

@@ -12,18 +12,39 @@ import {
   Animated,
   Keyboard,
   Pressable,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+  PanResponder,
+  Dimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { format } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
+import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useToast } from '../../context/ToastContext';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { SellerProduct, IngredientCost } from '../../types';
+import {
+  lightTap,
+  mediumTap,
+  selectionChanged,
+  successNotification,
+  warningNotification,
+} from '../../services/haptics';
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const DEFAULT_UNITS = ['tin', 'bekas', 'balang', 'pack', 'piece', 'kotak', 'biji', 'keping'];
+const SWIPE_THRESHOLD = 80;
 
-// Animated product card wrapper with stagger fade-in
+// ─── Animated product card wrapper ─────────────────────────────
 const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }> = ({
   index,
   children,
@@ -55,21 +76,38 @@ const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }
   );
 };
 
+// ─── Main component ────────────────────────────────────────────
 const Products: React.FC = () => {
-  const { products, ingredientCosts, addProduct, updateProduct, deleteProduct, addIngredientCost } =
+  const { products, ingredientCosts, addProduct, updateProduct, deleteProduct, addIngredientCost, updateIngredientCost, deleteIngredientCost, markCostSynced } =
     useSellerStore();
+  const addTransaction = usePersonalStore((s) => s.addTransaction);
   const customUnits = useSellerStore((s) => s.customUnits);
   const activeSeason = useSellerStore((s) => s.getActiveSeason());
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
+  const { showToast } = useToast();
 
-  const allUnits = useMemo(
-    () => [...DEFAULT_UNITS, ...customUnits],
-    [customUnits]
-  );
+  const unitOrder = useSellerStore((s) => s.unitOrder);
+  const hiddenUnits = useSellerStore((s) => s.hiddenUnits);
 
+  const allUnits = useMemo(() => {
+    const combined = [...DEFAULT_UNITS, ...customUnits].filter(
+      (u) => !hiddenUnits.includes(u)
+    );
+    if (unitOrder.length === 0) return combined;
+    const ordered = unitOrder.filter((u) => combined.includes(u));
+    const remaining = combined.filter((u) => !unitOrder.includes(u));
+    return [...ordered, ...remaining];
+  }, [customUnits, unitOrder, hiddenUnits]);
+
+  // ─── Modal state ───────────────────────────────────────────
   const [showAdd, setShowAdd] = useState(false);
-  const [showCostModal, setShowCostModal] = useState<string | null>(null);
+  const [showCostModal, setShowCostModal] = useState(false);
+  const [editingCostId, setEditingCostId] = useState<string | null>(null);
+  const [editingProduct, setEditingProduct] = useState<SellerProduct | null>(null);
+  const [syncToPersonal, setSyncToPersonal] = useState(false);
+
+  // ─── Form state (shared between add & edit) ────────────────
   const [newName, setNewName] = useState('');
   const [newPrice, setNewPrice] = useState('');
   const [newUnit, setNewUnit] = useState('tin');
@@ -77,8 +115,177 @@ const Products: React.FC = () => {
   const [costDescription, setCostDescription] = useState('');
   const [costAmount, setCostAmount] = useState('');
 
-  const handleAddProduct = () => {
-    if (!newName.trim() || !newPrice.trim()) return;
+  // ─── Focus state ───────────────────────────────────────────
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  // ─── Unit picker modal ─────────────────────────────────────
+  const [showUnitPicker, setShowUnitPicker] = useState(false);
+
+  // ─── Remember last used unit (session only) ────────────────
+  const lastUsedUnitRef = useRef('tin');
+
+  // ─── Validation state ──────────────────────────────────────
+  const [nameError, setNameError] = useState(false);
+  const [priceError, setPriceError] = useState(false);
+  const [costDescError, setCostDescError] = useState(false);
+  const [costAmtError, setCostAmtError] = useState(false);
+  const nameShakeAnim = useRef(new Animated.Value(0)).current;
+  const priceShakeAnim = useRef(new Animated.Value(0)).current;
+  const costDescShakeAnim = useRef(new Animated.Value(0)).current;
+  const costAmtShakeAnim = useRef(new Animated.Value(0)).current;
+
+  // ─── Quick add mode ────────────────────────────────────────
+  const [justAdded, setJustAdded] = useState(false);
+  const addCheckAnim = useRef(new Animated.Value(0)).current;
+
+  // ─── Swipe to close ───────────────────────────────────────
+  const modalTranslateY = useRef(new Animated.Value(0)).current;
+  const modalOpacity = useRef(new Animated.Value(1)).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 10 && Math.abs(gs.dy) > Math.abs(gs.dx),
+      onPanResponderMove: (_, gs) => {
+        if (gs.dy > 0) {
+          modalTranslateY.setValue(gs.dy);
+          modalOpacity.setValue(1 - gs.dy / 400);
+        }
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > SWIPE_THRESHOLD) {
+          Animated.parallel([
+            Animated.timing(modalTranslateY, {
+              toValue: Dimensions.get('window').height,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+            Animated.timing(modalOpacity, {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            setShowAdd(false);
+            setEditingProduct(null);
+            modalTranslateY.setValue(0);
+            modalOpacity.setValue(1);
+          });
+        } else {
+          Animated.spring(modalTranslateY, {
+            toValue: 0,
+            friction: 8,
+            useNativeDriver: true,
+          }).start();
+          Animated.spring(modalOpacity, {
+            toValue: 1,
+            friction: 8,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  // ─── Helpers ───────────────────────────────────────────────
+
+  const shakeField = (anim: Animated.Value) => {
+    anim.setValue(0);
+    Animated.sequence([
+      Animated.timing(anim, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: -10, duration: 50, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: 6, duration: 50, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: -6, duration: 50, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: 0, duration: 50, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const resetForm = useCallback(() => {
+    setNewName('');
+    setNewPrice('');
+    setNewCostPerUnit('');
+    setNewUnit(lastUsedUnitRef.current);
+    setNameError(false);
+    setPriceError(false);
+    setJustAdded(false);
+    setFocusedField(null);
+  }, []);
+
+  const openAddModal = useCallback(() => {
+    resetForm();
+    setEditingProduct(null);
+    modalTranslateY.setValue(0);
+    modalOpacity.setValue(1);
+    setShowAdd(true);
+    lightTap();
+  }, [resetForm]);
+
+  const openEditModal = useCallback((product: SellerProduct) => {
+    setEditingProduct(product);
+    setNewName(product.name);
+    setNewPrice(product.pricePerUnit.toString());
+    setNewCostPerUnit(product.costPerUnit ? product.costPerUnit.toString() : '');
+    setNewUnit(product.unit);
+    setNameError(false);
+    setPriceError(false);
+    setJustAdded(false);
+    setFocusedField(null);
+    modalTranslateY.setValue(0);
+    modalOpacity.setValue(1);
+    setShowAdd(true);
+    mediumTap();
+  }, []);
+
+  const closeAddModal = useCallback(() => {
+    setShowAdd(false);
+    setEditingProduct(null);
+    resetForm();
+    lightTap();
+  }, [resetForm]);
+
+  // ─── Duplicate detection ───────────────────────────────────
+  const duplicateWarning = useMemo(() => {
+    const trimmed = newName.trim().toLowerCase();
+    if (!trimmed) return null;
+    const match = products.find(
+      (p) =>
+        p.name.toLowerCase() === trimmed &&
+        (!editingProduct || p.id !== editingProduct.id)
+    );
+    return match ? match.name : null;
+  }, [newName, products, editingProduct]);
+
+  // ─── Profit preview with margin % ─────────────────────────
+  const profitPreview = useMemo(() => {
+    const price = parseFloat(newPrice);
+    const cost = parseFloat(newCostPerUnit);
+    if (!isNaN(price) && !isNaN(cost) && price > 0 && cost > 0) {
+      const kept = price - cost;
+      const margin = Math.round((kept / price) * 100);
+      return { kept: kept.toFixed(2), margin };
+    }
+    return null;
+  }, [newPrice, newCostPerUnit]);
+
+  // ─── Handlers ──────────────────────────────────────────────
+
+  const handleAddProduct = useCallback(() => {
+    const hasNameErr = !newName.trim();
+    const hasPriceErr = !newPrice.trim();
+
+    setNameError(hasNameErr);
+    setPriceError(hasPriceErr);
+
+    if (hasNameErr) shakeField(nameShakeAnim);
+    if (hasPriceErr) shakeField(priceShakeAnim);
+
+    if (hasNameErr || hasPriceErr) {
+      warningNotification();
+      showToast('please fill in product name and price', 'error');
+      return;
+    }
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     addProduct({
       name: newName.trim(),
       pricePerUnit: parseFloat(newPrice) || 0,
@@ -86,80 +293,200 @@ const Products: React.FC = () => {
       unit: newUnit,
       isActive: true,
     });
+    successNotification();
+
+    // Remember last used unit
+    lastUsedUnitRef.current = newUnit;
+
+    // Quick add mode: show success, reset form, keep modal open
+    setJustAdded(true);
+    addCheckAnim.setValue(0);
+    Animated.spring(addCheckAnim, {
+      toValue: 1,
+      friction: 4,
+      tension: 80,
+      useNativeDriver: true,
+    }).start();
+
+    // Reset form for next product
     setNewName('');
     setNewPrice('');
     setNewCostPerUnit('');
-    setNewUnit('tin');
-    setShowAdd(false);
-  };
+    // Keep last used unit
+    setNameError(false);
+    setPriceError(false);
+  }, [newName, newPrice, newCostPerUnit, newUnit, addProduct, showToast]);
 
-  const handleAddCost = () => {
-    if (!costDescription.trim() || !costAmount.trim() || !showCostModal) return;
-    addIngredientCost({
-      productId: showCostModal,
-      description: costDescription.trim(),
-      amount: parseFloat(costAmount) || 0,
-      date: new Date(),
-      seasonId: activeSeason?.id,
+  const handleSaveEdit = useCallback(() => {
+    if (!editingProduct) return;
+    const hasNameErr = !newName.trim();
+    const hasPriceErr = !newPrice.trim();
+
+    setNameError(hasNameErr);
+    setPriceError(hasPriceErr);
+
+    if (hasNameErr) shakeField(nameShakeAnim);
+    if (hasPriceErr) shakeField(priceShakeAnim);
+
+    if (hasNameErr || hasPriceErr) {
+      warningNotification();
+      showToast('please fill in product name and price', 'error');
+      return;
+    }
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    updateProduct(editingProduct.id, {
+      name: newName.trim(),
+      pricePerUnit: parseFloat(newPrice) || 0,
+      costPerUnit: newCostPerUnit ? parseFloat(newCostPerUnit) : undefined,
+      unit: newUnit,
     });
+    successNotification();
+    showToast('product updated', 'success');
+    closeAddModal();
+  }, [editingProduct, newName, newPrice, newCostPerUnit, newUnit, updateProduct, showToast, closeAddModal]);
+
+  const handleAddCost = useCallback(() => {
+    const hasDescErr = !costDescription.trim();
+    const hasAmtErr = !costAmount.trim();
+
+    setCostDescError(hasDescErr);
+    setCostAmtError(hasAmtErr);
+
+    if (hasDescErr) shakeField(costDescShakeAnim);
+    if (hasAmtErr) shakeField(costAmtShakeAnim);
+
+    if (hasDescErr || hasAmtErr) {
+      warningNotification();
+      showToast('please fill in description and amount', 'error');
+      return;
+    }
+
+    const amount = parseFloat(costAmount) || 0;
+    const desc = costDescription.trim();
+
+    if (editingCostId) {
+      updateIngredientCost(editingCostId, { description: desc, amount });
+      successNotification();
+      showToast('cost updated', 'success');
+    } else {
+      // Create personal expense first (if toggled) so we get the real ID
+      let personalTxId: string | undefined;
+      if (syncToPersonal) {
+        personalTxId = addTransaction({
+          amount,
+          category: 'business cost',
+          description: `seller: ${desc}`,
+          date: new Date(),
+          type: 'expense',
+          mode: 'personal',
+          inputMethod: 'manual',
+        });
+      }
+
+      const costId = addIngredientCost({
+        description: desc,
+        amount,
+        date: new Date(),
+        seasonId: activeSeason?.id,
+      });
+
+      if (syncToPersonal && personalTxId) {
+        markCostSynced(costId, personalTxId);
+      }
+
+      successNotification();
+      showToast(syncToPersonal ? 'cost logged + personal expense' : 'cost logged', 'success');
+    }
     setCostDescription('');
     setCostAmount('');
-    setShowCostModal(null);
-  };
+    setCostDescError(false);
+    setCostAmtError(false);
+    setEditingCostId(null);
+    setSyncToPersonal(false);
+    setShowCostModal(false);
+  }, [costDescription, costAmount, editingCostId, syncToPersonal, addIngredientCost, updateIngredientCost, addTransaction, markCostSynced, activeSeason, showToast]);
 
-  const handleToggleActive = (product: SellerProduct) => {
+  const handleToggleActive = useCallback((product: SellerProduct) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    lightTap();
     updateProduct(product.id, { isActive: !product.isActive });
-  };
+  }, [updateProduct]);
 
-  const handleDelete = (product: SellerProduct) => {
+  const handleDelete = useCallback((product: SellerProduct) => {
+    warningNotification();
     Alert.alert(
       'Remove product?',
       `Remove ${product.name}? Orders that already have this product won't be affected.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: () => deleteProduct(product.id) },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            deleteProduct(product.id);
+          },
+        },
       ]
     );
-  };
+  }, [deleteProduct]);
 
-  // Calculate "kept per unit" for each product
-  const productStats = useMemo(() => {
-    const stats: Record<string, { totalCosts: number }> = {};
-    for (const cost of ingredientCosts) {
-      if (cost.productId) {
-        if (!stats[cost.productId]) stats[cost.productId] = { totalCosts: 0 };
-        stats[cost.productId].totalCosts += cost.amount;
-      }
+  const handleOpenCostModal = useCallback((costToEdit?: IngredientCost) => {
+    lightTap();
+    if (costToEdit) {
+      setEditingCostId(costToEdit.id);
+      setCostDescription(costToEdit.description);
+      setCostAmount(costToEdit.amount.toString());
+    } else {
+      setEditingCostId(null);
+      setCostDescription('');
+      setCostAmount('');
     }
-    return stats;
-  }, [ingredientCosts]);
+    setCostDescError(false);
+    setCostAmtError(false);
+    setShowCostModal(true);
+  }, []);
 
+  // Clear errors on typing
+  useEffect(() => { if (newName) setNameError(false); }, [newName]);
+  useEffect(() => { if (newPrice) setPriceError(false); }, [newPrice]);
+  useEffect(() => { if (costDescription) setCostDescError(false); }, [costDescription]);
+  useEffect(() => { if (costAmount) setCostAmtError(false); }, [costAmount]);
+
+  // ─── Input border style helper ─────────────────────────────
+  const getInputStyle = (field: string, hasError: boolean) => [
+    styles.modalInput,
+    focusedField === field && styles.modalInputFocused,
+    hasError && styles.modalInputError,
+  ];
+
+  // ─── Render product card ───────────────────────────────────
   const renderProduct = useCallback(
     ({ item, index }: { item: SellerProduct; index: number }) => {
-      const costs = productStats[item.id]?.totalCosts || 0;
       const keptPerUnit = item.costPerUnit
         ? item.pricePerUnit - item.costPerUnit
         : null;
 
-      // Build compact stats string with pipe separators
       const statParts: string[] = [];
       statParts.push(`sold ${item.totalSold} ${item.unit}`);
       if (keptPerUnit !== null) {
         statParts.push(`kept ${currency} ${keptPerUnit.toFixed(2)}/${item.unit}`);
       }
-      if (costs > 0) {
-        statParts.push(`costs ${currency} ${costs.toFixed(2)}`);
-      }
 
       return (
         <AnimatedProductCard index={index}>
-          <View style={[styles.productCard, !item.isActive && styles.productCardInactive]}>
-            {/* Top row: icon + info + switch */}
+          <TouchableOpacity
+            style={[styles.productCard, !item.isActive && styles.productCardInactive]}
+            activeOpacity={0.8}
+            onLongPress={() => openEditModal(item)}
+            delayLongPress={400}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.name}. Hold to edit.`}
+            accessibilityHint="Long press to edit product details"
+          >
             <View style={styles.productHeader}>
-              <View
-                style={styles.productIconArea}
-                accessibilityLabel={`Product: ${item.name}`}
-              >
+              <View style={styles.productIconArea}>
                 <Feather name="package" size={20} color={CALM.bronze} />
               </View>
               <View style={styles.productInfo}>
@@ -178,24 +505,22 @@ const Products: React.FC = () => {
               />
             </View>
 
-            {/* Compact stats row with pipe separators */}
             <View style={styles.productStats}>
               <Text style={styles.statText}>
                 {statParts.join('  \u00B7  ')}
               </Text>
             </View>
 
-            {/* Actions: "log cost" pill with icon + icon-only "remove" */}
             <View style={styles.productActions}>
               <TouchableOpacity
-                style={styles.logCostButton}
+                style={styles.editButton}
                 activeOpacity={0.7}
-                onPress={() => setShowCostModal(item.id)}
+                onPress={() => openEditModal(item)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"
-                accessibilityLabel={`Log cost for ${item.name}`}
+                accessibilityLabel={`Edit ${item.name}`}
               >
-                <Feather name="plus-circle" size={14} color="#fff" />
-                <Text style={styles.logCostButtonText}>log cost</Text>
+                <Feather name="edit-2" size={14} color={CALM.textMuted} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.removeButton}
@@ -204,35 +529,327 @@ const Products: React.FC = () => {
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Remove ${item.name}`}
-                accessibilityHint="Deletes this product from your list"
               >
                 <Feather name="trash-2" size={14} color={CALM.textMuted} />
               </TouchableOpacity>
             </View>
-          </View>
+          </TouchableOpacity>
         </AnimatedProductCard>
       );
     },
-    [currency, productStats]
+    [currency, openEditModal, handleToggleActive, handleDelete]
   );
 
-  // Product count header rendered above the FlatList items
+  // ─── List header ────────────────────────────────────────────
   const ListHeaderComponent = useMemo(() => (
-    <View style={styles.listHeader}>
-      <Text style={styles.listHeaderTitle}>products</Text>
-      <View style={styles.listHeaderBadge}>
-        <Text style={styles.listHeaderBadgeText}>{products.length}</Text>
+    <View>
+      {/* Products header row with log cost button */}
+      <View style={styles.listHeader}>
+        <View style={styles.listHeaderLeft}>
+          <Text style={styles.listHeaderTitle}>products</Text>
+          <View style={styles.listHeaderBadge}>
+            <Text style={styles.listHeaderBadgeText}>{products.length}</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={styles.logCostHeaderButton}
+          activeOpacity={0.7}
+          onPress={() => handleOpenCostModal()}
+          accessibilityRole="button"
+          accessibilityLabel="Log ingredient cost"
+        >
+          <Feather name="plus-circle" size={14} color={CALM.bronze} />
+          <Text style={styles.logCostHeaderText}>log cost</Text>
+        </TouchableOpacity>
       </View>
     </View>
-  ), [products.length]);
+  ), [products.length, handleOpenCostModal]);
 
+  // ─── Live preview values ───────────────────────────────────
+  const previewName = newName.trim() || 'product name';
+  const previewPrice = parseFloat(newPrice);
+  const previewPriceStr = !isNaN(previewPrice) ? previewPrice.toFixed(2) : '0.00';
+
+  // ─── Shared form JSX ──────────────────────────────────────
+  const renderProductForm = () => (
+    <>
+      {/* Drag handle */}
+      <View style={styles.dragHandleArea} {...panResponder.panHandlers}>
+        <View style={styles.dragHandle} />
+      </View>
+
+      {/* Modal header */}
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>
+          {editingProduct ? 'edit product' : 'new product'}
+        </Text>
+        <TouchableOpacity
+          onPress={closeAddModal}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        >
+          <Feather name="x" size={20} color={CALM.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Live preview card ─────────────────────────────── */}
+      <View style={styles.previewCard}>
+        <View style={styles.previewRow}>
+          <View style={styles.previewIcon}>
+            <Feather name="package" size={16} color={CALM.bronze} />
+          </View>
+          <View style={styles.previewInfo}>
+            <Text
+              style={[
+                styles.previewName,
+                !newName.trim() && styles.previewNamePlaceholder,
+              ]}
+              numberOfLines={1}
+            >
+              {previewName}
+            </Text>
+            <Text style={styles.previewPrice}>
+              {currency} {previewPriceStr} / {newUnit}
+            </Text>
+          </View>
+          {profitPreview && (
+            <View style={styles.previewBadge}>
+              <Text style={styles.previewBadgeText}>
+                +{profitPreview.margin}%
+              </Text>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* ── Section: Details ──────────────────────────────── */}
+      <View style={styles.sectionDivider}>
+        <Text style={styles.sectionLabel}>details</Text>
+        <View style={styles.sectionLine} />
+      </View>
+
+      {/* Name input */}
+      <Animated.View style={{ transform: [{ translateX: nameShakeAnim }] }}>
+        <TextInput
+          style={getInputStyle('name', nameError)}
+          value={newName}
+          onChangeText={setNewName}
+          placeholder="e.g. semperit kuning"
+          placeholderTextColor={CALM.textMuted}
+          autoFocus={!editingProduct}
+          onFocus={() => setFocusedField('name')}
+          onBlur={() => setFocusedField(null)}
+        />
+      </Animated.View>
+
+      {/* Duplicate warning */}
+      {duplicateWarning && (
+        <View style={styles.warningRow}>
+          <Feather name="alert-circle" size={12} color={CALM.bronze} />
+          <Text style={styles.warningText}>
+            a product named "{duplicateWarning}" already exists
+          </Text>
+        </View>
+      )}
+
+      {/* ── Section: Pricing ──────────────────────────────── */}
+      <View style={styles.sectionDivider}>
+        <Text style={styles.sectionLabel}>pricing</Text>
+        <View style={styles.sectionLine} />
+      </View>
+
+      {/* Price & cost row with currency prefix */}
+      <View style={styles.modalRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.modalLabel}>price per unit *</Text>
+          <Animated.View style={{ transform: [{ translateX: priceShakeAnim }] }}>
+            <View
+              style={[
+                styles.currencyInputRow,
+                focusedField === 'price' && styles.currencyInputRowFocused,
+                priceError && styles.currencyInputRowError,
+              ]}
+            >
+              <Text style={styles.currencyPrefix}>{currency}</Text>
+              <TextInput
+                style={styles.currencyInput}
+                value={newPrice}
+                onChangeText={setNewPrice}
+                placeholder="0.00"
+                placeholderTextColor={CALM.textMuted}
+                keyboardType="decimal-pad"
+                onFocus={() => setFocusedField('price')}
+                onBlur={() => setFocusedField(null)}
+              />
+            </View>
+          </Animated.View>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.modalLabel}>cost per unit</Text>
+          <View
+            style={[
+              styles.currencyInputRow,
+              focusedField === 'cost' && styles.currencyInputRowFocused,
+            ]}
+          >
+            <Text style={styles.currencyPrefix}>{currency}</Text>
+            <TextInput
+              style={styles.currencyInput}
+              value={newCostPerUnit}
+              onChangeText={setNewCostPerUnit}
+              placeholder="0.00"
+              placeholderTextColor={CALM.textMuted}
+              keyboardType="decimal-pad"
+              onFocus={() => setFocusedField('cost')}
+              onBlur={() => setFocusedField(null)}
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* Profit preview with margin % */}
+      {profitPreview && (
+        <View style={styles.profitRow}>
+          <Feather name="trending-up" size={13} color={CALM.bronze} />
+          <Text style={styles.profitText}>
+            kept per unit: {currency} {profitPreview.kept}
+          </Text>
+          <View
+            style={[
+              styles.marginBadge,
+              profitPreview.margin >= 50 && styles.marginBadgeHigh,
+            ]}
+          >
+            <Text
+              style={[
+                styles.marginBadgeText,
+                profitPreview.margin >= 50 && styles.marginBadgeTextHigh,
+              ]}
+            >
+              {profitPreview.margin}%
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* ── Section: Unit ─────────────────────────────────── */}
+      <View style={styles.sectionDivider}>
+        <Text style={styles.sectionLabel}>unit</Text>
+        <View style={styles.sectionLine} />
+      </View>
+
+      <TouchableOpacity
+        style={styles.unitSelector}
+        activeOpacity={0.7}
+        onPress={() => {
+          Keyboard.dismiss();
+          lightTap();
+          setShowUnitPicker(true);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={`Selected unit: ${newUnit}. Tap to change.`}
+      >
+        <View style={styles.unitSelectorLeft}>
+          <View style={styles.unitSelectorIcon}>
+            <Feather name="box" size={16} color={CALM.bronze} />
+          </View>
+          <Text style={styles.unitSelectorText}>{newUnit}</Text>
+        </View>
+        <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+      </TouchableOpacity>
+
+      {/* ── Actions ───────────────────────────────────────── */}
+      {editingProduct ? (
+        <View style={styles.modalActions}>
+          <TouchableOpacity
+            onPress={closeAddModal}
+            style={styles.modalCancel}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel"
+          >
+            <Text style={styles.modalCancelText}>cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleSaveEdit}
+            style={styles.modalConfirm}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Save product"
+          >
+            <Text style={styles.modalConfirmText}>save</Text>
+          </TouchableOpacity>
+        </View>
+      ) : justAdded ? (
+        <View style={styles.quickAddRow}>
+          <Animated.View
+            style={[
+              styles.quickAddCheck,
+              { transform: [{ scale: addCheckAnim }] },
+            ]}
+          >
+            <Feather name="check" size={16} color={CALM.bronze} />
+            <Text style={styles.quickAddCheckText}>added!</Text>
+          </Animated.View>
+          <View style={styles.quickAddActions}>
+            <TouchableOpacity
+              onPress={() => {
+                lightTap();
+                setJustAdded(false);
+              }}
+              style={styles.addAnotherBtn}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Add another product"
+            >
+              <Feather name="plus" size={14} color={CALM.bronze} />
+              <Text style={styles.addAnotherText}>add another</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={closeAddModal}
+              style={styles.modalConfirm}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Done"
+            >
+              <Text style={styles.modalConfirmText}>done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.modalActions}>
+          <TouchableOpacity
+            onPress={closeAddModal}
+            style={styles.modalCancel}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel"
+          >
+            <Text style={styles.modalCancelText}>cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleAddProduct}
+            style={styles.modalConfirm}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Add product"
+          >
+            <Text style={styles.modalConfirmText}>add</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </>
+  );
+
+  // ─── Render ────────────────────────────────────────────────
   return (
     <View style={styles.container}>
       <FlatList
         data={products}
         renderItem={renderProduct}
         keyExtractor={(p) => p.id}
-        ListHeaderComponent={products.length > 0 ? ListHeaderComponent : null}
+        ListHeaderComponent={ListHeaderComponent}
         contentContainerStyle={[
           styles.listContent,
           products.length === 0 && styles.listContentEmpty,
@@ -245,7 +862,6 @@ const Products: React.FC = () => {
               follow these steps to get started
             </Text>
 
-            {/* Step-by-step guide */}
             <View style={styles.stepsContainer}>
               <View style={styles.stepRow}>
                 <View style={styles.stepIconArea}>
@@ -267,11 +883,10 @@ const Products: React.FC = () => {
               </View>
             </View>
 
-            {/* Prominent CTA with icon */}
             <TouchableOpacity
               style={styles.emptyCTA}
               activeOpacity={0.7}
-              onPress={() => setShowAdd(true)}
+              onPress={openAddModal}
               accessibilityRole="button"
               accessibilityLabel="Add your first product"
             >
@@ -282,13 +897,13 @@ const Products: React.FC = () => {
         }
       />
 
-      {/* Bottom-anchored add button (only show when products exist) */}
+      {/* Bottom-anchored add button */}
       {products.length > 0 && (
         <View style={styles.addButtonWrapper}>
           <TouchableOpacity
             style={styles.addButton}
             activeOpacity={0.7}
-            onPress={() => setShowAdd(true)}
+            onPress={openAddModal}
             accessibilityRole="button"
             accessibilityLabel="Add product"
           >
@@ -298,112 +913,123 @@ const Products: React.FC = () => {
         </View>
       )}
 
-      {/* Add product modal */}
+      {/* ── Add / Edit product modal ────────────────────────── */}
       <Modal visible={showAdd} transparent animationType="fade">
-        <Pressable style={styles.modalOverlay} onPress={Keyboard.dismiss}>
+        <View style={styles.modalOverlay}>
           <KeyboardAwareScrollView
             contentContainerStyle={styles.modalScrollContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             bounces={false}
           >
-            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.modalTitle}>new product</Text>
-
-              <TextInput
-                style={styles.modalInput}
-                value={newName}
-                onChangeText={setNewName}
-                placeholder="e.g. semperit kuning"
-                placeholderTextColor={CALM.textSecondary}
-                autoFocus
-              />
-
-              <View style={styles.modalRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.modalLabel}>price per unit</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    value={newPrice}
-                    onChangeText={setNewPrice}
-                    placeholder="0.00"
-                    placeholderTextColor={CALM.textSecondary}
-                    keyboardType="decimal-pad"
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.modalLabel}>cost per unit (optional)</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    value={newCostPerUnit}
-                    onChangeText={setNewCostPerUnit}
-                    placeholder="0.00"
-                    placeholderTextColor={CALM.textSecondary}
-                    keyboardType="decimal-pad"
-                  />
-                </View>
+            <Animated.View
+              style={[
+                styles.modalContentAnimated,
+                {
+                  transform: [{ translateY: modalTranslateY }],
+                  opacity: modalOpacity,
+                },
+              ]}
+            >
+              <View style={styles.modalContent}>
+                {renderProductForm()}
               </View>
-
-              <Text style={styles.modalLabel}>unit</Text>
-              <View style={styles.unitPicker}>
-                {allUnits.map((u) => (
-                  <TouchableOpacity
-                    key={u}
-                    style={[styles.unitChip, newUnit === u && styles.unitChipActive]}
-                    activeOpacity={0.7}
-                    onPress={() => setNewUnit(u)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Select unit: ${u}`}
-                  >
-                    <Text style={[styles.unitChipText, newUnit === u && styles.unitChipTextActive]}>
-                      {u}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={styles.customUnitLink}
-                onPress={() => {
-                  setShowAdd(false);
-                  navigation.getParent()?.navigate('Settings');
-                }}
-                accessibilityRole="link"
-                accessibilityLabel="Add custom units in Settings"
-              >
-                <Text style={styles.customUnitLinkText}>
-                  Need a different unit? Add custom units in Settings
-                </Text>
-              </TouchableOpacity>
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  onPress={() => setShowAdd(false)}
-                  style={styles.modalCancel}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel="Cancel"
-                >
-                  <Text style={styles.modalCancelText}>cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleAddProduct}
-                  style={styles.modalConfirm}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel="Add product"
-                >
-                  <Text style={styles.modalConfirmText}>add</Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
+            </Animated.View>
           </KeyboardAwareScrollView>
-        </Pressable>
+
+          {/* ── Unit picker (inline overlay, not a separate Modal) ── */}
+          {showUnitPicker && (
+            <TouchableOpacity
+              style={styles.unitModalOverlay}
+              activeOpacity={1}
+              onPress={() => { lightTap(); setShowUnitPicker(false); }}
+            >
+              <Pressable
+                style={styles.unitModalContent}
+                onPress={(e) => e.stopPropagation()}
+              >
+                <View style={styles.unitModalHeader}>
+                  <Text style={styles.unitModalTitle}>select unit</Text>
+                  <TouchableOpacity
+                    onPress={() => { lightTap(); setShowUnitPicker(false); }}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Feather name="x" size={20} color={CALM.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+
+                <FlatList
+                  data={allUnits}
+                  keyExtractor={(u) => u}
+                  style={styles.unitModalList}
+                  showsVerticalScrollIndicator={false}
+                  renderItem={({ item: u }) => {
+                    const isSelected = newUnit === u;
+                    return (
+                      <TouchableOpacity
+                        style={[
+                          styles.unitModalItem,
+                          isSelected && styles.unitModalItemSelected,
+                        ]}
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          selectionChanged();
+                          setNewUnit(u);
+                          setShowUnitPicker(false);
+                        }}
+                      >
+                        <View style={styles.unitModalItemLeft}>
+                          <View
+                            style={[
+                              styles.unitModalItemIcon,
+                              isSelected && styles.unitModalItemIconSelected,
+                            ]}
+                          >
+                            <Feather
+                              name="box"
+                              size={16}
+                              color={isSelected ? '#fff' : CALM.bronze}
+                            />
+                          </View>
+                          <Text
+                            style={[
+                              styles.unitModalItemText,
+                              isSelected && styles.unitModalItemTextSelected,
+                            ]}
+                          >
+                            {u}
+                          </Text>
+                        </View>
+                        {isSelected && (
+                          <Feather name="check" size={18} color={CALM.bronze} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  }}
+                  ListFooterComponent={
+                    <TouchableOpacity
+                      style={styles.unitModalManageBtn}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        lightTap();
+                        setShowUnitPicker(false);
+                        setShowAdd(false);
+                        navigation.navigate('SellerSettings');
+                      }}
+                    >
+                      <Feather name="settings" size={14} color={CALM.bronze} />
+                      <Text style={styles.unitModalManageText}>manage units in settings</Text>
+                    </TouchableOpacity>
+                  }
+                />
+              </Pressable>
+            </TouchableOpacity>
+          )}
+        </View>
       </Modal>
 
-      {/* Log cost modal */}
-      <Modal visible={!!showCostModal} transparent animationType="fade">
+      {/* ── Log cost modal ──────────────────────────────────── */}
+      <Modal visible={showCostModal} transparent animationType="fade">
         <Pressable style={styles.modalOverlay} onPress={Keyboard.dismiss}>
           <KeyboardAwareScrollView
             contentContainerStyle={styles.modalScrollContent}
@@ -411,27 +1037,74 @@ const Products: React.FC = () => {
             showsVerticalScrollIndicator={false}
             bounces={false}
           >
-            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.modalTitle}>log ingredient cost</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={costDescription}
-                onChangeText={setCostDescription}
-                placeholder="e.g. tepung, gula, mentega"
-                placeholderTextColor={CALM.textSecondary}
-                autoFocus
-              />
-              <TextInput
-                style={styles.modalInput}
-                value={costAmount}
-                onChangeText={setCostAmount}
-                placeholder="amount (RM)"
-                placeholderTextColor={CALM.textSecondary}
-                keyboardType="decimal-pad"
-              />
+            <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{editingCostId ? 'edit cost' : 'log ingredient cost'}</Text>
+                <TouchableOpacity
+                  onPress={() => { lightTap(); setEditingCostId(null); setShowCostModal(false); }}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                >
+                  <Feather name="x" size={20} color={CALM.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.costDateRow}>
+                <Feather name="calendar" size={12} color={CALM.textMuted} />
+                <Text style={styles.costDateText}>
+                  {editingCostId
+                    ? format(ingredientCosts.find(c => c.id === editingCostId)?.date ?? new Date(), 'dd MMM yyyy')
+                    : format(new Date(), 'dd MMM yyyy')}
+                </Text>
+              </View>
+
+              <Animated.View style={{ transform: [{ translateX: costDescShakeAnim }] }}>
+                <TextInput
+                  style={[styles.modalInput, costDescError && styles.modalInputError]}
+                  value={costDescription}
+                  onChangeText={setCostDescription}
+                  placeholder="e.g. tepung, gula, mentega"
+                  placeholderTextColor={CALM.textMuted}
+                  autoFocus
+                />
+              </Animated.View>
+              <Animated.View style={{ transform: [{ translateX: costAmtShakeAnim }] }}>
+                <View
+                  style={[
+                    styles.currencyInputRow,
+                    costAmtError && styles.currencyInputRowError,
+                  ]}
+                >
+                  <Text style={styles.currencyPrefix}>{currency}</Text>
+                  <TextInput
+                    style={styles.currencyInput}
+                    value={costAmount}
+                    onChangeText={setCostAmount}
+                    placeholder="0.00"
+                    placeholderTextColor={CALM.textMuted}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              </Animated.View>
+
+              {/* Sync to personal toggle — only for new costs */}
+              {!editingCostId && (
+                <TouchableOpacity
+                  style={styles.syncToggleRow}
+                  activeOpacity={0.7}
+                  onPress={() => { lightTap(); setSyncToPersonal((v) => !v); }}
+                >
+                  <View style={[styles.syncToggleBox, syncToPersonal && styles.syncToggleBoxActive]}>
+                    {syncToPersonal && <Feather name="check" size={12} color="#fff" />}
+                  </View>
+                  <Text style={styles.syncToggleText}>also record as personal expense</Text>
+                </TouchableOpacity>
+              )}
+
               <View style={styles.modalActions}>
                 <TouchableOpacity
-                  onPress={() => setShowCostModal(null)}
+                  onPress={() => { lightTap(); setEditingCostId(null); setSyncToPersonal(false); setShowCostModal(false); }}
                   style={styles.modalCancel}
                   activeOpacity={0.7}
                   accessibilityRole="button"
@@ -444,71 +1117,117 @@ const Products: React.FC = () => {
                   style={styles.modalConfirm}
                   activeOpacity={0.7}
                   accessibilityRole="button"
-                  accessibilityLabel="Log cost"
+                  accessibilityLabel={editingCostId ? "Save cost" : "Log cost"}
                 >
-                  <Text style={styles.modalConfirmText}>log</Text>
+                  <Text style={styles.modalConfirmText}>{editingCostId ? 'save' : 'log'}</Text>
                 </TouchableOpacity>
               </View>
             </Pressable>
           </KeyboardAwareScrollView>
         </Pressable>
       </Modal>
+
     </View>
   );
 };
 
+// ─── Styles ──────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background, // #F9F9F7
+    backgroundColor: CALM.background,
   },
   listContent: {
-    paddingHorizontal: SPACING['2xl'], // 24pt horizontal
-    paddingTop: SPACING.lg,           // 16pt top
-    paddingBottom: SPACING['3xl'],     // 32pt bottom (room for add button)
-    gap: SPACING.md,                   // 16pt card gap
+    paddingHorizontal: SPACING['2xl'],
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING['3xl'],
+    gap: SPACING.md,
   },
   listContentEmpty: {
     flex: 1,
     justifyContent: 'center',
   },
 
-  // -- List header: product count -----------------------------------
+  syncToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
+  syncToggleBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: CALM.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncToggleBoxActive: {
+    backgroundColor: CALM.bronze,
+    borderColor: CALM.bronze,
+  },
+  syncToggleText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+
+  // List header
   listHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.sm,          // 8pt before first card
+    marginBottom: SPACING.sm,
+  },
+  listHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
   listHeaderTitle: {
-    fontSize: TYPOGRAPHY.size.xl,      // 20
-    fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary,           // #1A1A1A
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
   },
   listHeaderBadge: {
-    backgroundColor: withAlpha(CALM.bronze, 0.1), // bronze at 10% opacity
-    borderRadius: RADIUS.full,         // pill
-    paddingHorizontal: SPACING.sm,     // 8pt
-    paddingVertical: SPACING.xs,       // 4pt
+    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
     minWidth: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
   listHeaderBadgeText: {
-    fontSize: TYPOGRAPHY.size.sm,      // 13
-    fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.bronze,                // #B2780A
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
     fontVariant: ['tabular-nums'],
   },
+  logCostHeaderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+  },
+  logCostHeaderText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.bronze,
+  },
 
-  // -- Product card -------------------------------------------------
+  // Product card
   productCard: {
-    backgroundColor: CALM.surface,     // #FFFFFF
-    borderRadius: RADIUS.lg,           // 14
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,          // #EBEBEB
-    padding: SPACING.lg,               // 16pt
-    gap: SPACING.md,                   // 16pt between header / stats / actions
+    borderColor: CALM.border,
+    padding: SPACING.lg,
+    gap: SPACING.md,
   },
   productCardInactive: {
     opacity: 0.5,
@@ -516,201 +1235,262 @@ const styles = StyleSheet.create({
   productHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.md,                   // 16pt between icon and info
+    gap: SPACING.md,
   },
   productIconArea: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: withAlpha(CALM.bronze, 0.08), // bronze at 8% opacity
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
   productInfo: {
     flex: 1,
-    gap: SPACING.xs,                   // 4pt
+    gap: SPACING.xs,
   },
   productName: {
-    fontSize: TYPOGRAPHY.size.base,    // 15
-    fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary,           // #1A1A1A
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
   },
   productPrice: {
-    ...TYPE.insight,                   // fontSize 14, lineHeight 22
-    color: CALM.textSecondary,         // #6B6B6B
+    ...TYPE.insight,
+    color: CALM.textSecondary,
     fontVariant: ['tabular-nums'],
   },
 
-  // -- Compact stats row with pipe separators -----------------------
+  // Stats row
   productStats: {
-    paddingTop: SPACING.xs,            // 4pt
+    paddingTop: SPACING.xs,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,       // #EBEBEB subtle divider
+    borderTopColor: CALM.border,
   },
   statText: {
-    ...TYPE.muted,                     // fontSize 12, color #A0A0A0
-    color: CALM.textSecondary,         // #6B6B6B
+    ...TYPE.muted,
+    color: CALM.textSecondary,
     fontVariant: ['tabular-nums'],
     lineHeight: 18,
   },
 
-  // -- Action buttons -----------------------------------------------
+  // Actions
   productActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.md,                   // 16pt
+    gap: SPACING.md,
   },
-  // Primary: bronze pill with icon
-  logCostButton: {
-    flexDirection: 'row',
+  editButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.xs,                   // 4pt
-    backgroundColor: CALM.bronze,      // #B2780A
-    paddingVertical: SPACING.sm,       // 8pt
-    paddingHorizontal: SPACING.lg,     // 16pt
-    borderRadius: RADIUS.full,         // pill
-    minHeight: 36,                     // with hitSlop achieves 44pt
   },
-  logCostButtonText: {
-    fontSize: TYPOGRAPHY.size.xs,      // 11
-    fontWeight: TYPOGRAPHY.weight.medium, // 500
-    color: '#fff',
-  },
-  // Destructive: icon-only with generous hit area
   removeButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    // hitSlop expands to 44pt+ touch target
   },
 
-  // -- Empty state --------------------------------------------------
+  // Empty state
   emptyState: {
     alignItems: 'center',
-    paddingVertical: SPACING['4xl'],   // 40pt generous vertical padding
-    paddingHorizontal: SPACING['2xl'], // 24pt
-    gap: SPACING.md,                   // 16pt
+    paddingVertical: SPACING['4xl'],
+    paddingHorizontal: SPACING['2xl'],
+    gap: SPACING.md,
   },
   emptyTitle: {
-    fontSize: TYPOGRAPHY.size.lg,      // 17
-    fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary,           // #1A1A1A
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
   },
   emptyHint: {
-    ...TYPE.insight,                   // fontSize 14, lineHeight 22
-    color: CALM.textSecondary,         // #6B6B6B
+    ...TYPE.insight,
+    color: CALM.textSecondary,
     textAlign: 'center',
   },
-  // Step-by-step guide
   stepsContainer: {
     alignSelf: 'stretch',
-    backgroundColor: CALM.surface,     // #FFFFFF
-    borderRadius: RADIUS.lg,           // 14
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,          // #EBEBEB
-    padding: SPACING.lg,              // 16pt
-    gap: SPACING.md,                   // 16pt between steps
-    marginTop: SPACING.sm,            // 8pt above
+    borderColor: CALM.border,
+    padding: SPACING.lg,
+    gap: SPACING.md,
+    marginTop: SPACING.sm,
   },
   stepRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.md,                   // 16pt between icon and text
+    gap: SPACING.md,
   },
   stepIconArea: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: withAlpha(CALM.bronze, 0.08), // bronze at 8% opacity
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepText: {
-    ...TYPE.insight,                   // fontSize 14, lineHeight 22
-    color: CALM.textPrimary,           // #1A1A1A
+    ...TYPE.insight,
+    color: CALM.textPrimary,
     flex: 1,
   },
   emptyCTA: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,                   // 8pt between icon and text
-    backgroundColor: CALM.bronze,      // #B2780A
-    borderRadius: RADIUS.lg,           // 14
-    paddingVertical: SPACING.lg,       // 16pt
+    gap: SPACING.sm,
+    backgroundColor: CALM.bronze,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.lg,
     alignSelf: 'stretch',
-    marginTop: SPACING.sm,             // 8pt above
+    marginTop: SPACING.sm,
   },
   emptyCTAText: {
-    fontSize: TYPOGRAPHY.size.base,    // 15
-    fontWeight: TYPOGRAPHY.weight.semibold, // 600
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
 
-  // -- Bottom-anchored add button -----------------------------------
+  // Bottom add button
   addButtonWrapper: {
-    paddingHorizontal: SPACING.lg,     // 16pt sides
-    paddingBottom: SPACING.lg,         // 16pt bottom
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.lg,
   },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,                   // 8pt
-    backgroundColor: CALM.bronze,      // #B2780A
-    borderRadius: RADIUS.lg,           // 14
-    paddingVertical: SPACING.lg,       // 16pt
-    ...SHADOWS.sm,                     // subtle elevation
+    gap: SPACING.sm,
+    backgroundColor: CALM.bronze,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.lg,
+    ...SHADOWS.sm,
   },
   addButtonText: {
-    fontSize: TYPOGRAPHY.size.base,    // 15
-    fontWeight: TYPOGRAPHY.weight.semibold, // 600
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
 
-  // -- Unit picker chips --------------------------------------------
-  unitPicker: {
+  // Unit selector button (opens modal)
+  unitSelector: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,                   // 8pt
-  },
-  unitChip: {
-    minHeight: 44,                     // 44pt touch target
-    paddingVertical: SPACING.sm,       // 8pt
-    paddingHorizontal: SPACING.lg,     // 16pt
-    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: CALM.border,          // #EBEBEB
+    borderColor: CALM.border,
+    padding: SPACING.md,
+    minHeight: 48,
+  },
+  unitSelectorLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  unitSelectorIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unitSelectorText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+  },
+
+  // Unit picker modal
+  unitModalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: SPACING['2xl'],
+    zIndex: 10,
   },
-  unitChipActive: {
-    backgroundColor: CALM.bronze,      // #B2780A
-    borderColor: CALM.bronze,
+  unitModalContent: {
+    width: '100%',
+    maxHeight: '60%',
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    ...SHADOWS.lg,
   },
-  unitChipText: {
-    fontSize: TYPOGRAPHY.size.sm,      // 13
-    color: CALM.textSecondary,         // #6B6B6B
+  unitModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
   },
-  unitChipTextActive: {
-    color: '#fff',
-    fontWeight: TYPOGRAPHY.weight.medium, // 500
+  unitModalTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+  },
+  unitModalList: {
+    flexGrow: 0,
+  },
+  unitModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.md,
+    minHeight: 48,
+  },
+  unitModalItemSelected: {
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
+  },
+  unitModalItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  unitModalItemIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unitModalItemIconSelected: {
+    backgroundColor: CALM.bronze,
+  },
+  unitModalItemText: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: CALM.textPrimary,
+  },
+  unitModalItemTextSelected: {
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
+  },
+  unitModalManageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: CALM.border,
+  },
+  unitModalManageText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.bronze,
   },
 
-  // -- Custom unit link -----------------------------------------------
-  customUnitLink: {
-    paddingVertical: SPACING.sm,
-    marginTop: SPACING.xs,
-  },
-  customUnitLinkText: {
-    fontSize: TYPOGRAPHY.size.xs,       // 11
-    color: CALM.bronze,                 // #B2780A
-  },
-
-  // -- Modal --------------------------------------------------------
+  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -719,65 +1499,294 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: SPACING['2xl'],           // 24pt
+    padding: SPACING['2xl'],
+  },
+  modalContentAnimated: {
+    width: '100%',
   },
   modalContent: {
-    backgroundColor: CALM.surface,     // #FFFFFF
-    borderRadius: RADIUS.lg,           // 14
-    padding: SPACING.xl,               // 24pt
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
     width: '100%',
-    gap: SPACING.md,                   // 16pt
+    gap: SPACING.md,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   modalTitle: {
-    fontSize: TYPOGRAPHY.size.lg,      // 17
-    fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary,           // #1A1A1A
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
   },
   modalLabel: {
-    ...TYPE.label,                     // fontSize 12, uppercase, letterSpacing 1
-    marginBottom: SPACING.xs,          // 4pt
+    ...TYPE.label,
+    marginBottom: SPACING.xs,
   },
   modalInput: {
-    ...TYPE.insight,                   // fontSize 14, lineHeight 22
-    color: CALM.textPrimary,           // #1A1A1A
-    backgroundColor: CALM.background,  // #F9F9F7
-    borderRadius: RADIUS.md,           // 10
-    padding: SPACING.md,               // 16pt
+    ...TYPE.insight,
+    lineHeight: undefined,
+    color: CALM.textPrimary,
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md + 2,
     borderWidth: 1,
-    borderColor: CALM.border,          // #EBEBEB
+    borderColor: CALM.border,
+  },
+  modalInputFocused: {
+    borderColor: CALM.bronze,
+  },
+  modalInputError: {
+    borderColor: '#D4775C',
+    backgroundColor: withAlpha('#D4775C', 0.04),
   },
   modalRow: {
     flexDirection: 'row',
-    gap: SPACING.md,                   // 16pt
+    gap: SPACING.md,
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: SPACING.md,                   // 16pt
-    marginTop: SPACING.sm,            // 8pt
+    gap: SPACING.md,
+    marginTop: SPACING.sm,
   },
   modalCancel: {
-    paddingVertical: SPACING.sm,       // 8pt
-    paddingHorizontal: SPACING.lg,     // 16pt
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
     minHeight: 44,
     justifyContent: 'center',
   },
   modalCancelText: {
-    fontSize: TYPOGRAPHY.size.sm,      // 13
-    color: CALM.textSecondary,         // #6B6B6B
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
   },
   modalConfirm: {
-    paddingVertical: SPACING.sm,       // 8pt
-    paddingHorizontal: SPACING.lg,     // 16pt
-    backgroundColor: CALM.bronze,      // #B2780A
-    borderRadius: RADIUS.md,           // 10
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: CALM.bronze,
+    borderRadius: RADIUS.md,
     minHeight: 44,
     justifyContent: 'center',
   },
   modalConfirmText: {
-    fontSize: TYPOGRAPHY.size.sm,      // 13
-    fontWeight: TYPOGRAPHY.weight.semibold, // 600
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
+  },
+
+  // Drag handle
+  dragHandleArea: {
+    alignItems: 'center',
+    paddingBottom: SPACING.sm,
+  },
+  dragHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: CALM.border,
+  },
+
+  // Live preview card
+  previewCard: {
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    borderStyle: 'dashed',
+  },
+  previewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  previewIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.sm,
+  },
+  previewInfo: {
+    flex: 1,
+  },
+  previewName: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+  },
+  previewNamePlaceholder: {
+    color: CALM.textMuted,
+    fontStyle: 'italic',
+  },
+  previewPrice: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+    fontVariant: ['tabular-nums'],
+    marginTop: 1,
+  },
+  previewBadge: {
+    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    marginLeft: SPACING.sm,
+  },
+  previewBadgeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // Section dividers
+  sectionDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  sectionLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  sectionLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: CALM.border,
+  },
+
+  // Currency prefix input
+  currencyInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    paddingLeft: SPACING.md,
+  },
+  currencyInputRowFocused: {
+    borderColor: CALM.bronze,
+  },
+  currencyInputRowError: {
+    borderColor: '#D4775C',
+    backgroundColor: withAlpha('#D4775C', 0.04),
+  },
+  currencyPrefix: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginRight: SPACING.xs,
+  },
+  currencyInput: {
+    ...TYPE.insight,
+    lineHeight: undefined,
+    color: CALM.textPrimary,
+    flex: 1,
+    paddingVertical: SPACING.md + 2,
+    paddingRight: SPACING.md,
+    paddingLeft: 0,
+  },
+
+  // Profit preview + margin badge
+  profitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+  },
+  profitText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    fontVariant: ['tabular-nums'],
+  },
+  marginBadge: {
+    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 1,
+  },
+  marginBadgeHigh: {
+    backgroundColor: withAlpha('#4F5104', 0.1),
+  },
+  marginBadgeText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
+    fontVariant: ['tabular-nums'],
+  },
+  marginBadgeTextHigh: {
+    color: '#4F5104',
+  },
+
+  // Validation warning
+  warningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  warningText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.bronze,
+    flex: 1,
+  },
+
+  // Quick add mode
+  quickAddRow: {
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  quickAddCheck: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+  },
+  quickAddCheckText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  quickAddActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: SPACING.md,
+  },
+  addAnotherBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    borderWidth: 1,
+    borderColor: CALM.bronze,
+    borderRadius: RADIUS.md,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  addAnotherText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
+  },
+
+  costDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  costDateText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
   },
 });
 

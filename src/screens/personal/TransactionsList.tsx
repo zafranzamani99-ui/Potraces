@@ -27,6 +27,8 @@ import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import { Transaction } from '../../types';
 import { useWalletStore } from '../../store/walletStore';
+import { useSellerStore } from '../../store/sellerStore';
+import { useBusinessStore } from '../../store/businessStore';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 
@@ -44,6 +46,8 @@ const TransactionsList: React.FC = () => {
   const wallets = useWalletStore((s) => s.wallets);
   const deductFromWallet = useWalletStore((s) => s.deductFromWallet);
   const addToWallet = useWalletStore((s) => s.addToWallet);
+  const unmarkOrdersTransferred = useSellerStore((s) => s.unmarkOrdersTransferred);
+  const deleteTransfer = useBusinessStore((s) => s.deleteTransfer);
   const { showToast } = useToast();
   const expenseCategories = useCategories('expense');
   const incomeCategories = useCategories('income');
@@ -185,9 +189,14 @@ const TransactionsList: React.FC = () => {
   const handleDeleteTransaction = () => {
     if (!editingTransaction) return;
 
+    const isTransferLinked = editingTransaction.id.startsWith('transfer-');
+    const transferId = isTransferLinked ? editingTransaction.id.replace('transfer-', '') : null;
+
     Alert.alert(
       'Delete Transaction',
-      'Are you sure you want to delete this transaction?',
+      isTransferLinked
+        ? 'This income was transferred from seller mode. Deleting it will allow you to re-transfer those orders.\n\nDelete anyway?'
+        : 'Are you sure you want to delete this transaction?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -200,6 +209,11 @@ const TransactionsList: React.FC = () => {
               } else {
                 deductFromWallet(editingTransaction.walletId, editingTransaction.amount);
               }
+            }
+            // Clean up seller/business side for transfer-linked transactions
+            if (isTransferLinked && transferId) {
+              unmarkOrdersTransferred(transferId);
+              deleteTransfer(transferId);
             }
             deleteTransaction(editingTransaction.id);
             setEditModalVisible(false);

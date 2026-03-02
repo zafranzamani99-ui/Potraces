@@ -10,6 +10,7 @@ import {
   Linking,
   Platform,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -227,6 +228,13 @@ const SellerDashboard: React.FC = () => {
     });
   }, [deliverToday, sellerCustomers]);
 
+  // ── Pull-to-refresh ───────────────────────────────────────
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 800);
+  }, []);
+
   // ── Production checklist state ────────────────────────────
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
   const toggleChecked = useCallback((itemName: string) => {
@@ -396,6 +404,9 @@ const SellerDashboard: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CALM.bronze} colors={[CALM.bronze]} />
+        }
       >
         {/* ── Season context ─────────────────────────────── */}
         <Animated.View style={seasonAnim}>
@@ -618,7 +629,7 @@ const SellerDashboard: React.FC = () => {
           <TouchableOpacity
             style={styles.quickActionButton}
             activeOpacity={0.7}
-            onPress={() => { lightTap(); navigation.navigate('SellerManage'); }}
+            onPress={() => { lightTap(); navigation.navigate('SellerCosts'); }}
             accessibilityRole="button"
             accessibilityLabel="Manage costs"
           >
@@ -1160,6 +1171,7 @@ const SellerDashboard: React.FC = () => {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+
     </View>
   );
 };

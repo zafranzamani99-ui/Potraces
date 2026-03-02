@@ -10,7 +10,7 @@ import {
   Modal,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
 import { useNavigation } from '@react-navigation/native';
 import { useBusinessStore } from '../../store/businessStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -51,7 +51,7 @@ const LogIncome: React.FC = () => {
   const [showCostEntry, setShowCostEntry] = useState(false);
   const [costType, setCostType] = useState<'petrol' | 'maintenance' | 'data' | 'other'>('petrol');
   const [costAmount, setCostAmount] = useState('');
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const transferTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -75,27 +75,24 @@ const LogIncome: React.FC = () => {
 
   const handleVoiceStart = useCallback(async () => {
     try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) return;
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await recording.startAsync();
-      recordingRef.current = recording;
+      const status = await AudioModule.requestRecordingPermissionsAsync();
+      if (!status.granted) return;
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
       setIsRecording(true);
     } catch {
       // silently fail
     }
-  }, []);
+  }, [audioRecorder]);
 
   const handleVoiceStop = useCallback(async () => {
-    if (!recordingRef.current) return;
+    if (!audioRecorder.isRecording) return;
     setIsRecording(false);
     setIsProcessing(true);
     try {
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
       if (uri) {
         const transcript = await transcribeAudio(uri);
         if (transcript) {
@@ -111,7 +108,7 @@ const LogIncome: React.FC = () => {
       // silently fail
     }
     setIsProcessing(false);
-  }, []);
+  }, [audioRecorder]);
 
   const handleSave = useCallback(() => {
     const numAmount = parseFloat(amount);
@@ -432,6 +429,7 @@ const styles = StyleSheet.create({
   },
   textArea: {
     ...TYPE.insight,
+    lineHeight: undefined,
     color: CALM.textPrimary,
     backgroundColor: CALM.surface,
     borderRadius: RADIUS.lg,
@@ -494,6 +492,7 @@ const styles = StyleSheet.create({
   // Note
   noteInput: {
     ...TYPE.insight,
+    lineHeight: undefined,
     color: CALM.textPrimary,
     backgroundColor: CALM.surface,
     borderRadius: RADIUS.lg,
@@ -586,6 +585,7 @@ const styles = StyleSheet.create({
   },
   transferInput: {
     ...TYPE.insight,
+    lineHeight: undefined,
     color: CALM.textPrimary,
     backgroundColor: CALM.surface,
     borderRadius: RADIUS.lg,
@@ -634,6 +634,7 @@ const styles = StyleSheet.create({
   },
   costAmountInput: {
     ...TYPE.insight,
+    lineHeight: undefined,
     color: CALM.textPrimary,
     backgroundColor: CALM.surface,
     borderRadius: RADIUS.lg,

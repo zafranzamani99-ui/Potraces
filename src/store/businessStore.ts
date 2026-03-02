@@ -171,6 +171,11 @@ export const useBusinessStore = create<BusinessState>()(
           transfers: [transfer, ...state.transfers],
         })),
 
+      deleteTransfer: (id) =>
+        set((state) => ({
+          transfers: state.transfers.filter((t) => t.id !== id),
+        })),
+
       getTotalTransferredToPersonal: (month) => {
         const state = get();
         const start = startOfMonth(month);

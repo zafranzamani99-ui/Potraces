@@ -34,7 +34,7 @@ function useFadeSlide(delay: number) {
 
 // ─── Component ───────────────────────────────────────────────
 const SellerManage: React.FC = () => {
-  const { products, seasons } = useSellerStore();
+  const { products, seasons, ingredientCosts } = useSellerStore();
   const navigation = useNavigation<any>();
 
   const activeSeason = seasons.find((s) => s.isActive) || null;
@@ -42,8 +42,9 @@ const SellerManage: React.FC = () => {
   // Staggered animations
   const headerAnim = useFadeSlide(0);
   const productsAnim = useFadeSlide(60);
-  const seasonsAnim = useFadeSlide(120);
-  const settingsAnim = useFadeSlide(180);
+  const costsAnim = useFadeSlide(120);
+  const seasonsAnim = useFadeSlide(180);
+  const settingsAnim = useFadeSlide(240);
 
   return (
     <ScrollView
@@ -54,7 +55,7 @@ const SellerManage: React.FC = () => {
       {/* ─── Page Header ──────────────────────────────────── */}
       <Animated.View style={[styles.header, headerAnim]}>
         <Text style={styles.headerLabel}>MANAGE</Text>
-        <Text style={styles.headerSubtitle}>products, seasons, and settings</Text>
+        <Text style={styles.headerSubtitle}>products, costs, seasons, and settings</Text>
       </Animated.View>
 
       {/* ─── Products Card ────────────────────────────────── */}
@@ -73,6 +74,27 @@ const SellerManage: React.FC = () => {
             <Text style={styles.cardTitle}>Products</Text>
             <Text style={styles.cardSubtitle}>product catalog and pricing</Text>
             <Text style={styles.cardBadge}>{products.length} products</Text>
+          </View>
+          <Feather name="chevron-right" size={20} color={CALM.textMuted} />
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* ─── Costs Card ────────────────────────────────────── */}
+      <Animated.View style={costsAnim}>
+        <TouchableOpacity
+          style={styles.card}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Costs. ${ingredientCosts.length} entries. Navigate to cost management.`}
+          onPress={() => navigation.getParent()?.navigate('SellerCosts')}
+        >
+          <View style={styles.iconBox}>
+            <Feather name="shopping-bag" size={24} color={CALM.bronze} />
+          </View>
+          <View style={styles.cardContent}>
+            <Text style={styles.cardTitle}>Costs</Text>
+            <Text style={styles.cardSubtitle}>budget, history, and transfers</Text>
+            <Text style={styles.cardBadge}>{ingredientCosts.length} entries</Text>
           </View>
           <Feather name="chevron-right" size={20} color={CALM.textMuted} />
         </TouchableOpacity>

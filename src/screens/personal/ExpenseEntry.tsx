@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Audio } from 'expo-av';
+import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
 
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -48,7 +48,7 @@ const ExpenseEntry: React.FC = () => {
   const [inputMode, setInputMode] = useState<InputMode>('text');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   // Parsed fields
   const [type, setType] = useState<'expense' | 'income'>('expense');
@@ -144,21 +144,19 @@ const ExpenseEntry: React.FC = () => {
   // Voice mode: record → STT → parse
   const handleVoiceStart = async () => {
     try {
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
+      const permStatus = await AudioModule.requestRecordingPermissionsAsync();
+      if (!permStatus.granted) {
         showToast('Microphone permission needed', 'error');
         return;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
       });
 
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await recording.startAsync();
-      recordingRef.current = recording;
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
       setIsRecording(true);
     } catch {
       showToast('Could not start recording', 'error');
@@ -166,16 +164,15 @@ const ExpenseEntry: React.FC = () => {
   };
 
   const handleVoiceStop = async () => {
-    if (!recordingRef.current) return;
+    if (!audioRecorder.isRecording) return;
 
     setIsRecording(false);
     setIsProcessing(true);
     setInputMethod('voice');
 
     try {
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
 
       if (uri) {
         const transcript = await transcribeAudio(uri);

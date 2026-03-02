@@ -251,6 +251,7 @@ export const EXPENSE_CATEGORIES: CategoryOption[] = [
   { id: 'education', name: 'Education', icon: 'book', color: '#8B7355' },
   { id: 'family', name: 'Family', icon: 'users', color: '#7C8DA4' },
   { id: 'subscription', name: 'Subscriptions', icon: 'repeat', color: '#7C5CFC' },
+  { id: 'business cost', name: 'Business Cost', icon: 'briefcase', color: '#B2780A' },
   { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#9CA3B4' },
 ];
 

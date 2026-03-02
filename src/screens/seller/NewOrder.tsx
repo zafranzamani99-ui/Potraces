@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,10 @@ import {
   ActivityIndicator,
   Modal,
   ScrollView,
+  Animated,
+  LayoutAnimation,
+  UIManager,
+  Linking,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -23,6 +27,14 @@ import { SellerOrderItem, SellerProduct, SellerOrder } from '../../types';
 import { parseWhatsAppOrder } from '../../utils/parseWhatsAppOrder';
 import { parseWhatsAppOrderAI } from '../../services/aiService';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { lightTap, selectionChanged, successNotification, mediumTap } from '../../services/haptics';
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const SEARCH_THRESHOLD = 8;
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────
 const NewOrder: React.FC = () => {
@@ -55,6 +67,12 @@ const NewOrder: React.FC = () => {
   const [whatsAppText, setWhatsAppText] = useState('');
   const [isParsing, setIsParsing] = useState(false);
   const [unmatched, setUnmatched] = useState<string[]>([]);
+  const [editingQtyProductId, setEditingQtyProductId] = useState<string | null>(null);
+  const [editingQtyValue, setEditingQtyValue] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [showSummary, setShowSummary] = useState(false);
+  const summaryAnim = useRef(new Animated.Value(0)).current;
+  const checkScaleAnim = useRef(new Animated.Value(0)).current;
 
   // When navigating back to this tab with params, pre-fill customer
   useEffect(() => {
@@ -131,16 +149,16 @@ const NewOrder: React.FC = () => {
       .slice(0, 10);
   }, [orders, sellerCustomers]);
 
-  // ── Customer's last order (for reorder) ─────────────────────
-  const lastOrder = useMemo((): SellerOrder | null => {
-    if (!customerName.trim()) return null;
+  // ── Customer's recent orders (for reorder) ─────────────────
+  const recentOrders = useMemo((): SellerOrder[] => {
+    if (!customerName.trim()) return [];
     const name = customerName.trim().toLowerCase();
     const matching = orders.filter(
       (o) => o.customerName?.toLowerCase().trim() === name
     );
-    if (matching.length === 0) return null;
-    // orders are sorted newest-first in store
-    return matching[0];
+    if (matching.length === 0) return [];
+    // orders are sorted newest-first in store — take up to 3
+    return matching.slice(0, 3);
   }, [customerName, orders]);
 
   // ── Autocomplete suggestions (while typing) ──────────────────
@@ -155,6 +173,7 @@ const NewOrder: React.FC = () => {
   // ── Handlers ───────────────────────────────────────────────
   const handleSelectCustomer = useCallback(
     (customer: { name: string; phone?: string; address?: string }) => {
+      lightTap();
       setCustomerName(customer.name);
       if (customer.phone) setCustomerPhone(customer.phone);
       if (customer.address) setCustomerAddress(customer.address);
@@ -162,33 +181,40 @@ const NewOrder: React.FC = () => {
     []
   );
 
-  const handleReorder = useCallback(() => {
-    if (!lastOrder) return;
-    setItems(
-      lastOrder.items.map((item) => ({ ...item }))
-    );
-  }, [lastOrder]);
+  const handleReorder = useCallback((order: SellerOrder) => {
+    mediumTap();
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setItems(order.items.map((item) => ({ ...item })));
+  }, []);
 
   // Delivery
   const handleDeliveryToday = useCallback(() => {
+    lightTap();
     setDeliveryMode('today');
     setDeliveryDate(new Date());
     setShowDatePicker(false);
   }, []);
   const handleDeliveryTomorrow = useCallback(() => {
+    lightTap();
     setDeliveryMode('tomorrow');
     setDeliveryDate(addDays(new Date(), 1));
     setShowDatePicker(false);
   }, []);
   const handleDeliveryPick = useCallback(() => {
+    lightTap();
     setDeliveryMode('pick');
     setShowDatePicker(true);
   }, []);
+  const handleClearDelivery = useCallback(() => {
+    lightTap();
+    setDeliveryMode(null);
+    setDeliveryDate(undefined);
+    setShowDatePicker(false);
+  }, []);
+
   const handleDatePickerChange = useCallback((_event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios'); // iOS keeps showing, Android auto-hides
-    if (selectedDate) {
-      setDeliveryDate(selectedDate);
-    }
+    setShowDatePicker(Platform.OS === 'ios');
+    if (selectedDate) setDeliveryDate(selectedDate);
   }, []);
 
   // WhatsApp parsing
@@ -231,6 +257,8 @@ const NewOrder: React.FC = () => {
 
   // Product add/remove
   const handleAddProduct = useCallback((product: SellerProduct) => {
+    selectionChanged();
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setItems((prev) => {
       const existing = prev.find((i) => i.productId === product.id);
       if (existing) {
@@ -252,6 +280,8 @@ const NewOrder: React.FC = () => {
   }, []);
 
   const handleUpdateQuantity = useCallback((productId: string, qty: number) => {
+    selectionChanged();
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     if (qty <= 0) {
       setItems((prev) => prev.filter((i) => i.productId !== productId));
     } else {
@@ -352,11 +382,22 @@ const NewOrder: React.FC = () => {
       seasonId: activeSeason?.id,
     });
 
+    successNotification();
     setCopiedFlag(false);
     setShowConfirmModal(true);
-  }, [items, customerName, customerPhone, total, note, whatsAppText, deliveryDate, activeSeason, addOrder, persistCustomer]);
+
+    // Trigger checkmark scale-in animation
+    checkScaleAnim.setValue(0);
+    Animated.spring(checkScaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 8,
+      bounciness: 12,
+    }).start();
+  }, [items, customerName, customerPhone, total, note, whatsAppText, deliveryDate, activeSeason, addOrder, persistCustomer, checkScaleAnim]);
 
   const handleCopyToClipboard = useCallback(async () => {
+    lightTap();
     await Clipboard.setStringAsync(confirmationText);
     setCopiedFlag(true);
   }, [confirmationText]);
@@ -374,13 +415,76 @@ const NewOrder: React.FC = () => {
     setShowWhatsAppPaste(false);
     setUnmatched([]);
     setCopiedFlag(false);
-  }, []);
+    setEditingQtyProductId(null);
+    setEditingQtyValue('');
+    setProductSearch('');
+    setShowSummary(false);
+    summaryAnim.setValue(0);
+  }, [summaryAnim]);
 
   const handleDone = useCallback(() => {
+    lightTap();
     setShowConfirmModal(false);
     resetForm();
     navigation.navigate('SellerOrders');
   }, [navigation, resetForm]);
+
+  // ── Quick quantity input handlers ─────────────────────────
+  const handleQtyTap = useCallback((productId: string, currentQty: number) => {
+    selectionChanged();
+    setEditingQtyProductId(productId);
+    setEditingQtyValue(String(currentQty));
+  }, []);
+
+  const handleQtyInputSubmit = useCallback((productId: string) => {
+    const parsed = parseInt(editingQtyValue, 10);
+    if (!isNaN(parsed) && parsed >= 0) {
+      handleUpdateQuantity(productId, parsed);
+    }
+    setEditingQtyProductId(null);
+    setEditingQtyValue('');
+  }, [editingQtyValue, handleUpdateQuantity]);
+
+  // ── Summary drawer handlers ───────────────────────────────
+  const toggleSummary = useCallback(() => {
+    lightTap();
+    const toValue = showSummary ? 0 : 1;
+    setShowSummary(!showSummary);
+    Animated.spring(summaryAnim, {
+      toValue,
+      useNativeDriver: false,
+      speed: 14,
+      bounciness: 4,
+    }).start();
+  }, [showSummary, summaryAnim]);
+
+  const handleRemoveFromSummary = useCallback((productId: string) => {
+    selectionChanged();
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setItems((prev) => prev.filter((i) => i.productId !== productId));
+  }, []);
+
+  // Auto-collapse summary when all items removed
+  useEffect(() => {
+    if (items.length === 0 && showSummary) {
+      setShowSummary(false);
+      summaryAnim.setValue(0);
+    }
+  }, [items.length, showSummary, summaryAnim]);
+
+  // ── WhatsApp share handler ────────────────────────────────
+  const handleShareWhatsApp = useCallback(() => {
+    lightTap();
+    const phone = customerPhone.trim();
+    const encodedText = encodeURIComponent(confirmationText);
+    if (phone) {
+      let digits = phone.replace(/[^0-9]/g, '');
+      if (digits.startsWith('0')) digits = '60' + digits.slice(1);
+      Linking.openURL(`https://wa.me/${digits}?text=${encodedText}`);
+    } else {
+      Linking.openURL(`https://wa.me/?text=${encodedText}`);
+    }
+  }, [customerPhone, confirmationText]);
 
   const isDisabled = items.length === 0;
 
@@ -394,6 +498,13 @@ const NewOrder: React.FC = () => {
       return 0;
     });
   }, [activeProducts, itemQtyMap]);
+
+  // ── Filtered products (search) ────────────────────────────
+  const filteredSortedProducts = useMemo(() => {
+    if (!productSearch.trim()) return sortedProducts;
+    const q = productSearch.toLowerCase();
+    return sortedProducts.filter((p) => p.name.toLowerCase().includes(q));
+  }, [sortedProducts, productSearch]);
 
   // ── Render ─────────────────────────────────────────────────
   return (
@@ -515,27 +626,40 @@ const NewOrder: React.FC = () => {
           </ScrollView>
         )}
 
-        {/* ── Reorder card (known customer) ─────────────────── */}
-        {lastOrder && items.length === 0 && (
-          <TouchableOpacity
-            style={styles.reorderCard}
-            activeOpacity={0.7}
-            onPress={handleReorder}
-            accessibilityRole="button"
-            accessibilityLabel="Reorder same items as last time"
-          >
-            <View style={styles.reorderHeader}>
-              <Feather name="rotate-ccw" size={14} color={CALM.bronze} />
-              <Text style={styles.reorderTitle}>previous order</Text>
-            </View>
-            <Text style={styles.reorderItems} numberOfLines={2}>
-              {lastOrder.items.map((i) => `${i.productName} x${i.quantity}`).join(', ')}
-            </Text>
-            <View style={styles.reorderAction}>
-              <Text style={styles.reorderActionText}>reorder</Text>
-              <Feather name="plus" size={14} color={CALM.bronze} />
-            </View>
-          </TouchableOpacity>
+        {/* ── Reorder cards (known customer, up to 3) ────────── */}
+        {recentOrders.length > 0 && items.length === 0 && (
+          <View style={styles.reorderSection}>
+            <Text style={styles.recentLabel}>PREVIOUS ORDERS</Text>
+            {recentOrders.map((order, idx) => (
+              <TouchableOpacity
+                key={order.id}
+                style={[styles.reorderCard, idx > 0 && { marginTop: SPACING.sm }]}
+                activeOpacity={0.7}
+                onPress={() => handleReorder(order)}
+                accessibilityRole="button"
+                accessibilityLabel={`Reorder: ${order.items.map((i) => `${i.productName} x${i.quantity}`).join(', ')}`}
+              >
+                <View style={styles.reorderHeader}>
+                  <Feather name="rotate-ccw" size={14} color={CALM.bronze} />
+                  <Text style={styles.reorderTitle}>
+                    {format(
+                      order.date instanceof Date ? order.date : new Date(order.date),
+                      'dd MMM'
+                    )}
+                  </Text>
+                </View>
+                <Text style={styles.reorderItems} numberOfLines={2}>
+                  {order.items.map((i) => `${i.productName} x${i.quantity}`).join(', ')}
+                </Text>
+                <View style={styles.reorderAction}>
+                  <Text style={styles.reorderActionText}>
+                    {currency} {order.totalAmount.toFixed(0)}
+                  </Text>
+                  <Feather name="plus" size={14} color={CALM.bronze} />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
         )}
 
         {/* ── WhatsApp paste (expandable) ────────────────────── */}
@@ -624,6 +748,29 @@ const NewOrder: React.FC = () => {
             )}
           </View>
 
+          {/* Product search (shown when 8+ products) */}
+          {activeProducts.length >= SEARCH_THRESHOLD && (
+            <View style={styles.productSearchRow}>
+              <Feather name="search" size={14} color={CALM.textMuted} />
+              <TextInput
+                style={styles.productSearchInput}
+                value={productSearch}
+                onChangeText={setProductSearch}
+                placeholder="search products..."
+                placeholderTextColor={CALM.textMuted}
+                accessibilityLabel="Search products"
+              />
+              {productSearch.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setProductSearch('')}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Feather name="x" size={14} color={CALM.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
           {activeProducts.length === 0 ? (
             <TouchableOpacity
               activeOpacity={0.7}
@@ -636,7 +783,7 @@ const NewOrder: React.FC = () => {
               <Text style={styles.noProductsText}>add products to get started</Text>
             </TouchableOpacity>
           ) : (
-            sortedProducts.map((product, index) => {
+            filteredSortedProducts.map((product, index) => {
               const qty = itemQtyMap[product.id] || 0;
               const hasQty = qty > 0;
               const lineTotal = qty * product.pricePerUnit;
@@ -646,7 +793,7 @@ const NewOrder: React.FC = () => {
                   style={[
                     styles.productRow,
                     hasQty && styles.productRowActive,
-                    index === sortedProducts.length - 1 && styles.productRowLast,
+                    index === filteredSortedProducts.length - 1 && styles.productRowLast,
                   ]}
                 >
                   <TouchableOpacity
@@ -683,7 +830,26 @@ const NewOrder: React.FC = () => {
                       >
                         <Feather name="minus" size={14} color={CALM.bronze} />
                       </TouchableOpacity>
-                      <Text style={styles.qtyText}>{qty}</Text>
+                      {editingQtyProductId === product.id ? (
+                        <TextInput
+                          style={[styles.qtyText, styles.qtyInput]}
+                          value={editingQtyValue}
+                          onChangeText={setEditingQtyValue}
+                          onSubmitEditing={() => handleQtyInputSubmit(product.id)}
+                          onBlur={() => handleQtyInputSubmit(product.id)}
+                          keyboardType="number-pad"
+                          selectTextOnFocus
+                          autoFocus
+                          maxLength={4}
+                        />
+                      ) : (
+                        <TouchableOpacity
+                          onPress={() => handleQtyTap(product.id, qty)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.qtyText}>{qty}</Text>
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity
                         style={styles.qtyBtn}
                         activeOpacity={0.7}
@@ -767,12 +933,12 @@ const NewOrder: React.FC = () => {
             </View>
           </View>
 
-          {/* Native date picker (when pick is selected) */}
+          {/* Date picker */}
           {showDatePicker && (
             <DateTimePicker
               value={deliveryDate || new Date()}
               mode="date"
-              display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              display="default"
               minimumDate={new Date()}
               onChange={handleDatePickerChange}
               accentColor={CALM.bronze}
@@ -786,6 +952,14 @@ const NewOrder: React.FC = () => {
               <Text style={styles.deliveryBadgeText}>
                 {format(deliveryDate, 'EEEE, dd MMM')}
               </Text>
+              <TouchableOpacity
+                onPress={handleClearDelivery}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel="Clear delivery date"
+              >
+                <Feather name="x" size={12} color={CALM.bronze} />
+              </TouchableOpacity>
             </View>
           )}
 
@@ -807,37 +981,107 @@ const NewOrder: React.FC = () => {
         </View>
       </KeyboardAwareScrollView>
 
-      {/* ── Sticky bottom bar ────────────────────────────────── */}
+      {/* ── Sticky bottom bar with expandable summary ─────── */}
       <View style={styles.bottomBar}>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          style={[styles.saveButton, isDisabled && styles.saveButtonDisabled]}
-          onPress={handleSubmit}
-          disabled={isDisabled}
-          accessibilityRole="button"
-          accessibilityLabel={
-            isDisabled
-              ? 'Add items to save order'
-              : `Save order, ${itemCount} items, total ${currency} ${total.toFixed(2)}`
-          }
-        >
-          {isDisabled ? (
-            <Text style={styles.saveButtonTextDisabled}>select items to continue</Text>
-          ) : (
-            <>
-              <Feather name="check" size={18} color="#fff" />
-              <Text style={styles.saveButtonText}>save</Text>
-              <View style={styles.saveDot} />
-              <Text style={styles.saveButtonText}>
-                {itemCount} {itemCount === 1 ? 'item' : 'items'}
-              </Text>
-              <View style={styles.saveDot} />
-              <Text style={styles.saveButtonTextBold}>
+        {/* Expandable summary drawer */}
+        {items.length > 0 && showSummary && (
+          <Animated.View
+            style={[
+              styles.summaryDrawer,
+              {
+                maxHeight: summaryAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 320],
+                }),
+                opacity: summaryAnim,
+              },
+            ]}
+          >
+            <ScrollView
+              style={styles.summaryScroll}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+            >
+              {items.map((item) => (
+                <View key={item.productId} style={styles.summaryRow}>
+                  <View style={styles.summaryRowLeft}>
+                    <Text style={styles.summaryItemName} numberOfLines={1}>
+                      {item.productName}
+                    </Text>
+                    <Text style={styles.summaryItemDetail}>
+                      {item.quantity} x {currency} {item.unitPrice.toFixed(0)}
+                    </Text>
+                  </View>
+                  <Text style={styles.summaryItemTotal}>
+                    {currency} {(item.quantity * item.unitPrice).toFixed(0)}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => handleRemoveFromSummary(item.productId)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={styles.summaryRemoveBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${item.productName}`}
+                  >
+                    <Feather name="x" size={14} color={CALM.textMuted} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+            <View style={styles.summaryTotalRow}>
+              <Text style={styles.summaryTotalLabel}>TOTAL</Text>
+              <Text style={styles.summaryTotalAmount}>
                 {currency} {total.toFixed(2)}
               </Text>
-            </>
+            </View>
+          </Animated.View>
+        )}
+
+        {/* Save button row with summary toggle */}
+        <View style={styles.bottomBarRow}>
+          {items.length > 0 && (
+            <TouchableOpacity
+              onPress={toggleSummary}
+              style={styles.summaryToggle}
+              accessibilityRole="button"
+              accessibilityLabel={showSummary ? 'Hide order summary' : 'Show order summary'}
+            >
+              <Feather
+                name={showSummary ? 'chevron-down' : 'chevron-up'}
+                size={18}
+                color={CALM.bronze}
+              />
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={[styles.saveButton, isDisabled && styles.saveButtonDisabled]}
+            onPress={handleSubmit}
+            disabled={isDisabled}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isDisabled
+                ? 'Add items to save order'
+                : `Save order, ${itemCount} items, total ${currency} ${total.toFixed(2)}`
+            }
+          >
+            {isDisabled ? (
+              <Text style={styles.saveButtonTextDisabled}>select items to continue</Text>
+            ) : (
+              <>
+                <Feather name="check" size={18} color="#fff" />
+                <Text style={styles.saveButtonText}>save</Text>
+                <View style={styles.saveDot} />
+                <Text style={styles.saveButtonText}>
+                  {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                </Text>
+                <View style={styles.saveDot} />
+                <Text style={styles.saveButtonTextBold}>
+                  {currency} {total.toFixed(2)}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ── Confirmation modal ───────────────────────────────── */}
@@ -850,8 +1094,20 @@ const NewOrder: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Feather name="check-circle" size={24} color={CALM.bronze} />
-              <Text style={styles.modalTitle}>order saved</Text>
+              <Animated.View
+                style={[
+                  styles.modalCheckCircle,
+                  { transform: [{ scale: checkScaleAnim }] },
+                ]}
+              >
+                <Feather name="check" size={24} color="#fff" />
+              </Animated.View>
+              <View>
+                <Text style={styles.modalTitle}>order saved</Text>
+                {customerName.trim() !== '' && (
+                  <Text style={styles.modalCustomerName}>{customerName.trim()}</Text>
+                )}
+              </View>
             </View>
 
             <View style={styles.modalTextBox}>
@@ -874,6 +1130,17 @@ const NewOrder: React.FC = () => {
                 <Text style={styles.modalCopyText}>
                   {copiedFlag ? 'copied' : 'copy message'}
                 </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={styles.modalWhatsAppButton}
+                onPress={handleShareWhatsApp}
+                accessibilityRole="button"
+                accessibilityLabel="Send via WhatsApp"
+              >
+                <Feather name="message-circle" size={16} color="#fff" />
+                <Text style={styles.modalWhatsAppText}>send via WhatsApp</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1023,6 +1290,9 @@ const styles = StyleSheet.create({
   },
 
   // ── Reorder card ──────────────────────────────────────────
+  reorderSection: {
+    gap: SPACING.xs,
+  },
   reorderCard: {
     backgroundColor: CALM.highlight,
     borderRadius: RADIUS.lg,
@@ -1172,6 +1442,21 @@ const styles = StyleSheet.create({
     color: CALM.bronze,
   },
 
+  // Product search
+  productSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  productSearchInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    paddingVertical: SPACING.xs,
+  },
+
   // Product rows
   productRow: {
     flexDirection: 'row',
@@ -1237,6 +1522,13 @@ const styles = StyleSheet.create({
     minWidth: 24,
     textAlign: 'center',
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
+  qtyInput: {
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
+    minWidth: 36,
   },
   addBtn: {
     width: 36,
@@ -1346,13 +1638,91 @@ const styles = StyleSheet.create({
 
   // ── Bottom bar ────────────────────────────────────────────
   bottomBar: {
-    paddingHorizontal: SPACING['2xl'],
-    paddingVertical: SPACING.md,
     backgroundColor: CALM.surface,
     borderTopWidth: 1,
     borderTopColor: CALM.border,
   },
+  bottomBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING['2xl'],
+    paddingVertical: SPACING.md,
+  },
+  summaryToggle: {
+    width: 40,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.lg,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+  },
+  summaryDrawer: {
+    overflow: 'hidden',
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+  },
+  summaryScroll: {
+    maxHeight: 240,
+    paddingHorizontal: SPACING.lg,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+  },
+  summaryRowLeft: {
+    flex: 1,
+    gap: 2,
+  },
+  summaryItemName: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.textPrimary,
+  },
+  summaryItemDetail: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
+  summaryItemTotal: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.bronze,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+    marginRight: SPACING.sm,
+    minWidth: 60,
+    textAlign: 'right' as const,
+  },
+  summaryRemoveBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+  },
+  summaryTotalLabel: {
+    ...TYPE.label,
+    color: CALM.bronze,
+  },
+  summaryTotalAmount: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    color: CALM.bronze,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
   saveButton: {
+    flex: 1,
     flexDirection: 'row',
     backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
@@ -1395,6 +1765,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
+
   modalCard: {
     width: '100%',
     backgroundColor: CALM.surface,
@@ -1406,12 +1777,25 @@ const styles = StyleSheet.create({
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: SPACING.md,
+  },
+  modalCheckCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: CALM.bronze,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
     color: CALM.textPrimary,
+  },
+  modalCustomerName: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    marginTop: 2,
   },
   modalTextBox: {
     backgroundColor: CALM.background,
@@ -1442,6 +1826,21 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
     color: CALM.bronze,
+  },
+  modalWhatsAppButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: '#25D366',
+    minHeight: 44,
+  },
+  modalWhatsAppText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: '#fff',
   },
   modalDoneButton: {
     alignItems: 'center',

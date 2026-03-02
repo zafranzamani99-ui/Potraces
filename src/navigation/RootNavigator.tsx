@@ -30,6 +30,7 @@ import SellerNewOrder from '../screens/seller/NewOrder';
 import SellerProducts from '../screens/seller/Products';
 import SeasonSummary from '../screens/seller/SeasonSummary';
 import PastSeasons from '../screens/seller/PastSeasons';
+import SellerCosts from '../screens/seller/CostManagement';
 import SellerOrderList from '../screens/seller/OrderList';
 import StallSessionSetup from '../screens/stall/SessionSetup';
 import StallCloseSession from '../screens/stall/CloseSession';
@@ -660,6 +661,36 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Products',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="SellerCosts"
+          component={SellerCosts}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Costs',
             headerStyle: { backgroundColor: CALM.background },
             headerTintColor: CALM.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },

@@ -308,78 +308,88 @@ const Settings: React.FC = () => {
           </>
         )}
 
-        {/* Categories */}
-        <Text style={styles.sectionHeader}>Categories</Text>
-        <Card style={styles.card}>
-          <TouchableOpacity
-            style={styles.settingRow}
-            onPress={() => {
-              lightTap();
-              setCategoryManagerType('expense');
-              setCategoryManagerVisible(true);
-            }}
-            activeOpacity={0.6}
-          >
-            <View style={styles.settingLabelRow}>
-              <Feather name="tag" size={18} color={CALM.textSecondary} />
-              <Text style={styles.settingLabel}>Expense Categories</Text>
-            </View>
-            <Feather name="chevron-right" size={18} color={CALM.neutral} />
-          </TouchableOpacity>
+        {/* Categories — hide expense/income/investment for seller & stall modes */}
+        {incomeType !== 'seller' && incomeType !== 'stall' && (
+          <>
+            <Text style={styles.sectionHeader}>Categories</Text>
+            <Card style={styles.card}>
+              <TouchableOpacity
+                style={styles.settingRow}
+                onPress={() => {
+                  lightTap();
+                  setCategoryManagerType('expense');
+                  setCategoryManagerVisible(true);
+                }}
+                activeOpacity={0.6}
+              >
+                <View style={styles.settingLabelRow}>
+                  <Feather name="tag" size={18} color={CALM.textSecondary} />
+                  <Text style={styles.settingLabel}>Expense Categories</Text>
+                </View>
+                <Feather name="chevron-right" size={18} color={CALM.neutral} />
+              </TouchableOpacity>
 
-          <View style={styles.divider} />
+              <View style={styles.divider} />
 
-          <TouchableOpacity
-            style={styles.settingRow}
-            onPress={() => {
-              lightTap();
-              setCategoryManagerType('income');
-              setCategoryManagerVisible(true);
-            }}
-            activeOpacity={0.6}
-          >
-            <View style={styles.settingLabelRow}>
-              <Feather name="trending-up" size={18} color={CALM.textSecondary} />
-              <Text style={styles.settingLabel}>Income Categories</Text>
-            </View>
-            <Feather name="chevron-right" size={18} color={CALM.neutral} />
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.settingRow}
+                onPress={() => {
+                  lightTap();
+                  setCategoryManagerType('income');
+                  setCategoryManagerVisible(true);
+                }}
+                activeOpacity={0.6}
+              >
+                <View style={styles.settingLabelRow}>
+                  <Feather name="trending-up" size={18} color={CALM.textSecondary} />
+                  <Text style={styles.settingLabel}>Income Categories</Text>
+                </View>
+                <Feather name="chevron-right" size={18} color={CALM.neutral} />
+              </TouchableOpacity>
 
-          <View style={styles.divider} />
+              <View style={styles.divider} />
 
-          <TouchableOpacity
-            style={styles.settingRow}
-            onPress={() => {
-              lightTap();
-              setCategoryManagerType('investment');
-              setCategoryManagerVisible(true);
-            }}
-            activeOpacity={0.6}
-          >
-            <View style={styles.settingLabelRow}>
-              <Feather name="pie-chart" size={18} color={CALM.textSecondary} />
-              <Text style={styles.settingLabel}>Investment Categories</Text>
-            </View>
-            <Feather name="chevron-right" size={18} color={CALM.neutral} />
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.settingRow}
+                onPress={() => {
+                  lightTap();
+                  setCategoryManagerType('investment');
+                  setCategoryManagerVisible(true);
+                }}
+                activeOpacity={0.6}
+              >
+                <View style={styles.settingLabelRow}>
+                  <Feather name="pie-chart" size={18} color={CALM.textSecondary} />
+                  <Text style={styles.settingLabel}>Investment Categories</Text>
+                </View>
+                <Feather name="chevron-right" size={18} color={CALM.neutral} />
+              </TouchableOpacity>
+            </Card>
+          </>
+        )}
 
-          <View style={styles.divider} />
-
-          <TouchableOpacity
-            style={styles.settingRow}
-            onPress={() => {
-              lightTap();
-              setUnitManagerVisible(true);
-            }}
-            activeOpacity={0.6}
-          >
-            <View style={styles.settingLabelRow}>
-              <Feather name="box" size={18} color={CALM.textSecondary} />
-              <Text style={styles.settingLabel}>Custom Units</Text>
-            </View>
-            <Feather name="chevron-right" size={18} color={CALM.neutral} />
-          </TouchableOpacity>
-        </Card>
+        {/* Product Units — only for seller & stall modes */}
+        {(incomeType === 'seller' || incomeType === 'stall') && (
+          <>
+            <Text style={styles.sectionHeader}>Product Units</Text>
+            <Card style={styles.card}>
+              <TouchableOpacity
+                style={styles.settingRow}
+                onPress={() => {
+                  lightTap();
+                  setUnitManagerVisible(true);
+                }}
+                activeOpacity={0.6}
+              >
+                <View style={styles.settingLabelRow}>
+                  <Feather name="box" size={18} color={CALM.textSecondary} />
+                  <Text style={styles.settingLabel}>Manage Units</Text>
+                </View>
+                <Feather name="chevron-right" size={18} color={CALM.neutral} />
+              </TouchableOpacity>
+            </Card>
+          </>
+        )}
 
         <CategoryManager
           visible={categoryManagerVisible}

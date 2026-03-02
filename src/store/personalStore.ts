@@ -11,18 +11,21 @@ export const usePersonalStore = create<PersonalState>()(
       budgets: [],
       goals: [],
 
-      addTransaction: (transaction) =>
+      addTransaction: (transaction) => {
+        const id = Date.now().toString();
         set((state) => ({
           transactions: [
             {
               ...transaction,
-              id: Date.now().toString(),
+              id,
               createdAt: new Date(),
               updatedAt: new Date(),
             },
             ...state.transactions,
           ],
-        })),
+        }));
+        return id;
+      },
 
       updateTransaction: (id, updates) =>
         set((state) => ({

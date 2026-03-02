@@ -1,10 +1,11 @@
-import React, { useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   Alert,
   Animated,
 } from 'react-native';
@@ -12,7 +13,12 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
+import { useBusinessStore } from '../../store/businessStore';
+import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { createTransfer } from '../../utils/transferBridge';
+import { lightTap, successNotification } from '../../services/haptics';
+import { useToast } from '../../context/ToastContext';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 
 // -- Count-up animation hook ----------------------------------------
@@ -84,8 +90,11 @@ const AnimatedKeptAmount: React.FC<{ value: number; currency: string }> = ({
 const SeasonSummary: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { seasons, orders, ingredientCosts, endSeason, addSeason } = useSellerStore();
+  const { seasons, orders, ingredientCosts, endSeason, addSeason, markOrdersTransferred } = useSellerStore();
+  const addTransfer = useBusinessStore((s) => s.addTransfer);
+  const addTransferIncome = usePersonalStore((s) => s.addTransferIncome);
   const currency = useSettingsStore((s) => s.currency);
+  const { showToast } = useToast();
 
   // Get season -- either from route params or active season
   const seasonId = route.params?.seasonId;
@@ -136,6 +145,49 @@ const SeasonSummary: React.FC = () => {
       customerCount: customers.size,
     };
   }, [season, orders, ingredientCosts]);
+
+  // ─── Transfer bridge ───────────────────────────────────────
+  const untransferredOrders = useMemo(() => {
+    if (!season) return [];
+    return orders.filter(
+      (o) => o.seasonId === season.id && o.isPaid && !o.transferredToPersonal
+    );
+  }, [season, orders]);
+
+  const untransferredAmount = useMemo(
+    () => untransferredOrders.reduce((s, o) => s + o.totalAmount, 0),
+    [untransferredOrders]
+  );
+
+  const [transferAmount, setTransferAmount] = useState('');
+  const [showTransfer, setShowTransfer] = useState(false);
+
+  useEffect(() => {
+    if (untransferredAmount > 0) {
+      setTransferAmount(untransferredAmount.toFixed(2));
+    }
+  }, [untransferredAmount]);
+
+  const handleTransferToPersonal = useCallback(() => {
+    const amount = parseFloat(transferAmount);
+    if (!amount || amount <= 0 || !season) return;
+
+    const transfer = createTransfer(
+      amount,
+      'business',
+      'personal',
+      `seller: ${season.name} (${untransferredOrders.length} orders)`
+    );
+    addTransfer(transfer);
+    addTransferIncome(transfer);
+    markOrdersTransferred(
+      untransferredOrders.map((o) => o.id),
+      transfer.id
+    );
+    successNotification();
+    showToast('transferred to personal', 'success');
+    setShowTransfer(false);
+  }, [transferAmount, season, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast]);
 
   const handleEndSeason = () => {
     if (!season) return;
@@ -293,6 +345,53 @@ const SeasonSummary: React.FC = () => {
                 </View>
               </View>
             </TouchableOpacity>
+          </FadeInSection>
+        )}
+
+        {/* Transfer to personal wallet */}
+        {untransferredAmount > 0 && (
+          <FadeInSection delay={225}>
+            <View style={styles.transferCard}>
+              <View style={styles.transferHeader}>
+                <Feather name="refresh-cw" size={16} color={CALM.bronze} />
+                <Text style={styles.transferTitle}>
+                  {currency} {untransferredAmount.toFixed(2)} untransferred
+                </Text>
+              </View>
+              <Text style={styles.transferSubtext}>
+                {untransferredOrders.length} paid order{untransferredOrders.length !== 1 ? 's' : ''} not yet in your personal wallet
+              </Text>
+              {showTransfer ? (
+                <View style={styles.transferInputRow}>
+                  <View style={styles.transferInputWrapper}>
+                    <Text style={styles.transferCurrencyPrefix}>{currency}</Text>
+                    <TextInput
+                      style={styles.transferInput}
+                      value={transferAmount}
+                      onChangeText={setTransferAmount}
+                      keyboardType="decimal-pad"
+                      selectTextOnFocus
+                    />
+                  </View>
+                  <TouchableOpacity
+                    style={styles.transferConfirmButton}
+                    activeOpacity={0.7}
+                    onPress={handleTransferToPersonal}
+                  >
+                    <Text style={styles.transferConfirmText}>transfer</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.transferButton}
+                  activeOpacity={0.7}
+                  onPress={() => { lightTap(); setShowTransfer(true); }}
+                >
+                  <Text style={styles.transferButtonText}>transfer to personal</Text>
+                  <Feather name="arrow-right" size={14} color={CALM.bronze} />
+                </TouchableOpacity>
+              )}
+            </View>
           </FadeInSection>
         )}
 
@@ -616,6 +715,87 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,        // 13
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
     color: CALM.bronze,                  // #B2780A
+  },
+
+  // -- Transfer bridge -----------------------------------------------
+  transferCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  transferHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: 4,
+  },
+  transferTitle: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: CALM.textPrimary,
+  },
+  transferSubtext: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginBottom: SPACING.md,
+  },
+  transferButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+  },
+  transferButtonText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: CALM.bronze,
+  },
+  transferInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  transferInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: CALM.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    height: 40,
+  },
+  transferCurrencyPrefix: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+    marginRight: 4,
+  },
+  transferInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: CALM.textPrimary,
+    padding: 0,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  transferConfirmButton: {
+    backgroundColor: CALM.bronze,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.md,
+    height: 40,
+    justifyContent: 'center',
+  },
+  transferConfirmText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: '#fff',
   },
 
   // -- Top products -------------------------------------------------

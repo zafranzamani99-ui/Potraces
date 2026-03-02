@@ -901,9 +901,12 @@ const OrderList: React.FC = () => {
   // Delete order
   const handleDeleteOrder = useCallback(
     (order: SellerOrder) => {
+      const msg = order.transferredToPersonal
+        ? 'this order was already transferred to personal. deleting it will leave a phantom income in your personal wallet.\n\ndelete anyway?'
+        : 'delete this order?';
       Alert.alert(
         '',
-        'delete this order?',
+        msg,
         [
           { text: 'cancel', style: 'cancel' },
           {

@@ -133,7 +133,7 @@ Built for the abang who sets up a stall at pasar malam and sells nasi lemak by t
 | AI | Claude Haiku via Anthropic REST API |
 | OCR | Google Cloud Vision |
 | Speech | Google Cloud Speech-to-Text |
-| Voice recording | expo-av |
+| Voice recording | expo-audio |
 | Animations | react-native-reanimated |
 | Charts | react-native-chart-kit |
 | Haptics | expo-haptics |

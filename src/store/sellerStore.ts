@@ -12,6 +12,8 @@ export const useSellerStore = create<SellerState>()(
       ingredientCosts: [],
       sellerCustomers: [],
       customUnits: [],
+      hiddenUnits: [],
+      unitOrder: [],
 
       // ─── Products ───────────────────────────────────────
       addProduct: (product) =>
@@ -102,6 +104,24 @@ export const useSellerStore = create<SellerState>()(
           orders: state.orders.filter((o) => o.id !== id),
         })),
 
+      markOrdersTransferred: (ids, transferId) =>
+        set((state) => ({
+          orders: state.orders.map((o) =>
+            ids.includes(o.id)
+              ? { ...o, transferredToPersonal: true, transferId, updatedAt: new Date() }
+              : o
+          ),
+        })),
+
+      unmarkOrdersTransferred: (transferId) =>
+        set((state) => ({
+          orders: state.orders.map((o) =>
+            o.transferId === transferId
+              ? { ...o, transferredToPersonal: false, transferId: undefined, updatedAt: new Date() }
+              : o
+          ),
+        })),
+
       // ─── Seasons ────────────────────────────────────────
       addSeason: (season) =>
         set((state) => ({
@@ -127,18 +147,44 @@ export const useSellerStore = create<SellerState>()(
         return state.seasons.find((s) => s.isActive) || null;
       },
 
+      updateSeasonBudget: (seasonId, budget) =>
+        set((state) => ({
+          seasons: state.seasons.map((s) =>
+            s.id === seasonId ? { ...s, costBudget: budget } : s
+          ),
+        })),
+
       // ─── Ingredient Costs ──────────────────────────────
-      addIngredientCost: (cost) =>
+      addIngredientCost: (cost) => {
+        const id = Date.now().toString();
         set((state) => ({
           ingredientCosts: [
-            { ...cost, id: Date.now().toString() },
+            { ...cost, id },
             ...state.ingredientCosts,
           ],
+        }));
+        return id;
+      },
+
+      updateIngredientCost: (id, updates) =>
+        set((state) => ({
+          ingredientCosts: state.ingredientCosts.map((c) =>
+            c.id === id ? { ...c, ...updates } : c
+          ),
         })),
 
       deleteIngredientCost: (id) =>
         set((state) => ({
           ingredientCosts: state.ingredientCosts.filter((c) => c.id !== id),
+        })),
+
+      markCostSynced: (id, personalTransactionId) =>
+        set((state) => ({
+          ingredientCosts: state.ingredientCosts.map((c) =>
+            c.id === id
+              ? { ...c, syncedToPersonal: true, personalTransactionId }
+              : c
+          ),
         })),
 
       // ─── Seller Customers ────────────────────────────────
@@ -173,7 +219,32 @@ export const useSellerStore = create<SellerState>()(
       deleteCustomUnit: (unit) =>
         set((state) => ({
           customUnits: state.customUnits.filter((u) => u !== unit),
+          unitOrder: state.unitOrder.filter((u) => u !== unit),
         })),
+
+      renameCustomUnit: (oldName, newName) =>
+        set((state) => {
+          const normalized = newName.trim().toLowerCase();
+          if (!normalized || normalized === oldName) return state;
+          return {
+            customUnits: state.customUnits.map((u) => (u === oldName ? normalized : u)),
+            unitOrder: state.unitOrder.map((u) => (u === oldName ? normalized : u)),
+          };
+        }),
+
+      hideUnit: (unit) =>
+        set((state) => ({
+          hiddenUnits: state.hiddenUnits.includes(unit)
+            ? state.hiddenUnits
+            : [...state.hiddenUnits, unit],
+          unitOrder: state.unitOrder.filter((u) => u !== unit),
+        })),
+      unhideUnit: (unit) =>
+        set((state) => ({
+          hiddenUnits: state.hiddenUnits.filter((u) => u !== unit),
+        })),
+
+      setUnitOrder: (order) => set({ unitOrder: order }),
 
       // ─── Derived Data ──────────────────────────────────
       getSeasonOrders: (seasonId) => {
@@ -233,6 +304,8 @@ export const useSellerStore = create<SellerState>()(
           createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : c.createdAt,
         })),
         customUnits: state.customUnits,
+        hiddenUnits: state.hiddenUnits,
+        unitOrder: state.unitOrder,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -263,6 +336,8 @@ export const useSellerStore = create<SellerState>()(
             createdAt: new Date(c.createdAt),
           }));
           state.customUnits = state.customUnits || [];
+          state.hiddenUnits = state.hiddenUnits || [];
+          state.unitOrder = state.unitOrder || [];
         }
       },
     }
