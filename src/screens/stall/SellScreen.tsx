@@ -223,11 +223,11 @@ const SellScreen: React.FC = () => {
       <SafeAreaView style={styles.container}>
         <View style={styles.sessionHeader}>
           <Text style={styles.sessionTotal}>
-            {currency} {session.totalRevenue.toFixed(2)}
+            {currency} {session.totalRevenue.toFixed(0)}
           </Text>
           <Text style={styles.sessionSplit}>
-            cash {currency} {session.totalCash.toFixed(2)} {'  \u00B7  '}
-            qr {currency} {session.totalQR.toFixed(2)}
+            cash {currency} {session.totalCash.toFixed(0)} {'  \u00B7  '}
+            qr {currency} {session.totalQR.toFixed(0)}
           </Text>
         </View>
         <View style={styles.emptyContainer}>
@@ -258,11 +258,11 @@ const SellScreen: React.FC = () => {
               style={styles.sessionTotal}
               accessibilityLabel={`Session total ${currency} ${session.totalRevenue.toFixed(2)}`}
             >
-              {currency} {session.totalRevenue.toFixed(2)}
+              {currency} {session.totalRevenue.toFixed(0)}
             </Text>
             <Text style={styles.sessionSplit}>
-              cash {currency} {session.totalCash.toFixed(2)} {'  \u00B7  '}
-              qr {currency} {session.totalQR.toFixed(2)}
+              cash {currency} {session.totalCash.toFixed(0)} {'  \u00B7  '}
+              qr {currency} {session.totalQR.toFixed(0)}
             </Text>
           </View>
           <Text style={styles.sessionSaleCount}>
@@ -324,6 +324,7 @@ const SellScreen: React.FC = () => {
                   <TouchableOpacity
                     style={[
                       styles.productButton,
+                      inCartQty > 0 && styles.productInCart,
                       isSoldOut && styles.productOutOfStock,
                     ]}
                     onPress={() => addToCart(product.id)}
@@ -561,7 +562,7 @@ const SellScreen: React.FC = () => {
                 <View style={styles.totalRow}>
                   <Text style={styles.totalRowLabel}>Subtotal</Text>
                   <Text style={styles.totalRowValue}>
-                    {currency} {getSubtotal().toFixed(2)}
+                    {currency} {getSubtotal().toFixed(0)}
                   </Text>
                 </View>
               )}
@@ -571,7 +572,7 @@ const SellScreen: React.FC = () => {
                     Discount{discountType === 'percentage' ? ` (${discountValue}%)` : ''}
                   </Text>
                   <Text style={[styles.totalRowValue, { color: CALM.positive }]}>
-                    -{currency} {getDiscountAmount().toFixed(2)}
+                    -{currency} {getDiscountAmount().toFixed(0)}
                   </Text>
                 </View>
               )}
@@ -583,7 +584,7 @@ const SellScreen: React.FC = () => {
               >
                 <Text style={styles.totalLabel}>Total</Text>
                 <Text style={styles.totalAmount}>
-                  {currency} {getTotalAmount().toFixed(2)}
+                  {currency} {getTotalAmount().toFixed(0)}
                 </Text>
               </View>
             </View>
@@ -636,9 +637,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
-    backgroundColor: CALM.background,
+    backgroundColor: withAlpha(CALM.bronze, 0.04),
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: withAlpha(CALM.bronze, 0.12),
   },
   sessionHeaderRow: {
     flexDirection: 'row',
@@ -658,8 +659,13 @@ const styles = StyleSheet.create({
   },
   sessionSaleCount: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
+    backgroundColor: withAlpha(CALM.bronze, 0.10),
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
   },
 
   // ─── Content row ───────────────────────────────────────
@@ -724,6 +730,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: CALM.border,
+  },
+  productInCart: {
+    borderColor: withAlpha(CALM.bronze, 0.3),
+    backgroundColor: withAlpha(CALM.bronze, 0.04),
   },
   productInner: {
     flex: 1,
@@ -802,6 +812,7 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     borderBottomWidth: 1,
     borderBottomColor: CALM.border,
+    backgroundColor: withAlpha(CALM.bronze, 0.03),
   },
   cartHeaderLeft: {
     flexDirection: 'row',

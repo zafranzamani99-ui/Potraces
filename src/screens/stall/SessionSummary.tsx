@@ -12,7 +12,7 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useStallStore } from '../../store/stallStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -197,7 +197,7 @@ const SessionSummary: React.FC = () => {
           style={styles.revenueAmount}
           accessibilityLabel={`Total revenue ${currency} ${summary.totalRevenue.toFixed(2)}`}
         >
-          {currency} {summary.totalRevenue.toFixed(2)}
+          {currency} {summary.totalRevenue.toFixed(0)}
         </Text>
 
         {/* Duration, sale count */}
@@ -217,22 +217,24 @@ const SessionSummary: React.FC = () => {
         {/* Cash / QR split */}
         <View style={styles.splitRow}>
           <View style={styles.splitItem}>
+            <Feather name="dollar-sign" size={16} color={CALM.textSecondary} style={{ marginBottom: 4 }} />
             <Text style={styles.splitLabel}>CASH</Text>
             <Text
               style={styles.splitValue}
               accessibilityLabel={`Cash ${currency} ${summary.totalCash.toFixed(2)}`}
             >
-              {currency} {summary.totalCash.toFixed(2)}
+              {currency} {summary.totalCash.toFixed(0)}
             </Text>
           </View>
           <View style={styles.splitDivider} />
           <View style={styles.splitItem}>
+            <Feather name="smartphone" size={16} color={CALM.textSecondary} style={{ marginBottom: 4 }} />
             <Text style={styles.splitLabel}>QR</Text>
             <Text
               style={styles.splitValue}
               accessibilityLabel={`QR payments ${currency} ${summary.totalQR.toFixed(2)}`}
             >
-              {currency} {summary.totalQR.toFixed(2)}
+              {currency} {summary.totalQR.toFixed(0)}
             </Text>
           </View>
         </View>
@@ -401,6 +403,7 @@ const styles = StyleSheet.create({
     ...TYPE.balance,
     color: CALM.textPrimary,
     marginBottom: SPACING.xl,
+    fontSize: TYPOGRAPHY.size['4xl'],
   },
 
   // ─── Stats row ───────────────────────────────────────────────
@@ -520,18 +523,18 @@ const styles = StyleSheet.create({
   // ─── Condition badge ─────────────────────────────────────────
   conditionBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: CALM.surface,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: withAlpha(CALM.bronze, 0.2),
     borderRadius: RADIUS.full,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
   },
   conditionBadgeText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
   },
 
   // ─── Note ────────────────────────────────────────────────────
@@ -551,9 +554,9 @@ const styles = StyleSheet.create({
 
   // ─── Transfer bridge ────────────────────────────────────────
   transferCard: {
-    backgroundColor: CALM.highlight,
+    backgroundColor: withAlpha(CALM.bronze, 0.04),
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: withAlpha(CALM.bronze, 0.2),
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     marginBottom: SPACING.xl,

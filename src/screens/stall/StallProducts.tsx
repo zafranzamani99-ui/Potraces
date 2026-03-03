@@ -12,7 +12,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 
 const StallProducts: React.FC = () => {
   const { products, addProduct, updateProduct, deleteProduct } = useStallStore();
@@ -74,7 +74,7 @@ const StallProducts: React.FC = () => {
       >
         <Text style={styles.heading}>products</Text>
         <Text style={styles.subheading}>
-          things you sell at the stall
+          things you sell at the stall{products.length > 0 ? ` \u00B7 ${products.filter((p) => p.isActive).length} active` : ''}
         </Text>
 
         {/* Add / Edit form */}
@@ -139,7 +139,7 @@ const StallProducts: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Add a new product"
           >
-            <Feather name="plus" size={18} color={CALM.bronze} />
+            <Feather name="plus" size={18} color="#FFFFFF" />
             <Text style={styles.addButtonText}>add product</Text>
           </TouchableOpacity>
         )}
@@ -148,7 +148,7 @@ const StallProducts: React.FC = () => {
         {products.length > 0 && (
           <View style={styles.listSection}>
             {products.map((product) => (
-              <View key={product.id} style={styles.productRow}>
+              <View key={product.id} style={[styles.productRow, !product.isActive && styles.productRowInactive]}>
                 <TouchableOpacity
                   style={styles.toggleButton}
                   onPress={() => handleToggleActive(product.id, product.isActive)}
@@ -308,9 +308,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.surface,
-    borderWidth: 1,
-    borderColor: CALM.bronze,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     minHeight: 48,
@@ -319,7 +317,7 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: '#FFFFFF',
   },
 
   // ─── Product list ──────────────────────────────────────────
@@ -356,6 +354,9 @@ const styles = StyleSheet.create({
     ...TYPE.muted,
     marginTop: 2,
     fontVariant: ['tabular-nums'],
+  },
+  productRowInactive: {
+    opacity: 0.5,
   },
   editButton: {
     width: 44,

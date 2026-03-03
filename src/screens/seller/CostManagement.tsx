@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { format } from 'date-fns';
+import { format, isToday, isYesterday } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useBusinessStore } from '../../store/businessStore';
@@ -86,6 +86,9 @@ const CostManagement: React.FC = () => {
   const costDescShakeAnim = useRef(new Animated.Value(0)).current;
   const costAmtShakeAnim = useRef(new Animated.Value(0)).current;
 
+  // ─── Search state ──────────────────────────────────────────
+  const [costSearch, setCostSearch] = useState('');
+
   // ─── Budget modal state ────────────────────────────────────
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
@@ -119,6 +122,42 @@ const CostManagement: React.FC = () => {
       : [...ingredientCosts];
     return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [activeSeason, ingredientCosts]);
+
+  const filteredCostEntries = useMemo(() => {
+    if (!costSearch.trim()) return seasonCostEntries;
+    const q = costSearch.trim().toLowerCase();
+    return seasonCostEntries.filter((c) => {
+      if (c.description.toLowerCase().includes(q)) return true;
+      const d = new Date(c.date);
+      const dateStr = format(d, 'dd MMM yyyy').toLowerCase();
+      if (dateStr.includes(q)) return true;
+      if (isToday(d) && 'today'.includes(q)) return true;
+      if (isYesterday(d) && 'yesterday'.includes(q)) return true;
+      return false;
+    });
+  }, [seasonCostEntries, costSearch]);
+
+  const groupedCostEntries = useMemo(() => {
+    const groups: { label: string; entries: IngredientCost[] }[] = [];
+    const map = new Map<string, IngredientCost[]>();
+
+    for (const entry of filteredCostEntries) {
+      const d = new Date(entry.date);
+      let label: string;
+      if (isToday(d)) label = 'today';
+      else if (isYesterday(d)) label = 'yesterday';
+      else label = format(d, 'dd MMM yyyy');
+
+      if (!map.has(label)) map.set(label, []);
+      map.get(label)!.push(entry);
+    }
+
+    for (const [label, entries] of map) {
+      groups.push({ label, entries });
+    }
+
+    return groups;
+  }, [filteredCostEntries]);
 
   const budget = activeSeason?.costBudget;
   const budgetPercent = budget && budget > 0 ? Math.round((seasonStats.totalCosts / budget) * 100) : 0;
@@ -323,38 +362,39 @@ const CostManagement: React.FC = () => {
       >
         {/* ─── Profit Summary ──────────────────────────────── */}
         <Animated.View style={[styles.summaryCard, summaryAnim]}>
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryStat}>
-              <Text style={styles.summaryLabel}>income</Text>
-              <Text style={styles.summaryValue}>
-                {currency} {seasonStats.totalIncome.toFixed(2)}
-              </Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryStat}>
-              <Text style={styles.summaryLabel}>costs</Text>
-              <Text style={styles.summaryValue}>
-                {currency} {seasonStats.totalCosts.toFixed(2)}
-              </Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryStat}>
-              <Text style={styles.summaryLabel}>profit</Text>
-              <Text
-                style={[
-                  styles.summaryValue,
-                  seasonStats.profit >= 0 ? styles.summaryProfit : styles.summaryLoss,
-                ]}
-              >
-                {currency} {seasonStats.profit.toFixed(2)}
-              </Text>
-            </View>
-          </View>
           {activeSeason && (
             <Text style={styles.summarySeasonLabel}>
-              season: {activeSeason.name}
+              {activeSeason.name}
             </Text>
           )}
+          <Text
+            style={[
+              styles.summaryHero,
+              seasonStats.profit >= 0 ? styles.summaryHeroProfit : styles.summaryHeroLoss,
+            ]}
+          >
+            {currency} {seasonStats.profit.toFixed(0)}
+          </Text>
+          <Text style={styles.summaryHeroLabel}>
+            {seasonStats.profit >= 0 ? 'profit' : 'loss'}
+          </Text>
+          <View style={styles.summaryBreakdown}>
+            <View style={styles.summaryBreakdownItem}>
+              <Feather name="arrow-down-circle" size={14} color={BIZ.profit} />
+              <Text style={styles.summaryBreakdownValue}>
+                {currency} {seasonStats.totalIncome.toFixed(0)}
+              </Text>
+              <Text style={styles.summaryBreakdownLabel}>income</Text>
+            </View>
+            <View style={styles.summaryBreakdownDot} />
+            <View style={styles.summaryBreakdownItem}>
+              <Feather name="arrow-up-circle" size={14} color={BIZ.loss} />
+              <Text style={styles.summaryBreakdownValue}>
+                {currency} {seasonStats.totalCosts.toFixed(0)}
+              </Text>
+              <Text style={styles.summaryBreakdownLabel}>costs</Text>
+            </View>
+          </View>
         </Animated.View>
 
         {/* ─── Budget Bar ──────────────────────────────────── */}
@@ -362,10 +402,13 @@ const CostManagement: React.FC = () => {
           <Animated.View style={[styles.budgetCard, budgetAnim]}>
             <View style={styles.budgetHeader}>
               <View style={styles.budgetHeaderLeft}>
-                <Feather name="pie-chart" size={16} color={CALM.textSecondary} />
+                <View style={styles.budgetIconWrap}>
+                  <Feather name="pie-chart" size={14} color={CALM.bronze} />
+                </View>
                 <Text style={styles.budgetTitle}>cost budget</Text>
               </View>
               <TouchableOpacity
+                style={styles.budgetEditBtn}
                 activeOpacity={0.7}
                 onPress={() => {
                   lightTap();
@@ -376,7 +419,7 @@ const CostManagement: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel={budget ? "Edit cost budget" : "Set cost budget"}
               >
-                <Feather name={budget ? 'edit-2' : 'plus'} size={16} color={CALM.bronze} />
+                <Feather name={budget ? 'edit-2' : 'plus'} size={14} color={CALM.bronze} />
               </TouchableOpacity>
             </View>
 
@@ -393,9 +436,14 @@ const CostManagement: React.FC = () => {
                     ]}
                   />
                 </View>
-                <Text style={[styles.budgetText, { color: budgetColor }]}>
-                  {currency} {seasonStats.totalCosts.toFixed(2)} / {currency} {budget.toFixed(2)} — {budgetPercent}% used
-                </Text>
+                <View style={styles.budgetTextRow}>
+                  <Text style={[styles.budgetText, { color: budgetColor }]}>
+                    {budgetPercent}% used
+                  </Text>
+                  <Text style={styles.budgetTextMuted}>
+                    {currency} {seasonStats.totalCosts.toFixed(0)} / {currency} {budget.toFixed(0)}
+                  </Text>
+                </View>
               </View>
             ) : (
               <Text style={styles.budgetHint}>
@@ -410,14 +458,17 @@ const CostManagement: React.FC = () => {
           <Animated.View style={[styles.transferCard, transferAnim]}>
             <View style={styles.transferHeader}>
               <View style={styles.transferHeaderLeft}>
-                <Feather name="refresh-cw" size={16} color={CALM.bronze} />
-                <Text style={styles.transferTitle}>transfer to personal</Text>
+                <View style={styles.transferIconWrap}>
+                  <Feather name="refresh-cw" size={14} color={CALM.bronze} />
+                </View>
+                <View>
+                  <Text style={styles.transferTitle}>transfer to personal</Text>
+                  <Text style={styles.transferSubtext}>
+                    {currency} {untransferredAmount.toFixed(0)} from {untransferredOrders.length} order{untransferredOrders.length !== 1 ? 's' : ''}
+                  </Text>
+                </View>
               </View>
             </View>
-
-            <Text style={styles.transferSubtext}>
-              {currency} {untransferredAmount.toFixed(2)} from {untransferredOrders.length} paid order{untransferredOrders.length !== 1 ? 's' : ''} not yet in personal wallet
-            </Text>
 
             {showTransfer ? (
               <View style={styles.transferInputRow}>
@@ -459,52 +510,90 @@ const CostManagement: React.FC = () => {
         {/* ─── Cost History ────────────────────────────────── */}
         <Animated.View style={[styles.historyCard, historyAnim]}>
           <View style={styles.historyHeader}>
-            <Text style={styles.historyTitle}>
-              cost history
-            </Text>
+            <Text style={styles.historyTitle}>cost history</Text>
             <View style={styles.historyBadge}>
               <Text style={styles.historyBadgeText}>{seasonCostEntries.length}</Text>
             </View>
           </View>
 
+          {seasonCostEntries.length > 0 && (
+            <View style={styles.historySearchBar}>
+              <Feather name="search" size={14} color={CALM.textMuted} />
+              <TextInput
+                style={styles.historySearchInput}
+                placeholder="search costs..."
+                placeholderTextColor={CALM.textMuted}
+                value={costSearch}
+                onChangeText={setCostSearch}
+                returnKeyType="search"
+              />
+              {costSearch.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setCostSearch('')}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Feather name="x" size={14} color={CALM.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
           {seasonCostEntries.length === 0 ? (
-            <Text style={styles.historyEmpty}>no costs logged yet</Text>
+            <View style={styles.historyEmptyWrap}>
+              <Feather name="inbox" size={24} color={CALM.textMuted} />
+              <Text style={styles.historyEmpty}>no costs logged yet</Text>
+            </View>
+          ) : filteredCostEntries.length === 0 ? (
+            <View style={styles.historyEmptyWrap}>
+              <Feather name="search" size={18} color={CALM.textMuted} />
+              <Text style={styles.historyEmpty}>no match</Text>
+            </View>
           ) : (
-            seasonCostEntries.map((cost, i) => (
-              <View key={cost.id}>
-                {i > 0 && <View style={styles.historyItemDivider} />}
-                <View style={styles.historyItem}>
-                  <TouchableOpacity
-                    style={styles.historyItemTappable}
-                    activeOpacity={0.7}
-                    onPress={() => handleOpenCostModal(cost)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Edit ${cost.description}`}
-                  >
-                    <View style={styles.historyItemLeft}>
-                      <View style={styles.historyItemDescRow}>
-                        <Text style={styles.historyItemDesc}>{cost.description}</Text>
-                        {cost.syncedToPersonal && (
-                          <Feather name="link" size={10} color={CALM.textMuted} />
-                        )}
-                      </View>
-                      <Text style={styles.historyItemDate}>
-                        {format(new Date(cost.date), 'dd MMM yyyy')}
-                      </Text>
-                    </View>
-                    <Text style={styles.historyItemAmount}>
-                      {currency} {cost.amount.toFixed(2)}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => handleDeleteCost(cost)}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete ${cost.description}`}
-                  >
-                    <Feather name="trash-2" size={14} color={CALM.textMuted} />
-                  </TouchableOpacity>
+            groupedCostEntries.map((group, gi) => (
+              <View key={group.label}>
+                <View style={[styles.historySectionHeader, gi > 0 && styles.historySectionHeaderSpaced]}>
+                  <Text style={styles.historySectionLabel}>{group.label}</Text>
+                  <View style={styles.historySectionLine} />
                 </View>
+                {group.entries.map((cost, i) => {
+                  const initial = cost.description.charAt(0).toUpperCase();
+                  return (
+                    <View key={cost.id}>
+                      {i > 0 && <View style={styles.historyItemDivider} />}
+                      <TouchableOpacity
+                        style={styles.historyItemRow}
+                        activeOpacity={0.65}
+                        onPress={() => handleOpenCostModal(cost)}
+                        onLongPress={() => handleDeleteCost(cost)}
+                        delayLongPress={500}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${cost.description}, ${currency} ${cost.amount.toFixed(2)}. Tap to edit, hold to delete.`}
+                      >
+                        <View style={styles.historyAvatar}>
+                          <Text style={styles.historyAvatarText}>{initial}</Text>
+                        </View>
+                        <View style={styles.historyItemContent}>
+                          <View style={styles.historyItemTop}>
+                            <Text style={styles.historyItemDesc} numberOfLines={1}>
+                              {cost.description}
+                            </Text>
+                            <Text style={styles.historyItemAmount}>
+                              {currency} {cost.amount.toFixed(2)}
+                            </Text>
+                          </View>
+                          {cost.syncedToPersonal && (
+                            <View style={styles.historyItemBottom}>
+                              <View style={styles.historyLinkedBadge}>
+                                <Feather name="link" size={9} color={CALM.bronze} />
+                                <Text style={styles.historyLinkedText}>synced</Text>
+                              </View>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
               </View>
             ))
           )}
@@ -757,43 +846,58 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: CALM.border,
-    padding: SPACING.md,
-  },
-  summaryRow: {
-    flexDirection: 'row',
+    padding: SPACING.lg,
     alignItems: 'center',
-  },
-  summaryStat: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  summaryLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
-    marginBottom: 2,
-  },
-  summaryValue: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textPrimary,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  summaryProfit: {
-    color: BIZ.profit,
-  },
-  summaryLoss: {
-    color: BIZ.loss,
-  },
-  summaryDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: CALM.border,
   },
   summarySeasonLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
-    textAlign: 'center',
-    marginTop: SPACING.sm,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.8,
+    marginBottom: SPACING.xs,
+  },
+  summaryHero: {
+    fontSize: 32,
+    fontWeight: TYPOGRAPHY.weight.bold as any,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  summaryHeroProfit: {
+    color: BIZ.profit,
+  },
+  summaryHeroLoss: {
+    color: BIZ.loss,
+  },
+  summaryHeroLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginTop: 2,
+    marginBottom: SPACING.md,
+  },
+  summaryBreakdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  summaryBreakdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  summaryBreakdownDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: CALM.border,
+  },
+  summaryBreakdownValue: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  summaryBreakdownLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
   },
 
   // ── Budget card ─────────────────────────────────────────────
@@ -814,26 +918,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
   },
+  budgetIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   budgetTitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+    color: CALM.textPrimary,
+  },
+  budgetEditBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   budgetBarSection: {
     marginTop: SPACING.sm,
     gap: 4,
   },
   budgetTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
     overflow: 'hidden' as const,
   },
   budgetFill: {
     height: '100%',
-    borderRadius: 2,
+    borderRadius: 4,
+  },
+  budgetTextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   budgetText: {
     fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  budgetTextMuted: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
     fontVariant: ['tabular-nums'] as any,
   },
   budgetHint: {
@@ -844,10 +976,10 @@ const styles = StyleSheet.create({
 
   // ── Transfer card ───────────────────────────────────────────
   transferCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: withAlpha(CALM.bronze, 0.04),
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: withAlpha(CALM.bronze, 0.2),
     padding: SPACING.md,
   },
   transferHeader: {
@@ -859,17 +991,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+    flex: 1,
+  },
+  transferIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   transferTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     color: CALM.bronze,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
   },
   transferSubtext: {
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
-    marginTop: SPACING.xs,
     fontVariant: ['tabular-nums'] as any,
+    marginTop: 1,
   },
   transferInputRow: {
     flexDirection: 'row',
@@ -956,50 +1097,116 @@ const styles = StyleSheet.create({
     color: CALM.bronze,
     fontVariant: ['tabular-nums'] as any,
   },
-  historyEmpty: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
-    textAlign: 'center',
-    paddingVertical: SPACING.md,
-  },
-  historyItemDivider: {
-    height: 1,
-    backgroundColor: CALM.border,
-  },
-  historyItem: {
+  historySearchBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
+    minHeight: 36,
+    marginBottom: SPACING.sm,
   },
-  historyItemTappable: {
+  historySearchInput: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  historyItemLeft: {
-    flex: 1,
-  },
-  historyItemDescRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  historyItemDesc: {
     fontSize: TYPOGRAPHY.size.sm,
     color: CALM.textPrimary,
+    paddingVertical: SPACING.xs,
   },
-  historyItemDate: {
+  historySectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.xs,
+  },
+  historySectionHeaderSpaced: {
+    marginTop: SPACING.sm,
+  },
+  historySectionLabel: {
     fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
     color: CALM.textMuted,
-    marginTop: 1,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.6,
+  },
+  historySectionLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: CALM.border,
+  },
+  historyEmptyWrap: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
+    gap: SPACING.sm,
+  },
+  historyEmpty: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+  },
+  historyItemDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: CALM.border,
+    marginLeft: 44,
+  },
+  historyItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm + 2,
+    gap: SPACING.sm,
+  },
+  historyAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: withAlpha(BIZ.loss, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyAvatarText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.bold as any,
+    color: BIZ.loss,
+  },
+  historyItemContent: {
+    flex: 1,
+    gap: 2,
+  },
+  historyItemTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
+  historyItemDesc: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+    color: CALM.textPrimary,
+    flex: 1,
   },
   historyItemAmount: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
     color: CALM.textPrimary,
     fontVariant: ['tabular-nums'] as any,
+  },
+  historyItemBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  historyLinkedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.xs + 2,
+    paddingVertical: 1,
+  },
+  historyLinkedText: {
+    fontSize: 10,
+    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
   },
 
   // ── FAB ─────────────────────────────────────────────────────

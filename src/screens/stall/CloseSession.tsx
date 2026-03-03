@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { SessionCondition } from '../../types';
@@ -109,17 +109,19 @@ const CloseSession: React.FC = () => {
             style={styles.summaryRevenue}
             accessibilityLabel={`Total revenue ${currency} ${summary.totalRevenue.toFixed(2)}`}
           >
-            {currency} {summary.totalRevenue.toFixed(2)}
+            {currency} {summary.totalRevenue.toFixed(0)}
           </Text>
 
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
+              <Feather name="clock" size={16} color={CALM.textSecondary} style={{ marginBottom: 4 }} />
               <Text style={styles.summaryItemValue}>
                 {formatDuration(summary.duration)}
               </Text>
               <Text style={styles.summaryItemLabel}>duration</Text>
             </View>
             <View style={styles.summaryItem}>
+              <Feather name="shopping-bag" size={16} color={CALM.textSecondary} style={{ marginBottom: 4 }} />
               <Text style={styles.summaryItemValue}>{summary.saleCount}</Text>
               <Text style={styles.summaryItemLabel}>
                 sale{summary.saleCount !== 1 ? 's' : ''}
@@ -132,13 +134,13 @@ const CloseSession: React.FC = () => {
             <View style={styles.breakdownItem}>
               <Feather name="dollar-sign" size={14} color={CALM.textSecondary} />
               <Text style={styles.breakdownText}>
-                cash {currency} {summary.totalCash.toFixed(2)}
+                cash {currency} {summary.totalCash.toFixed(0)}
               </Text>
             </View>
             <View style={styles.breakdownItem}>
               <Feather name="smartphone" size={14} color={CALM.textSecondary} />
               <Text style={styles.breakdownText}>
-                qr {currency} {summary.totalQR.toFixed(2)}
+                qr {currency} {summary.totalQR.toFixed(0)}
               </Text>
             </View>
           </View>
@@ -254,9 +256,9 @@ const styles = StyleSheet.create({
 
   // ─── Summary card ────────────────────────────────────────────
   summaryCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: withAlpha(CALM.bronze, 0.04),
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: withAlpha(CALM.bronze, 0.15),
     borderRadius: RADIUS.lg,
     padding: SPACING['2xl'],
     marginBottom: SPACING['3xl'],
@@ -269,6 +271,7 @@ const styles = StyleSheet.create({
     ...TYPE.balance,
     color: CALM.textPrimary,
     marginBottom: SPACING.xl,
+    fontSize: TYPOGRAPHY.size['4xl'],
   },
   summaryRow: {
     flexDirection: 'row',
@@ -332,7 +335,7 @@ const styles = StyleSheet.create({
   },
   conditionPillSelected: {
     borderColor: CALM.bronze,
-    backgroundColor: CALM.highlight,
+    backgroundColor: withAlpha(CALM.bronze, 0.10),
   },
   conditionText: {
     fontSize: TYPOGRAPHY.size.sm,

@@ -157,7 +157,7 @@ const SellerDashboard: React.FC = () => {
     () => orders.filter((o) => {
       if (!o.deliveryDate) return false;
       const d = o.deliveryDate instanceof Date ? o.deliveryDate : new Date(o.deliveryDate);
-      return isToday(d) && o.status !== 'delivered' && o.status !== 'paid';
+      return isToday(d) && o.status !== 'delivered' && o.status !== 'completed';
     }),
     [orders]
   );
@@ -166,7 +166,7 @@ const SellerDashboard: React.FC = () => {
     () => orders.filter((o) => {
       if (!o.deliveryDate) return false;
       const d = o.deliveryDate instanceof Date ? o.deliveryDate : new Date(o.deliveryDate);
-      return isTomorrow(d) && o.status !== 'delivered' && o.status !== 'paid';
+      return isTomorrow(d) && o.status !== 'delivered' && o.status !== 'completed';
     }),
     [orders]
   );
@@ -175,7 +175,7 @@ const SellerDashboard: React.FC = () => {
     () => orders.filter((o) => {
       if (!o.deliveryDate) return false;
       const d = o.deliveryDate instanceof Date ? o.deliveryDate : new Date(o.deliveryDate);
-      return isPast(startOfDay(d)) && !isToday(d) && o.status !== 'delivered' && o.status !== 'paid';
+      return isPast(startOfDay(d)) && !isToday(d) && o.status !== 'delivered' && o.status !== 'completed';
     }),
     [orders]
   );
@@ -218,6 +218,7 @@ const SellerDashboard: React.FC = () => {
       );
       return {
         id: o.id,
+        orderNumber: o.orderNumber,
         customerName: o.customerName || 'Unknown',
         customerPhone: o.customerPhone,
         address: customer?.address,
@@ -604,48 +605,50 @@ const SellerDashboard: React.FC = () => {
           </Animated.View>
         )}
 
-        {/* ── Quick actions 2x2 grid ───────────────────── */}
-        <Animated.View style={[styles.quickActionsGrid, quickActionsAnim]}>
+        {/* ── Quick actions — primary CTA + secondary row ── */}
+        <Animated.View style={quickActionsAnim}>
           <TouchableOpacity
-            style={styles.quickActionButton}
+            style={styles.primaryCta}
             activeOpacity={0.7}
-            onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerNewOrder'); }}
+            onPress={() => { mediumTap(); navigation.getParent()?.navigate('SellerNewOrder'); }}
             accessibilityRole="button"
             accessibilityLabel="Create a new order"
           >
-            <Feather name="plus-circle" size={18} color={CALM.bronze} />
-            <Text style={styles.quickActionLabel}>new order</Text>
+            <Feather name="plus" size={18} color="#fff" />
+            <Text style={styles.primaryCtaText}>new order</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickActionButton}
-            activeOpacity={0.7}
-            onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerProducts'); }}
-            accessibilityRole="button"
-            accessibilityLabel="View products"
-          >
-            <Feather name="package" size={18} color={CALM.bronze} />
-            <Text style={styles.quickActionLabel}>products</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickActionButton}
-            activeOpacity={0.7}
-            onPress={() => { lightTap(); navigation.navigate('SellerCosts'); }}
-            accessibilityRole="button"
-            accessibilityLabel="Manage costs"
-          >
-            <Feather name="shopping-bag" size={18} color={CALM.bronze} />
-            <Text style={styles.quickActionLabel}>costs</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickActionButton}
-            activeOpacity={0.7}
-            onPress={() => { lightTap(); navigation.navigate('SellerCustomers'); }}
-            accessibilityRole="button"
-            accessibilityLabel="View customers"
-          >
-            <Feather name="users" size={18} color={CALM.bronze} />
-            <Text style={styles.quickActionLabel}>customers</Text>
-          </TouchableOpacity>
+          <View style={styles.quickActionsRow}>
+            <TouchableOpacity
+              style={styles.quickActionButton}
+              activeOpacity={0.7}
+              onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerProducts'); }}
+              accessibilityRole="button"
+              accessibilityLabel="View products"
+            >
+              <Feather name="package" size={16} color={CALM.bronze} />
+              <Text style={styles.quickActionLabel}>products</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionButton}
+              activeOpacity={0.7}
+              onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerCosts'); }}
+              accessibilityRole="button"
+              accessibilityLabel="Manage costs"
+            >
+              <Feather name="shopping-bag" size={16} color={CALM.bronze} />
+              <Text style={styles.quickActionLabel}>costs</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionButton}
+              activeOpacity={0.7}
+              onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerCustomersStack'); }}
+              accessibilityRole="button"
+              accessibilityLabel="View customers"
+            >
+              <Feather name="users" size={16} color={CALM.bronze} />
+              <Text style={styles.quickActionLabel}>customers</Text>
+            </TouchableOpacity>
+          </View>
         </Animated.View>
 
         {/* ── Hero section ─────────────────────────────── */}
@@ -669,11 +672,11 @@ const SellerDashboard: React.FC = () => {
             style={[styles.heroAmount, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}
             accessibilityLabel={`Profit this month: ${currency} ${kept.toFixed(2)}`}
           >
-            {currency} {kept.toFixed(2)}
+            {currency} {kept.toFixed(0)}
           </Text>
           {totalCosts > 0 && (
             <Text style={[styles.heroCostsSubtitle, kept < 0 && { color: BIZ.loss }]}>
-              after {currency} {totalCosts.toFixed(2)} in costs
+              after {currency} {totalCosts.toFixed(0)} in costs
             </Text>
           )}
           {profitMargin !== null && totalIncome > 0 && (
@@ -970,7 +973,9 @@ const SellerDashboard: React.FC = () => {
                     ]}
                   >
                     <View style={styles.deliveryRouteInfo}>
-                      <Text style={styles.deliveryRouteName}>{delivery.customerName}</Text>
+                      <Text style={styles.deliveryRouteName}>
+                        {delivery.orderNumber ? `${delivery.orderNumber}  ` : ''}{delivery.customerName}
+                      </Text>
                       <Text style={styles.deliveryRouteItems} numberOfLines={1}>
                         {delivery.items.map((i) => `${i.quantity} ${i.productName}`).join(', ')}
                       </Text>
@@ -1108,19 +1113,20 @@ const SellerDashboard: React.FC = () => {
                 </Text>
               </View>
 
-              {/* Profit row — bolder, separated */}
-              <View style={styles.revenueDivider} />
-              <View style={styles.revenueRow}>
-                <View style={styles.revenueRowLeft}>
-                  <Feather name="pocket" size={16} color={kept >= 0 ? BIZ.profit : BIZ.loss} />
-                  <Text style={[styles.revenueKeptLabel, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}>profit</Text>
+              {/* Profit row — highlighted, separated */}
+              <View style={styles.revenueProfitSection}>
+                <View style={[styles.revenueRow, { paddingVertical: 0 }]}>
+                  <View style={styles.revenueRowLeft}>
+                    <Feather name="pocket" size={16} color={kept >= 0 ? BIZ.profit : BIZ.loss} />
+                    <Text style={[styles.revenueKeptLabel, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}>profit</Text>
+                  </View>
+                  <Text
+                    style={[styles.revenueKeptAmount, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}
+                    accessibilityLabel={`Profit: ${currency} ${kept.toFixed(2)}`}
+                  >
+                    {currency} {kept.toFixed(2)}
+                  </Text>
                 </View>
-                <Text
-                  style={[styles.revenueKeptAmount, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}
-                  accessibilityLabel={`Profit: ${currency} ${kept.toFixed(2)}`}
-                >
-                  {currency} {kept.toFixed(2)}
-                </Text>
               </View>
             </Animated.View>
           </>
@@ -1314,28 +1320,45 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
-  // ── Quick actions 2x2 grid ──────────────────────────────────
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm, // 8pt
-    marginBottom: SPACING.sm, // 8pt
-  },
-  quickActionButton: {
-    flexBasis: '47%' as any,
-    flexGrow: 1,
+  // ── Quick actions — primary CTA + secondary row ────────────
+  primaryCta: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: RADIUS.lg,
+    backgroundColor: CALM.bronze,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.xl,
+    marginBottom: SPACING.sm,
+  },
+  primaryCtaText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: '#fff',
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  quickActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 40,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: withAlpha(CALM.bronze, 0.25),
     backgroundColor: withAlpha(CALM.bronze, 0.08),
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
   },
   quickActionLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.bronze,
   },
@@ -1606,13 +1629,20 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.border, // #EBEBEB
     marginVertical: SPACING.sm, // 8pt
   },
+  revenueProfitSection: {
+    marginTop: SPACING.sm,
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+  },
   revenueKeptLabel: {
     fontSize: TYPOGRAPHY.size.base, // 15
-    fontWeight: TYPOGRAPHY.weight.semibold, // 600
+    fontWeight: TYPOGRAPHY.weight.bold, // 700
     color: CALM.textPrimary, // #1A1A1A
   },
   revenueKeptAmount: {
-    fontSize: TYPOGRAPHY.size.lg, // 17
+    fontSize: TYPOGRAPHY.size.xl, // 20 — larger for prominence
     fontWeight: TYPOGRAPHY.weight.bold, // 700
     color: CALM.textPrimary, // #1A1A1A
     fontVariant: ['tabular-nums'],

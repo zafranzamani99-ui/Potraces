@@ -90,7 +90,8 @@ export type Transfer = {
 };
 
 // ─── SELLER TYPES ─────────────────────────────────────────
-export type OrderStatus = 'pending' | 'confirmed' | 'ready' | 'delivered' | 'paid';
+export type OrderStatus = 'pending' | 'confirmed' | 'ready' | 'delivered' | 'completed';
+export type SellerPaymentMethod = 'cash' | 'bank_transfer' | 'ewallet';
 
 export interface SellerProduct {
   id: string;
@@ -114,12 +115,16 @@ export interface SellerOrderItem {
 
 export interface SellerOrder {
   id: string;
+  orderNumber?: string;
   items: SellerOrderItem[];
   customerName?: string;
   customerPhone?: string;
+  customerAddress?: string;
   totalAmount: number;
   status: OrderStatus;
   isPaid: boolean;
+  paymentMethod?: SellerPaymentMethod;
+  paidAt?: Date;
   note?: string;
   rawWhatsApp?: string;
   date: Date;
@@ -176,9 +181,9 @@ export interface SellerState {
 
   addOrder: (order: Omit<SellerOrder, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
-  updateOrder: (id: string, updates: Partial<Pick<SellerOrder, 'customerName' | 'note' | 'deliveryDate' | 'customerPhone'>>) => void;
-  markOrderPaid: (id: string) => void;
-  markOrdersPaid: (ids: string[]) => void;
+  updateOrder: (id: string, updates: Partial<Pick<SellerOrder, 'customerName' | 'note' | 'deliveryDate' | 'customerPhone' | 'customerAddress' | 'isPaid' | 'paymentMethod' | 'paidAt'>>) => void;
+  markOrderPaid: (id: string, paymentMethod: SellerPaymentMethod) => void;
+  markOrdersPaid: (ids: string[], paymentMethod: SellerPaymentMethod) => void;
   deleteOrder: (id: string) => void;
   markOrdersTransferred: (ids: string[], transferId: string) => void;
   unmarkOrdersTransferred: (transferId: string) => void;

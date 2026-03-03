@@ -14,7 +14,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useStallStore } from '../../store/stallStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { RegularCustomer } from '../../types';
 
 const RegularCustomers: React.FC = () => {
@@ -211,6 +211,9 @@ const RegularCustomers: React.FC = () => {
           accessibilityHint="Tap to edit this regular"
           accessibilityRole="button"
         >
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
+          </View>
           <View style={styles.customerInfo}>
             <Text style={styles.customerName}>{item.name}</Text>
 
@@ -251,7 +254,9 @@ const RegularCustomers: React.FC = () => {
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.heading}>regulars</Text>
-            <Text style={styles.subheading}>the familiar faces</Text>
+            <Text style={styles.subheading}>
+              the familiar faces{regularCustomers.length > 0 ? ` \u00B7 ${regularCustomers.length}` : ''}
+            </Text>
           </View>
           <TouchableOpacity
             style={styles.addToggle}
@@ -434,6 +439,20 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  avatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: withAlpha(CALM.bronze, 0.10),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+  },
+  avatarText: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
   },
   customerInfo: {
     flex: 1,

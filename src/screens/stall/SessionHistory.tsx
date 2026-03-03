@@ -13,15 +13,15 @@ import { format } from 'date-fns';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallHistory } from '../../utils/explainStallHistory';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { StallSession, SessionCondition } from '../../types';
 
 // ─── Condition badge colors ─────────────────────────────
 const CONDITION_CONFIG: Record<SessionCondition, { label: string; bg: string; text: string }> = {
-  good: { label: 'good', bg: CALM.bronze + '15', text: CALM.bronze },
-  slow: { label: 'slow', bg: CALM.gold + '15', text: CALM.gold },
-  rainy: { label: 'rainy', bg: CALM.textSecondary + '15', text: CALM.textSecondary },
-  hot: { label: 'hot', bg: CALM.gold + '15', text: CALM.gold },
+  good: { label: 'good', bg: withAlpha(CALM.bronze, 0.12), text: CALM.bronze },
+  slow: { label: 'slow', bg: withAlpha(CALM.gold, 0.12), text: CALM.gold },
+  rainy: { label: 'rainy', bg: withAlpha(CALM.textSecondary, 0.12), text: CALM.textSecondary },
+  hot: { label: 'hot', bg: withAlpha(CALM.gold, 0.12), text: CALM.gold },
   normal: { label: 'normal', bg: CALM.border, text: CALM.textSecondary },
 };
 
@@ -115,7 +115,7 @@ const SessionHistory: React.FC = () => {
               style={styles.cardRevenue}
               accessibilityLabel={`Revenue ${currency} ${item.totalRevenue.toFixed(2)}`}
             >
-              {currency} {item.totalRevenue.toFixed(2)}
+              {currency} {item.totalRevenue.toFixed(0)}
             </Text>
 
             <View style={styles.cardMeta}>
@@ -124,11 +124,11 @@ const SessionHistory: React.FC = () => {
               </Text>
               <Text style={styles.cardMetaDot}>{'\u00B7'}</Text>
               <Text style={styles.cardMetaText}>
-                cash {currency} {item.totalCash.toFixed(2)}
+                cash {currency} {item.totalCash.toFixed(0)}
               </Text>
               <Text style={styles.cardMetaDot}>{'\u00B7'}</Text>
               <Text style={styles.cardMetaText}>
-                qr {currency} {item.totalQR.toFixed(2)}
+                qr {currency} {item.totalQR.toFixed(0)}
               </Text>
             </View>
           </View>
@@ -147,16 +147,25 @@ const SessionHistory: React.FC = () => {
         {closedSessions.length >= 3 && (
           <View style={styles.lifetimeRow}>
             <View style={styles.lifetimeStat}>
+              <View style={[styles.statIcon, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
+                <Feather name="activity" size={14} color={CALM.accent} />
+              </View>
               <Text style={styles.lifetimeNumber}>{lifetimeStats.totalSessions}</Text>
               <Text style={styles.lifetimeLabel}>sessions</Text>
             </View>
             <View style={styles.lifetimeStat}>
+              <View style={[styles.statIcon, { backgroundColor: withAlpha(CALM.bronze, 0.12) }]}>
+                <Feather name="dollar-sign" size={14} color={CALM.bronze} />
+              </View>
               <Text style={styles.lifetimeNumber}>
                 {currency} {lifetimeStats.totalRevenue.toFixed(0)}
               </Text>
               <Text style={styles.lifetimeLabel}>lifetime</Text>
             </View>
             <View style={styles.lifetimeStat}>
+              <View style={[styles.statIcon, { backgroundColor: withAlpha(CALM.gold, 0.12) }]}>
+                <Feather name="trending-up" size={14} color={CALM.gold} />
+              </View>
               <Text style={styles.lifetimeNumber}>
                 {currency} {lifetimeStats.avgPerSession.toFixed(0)}
               </Text>
@@ -237,6 +246,14 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.lg,
     alignItems: 'center',
   },
+  statIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.xs,
+  },
   lifetimeNumber: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
@@ -296,7 +313,7 @@ const styles = StyleSheet.create({
   },
   cardRevenue: {
     fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },

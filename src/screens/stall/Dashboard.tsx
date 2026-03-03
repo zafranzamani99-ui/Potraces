@@ -10,11 +10,38 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallHistory } from '../../utils/explainStallHistory';
 import ModeToggle from '../../components/common/ModeToggle';
+
+// ─── Animation helper ────────────────────────────────────────
+function useFadeSlide(delay: number) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(8)).current;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  return { opacity, transform: [{ translateY }] };
+}
 
 const StallDashboard: React.FC = () => {
   const {
@@ -53,6 +80,12 @@ const StallDashboard: React.FC = () => {
     loop.start();
     return () => loop.stop();
   }, [hasActiveSession, pulseAnim]);
+
+  // Staggered animations (State A)
+  const headingAnim = useFadeSlide(0);
+  const ctaAnim = useFadeSlide(60);
+  const statsAnim = useFadeSlide(120);
+  const insightAnim = useFadeSlide(180);
 
   // Lifetime stats
   const lifetimeStats = useMemo(() => getLifetimeStats(), [sessions]);
@@ -98,28 +131,30 @@ const StallDashboard: React.FC = () => {
             <Text style={styles.sessionName}>{activeSession.name}</Text>
           ) : null}
 
-          {/* Running total */}
-          <Text style={styles.runningTotalLabel}>TOTAL</Text>
-          <Text
-            style={styles.runningTotal}
-            accessibilityLabel={`Total revenue ${currency} ${activeSession.totalRevenue.toFixed(2)}`}
-          >
-            {currency} {activeSession.totalRevenue.toFixed(2)}
-          </Text>
+          {/* Running total — bronze-tinted card */}
+          <View style={styles.runningTotalCard}>
+            <Text style={styles.runningTotalLabel}>TOTAL</Text>
+            <Text
+              style={styles.runningTotal}
+              accessibilityLabel={`Total revenue ${currency} ${activeSession.totalRevenue.toFixed(2)}`}
+            >
+              {currency} {activeSession.totalRevenue.toFixed(0)}
+            </Text>
 
-          {/* Cash / QR pills */}
-          <View style={styles.pillRow}>
-            <View style={styles.pill}>
-              <Feather name="dollar-sign" size={14} color={CALM.textSecondary} />
-              <Text style={styles.pillText}>
-                cash {currency} {activeSession.totalCash.toFixed(2)}
-              </Text>
-            </View>
-            <View style={styles.pill}>
-              <Feather name="smartphone" size={14} color={CALM.textSecondary} />
-              <Text style={styles.pillText}>
-                qr {currency} {activeSession.totalQR.toFixed(2)}
-              </Text>
+            {/* Cash / QR pills */}
+            <View style={styles.pillRow}>
+              <View style={styles.pill}>
+                <Feather name="dollar-sign" size={14} color={CALM.textSecondary} />
+                <Text style={styles.pillText}>
+                  cash {currency} {activeSession.totalCash.toFixed(0)}
+                </Text>
+              </View>
+              <View style={styles.pill}>
+                <Feather name="smartphone" size={14} color={CALM.textSecondary} />
+                <Text style={styles.pillText}>
+                  qr {currency} {activeSession.totalQR.toFixed(0)}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -152,14 +187,15 @@ const StallDashboard: React.FC = () => {
             </View>
           )}
 
-          {/* Close session link */}
+          {/* Close session — outlined button instead of subtle link */}
           <TouchableOpacity
-            style={styles.closeSessionLink}
+            style={styles.closeSessionButton}
             onPress={() => navigation.getParent()?.navigate('StallCloseSession')}
             accessibilityRole="button"
             accessibilityLabel="Close current selling session"
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            activeOpacity={0.7}
           >
+            <Feather name="square" size={16} color={CALM.textSecondary} />
             <Text style={styles.closeSessionText}>close session</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -177,33 +213,43 @@ const StallDashboard: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         {/* Heading */}
-        <Text style={styles.heading}>stall</Text>
-        <Text style={styles.headingSubtitle}>pasar malam, roadside, walk-in</Text>
+        <Animated.View style={headingAnim}>
+          <Text style={styles.heading}>stall</Text>
+          <Text style={styles.headingSubtitle}>pasar malam, roadside, walk-in</Text>
+        </Animated.View>
 
         {/* Start selling button */}
-        <TouchableOpacity
-          style={styles.startButton}
-          onPress={() => navigation.getParent()?.navigate('StallSessionSetup')}
-          activeOpacity={0.8}
-          accessibilityRole="button"
-          accessibilityLabel="Start a new selling session"
-        >
-          <Feather name="play" size={20} color="#FFFFFF" />
-          <Text style={styles.startButtonText}>start selling</Text>
-        </TouchableOpacity>
+        <Animated.View style={ctaAnim}>
+          <TouchableOpacity
+            style={styles.startButton}
+            onPress={() => navigation.getParent()?.navigate('StallSessionSetup')}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Start a new selling session"
+          >
+            <Feather name="play" size={20} color="#FFFFFF" />
+            <Text style={styles.startButtonText}>start selling</Text>
+          </TouchableOpacity>
+        </Animated.View>
 
         {/* Lifetime stats */}
         {lifetimeStats.totalSessions > 0 && (
-          <View style={styles.lifetimeSection}>
+          <Animated.View style={[styles.lifetimeSection, statsAnim]}>
             <Text style={styles.sectionLabel}>LIFETIME</Text>
             <View style={styles.lifetimeGrid}>
               <View style={styles.lifetimeStat}>
+                <View style={[styles.statIcon, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
+                  <Feather name="activity" size={16} color={CALM.accent} />
+                </View>
                 <Text style={styles.lifetimeNumber}>
                   {lifetimeStats.totalSessions}
                 </Text>
                 <Text style={styles.lifetimeLabel}>sessions</Text>
               </View>
               <View style={styles.lifetimeStat}>
+                <View style={[styles.statIcon, { backgroundColor: withAlpha(CALM.bronze, 0.12) }]}>
+                  <Feather name="dollar-sign" size={16} color={CALM.bronze} />
+                </View>
                 <Text
                   style={styles.lifetimeNumber}
                   accessibilityLabel={`Total revenue ${currency} ${lifetimeStats.totalRevenue.toFixed(2)}`}
@@ -213,6 +259,9 @@ const StallDashboard: React.FC = () => {
                 <Text style={styles.lifetimeLabel}>total revenue</Text>
               </View>
               <View style={styles.lifetimeStat}>
+                <View style={[styles.statIcon, { backgroundColor: withAlpha(CALM.gold, 0.12) }]}>
+                  <Feather name="trending-up" size={16} color={CALM.gold} />
+                </View>
                 <Text
                   style={styles.lifetimeNumber}
                   accessibilityLabel={`Average per session ${currency} ${lifetimeStats.avgPerSession.toFixed(2)}`}
@@ -222,12 +271,14 @@ const StallDashboard: React.FC = () => {
                 <Text style={styles.lifetimeLabel}>avg / session</Text>
               </View>
             </View>
-          </View>
+          </Animated.View>
         )}
 
         {/* AI insight */}
         {historyInsight && (
-          <Text style={styles.insightText}>{historyInsight}</Text>
+          <Animated.View style={insightAnim}>
+            <Text style={styles.insightText}>{historyInsight}</Text>
+          </Animated.View>
         )}
 
         {/* Session history link */}
@@ -309,6 +360,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     alignItems: 'center',
   },
+  statIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.sm,
+  },
   lifetimeNumber: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
@@ -363,6 +422,12 @@ const styles = StyleSheet.create({
     color: CALM.textPrimary,
     marginBottom: SPACING.lg,
   },
+  runningTotalCard: {
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    borderRadius: RADIUS.lg,
+    padding: SPACING.xl,
+    marginBottom: SPACING['3xl'],
+  },
   runningTotalLabel: {
     ...TYPE.label,
     marginBottom: SPACING.xs,
@@ -375,7 +440,6 @@ const styles = StyleSheet.create({
   pillRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
-    marginBottom: SPACING['3xl'],
   },
   pill: {
     flexDirection: 'row',
@@ -431,11 +495,17 @@ const styles = StyleSheet.create({
     ...TYPE.muted,
     color: CALM.textSecondary,
   },
-  closeSessionLink: {
+  closeSessionButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.lg,
-    minHeight: 48,
     justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    minHeight: 48,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    backgroundColor: CALM.surface,
   },
   closeSessionText: {
     fontSize: TYPOGRAPHY.size.base,

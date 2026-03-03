@@ -1,7 +1,25 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SellerState, OrderStatus } from '../types';
+import { SellerState, OrderStatus, SellerOrder } from '../types';
+
+// Generate a unique 5-char order code: 2 random uppercase letters + 3 random digits
+function generateOrderCode(existingOrders: SellerOrder[]): string {
+  const existing = new Set(existingOrders.map((o) => o.orderNumber).filter(Boolean));
+  const letters = 'ABCDEFGHJKMNPQRSTUVWXYZ'; // exclude I, L, O (ambiguous)
+  const digits = '0123456789';
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const a = letters[Math.floor(Math.random() * letters.length)];
+    const b = letters[Math.floor(Math.random() * letters.length)];
+    const d1 = digits[Math.floor(Math.random() * digits.length)];
+    const d2 = digits[Math.floor(Math.random() * digits.length)];
+    const d3 = digits[Math.floor(Math.random() * digits.length)];
+    const code = `${a}${b}${d1}${d2}${d3}`;
+    if (!existing.has(code)) return code;
+  }
+  // Fallback: timestamp-based (virtually impossible to reach)
+  return `ZZ${Date.now().toString().slice(-3)}`;
+}
 
 export const useSellerStore = create<SellerState>()(
   persist(
@@ -62,6 +80,7 @@ export const useSellerStore = create<SellerState>()(
               {
                 ...order,
                 id: Date.now().toString(),
+                orderNumber: generateOrderCode(state.orders),
                 createdAt: new Date(),
                 updatedAt: new Date(),
               },
@@ -74,7 +93,7 @@ export const useSellerStore = create<SellerState>()(
       updateOrderStatus: (id, status) =>
         set((state) => ({
           orders: state.orders.map((o) =>
-            o.id === id ? { ...o, status, isPaid: status === 'paid', updatedAt: new Date() } : o
+            o.id === id ? { ...o, status, updatedAt: new Date() } : o
           ),
         })),
 
@@ -85,17 +104,17 @@ export const useSellerStore = create<SellerState>()(
           ),
         })),
 
-      markOrderPaid: (id) =>
+      markOrderPaid: (id, paymentMethod) =>
         set((state) => ({
           orders: state.orders.map((o) =>
-            o.id === id ? { ...o, isPaid: true, status: 'paid' as OrderStatus, updatedAt: new Date() } : o
+            o.id === id ? { ...o, isPaid: true, paymentMethod, paidAt: new Date(), updatedAt: new Date() } : o
           ),
         })),
 
-      markOrdersPaid: (ids) =>
+      markOrdersPaid: (ids, paymentMethod) =>
         set((state) => ({
           orders: state.orders.map((o) =>
-            ids.includes(o.id) ? { ...o, isPaid: true, status: 'paid' as OrderStatus, updatedAt: new Date() } : o
+            ids.includes(o.id) ? { ...o, isPaid: true, paymentMethod, paidAt: new Date(), updatedAt: new Date() } : o
           ),
         })),
 
@@ -286,6 +305,7 @@ export const useSellerStore = create<SellerState>()(
           ...o,
           date: o.date instanceof Date ? o.date.toISOString() : o.date,
           deliveryDate: o.deliveryDate instanceof Date ? o.deliveryDate.toISOString() : o.deliveryDate,
+          paidAt: o.paidAt instanceof Date ? o.paidAt.toISOString() : o.paidAt,
           createdAt: o.createdAt instanceof Date ? o.createdAt.toISOString() : o.createdAt,
           updatedAt: o.updatedAt instanceof Date ? o.updatedAt.toISOString() : o.updatedAt,
         })),
@@ -318,6 +338,8 @@ export const useSellerStore = create<SellerState>()(
             ...o,
             date: new Date(o.date),
             deliveryDate: o.deliveryDate ? new Date(o.deliveryDate) : undefined,
+            paidAt: o.paidAt ? new Date(o.paidAt) : undefined,
+            status: o.status === 'paid' ? 'delivered' : o.status,
             createdAt: new Date(o.createdAt),
             updatedAt: new Date(o.updatedAt),
           }));
@@ -338,6 +360,28 @@ export const useSellerStore = create<SellerState>()(
           state.customUnits = state.customUnits || [];
           state.hiddenUnits = state.hiddenUnits || [];
           state.unitOrder = state.unitOrder || [];
+
+          // Backfill order codes for existing orders without one
+          const needsCodes = state.orders.some((o: any) => !o.orderNumber);
+          if (needsCodes) {
+            const usedCodes = new Set(state.orders.map((o: any) => o.orderNumber).filter(Boolean));
+            state.orders = state.orders.map((o: any) => {
+              if (o.orderNumber) return o;
+              let code: string;
+              const letters = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+              const digits = '0123456789';
+              do {
+                const a = letters[Math.floor(Math.random() * letters.length)];
+                const b = letters[Math.floor(Math.random() * letters.length)];
+                const d1 = digits[Math.floor(Math.random() * digits.length)];
+                const d2 = digits[Math.floor(Math.random() * digits.length)];
+                const d3 = digits[Math.floor(Math.random() * digits.length)];
+                code = `${a}${b}${d1}${d2}${d3}`;
+              } while (usedCodes.has(code));
+              usedCodes.add(code);
+              return { ...o, orderNumber: code };
+            });
+          }
         }
       },
     }

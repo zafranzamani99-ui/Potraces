@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, FlatList, TouchableOpacity,
   TextInput, Animated, Linking, Platform, Alert, Modal, KeyboardAvoidingView,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -54,7 +54,7 @@ const StatsSummary: React.FC<{
   onTapAll: () => void;
   onTapOwes: () => void;
   onTapRepeat: () => void;
-}> = ({ customers, currency, onTapAll, onTapOwes, onTapRepeat }) => {
+}> = React.memo(({ customers, currency, onTapAll, onTapOwes, onTapRepeat }) => {
   const stats = useMemo(() => {
     let outstanding = 0;
     let repeatCount = 0;
@@ -110,7 +110,7 @@ const StatsSummary: React.FC<{
       </TouchableOpacity>
     </View>
   );
-};
+});
 
 // ─── Customer card (simplified — just tappable row) ───────────
 interface CustomerCardProps {
@@ -120,7 +120,7 @@ interface CustomerCardProps {
   index: number;
 }
 
-const CustomerCard: React.FC<CustomerCardProps> = ({
+const CustomerCard: React.FC<CustomerCardProps> = React.memo(({
   customer,
   currency,
   onPress,
@@ -161,12 +161,12 @@ const CustomerCard: React.FC<CustomerCardProps> = ({
             {customer.name}
           </Text>
           <Text style={styles.customerStats}>
-            {customer.totalOrders} order{customer.totalOrders !== 1 ? 's' : ''} · {currency} {customer.totalSpent.toFixed(2)} · last {lastOrderLabel}
+            {customer.totalOrders} order{customer.totalOrders !== 1 ? 's' : ''} · {currency} {customer.totalSpent.toFixed(0)} · last {lastOrderLabel}
           </Text>
           {customer.unpaidAmount > 0 && (
             <View style={styles.unpaidBadge}>
               <Text style={styles.unpaidBadgeText}>
-                {currency} {customer.unpaidAmount.toFixed(2)} unpaid
+                {currency} {customer.unpaidAmount.toFixed(0)} unpaid
               </Text>
             </View>
           )}
@@ -177,7 +177,7 @@ const CustomerCard: React.FC<CustomerCardProps> = ({
       </TouchableOpacity>
     </Animated.View>
   );
-};
+});
 
 // ─── Customer Detail Modal ────────────────────────────────────
 interface DetailModalProps {
@@ -238,7 +238,8 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
   };
 
   const getStatusLabel = (order: SellerOrder) => {
-    if (order.isPaid) return 'paid';
+    if (order.isPaid && order.status !== 'completed') return `${order.status} \u00B7 paid`;
+    if (order.isPaid) return 'completed';
     return order.status;
   };
 
@@ -371,7 +372,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                   <View key={order.id} style={styles.orderHistoryItem}>
                     <View style={styles.orderHistoryLeft}>
                       <Text style={styles.orderHistoryDate}>
-                        {smartDateLabel(orderDate)}
+                        {order.orderNumber ? `${order.orderNumber}  ` : ''}{smartDateLabel(orderDate)}
                       </Text>
                       <Text style={styles.orderHistorySummary} numberOfLines={1}>
                         {getItemsSummary(order)}
@@ -384,14 +385,14 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                       <View
                         style={[
                           styles.statusPill,
-                          status === 'paid' && styles.statusPillPaid,
+                          order.isPaid && styles.statusPillPaid,
                           status === 'pending' && styles.statusPillPending,
                         ]}
                       >
                         <Text
                           style={[
                             styles.statusPillText,
-                            status === 'paid' && styles.statusPillTextPaid,
+                            order.isPaid && styles.statusPillTextPaid,
                             status === 'pending' && styles.statusPillTextPending,
                           ]}
                         >
@@ -847,6 +848,125 @@ const SellerCustomers: React.FC = () => {
     setEditModalVisible(true);
   }, []);
 
+  // ─── FlatList render callback ────────────────────────────────
+  const renderCustomerItem = useCallback(
+    ({ item, index }: { item: DerivedCustomer; index: number }) => (
+      <CustomerCard
+        customer={item}
+        currency={currency}
+        onPress={() => { selectionChanged(); setSelectedCustomer(item); }}
+        index={index}
+      />
+    ),
+    [currency]
+  );
+
+  const customerKeyExtractor = useCallback(
+    (item: DerivedCustomer) => item.name,
+    []
+  );
+
+  // ─── FlatList header (search, filters, add button) ──────────
+  const ListHeader = useMemo(() => (
+    <View>
+      {/* Search bar + sort */}
+      <View style={styles.searchRow}>
+        <View style={styles.searchContainer}>
+          <Feather name="search" size={16} color={CALM.textMuted} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="search name, phone, address"
+            placeholderTextColor={CALM.textMuted}
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+            accessibilityLabel="Search customers"
+            accessibilityRole="search"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearch('')}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+            >
+              <Feather name="x" size={16} color={CALM.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+        <TouchableOpacity
+          style={[styles.sortButton, sortBy !== 'recent' && styles.sortButtonActive]}
+          activeOpacity={0.7}
+          onPress={() => { lightTap(); setShowSortMenu(true); }}
+          accessibilityRole="button"
+          accessibilityLabel={`Sort by ${sortBy}`}
+        >
+          <Feather name="sliders" size={18} color={sortBy !== 'recent' ? '#fff' : CALM.bronze} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Filter pills with counts */}
+      <View style={styles.filterRow}>
+        {FILTERS.map((f) => {
+          const isActive = filter === f.key;
+          const count = filterCounts[f.key];
+          return (
+            <TouchableOpacity
+              key={f.key}
+              style={[
+                styles.filterPill,
+                isActive && styles.filterPillActive,
+              ]}
+              onPress={() => { selectionChanged(); setFilter(f.key); }}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Filter: ${f.label}, ${count}`}
+              accessibilityState={{ selected: isActive }}
+            >
+              <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                {f.label}
+              </Text>
+              {count > 0 && (
+                <Text style={[styles.filterPillCount, isActive && styles.filterPillCountActive]}>
+                  {count}
+                </Text>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Result count + clear filters */}
+      {hasActiveFilters && (
+        <View style={styles.resultRow}>
+          <Text style={styles.resultText}>
+            {filteredCustomers.length} of {derivedCustomers.length} customer{derivedCustomers.length !== 1 ? 's' : ''}
+          </Text>
+          <TouchableOpacity
+            onPress={handleClearFilters}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Clear all filters"
+          >
+            <Text style={styles.clearFiltersText}>clear filters</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Add customer button */}
+      <TouchableOpacity
+        style={styles.addCustomerButton}
+        activeOpacity={0.7}
+        onPress={openAddCustomerModal}
+        accessibilityRole="button"
+        accessibilityLabel="Add a new customer"
+      >
+        <Feather name="user-plus" size={16} color={CALM.bronze} />
+        <Text style={styles.addCustomerButtonText}>add customer</Text>
+      </TouchableOpacity>
+    </View>
+  ), [search, sortBy, filter, filterCounts, hasActiveFilters, filteredCustomers.length, derivedCustomers.length, handleClearFilters, openAddCustomerModal]);
+
   return (
     <View style={styles.container}>
       {derivedCustomers.length === 0 ? (
@@ -882,110 +1002,12 @@ const SellerCustomers: React.FC = () => {
         onTapRepeat={() => setFilter('repeat')}
       />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Search bar + sort */}
-        <View style={styles.searchRow}>
-          <View style={styles.searchContainer}>
-            <Feather name="search" size={16} color={CALM.textMuted} style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="search name, phone, address"
-              placeholderTextColor={CALM.textMuted}
-              value={search}
-              onChangeText={setSearch}
-              returnKeyType="search"
-              accessibilityLabel="Search customers"
-              accessibilityRole="search"
-            />
-            {search.length > 0 && (
-              <TouchableOpacity
-                onPress={() => setSearch('')}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                accessibilityRole="button"
-                accessibilityLabel="Clear search"
-              >
-                <Feather name="x" size={16} color={CALM.textMuted} />
-              </TouchableOpacity>
-            )}
-          </View>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy !== 'recent' && styles.sortButtonActive]}
-            activeOpacity={0.7}
-            onPress={() => { lightTap(); setShowSortMenu(true); }}
-            accessibilityRole="button"
-            accessibilityLabel={`Sort by ${sortBy}`}
-          >
-            <Feather name="sliders" size={18} color={sortBy !== 'recent' ? '#fff' : CALM.bronze} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Filter pills with counts */}
-        <View style={styles.filterRow}>
-          {FILTERS.map((f) => {
-            const isActive = filter === f.key;
-            const count = filterCounts[f.key];
-            return (
-              <TouchableOpacity
-                key={f.key}
-                style={[
-                  styles.filterPill,
-                  isActive && styles.filterPillActive,
-                ]}
-                onPress={() => { selectionChanged(); setFilter(f.key); }}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={`Filter: ${f.label}, ${count}`}
-                accessibilityState={{ selected: isActive }}
-              >
-                <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
-                  {f.label}
-                </Text>
-                {count > 0 && (
-                  <Text style={[styles.filterPillCount, isActive && styles.filterPillCountActive]}>
-                    {count}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Result count + clear filters */}
-        {hasActiveFilters && (
-          <View style={styles.resultRow}>
-            <Text style={styles.resultText}>
-              {filteredCustomers.length} of {derivedCustomers.length} customer{derivedCustomers.length !== 1 ? 's' : ''}
-            </Text>
-            <TouchableOpacity
-              onPress={handleClearFilters}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel="Clear all filters"
-            >
-              <Text style={styles.clearFiltersText}>clear filters</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Add customer button */}
-        <TouchableOpacity
-          style={styles.addCustomerButton}
-          activeOpacity={0.7}
-          onPress={openAddCustomerModal}
-          accessibilityRole="button"
-          accessibilityLabel="Add a new customer"
-        >
-          <Feather name="user-plus" size={16} color={CALM.bronze} />
-          <Text style={styles.addCustomerButtonText}>add customer</Text>
-        </TouchableOpacity>
-
-        {/* Customer list */}
-        {filteredCustomers.length === 0 ? (
+      <FlatList
+        data={filteredCustomers}
+        renderItem={renderCustomerItem}
+        keyExtractor={customerKeyExtractor}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={
           <View style={styles.noResultsContainer}>
             <View style={styles.noResultsIconCircle}>
               <Feather name="search" size={24} color={CALM.textMuted} />
@@ -1001,20 +1023,14 @@ const SellerCustomers: React.FC = () => {
               </TouchableOpacity>
             )}
           </View>
-        ) : (
-          filteredCustomers.map((customer, index) => (
-            <CustomerCard
-              key={customer.name}
-              customer={customer}
-              currency={currency}
-              onPress={() => { selectionChanged(); setSelectedCustomer(customer); }}
-              index={index}
-            />
-          ))
-        )}
-
-        <View style={{ height: SPACING['5xl'] }} />
-      </ScrollView>
+        }
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+      />
       </>
       )}
 
@@ -1637,10 +1653,10 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(CALM.lavender, 0.15),
   },
   statusPillPaid: {
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(BIZ.success, 0.1),
   },
   statusPillPending: {
-    backgroundColor: withAlpha('#8B6914', 0.15),
+    backgroundColor: withAlpha(BIZ.pending, 0.15),
   },
   statusPillText: {
     fontSize: 10,
@@ -1648,10 +1664,10 @@ const styles = StyleSheet.create({
     color: CALM.lavender,
   },
   statusPillTextPaid: {
-    color: CALM.bronze,
+    color: BIZ.success,
   },
   statusPillTextPending: {
-    color: '#8B6914',
+    color: BIZ.pending,
   },
 
   // ── Actions grid ──

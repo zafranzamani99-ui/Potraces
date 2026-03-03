@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 
@@ -129,9 +129,14 @@ const SessionSetup: React.FC = () => {
         {/* Product list */}
         {activeProducts.length > 0 && (
           <View style={styles.productsSection}>
-            <Text style={styles.inputLabel}>PRODUCTS</Text>
+            <View style={styles.productsLabelRow}>
+              <Text style={[styles.inputLabel, { marginBottom: 0 }]}>PRODUCTS</Text>
+              <Text style={styles.productCountBadge}>
+                {productSetup.filter((p) => p.included).length} / {productSetup.length} selected
+              </Text>
+            </View>
             {productSetup.map((item) => (
-              <View key={item.productId} style={styles.productRow}>
+              <View key={item.productId} style={[styles.productRow, item.included && styles.productRowIncluded]}>
                 <TouchableOpacity
                   style={styles.productToggleArea}
                   onPress={() => toggleProduct(item.productId)}
@@ -272,6 +277,22 @@ const styles = StyleSheet.create({
   productsSection: {
     marginBottom: SPACING['3xl'],
   },
+  productsLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  productCountBadge: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.bronze,
+    backgroundColor: withAlpha(CALM.bronze, 0.10),
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+  },
   productRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -283,6 +304,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.sm,
     minHeight: 56,
+  },
+  productRowIncluded: {
+    borderColor: withAlpha(CALM.bronze, 0.2),
+    backgroundColor: withAlpha(CALM.bronze, 0.03),
   },
   productToggleArea: {
     flexDirection: 'row',

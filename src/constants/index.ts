@@ -385,14 +385,16 @@ export const CALM = {
 };
 
 // ─── BUSINESS SEMANTIC COLORS ──────────────────────────────
-// Seller/business mode needs visual clarity — profit, loss, unpaid,
-// overdue must stand out, not blend into muted CALM palette.
+// Softer, pleasant tones — visually distinct without being heavy/depressing.
 export const BIZ = {
   profit: '#332D03',        // deep olive — earned value, authoritative
   loss: '#B2780A',          // bronze — loss / negative, warm warning
-  overdue: '#332D03',       // deep olive — most urgent state
-  unpaid: '#B2780A',        // bronze — needs payment
-  pending: '#8B6914',       // warm amber — awaiting action
+  overdue: '#B87333',       // burnt orange — urgent but not depressing
+  unpaid: '#C4956A',        // warm sand — gentle reminder
+  pending: '#D4884A',       // warm amber-orange — urges action
+  success: '#6BA3BE',       // calm teal-blue — settled, positive
+  warning: '#D4A03C',       // warm gold — needs attention
+  error: '#A0714A',         // burnt sienna — error state (no red)
 };
 
 // ─── TYPE SCALE ────────────────────────────────────────────

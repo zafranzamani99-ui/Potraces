@@ -19,7 +19,7 @@ import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../
 import { Season } from '../../types';
 
 // -- Animated card wrapper with stagger fade-in ---------------------
-const AnimatedSeasonCard: React.FC<{ index: number; children: React.ReactNode }> = ({
+const AnimatedSeasonCard: React.FC<{ index: number; children: React.ReactNode }> = React.memo(({
   index,
   children,
 }) => {
@@ -48,10 +48,10 @@ const AnimatedSeasonCard: React.FC<{ index: number; children: React.ReactNode }>
       {children}
     </Animated.View>
   );
-};
+});
 
 // -- Pulsing dot for active badge -----------------------------------
-const PulsingDot: React.FC = () => {
+const PulsingDot: React.FC = React.memo(() => {
   const opacity = useRef(new Animated.Value(0.5)).current;
 
   useEffect(() => {
@@ -78,7 +78,7 @@ const PulsingDot: React.FC = () => {
       style={[styles.pulsingDot, { opacity }]}
     />
   );
-};
+});
 
 const PastSeasons: React.FC = () => {
   const { seasons, orders, ingredientCosts, addSeason } = useSellerStore();

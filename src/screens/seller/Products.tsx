@@ -44,8 +44,8 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const DEFAULT_UNITS = ['tin', 'bekas', 'balang', 'pack', 'piece', 'kotak', 'biji', 'keping'];
 const SWIPE_THRESHOLD = 80;
 
-// ─── Animated product card wrapper ─────────────────────────────
-const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }> = ({
+// ─── Animated product row wrapper ──────────────────────────────
+const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }> = React.memo(({
   index,
   children,
 }) => {
@@ -57,13 +57,13 @@ const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }
       Animated.timing(opacity, {
         toValue: 1,
         duration: 250,
-        delay: index * 50,
+        delay: Math.min(index * 50, 300),
         useNativeDriver: true,
       }),
       Animated.timing(translateY, {
         toValue: 0,
         duration: 250,
-        delay: index * 50,
+        delay: Math.min(index * 50, 300),
         useNativeDriver: true,
       }),
     ]).start();
@@ -74,13 +74,14 @@ const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }
       {children}
     </Animated.View>
   );
-};
+});
 
 // ─── Main component ────────────────────────────────────────────
 const Products: React.FC = () => {
   const { products, ingredientCosts, addProduct, updateProduct, deleteProduct, addIngredientCost, updateIngredientCost, deleteIngredientCost, markCostSynced } =
     useSellerStore();
   const addTransaction = usePersonalStore((s) => s.addTransaction);
+  const updateTransaction = usePersonalStore((s) => s.updateTransaction);
   const customUnits = useSellerStore((s) => s.customUnits);
   const activeSeason = useSellerStore((s) => s.getActiveSeason());
   const currency = useSettingsStore((s) => s.currency);
@@ -89,6 +90,9 @@ const Products: React.FC = () => {
 
   const unitOrder = useSellerStore((s) => s.unitOrder);
   const hiddenUnits = useSellerStore((s) => s.hiddenUnits);
+
+  // ─── Search state ──────────────────────────────────────────
+  const [search, setSearch] = useState('');
 
   const allUnits = useMemo(() => {
     const combined = [...DEFAULT_UNITS, ...customUnits].filter(
@@ -99,6 +103,16 @@ const Products: React.FC = () => {
     const remaining = combined.filter((u) => !unitOrder.includes(u));
     return [...ordered, ...remaining];
   }, [customUnits, unitOrder, hiddenUnits]);
+
+  // ─── Filtered products (search only) ───────────────────────
+  const filteredProducts = useMemo(() => {
+    if (!search.trim()) return products;
+    const q = search.trim().toLowerCase();
+    return products.filter((p) =>
+      p.name.toLowerCase().includes(q) ||
+      p.unit.toLowerCase().includes(q)
+    );
+  }, [products, search]);
 
   // ─── Modal state ───────────────────────────────────────────
   const [showAdd, setShowAdd] = useState(false);
@@ -367,6 +381,16 @@ const Products: React.FC = () => {
 
     if (editingCostId) {
       updateIngredientCost(editingCostId, { description: desc, amount });
+
+      // Also update linked personal transaction if it was synced
+      const editedCost = ingredientCosts.find((c) => c.id === editingCostId);
+      if (editedCost?.syncedToPersonal && editedCost.personalTransactionId) {
+        updateTransaction(editedCost.personalTransactionId, {
+          amount,
+          description: `seller: ${desc}`,
+        });
+      }
+
       successNotification();
       showToast('cost updated', 'success');
     } else {
@@ -405,7 +429,7 @@ const Products: React.FC = () => {
     setEditingCostId(null);
     setSyncToPersonal(false);
     setShowCostModal(false);
-  }, [costDescription, costAmount, editingCostId, syncToPersonal, addIngredientCost, updateIngredientCost, addTransaction, markCostSynced, activeSeason, showToast]);
+  }, [costDescription, costAmount, editingCostId, syncToPersonal, addIngredientCost, updateIngredientCost, addTransaction, updateTransaction, markCostSynced, activeSeason, ingredientCosts, showToast]);
 
   const handleToggleActive = useCallback((product: SellerProduct) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -461,78 +485,55 @@ const Products: React.FC = () => {
     hasError && styles.modalInputError,
   ];
 
-  // ─── Render product card ───────────────────────────────────
+  // ─── Render compact product row ────────────────────────────
   const renderProduct = useCallback(
     ({ item, index }: { item: SellerProduct; index: number }) => {
-      const keptPerUnit = item.costPerUnit
-        ? item.pricePerUnit - item.costPerUnit
+      const initial = item.name.charAt(0).toUpperCase();
+      const marginPct = item.costPerUnit && item.pricePerUnit > 0
+        ? Math.round(((item.pricePerUnit - item.costPerUnit) / item.pricePerUnit) * 100)
         : null;
 
-      const statParts: string[] = [];
-      statParts.push(`sold ${item.totalSold} ${item.unit}`);
-      if (keptPerUnit !== null) {
-        statParts.push(`kept ${currency} ${keptPerUnit.toFixed(2)}/${item.unit}`);
-      }
+      const sub: string[] = [];
+      if (item.totalSold > 0) sub.push(`${item.totalSold} sold`);
+      if (marginPct !== null) sub.push(`${marginPct}% margin`);
 
       return (
         <AnimatedProductCard index={index}>
           <TouchableOpacity
-            style={[styles.productCard, !item.isActive && styles.productCardInactive]}
-            activeOpacity={0.8}
-            onLongPress={() => openEditModal(item)}
-            delayLongPress={400}
+            style={[styles.productRow, !item.isActive && styles.productRowInactive]}
+            activeOpacity={0.65}
+            onPress={() => openEditModal(item)}
+            onLongPress={() => handleDelete(item)}
+            delayLongPress={500}
             accessibilityRole="button"
-            accessibilityLabel={`${item.name}. Hold to edit.`}
-            accessibilityHint="Long press to edit product details"
+            accessibilityLabel={`${item.name}. Tap to edit, hold to delete.`}
           >
-            <View style={styles.productHeader}>
-              <View style={styles.productIconArea}>
-                <Feather name="package" size={20} color={CALM.bronze} />
-              </View>
-              <View style={styles.productInfo}>
-                <Text style={styles.productName}>{item.name}</Text>
-                <Text style={styles.productPrice}>
-                  {currency} {item.pricePerUnit.toFixed(2)} / {item.unit}
+            <View style={[styles.rowAvatar, !item.isActive && styles.rowAvatarInactive]}>
+              <Text style={styles.rowAvatarText}>{initial}</Text>
+            </View>
+            <View style={styles.rowContent}>
+              <View style={styles.rowTop}>
+                <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.rowPrice}>
+                  {currency} {item.pricePerUnit.toFixed(2)}
+                  <Text style={styles.rowUnit}>/{item.unit}</Text>
                 </Text>
               </View>
-              <Switch
-                value={item.isActive}
-                onValueChange={() => handleToggleActive(item)}
-                trackColor={{ false: CALM.border, true: CALM.bronze }}
-                thumbColor="#fff"
-                accessibilityRole="switch"
-                accessibilityLabel={`Toggle ${item.name} active`}
-              />
+              {sub.length > 0 && (
+                <Text style={styles.rowSub} numberOfLines={1}>
+                  {sub.join('  \u00B7  ')}
+                </Text>
+              )}
             </View>
-
-            <View style={styles.productStats}>
-              <Text style={styles.statText}>
-                {statParts.join('  \u00B7  ')}
-              </Text>
-            </View>
-
-            <View style={styles.productActions}>
-              <TouchableOpacity
-                style={styles.editButton}
-                activeOpacity={0.7}
-                onPress={() => openEditModal(item)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                accessibilityRole="button"
-                accessibilityLabel={`Edit ${item.name}`}
-              >
-                <Feather name="edit-2" size={14} color={CALM.textMuted} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.removeButton}
-                activeOpacity={0.7}
-                onPress={() => handleDelete(item)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${item.name}`}
-              >
-                <Feather name="trash-2" size={14} color={CALM.textMuted} />
-              </TouchableOpacity>
-            </View>
+            <Switch
+              value={item.isActive}
+              onValueChange={() => handleToggleActive(item)}
+              trackColor={{ false: CALM.border, true: CALM.bronze }}
+              thumbColor="#fff"
+              style={styles.rowSwitch}
+              accessibilityRole="switch"
+              accessibilityLabel={`Toggle ${item.name} active`}
+            />
           </TouchableOpacity>
         </AnimatedProductCard>
       );
@@ -540,10 +541,13 @@ const Products: React.FC = () => {
     [currency, openEditModal, handleToggleActive, handleDelete]
   );
 
+  // ─── FlatList render helpers ────────────────────────────────
+  const productKeyExtractor = useCallback((p: SellerProduct) => p.id, []);
+
   // ─── List header ────────────────────────────────────────────
   const ListHeaderComponent = useMemo(() => (
-    <View>
-      {/* Products header row with log cost button */}
+    <View style={styles.listHeaderWrap}>
+      {/* Title row */}
       <View style={styles.listHeader}>
         <View style={styles.listHeaderLeft}>
           <Text style={styles.listHeaderTitle}>products</Text>
@@ -562,8 +566,41 @@ const Products: React.FC = () => {
           <Text style={styles.logCostHeaderText}>log cost</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Search (shows when 4+ products) */}
+      {products.length > 3 && (
+        <View style={styles.searchBar}>
+          <Feather name="search" size={14} color={CALM.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="search products..."
+            placeholderTextColor={CALM.textMuted}
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+            accessibilityLabel="Search products"
+            accessibilityRole="search"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearch('')}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+            >
+              <Feather name="x" size={14} color={CALM.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {search.trim().length > 0 && (
+        <Text style={styles.searchCount}>
+          {filteredProducts.length} of {products.length}
+        </Text>
+      )}
     </View>
-  ), [products.length, handleOpenCostModal]);
+  ), [products.length, handleOpenCostModal, search, filteredProducts.length]);
 
   // ─── Live preview values ───────────────────────────────────
   const previewName = newName.trim() || 'product name';
@@ -843,58 +880,60 @@ const Products: React.FC = () => {
   );
 
   // ─── Render ────────────────────────────────────────────────
+  const ItemSeparator = useCallback(() => <View style={styles.rowDivider} />, []);
+
   return (
     <View style={styles.container}>
       <FlatList
-        data={products}
+        data={products.length === 0 ? products : filteredProducts}
         renderItem={renderProduct}
-        keyExtractor={(p) => p.id}
-        ListHeaderComponent={ListHeaderComponent}
+        keyExtractor={productKeyExtractor}
+        ListHeaderComponent={products.length > 0 ? ListHeaderComponent : undefined}
+        ItemSeparatorComponent={ItemSeparator}
         contentContainerStyle={[
           styles.listContent,
           products.length === 0 && styles.listContentEmpty,
         ]}
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Feather name="package" size={40} color={CALM.border} />
-            <Text style={styles.emptyTitle}>no products yet</Text>
-            <Text style={styles.emptyHint}>
-              follow these steps to get started
-            </Text>
+          products.length === 0 ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconCircle}>
+                <Feather name="package" size={28} color={CALM.textMuted} />
+              </View>
+              <Text style={styles.emptyTitle}>no products yet</Text>
+              <Text style={styles.emptyHint}>
+                add products you sell, set pricing, then start taking orders
+              </Text>
 
-            <View style={styles.stepsContainer}>
-              <View style={styles.stepRow}>
-                <View style={styles.stepIconArea}>
-                  <Feather name="package" size={16} color={CALM.bronze} />
-                </View>
-                <Text style={styles.stepText}>add products you make and sell</Text>
-              </View>
-              <View style={styles.stepRow}>
-                <View style={styles.stepIconArea}>
-                  <Feather name="dollar-sign" size={16} color={CALM.bronze} />
-                </View>
-                <Text style={styles.stepText}>set your price and cost per unit</Text>
-              </View>
-              <View style={styles.stepRow}>
-                <View style={styles.stepIconArea}>
-                  <Feather name="clipboard" size={16} color={CALM.bronze} />
-                </View>
-                <Text style={styles.stepText}>start taking orders</Text>
-              </View>
+              <TouchableOpacity
+                style={styles.emptyCTA}
+                activeOpacity={0.7}
+                onPress={openAddModal}
+                accessibilityRole="button"
+                accessibilityLabel="Add your first product"
+              >
+                <Feather name="plus" size={18} color="#fff" />
+                <Text style={styles.emptyCTAText}>add first product</Text>
+              </TouchableOpacity>
             </View>
-
-            <TouchableOpacity
-              style={styles.emptyCTA}
-              activeOpacity={0.7}
-              onPress={openAddModal}
-              accessibilityRole="button"
-              accessibilityLabel="Add your first product"
-            >
-              <Feather name="plus" size={18} color="#fff" />
-              <Text style={styles.emptyCTAText}>add your first product</Text>
-            </TouchableOpacity>
-          </View>
+          ) : (
+            <View style={styles.noResultsContainer}>
+              <Feather name="search" size={20} color={CALM.textMuted} />
+              <Text style={styles.noResultsText}>no match</Text>
+              <TouchableOpacity
+                onPress={() => setSearch('')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.noResultsClear}>clear</Text>
+              </TouchableOpacity>
+            </View>
+          )
         }
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={15}
+        maxToRenderPerBatch={15}
+        windowSize={7}
       />
 
       {/* Bottom-anchored add button */}
@@ -1138,14 +1177,130 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.background,
   },
   listContent: {
-    paddingHorizontal: SPACING['2xl'],
-    paddingTop: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
     paddingBottom: SPACING['3xl'],
-    gap: SPACING.md,
   },
   listContentEmpty: {
     flex: 1,
     justifyContent: 'center',
+  },
+
+  // List header wrapper
+  listHeaderWrap: {
+    gap: SPACING.sm,
+    paddingBottom: SPACING.xs,
+  },
+
+  // Search bar
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+    minHeight: 38,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    paddingVertical: SPACING.xs,
+  },
+  searchCount: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+    paddingLeft: SPACING.xs,
+  },
+
+  // Compact product row
+  productRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.xs,
+    gap: SPACING.sm,
+    minHeight: 56,
+    borderRadius: RADIUS.md,
+  },
+  productRowInactive: {
+    opacity: 0.4,
+  },
+  rowAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowAvatarInactive: {
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+  },
+  rowAvatarText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.bronze,
+  },
+  rowContent: {
+    flex: 1,
+    gap: 2,
+  },
+  rowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
+  rowName: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+    flex: 1,
+  },
+  rowPrice: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  rowUnit: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: CALM.textMuted,
+  },
+  rowSub: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  rowSwitch: {
+    transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
+    marginLeft: SPACING.xs,
+  },
+  rowDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: CALM.border,
+    marginLeft: 52,
+  },
+
+  // No results
+  noResultsContainer: {
+    alignItems: 'center',
+    paddingVertical: SPACING['3xl'],
+    gap: SPACING.sm,
+  },
+  noResultsText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+  },
+  noResultsClear: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.bronze,
+    paddingVertical: SPACING.xs,
   },
 
   syncToggleRow: {
@@ -1220,86 +1375,21 @@ const styles = StyleSheet.create({
     color: CALM.bronze,
   },
 
-  // Product card
-  productCard: {
-    backgroundColor: CALM.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: CALM.border,
-    padding: SPACING.lg,
-    gap: SPACING.md,
-  },
-  productCardInactive: {
-    opacity: 0.5,
-  },
-  productHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  productIconArea: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  productInfo: {
-    flex: 1,
-    gap: SPACING.xs,
-  },
-  productName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
-  },
-  productPrice: {
-    ...TYPE.insight,
-    color: CALM.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
-
-  // Stats row
-  productStats: {
-    paddingTop: SPACING.xs,
-    borderTopWidth: 1,
-    borderTopColor: CALM.border,
-  },
-  statText: {
-    ...TYPE.muted,
-    color: CALM.textSecondary,
-    fontVariant: ['tabular-nums'],
-    lineHeight: 18,
-  },
-
-  // Actions
-  productActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  editButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  removeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   // Empty state
   emptyState: {
     alignItems: 'center',
     paddingVertical: SPACING['4xl'],
-    paddingHorizontal: SPACING['2xl'],
-    gap: SPACING.md,
+    paddingHorizontal: SPACING['3xl'],
+    gap: SPACING.sm,
+  },
+  emptyIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.xs,
   },
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -1307,37 +1397,10 @@ const styles = StyleSheet.create({
     color: CALM.textPrimary,
   },
   emptyHint: {
-    ...TYPE.insight,
-    color: CALM.textSecondary,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
     textAlign: 'center',
-  },
-  stepsContainer: {
-    alignSelf: 'stretch',
-    backgroundColor: CALM.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: CALM.border,
-    padding: SPACING.lg,
-    gap: SPACING.md,
-    marginTop: SPACING.sm,
-  },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  stepIconArea: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepText: {
-    ...TYPE.insight,
-    color: CALM.textPrimary,
-    flex: 1,
+    lineHeight: 20,
   },
   emptyCTA: {
     flexDirection: 'row',
@@ -1346,9 +1409,9 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.lg,
-    alignSelf: 'stretch',
-    marginTop: SPACING.sm,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    marginTop: SPACING.md,
   },
   emptyCTAText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -1715,7 +1778,7 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   marginBadgeHigh: {
-    backgroundColor: withAlpha('#4F5104', 0.1),
+    backgroundColor: withAlpha(CALM.accent, 0.1),
   },
   marginBadgeText: {
     fontSize: 10,
@@ -1724,7 +1787,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   marginBadgeTextHigh: {
-    color: '#4F5104',
+    color: CALM.accent,
   },
 
   // Validation warning

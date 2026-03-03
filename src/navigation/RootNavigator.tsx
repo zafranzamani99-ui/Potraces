@@ -1,10 +1,10 @@
 import React from 'react';
-import { TouchableOpacity } from 'react-native';
+import { TouchableOpacity, Easing } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
+import { createStackNavigator, CardStyleInterpolators, StackCardStyleInterpolator } from '@react-navigation/stack';
 import { Feather } from '@expo/vector-icons';
 import { useAppStore } from '../store/appStore';
-import { COLORS, CALM } from '../constants';
+import { CALM } from '../constants';
 import PersonalNavigator from './PersonalNavigator';
 import BusinessNavigator from './BusinessNavigator';
 import PersonalReports from '../screens/personal/Reports';
@@ -31,6 +31,7 @@ import SellerProducts from '../screens/seller/Products';
 import SeasonSummary from '../screens/seller/SeasonSummary';
 import PastSeasons from '../screens/seller/PastSeasons';
 import SellerCosts from '../screens/seller/CostManagement';
+import SellerCustomersScreen from '../screens/seller/Customers';
 import SellerOrderList from '../screens/seller/OrderList';
 import StallSessionSetup from '../screens/stall/SessionSetup';
 import StallCloseSession from '../screens/stall/CloseSession';
@@ -63,6 +64,47 @@ import MixedReports from '../screens/business/mixed/MixedReports';
 
 const Stack = createStackNavigator();
 
+// Smooth crossfade with subtle scale for mode toggle
+const forCrossFade: StackCardStyleInterpolator = ({ current }) => ({
+  cardStyle: {
+    opacity: current.progress.interpolate({
+      inputRange: [0, 0.5, 0.9, 1],
+      outputRange: [0, 0.25, 0.7, 1],
+    }),
+    transform: [
+      {
+        scale: current.progress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.94, 1],
+        }),
+      },
+    ],
+  },
+  overlayStyle: {
+    opacity: current.progress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 0.5],
+    }),
+  },
+});
+
+const modeTransitionSpec = {
+  open: {
+    animation: 'timing' as const,
+    config: {
+      duration: 300,
+      easing: Easing.out(Easing.cubic),
+    },
+  },
+  close: {
+    animation: 'timing' as const,
+    config: {
+      duration: 250,
+      easing: Easing.in(Easing.cubic),
+    },
+  },
+};
+
 const RootNavigator: React.FC = () => {
   const mode = useAppStore((state) => state.mode);
 
@@ -76,9 +118,25 @@ const RootNavigator: React.FC = () => {
         }}
       >
         {mode === 'personal' ? (
-          <Stack.Screen name="PersonalMain" component={PersonalNavigator} />
+          <Stack.Screen
+            name="PersonalMain"
+            component={PersonalNavigator}
+            options={{
+              cardStyleInterpolator: forCrossFade,
+              transitionSpec: modeTransitionSpec,
+              gestureEnabled: false,
+            }}
+          />
         ) : (
-          <Stack.Screen name="BusinessMain" component={BusinessNavigator} />
+          <Stack.Screen
+            name="BusinessMain"
+            component={BusinessNavigator}
+            options={{
+              cardStyleInterpolator: forCrossFade,
+              transitionSpec: modeTransitionSpec,
+              gestureEnabled: false,
+            }}
+          />
         )}
         <Stack.Screen
           name="PersonalReports"
@@ -691,6 +749,36 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Costs',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="SellerCustomersStack"
+          component={SellerCustomersScreen}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Customers',
             headerStyle: { backgroundColor: CALM.background },
             headerTintColor: CALM.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },

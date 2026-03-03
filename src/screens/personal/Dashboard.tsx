@@ -63,6 +63,7 @@ const PersonalDashboard: React.FC = () => {
   const { showToast } = useToast();
   const { transactions, subscriptions, budgets, updateTransaction, deleteTransaction } = usePersonalStore();
   const unmarkOrdersTransferred = useSellerStore((s) => s.unmarkOrdersTransferred);
+  const updateIngredientCost = useSellerStore((s) => s.updateIngredientCost);
   const deleteTransfer = useBusinessStore((s) => s.deleteTransfer);
   const { debts } = useDebtStore();
   const currency = useSettingsStore(state => state.currency);
@@ -280,6 +281,18 @@ const PersonalDashboard: React.FC = () => {
       walletId: editWalletId || undefined,
       tags: editTags ? editTags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     });
+
+    // Sync back to seller ingredient cost if linked
+    const linkedCost = useSellerStore.getState().ingredientCosts.find(
+      (c) => c.personalTransactionId === editingTransaction.id
+    );
+    if (linkedCost) {
+      const desc = editDescription.trim();
+      updateIngredientCost(linkedCost.id, {
+        description: desc.startsWith('seller: ') ? desc.replace('seller: ', '') : desc,
+        amount: newAmount,
+      });
+    }
 
     setEditModalVisible(false);
     setEditingTransaction(null);

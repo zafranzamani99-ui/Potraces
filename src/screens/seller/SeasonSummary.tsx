@@ -38,7 +38,7 @@ const useCountUp = (target: number, duration: number = 300) => {
 };
 
 // -- Stagger fade-in wrapper ----------------------------------------
-const FadeInSection: React.FC<{ delay: number; children: React.ReactNode }> = ({
+const FadeInSection: React.FC<{ delay: number; children: React.ReactNode }> = React.memo(({
   delay,
   children,
 }) => {
@@ -67,25 +67,25 @@ const FadeInSection: React.FC<{ delay: number; children: React.ReactNode }> = ({
       {children}
     </Animated.View>
   );
-};
+});
 
 // -- Animated kept amount display -----------------------------------
-const AnimatedKeptAmount: React.FC<{ value: number; currency: string }> = ({
+const AnimatedKeptAmount: React.FC<{ value: number; currency: string }> = React.memo(({
   value,
   currency,
 }) => {
   const animatedValue = useCountUp(value, 300);
-  const [displayText, setDisplayText] = React.useState(`${currency} 0.00`);
+  const [displayText, setDisplayText] = React.useState(`${currency} 0`);
 
   useEffect(() => {
     const id = animatedValue.addListener(({ value: v }) => {
-      setDisplayText(`${currency} ${v.toFixed(2)}`);
+      setDisplayText(`${currency} ${v.toFixed(0)}`);
     });
     return () => animatedValue.removeListener(id);
   }, [animatedValue, currency]);
 
   return <Text style={styles.keptAmount}>{displayText}</Text>;
-};
+});
 
 const SeasonSummary: React.FC = () => {
   const route = useRoute<any>();
@@ -278,7 +278,7 @@ const SeasonSummary: React.FC = () => {
               <Text style={styles.keptLabel}>you kept</Text>
               <AnimatedKeptAmount value={stats.kept} currency={currency} />
               <Text style={styles.keptSubtext}>
-                after {currency} {stats.totalCosts.toFixed(2)} in ingredients
+                after {currency} {stats.totalCosts.toFixed(0)} in ingredients
               </Text>
             </View>
             <View style={styles.ledgerLine} />
@@ -337,7 +337,7 @@ const SeasonSummary: React.FC = () => {
               <View style={styles.unpaidContent}>
                 <Text style={styles.unpaidText}>
                   {stats.unpaidOrders} order{stats.unpaidOrders !== 1 ? 's' : ''} still unpaid {'\u00B7'}{' '}
-                  {currency} {stats.unpaidAmount.toFixed(2)}
+                  {currency} {stats.unpaidAmount.toFixed(0)}
                 </Text>
                 <View style={styles.unpaidAction}>
                   <Text style={styles.unpaidActionText}>collect payments</Text>
@@ -355,7 +355,7 @@ const SeasonSummary: React.FC = () => {
               <View style={styles.transferHeader}>
                 <Feather name="refresh-cw" size={16} color={CALM.bronze} />
                 <Text style={styles.transferTitle}>
-                  {currency} {untransferredAmount.toFixed(2)} untransferred
+                  {currency} {untransferredAmount.toFixed(0)} untransferred
                 </Text>
               </View>
               <Text style={styles.transferSubtext}>

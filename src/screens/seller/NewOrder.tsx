@@ -50,6 +50,7 @@ const NewOrder: React.FC = () => {
     customerName?: string;
     customerPhone?: string;
     customerAddress?: string;
+    prefillItems?: SellerOrderItem[];
   } | undefined;
 
   // ── State ──────────────────────────────────────────────────
@@ -74,14 +75,20 @@ const NewOrder: React.FC = () => {
   const summaryAnim = useRef(new Animated.Value(0)).current;
   const checkScaleAnim = useRef(new Animated.Value(0)).current;
 
-  // When navigating back to this tab with params, pre-fill customer
+  // When navigating back to this tab with params, pre-fill customer + items
   useEffect(() => {
     if (routeParams?.customerName) {
       setCustomerName(routeParams.customerName);
       if (routeParams.customerPhone) setCustomerPhone(routeParams.customerPhone);
       if (routeParams.customerAddress) setCustomerAddress(routeParams.customerAddress);
+      // Pre-fill items from reorder — only keep items whose products still exist and are active
+      if (routeParams.prefillItems && routeParams.prefillItems.length > 0) {
+        const activeProductIds = new Set(products.filter((p) => p.isActive).map((p) => p.id));
+        const validItems = routeParams.prefillItems.filter((i) => activeProductIds.has(i.productId));
+        if (validItems.length > 0) setItems(validItems);
+      }
       // Clear params so they don't persist on tab re-visits
-      navigation.setParams({ customerName: undefined, customerPhone: undefined, customerAddress: undefined });
+      navigation.setParams({ customerName: undefined, customerPhone: undefined, customerAddress: undefined, prefillItems: undefined });
     }
   }, [routeParams?.customerName]);
 
@@ -90,8 +97,8 @@ const NewOrder: React.FC = () => {
     [products]
   );
 
-  const total = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-  const itemCount = items.reduce((s, i) => s + i.quantity, 0);
+  const total = useMemo(() => items.reduce((s, i) => s + i.unitPrice * i.quantity, 0), [items]);
+  const itemCount = useMemo(() => items.reduce((s, i) => s + i.quantity, 0), [items]);
 
   // Map productId -> quantity for product row display
   const itemQtyMap = useMemo(() => {
@@ -372,6 +379,7 @@ const NewOrder: React.FC = () => {
       items,
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
+      customerAddress: customerAddress.trim() || undefined,
       totalAmount: total,
       status: 'pending',
       isPaid: false,
@@ -394,7 +402,7 @@ const NewOrder: React.FC = () => {
       speed: 8,
       bounciness: 12,
     }).start();
-  }, [items, customerName, customerPhone, total, note, whatsAppText, deliveryDate, activeSeason, addOrder, persistCustomer, checkScaleAnim]);
+  }, [items, customerName, customerPhone, customerAddress, total, note, whatsAppText, deliveryDate, activeSeason, addOrder, persistCustomer, checkScaleAnim]);
 
   const handleCopyToClipboard = useCallback(async () => {
     lightTap();
@@ -883,7 +891,7 @@ const NewOrder: React.FC = () => {
             <View style={styles.menuTotalRow}>
               <Text style={styles.menuTotalLabel}>total</Text>
               <Text style={styles.menuTotalAmount}>
-                {currency} {total.toFixed(2)}
+                {currency} {total.toFixed(0)}
               </Text>
             </View>
           )}
@@ -1076,7 +1084,7 @@ const NewOrder: React.FC = () => {
                 </Text>
                 <View style={styles.saveDot} />
                 <Text style={styles.saveButtonTextBold}>
-                  {currency} {total.toFixed(2)}
+                  {currency} {total.toFixed(0)}
                 </Text>
               </>
             )}

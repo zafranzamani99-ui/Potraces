@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated } from '
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { useSellerStore } from '../../store/sellerStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 
 // ─── Animation helper ────────────────────────────────────────
@@ -35,9 +36,17 @@ function useFadeSlide(delay: number) {
 // ─── Component ───────────────────────────────────────────────
 const SellerManage: React.FC = () => {
   const { products, seasons, ingredientCosts } = useSellerStore();
+  const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
 
   const activeSeason = seasons.find((s) => s.isActive) || null;
+  const totalCostsThisMonth = ingredientCosts
+    .filter((c) => {
+      const d = c.date instanceof Date ? c.date : new Date(c.date);
+      const now = new Date();
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    })
+    .reduce((sum, c) => sum + c.amount, 0);
 
   // Staggered animations
   const headerAnim = useFadeSlide(0);
@@ -67,12 +76,12 @@ const SellerManage: React.FC = () => {
           accessibilityLabel={`Products. ${products.length} products. Navigate to product catalog.`}
           onPress={() => navigation.getParent()?.navigate('SellerProducts')}
         >
-          <View style={styles.iconBox}>
-            <Feather name="package" size={24} color={CALM.bronze} />
+          <View style={[styles.iconBox, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
+            <Feather name="package" size={24} color={CALM.accent} />
           </View>
           <View style={styles.cardContent}>
             <Text style={styles.cardTitle}>Products</Text>
-            <Text style={styles.cardSubtitle}>product catalog and pricing</Text>
+            <Text style={styles.cardSubtitle}>catalog and pricing</Text>
             <Text style={styles.cardBadge}>{products.length} products</Text>
           </View>
           <Feather name="chevron-right" size={20} color={CALM.textMuted} />
@@ -94,7 +103,12 @@ const SellerManage: React.FC = () => {
           <View style={styles.cardContent}>
             <Text style={styles.cardTitle}>Costs</Text>
             <Text style={styles.cardSubtitle}>budget, history, and transfers</Text>
-            <Text style={styles.cardBadge}>{ingredientCosts.length} entries</Text>
+            <View style={styles.badgeRow}>
+              <Text style={styles.cardBadge}>{ingredientCosts.length} entries</Text>
+              {totalCostsThisMonth > 0 && (
+                <Text style={styles.costBadge}>{currency} {totalCostsThisMonth.toFixed(0)} this month</Text>
+              )}
+            </View>
           </View>
           <Feather name="chevron-right" size={20} color={CALM.textMuted} />
         </TouchableOpacity>
@@ -103,14 +117,14 @@ const SellerManage: React.FC = () => {
       {/* ─── Seasons Card ─────────────────────────────────── */}
       <Animated.View style={seasonsAnim}>
         <TouchableOpacity
-          style={styles.card}
+          style={[styles.card, activeSeason && styles.cardHighlighted]}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel={`Seasons. ${seasons.length} seasons.${activeSeason ? ` Active season: ${activeSeason.name}.` : ''} Navigate to season history.`}
           onPress={() => navigation.getParent()?.navigate('PastSeasons')}
         >
-          <View style={styles.iconBox}>
-            <Feather name="calendar" size={24} color={CALM.bronze} />
+          <View style={[styles.iconBox, { backgroundColor: withAlpha(CALM.gold, 0.12) }]}>
+            <Feather name="calendar" size={24} color={CALM.gold} />
           </View>
           <View style={styles.cardContent}>
             <Text style={styles.cardTitle}>Seasons</Text>
@@ -135,8 +149,8 @@ const SellerManage: React.FC = () => {
           accessibilityLabel="Settings. Currency, preferences, and data. Navigate to settings."
           onPress={() => navigation.getParent()?.navigate('SellerSettings')}
         >
-          <View style={styles.iconBox}>
-            <Feather name="settings" size={24} color={CALM.bronze} />
+          <View style={[styles.iconBox, { backgroundColor: withAlpha(CALM.lavender, 0.15) }]}>
+            <Feather name="settings" size={24} color={CALM.lavender} />
           </View>
           <View style={styles.cardContent}>
             <Text style={styles.cardTitle}>Settings</Text>
@@ -228,6 +242,15 @@ const styles = StyleSheet.create({
   activeBadge: {
     fontSize: TYPOGRAPHY.size.sm,
     color: CALM.bronze,
+  },
+  costBadge: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.bronze,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
+  cardHighlighted: {
+    borderColor: withAlpha(CALM.gold, 0.3),
+    backgroundColor: withAlpha(CALM.gold, 0.03),
   },
 });
 
