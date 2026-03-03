@@ -190,7 +190,9 @@ export interface SellerState {
 
   addSeason: (season: Omit<Season, 'id' | 'createdAt'>) => void;
   endSeason: (id: string) => void;
+  deleteSeason: (id: string) => void;
   getActiveSeason: () => Season | null;
+  updateSeasonName: (seasonId: string, name: string) => void;
   updateSeasonBudget: (seasonId: string, budget: number | undefined) => void;
 
   addIngredientCost: (cost: Omit<IngredientCost, 'id'>) => string;

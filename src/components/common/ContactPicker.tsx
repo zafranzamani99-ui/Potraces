@@ -11,6 +11,8 @@ import {
   FlatList,
   Alert,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
@@ -148,7 +150,11 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
 
       {/* Phone Contacts Modal */}
       <Modal visible={phoneModalVisible} animationType="fade" transparent onRequestClose={() => setPhoneModalVisible(false)}>
-          <Pressable style={styles.modalOverlay} onPress={() => setPhoneModalVisible(false)}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable style={{ flex: 1 }} onPress={() => setPhoneModalVisible(false)} />
             <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Select Contact</Text>
@@ -216,7 +222,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                 />
               )}
             </View>
-          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Manual Entry Modal */}

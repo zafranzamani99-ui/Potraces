@@ -395,7 +395,7 @@ const AnimatedOrderCard: React.FC<{
             {nextStatus && (
               <TouchableOpacity
                 activeOpacity={0.7}
-                style={styles.quickActionPill}
+                style={[styles.quickActionPill, { backgroundColor: withAlpha(statusColor(nextStatus), 0.07) }]}
                 onPress={(e) => {
                   e.stopPropagation?.();
                   mediumTap();
@@ -408,9 +408,9 @@ const AnimatedOrderCard: React.FC<{
                 <Feather
                   name={advanceIcon(item.status)}
                   size={13}
-                  color={CALM.bronze}
+                  color={statusColor(nextStatus)}
                 />
-                <Text style={styles.quickActionText}>
+                <Text style={[styles.quickActionText, { color: statusColor(nextStatus) }]}>
                   mark {nextStatus}
                 </Text>
               </TouchableOpacity>
@@ -582,7 +582,7 @@ const GroupedCustomerCard: React.FC<{
                       onPress={(e) => { e.stopPropagation?.(); mediumTap(); onAdvanceStatus(order); }}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     >
-                      <Feather name={advanceIcon(order.status)} size={14} color={CALM.bronze} />
+                      <Feather name={advanceIcon(order.status)} size={14} color={statusColor(nextStatus)} />
                     </TouchableOpacity>
                   )}
                   {showMarkPaid && (
@@ -634,15 +634,22 @@ const OrderList: React.FC = () => {
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>(
     initialFilter === 'paid' ? 'paid' : initialFilter === 'unpaid' ? 'unpaid' : 'all'
   );
+  const [overdueOnly, setOverdueOnly] = useState(initialFilter === 'overdue');
 
   // Update filter/search when navigating back with new params
   useEffect(() => {
     if (initialFilter) {
-      if (initialFilter === 'paid' || initialFilter === 'unpaid') {
+      if (initialFilter === 'overdue') {
+        setOverdueOnly(true);
+        setDeliveryFilter('all');
+        setPaymentFilter('all');
+      } else if (initialFilter === 'paid' || initialFilter === 'unpaid') {
         setPaymentFilter(initialFilter);
         setDeliveryFilter('all');
+        setOverdueOnly(false);
       } else if (['pending', 'confirmed', 'ready', 'delivered', 'completed'].includes(initialFilter)) {
         setDeliveryFilter(initialFilter as DeliveryFilter);
+        setOverdueOnly(false);
       }
       navigation.setParams({ initialFilter: undefined });
     }
@@ -750,6 +757,15 @@ const OrderList: React.FC = () => {
       result = result.filter((o) => o.status === deliveryFilter);
     }
 
+    // Overdue filter — delivery date is past and not yet delivered/completed
+    if (overdueOnly) {
+      result = result.filter((o) => {
+        if (!o.deliveryDate) return false;
+        const d = o.deliveryDate instanceof Date ? o.deliveryDate : new Date(o.deliveryDate as string);
+        return isPast(startOfDay(d)) && !isToday(d) && o.status !== 'delivered' && o.status !== 'completed';
+      });
+    }
+
     // Payment state filter (independent of delivery)
     if (paymentFilter === 'paid') {
       result = result.filter((o) => o.isPaid);
@@ -787,7 +803,7 @@ const OrderList: React.FC = () => {
     }
 
     return result;
-  }, [sortedOrders, deliveryFilter, paymentFilter, searchQuery, periodFilter, paymentMethodFilter]);
+  }, [sortedOrders, deliveryFilter, paymentFilter, overdueOnly, searchQuery, periodFilter, paymentMethodFilter]);
 
   // Group orders by customer name
   const groupedData = useMemo((): CustomerGroup[] => {
@@ -847,7 +863,7 @@ const OrderList: React.FC = () => {
   }, [filteredOrders, viewMode, sortBy]);
 
   // Whether any filters are active
-  const hasActiveFilters = deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || searchInput.trim().length > 0 || paymentMethodFilter !== 'all';
+  const hasActiveFilters = deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly || searchInput.trim().length > 0 || paymentMethodFilter !== 'all';
 
   // Unpaid orders for select-all
   const unpaidFilteredIds = useMemo(
@@ -1208,6 +1224,7 @@ const OrderList: React.FC = () => {
     setPaymentFilter('all');
     setPeriodFilter('all');
     setPaymentMethodFilter('all');
+    setOverdueOnly(false);
     setSearchInput('');
     lightTap();
   }, []);
@@ -1328,7 +1345,7 @@ const OrderList: React.FC = () => {
                 key={tab.value}
                 activeOpacity={0.7}
                 style={[styles.tab, isActive && styles.tabActive]}
-                onPress={() => { selectionChanged(); setDeliveryFilter(tab.value); }}
+                onPress={() => { selectionChanged(); setDeliveryFilter(tab.value); setOverdueOnly(false); }}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isActive }}
                 accessibilityLabel={`${tab.label} tab, ${count} orders`}
@@ -1419,7 +1436,7 @@ const OrderList: React.FC = () => {
               key={tab.value}
               style={[styles.filterPill, isActive && styles.filterPillActive]}
               activeOpacity={0.7}
-              onPress={() => { selectionChanged(); setPaymentFilter(tab.value); if (tab.value !== 'paid') setPaymentMethodFilter('all'); }}
+              onPress={() => { selectionChanged(); setPaymentFilter(tab.value); setOverdueOnly(false); if (tab.value !== 'paid') setPaymentMethodFilter('all'); }}
               accessibilityRole="button"
               accessibilityState={{ selected: isActive }}
             >
@@ -1500,9 +1517,16 @@ const OrderList: React.FC = () => {
       {/* ─── Result count + clear filters ─── */}
       {hasActiveFilters && (
         <View style={styles.resultRow}>
-          <Text style={styles.resultText}>
-            {filteredOrders.length} of {orders.length} order{orders.length !== 1 ? 's' : ''}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+            <Text style={styles.resultText}>
+              {filteredOrders.length} of {orders.length} order{orders.length !== 1 ? 's' : ''}
+            </Text>
+            {overdueOnly && (
+              <View style={{ backgroundColor: withAlpha(BIZ.overdue, 0.12), borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 2 }}>
+                <Text style={{ fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.semibold as any, color: BIZ.overdue }}>overdue</Text>
+              </View>
+            )}
+          </View>
           <TouchableOpacity
             onPress={handleClearFilters}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1627,8 +1651,33 @@ const OrderList: React.FC = () => {
             <Text style={styles.paymentSheetTitle}>
               {bulkPayIds.length > 0
                 ? `mark ${bulkPayIds.length} order${bulkPayIds.length > 1 ? 's' : ''} paid`
-                : 'how was it paid?'}
+                : 'mark as paid'}
             </Text>
+
+            {/* Order context — shows who/what is being paid */}
+            {pendingPayOrder && (
+              <View style={styles.paymentContext}>
+                <View style={styles.paymentContextRow}>
+                  <Text style={styles.paymentContextName} numberOfLines={1}>
+                    {pendingPayOrder.customerName || 'walk-in'}
+                  </Text>
+                  <Text style={styles.paymentContextAmount}>
+                    {currency} {pendingPayOrder.totalAmount.toFixed(2)}
+                  </Text>
+                </View>
+                <Text style={styles.paymentContextItems} numberOfLines={1}>
+                  {pendingPayOrder.items.map((i) => `${i.productName} \u00D7${i.quantity}`).join(', ')}
+                </Text>
+              </View>
+            )}
+            {bulkPayIds.length > 0 && (
+              <View style={styles.paymentContext}>
+                <Text style={styles.paymentContextAmount}>
+                  {currency} {orders.filter((o) => bulkPayIds.includes(o.id)).reduce((s, o) => s + o.totalAmount, 0).toFixed(2)}
+                </Text>
+              </View>
+            )}
+
             <View style={styles.paymentPickerRow}>
               {PAYMENT_METHODS.map((m) => {
                 const active = selectedPaymentMethod === m.value;
@@ -1959,7 +2008,7 @@ const OrderList: React.FC = () => {
                       {NEXT_STATUS[selectedOrder.status] && (
                         <TouchableOpacity
                           activeOpacity={0.7}
-                          style={styles.advanceButton}
+                          style={[styles.advanceButton, { backgroundColor: statusColor(NEXT_STATUS[selectedOrder.status]!) }]}
                           onPress={() => handleAdvanceStatus(selectedOrder)}
                           accessibilityRole="button"
                           accessibilityLabel={`Mark order as ${NEXT_STATUS[selectedOrder.status]}`}
@@ -2725,6 +2774,36 @@ const styles = StyleSheet.create({
   paymentSheetTitle: {
     ...TYPE.label,
     marginBottom: SPACING.sm,
+  },
+  paymentContext: {
+    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm + 2,
+    marginBottom: SPACING.md,
+    gap: 2,
+  },
+  paymentContextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
+  paymentContextName: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+    flex: 1,
+  },
+  paymentContextAmount: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  paymentContextItems: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginTop: 1,
   },
   paymentPickerRow: {
     flexDirection: 'row',

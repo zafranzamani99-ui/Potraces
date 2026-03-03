@@ -161,10 +161,24 @@ export const useSellerStore = create<SellerState>()(
           ),
         })),
 
+      deleteSeason: (id) =>
+        set((state) => ({
+          seasons: state.seasons.filter((s) => s.id !== id),
+          orders: state.orders.filter((o) => o.seasonId !== id),
+          ingredientCosts: state.ingredientCosts.filter((c) => c.seasonId !== id),
+        })),
+
       getActiveSeason: () => {
         const state = get();
         return state.seasons.find((s) => s.isActive) || null;
       },
+
+      updateSeasonName: (seasonId, name) =>
+        set((state) => ({
+          seasons: state.seasons.map((s) =>
+            s.id === seasonId ? { ...s, name } : s
+          ),
+        })),
 
       updateSeasonBudget: (seasonId, budget) =>
         set((state) => ({

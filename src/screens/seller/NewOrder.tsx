@@ -22,7 +22,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { format, addDays, isValid } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
 import { SellerOrderItem, SellerProduct, SellerOrder } from '../../types';
 import { parseWhatsAppOrder } from '../../utils/parseWhatsAppOrder';
 import { parseWhatsAppOrderAI } from '../../services/aiService';
@@ -540,6 +540,7 @@ const NewOrder: React.FC = () => {
                   style={styles.recentPill}
                   activeOpacity={0.7}
                   onPress={() => handleSelectCustomer(c)}
+                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Select ${c.name}`}
                 >
@@ -625,6 +626,7 @@ const NewOrder: React.FC = () => {
                 activeOpacity={0.7}
                 style={styles.suggestionPill}
                 onPress={() => handleSelectCustomer(c)}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Select ${c.name}`}
               >
@@ -648,7 +650,7 @@ const NewOrder: React.FC = () => {
                 accessibilityLabel={`Reorder: ${order.items.map((i) => `${i.productName} x${i.quantity}`).join(', ')}`}
               >
                 <View style={styles.reorderHeader}>
-                  <Feather name="rotate-ccw" size={14} color={CALM.bronze} />
+                  <Feather name="rotate-ccw" size={14} color={BIZ.success} />
                   <Text style={styles.reorderTitle}>
                     {format(
                       order.date instanceof Date ? order.date : new Date(order.date),
@@ -663,7 +665,7 @@ const NewOrder: React.FC = () => {
                   <Text style={styles.reorderActionText}>
                     {currency} {order.totalAmount.toFixed(0)}
                   </Text>
-                  <Feather name="plus" size={14} color={CALM.bronze} />
+                  <Feather name="plus" size={14} color={BIZ.success} />
                 </View>
               </TouchableOpacity>
             ))}
@@ -787,7 +789,7 @@ const NewOrder: React.FC = () => {
               accessibilityRole="link"
               accessibilityLabel="Add products to get started"
             >
-              <Feather name="plus-circle" size={16} color={CALM.bronze} />
+              <Feather name="plus-circle" size={16} color={CALM.accent} />
               <Text style={styles.noProductsText}>add products to get started</Text>
             </TouchableOpacity>
           ) : (
@@ -836,7 +838,7 @@ const NewOrder: React.FC = () => {
                         accessibilityRole="button"
                         accessibilityLabel={`Decrease ${product.name}`}
                       >
-                        <Feather name="minus" size={14} color={CALM.bronze} />
+                        <Feather name="minus" size={14} color={CALM.accent} />
                       </TouchableOpacity>
                       {editingQtyProductId === product.id ? (
                         <TextInput
@@ -866,7 +868,7 @@ const NewOrder: React.FC = () => {
                         accessibilityRole="button"
                         accessibilityLabel={`Increase ${product.name}`}
                       >
-                        <Feather name="plus" size={14} color={CALM.bronze} />
+                        <Feather name="plus" size={14} color={CALM.accent} />
                       </TouchableOpacity>
                     </View>
                   ) : (
@@ -907,6 +909,7 @@ const NewOrder: React.FC = () => {
                 activeOpacity={0.7}
                 style={[styles.dPill, deliveryMode === 'today' && styles.dPillActive]}
                 onPress={handleDeliveryToday}
+                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
                 accessibilityRole="button"
                 accessibilityLabel="Deliver today"
               >
@@ -918,6 +921,7 @@ const NewOrder: React.FC = () => {
                 activeOpacity={0.7}
                 style={[styles.dPill, deliveryMode === 'tomorrow' && styles.dPillActive]}
                 onPress={handleDeliveryTomorrow}
+                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
                 accessibilityRole="button"
                 accessibilityLabel="Deliver tomorrow"
               >
@@ -929,6 +933,7 @@ const NewOrder: React.FC = () => {
                 activeOpacity={0.7}
                 style={[styles.dPill, deliveryMode === 'pick' && styles.dPillActive]}
                 onPress={handleDeliveryPick}
+                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
                 accessibilityRole="button"
                 accessibilityLabel="Pick a date"
               >
@@ -949,14 +954,14 @@ const NewOrder: React.FC = () => {
               display="default"
               minimumDate={new Date()}
               onChange={handleDatePickerChange}
-              accentColor={CALM.bronze}
+              accentColor={CALM.gold}
             />
           )}
 
           {/* Selected date badge */}
           {deliveryDate && isValid(deliveryDate) && (
             <View style={styles.deliveryBadge}>
-              <Feather name="truck" size={11} color={CALM.bronze} />
+              <Feather name="truck" size={11} color={CALM.gold} />
               <Text style={styles.deliveryBadgeText}>
                 {format(deliveryDate, 'EEEE, dd MMM')}
               </Text>
@@ -966,7 +971,7 @@ const NewOrder: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Clear delivery date"
               >
-                <Feather name="x" size={12} color={CALM.bronze} />
+                <Feather name="x" size={12} color={CALM.gold} />
               </TouchableOpacity>
             </View>
           )}
@@ -1050,6 +1055,7 @@ const NewOrder: React.FC = () => {
             <TouchableOpacity
               onPress={toggleSummary}
               style={styles.summaryToggle}
+              hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
               accessibilityRole="button"
               accessibilityLabel={showSummary ? 'Hide order summary' : 'Show order summary'}
             >
@@ -1212,14 +1218,14 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(BIZ.success, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },
   recentAvatarText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.bronze,
+    color: BIZ.success,
   },
   recentName: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1289,12 +1295,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs + 2,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(BIZ.success, 0.08),
   },
   suggestionText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.bronze,
+    color: BIZ.success,
   },
 
   // ── Reorder card ──────────────────────────────────────────
@@ -1315,7 +1321,7 @@ const styles = StyleSheet.create({
   reorderTitle: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: BIZ.success,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
@@ -1333,7 +1339,7 @@ const styles = StyleSheet.create({
   reorderActionText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: BIZ.success,
   },
 
   // ── WhatsApp paste ────────────────────────────────────────
@@ -1399,7 +1405,7 @@ const styles = StyleSheet.create({
   },
   unmatchedBox: {
     borderLeftWidth: 3,
-    borderLeftColor: CALM.bronze,
+    borderLeftColor: BIZ.warning,
     paddingLeft: SPACING.md,
     gap: SPACING.xs,
   },
@@ -1433,7 +1439,7 @@ const styles = StyleSheet.create({
   menuItemCount: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.bronze,
+    color: CALM.accent,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   noProductsLink: {
@@ -1447,7 +1453,7 @@ const styles = StyleSheet.create({
   noProductsText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.bronze,
+    color: CALM.accent,
   },
 
   // Product search
@@ -1476,9 +1482,9 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   productRowActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.04),
+    backgroundColor: withAlpha(CALM.accent, 0.04),
     borderLeftWidth: 3,
-    borderLeftColor: CALM.bronze,
+    borderLeftColor: CALM.accent,
   },
   productRowLast: {
     // no special styling needed
@@ -1496,7 +1502,7 @@ const styles = StyleSheet.create({
     color: CALM.textPrimary,
   },
   productNameActive: {
-    color: CALM.bronze,
+    color: CALM.accent,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
   },
   productPrice: {
@@ -1505,7 +1511,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   productPriceActive: {
-    color: CALM.bronze,
+    color: CALM.accent,
   },
 
   // Quantity controls
@@ -1518,7 +1524,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(CALM.accent, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
     // hitSlop extends touch area to meet 44pt minimum
@@ -1526,13 +1532,13 @@ const styles = StyleSheet.create({
   qtyText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: CALM.accent,
     minWidth: 24,
     textAlign: 'center',
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   qtyInput: {
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(CALM.accent, 0.08),
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.xs,
     paddingVertical: 2,
@@ -1556,16 +1562,16 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderTopWidth: 1,
     borderTopColor: CALM.border,
-    backgroundColor: withAlpha(CALM.bronze, 0.04),
+    backgroundColor: withAlpha(CALM.accent, 0.04),
   },
   menuTotalLabel: {
     ...TYPE.label,
-    color: CALM.bronze,
+    color: CALM.accent,
   },
   menuTotalAmount: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.bronze,
+    color: CALM.accent,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
@@ -1600,8 +1606,8 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   dPillActive: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: CALM.gold,
+    borderColor: CALM.gold,
   },
   dPillText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1621,12 +1627,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(CALM.gold, 0.08),
   },
   deliveryBadgeText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.bronze,
+    color: CALM.gold,
   },
   detailsDivider: {
     height: 1,
@@ -1698,7 +1704,7 @@ const styles = StyleSheet.create({
   summaryItemTotal: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: CALM.accent,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     marginRight: SPACING.sm,
     minWidth: 60,
@@ -1721,12 +1727,12 @@ const styles = StyleSheet.create({
   },
   summaryTotalLabel: {
     ...TYPE.label,
-    color: CALM.bronze,
+    color: CALM.accent,
   },
   summaryTotalAmount: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.bronze,
+    color: CALM.accent,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   saveButton: {
@@ -1768,7 +1774,7 @@ const styles = StyleSheet.create({
   // ── Confirmation modal ────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: withAlpha(CALM.textPrimary, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING['2xl'],
@@ -1791,7 +1797,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: CALM.bronze,
+    backgroundColor: BIZ.success,
     alignItems: 'center',
     justifyContent: 'center',
   },

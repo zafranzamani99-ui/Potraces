@@ -8,18 +8,24 @@ import {
   TextInput,
   Alert,
   Animated,
+  Modal,
+  Pressable,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
+import * as Clipboard from 'expo-clipboard';
+import * as XLSX from 'xlsx';
+import { Paths, File as ExpoFile } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { createTransfer } from '../../utils/transferBridge';
-import { lightTap, successNotification } from '../../services/haptics';
+import { lightTap, mediumTap, successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
 
 // -- Count-up animation hook ----------------------------------------
 const useCountUp = (target: number, duration: number = 300) => {
@@ -84,15 +90,17 @@ const AnimatedKeptAmount: React.FC<{ value: number; currency: string }> = React.
     return () => animatedValue.removeListener(id);
   }, [animatedValue, currency]);
 
-  return <Text style={styles.keptAmount}>{displayText}</Text>;
+  return <Text style={[styles.keptAmount, { color: value >= 0 ? BIZ.profit : BIZ.loss }]}>{displayText}</Text>;
 });
 
 const SeasonSummary: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { seasons, orders, ingredientCosts, endSeason, addSeason, markOrdersTransferred } = useSellerStore();
+  const { seasons, orders, ingredientCosts, endSeason, addSeason, markOrdersTransferred, unmarkOrdersTransferred, deleteSeason, updateSeasonName } = useSellerStore();
   const addTransfer = useBusinessStore((s) => s.addTransfer);
+  const deleteTransfer = useBusinessStore((s) => s.deleteTransfer);
   const addTransferIncome = usePersonalStore((s) => s.addTransferIncome);
+  const deletePersonalTransaction = usePersonalStore((s) => s.deleteTransaction);
   const currency = useSettingsStore((s) => s.currency);
   const { showToast } = useToast();
 
@@ -101,6 +109,19 @@ const SeasonSummary: React.FC = () => {
   const season = seasonId
     ? seasons.find((s) => s.id === seasonId)
     : seasons.find((s) => s.isActive);
+
+  // Filtered lists for inline display
+  const seasonOrders = useMemo(() => {
+    if (!season) return [];
+    return orders.filter((o) => o.seasonId === season.id)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [season, orders]);
+
+  const seasonCosts = useMemo(() => {
+    if (!season) return [];
+    return ingredientCosts.filter((c) => c.seasonId === season.id)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [season, ingredientCosts]);
 
   const stats = useMemo(() => {
     if (!season) return null;
@@ -162,6 +183,13 @@ const SeasonSummary: React.FC = () => {
   const [transferAmount, setTransferAmount] = useState('');
   const [showTransfer, setShowTransfer] = useState(false);
 
+  // ─── Modal states ───
+  const [showEndModal, setShowEndModal] = useState(false);
+  const [showOrdersModal, setShowOrdersModal] = useState(false);
+  const [showCostsModal, setShowCostsModal] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+
   useEffect(() => {
     if (untransferredAmount > 0) {
       setTransferAmount(untransferredAmount.toFixed(2));
@@ -171,6 +199,10 @@ const SeasonSummary: React.FC = () => {
   const handleTransferToPersonal = useCallback(() => {
     const amount = parseFloat(transferAmount);
     if (!amount || amount <= 0 || !season) return;
+    if (amount > untransferredAmount) {
+      showToast('cannot transfer more than untransferred amount', 'error');
+      return;
+    }
 
     const transfer = createTransfer(
       amount,
@@ -189,22 +221,19 @@ const SeasonSummary: React.FC = () => {
     setShowTransfer(false);
   }, [transferAmount, season, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast]);
 
-  const handleEndSeason = () => {
+  const handleEndSeason = useCallback(() => {
+    mediumTap();
     if (!season) return;
-    Alert.alert(
-      `End ${season.name}?`,
-      'This marks the season as complete. You can still view it in past seasons.',
-      [
-        { text: 'Not yet', style: 'cancel' },
-        {
-          text: 'End season',
-          onPress: () => {
-            endSeason(season.id);
-          },
-        },
-      ]
-    );
-  };
+    setShowEndModal(true);
+  }, [season]);
+
+  const confirmEndSeason = useCallback(() => {
+    if (!season) return;
+    endSeason(season.id);
+    successNotification();
+    showToast('season ended', 'success');
+    setShowEndModal(false);
+  }, [season, endSeason, showToast]);
 
   const handleStartNewSeason = () => {
     Alert.prompt
@@ -216,9 +245,111 @@ const SeasonSummary: React.FC = () => {
       : Alert.alert('New season', 'Use the seasons tab to start a new season.');
   };
 
-  const navigateToOrders = () => {
-    navigation.getParent()?.navigate('SellerOrders');
-  };
+  const generateReportText = useCallback(() => {
+    if (!season || !stats) return '';
+    const startDate = format(season.startDate instanceof Date ? season.startDate : new Date(season.startDate), 'dd MMM yyyy, h:mm a');
+    const endDate = season.endDate
+      ? format(season.endDate instanceof Date ? season.endDate : new Date(season.endDate), 'dd MMM yyyy, h:mm a')
+      : 'now';
+    const line = '\u2500'.repeat(30);
+    let text = `LAPORAN MUSIM / SEASON REPORT\n${line}\n`;
+    text += `Musim: ${season.name}\n`;
+    text += `Tempoh: ${startDate} \u2013 ${endDate}\n${line}\n`;
+    text += `Pesanan / Orders: ${stats.totalOrders}\n`;
+    text += `Pelanggan / Customers: ${stats.customerCount}\n${line}\n`;
+    text += `Pendapatan / Income:  ${currency} ${stats.totalIncome.toFixed(2)}\n`;
+    text += `Kos Bahan / Costs:    ${currency} ${stats.totalCosts.toFixed(2)}\n`;
+    text += `Untung / Kept:        ${currency} ${stats.kept.toFixed(2)}\n${line}\n`;
+    if (stats.topProducts.length > 0) {
+      text += `PRODUK TERLARIS / TOP PRODUCTS:\n`;
+      stats.topProducts.forEach((p, i) => {
+        text += `${i + 1}. ${p.name} \u2014 ${p.qty} unit \u2014 ${currency} ${p.revenue.toFixed(0)}\n`;
+      });
+      text += `${line}\n`;
+    }
+    if (stats.unpaidOrders > 0) {
+      text += `Belum Bayar / Unpaid: ${stats.unpaidOrders} pesanan (${currency} ${stats.unpaidAmount.toFixed(0)})\n`;
+    }
+    return text;
+  }, [season, stats, currency]);
+
+  const handleCopyReport = useCallback(async () => {
+    const text = generateReportText();
+    if (!text) return;
+    await Clipboard.setStringAsync(text);
+    lightTap();
+    showToast('report copied', 'info');
+  }, [generateReportText, showToast]);
+
+  const handleExportXlsx = useCallback(async () => {
+    if (!season || !stats) return;
+    try {
+      const seasonOrders = orders.filter((o) => o.seasonId === season.id);
+      const startDate = format(season.startDate instanceof Date ? season.startDate : new Date(season.startDate), 'dd MMM yyyy, h:mm a');
+      const endDate = season.endDate
+        ? format(season.endDate instanceof Date ? season.endDate : new Date(season.endDate), 'dd MMM yyyy, h:mm a')
+        : 'ongoing';
+
+      // Summary sheet
+      const summaryData = [
+        ['SEASON REPORT'],
+        [''],
+        ['Season', season.name],
+        ['Period', `${startDate} - ${endDate}`],
+        [''],
+        ['Orders', stats.totalOrders],
+        ['Customers', stats.customerCount],
+        [''],
+        ['Income', stats.totalIncome],
+        ['Costs', stats.totalCosts],
+        ['Kept', stats.kept],
+        [''],
+        ['TOP PRODUCTS'],
+        ['Product', 'Quantity', 'Revenue'],
+        ...stats.topProducts.map((p) => [p.name, p.qty, p.revenue]),
+      ];
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+
+      // Orders sheet
+      const ordersData = [
+        ['Date', 'Order #', 'Customer', 'Phone', 'Items', 'Amount', 'Status', 'Paid', 'Payment Method'],
+        ...seasonOrders.map((o) => [
+          format(o.date instanceof Date ? o.date : new Date(o.date), 'dd/MM/yyyy'),
+          o.orderNumber || '',
+          o.customerName || '',
+          o.customerPhone || '',
+          o.items.map((i) => `${i.productName} x${i.quantity}`).join(', '),
+          o.totalAmount,
+          o.status,
+          o.isPaid ? 'Yes' : 'No',
+          o.paymentMethod || '',
+        ]),
+      ];
+      const ordersSheet = XLSX.utils.aoa_to_sheet(ordersData);
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+      XLSX.utils.book_append_sheet(wb, ordersSheet, 'Orders');
+
+      const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+      const fileName = `${season.name.replace(/[^a-zA-Z0-9]/g, '_')}_report.xlsx`;
+      const file = new ExpoFile(Paths.cache, fileName);
+      file.write(wbout, { encoding: 'base64' });
+      const filePath = file.uri;
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(filePath, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: `${season.name} Report`,
+        });
+      } else {
+        showToast('sharing not available on this device', 'error');
+      }
+    } catch (e) {
+      showToast('failed to export report', 'error');
+    }
+  }, [season, stats, orders, currency, showToast]);
 
   if (!season || !stats) {
     return (
@@ -261,11 +392,23 @@ const SeasonSummary: React.FC = () => {
       >
         {/* Season header */}
         <FadeInSection delay={0}>
-          <Text style={styles.seasonName}>{season.name}</Text>
+          <TouchableOpacity
+            style={styles.seasonNameRow}
+            activeOpacity={0.7}
+            onPress={() => {
+              setRenameValue(season.name);
+              setShowRenameModal(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Edit season name"
+          >
+            <Text style={styles.seasonName}>{season.name}</Text>
+            <Feather name="edit-2" size={14} color={CALM.textMuted} />
+          </TouchableOpacity>
           <Text style={styles.seasonDates}>
-            {format(season.startDate instanceof Date ? season.startDate : new Date(season.startDate), 'dd MMM yyyy')}
+            {format(season.startDate instanceof Date ? season.startDate : new Date(season.startDate), 'dd MMM yyyy, h:mm a')}
             {season.endDate
-              ? ` \u2013 ${format(season.endDate instanceof Date ? season.endDate : new Date(season.endDate), 'dd MMM yyyy')}`
+              ? ` \u2013 ${format(season.endDate instanceof Date ? season.endDate : new Date(season.endDate), 'dd MMM yyyy, h:mm a')}`
               : ' \u2013 now'}
           </Text>
         </FadeInSection>
@@ -295,28 +438,28 @@ const SeasonSummary: React.FC = () => {
         {/* Stats grid: enhanced with icon circles and larger numbers */}
         <FadeInSection delay={150}>
           <View style={styles.statsRow}>
-            <View style={styles.statBox}>
-              <View style={styles.statIconCircle}>
-                <Feather name="clipboard" size={16} color={CALM.bronze} />
+            <View style={styles.statBox} accessible={true} accessibilityLabel={`${stats.totalOrders} orders`}>
+              <View style={[styles.statIconCircle, { backgroundColor: withAlpha(CALM.gold, 0.1) }]}>
+                <Feather name="clipboard" size={16} color={CALM.gold} />
               </View>
               <Text style={styles.statNumber}>{stats.totalOrders}</Text>
               <Text style={styles.statLabel}>orders</Text>
             </View>
             <View style={styles.statBoxDivider} />
-            <View style={styles.statBox}>
-              <View style={styles.statIconCircle}>
-                <Feather name="users" size={16} color={CALM.bronze} />
+            <View style={styles.statBox} accessible={true} accessibilityLabel={`${stats.customerCount} customers`}>
+              <View style={[styles.statIconCircle, { backgroundColor: withAlpha(BIZ.success, 0.1) }]}>
+                <Feather name="users" size={16} color={BIZ.success} />
               </View>
               <Text style={styles.statNumber}>{stats.customerCount}</Text>
               <Text style={styles.statLabel}>customers</Text>
             </View>
           </View>
           <View style={styles.statsWideRow}>
-            <View style={styles.statBoxWide}>
-              <View style={styles.statIconCircle}>
-                <Feather name="trending-up" size={16} color={CALM.bronze} />
+            <View style={styles.statBoxWide} accessible={true} accessibilityLabel={`Total income ${currency} ${stats.totalIncome.toFixed(0)}`}>
+              <View style={[styles.statIconCircle, { backgroundColor: withAlpha(BIZ.profit, 0.1) }]}>
+                <Feather name="trending-up" size={16} color={BIZ.profit} />
               </View>
-              <Text style={styles.statNumber}>
+              <Text style={[styles.statNumber, { color: BIZ.profit }]}>
                 {currency} {stats.totalIncome.toFixed(0)}
               </Text>
               <Text style={styles.statLabel}>came in</Text>
@@ -324,27 +467,19 @@ const SeasonSummary: React.FC = () => {
           </View>
         </FadeInSection>
 
-        {/* Unpaid card -- actionable with button */}
+        {/* Unpaid notice */}
         {stats.unpaidOrders > 0 && (
           <FadeInSection delay={200}>
-            <TouchableOpacity
+            <View
               style={styles.unpaidCard}
-              activeOpacity={0.7}
-              onPress={navigateToOrders}
-              accessibilityRole="button"
-              accessibilityLabel={`${stats.unpaidOrders} unpaid orders totalling ${currency} ${stats.unpaidAmount.toFixed(2)}. Tap to collect payments.`}
+              accessible={true}
+              accessibilityLabel={`${stats.unpaidOrders} unpaid orders totalling ${currency} ${stats.unpaidAmount.toFixed(2)}`}
             >
-              <View style={styles.unpaidContent}>
-                <Text style={styles.unpaidText}>
-                  {stats.unpaidOrders} order{stats.unpaidOrders !== 1 ? 's' : ''} still unpaid {'\u00B7'}{' '}
-                  {currency} {stats.unpaidAmount.toFixed(0)}
-                </Text>
-                <View style={styles.unpaidAction}>
-                  <Text style={styles.unpaidActionText}>collect payments</Text>
-                  <Feather name="arrow-right" size={14} color={CALM.bronze} />
-                </View>
-              </View>
-            </TouchableOpacity>
+              <Text style={styles.unpaidText}>
+                {stats.unpaidOrders} order{stats.unpaidOrders !== 1 ? 's' : ''} still unpaid {'\u00B7'}{' '}
+                {currency} {stats.unpaidAmount.toFixed(0)}
+              </Text>
+            </View>
           </FadeInSection>
         )}
 
@@ -377,6 +512,7 @@ const SeasonSummary: React.FC = () => {
                     style={styles.transferConfirmButton}
                     activeOpacity={0.7}
                     onPress={handleTransferToPersonal}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <Text style={styles.transferConfirmText}>transfer</Text>
                   </TouchableOpacity>
@@ -386,6 +522,7 @@ const SeasonSummary: React.FC = () => {
                   style={styles.transferButton}
                   activeOpacity={0.7}
                   onPress={() => { lightTap(); setShowTransfer(true); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Text style={styles.transferButtonText}>transfer to personal</Text>
                   <Feather name="arrow-right" size={14} color={CALM.bronze} />
@@ -427,28 +564,90 @@ const SeasonSummary: React.FC = () => {
           </FadeInSection>
         )}
 
-        {/* Season actions section */}
+        {/* ─── Season actions ─── */}
         <FadeInSection delay={300}>
           {season.isActive ? (
             <View style={styles.actionsCard}>
-              {/* View orders row */}
+              {/* Orders row */}
               <TouchableOpacity
                 style={styles.actionRow}
                 activeOpacity={0.7}
-                onPress={navigateToOrders}
-                accessibilityRole="button"
-                accessibilityLabel="View orders"
+                onPress={() => { lightTap(); setShowOrdersModal(true); }}
               >
                 <View style={styles.actionRowLeft}>
-                  <View style={styles.actionIconCircle}>
-                    <Feather name="clipboard" size={16} color={CALM.bronze} />
+                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(CALM.gold, 0.1) }]}>
+                    <Feather name="clipboard" size={16} color={CALM.gold} />
                   </View>
-                  <Text style={styles.actionRowText}>view orders</Text>
+                  <Text style={styles.actionRowText}>orders</Text>
                 </View>
-                <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={styles.inlineListBadge}>
+                    <Text style={styles.inlineListBadgeText}>{seasonOrders.length}</Text>
+                  </View>
+                  <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+                </View>
               </TouchableOpacity>
 
-              {/* Divider */}
+              <View style={styles.actionDivider} />
+
+              {/* Costs row */}
+              <TouchableOpacity
+                style={styles.actionRow}
+                activeOpacity={0.7}
+                onPress={() => { lightTap(); setShowCostsModal(true); }}
+              >
+                <View style={styles.actionRowLeft}>
+                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}>
+                    <Feather name="dollar-sign" size={16} color={CALM.accent} />
+                  </View>
+                  <Text style={styles.actionRowText}>costs</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={styles.inlineListBadge}>
+                    <Text style={styles.inlineListBadgeText}>{seasonCosts.length}</Text>
+                  </View>
+                  <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.actionDivider} />
+
+              {/* Copy report row */}
+              <TouchableOpacity
+                style={styles.actionRow}
+                activeOpacity={0.7}
+                onPress={handleCopyReport}
+                accessibilityRole="button"
+                accessibilityLabel="Copy season report"
+              >
+                <View style={styles.actionRowLeft}>
+                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(BIZ.success, 0.08) }]}>
+                    <Feather name="copy" size={16} color={BIZ.success} />
+                  </View>
+                  <Text style={styles.actionRowText}>copy report</Text>
+                </View>
+                <Feather name="copy" size={14} color={CALM.textMuted} />
+              </TouchableOpacity>
+
+              <View style={styles.actionDivider} />
+
+              {/* Export report row */}
+              <TouchableOpacity
+                style={styles.actionRow}
+                activeOpacity={0.7}
+                onPress={handleExportXlsx}
+                accessibilityRole="button"
+                accessibilityLabel="Export season report as spreadsheet"
+              >
+                <View style={styles.actionRowLeft}>
+                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(BIZ.success, 0.08) }]}>
+                    <Feather name="download" size={16} color={BIZ.success} />
+                  </View>
+                  <Text style={styles.actionRowText}>export report</Text>
+                </View>
+                <Feather name="download" size={14} color={CALM.textMuted} />
+              </TouchableOpacity>
+
               <View style={styles.actionDivider} />
 
               {/* End season row */}
@@ -460,12 +659,12 @@ const SeasonSummary: React.FC = () => {
                 accessibilityLabel="End this season"
               >
                 <View style={styles.actionRowLeft}>
-                  <View style={styles.actionIconCircle}>
-                    <Feather name="x-circle" size={16} color={CALM.textMuted} />
+                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha('#E53935', 0.08) }]}>
+                    <Feather name="x-circle" size={16} color="#E53935" />
                   </View>
-                  <Text style={styles.actionRowText}>end this season</Text>
+                  <Text style={[styles.actionRowText, { color: '#E53935' }]}>end this season</Text>
                 </View>
-                <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+                <Feather name="chevron-right" size={16} color="#E53935" />
               </TouchableOpacity>
             </View>
           ) : (
@@ -473,7 +672,7 @@ const SeasonSummary: React.FC = () => {
               {/* Season complete badge */}
               <View style={styles.completeBadge}>
                 <View style={styles.completeIconCircle}>
-                  <Feather name="check-circle" size={20} color={CALM.bronze} />
+                  <Feather name="check-circle" size={20} color={BIZ.success} />
                 </View>
                 <View style={styles.completeBadgeText}>
                   <Text style={styles.completeTitle}>season complete</Text>
@@ -481,28 +680,324 @@ const SeasonSummary: React.FC = () => {
                     <Text style={styles.completeDate}>
                       ended {format(
                         season.endDate instanceof Date ? season.endDate : new Date(season.endDate),
-                        'dd MMM yyyy'
+                        'dd MMM yyyy, h:mm a'
                       )}
                     </Text>
                   )}
                 </View>
               </View>
 
-              {/* Start new season button */}
+              {/* Report buttons for completed season */}
+              <View style={styles.reportButtonsRow}>
+                <TouchableOpacity
+                  style={styles.reportButton}
+                  activeOpacity={0.7}
+                  onPress={handleCopyReport}
+                  accessibilityRole="button"
+                  accessibilityLabel="Copy season report"
+                >
+                  <Feather name="copy" size={16} color={BIZ.success} />
+                  <Text style={styles.reportButtonText}>copy report</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.reportButton}
+                  activeOpacity={0.7}
+                  onPress={handleExportXlsx}
+                  accessibilityRole="button"
+                  accessibilityLabel="Export report as spreadsheet"
+                >
+                  <Feather name="download" size={16} color={BIZ.success} />
+                  <Text style={styles.reportButtonText}>export xlsx</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Undo transfers (only if some orders were transferred) */}
+              {seasonOrders.some((o) => o.transferredToPersonal) && (
+                <TouchableOpacity
+                  style={styles.undoTransfersBtn}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const transferred = seasonOrders.filter((o) => o.transferredToPersonal);
+                    const transferIds = [...new Set(transferred.map((o) => o.transferId).filter(Boolean))];
+                    const totalAmount = transferred.reduce((s, o) => s + o.totalAmount, 0);
+
+                    Alert.alert(
+                      'Undo transfers?',
+                      `This will reverse ${transferred.length} order${transferred.length !== 1 ? 's' : ''} (${currency} ${totalAmount.toFixed(2)}) transferred to your personal account.\n\nThe money will be removed from your personal wallet.`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Undo',
+                          style: 'destructive',
+                          onPress: () => {
+                            for (const tid of transferIds) {
+                              unmarkOrdersTransferred(tid!);
+                              deleteTransfer(tid!);
+                              deletePersonalTransaction(`transfer-${tid}`);
+                            }
+                            showToast('transfers undone', 'success');
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Undo transfers to personal"
+                >
+                  <Feather name="rotate-ccw" size={16} color={CALM.bronze} />
+                  <Text style={styles.undoTransfersText}>undo transfers</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Delete season */}
               <TouchableOpacity
-                style={styles.newSeasonButton}
+                style={styles.deleteSeasonBtn}
                 activeOpacity={0.7}
-                onPress={handleStartNewSeason}
+                onPress={() => {
+                  const transferredOrders = seasonOrders.filter((o) => o.transferredToPersonal);
+                  if (transferredOrders.length > 0) {
+                    const totalTransferred = transferredOrders.reduce((s, o) => s + o.totalAmount, 0);
+                    Alert.alert(
+                      'Season can\'t be deleted',
+                      `${transferredOrders.length} order${transferredOrders.length !== 1 ? 's' : ''} (${currency} ${totalTransferred.toFixed(2)}) from this season have already been transferred to your personal account.\n\nTo delete this season, you need to undo those transfers first.`,
+                      [{ text: 'OK' }]
+                    );
+                    return;
+                  }
+                  Alert.alert(
+                    `Delete ${season.name}?`,
+                    `This will permanently remove this season and all its ${stats?.totalOrders ?? 0} orders and costs. This cannot be undone.`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: () => {
+                          deleteSeason(season.id);
+                          navigation.goBack();
+                        },
+                      },
+                    ]
+                  );
+                }}
                 accessibilityRole="button"
-                accessibilityLabel="Start new season"
+                accessibilityLabel="Delete this season"
               >
-                <Feather name="plus" size={18} color="#fff" />
-                <Text style={styles.newSeasonButtonText}>start new season</Text>
+                <Feather name="trash-2" size={16} color="#E53935" />
+                <Text style={styles.deleteSeasonText}>delete this season</Text>
               </TouchableOpacity>
             </View>
           )}
         </FadeInSection>
       </ScrollView>
+
+      {/* ─── End Season Modal ─── */}
+      <Modal visible={showEndModal} transparent animationType="fade" onRequestClose={() => setShowEndModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowEndModal(false)}>
+          <Pressable style={styles.endModalContent} onPress={() => {}}>
+            <View style={styles.endModalHeader}>
+              <Feather name="calendar" size={20} color={CALM.bronze} />
+              <Text style={styles.endModalTitle}>end {season?.name}?</Text>
+            </View>
+
+            <View style={styles.endModalStats}>
+              <View style={styles.endModalStatItem}>
+                <Text style={styles.endModalStatValue}>{stats?.totalOrders ?? 0}</Text>
+                <Text style={styles.endModalStatLabel}>orders</Text>
+              </View>
+              <View style={styles.endModalStatItem}>
+                <Text style={styles.endModalStatValue}>{stats?.customerCount ?? 0}</Text>
+                <Text style={styles.endModalStatLabel}>customers</Text>
+              </View>
+              <View style={styles.endModalStatItem}>
+                <Text style={[styles.endModalStatValue, { color: BIZ.profit }]}>{currency} {(stats?.kept ?? 0).toFixed(0)}</Text>
+                <Text style={styles.endModalStatLabel}>kept</Text>
+              </View>
+            </View>
+
+            <Text style={styles.endModalWarning}>this will mark the season as complete. you can still view it in past seasons.</Text>
+
+            {(stats?.unpaidOrders ?? 0) > 0 && (
+              <View style={[styles.endModalInfoBox, { borderLeftColor: BIZ.unpaid }]}>
+                <Text style={styles.endModalInfoText}>
+                  {stats!.unpaidOrders} order{stats!.unpaidOrders !== 1 ? 's' : ''} still unpaid ({currency} {stats!.unpaidAmount.toFixed(0)}) — you can still collect after ending
+                </Text>
+              </View>
+            )}
+
+            {untransferredAmount > 0 && (
+              <View style={[styles.endModalInfoBox, { borderLeftColor: CALM.bronze }]}>
+                <Text style={styles.endModalInfoText}>
+                  {currency} {untransferredAmount.toFixed(0)} not yet transferred to personal
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.endModalActions}>
+              <TouchableOpacity
+                style={styles.endModalCancelBtn}
+                onPress={() => setShowEndModal(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.endModalCancelText}>not yet</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.endModalConfirmBtn}
+                onPress={confirmEndSeason}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.endModalConfirmText}>end season</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ─── Orders Modal ─── */}
+      <Modal visible={showOrdersModal} transparent animationType="fade" onRequestClose={() => setShowOrdersModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowOrdersModal(false)}>
+          <Pressable style={styles.listModalContent} onPress={() => {}}>
+            <View style={styles.listModalHeader}>
+              <View style={[styles.inlineListIconCircle, { backgroundColor: withAlpha(CALM.gold, 0.1) }]}>
+                <Feather name="clipboard" size={14} color={CALM.gold} />
+              </View>
+              <Text style={styles.listModalTitle}>orders</Text>
+              <View style={styles.inlineListBadge}>
+                <Text style={styles.inlineListBadgeText}>{seasonOrders.length}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowOrdersModal(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={styles.listModalClose}
+              >
+                <Feather name="x" size={20} color={CALM.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.listModalScroll} showsVerticalScrollIndicator={false}>
+              {seasonOrders.length === 0 ? (
+                <View style={styles.inlineListEmpty}>
+                  <Text style={styles.inlineListEmptyText}>no orders yet</Text>
+                </View>
+              ) : (
+                seasonOrders.map((order, i) => (
+                  <View key={order.id}>
+                    {i > 0 && <View style={styles.inlineListDivider} />}
+                    <View style={styles.orderItemRow}>
+                      <View style={styles.orderItemLeft}>
+                        <Text style={styles.orderItemName} numberOfLines={1}>
+                          {order.customerName || `Order ${order.orderNumber || '#' + (i + 1)}`}
+                        </Text>
+                        <Text style={styles.orderItemMeta}>
+                          {order.items.map((it) => `${it.productName} ×${it.quantity}`).join(', ')}
+                        </Text>
+                      </View>
+                      <View style={styles.orderItemRight}>
+                        <Text style={styles.orderItemAmount}>{currency} {order.totalAmount.toFixed(0)}</Text>
+                        <View style={[
+                          styles.orderStatusDot,
+                          { backgroundColor: order.isPaid ? BIZ.profit : BIZ.unpaid },
+                        ]} />
+                      </View>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ─── Costs Modal ─── */}
+      <Modal visible={showCostsModal} transparent animationType="fade" onRequestClose={() => setShowCostsModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowCostsModal(false)}>
+          <Pressable style={styles.listModalContent} onPress={() => {}}>
+            <View style={styles.listModalHeader}>
+              <View style={[styles.inlineListIconCircle, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}>
+                <Feather name="dollar-sign" size={14} color={CALM.accent} />
+              </View>
+              <Text style={styles.listModalTitle}>costs</Text>
+              <View style={styles.inlineListBadge}>
+                <Text style={styles.inlineListBadgeText}>{seasonCosts.length}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowCostsModal(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={styles.listModalClose}
+              >
+                <Feather name="x" size={20} color={CALM.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.listModalScroll} showsVerticalScrollIndicator={false}>
+              {seasonCosts.length === 0 ? (
+                <View style={styles.inlineListEmpty}>
+                  <Text style={styles.inlineListEmptyText}>no costs logged</Text>
+                </View>
+              ) : (
+                seasonCosts.map((cost, i) => (
+                  <View key={cost.id}>
+                    {i > 0 && <View style={styles.inlineListDivider} />}
+                    <View style={styles.costItemRow}>
+                      <View style={styles.costItemAvatar}>
+                        <Text style={styles.costItemAvatarText}>{cost.description.charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View style={styles.costItemContent}>
+                        <Text style={styles.costItemDesc} numberOfLines={1}>{cost.description}</Text>
+                        <Text style={styles.costItemDate}>
+                          {format(cost.date instanceof Date ? cost.date : new Date(cost.date), 'dd MMM')}
+                        </Text>
+                      </View>
+                      <Text style={styles.costItemAmount}>{currency} {cost.amount.toFixed(2)}</Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ─── Rename Season Modal ─── */}
+      <Modal visible={showRenameModal} transparent animationType="fade" onRequestClose={() => setShowRenameModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowRenameModal(false)}>
+          <Pressable style={styles.renameModalContent} onPress={() => {}}>
+            <Text style={styles.renameModalTitle}>rename season</Text>
+            <TextInput
+              style={styles.renameModalInput}
+              value={renameValue}
+              onChangeText={setRenameValue}
+              placeholder="Season name"
+              placeholderTextColor={CALM.textSecondary}
+              autoFocus
+              selectTextOnFocus
+            />
+            <View style={styles.renameModalActions}>
+              <TouchableOpacity
+                onPress={() => setShowRenameModal(false)}
+                style={styles.renameModalCancel}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.renameModalCancelText}>cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  const trimmed = renameValue.trim();
+                  if (trimmed && trimmed !== season.name) {
+                    updateSeasonName(season.id, trimmed);
+                    showToast('season renamed', 'success');
+                  }
+                  setShowRenameModal(false);
+                }}
+                style={styles.renameModalConfirm}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.renameModalConfirmText}>save</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -584,11 +1079,16 @@ const styles = StyleSheet.create({
   },
 
   // -- Season header ------------------------------------------------
+  seasonNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,                     // 8pt
+    marginBottom: SPACING.xs,            // 4pt
+  },
   seasonName: {
     fontSize: TYPOGRAPHY.size['2xl'],    // 24
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
     color: CALM.textPrimary,             // #1A1A1A
-    marginBottom: SPACING.xs,            // 4pt
   },
   seasonDates: {
     ...TYPE.muted,                       // fontSize 12, color #A0A0A0
@@ -642,6 +1142,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CALM.border,            // #EBEBEB
     marginBottom: SPACING.md,            // 16pt
+    ...SHADOWS.sm,
   },
   statBox: {
     flex: 1,
@@ -667,12 +1168,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,       // 16pt
     alignItems: 'flex-start',
     gap: SPACING.xs,                     // 4pt
+    ...SHADOWS.sm,
   },
   statIconCircle: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: withAlpha(CALM.bronze, 0.1), // bronze at 10% opacity
+    backgroundColor: withAlpha(CALM.gold, 0.1), // gold at 10% opacity
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.xs,            // 4pt below icon circle
@@ -694,9 +1196,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CALM.border,            // #EBEBEB
     borderLeftWidth: 3,
-    borderLeftColor: CALM.bronze,        // #B2780A accent
+    borderLeftColor: BIZ.unpaid,          // warm sand — unpaid semantic
     padding: SPACING.lg,                 // 16pt
     marginBottom: SPACING.xl,            // 24pt
+    ...SHADOWS.sm,
   },
   unpaidContent: {
     gap: SPACING.md,                     // 16pt between text and action
@@ -714,7 +1217,7 @@ const styles = StyleSheet.create({
   unpaidActionText: {
     fontSize: TYPOGRAPHY.size.sm,        // 13
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.bronze,                  // #B2780A
+    color: BIZ.unpaid,                    // warm sand — unpaid semantic
   },
 
   // -- Transfer bridge -----------------------------------------------
@@ -725,6 +1228,7 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
     padding: SPACING.md,
     marginBottom: SPACING.lg,
+    ...SHADOWS.sm,
   },
   transferHeader: {
     flexDirection: 'row',
@@ -818,7 +1322,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: CALM.bronze,        // #B2780A
+    backgroundColor: CALM.accent,        // #4F5104 olive
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -847,7 +1351,186 @@ const styles = StyleSheet.create({
   barFill: {
     height: 3,
     borderRadius: 1.5,
-    backgroundColor: withAlpha(CALM.bronze, 0.15), // CALM.bronze at 0.15 opacity
+    backgroundColor: withAlpha(CALM.accent, 0.15), // CALM.accent at 0.15 opacity
+  },
+
+  // -- Inline orders & costs lists -----------------------------------
+  inlineListCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    ...SHADOWS.sm,
+  },
+  inlineListHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  inlineListIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineListTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.textSecondary,
+    flex: 1,
+  },
+  inlineListBadge: {
+    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 1,
+    minWidth: 22,
+    alignItems: 'center',
+  },
+  inlineListBadgeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.bronze,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  inlineListEmpty: {
+    alignItems: 'center',
+    paddingVertical: SPACING.lg,
+  },
+  inlineListEmptyText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+  },
+  inlineListDivider: {
+    height: 1,
+    backgroundColor: CALM.border,
+    marginLeft: 40,
+  },
+  // -- Clickable list tap rows
+  listTapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
+    ...SHADOWS.sm,
+  },
+  listTapLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.textPrimary,
+    flex: 1,
+  },
+  // -- List detail modal
+  listModalContent: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    width: '100%',
+    maxHeight: '70%',
+    ...SHADOWS.lg,
+  },
+  listModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  listModalTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.textPrimary,
+    flex: 1,
+  },
+  listModalClose: {
+    padding: SPACING.xs,
+  },
+  listModalScroll: {
+    flexGrow: 0,
+  },
+  // -- Order items
+  orderItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  orderItemLeft: {
+    flex: 1,
+    gap: 2,
+  },
+  orderItemName: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.textPrimary,
+  },
+  orderItemMeta: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  orderItemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  orderItemAmount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  orderStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  // -- Cost items
+  costItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  costItemAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: withAlpha(BIZ.loss, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  costItemAvatarText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    color: BIZ.loss,
+  },
+  costItemContent: {
+    flex: 1,
+    gap: 1,
+  },
+  costItemDesc: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.textPrimary,
+  },
+  costItemDate: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  costItemAmount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
   },
 
   // -- Season actions card ------------------------------------------
@@ -857,6 +1540,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CALM.border,            // #EBEBEB
     marginTop: SPACING.lg,              // 16pt
+    ...SHADOWS.sm,
   },
   actionRow: {
     flexDirection: 'row',
@@ -909,7 +1593,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: withAlpha(CALM.bronze, 0.1), // bronze at 10% opacity
+    backgroundColor: withAlpha(BIZ.success, 0.1), // success at 10% opacity
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -938,6 +1622,211 @@ const styles = StyleSheet.create({
   newSeasonButtonText: {
     fontSize: TYPOGRAPHY.size.base,      // 15
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
+    color: '#fff',
+  },
+
+  // -- Report buttons (completed season) ---------------------------------
+  reportButtonsRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  reportButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: withAlpha(BIZ.success, 0.08),
+    minHeight: 48,
+  },
+  reportButtonText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: BIZ.success,
+  },
+
+  // -- Undo transfers button (completed seasons) -------------------------
+  undoTransfersBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: withAlpha(CALM.bronze, 0.2),
+    backgroundColor: withAlpha(CALM.bronze, 0.04),
+  },
+  undoTransfersText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.bronze,
+  },
+
+  // -- Delete season button (completed seasons) -------------------------
+  deleteSeasonBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: withAlpha('#E53935', 0.2),
+    backgroundColor: withAlpha('#E53935', 0.04),
+  },
+  deleteSeasonText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: '#E53935',
+  },
+
+  // -- Rename season modal -----------------------------------------------
+  renameModalContent: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.xl,
+    width: '100%',
+    gap: SPACING.lg,
+  },
+  renameModalTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.textPrimary,
+  },
+  renameModalInput: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: CALM.textPrimary,
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: CALM.border,
+  },
+  renameModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: SPACING.md,
+  },
+  renameModalCancel: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  renameModalCancelText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+  renameModalConfirm: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: CALM.bronze,
+    borderRadius: RADIUS.md,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  renameModalConfirmText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: '#fff',
+  },
+
+  // -- Modal overlay ----------------------------------------------------
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: withAlpha(CALM.textPrimary, 0.5),
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING['2xl'],
+  },
+  // -- End season modal --------------------------------------------------
+  endModalContent: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    gap: SPACING.lg,
+    width: '100%',
+    ...SHADOWS.lg,
+  },
+  endModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  endModalTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.textPrimary,
+  },
+  endModalStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: SPACING.md,
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.md,
+  },
+  endModalStatItem: {
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  endModalStatValue: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  endModalStatLabel: {
+    ...TYPE.muted,
+  },
+  endModalWarning: {
+    ...TYPE.insight,
+    color: CALM.textSecondary,
+    lineHeight: 20,
+  },
+  endModalInfoBox: {
+    borderLeftWidth: 3,
+    paddingLeft: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  endModalInfoText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    lineHeight: 20,
+  },
+  endModalActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  endModalCancelBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: CALM.background,
+    minHeight: 48,
+  },
+  endModalCancelText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.textSecondary,
+  },
+  endModalConfirmBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: CALM.bronze,
+    minHeight: 48,
+  },
+  endModalConfirmText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
     color: '#fff',
   },
 });

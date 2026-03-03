@@ -130,15 +130,20 @@ const SellerDashboard: React.FC = () => {
     .reduce((s, o) => s + o.totalAmount, 0);
   const totalCosts = currentCosts.reduce((s, c) => s + c.amount, 0);
   const kept = totalIncome - totalCosts;
-  const unpaidOrders = currentOrders.filter((o) => !o.isPaid);
+  const unpaidOrders = currentOrders.filter(
+    (o) => !o.isPaid && o.status !== 'pending' && o.status !== 'confirmed'
+  );
   const pendingOrders = currentOrders.filter(
-    (o) => o.status === 'pending' || o.status === 'confirmed'
+    (o) => o.status === 'pending'
+  );
+  const confirmedOrders = currentOrders.filter(
+    (o) => o.status === 'confirmed'
   );
 
   // Production list — aggregated items across pending/confirmed orders
   const productionList = useMemo(() => {
     const counts: Record<string, { name: string; qty: number; unit: string }> = {};
-    for (const order of pendingOrders) {
+    for (const order of confirmedOrders) {
       for (const item of order.items) {
         const key = item.productName;
         if (!counts[key]) {
@@ -148,7 +153,7 @@ const SellerDashboard: React.FC = () => {
       }
     }
     return Object.values(counts).sort((a, b) => b.qty - a.qty);
-  }, [pendingOrders]);
+  }, [confirmedOrders]);
 
   // ── Urgency data ──────────────────────────────────────────
   const today = startOfDay(now);
@@ -460,9 +465,9 @@ const SellerDashboard: React.FC = () => {
             {/* Overdue orders */}
             {overdueOrders.length > 0 && (
               <TouchableOpacity
-                style={[styles.urgencyRow, { backgroundColor: withAlpha(CALM.bronze, 0.06), borderRadius: RADIUS.sm, marginHorizontal: -SPACING.sm, paddingHorizontal: SPACING.sm }]}
+                style={[styles.urgencyRow, { backgroundColor: withAlpha(BIZ.overdue, 0.06), borderRadius: RADIUS.sm, marginHorizontal: -SPACING.sm, paddingHorizontal: SPACING.sm }]}
                 activeOpacity={0.7}
-                onPress={() => navigation.navigate('SellerOrders')}
+                onPress={() => navigation.navigate('SellerOrders', { initialFilter: 'overdue' })}
                 accessibilityRole="button"
                 accessibilityLabel={`${overdueOrders.length} overdue orders. Tap to view.`}
               >
@@ -522,18 +527,18 @@ const SellerDashboard: React.FC = () => {
             <TouchableOpacity
               style={styles.unpaidAgingRow}
               activeOpacity={0.7}
-              onPress={() => navigation.navigate('SellerOrders')}
+              onPress={() => navigation.navigate('SellerOrders', { initialFilter: 'unpaid' })}
               accessibilityRole="button"
               accessibilityLabel={`${unpaidAging.older.length} orders unpaid for more than 2 weeks.`}
             >
-              <Feather name="alert-circle" size={16} color={CALM.bronze} />
+              <Feather name="alert-circle" size={16} color={BIZ.overdue} />
               <Text style={styles.unpaidAgingText}>
                 {unpaidAging.older.length} unpaid over 2 weeks
               </Text>
               <Text style={styles.unpaidAgingAmount}>
                 {currency} {unpaidAging.older.reduce((s, o) => s + o.totalAmount, 0).toFixed(0)}
               </Text>
-              <Feather name="chevron-right" size={14} color={CALM.bronze} />
+              <Feather name="chevron-right" size={14} color={BIZ.overdue} />
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -583,8 +588,8 @@ const SellerDashboard: React.FC = () => {
                             {
                               height: `${Math.max(heightPct, 4)}%`,
                               backgroundColor: isActive
-                                ? CALM.bronze
-                                : withAlpha(CALM.bronze, 0.15),
+                                ? BIZ.success
+                                : withAlpha(BIZ.success, 0.15),
                             },
                           ]}
                         />
@@ -619,14 +624,14 @@ const SellerDashboard: React.FC = () => {
           </TouchableOpacity>
           <View style={styles.quickActionsRow}>
             <TouchableOpacity
-              style={styles.quickActionButton}
+              style={[styles.quickActionButton, { borderColor: withAlpha(CALM.accent, 0.25), backgroundColor: withAlpha(CALM.accent, 0.08) }]}
               activeOpacity={0.7}
               onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerProducts'); }}
               accessibilityRole="button"
               accessibilityLabel="View products"
             >
-              <Feather name="package" size={16} color={CALM.bronze} />
-              <Text style={styles.quickActionLabel}>products</Text>
+              <Feather name="package" size={16} color={CALM.accent} />
+              <Text style={[styles.quickActionLabel, { color: CALM.accent }]}>products</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.quickActionButton}
@@ -639,14 +644,14 @@ const SellerDashboard: React.FC = () => {
               <Text style={styles.quickActionLabel}>costs</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.quickActionButton}
+              style={[styles.quickActionButton, { borderColor: withAlpha(BIZ.success, 0.25), backgroundColor: withAlpha(BIZ.success, 0.08) }]}
               activeOpacity={0.7}
               onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerCustomersStack'); }}
               accessibilityRole="button"
               accessibilityLabel="View customers"
             >
-              <Feather name="users" size={16} color={CALM.bronze} />
-              <Text style={styles.quickActionLabel}>customers</Text>
+              <Feather name="users" size={16} color={BIZ.success} />
+              <Text style={[styles.quickActionLabel, { color: BIZ.success }]}>customers</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -730,7 +735,7 @@ const SellerDashboard: React.FC = () => {
               <Feather
                 name={hasProducts ? 'check' : 'chevron-right'}
                 size={16}
-                color={hasProducts ? CALM.bronze : CALM.textMuted}
+                color={hasProducts ? CALM.accent : CALM.textMuted}
               />
             </TouchableOpacity>
 
@@ -763,7 +768,7 @@ const SellerDashboard: React.FC = () => {
               <Feather
                 name={hasOrders ? 'check' : 'chevron-right'}
                 size={16}
-                color={hasOrders ? CALM.bronze : CALM.textMuted}
+                color={hasOrders ? CALM.accent : CALM.textMuted}
               />
             </TouchableOpacity>
 
@@ -796,7 +801,7 @@ const SellerDashboard: React.FC = () => {
               <Feather
                 name={hasSeasons ? 'check' : 'chevron-right'}
                 size={16}
-                color={hasSeasons ? CALM.bronze : CALM.textMuted}
+                color={hasSeasons ? CALM.accent : CALM.textMuted}
               />
             </TouchableOpacity>
           </Animated.View>
@@ -825,36 +830,36 @@ const SellerDashboard: React.FC = () => {
             <Animated.View style={[styles.actionCardsRow, pipelineAnim]}>
               {/* Orders card */}
               <TouchableOpacity
-                style={styles.actionCard}
+                style={[styles.actionCard, pendingOrders.length > 0 && { borderLeftWidth: 3, borderLeftColor: BIZ.pending, backgroundColor: withAlpha(BIZ.pending, 0.04) }]}
                 activeOpacity={0.7}
                 onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'pending' }); }}
                 accessibilityRole="button"
-                accessibilityLabel={`${currentOrders.length} orders this month. Tap to view pending orders.`}
+                accessibilityLabel={`${pendingOrders.length} pending orders. Tap to view.`}
               >
                 <View style={styles.actionCardInner}>
                   <View style={styles.actionCardTop}>
-                    <Feather name="clipboard" size={18} color={CALM.textSecondary} />
+                    <Feather name="clipboard" size={18} color={pendingOrders.length > 0 ? BIZ.pending : CALM.textSecondary} />
                     <Feather name="chevron-right" size={14} color={CALM.textMuted} />
                   </View>
-                  <Text style={styles.actionCardNumber}>{currentOrders.length}</Text>
-                  <Text style={styles.actionCardLabel}>orders</Text>
+                  <Text style={[styles.actionCardNumber, pendingOrders.length > 0 && { color: BIZ.pending }]}>{pendingOrders.length}</Text>
+                  <Text style={styles.actionCardLabel}>pending</Text>
                 </View>
               </TouchableOpacity>
 
               {/* To make card */}
               <TouchableOpacity
-                style={styles.actionCard}
+                style={[styles.actionCard, confirmedOrders.length > 0 && { borderLeftWidth: 3, borderLeftColor: CALM.accent, backgroundColor: withAlpha(CALM.accent, 0.04) }]}
                 activeOpacity={0.7}
                 onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'confirmed' }); }}
                 accessibilityRole="button"
-                accessibilityLabel={`${pendingOrders.length} orders to make. Tap to view confirmed orders.`}
+                accessibilityLabel={`${confirmedOrders.length} orders to make. Tap to view confirmed orders.`}
               >
                 <View style={styles.actionCardInner}>
                   <View style={styles.actionCardTop}>
-                    <Feather name="clock" size={18} color={CALM.textSecondary} />
+                    <Feather name="clock" size={18} color={confirmedOrders.length > 0 ? CALM.accent : CALM.textSecondary} />
                     <Feather name="chevron-right" size={14} color={CALM.textMuted} />
                   </View>
-                  <Text style={styles.actionCardNumber}>{pendingOrders.length}</Text>
+                  <Text style={[styles.actionCardNumber, confirmedOrders.length > 0 && { color: CALM.accent }]}>{confirmedOrders.length}</Text>
                   <Text style={styles.actionCardLabel}>to make</Text>
                 </View>
               </TouchableOpacity>
@@ -866,7 +871,7 @@ const SellerDashboard: React.FC = () => {
                   unpaidOrders.length > 0 && styles.actionCardUnpaid,
                 ]}
                 activeOpacity={0.7}
-                onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'delivered' }); }}
+                onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'unpaid' }); }}
                 accessibilityRole="button"
                 accessibilityLabel={`${unpaidOrders.length} unpaid orders, ${currency} ${unpaidTotal.toFixed(2)} pending. Tap to view.`}
               >
@@ -875,7 +880,7 @@ const SellerDashboard: React.FC = () => {
                     <Feather
                       name="alert-circle"
                       size={18}
-                      color={unpaidOrders.length > 0 ? CALM.bronze : CALM.textSecondary}
+                      color={unpaidOrders.length > 0 ? BIZ.unpaid : CALM.textSecondary}
                     />
                     <Feather name="chevron-right" size={14} color={CALM.textMuted} />
                   </View>
@@ -902,7 +907,7 @@ const SellerDashboard: React.FC = () => {
               <Animated.View style={[styles.productionCard, productionAnim]}>
                 <View style={styles.productionHeader}>
                   <View style={styles.productionHeaderLeft}>
-                    <Feather name="list" size={16} color={CALM.bronze} />
+                    <Feather name="list" size={16} color={CALM.accent} />
                     <Text style={styles.productionHeaderText}>TO MAKE</Text>
                   </View>
                   <Text style={styles.productionCount}>
@@ -957,7 +962,7 @@ const SellerDashboard: React.FC = () => {
               <Animated.View style={[styles.deliveryRouteCard, deliveryRouteAnim]}>
                 <View style={styles.deliveryRouteHeader}>
                   <View style={styles.deliveryRouteHeaderLeft}>
-                    <Feather name="truck" size={16} color={CALM.bronze} />
+                    <Feather name="truck" size={16} color={CALM.gold} />
                     <Text style={styles.deliveryRouteHeaderText}>DELIVER TODAY</Text>
                   </View>
                   <Text style={styles.deliveryRouteCount}>
@@ -1003,7 +1008,7 @@ const SellerDashboard: React.FC = () => {
                           accessibilityRole="button"
                           accessibilityLabel={`Call ${delivery.customerName}`}
                         >
-                          <Feather name="phone" size={16} color={CALM.bronze} />
+                          <Feather name="phone" size={16} color={CALM.gold} />
                         </TouchableOpacity>
                       )}
                       {delivery.customerPhone && (
@@ -1014,7 +1019,7 @@ const SellerDashboard: React.FC = () => {
                           accessibilityRole="button"
                           accessibilityLabel={`WhatsApp ${delivery.customerName}`}
                         >
-                          <Feather name="message-circle" size={16} color={CALM.bronze} />
+                          <Feather name="message-circle" size={16} color={CALM.gold} />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1035,7 +1040,7 @@ const SellerDashboard: React.FC = () => {
                 >
                   <View style={styles.topCustomerHeader}>
                     <View style={styles.topCustomerHeaderLeft}>
-                      <Feather name="award" size={16} color={CALM.bronze} />
+                      <Feather name="award" size={16} color={BIZ.success} />
                       <Text style={styles.topCustomerHeaderText}>TOP CUSTOMER</Text>
                     </View>
                     <Feather name="chevron-right" size={14} color={CALM.textMuted} />
@@ -1087,11 +1092,11 @@ const SellerDashboard: React.FC = () => {
               {unpaidTotal > 0 && (
                 <View style={styles.revenueRow}>
                   <View style={styles.revenueRowLeft}>
-                    <Feather name="clock" size={16} color={CALM.bronze} />
-                    <Text style={[styles.revenueRowLabel, { color: CALM.bronze }]}>unpaid</Text>
+                    <Feather name="clock" size={16} color={BIZ.unpaid} />
+                    <Text style={[styles.revenueRowLabel, { color: BIZ.unpaid }]}>unpaid</Text>
                   </View>
                   <Text
-                    style={[styles.revenueRowAmount, { color: CALM.bronze }]}
+                    style={[styles.revenueRowAmount, { color: BIZ.unpaid }]}
                     accessibilityLabel={`Unpaid: ${currency} ${unpaidTotal.toFixed(2)}`}
                   >
                     {currency} {unpaidTotal.toFixed(2)}
@@ -1237,7 +1242,7 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     marginBottom: SPACING.sm,
     borderLeftWidth: 3,
-    borderLeftColor: CALM.bronze,
+    borderLeftColor: BIZ.warning,
   },
   urgencyRow: {
     flexDirection: 'row',
@@ -1310,13 +1315,13 @@ const styles = StyleSheet.create({
   unpaidAgingText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.bronze,
+    color: BIZ.overdue,
     flex: 1,
   },
   unpaidAgingAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.bronze,
+    color: BIZ.overdue,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
@@ -1381,7 +1386,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(BIZ.profit, 0.08),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.full,
@@ -1409,7 +1414,7 @@ const styles = StyleSheet.create({
   // ── AI insight ────────────────────────────────────────────
   insightContainer: {
     borderLeftWidth: 3,
-    borderLeftColor: CALM.bronze, // #B2780A
+    borderLeftColor: CALM.accent, // olive — intelligence
     paddingLeft: SPACING.lg, // 16pt
     marginBottom: SPACING['2xl'], // 24pt
   },
@@ -1462,7 +1467,7 @@ const styles = StyleSheet.create({
     marginRight: SPACING.sm, // 8pt
   },
   stepNumberDone: {
-    backgroundColor: CALM.bronze, // #B2780A
+    backgroundColor: CALM.accent, // olive — progress
   },
   stepNumberText: {
     fontSize: TYPOGRAPHY.size.xs, // 11
@@ -1500,8 +1505,8 @@ const styles = StyleSheet.create({
   },
   actionCardUnpaid: {
     borderLeftWidth: 3,
-    borderLeftColor: CALM.bronze, // #B2780A
-    backgroundColor: withAlpha(CALM.bronze, 0.04),
+    borderLeftColor: BIZ.unpaid,
+    backgroundColor: withAlpha(BIZ.unpaid, 0.04),
   },
   actionCardInner: {
     padding: SPACING.md, // 16pt
@@ -1519,7 +1524,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   actionCardNumberHighlight: {
-    color: CALM.bronze, // #B2780A
+    color: BIZ.unpaid, // warm sand — unpaid semantic
   },
   actionCardLabel: {
     ...TYPE.muted, // fontSize 12, color #A0A0A0
@@ -1528,7 +1533,7 @@ const styles = StyleSheet.create({
   actionCardSubAmount: {
     fontSize: TYPOGRAPHY.size.xs, // 11
     fontWeight: TYPOGRAPHY.weight.medium, // 500
-    color: CALM.bronze, // #B2780A
+    color: BIZ.unpaid, // warm sand — unpaid semantic
     fontVariant: ['tabular-nums'],
     marginTop: 2,
   },
@@ -1555,7 +1560,7 @@ const styles = StyleSheet.create({
   },
   productionHeaderText: {
     ...TYPE.label,
-    color: CALM.bronze,
+    color: CALM.accent,
   },
   productionCount: {
     ...TYPE.muted,
@@ -1631,7 +1636,7 @@ const styles = StyleSheet.create({
   },
   revenueProfitSection: {
     marginTop: SPACING.sm,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(BIZ.profit, 0.06),
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
@@ -1739,13 +1744,13 @@ const styles = StyleSheet.create({
   // ── Production checklist additions ─────────────────────
   productionProgressTrack: {
     height: 3,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(CALM.accent, 0.08),
     borderRadius: 1.5,
     marginBottom: SPACING.md,
   },
   productionProgressFill: {
     height: 3,
-    backgroundColor: CALM.bronze,
+    backgroundColor: CALM.accent,
     borderRadius: 1.5,
   },
   productionCheckbox: {
@@ -1758,8 +1763,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
   },
   productionCheckboxDone: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: CALM.accent,
+    borderColor: CALM.accent,
   },
   productionItemNameDone: {
     textDecorationLine: 'line-through' as const,
@@ -1791,7 +1796,7 @@ const styles = StyleSheet.create({
   },
   deliveryRouteHeaderText: {
     ...TYPE.label,
-    color: CALM.bronze,
+    color: CALM.gold,
   },
   deliveryRouteCount: {
     ...TYPE.muted,
@@ -1824,7 +1829,7 @@ const styles = StyleSheet.create({
   },
   deliveryRouteAddress: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: CALM.gold,
     textDecorationLine: 'underline' as const,
   },
   deliveryRouteNoAddress: {
@@ -1841,7 +1846,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: CALM.highlight,
+    backgroundColor: withAlpha(CALM.gold, 0.1),
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
@@ -1898,7 +1903,7 @@ const styles = StyleSheet.create({
     textTransform: 'lowercase' as const,
   },
   sparklineDayLabelActive: {
-    color: CALM.bronze,
+    color: BIZ.success,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   sparklineCount: {
@@ -1908,7 +1913,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   sparklineCountActive: {
-    color: CALM.bronze,
+    color: BIZ.success,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
@@ -1929,18 +1934,18 @@ const styles = StyleSheet.create({
   },
   collectionRateValue: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: BIZ.success,
     fontWeight: TYPOGRAPHY.weight.semibold,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   collectionRateTrack: {
     height: 4,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(BIZ.success, 0.08),
     borderRadius: 2,
   },
   collectionRateFill: {
     height: 4,
-    backgroundColor: CALM.bronze,
+    backgroundColor: BIZ.success,
     borderRadius: 2,
   },
 
@@ -1966,7 +1971,7 @@ const styles = StyleSheet.create({
   },
   topCustomerHeaderText: {
     ...TYPE.label,
-    color: CALM.bronze,
+    color: BIZ.success,
   },
   topCustomerName: {
     fontSize: TYPOGRAPHY.size.lg,

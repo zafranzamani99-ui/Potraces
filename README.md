@@ -14,7 +14,7 @@ No "profit". No "loss". No "you should save more". Just honest numbers and calm 
 
 - [x] Personal mode — dashboard, transactions, budgets, wallets, savings, subscriptions, debt tracking
 - [x] Business mode — 6 income types with dynamic navigation per type
-- [x] Seller mode — WhatsApp order parsing, order pipeline, products, seasons, season summary
+- [x] Seller mode — WhatsApp order parsing, order pipeline, products, seasons, season summary, customers with contact import
 - [x] Stall mode — session-based POS, product grid, cart, QR/cash split, inventory, regular customers
 - [x] Goals — savings targets with milestones, contributions, confetti on progress
 - [x] Financial Pulse — wellness score, spending velocity, weekly patterns, no-spend streaks
@@ -22,11 +22,14 @@ No "profit". No "loss". No "you should save more". Just honest numbers and calm 
 - [x] Receipt scanner — Google Cloud Vision OCR
 - [x] AI-powered transaction entry — text, voice, or photo parsed into structured transactions
 - [x] CALM design system — anxiety-reducing palette, light typography, no red anywhere
-- [x] 24 reusable components — cards, buttons, toasts, skeleton loaders, confetti, etc.
+- [x] 25 reusable components — cards, buttons, toasts, skeleton loaders, confetti, unit manager, etc.
 - [x] Custom categories — add, rename, reorder, override default categories
 - [x] Premium paywall — free tier with limits, RM10/month for unlimited
 - [x] Transfer bridge — move money between business and personal with one tap
 - [x] Debt & splits — track who owes who, split by equal/custom/item
+- [x] Custom units — seller/stall product units (tin, balang, kotak, etc.)
+- [x] Collapsible sections — reusable component with subtitle hints when collapsed
+- [x] Context-aware settings — categories shown in personal mode, product units in seller/stall mode
 
 ### Not yet done
 
@@ -46,7 +49,7 @@ No "profit". No "loss". No "you should save more". Just honest numbers and calm 
 
 Your daily money — salary, spending, subscriptions, savings.
 
-- **Calm dashboard** — your balance in large, quiet type. A week timeline. One insight about your month. Everything else tucked away until you need it.
+- **Calm dashboard** — your balance in large, quiet type. A week timeline. Insight strip with transaction count, spending velocity, and top category. Quick actions modal. Collapsible details section for bills, budgets, and recent transactions.
 - **Financial Pulse** — wellness score (0–100) based on budget adherence, savings rate, consistency, and goal progress. Spending velocity compared to last month. Weekly spending patterns. No-spend streak. Upcoming bills. All non-judgmental.
 - **Goals** — set savings targets with deadlines, icons, and colors. Track contributions. Milestones at 25/50/75/100% with confetti when you cross them. Max 10 active goals.
 - **Smart transaction entry** — type "nasi lemak 8.50", take a photo of a receipt, or speak it. AI parses it into a transaction. You confirm and save.
@@ -84,7 +87,8 @@ Built for the mak cik who takes Raya orders on WhatsApp and makes kuih from her 
 - **Order pipeline** — pending > confirmed > ready > delivered > paid. Track every order's status.
 - **Products** — your catalog of things you make. Price per unit, cost per unit, "kept per unit" calculated automatically. Log ingredient costs directly.
 - **Seasons** — Raya, CNY, Deepavali, or any peak period. Start a season, track all orders and costs within it, end it when it's done.
-- **Season summary** — shows what you kept in large type, how many orders you fulfilled, how many customers trusted your food. Speaks to the work you put in.
+- **Season summary** — shows what you kept in large type, how many orders you fulfilled, how many customers trusted your food. Speaks to the work you put in. Detailed cost breakdown, product performance, and daily trend chart.
+- **Customers** — derived from order history. Search, sort, filter by outstanding/repeat. Import from phone contacts. Edit name, phone, address, notes. Tap to call or WhatsApp.
 - **Unpaid tracking** — how many orders are still unpaid and how much is pending. No shame, just numbers.
 
 #### Stall Mode (session-based POS)
@@ -153,7 +157,7 @@ src/
 │   │                        # ErrorState, FAB, GlassCard, GradientButton,
 │   │                        # HeroCard, ModeToggle, PaywallModal, ProgressBar,
 │   │                        # SkeletonLoader, StatCard, Toast, TransactionItem,
-│   │                        # WalletPicker, WeekBar
+│   │                        # UnitManager, WalletPicker, WeekBar
 │   └── navigation/          # CustomTabBar
 ├── constants/
 │   ├── index.ts             # CALM palette, TYPE scale, SPACING, categories
@@ -178,7 +182,7 @@ src/
 │   │                        # CloseSession, SessionSummary, SessionHistory,
 │   │                        # StallProducts, RegularCustomers
 │   ├── seller/              # Dashboard, NewOrder, OrderList, Products,
-│   │                        # SeasonSummary, PastSeasons
+│   │                        # SeasonSummary, PastSeasons, Customers
 │   └── shared/              # Settings, DebtTracking, ReceiptScanner
 ├── services/
 │   ├── aiService.ts         # Claude Haiku: parse text, receipts,

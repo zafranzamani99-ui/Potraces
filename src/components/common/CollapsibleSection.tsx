@@ -18,12 +18,14 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 interface CollapsibleSectionProps {
   title: string;
+  subtitle?: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
 }
 
 export default function CollapsibleSection({
   title,
+  subtitle,
   children,
   defaultOpen = false,
 }: CollapsibleSectionProps) {
@@ -37,9 +39,14 @@ export default function CollapsibleSection({
   return (
     <View style={styles.container}>
       <TouchableOpacity onPress={toggle} style={styles.header} activeOpacity={0.6}>
-        <Text style={styles.headerText}>
-          {title}
-        </Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerText}>
+            {title}
+          </Text>
+          {!isOpen && subtitle ? (
+            <Text style={styles.subtitleText}>{subtitle}</Text>
+          ) : null}
+        </View>
         <Feather
           name={isOpen ? 'chevron-down' : 'chevron-right'}
           size={16}
@@ -61,6 +68,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: SPACING.md,
     minHeight: 44,
+  },
+  headerLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  subtitleText: {
+    fontSize: 12,
+    color: CALM.textSecondary,
   },
   headerText: {
     fontSize: TYPE.label.fontSize,

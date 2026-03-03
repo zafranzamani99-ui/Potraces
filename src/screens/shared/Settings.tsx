@@ -308,8 +308,8 @@ const Settings: React.FC = () => {
           </>
         )}
 
-        {/* Categories — hide expense/income/investment for seller & stall modes */}
-        {incomeType !== 'seller' && incomeType !== 'stall' && (
+        {/* Categories — show in personal mode, hide for seller & stall in business mode */}
+        {(mode === 'personal' || (incomeType !== 'seller' && incomeType !== 'stall')) && (
           <>
             <Text style={styles.sectionHeader}>Categories</Text>
             <Card style={styles.card}>
@@ -368,8 +368,8 @@ const Settings: React.FC = () => {
           </>
         )}
 
-        {/* Product Units — only for seller & stall modes */}
-        {(incomeType === 'seller' || incomeType === 'stall') && (
+        {/* Product Units — only for seller & stall in business mode */}
+        {mode === 'business' && (incomeType === 'seller' || incomeType === 'stall') && (
           <>
             <Text style={styles.sectionHeader}>Product Units</Text>
             <Card style={styles.card}>

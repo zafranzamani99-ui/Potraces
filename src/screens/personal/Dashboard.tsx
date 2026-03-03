@@ -386,23 +386,23 @@ const PersonalDashboard: React.FC = () => {
           contentContainerStyle={styles.insightStripRow}
           style={styles.insightStripScroll}
         >
-          {/* Savings Rate */}
+          {/* All Transactions */}
           <TouchableOpacity
-            style={[styles.insightCard, { borderLeftColor: insightStrip.savingsColor }]}
+            style={[styles.insightCard, { borderLeftColor: CALM.accent }]}
             activeOpacity={0.7}
             onPress={() => {
               lightTap();
-              navigation.getParent()?.navigate('SavingsTracker');
+              navigation.getParent()?.navigate('TransactionsList');
             }}
-            accessibilityLabel={`Savings rate: ${insightStrip.savingsRate} percent`}
+            accessibilityLabel={`${stats.transactionCount} transactions this month`}
           >
-            <View style={[styles.insightIconBg, { backgroundColor: withAlpha(insightStrip.savingsColor, 0.12) }]}>
-              <Feather name="trending-up" size={14} color={insightStrip.savingsColor} />
+            <View style={[styles.insightIconBg, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
+              <Feather name="list" size={14} color={CALM.accent} />
             </View>
-            <Text style={[styles.insightValue, { color: insightStrip.savingsColor }]}>
-              Saving {insightStrip.savingsRate}%
+            <Text style={[styles.insightValue, { color: CALM.accent }]}>
+              {stats.transactionCount} txns
             </Text>
-            <Text style={styles.insightLabel}>this month</Text>
+            <Text style={styles.insightLabel}>view all</Text>
           </TouchableOpacity>
 
           {/* Spending Velocity */}
@@ -446,7 +446,7 @@ const PersonalDashboard: React.FC = () => {
           </TouchableOpacity>
         </ScrollView>
 
-        {/* Quick Actions - always visible */}
+        {/* Quick Actions - horizontal scroll with "See All" modal */}
         <View style={styles.quickActionsSection}>
           <View style={styles.sectionHeader}>
             <Text style={styles.detailSectionTitle}>Quick Actions</Text>
@@ -454,61 +454,39 @@ const PersonalDashboard: React.FC = () => {
               activeOpacity={0.7}
               onPress={() => {
                 lightTap();
-                setShowAllQuickActions(!showAllQuickActions);
+                setShowAllQuickActions(true);
               }}
             >
-              <Text style={styles.seeAll}>{showAllQuickActions ? 'Show Less' : 'See All'}</Text>
+              <Text style={styles.seeAll}>See All</Text>
             </TouchableOpacity>
           </View>
-          {showAllQuickActions ? (
-            <View style={styles.quickActionsGrid}>
-              {QUICK_ACTIONS.map((action) => (
-                <TouchableOpacity
-                  key={action.key}
-                  style={styles.quickActionButton}
-                  onPress={() => handleQuickAction(action.screen)}
-                  activeOpacity={0.7}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quickActionsRow}
+          >
+            {QUICK_ACTIONS.map((action) => (
+              <TouchableOpacity
+                key={action.key}
+                style={styles.quickActionButton}
+                onPress={() => handleQuickAction(action.screen)}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[styles.quickActionIconBg, { backgroundColor: withAlpha(action.color, 0.12) }]}
                 >
-                  <View
-                    style={[styles.quickActionIconBg, { backgroundColor: withAlpha(action.color, 0.12) }]}
-                  >
-                    <Feather name={action.icon} size={18} color={action.color} />
-                  </View>
-                  <Text style={styles.quickActionLabel} numberOfLines={2}>
-                    {action.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.quickActionsRow}
-            >
-              {QUICK_ACTIONS.map((action) => (
-                <TouchableOpacity
-                  key={action.key}
-                  style={styles.quickActionButton}
-                  onPress={() => handleQuickAction(action.screen)}
-                  activeOpacity={0.7}
-                >
-                  <View
-                    style={[styles.quickActionIconBg, { backgroundColor: withAlpha(action.color, 0.12) }]}
-                  >
-                    <Feather name={action.icon} size={18} color={action.color} />
-                  </View>
-                  <Text style={styles.quickActionLabel} numberOfLines={2}>
-                    {action.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
+                  <Feather name={action.icon} size={18} color={action.color} />
+                </View>
+                <Text style={styles.quickActionLabel} numberOfLines={2}>
+                  {action.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         {/* Details section */}
-        <CollapsibleSection title="Details" defaultOpen={false}>
+        <CollapsibleSection title="Details" subtitle="bills, budgets, transactions" defaultOpen={false}>
           {/* Upcoming Bills */}
           <TouchableOpacity
             activeOpacity={0.7}
@@ -648,6 +626,52 @@ const PersonalDashboard: React.FC = () => {
           </View>
         </CollapsibleSection>
       </ScrollView>
+
+      {/* Quick Actions Modal */}
+      <Modal
+        visible={showAllQuickActions}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowAllQuickActions(false)}
+      >
+        <TouchableOpacity
+          style={styles.qaModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowAllQuickActions(false)}
+        >
+          <View style={styles.qaModalSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.qaModalHeader}>
+              <Text style={styles.qaModalTitle}>Quick Actions</Text>
+              <TouchableOpacity
+                onPress={() => setShowAllQuickActions(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Feather name="x" size={22} color={CALM.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.qaModalGrid}>
+              {QUICK_ACTIONS.map((action) => (
+                <TouchableOpacity
+                  key={action.key}
+                  style={styles.qaModalItem}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setShowAllQuickActions(false);
+                    handleQuickAction(action.screen);
+                  }}
+                >
+                  <View style={[styles.qaModalIconBg, { backgroundColor: withAlpha(action.color, 0.12) }]}>
+                    <Feather name={action.icon} size={20} color={action.color} />
+                  </View>
+                  <Text style={styles.qaModalLabel} numberOfLines={2}>
+                    {action.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Transaction Edit Modal */}
       <Modal
@@ -977,12 +1001,6 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     marginTop: SPACING.sm,
   },
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-  },
   quickActionButton: {
     width: 80,
     backgroundColor: CALM.surface,
@@ -1098,6 +1116,58 @@ const styles = StyleSheet.create({
   deleteButton: {
     flex: 1,
     borderColor: CALM.neutral,
+  },
+
+  // Quick Actions Modal
+  qaModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qaModalSheet: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING['2xl'],
+    width: '88%',
+    maxWidth: 360,
+  },
+  qaModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.xl,
+  },
+  qaModalTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+  },
+  qaModalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.md,
+    justifyContent: 'flex-start',
+  },
+  qaModalItem: {
+    width: '28%',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+  },
+  qaModalIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qaModalLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+    textAlign: 'center',
+    lineHeight: 14,
   },
 });
 

@@ -7,6 +7,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { isToday, isYesterday, format } from 'date-fns';
 import * as Clipboard from 'expo-clipboard';
+import * as Contacts from 'expo-contacts';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
@@ -75,35 +76,35 @@ const StatsSummary: React.FC<{
         accessibilityLabel={`${stats.total} total customers`}
       >
         <View style={styles.statIconRow}>
-          <Feather name="users" size={14} color={CALM.bronze} />
+          <Feather name="users" size={14} color={BIZ.success} />
           <Text style={styles.statValue}>{stats.total}</Text>
         </View>
         <Text style={styles.statLabel}>customers</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={styles.statChip}
+        style={[styles.statChip, { backgroundColor: withAlpha(BIZ.unpaid, 0.05) }]}
         activeOpacity={0.7}
         onPress={() => { lightTap(); onTapOwes(); }}
         accessibilityRole="button"
         accessibilityLabel={`${currency} ${stats.outstanding.toFixed(2)} outstanding`}
       >
         <View style={styles.statIconRow}>
-          <Feather name="alert-circle" size={14} color={CALM.bronze} />
+          <Feather name="alert-circle" size={14} color={BIZ.unpaid} />
           <Text style={styles.statValue} numberOfLines={1}>{currency} {stats.outstanding.toFixed(0)}</Text>
         </View>
         <Text style={styles.statLabel}>outstanding</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={styles.statChip}
+        style={[styles.statChip, { backgroundColor: withAlpha(CALM.accent, 0.05) }]}
         activeOpacity={0.7}
         onPress={() => { lightTap(); onTapRepeat(); }}
         accessibilityRole="button"
         accessibilityLabel={`${stats.repeatCount} returning customers`}
       >
         <View style={styles.statIconRow}>
-          <Feather name="repeat" size={14} color={CALM.bronze} />
+          <Feather name="repeat" size={14} color={CALM.accent} />
           <Text style={styles.statValue}>{stats.repeatCount}</Text>
         </View>
         <Text style={styles.statLabel}>returning</Text>
@@ -311,7 +312,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                   accessibilityRole="button"
                   accessibilityLabel={`Call ${customer.phone}`}
                 >
-                  <Feather name="phone" size={15} color={CALM.bronze} />
+                  <Feather name="phone" size={15} color={BIZ.success} />
                   <Text style={styles.contactButtonText} numberOfLines={1}>
                     {customer.phone}
                   </Text>
@@ -323,7 +324,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                   accessibilityRole="button"
                   accessibilityLabel="WhatsApp customer"
                 >
-                  <Feather name="message-circle" size={15} color={CALM.bronze} />
+                  <Feather name="message-circle" size={15} color={BIZ.success} />
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -335,7 +336,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                 accessibilityRole="button"
                 accessibilityLabel={`Navigate to ${customer.address}`}
               >
-                <Feather name="map-pin" size={15} color={CALM.bronze} />
+                <Feather name="map-pin" size={15} color={CALM.gold} />
                 <Text style={styles.addressButtonText} numberOfLines={2}>
                   {customer.address}
                 </Text>
@@ -489,6 +490,11 @@ const SellerCustomers: React.FC = () => {
   const [editAddress, setEditAddress] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editName, setEditName] = useState('');
+
+  // ─── Contact picker state ─────────────────────────────────
+  const [showContactPicker, setShowContactPicker] = useState(false);
+  const [contactsList, setContactsList] = useState<Contacts.Contact[]>([]);
+  const [contactSearch, setContactSearch] = useState('');
 
   // ─── Derive customers from orders ──────────────────────────
   const derivedCustomers = useMemo(() => {
@@ -848,6 +854,75 @@ const SellerCustomers: React.FC = () => {
     setEditModalVisible(true);
   }, []);
 
+  // ─── Import from contacts ─────────────────────────────────
+  const handleImportFromContacts = useCallback(async () => {
+    lightTap();
+    const { status } = await Contacts.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('', 'contacts permission is needed to import.');
+      return;
+    }
+
+    const { data } = await Contacts.getContactsAsync({
+      fields: [
+        Contacts.Fields.Name,
+        Contacts.Fields.PhoneNumbers,
+        Contacts.Fields.Addresses,
+      ],
+      sort: Contacts.SortTypes.FirstName,
+    });
+
+    if (!data || data.length === 0) {
+      Alert.alert('', 'no contacts found on this device.');
+      return;
+    }
+
+    // Build a simple list for selection
+    const options = data
+      .filter((c) => c.name)
+      .slice(0, 100)
+      .map((c) => ({
+        text: c.name!,
+        onPress: () => {
+          const phone = c.phoneNumbers?.[0]?.number || '';
+          const addr = c.addresses?.[0]
+            ? [c.addresses[0].street, c.addresses[0].city, c.addresses[0].region]
+                .filter(Boolean)
+                .join(', ')
+            : '';
+
+          // Check for duplicate
+          const nameKey = c.name!.trim().toLowerCase();
+          const existing = derivedCustomers.find((dc) => dc.name.toLowerCase() === nameKey);
+          if (existing) {
+            Alert.alert('', `${c.name} already exists in your customer list.`);
+            return;
+          }
+
+          setEditingCustomer({ name: '', totalOrders: 0, totalSpent: 0, unpaidAmount: 0, lastOrderDate: new Date(), orders: [] });
+          setEditName(c.name!);
+          setEditPhone(phone);
+          setEditAddress(addr);
+          setEditNote('');
+          setEditModalVisible(true);
+        },
+      }));
+
+    // Show contact picker using Alert (max ~10 at a time is practical)
+    // Instead, let's open the add modal with a contact-fill approach
+    // Better UX: use Contacts.presentContactPickerAsync if available, or open modal with contacts search
+    // Simplest approach: open the native contact picker
+    if (options.length === 0) {
+      Alert.alert('', 'no contacts with names found.');
+      return;
+    }
+
+    // Use a simple search-based contact list modal
+    setContactsList(data.filter((c) => c.name).slice(0, 200));
+    setContactSearch('');
+    setShowContactPicker(true);
+  }, [derivedCustomers]);
+
   // ─── FlatList render callback ────────────────────────────────
   const renderCustomerItem = useCallback(
     ({ item, index }: { item: DerivedCustomer; index: number }) => (
@@ -901,7 +976,7 @@ const SellerCustomers: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel={`Sort by ${sortBy}`}
         >
-          <Feather name="sliders" size={18} color={sortBy !== 'recent' ? '#fff' : CALM.bronze} />
+          <Feather name="sliders" size={18} color={sortBy !== 'recent' ? '#fff' : BIZ.success} />
         </TouchableOpacity>
       </View>
 
@@ -953,19 +1028,31 @@ const SellerCustomers: React.FC = () => {
         </View>
       )}
 
-      {/* Add customer button */}
-      <TouchableOpacity
-        style={styles.addCustomerButton}
-        activeOpacity={0.7}
-        onPress={openAddCustomerModal}
-        accessibilityRole="button"
-        accessibilityLabel="Add a new customer"
-      >
-        <Feather name="user-plus" size={16} color={CALM.bronze} />
-        <Text style={styles.addCustomerButtonText}>add customer</Text>
-      </TouchableOpacity>
+      {/* Add customer buttons */}
+      <View style={styles.addCustomerRow}>
+        <TouchableOpacity
+          style={styles.addCustomerButton}
+          activeOpacity={0.7}
+          onPress={openAddCustomerModal}
+          accessibilityRole="button"
+          accessibilityLabel="Add a new customer"
+        >
+          <Feather name="user-plus" size={16} color={BIZ.success} />
+          <Text style={styles.addCustomerButtonText}>add customer</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.fromContactsButton}
+          activeOpacity={0.7}
+          onPress={handleImportFromContacts}
+          accessibilityRole="button"
+          accessibilityLabel="Import from contacts"
+        >
+          <Feather name="book" size={16} color={CALM.bronze} />
+          <Text style={styles.fromContactsButtonText}>from contacts</Text>
+        </TouchableOpacity>
+      </View>
     </View>
-  ), [search, sortBy, filter, filterCounts, hasActiveFilters, filteredCustomers.length, derivedCustomers.length, handleClearFilters, openAddCustomerModal]);
+  ), [search, sortBy, filter, filterCounts, hasActiveFilters, filteredCustomers.length, derivedCustomers.length, handleClearFilters, openAddCustomerModal, handleImportFromContacts]);
 
   return (
     <View style={styles.container}>
@@ -986,8 +1073,18 @@ const SellerCustomers: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Add a new customer"
             >
-              <Feather name="user-plus" size={16} color={CALM.bronze} />
+              <Feather name="user-plus" size={16} color={BIZ.success} />
               <Text style={styles.emptyAddButtonText}>add customer</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.emptyContactsButton}
+              activeOpacity={0.7}
+              onPress={handleImportFromContacts}
+              accessibilityRole="button"
+              accessibilityLabel="Import from contacts"
+            >
+              <Feather name="book" size={16} color={CALM.bronze} />
+              <Text style={styles.emptyContactsButtonText}>from contacts</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -1080,12 +1177,12 @@ const SellerCustomers: React.FC = () => {
                   accessibilityState={{ selected: isActive }}
                 >
                   <View style={styles.sortOptionLeft}>
-                    <Feather name={opt.icon} size={16} color={isActive ? CALM.bronze : CALM.textMuted} />
+                    <Feather name={opt.icon} size={16} color={isActive ? BIZ.success : CALM.textMuted} />
                     <Text style={[styles.sortOptionText, isActive && styles.sortOptionTextActive]}>
                       {opt.label}
                     </Text>
                   </View>
-                  {isActive && <Feather name="check" size={16} color={CALM.bronze} />}
+                  {isActive && <Feather name="check" size={16} color={BIZ.success} />}
                 </TouchableOpacity>
               );
             })}
@@ -1138,6 +1235,22 @@ const SellerCustomers: React.FC = () => {
                   <Feather name="x" size={22} color={CALM.textMuted} />
                 </TouchableOpacity>
               </View>
+
+              {/* From contacts shortcut — only for new customers */}
+              {!editingCustomer?.storedId && !editingCustomer?.name && (
+                <TouchableOpacity
+                  style={styles.modalContactsBtn}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setEditModalVisible(false);
+                    setEditingCustomer(null);
+                    handleImportFromContacts();
+                  }}
+                >
+                  <Feather name="book" size={14} color={CALM.bronze} />
+                  <Text style={styles.modalContactsBtnText}>pick from contacts</Text>
+                </TouchableOpacity>
+              )}
 
               <Text style={styles.modalLabel}>name</Text>
               <TextInput
@@ -1198,6 +1311,121 @@ const SellerCustomers: React.FC = () => {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ─── Contact picker modal ─── */}
+      <Modal
+        visible={showContactPicker}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowContactPicker(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => setShowContactPicker(false)}
+          />
+          <View style={styles.contactPickerSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>pick contact</Text>
+              <TouchableOpacity
+                onPress={() => setShowContactPicker(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Feather name="x" size={22} color={CALM.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Contact search */}
+            <View style={styles.contactSearchBar}>
+              <Feather name="search" size={14} color={CALM.textMuted} />
+              <TextInput
+                style={styles.contactSearchInput}
+                placeholder="search contacts..."
+                placeholderTextColor={CALM.textMuted}
+                value={contactSearch}
+                onChangeText={setContactSearch}
+                autoFocus
+              />
+              {contactSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setContactSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Feather name="x" size={14} color={CALM.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Contact list */}
+            <FlatList
+              data={contactSearch.trim()
+                ? contactsList.filter((c) =>
+                    c.name?.toLowerCase().includes(contactSearch.trim().toLowerCase())
+                  )
+                : contactsList
+              }
+              keyExtractor={(item, idx) => item.id || String(idx)}
+              style={styles.contactList}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              renderItem={({ item: contact }) => {
+                const phone = contact.phoneNumbers?.[0]?.number || '';
+                const alreadyExists = derivedCustomers.some(
+                  (dc) => dc.name.toLowerCase() === (contact.name || '').toLowerCase()
+                );
+                return (
+                  <TouchableOpacity
+                    style={[styles.contactItem, alreadyExists && styles.contactItemExisting]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (alreadyExists) {
+                        showToast(`${contact.name} already exists`, 'error');
+                        return;
+                      }
+                      lightTap();
+                      const addr = contact.addresses?.[0]
+                        ? [contact.addresses[0].street, contact.addresses[0].city, contact.addresses[0].region]
+                            .filter(Boolean)
+                            .join(', ')
+                        : '';
+                      setShowContactPicker(false);
+                      setEditingCustomer({ name: '', totalOrders: 0, totalSpent: 0, unpaidAmount: 0, lastOrderDate: new Date(), orders: [] });
+                      setEditName(contact.name || '');
+                      setEditPhone(phone);
+                      setEditAddress(addr);
+                      setEditNote('');
+                      setEditModalVisible(true);
+                    }}
+                  >
+                    <View style={styles.contactAvatar}>
+                      <Text style={styles.contactAvatarText}>
+                        {(contact.name || '?').charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.contactInfo}>
+                      <Text style={styles.contactName} numberOfLines={1}>{contact.name}</Text>
+                      {phone ? <Text style={styles.contactPhone} numberOfLines={1}>{phone}</Text> : null}
+                    </View>
+                    {alreadyExists ? (
+                      <Text style={styles.contactExistsLabel}>exists</Text>
+                    ) : (
+                      <Feather name="plus" size={16} color={CALM.bronze} />
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
+              ListEmptyComponent={
+                <View style={styles.contactEmptyState}>
+                  <Text style={styles.contactEmptyText}>no contacts found</Text>
+                </View>
+              }
+            />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 };
@@ -1226,7 +1454,7 @@ const styles = StyleSheet.create({
   },
   statChip: {
     flex: 1,
-    backgroundColor: withAlpha(CALM.bronze, 0.05),
+    backgroundColor: withAlpha(BIZ.success, 0.05),
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
@@ -1284,12 +1512,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(BIZ.success, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
   sortButtonActive: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: BIZ.success,
   },
 
   // ── Filter pills ──
@@ -1310,7 +1538,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   filterPillActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(BIZ.success, 0.12),
   },
   filterPillText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1318,7 +1546,7 @@ const styles = StyleSheet.create({
     color: CALM.textSecondary,
   },
   filterPillTextActive: {
-    color: CALM.bronze,
+    color: BIZ.success,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   filterPillCount: {
@@ -1327,7 +1555,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   filterPillCountActive: {
-    color: CALM.bronze,
+    color: BIZ.success,
   },
 
   // ── Result count ──
@@ -1344,7 +1572,7 @@ const styles = StyleSheet.create({
   },
   clearFiltersText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: BIZ.success,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
@@ -1375,7 +1603,7 @@ const styles = StyleSheet.create({
   },
   noResultsClearText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: BIZ.success,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
@@ -1389,7 +1617,7 @@ const styles = StyleSheet.create({
   },
   cardUnpaid: {
     borderLeftWidth: 3,
-    borderLeftColor: CALM.bronze,
+    borderLeftColor: BIZ.unpaid,
   },
   cardBody: {
     flexDirection: 'row',
@@ -1401,7 +1629,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(BIZ.success, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
@@ -1409,7 +1637,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: BIZ.success,
   },
   cardContent: {
     flex: 1,
@@ -1427,7 +1655,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   unpaidBadge: {
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(BIZ.unpaid, 0.12),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 3,
     borderRadius: RADIUS.full,
@@ -1437,7 +1665,7 @@ const styles = StyleSheet.create({
   unpaidBadgeText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: BIZ.unpaid,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1471,7 +1699,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(BIZ.success, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
@@ -1479,7 +1707,7 @@ const styles = StyleSheet.create({
   detailAvatarText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: BIZ.success,
   },
   detailName: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -1508,7 +1736,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   insightChipDebt: {
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(BIZ.unpaid, 0.06),
   },
   insightLabel: {
     fontSize: 10,
@@ -1524,7 +1752,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   insightValueDebt: {
-    color: CALM.bronze,
+    color: BIZ.unpaid,
   },
 
   // ── Contact ──
@@ -1539,7 +1767,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(BIZ.success, 0.06),
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
@@ -1549,14 +1777,14 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(BIZ.success, 0.06),
     alignItems: 'center',
     justifyContent: 'center',
   },
   contactButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.bronze,
+    color: BIZ.success,
   },
 
   // ── Address ──
@@ -1564,7 +1792,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(CALM.gold, 0.06),
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
@@ -1574,7 +1802,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.bronze,
+    color: CALM.gold,
     lineHeight: 20,
   },
 
@@ -1610,7 +1838,7 @@ const styles = StyleSheet.create({
   },
   viewAllText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: BIZ.success,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   orderHistoryItem: {
@@ -1759,10 +1987,26 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(BIZ.success, 0.08),
     minHeight: 44,
   },
   emptyAddButtonText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: BIZ.success,
+  },
+  emptyContactsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    minHeight: 44,
+  },
+  emptyContactsButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
     color: CALM.bronze,
@@ -1805,12 +2049,34 @@ const styles = StyleSheet.create({
     color: CALM.textSecondary,
   },
   sortOptionTextActive: {
-    color: CALM.bronze,
+    color: BIZ.success,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
   // ── Add customer ──
+  addCustomerRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
   addCustomerButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    backgroundColor: withAlpha(BIZ.success, 0.08),
+    borderRadius: RADIUS.lg,
+    minHeight: 48,
+  },
+  addCustomerButtonText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: BIZ.success,
+  },
+  fromContactsButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1819,9 +2085,8 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(CALM.bronze, 0.08),
     borderRadius: RADIUS.lg,
     minHeight: 48,
-    marginBottom: SPACING.md,
   },
-  addCustomerButtonText: {
+  fromContactsButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.bronze,
@@ -1902,6 +2167,103 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
+  },
+
+  // ── Modal contacts shortcut ──
+  modalContactsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.xs,
+  },
+  modalContactsBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
+  // ── Contact picker modal ──
+  contactPickerSheet: {
+    backgroundColor: CALM.surface,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    maxHeight: '80%',
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.xl,
+    ...SHADOWS.lg,
+  },
+  contactSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+    minHeight: 38,
+    marginBottom: SPACING.md,
+  },
+  contactSearchInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    paddingVertical: SPACING.xs,
+  },
+  contactList: {
+    flexGrow: 0,
+  },
+  contactItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm + 2,
+    gap: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: CALM.border,
+  },
+  contactItemExisting: {
+    opacity: 0.4,
+  },
+  contactAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contactAvatarText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.bronze,
+  },
+  contactInfo: {
+    flex: 1,
+    gap: 1,
+  },
+  contactName: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
+  },
+  contactPhone: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  contactExistsLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontStyle: 'italic',
+  },
+  contactEmptyState: {
+    alignItems: 'center',
+    paddingVertical: SPACING['3xl'],
+  },
+  contactEmptyText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
   },
 });
 

@@ -12,11 +12,22 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { format, differenceInDays, differenceInHours } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
 import { Season } from '../../types';
+
+// -- Format duration between two dates (e.g. "10 days 15 hours") ----
+function formatDuration(start: Date, end: Date): string {
+  const totalHours = differenceInHours(end, start);
+  const days = differenceInDays(end, start);
+  const hours = totalHours - days * 24;
+
+  if (days === 0) return hours <= 1 ? '1 hour' : `${hours} hours`;
+  if (hours === 0) return days === 1 ? '1 day' : `${days} days`;
+  return `${days} day${days !== 1 ? 's' : ''} ${hours} hour${hours !== 1 ? 's' : ''}`;
+}
 
 // -- Animated card wrapper with stagger fade-in ---------------------
 const AnimatedSeasonCard: React.FC<{ index: number; children: React.ReactNode }> = React.memo(({
@@ -132,7 +143,7 @@ const PastSeasons: React.FC = () => {
   }, [activeSeason, pastSeasons]);
 
   const navigateToSeason = (seasonId: string) => {
-    navigation.getParent()?.navigate('SeasonSummary', { seasonId });
+    navigation.navigate('SeasonSummary', { seasonId });
   };
 
   const renderSeason = useCallback(
@@ -141,13 +152,12 @@ const PastSeasons: React.FC = () => {
       const isActive = item.isActive;
       const isLast = index === allSeasons.length - 1;
 
-      // Build compact stats string
-      const statParts: string[] = [];
-      statParts.push(`${stats.orderCount} orders`);
-      statParts.push(`${currency} ${stats.kept.toFixed(0)} kept`);
-      if (stats.customerCount > 0) {
-        statParts.push(`${stats.customerCount} customers`);
-      }
+      // Build compact stats parts
+      const ordersPart = `${stats.orderCount} orders`;
+      const keptPart = `${currency} ${stats.kept.toFixed(0)} kept`;
+      const customersPart = stats.customerCount > 0
+        ? `${stats.customerCount} customers`
+        : null;
 
       return (
         <AnimatedSeasonCard index={index}>
@@ -184,8 +194,9 @@ const PastSeasons: React.FC = () => {
                     <View style={styles.seasonHeaderInfo}>
                       <Text style={styles.seasonName}>{item.name}</Text>
                       <Text style={styles.seasonDates}>
-                        {format(item.startDate instanceof Date ? item.startDate : new Date(item.startDate), 'dd MMM yyyy')}
-                        {' \u2013 now'}
+                        {format(item.startDate instanceof Date ? item.startDate : new Date(item.startDate), 'dd MMM yyyy, h:mm a')}
+                        {' \u2013 now  \u00B7  '}
+                        {formatDuration(item.startDate instanceof Date ? item.startDate : new Date(item.startDate), new Date())}
                       </Text>
                     </View>
                     <View style={styles.activeBadge}>
@@ -196,7 +207,9 @@ const PastSeasons: React.FC = () => {
 
                   {/* Quick stats */}
                   <Text style={styles.seasonStatsInline}>
-                    {statParts.join('  \u00B7  ')}
+                    {ordersPart}{'  \u00B7  '}
+                    <Text style={{ color: stats.kept >= 0 ? BIZ.profit : BIZ.loss }}>{keptPart}</Text>
+                    {customersPart ? `  \u00B7  ${customersPart}` : ''}
                   </Text>
 
                   {/* View details link */}
@@ -206,7 +219,7 @@ const PastSeasons: React.FC = () => {
                   </View>
                 </TouchableOpacity>
               ) : (
-                // Past season card
+                // Past season card (tappable, delete button inside captures its own press)
                 <TouchableOpacity
                   style={styles.seasonCard}
                   activeOpacity={0.7}
@@ -222,9 +235,9 @@ const PastSeasons: React.FC = () => {
                     <View style={styles.seasonHeaderInfo}>
                       <Text style={styles.seasonName}>{item.name}</Text>
                       <Text style={styles.seasonDates}>
-                        {format(item.startDate instanceof Date ? item.startDate : new Date(item.startDate), 'dd MMM yyyy')}
+                        {format(item.startDate instanceof Date ? item.startDate : new Date(item.startDate), 'dd MMM yyyy, h:mm a')}
                         {item.endDate
-                          ? ` \u2013 ${format(item.endDate instanceof Date ? item.endDate : new Date(item.endDate), 'dd MMM yyyy')}`
+                          ? ` \u2013 ${format(item.endDate instanceof Date ? item.endDate : new Date(item.endDate), 'dd MMM yyyy, h:mm a')}  \u00B7  ${formatDuration(item.startDate instanceof Date ? item.startDate : new Date(item.startDate), item.endDate instanceof Date ? item.endDate : new Date(item.endDate))}`
                           : ''}
                       </Text>
                     </View>
@@ -232,8 +245,16 @@ const PastSeasons: React.FC = () => {
 
                   {/* Compact stats */}
                   <Text style={styles.seasonStatsInline}>
-                    {statParts.join('  \u00B7  ')}
+                    {ordersPart}{'  \u00B7  '}
+                    <Text style={{ color: stats.kept >= 0 ? BIZ.profit : BIZ.loss }}>{keptPart}</Text>
+                    {customersPart ? `  \u00B7  ${customersPart}` : ''}
                   </Text>
+
+                  {/* View details link */}
+                  <View style={styles.viewDetailsRow}>
+                    <Text style={styles.viewDetailsText}>view details</Text>
+                    <Feather name="arrow-right" size={14} color={CALM.bronze} />
+                  </View>
                 </TouchableOpacity>
               )}
             </View>
@@ -284,8 +305,8 @@ const PastSeasons: React.FC = () => {
         }
       />
 
-      {/* Bottom-anchored add button (only when seasons exist) */}
-      {allSeasons.length > 0 && (
+      {/* Bottom-anchored add button (only when seasons exist and no active season) */}
+      {allSeasons.length > 0 && !activeSeason && (
         <View style={styles.addButtonWrapper}>
           <TouchableOpacity
             style={styles.addButton}
@@ -480,7 +501,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  // -- View details link (active card only) -------------------------
+  // -- View details link -------------------------
   viewDetailsRow: {
     flexDirection: 'row',
     alignItems: 'center',

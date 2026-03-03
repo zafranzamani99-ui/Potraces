@@ -26,7 +26,7 @@ import { useSellerStore } from '../../store/sellerStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
 import { SellerProduct, IngredientCost } from '../../types';
 import {
   lightTap,
@@ -630,6 +630,22 @@ const Products: React.FC = () => {
         </TouchableOpacity>
       </View>
 
+      {/* ── Success state after adding ─────────────────────── */}
+      {justAdded && !editingProduct ? (
+        <View style={styles.justAddedSection}>
+          <Animated.View
+            style={[
+              styles.justAddedIcon,
+              { transform: [{ scale: addCheckAnim }] },
+            ]}
+          >
+            <Feather name="check-circle" size={32} color={BIZ.success} />
+          </Animated.View>
+          <Text style={styles.justAddedTitle}>product added!</Text>
+          <Text style={styles.justAddedHint}>add another or tap done to close</Text>
+        </View>
+      ) : (
+      <>
       {/* ── Live preview card ─────────────────────────────── */}
       <View style={styles.previewCard}>
         <View style={styles.previewRow}>
@@ -748,7 +764,7 @@ const Products: React.FC = () => {
       {/* Profit preview with margin % */}
       {profitPreview && (
         <View style={styles.profitRow}>
-          <Feather name="trending-up" size={13} color={CALM.bronze} />
+          <Feather name="trending-up" size={13} color={BIZ.profit} />
           <Text style={styles.profitText}>
             kept per unit: {currency} {profitPreview.kept}
           </Text>
@@ -796,6 +812,9 @@ const Products: React.FC = () => {
         <Feather name="chevron-right" size={16} color={CALM.textMuted} />
       </TouchableOpacity>
 
+      </>
+      )}
+
       {/* ── Actions ───────────────────────────────────────── */}
       {editingProduct ? (
         <View style={styles.modalActions}>
@@ -819,40 +838,29 @@ const Products: React.FC = () => {
           </TouchableOpacity>
         </View>
       ) : justAdded ? (
-        <View style={styles.quickAddRow}>
-          <Animated.View
-            style={[
-              styles.quickAddCheck,
-              { transform: [{ scale: addCheckAnim }] },
-            ]}
+        <View style={styles.quickAddActions}>
+          <TouchableOpacity
+            onPress={() => {
+              lightTap();
+              setJustAdded(false);
+            }}
+            style={styles.addAnotherBtn}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Add another product"
           >
-            <Feather name="check" size={16} color={CALM.bronze} />
-            <Text style={styles.quickAddCheckText}>added!</Text>
-          </Animated.View>
-          <View style={styles.quickAddActions}>
-            <TouchableOpacity
-              onPress={() => {
-                lightTap();
-                setJustAdded(false);
-              }}
-              style={styles.addAnotherBtn}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Add another product"
-            >
-              <Feather name="plus" size={14} color={CALM.bronze} />
-              <Text style={styles.addAnotherText}>add another</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={closeAddModal}
-              style={styles.modalConfirm}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Done"
-            >
-              <Text style={styles.modalConfirmText}>done</Text>
-            </TouchableOpacity>
-          </View>
+            <Feather name="plus" size={14} color={CALM.bronze} />
+            <Text style={styles.addAnotherText}>add another</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={closeAddModal}
+            style={styles.modalConfirm}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Done"
+          >
+            <Text style={styles.modalConfirmText}>done</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.modalActions}>
@@ -1693,7 +1701,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   previewBadge: {
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(BIZ.profit, 0.1),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
@@ -1702,7 +1710,7 @@ const styles = StyleSheet.create({
   previewBadgeText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: BIZ.profit,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1767,12 +1775,12 @@ const styles = StyleSheet.create({
   },
   profitText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: BIZ.profit,
     fontWeight: TYPOGRAPHY.weight.medium,
     fontVariant: ['tabular-nums'],
   },
   marginBadge: {
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(BIZ.profit, 0.1),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.xs,
     paddingVertical: 1,
@@ -1783,7 +1791,7 @@ const styles = StyleSheet.create({
   marginBadgeText: {
     fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: BIZ.profit,
     fontVariant: ['tabular-nums'],
   },
   marginBadgeTextHigh: {
@@ -1806,6 +1814,24 @@ const styles = StyleSheet.create({
   quickAddRow: {
     gap: SPACING.sm,
     marginTop: SPACING.sm,
+  },
+  justAddedSection: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING['3xl'],
+    gap: SPACING.md,
+  },
+  justAddedIcon: {
+    marginBottom: SPACING.xs,
+  },
+  justAddedTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+  },
+  justAddedHint: {
+    ...TYPE.muted,
+    color: CALM.textSecondary,
   },
   quickAddCheck: {
     flexDirection: 'row',

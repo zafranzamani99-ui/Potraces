@@ -40,7 +40,7 @@ export const WALLET_COLORS = [
   '#6BA3BE',
   '#B2780A',
   '#DEAB22',
-  '#DEAB22',
+  '#8B6F4E',
   '#332D03',
   '#C4956A',
   '#B8AFBC',
