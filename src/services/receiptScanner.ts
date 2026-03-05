@@ -1,136 +1,124 @@
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
-import { RECEIPT_SCANNER_CONFIG } from '../constants';
-import { ExtractedReceipt, ReceiptItem } from '../types';
+import { ExtractedReceipt } from '../types';
+
+const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 async function imageToBase64(uri: string): Promise<string> {
-  const base64 = await readAsStringAsync(uri, {
-    encoding: EncodingType.Base64,
-  });
-  return base64;
+  return readAsStringAsync(uri, { encoding: EncodingType.Base64 });
 }
 
-async function performOCR(base64Image: string): Promise<string> {
-  // Validate API key before making request
-  if (!RECEIPT_SCANNER_CONFIG.apiKey || RECEIPT_SCANNER_CONFIG.apiKey === 'YOUR_API_KEY_HERE') {
-    throw new Error('Receipt scanning is not configured. Please set up the Google Vision API key in your environment settings.');
-  }
+function stripJsonFences(text: string): string {
+  const trimmed = text.trim();
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+  if (fenceMatch) return fenceMatch[1].trim();
+  return trimmed;
+}
 
-  const body = {
-    requests: [
+async function callGemini(base64: string, retries = 2): Promise<Response> {
+  const body = JSON.stringify({
+    contents: [
       {
-        image: { content: base64Image },
-        features: [{ type: 'TEXT_DETECTION', maxResults: 1 }],
+        parts: [
+          {
+            text: `You are a receipt parser for a Malaysian user. Analyze this receipt image and extract structured data.
+
+Return JSON only with this exact shape:
+{
+  "vendor": "store name or null",
+  "items": [{ "name": "item name", "amount": 12.50 }],
+  "subtotal": 25.00 or null,
+  "tax": 1.50 or null,
+  "total": 26.50,
+  "date": "date string or null"
+}
+
+Rules:
+- amounts must be numbers, not strings
+- items should only be purchased products/food, NOT subtotal/total/tax/discount/change/payment lines
+- if you see RM prefix, strip it from amounts
+- total is the final amount paid (grand total / amount due / jumlah)
+- if no total line found, sum the items
+- tax includes SST, GST, service tax, service charge
+- date in whatever format is on the receipt
+- vendor is the store/restaurant name, usually at the top
+- if something is unclear, make your best guess rather than omitting it`,
+          },
+          {
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: base64,
+            },
+          },
+        ],
       },
     ],
-  };
+    generationConfig: {
+      temperature: 0.1,
+      maxOutputTokens: 1024,
+    },
+  });
 
-  const response = await fetch(
-    `${RECEIPT_SCANNER_CONFIG.apiUrl}?key=${RECEIPT_SCANNER_CONFIG.apiKey}`,
-    {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const response = await fetch(`${API_URL}?key=${API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body,
+    });
+
+    if (response.status === 429 && attempt < retries) {
+      // Wait 3s then retry
+      await new Promise((r) => setTimeout(r, 3000));
+      continue;
     }
-  );
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Vision API error (${response.status}): ${errorText}`);
+    return response;
   }
 
-  const data = await response.json();
-  const annotations = data.responses?.[0]?.textAnnotations;
-
-  if (!annotations || annotations.length === 0) {
-    throw new Error('No text found in the image. Please try a clearer photo.');
-  }
-
-  return annotations[0].description || '';
-}
-
-function parseReceiptText(rawText: string): ExtractedReceipt {
-  const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
-
-  // Vendor: first non-numeric line in top 5 lines
-  let vendor: string | undefined;
-  for (let i = 0; i < Math.min(5, lines.length); i++) {
-    const line = lines[i];
-    if (!/^\d+$/.test(line) && !/^\d{1,2}[\/\-]/.test(line) && line.length > 2) {
-      vendor = line;
-      break;
-    }
-  }
-
-  // Date: regex for common formats
-  let date: string | undefined;
-  const datePatterns = [
-    /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/,
-    /(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/,
-    /(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{2,4})/i,
-  ];
-  for (const line of lines) {
-    for (const pattern of datePatterns) {
-      const match = line.match(pattern);
-      if (match) {
-        date = match[1];
-        break;
-      }
-    }
-    if (date) break;
-  }
-
-  // Parse items and totals
-  const items: ReceiptItem[] = [];
-  let total = 0;
-  let subtotal: number | undefined;
-  let tax: number | undefined;
-
-  const skipKeywords = /\b(subtotal|sub\s*total|total|tax|gst|sst|service|charge|cash|change|visa|master|card|payment|balance|tendered|rounding|discount)\b/i;
-  const totalKeyword = /\b(total|grand\s*total|amount\s*due|jumlah)\b/i;
-  const subtotalKeyword = /\b(subtotal|sub\s*total)\b/i;
-  const taxKeyword = /\b(tax|gst|sst|service\s*(?:tax|charge))\b/i;
-
-  // Amount pattern: matches RM 12.50, 12.50, RM12.50
-  const amountPattern = /(?:RM\s*)?(\d+\.\d{2})\s*$/;
-
-  for (const line of lines) {
-    const amountMatch = line.match(amountPattern);
-    if (!amountMatch) continue;
-
-    const amount = parseFloat(amountMatch[1]);
-
-    if (totalKeyword.test(line) && !subtotalKeyword.test(line)) {
-      if (amount > total) total = amount;
-    } else if (subtotalKeyword.test(line)) {
-      subtotal = amount;
-    } else if (taxKeyword.test(line)) {
-      tax = amount;
-    } else if (!skipKeywords.test(line) && amount > 0) {
-      const name = line.replace(amountPattern, '').replace(/^RM\s*/i, '').trim();
-      if (name.length > 0) {
-        items.push({ name, amount });
-      }
-    }
-  }
-
-  // Fallback: if no total found, sum items
-  if (total === 0 && items.length > 0) {
-    total = items.reduce((sum, item) => sum + item.amount, 0);
-  }
-
-  return {
-    vendor,
-    items,
-    subtotal,
-    tax,
-    total,
-    date,
-    rawText,
-  };
+  // Should never reach here, but satisfy TS
+  throw new Error('Rate limited by Gemini. Please wait a moment and try again.');
 }
 
 export async function scanReceipt(imageUri: string): Promise<ExtractedReceipt> {
+  if (!API_KEY) {
+    throw new Error('Receipt scanning is not configured. Please set EXPO_PUBLIC_GEMINI_API_KEY.');
+  }
+
   const base64 = await imageToBase64(imageUri);
-  const rawText = await performOCR(base64);
-  return parseReceiptText(rawText);
+  const response = await callGemini(base64);
+
+  if (!response.ok) {
+    if (response.status === 429) {
+      throw new Error('Rate limited — please wait a few seconds and try again.');
+    }
+    const errorText = await response.text();
+    throw new Error(`Gemini API error (${response.status}): ${errorText}`);
+  }
+
+  const data: any = await response.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!text) {
+    throw new Error('No response from AI. Please try a clearer photo.');
+  }
+
+  try {
+    const parsed = JSON.parse(stripJsonFences(text));
+
+    return {
+      vendor: parsed.vendor || undefined,
+      items: Array.isArray(parsed.items)
+        ? parsed.items
+            .filter((i: any) => i.name && typeof i.amount === 'number' && i.amount > 0)
+            .map((i: any) => ({ name: String(i.name), amount: Number(i.amount) }))
+        : [],
+      subtotal: typeof parsed.subtotal === 'number' ? parsed.subtotal : undefined,
+      tax: typeof parsed.tax === 'number' ? parsed.tax : undefined,
+      total: Number(parsed.total) || 0,
+      date: parsed.date || undefined,
+      rawText: text,
+    };
+  } catch {
+    throw new Error('Could not parse receipt data. Please try again.');
+  }
 }

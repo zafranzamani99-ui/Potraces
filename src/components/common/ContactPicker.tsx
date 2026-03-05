@@ -155,10 +155,10 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <Pressable style={{ flex: 1 }} onPress={() => setPhoneModalVisible(false)} />
-            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+            <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Select Contact</Text>
-                <TouchableOpacity onPress={() => { setPhoneModalVisible(false); setSearchQuery(''); }}>
+                <TouchableOpacity onPress={() => { setPhoneModalVisible(false); setSearchQuery(''); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                   <Feather name="x" size={24} color={CALM.textPrimary} />
                 </TouchableOpacity>
               </View>
@@ -232,7 +232,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
             <View style={styles.manualModalSheet} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Add Contact</Text>
-                <TouchableOpacity onPress={() => { setManualModalVisible(false); setManualName(''); setManualPhone(''); }}>
+                <TouchableOpacity onPress={() => { setManualModalVisible(false); setManualName(''); setManualPhone(''); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                   <Feather name="x" size={24} color={CALM.textPrimary} />
                 </TouchableOpacity>
               </View>

@@ -9,7 +9,8 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { Wallet } from '../../types';
+import { WALLET_TYPE_CONFIG } from '../../constants/premium';
+import { Wallet, WalletType } from '../../types';
 import { lightTap } from '../../services/haptics';
 import { useSettingsStore } from '../../store/settingsStore';
 
@@ -18,23 +19,64 @@ interface WalletPickerProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   label?: string;
+  typeFilter?: WalletType;
 }
+
+const TYPE_ORDER: WalletType[] = ['bank', 'ewallet', 'credit'];
 
 const WalletPicker: React.FC<WalletPickerProps> = ({
   wallets,
   selectedId,
   onSelect,
   label,
+  typeFilter,
 }) => {
   const currency = useSettingsStore((s) => s.currency);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  const filteredWallets = useMemo(() => {
+    const filtered = typeFilter ? wallets.filter((w) => w.type === typeFilter) : wallets;
+    return [...filtered].sort((a, b) => {
+      // Sort by: default first, then by type order, then by name
+      if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+      const typeA = TYPE_ORDER.indexOf(a.type);
+      const typeB = TYPE_ORDER.indexOf(b.type);
+      if (typeA !== typeB) return typeA - typeB;
+      return a.name.localeCompare(b.name);
+    });
+  }, [wallets, typeFilter]);
+
   const selectedWallet = wallets.find((w) => w.id === selectedId);
-  const sortedWallets = useMemo(
-    () => [...wallets].sort((a, b) => (a.isDefault === b.isDefault ? 0 : a.isDefault ? -1 : 1)),
-    [wallets]
-  );
+
+  // Group wallets by type for section display
+  const groupedWallets = useMemo(() => {
+    if (typeFilter) return [{ type: typeFilter, wallets: filteredWallets }];
+    const groups: { type: WalletType; wallets: Wallet[] }[] = [];
+    TYPE_ORDER.forEach((type) => {
+      const typeWallets = filteredWallets.filter((w) => w.type === type);
+      if (typeWallets.length > 0) {
+        groups.push({ type, wallets: typeWallets });
+      }
+    });
+    return groups;
+  }, [filteredWallets, typeFilter]);
 
   if (wallets.length === 0) return null;
+
+  const getDisplayBalance = (wallet: Wallet) => {
+    if (wallet.type === 'credit') {
+      return `Avail. ${currency} ${wallet.balance.toFixed(2)}`;
+    }
+    return `${currency} ${wallet.balance.toFixed(2)}`;
+  };
+
+  const getTypeBadgeColor = (type: WalletType): string => {
+    switch (type) {
+      case 'bank': return '#0052A5';
+      case 'ewallet': return '#00B14F';
+      case 'credit': return CALM.bronze;
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -64,9 +106,16 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
                 />
               </View>
               <View style={styles.textGroup}>
-                <Text style={styles.walletName}>{selectedWallet.name}</Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.walletName}>{selectedWallet.name}</Text>
+                  <View style={[styles.typeBadge, { backgroundColor: withAlpha(getTypeBadgeColor(selectedWallet.type), 0.1) }]}>
+                    <Text style={[styles.typeBadgeText, { color: getTypeBadgeColor(selectedWallet.type) }]}>
+                      {WALLET_TYPE_CONFIG[selectedWallet.type].label}
+                    </Text>
+                  </View>
+                </View>
                 <Text style={styles.walletBalance}>
-                  {currency} {selectedWallet.balance.toFixed(2)}
+                  {getDisplayBalance(selectedWallet)}
                 </Text>
               </View>
             </>
@@ -96,69 +145,87 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
               </TouchableOpacity>
             </View>
             <FlatList
-              data={sortedWallets}
-              keyExtractor={(item) => item.id}
+              data={groupedWallets}
+              keyExtractor={(group) => group.type}
               showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => {
-                const isSelected = item.id === selectedId;
-                return (
-                  <TouchableOpacity
-                    style={[
-                      styles.item,
-                      isSelected && {
-                        backgroundColor: withAlpha(item.color, 0.1),
-                      },
-                    ]}
-                    onPress={() => {
-                      lightTap();
-                      onSelect(item.id);
-                      setDropdownOpen(false);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        styles.itemIcon,
-                        {
-                          backgroundColor: isSelected
-                            ? item.color
-                            : withAlpha(item.color, 0.15),
-                        },
-                      ]}
-                    >
+              renderItem={({ item: group }) => (
+                <View>
+                  {/* Section header (only if not filtered to single type) */}
+                  {!typeFilter && (
+                    <View style={styles.sectionHeader}>
                       <Feather
-                        name={item.icon as keyof typeof Feather.glyphMap}
-                        size={18}
-                        color={isSelected ? '#fff' : item.color}
+                        name={WALLET_TYPE_CONFIG[group.type].icon as keyof typeof Feather.glyphMap}
+                        size={14}
+                        color={CALM.textMuted}
                       />
+                      <Text style={styles.sectionTitle}>
+                        {WALLET_TYPE_CONFIG[group.type].label}
+                      </Text>
                     </View>
-                    <View style={styles.itemTextGroup}>
-                      <Text
+                  )}
+                  {group.wallets.map((item) => {
+                    const isSelected = item.id === selectedId;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
                         style={[
-                          styles.itemName,
+                          styles.item,
                           isSelected && {
-                            color: item.color,
-                            fontWeight: TYPOGRAPHY.weight.bold,
+                            backgroundColor: withAlpha(item.color, 0.1),
                           },
                         ]}
+                        onPress={() => {
+                          lightTap();
+                          onSelect(item.id);
+                          setDropdownOpen(false);
+                        }}
+                        activeOpacity={0.7}
                       >
-                        {item.name}
-                      </Text>
-                      <Text style={styles.itemBalance}>
-                        {currency} {item.balance.toFixed(2)}
-                      </Text>
-                    </View>
-                    {item.isDefault && (
-                      <View style={styles.defaultBadge}>
-                        <Text style={styles.defaultText}>Default</Text>
-                      </View>
-                    )}
-                    {isSelected && (
-                      <Feather name="check" size={18} color={item.color} />
-                    )}
-                  </TouchableOpacity>
-                );
-              }}
+                        <View
+                          style={[
+                            styles.itemIcon,
+                            {
+                              backgroundColor: isSelected
+                                ? item.color
+                                : withAlpha(item.color, 0.15),
+                            },
+                          ]}
+                        >
+                          <Feather
+                            name={item.icon as keyof typeof Feather.glyphMap}
+                            size={18}
+                            color={isSelected ? '#fff' : item.color}
+                          />
+                        </View>
+                        <View style={styles.itemTextGroup}>
+                          <Text
+                            style={[
+                              styles.itemName,
+                              isSelected && {
+                                color: item.color,
+                                fontWeight: TYPOGRAPHY.weight.bold,
+                              },
+                            ]}
+                          >
+                            {item.name}
+                          </Text>
+                          <Text style={styles.itemBalance}>
+                            {getDisplayBalance(item)}
+                          </Text>
+                        </View>
+                        {item.isDefault && (
+                          <View style={styles.defaultBadge}>
+                            <Text style={styles.defaultText}>Default</Text>
+                          </View>
+                        )}
+                        {isSelected && (
+                          <Feather name="check" size={18} color={item.color} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
             />
           </View>
         </TouchableOpacity>
@@ -204,10 +271,24 @@ const styles = StyleSheet.create({
   textGroup: {
     flex: 1,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
   walletName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.textPrimary,
+  },
+  typeBadge: {
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 1,
+    borderRadius: RADIUS.xs,
+  },
+  typeBadgeText: {
+    fontSize: 9,
+    fontWeight: TYPOGRAPHY.weight.bold,
   },
   walletBalance: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -245,6 +326,21 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: CALM.textPrimary,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xs,
+  },
+  sectionTitle: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   item: {
     flexDirection: 'row',

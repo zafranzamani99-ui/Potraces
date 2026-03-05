@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   RefreshControl,
@@ -11,6 +12,8 @@ import {
   TextInput,
   Alert,
   Keyboard,
+  Dimensions,
+  StatusBar,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
@@ -61,12 +64,17 @@ const QUICK_ACTIONS = [
 
 const PersonalDashboard: React.FC = () => {
   const { showToast } = useToast();
-  const { transactions, subscriptions, budgets, updateTransaction, deleteTransaction } = usePersonalStore();
+  const transactions = usePersonalStore((s) => s.transactions);
+  const subscriptions = usePersonalStore((s) => s.subscriptions);
+  const budgets = usePersonalStore((s) => s.budgets);
+  const updateTransaction = usePersonalStore((s) => s.updateTransaction);
+  const deleteTransaction = usePersonalStore((s) => s.deleteTransaction);
   const unmarkOrdersTransferred = useSellerStore((s) => s.unmarkOrdersTransferred);
   const updateIngredientCost = useSellerStore((s) => s.updateIngredientCost);
   const deleteTransfer = useBusinessStore((s) => s.deleteTransfer);
-  const { debts } = useDebtStore();
+  const debts = useDebtStore((s) => s.debts);
   const currency = useSettingsStore(state => state.currency);
+  const paymentQrs = useSettingsStore(state => state.paymentQrs);
   const expenseCategories = useCategories('expense');
   const incomeCategories = useCategories('income');
   const wallets = useWalletStore((s) => s.wallets);
@@ -85,6 +93,10 @@ const PersonalDashboard: React.FC = () => {
   const [editType, setEditType] = useState<'expense' | 'income'>('expense');
   const [editTags, setEditTags] = useState('');
   const [editWalletId, setEditWalletId] = useState<string | null>(null);
+
+  // QR modal
+  const [qrModalVisible, setQrModalVisible] = useState(false);
+  const [qrViewIndex, setQrViewIndex] = useState(0);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -149,11 +161,14 @@ const PersonalDashboard: React.FC = () => {
     };
   }, [transactions, subscriptions, budgets, debts]);
 
-  const heroBalance = wallets.length > 0
-    ? wallets.reduce((sum, w) => sum + w.balance, 0)
-    : stats.balance;
+  const heroBalance = useMemo(() =>
+    wallets.length > 0
+      ? wallets.filter((w) => w.type !== 'credit').reduce((sum, w) => sum + w.balance, 0)
+      : stats.balance,
+    [wallets, stats.balance]
+  );
 
-  const netThisMonth = stats.income - stats.expenses;
+  const netThisMonth = useMemo(() => stats.income - stats.expenses, [stats.income, stats.expenses]);
 
   // Insight from explainMonth
   const insight = useMemo(
@@ -224,9 +239,12 @@ const PersonalDashboard: React.FC = () => {
     }, 1000);
   }, []);
 
-  const editCategories = editType === 'expense' ? expenseCategories : incomeCategories;
+  const editCategories = useMemo(
+    () => editType === 'expense' ? expenseCategories : incomeCategories,
+    [editType, expenseCategories, incomeCategories]
+  );
 
-  const handleEditTransaction = (transaction: Transaction) => {
+  const handleEditTransaction = useCallback((transaction: Transaction) => {
     setEditingTransaction(transaction);
     setEditAmount(transaction.amount.toString());
     setEditDescription(transaction.description);
@@ -235,9 +253,9 @@ const PersonalDashboard: React.FC = () => {
     setEditTags(transaction.tags?.join(', ') || '');
     setEditWalletId(transaction.walletId || null);
     setEditModalVisible(true);
-  };
+  }, []);
 
-  const handleUpdateTransaction = () => {
+  const handleUpdateTransaction = useCallback(() => {
     if (!editingTransaction) return;
 
     if (!editAmount || parseFloat(editAmount) <= 0) {
@@ -297,9 +315,9 @@ const PersonalDashboard: React.FC = () => {
     setEditModalVisible(false);
     setEditingTransaction(null);
     showToast('transaction updated.', 'success');
-  };
+  }, [editingTransaction, editAmount, editDescription, editCategory, editType, editWalletId, editTags, addToWallet, deductFromWallet, updateTransaction, updateIngredientCost, showToast]);
 
-  const handleDeleteTransaction = () => {
+  const handleDeleteTransaction = useCallback(() => {
     if (!editingTransaction) return;
 
     const isTransferLinked = editingTransaction.id.startsWith('transfer-');
@@ -335,21 +353,21 @@ const PersonalDashboard: React.FC = () => {
         },
       ]
     );
-  };
+  }, [editingTransaction, addToWallet, deductFromWallet, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, showToast]);
 
-  const handleEditTypeChange = (newType: 'expense' | 'income') => {
+  const handleEditTypeChange = useCallback((newType: 'expense' | 'income') => {
     setEditType(newType);
     const newCategories = newType === 'expense' ? expenseCategories : incomeCategories;
     setEditCategory(newCategories[0].id);
-  };
+  }, [expenseCategories, incomeCategories]);
 
-  const handleQuickAction = (screen: string) => {
+  const handleQuickAction = useCallback((screen: string) => {
     if (screen === 'PersonalReports' || screen === 'SubscriptionList' || screen === 'DebtTracking' || screen === 'WalletManagement' || screen === 'SavingsTracker' || screen === 'MoneyChat' || screen === 'Goals' || screen === 'FinancialPulse') {
       navigation.getParent()?.navigate(screen);
     } else {
       navigation.navigate(screen);
     }
-  };
+  }, [navigation]);
 
   return (
     <View style={styles.container}>
@@ -363,7 +381,32 @@ const PersonalDashboard: React.FC = () => {
         }
       >
         {/* Zone 1 — Greeting (small) */}
-        <Text style={styles.greeting}>{getGreeting()}</Text>
+        <View style={styles.greetingRow}>
+          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <TouchableOpacity
+            style={styles.qrButton}
+            onPress={() => {
+              lightTap();
+              if (paymentQrs.length > 0) {
+                setQrViewIndex(0);
+                setQrModalVisible(true);
+              } else {
+                Alert.alert(
+                  'No Payment QR',
+                  'Add your payment QR code in Settings so you can show it here.',
+                  [
+                    { text: 'Later', style: 'cancel' },
+                    { text: 'Go to Settings', onPress: () => navigation.navigate('Settings' as any, { scrollTo: 'qr' }) },
+                  ]
+                );
+              }
+            }}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Feather name="maximize" size={22} color={paymentQrs.length > 0 ? CALM.accent : CALM.textMuted} />
+          </TouchableOpacity>
+        </View>
 
         {/* Zone 2 — Balance (the hero) */}
         <Text style={styles.balanceAmount}>
@@ -801,9 +844,63 @@ const PersonalDashboard: React.FC = () => {
             </View>
         </Pressable>
       </Modal>
+
+      {/* QR Fullscreen Modal */}
+      <Modal
+        visible={qrModalVisible}
+        transparent
+        animationType="none"
+        onRequestClose={() => setQrModalVisible(false)}
+        statusBarTranslucent
+      >
+        <View style={styles.qrModalOverlay}>
+          <StatusBar barStyle="light-content" />
+          {/* Close button */}
+          <TouchableOpacity
+            style={styles.qrCloseBtn}
+            onPress={() => setQrModalVisible(false)}
+            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+          >
+            <Feather name="x" size={28} color="#fff" />
+          </TouchableOpacity>
+
+          {/* QR label */}
+          {paymentQrs[qrViewIndex] && (
+            <Text style={styles.qrLabel}>{paymentQrs[qrViewIndex].label}</Text>
+          )}
+
+          {/* QR Image */}
+          {paymentQrs[qrViewIndex] && (
+            <Image
+              source={{ uri: paymentQrs[qrViewIndex].uri }}
+              style={styles.qrFullImage}
+              resizeMode="contain"
+            />
+          )}
+
+          {/* QR tabs at bottom */}
+          {paymentQrs.length > 1 && (
+            <View style={styles.qrTabs}>
+              {paymentQrs.map((qr, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.qrTab, qrViewIndex === i && styles.qrTabActive]}
+                  onPress={() => { lightTap(); setQrViewIndex(i); }}
+                >
+                  <Text style={[styles.qrTabText, qrViewIndex === i && styles.qrTabTextActive]}>
+                    {qr.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 };
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
   container: {
@@ -818,9 +915,22 @@ const styles = StyleSheet.create({
   },
 
   // Zone 1 — Greeting
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.lg,
+  },
   greeting: {
     ...TYPE.muted,
-    marginBottom: SPACING.lg,
+  },
+  qrButton: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.lg,
+    backgroundColor: withAlpha(CALM.accent, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Zone 2 — Balance
@@ -1168,6 +1278,70 @@ const styles = StyleSheet.create({
     color: CALM.textPrimary,
     textAlign: 'center',
     lineHeight: 14,
+  },
+
+  // QR Fullscreen Modal
+  qrModalOverlay: {
+    flex: 1,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrCloseBtn: {
+    position: 'absolute',
+    top: 72,
+    right: SPACING.xl,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  qrLabel: {
+    position: 'absolute',
+    top: 80,
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: '#fff',
+    zIndex: 10,
+  },
+  qrTabs: {
+    position: 'absolute',
+    bottom: 60,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    zIndex: 10,
+  },
+  qrTab: {
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  qrTabActive: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  qrTabText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  qrTabTextActive: {
+    color: '#fff',
+  },
+  qrFullImage: {
+    width: SCREEN_WIDTH - SPACING['2xl'] * 2,
+    height: SCREEN_WIDTH - SPACING['2xl'] * 2,
+    borderRadius: RADIUS.lg,
+    backgroundColor: '#fff',
   },
 });
 

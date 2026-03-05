@@ -6,6 +6,18 @@
 
 ---
 
+## Missing Features — Implementation Checklist
+
+- [x] **Order item editing** (High) — Edit items in order detail modal with +/- controls and add product
+- [x] **Partial payments** (Medium) — Record deposits with payment method, auto-completes when fully paid
+- [x] **Inventory/stock tracking** (Medium) — Track stock per product, auto-decrement on orders, restore on delete
+- [x] **Ingredient cost templates** (Medium) — Save and reuse common costs, tap to pre-fill, long-press to remove
+- [x] **Product reordering** (Low) — Move up/down buttons in reorder mode, persisted to store
+- [x] **Bulk order delete** (Low) — Delete button in bulk select bar with confirmation
+- [x] **Decimal quantities** (Low) — Parser supports 0.5, "setengah", "suku", decimal-pad input
+
+---
+
 ## Production Readiness Scores
 
 | Category | Score | Weight | Weighted |

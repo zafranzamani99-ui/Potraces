@@ -10,12 +10,13 @@ export const useDebtStore = create<DebtState>()(
       splits: [],
       contacts: [],
 
-      addDebt: (debt) =>
+      addDebt: (debt) => {
+        const id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
         set((state) => ({
           debts: [
             {
               ...debt,
-              id: Date.now().toString(),
+              id,
               paidAmount: 0,
               status: 'pending' as DebtStatus,
               payments: [],
@@ -24,15 +25,35 @@ export const useDebtStore = create<DebtState>()(
             },
             ...state.debts,
           ],
-        })),
+        }));
+        return id;
+      },
 
       updateDebt: (id, updates) =>
         set((state) => ({
-          debts: state.debts.map((debt) =>
-            debt.id === id
-              ? { ...debt, ...updates, updatedAt: new Date() }
-              : debt
-          ),
+          debts: state.debts.map((debt) => {
+            if (debt.id !== id) return debt;
+
+            const updated = { ...debt, ...updates, updatedAt: new Date() };
+
+            // Recalculate status when totalAmount changes
+            if (updates.totalAmount !== undefined) {
+              const paidAmount = updated.paidAmount;
+              const newTotal = updates.totalAmount;
+
+              if (paidAmount >= newTotal) {
+                updated.status = 'settled';
+                // Cap paidAmount to totalAmount to prevent exceeding
+                updated.paidAmount = Math.min(paidAmount, newTotal);
+              } else if (paidAmount > 0) {
+                updated.status = 'partial';
+              } else {
+                updated.status = 'pending';
+              }
+            }
+
+            return updated;
+          }),
         })),
 
       deleteDebt: (id) =>
@@ -47,7 +68,7 @@ export const useDebtStore = create<DebtState>()(
 
             const newPayment = {
               ...payment,
-              id: Date.now().toString(),
+              id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
               createdAt: new Date(),
             };
 
@@ -69,18 +90,48 @@ export const useDebtStore = create<DebtState>()(
           }),
         })),
 
-      addSplit: (split) =>
+      deletePayment: (debtId, paymentId) =>
+        set((state) => ({
+          debts: state.debts.map((debt) => {
+            if (debt.id !== debtId) return debt;
+
+            const payment = debt.payments.find((p) => p.id === paymentId);
+            if (!payment) return debt;
+
+            const newPayments = debt.payments.filter((p) => p.id !== paymentId);
+            const newPaidAmount = newPayments.reduce((sum, p) => sum + p.amount, 0);
+            let newStatus: DebtStatus = 'pending';
+            if (newPaidAmount >= debt.totalAmount) {
+              newStatus = 'settled';
+            } else if (newPaidAmount > 0) {
+              newStatus = 'partial';
+            }
+
+            return {
+              ...debt,
+              payments: newPayments,
+              paidAmount: newPaidAmount,
+              status: newStatus,
+              updatedAt: new Date(),
+            };
+          }),
+        })),
+
+      addSplit: (split) => {
+        const id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
         set((state) => ({
           splits: [
             {
               ...split,
-              id: Date.now().toString(),
+              id,
               createdAt: new Date(),
               updatedAt: new Date(),
             },
             ...state.splits,
           ],
-        })),
+        }));
+        return id;
+      },
 
       updateSplit: (id, updates) =>
         set((state) => ({
@@ -110,12 +161,26 @@ export const useDebtStore = create<DebtState>()(
           }),
         })),
 
+      unmarkSplitParticipantPaid: (splitId, contactId) =>
+        set((state) => ({
+          splits: state.splits.map((split) => {
+            if (split.id !== splitId) return split;
+            return {
+              ...split,
+              participants: split.participants.map((p) =>
+                p.contact.id === contactId ? { ...p, isPaid: false } : p
+              ),
+              updatedAt: new Date(),
+            };
+          }),
+        })),
+
       addContact: (contact) =>
         set((state) => ({
           contacts: [
             {
               ...contact,
-              id: Date.now().toString(),
+              id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
             },
             ...state.contacts,
           ],

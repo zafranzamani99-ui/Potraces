@@ -120,6 +120,11 @@ export const useBusinessStore = create<BusinessState>()(
         return id;
       },
 
+      deleteBusinessTransaction: (id) =>
+        set((state) => ({
+          businessTransactions: state.businessTransactions.filter((t) => t.id !== id),
+        })),
+
       addClient: (client) =>
         set((state) => ({
           clients: [

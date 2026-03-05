@@ -22,7 +22,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha, BIZ } from '../../constants';
-import { SellerOrder, OrderStatus, SellerPaymentMethod } from '../../types';
+import { SellerOrder, SellerOrderItem, OrderStatus, SellerPaymentMethod, SellerProduct } from '../../types';
 
 // ─── STATUS HELPERS ──────────────────────────────────────────
 function statusColor(status: OrderStatus): string {
@@ -616,7 +616,16 @@ const GroupedCustomerCard: React.FC<{
 
 // ─── MAIN COMPONENT ─────────────────────────────────────────
 const OrderList: React.FC = () => {
-  const { orders, updateOrderStatus, updateOrder, markOrderPaid, markOrdersPaid, deleteOrder } = useSellerStore();
+  const orders = useSellerStore((s) => s.orders);
+  const products = useSellerStore((s) => s.products);
+  const updateOrderStatus = useSellerStore((s) => s.updateOrderStatus);
+  const updateOrder = useSellerStore((s) => s.updateOrder);
+  const updateOrderItems = useSellerStore((s) => s.updateOrderItems);
+  const recordPayment = useSellerStore((s) => s.recordPayment);
+  const markOrderPaid = useSellerStore((s) => s.markOrderPaid);
+  const markOrdersPaid = useSellerStore((s) => s.markOrdersPaid);
+  const deleteOrder = useSellerStore((s) => s.deleteOrder);
+  const deleteOrders = useSellerStore((s) => s.deleteOrders);
   const currency = useSettingsStore((s) => s.currency);
   const { showToast } = useToast();
   const navigation = useNavigation<any>();
@@ -698,6 +707,13 @@ const OrderList: React.FC = () => {
   const [editNote, setEditNote] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editAddress, setEditAddress] = useState('');
+  // Item editing state
+  const [editingItems, setEditingItems] = useState(false);
+  const [editItems, setEditItems] = useState<SellerOrderItem[]>([]);
+  // Partial payment state
+  const [showDepositInput, setShowDepositInput] = useState(false);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [depositMethod, setDepositMethod] = useState<SellerPaymentMethod>('cash');
   const [editDeliveryDate, setEditDeliveryDate] = useState('');
   const [editError, setEditError] = useState('');
 
@@ -966,6 +982,8 @@ const OrderList: React.FC = () => {
     setSelectedOrder(null);
     setShowRawWhatsApp(false);
     setIsEditing(false);
+    setEditingItems(false);
+    setShowDepositInput(false);
   }, []);
 
   // Duplicate / reorder — carry items, address, and note so seller doesn't retype
@@ -1214,6 +1232,28 @@ const OrderList: React.FC = () => {
     setPendingPayOrder(null);
     setSelectedPaymentMethod(null);
   }, [selectedIds]);
+
+  const handleBulkDelete = useCallback(() => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    warningNotification();
+    Alert.alert(
+      '',
+      `delete ${ids.length} order${ids.length > 1 ? 's' : ''}? this cannot be undone.`,
+      [
+        { text: 'cancel', style: 'cancel' },
+        {
+          text: 'delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteOrders(ids);
+            setSelectedIds(new Set());
+            showToast(`${ids.length} order${ids.length > 1 ? 's' : ''} deleted.`, 'info');
+          },
+        },
+      ]
+    );
+  }, [selectedIds, deleteOrders, showToast]);
 
   const handleCancelSelect = useCallback(() => {
     setSelectedIds(new Set());
@@ -1589,6 +1629,21 @@ const OrderList: React.FC = () => {
             <Feather name="dollar-sign" size={16} color="#fff" />
             <Text style={styles.bulkPayText}>mark paid</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.bulkPayButton,
+              { backgroundColor: BIZ.error },
+              selectedIds.size === 0 && styles.bulkPayButtonDisabled,
+            ]}
+            activeOpacity={0.7}
+            onPress={handleBulkDelete}
+            disabled={selectedIds.size === 0}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${selectedIds.size} orders`}
+          >
+            <Feather name="trash-2" size={16} color="#fff" />
+            <Text style={styles.bulkPayText}>delete</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -1722,6 +1777,7 @@ const OrderList: React.FC = () => {
         animationType="fade"
         onRequestClose={handleCloseModal}
       >
+        <View style={{flex: 1}}>
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
@@ -1943,7 +1999,24 @@ const OrderList: React.FC = () => {
 
                   {/* ── Section: Items ── */}
                   <View style={styles.modalSection}>
-                    <Text style={styles.modalSectionLabel}>items</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.modalSectionLabel}>items</Text>
+                      {!isEditing && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            lightTap();
+                            setEditItems(selectedOrder.items.map((i) => ({ ...i })));
+                            setEditingItems(true);
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Edit items"
+                        >
+                          <Feather name="edit-2" size={14} color={CALM.bronze} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
                     {selectedOrder.items.map((item, i) => (
                       <View
                         key={i}
@@ -1953,7 +2026,7 @@ const OrderList: React.FC = () => {
                         ]}
                       >
                         <Text style={styles.modalItemName}>
-                          {item.productName} {'\u00D7'}{item.quantity} {item.unit}
+                          {item.productName} {'\u00D7'}{item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)} {item.unit}
                         </Text>
                         <Text style={styles.modalItemPrice}>
                           {currency} {(item.unitPrice * item.quantity).toFixed(2)}
@@ -1966,6 +2039,20 @@ const OrderList: React.FC = () => {
                         {currency} {selectedOrder.totalAmount.toFixed(2)}
                       </Text>
                     </View>
+                    {/* Partial payment progress */}
+                    {!selectedOrder.isPaid && (selectedOrder.paidAmount || 0) > 0 && (
+                      <View style={{ marginTop: 6 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted }}>paid so far</Text>
+                          <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: BIZ.success, fontWeight: TYPOGRAPHY.weight.semibold }}>
+                            {currency} {(selectedOrder.paidAmount || 0).toFixed(2)} / {selectedOrder.totalAmount.toFixed(2)}
+                          </Text>
+                        </View>
+                        <View style={{ height: 4, backgroundColor: CALM.border, borderRadius: 2 }}>
+                          <View style={{ height: 4, backgroundColor: BIZ.success, borderRadius: 2, width: `${Math.min(100, ((selectedOrder.paidAmount || 0) / selectedOrder.totalAmount) * 100)}%` }} />
+                        </View>
+                      </View>
+                    )}
                   </View>
 
                   {/* Note */}
@@ -2021,23 +2108,40 @@ const OrderList: React.FC = () => {
                       )}
 
                       {!selectedOrder.isPaid && (
-                        <TouchableOpacity
-                          activeOpacity={0.7}
-                          style={styles.paidButton}
-                          onPress={() => {
-                            lightTap();
-                            setPendingPayOrder(selectedOrder);
-                            setSelectedPaymentMethod(null);
-                            setSelectedOrder(null);
-                            setShowRawWhatsApp(false);
-                            setIsEditing(false);
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel="Mark order as paid"
-                        >
-                          <Feather name="dollar-sign" size={18} color="#fff" />
-                          <Text style={styles.paidButtonText}>mark as paid</Text>
-                        </TouchableOpacity>
+                        <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            style={[styles.paidButton, { flex: 1, backgroundColor: withAlpha(CALM.bronze, 0.15) }]}
+                            onPress={() => {
+                              lightTap();
+                              setDepositAmount('');
+                              setDepositMethod('cash');
+                              setShowDepositInput(true);
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Record a deposit"
+                          >
+                            <Feather name="credit-card" size={16} color={CALM.bronze} />
+                            <Text style={[styles.paidButtonText, { color: CALM.bronze }]}>deposit</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            style={[styles.paidButton, { flex: 1 }]}
+                            onPress={() => {
+                              lightTap();
+                              setPendingPayOrder(selectedOrder);
+                              setSelectedPaymentMethod(null);
+                              setSelectedOrder(null);
+                              setShowRawWhatsApp(false);
+                              setIsEditing(false);
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Mark order as paid"
+                          >
+                            <Feather name="dollar-sign" size={18} color="#fff" />
+                            <Text style={styles.paidButtonText}>mark as paid</Text>
+                          </TouchableOpacity>
+                        </View>
                       )}
 
                       {selectedOrder.isPaid && (
@@ -2135,6 +2239,231 @@ const OrderList: React.FC = () => {
             </ScrollView>
           </View>
         </TouchableOpacity>
+
+        {/* ─── Deposit overlay (inside detail modal) ─── */}
+        {showDepositInput && (
+          <TouchableOpacity
+            style={[StyleSheet.absoluteFill, styles.sortOverlay]}
+            activeOpacity={1}
+            onPress={() => setShowDepositInput(false)}
+          >
+            <View style={styles.paymentSheet} onStartShouldSetResponder={() => true}>
+              <Text style={styles.paymentSheetTitle}>record deposit</Text>
+
+              {/* Context */}
+              <View style={styles.paymentContext}>
+                <View style={styles.paymentContextRow}>
+                  <Text style={styles.paymentContextName} numberOfLines={1}>
+                    {selectedOrder.customerName || 'walk-in'}
+                  </Text>
+                  <Text style={styles.paymentContextAmount}>
+                    {currency} {selectedOrder.totalAmount.toFixed(2)}
+                  </Text>
+                </View>
+                {(selectedOrder.paidAmount || 0) > 0 && (
+                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: BIZ.success, marginTop: 2 }}>
+                    paid so far: {currency} {(selectedOrder.paidAmount || 0).toFixed(2)}
+                  </Text>
+                )}
+              </View>
+
+              {/* Amount input */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: CALM.border, borderRadius: RADIUS.md, paddingHorizontal: SPACING.md, marginBottom: SPACING.sm }}>
+                <Text style={{ color: CALM.textMuted, fontSize: TYPOGRAPHY.size.sm }}>{currency}</Text>
+                <TextInput
+                  style={{ flex: 1, fontSize: TYPOGRAPHY.size.base, color: CALM.textPrimary, paddingVertical: SPACING.md, paddingLeft: SPACING.xs }}
+                  value={depositAmount}
+                  onChangeText={setDepositAmount}
+                  placeholder="amount"
+                  placeholderTextColor={CALM.textMuted}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                />
+              </View>
+
+              {/* Payment method */}
+              <View style={styles.paymentPickerRow}>
+                {PAYMENT_METHODS.map((m) => {
+                  const active = depositMethod === m.value;
+                  return (
+                    <TouchableOpacity
+                      key={m.value}
+                      activeOpacity={0.7}
+                      style={[styles.paymentPill, active && styles.paymentPillActive]}
+                      onPress={() => { selectionChanged(); setDepositMethod(m.value); }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Deposit via ${m.label}`}
+                    >
+                      <Feather name={m.icon} size={14} color={active ? '#fff' : CALM.textSecondary} />
+                      <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>
+                        {m.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={styles.paymentConfirmBtn}
+                onPress={() => {
+                  const amt = parseFloat(depositAmount);
+                  if (!amt || amt <= 0) {
+                    showToast('enter a valid amount.', 'error');
+                    return;
+                  }
+                  mediumTap();
+                  recordPayment(selectedOrder.id, amt, depositMethod);
+                  const newPaid = (selectedOrder.paidAmount || 0) + amt;
+                  const fullyPaid = newPaid >= selectedOrder.totalAmount;
+                  setSelectedOrder({
+                    ...selectedOrder,
+                    paidAmount: newPaid,
+                    isPaid: fullyPaid,
+                    paymentMethod: depositMethod,
+                    paidAt: fullyPaid ? new Date() : selectedOrder.paidAt,
+                    updatedAt: new Date(),
+                  });
+                  setShowDepositInput(false);
+                  showToast(fullyPaid ? 'fully paid!' : `deposit of ${currency} ${amt.toFixed(2)} recorded.`, 'info');
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Save deposit"
+              >
+                <Feather name="check" size={16} color="#fff" />
+                <Text style={styles.paymentConfirmText}>save deposit</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* ─── Edit items overlay (inside detail modal) ─── */}
+        {editingItems && (
+          <TouchableOpacity
+            style={[StyleSheet.absoluteFill, styles.modalOverlay]}
+            activeOpacity={1}
+            onPress={() => setEditingItems(false)}
+          >
+            <View style={styles.modalSheet} onStartShouldSetResponder={() => true}>
+              <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+                <View style={styles.modalHandleRow}>
+                  <View style={styles.modalHandle} />
+                </View>
+
+                <View style={styles.modalHeader}>
+                  <View style={styles.modalHeaderLeft}>
+                    <Text style={styles.modalTitle}>edit items</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.modalCloseButton}
+                    activeOpacity={0.7}
+                    onPress={() => setEditingItems(false)}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Feather name="x" size={18} color={CALM.textMuted} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.modalSection}>
+                  {editItems.map((item, i) => (
+                    <View key={i} style={[styles.modalItemRow, i < editItems.length - 1 && styles.modalItemRowBorder]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.modalItemName} numberOfLines={1}>
+                          {item.productName}
+                        </Text>
+                        <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted }}>
+                          {currency} {item.unitPrice.toFixed(2)} / {item.unit}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <TouchableOpacity
+                          onPress={() => {
+                            lightTap();
+                            const qty = item.quantity - 1;
+                            if (qty <= 0) {
+                              setEditItems((prev) => prev.filter((_, idx) => idx !== i));
+                            } else {
+                              setEditItems((prev) => prev.map((it, idx) => idx === i ? { ...it, quantity: qty } : it));
+                            }
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Feather name="minus-circle" size={20} color={BIZ.error} />
+                        </TouchableOpacity>
+                        <Text style={{ fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.textPrimary, minWidth: 28, textAlign: 'center' }}>
+                          {item.quantity}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            lightTap();
+                            setEditItems((prev) => prev.map((it, idx) => idx === i ? { ...it, quantity: it.quantity + 1 } : it));
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Feather name="plus-circle" size={20} color={CALM.bronze} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+
+                  {/* Add product button */}
+                  {products.filter((p) => p.isActive && !editItems.some((ei) => ei.productId === p.id)).length > 0 && (
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: CALM.border, marginTop: SPACING.xs }}
+                      onPress={() => {
+                        const available = products.filter((p) => p.isActive && !editItems.some((ei) => ei.productId === p.id));
+                        if (available.length > 0) {
+                          const p = available[0];
+                          lightTap();
+                          setEditItems((prev) => [...prev, { productId: p.id, productName: p.name, quantity: 1, unitPrice: p.pricePerUnit, unit: p.unit }]);
+                        }
+                      }}
+                    >
+                      <Feather name="plus" size={16} color={CALM.bronze} />
+                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.bronze, fontWeight: TYPOGRAPHY.weight.medium }}>add product</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Total preview */}
+                  <View style={[styles.modalTotalRow, { marginTop: SPACING.md }]}>
+                    <Text style={styles.modalTotalLabel}>new total</Text>
+                    <Text style={styles.modalTotalAmount}>
+                      {currency} {editItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0).toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: SPACING.md, paddingHorizontal: SPACING.lg, paddingBottom: SPACING.lg }}>
+                  <TouchableOpacity
+                    onPress={() => setEditingItems(false)}
+                    style={{ paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg }}
+                  >
+                    <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.textMuted }}>cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (editItems.length === 0) {
+                        showToast('add at least one item.', 'error');
+                        return;
+                      }
+                      mediumTap();
+                      updateOrderItems(selectedOrder.id, editItems);
+                      const newTotal = editItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+                      setSelectedOrder({ ...selectedOrder, items: editItems, totalAmount: newTotal, updatedAt: new Date() });
+                      setEditingItems(false);
+                      showToast('items updated.', 'info');
+                    }}
+                    style={{ paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl, backgroundColor: CALM.bronze, borderRadius: RADIUS.md }}
+                  >
+                    <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: '#fff', fontWeight: TYPOGRAPHY.weight.semibold }}>save</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        </View>
       </Modal>}
 
       {/* ─── Navigation app picker modal (lazy-mounted, renders after detail modal) ─── */}
@@ -2203,6 +2532,7 @@ const OrderList: React.FC = () => {
           </View>
         </TouchableOpacity>
       </Modal>}
+
     </View>
   );
 };

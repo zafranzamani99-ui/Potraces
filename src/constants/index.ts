@@ -252,6 +252,7 @@ export const EXPENSE_CATEGORIES: CategoryOption[] = [
   { id: 'family', name: 'Family', icon: 'users', color: '#7C8DA4' },
   { id: 'subscription', name: 'Subscriptions', icon: 'repeat', color: '#7C5CFC' },
   { id: 'business cost', name: 'Business Cost', icon: 'briefcase', color: '#B2780A' },
+  { id: 'debt_payment', name: 'Debt Payment', icon: 'corner-up-left', color: '#7C8DA4' },
   { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#9CA3B4' },
 ];
 
@@ -262,6 +263,7 @@ export const INCOME_CATEGORIES: CategoryOption[] = [
   { id: 'investment', name: 'Investment', icon: 'pie-chart', color: '#A06CD5' },
   { id: 'gift', name: 'Gift', icon: 'gift', color: '#C4956A' },
   { id: 'from business', name: 'From Business', icon: 'refresh-cw', color: '#6BA3BE' },
+  { id: 'debt_paid', name: 'Debt Paid', icon: 'corner-down-left', color: '#6BA3BE' },
   { id: 'other', name: 'Other', icon: 'plus-circle', color: '#9CA3B4' },
 ];
 
@@ -333,20 +335,20 @@ export const PAYMENT_METHODS = [
 ];
 
 export const SPLIT_METHODS = [
-  { label: 'Equal', value: 'equal', icon: 'users', description: 'Split evenly among all' },
-  { label: 'Custom', value: 'custom', icon: 'sliders', description: 'Set amount per person' },
-  { label: 'By Item', value: 'item_based', icon: 'list', description: 'Assign items to people' },
+  { label: 'Equal', value: 'equal', icon: 'users', description: 'Split evenly among all', color: '#4F5104' },
+  { label: 'Custom', value: 'custom', icon: 'sliders', description: 'Set amount per person', color: '#A06CD5' },
+  { label: 'By Item', value: 'item_based', icon: 'list', description: 'Assign items to people', color: '#B2780A' },
 ];
 
 export const DEBT_TYPES = [
-  { label: 'I Owe', value: 'i_owe', icon: 'arrow-up-circle', color: '#8E8E93' },
+  { label: 'I Owe', value: 'i_owe', icon: 'arrow-up-circle', color: '#DEAB22' },
   { label: 'They Owe Me', value: 'they_owe', icon: 'arrow-down-circle', color: '#4F5104' },
 ];
 
 export const DEBT_STATUSES = [
-  { label: 'Pending', value: 'pending', color: '#4F5104' },
-  { label: 'Partial', value: 'partial', color: '#8E8E93' },
-  { label: 'Settled', value: 'settled', color: '#B2780A' },
+  { label: 'Pending', value: 'pending', color: '#DEAB22' },
+  { label: 'Partial', value: 'partial', color: '#B2780A' },
+  { label: 'Settled', value: 'settled', color: '#6BA3BE' },
 ];
 
 export const RECEIPT_SCANNER_CONFIG = {

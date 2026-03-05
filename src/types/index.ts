@@ -101,6 +101,8 @@ export interface SellerProduct {
   unit: string; // 'tin', 'bekas', 'balang', 'pack', 'piece'
   isActive: boolean;
   totalSold: number;
+  trackStock?: boolean;
+  stockQuantity?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -123,6 +125,7 @@ export interface SellerOrder {
   totalAmount: number;
   status: OrderStatus;
   isPaid: boolean;
+  paidAmount?: number;
   paymentMethod?: SellerPaymentMethod;
   paidAt?: Date;
   note?: string;
@@ -167,6 +170,12 @@ export interface SellerCustomer {
   createdAt: Date;
 }
 
+export interface CostTemplate {
+  id: string;
+  description: string;
+  amount: number;
+}
+
 export interface SellerState {
   products: SellerProduct[];
   orders: SellerOrder[];
@@ -174,17 +183,23 @@ export interface SellerState {
   ingredientCosts: IngredientCost[];
   sellerCustomers: SellerCustomer[];
   customUnits: string[];
+  costTemplates: CostTemplate[];
+  productOrder: string[];
 
   addProduct: (product: Omit<SellerProduct, 'id' | 'totalSold' | 'createdAt' | 'updatedAt'>) => void;
   updateProduct: (id: string, updates: Partial<SellerProduct>) => void;
   deleteProduct: (id: string) => void;
+  setProductOrder: (ids: string[]) => void;
 
   addOrder: (order: Omit<SellerOrder, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
   updateOrder: (id: string, updates: Partial<Pick<SellerOrder, 'customerName' | 'note' | 'deliveryDate' | 'customerPhone' | 'customerAddress' | 'isPaid' | 'paymentMethod' | 'paidAt'>>) => void;
+  updateOrderItems: (id: string, items: SellerOrderItem[]) => void;
+  recordPayment: (id: string, amount: number, paymentMethod: SellerPaymentMethod) => void;
   markOrderPaid: (id: string, paymentMethod: SellerPaymentMethod) => void;
   markOrdersPaid: (ids: string[], paymentMethod: SellerPaymentMethod) => void;
   deleteOrder: (id: string) => void;
+  deleteOrders: (ids: string[]) => void;
   markOrdersTransferred: (ids: string[], transferId: string) => void;
   unmarkOrdersTransferred: (transferId: string) => void;
 
@@ -199,6 +214,10 @@ export interface SellerState {
   updateIngredientCost: (id: string, updates: Partial<IngredientCost>) => void;
   deleteIngredientCost: (id: string) => void;
   markCostSynced: (id: string, personalTransactionId: string) => void;
+
+  addCostTemplate: (template: Omit<CostTemplate, 'id'>) => void;
+  updateCostTemplate: (id: string, updates: Partial<Omit<CostTemplate, 'id'>>) => void;
+  deleteCostTemplate: (id: string) => void;
 
   addSellerCustomer: (customer: Omit<SellerCustomer, 'id' | 'createdAt'>) => void;
   updateSellerCustomer: (id: string, updates: Partial<SellerCustomer>) => void;
@@ -561,6 +580,7 @@ export interface Supplier {
 export type DebtType = 'i_owe' | 'they_owe';
 export type DebtStatus = 'pending' | 'partial' | 'settled';
 export type SplitMethod = 'equal' | 'custom' | 'item_based';
+export type TaxHandling = 'divide' | 'waive';
 
 export interface Contact {
   id: string;
@@ -575,6 +595,9 @@ export interface Payment {
   amount: number;
   date: Date;
   note?: string;
+  tipAmount?: number;
+  linkedTransactionId?: string;
+  walletId?: string;
   createdAt: Date;
 }
 
@@ -590,6 +613,7 @@ export interface Debt {
   payments: Payment[];
   mode: AppMode;
   dueDate?: Date;
+  splitId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -615,6 +639,10 @@ export interface SplitExpense {
   items: SplitItem[];
   paidBy?: Contact;
   category?: string;
+  taxAmount?: number;
+  taxHandling?: TaxHandling;
+  linkedTransactionId?: string;
+  walletId?: string;
   mode: AppMode;
   createdAt: Date;
   updatedAt: Date;
@@ -729,7 +757,8 @@ export interface BusinessState {
   deleteSupplier: (id: string) => void;
   setIncomeType: (type: IncomeType) => void;
   completeSetup: () => void;
-  addBusinessTransaction: (tx: Omit<BusinessTransaction, 'id'>) => void;
+  addBusinessTransaction: (tx: Omit<BusinessTransaction, 'id'>) => string;
+  deleteBusinessTransaction: (id: string) => void;
   addClient: (client: Omit<Client, 'id' | 'totalPaid' | 'paymentHistory'>) => void;
   logClientPayment: (clientId: string, amount: number, date: Date) => void;
   addRiderCost: (cost: Omit<RiderCost, 'id'>) => void;
@@ -744,15 +773,17 @@ export interface DebtState {
   splits: SplitExpense[];
   contacts: Contact[];
 
-  addDebt: (debt: Omit<Debt, 'id' | 'paidAmount' | 'status' | 'payments' | 'createdAt' | 'updatedAt'>) => void;
+  addDebt: (debt: Omit<Debt, 'id' | 'paidAmount' | 'status' | 'payments' | 'createdAt' | 'updatedAt'>) => string;
   updateDebt: (id: string, updates: Partial<Debt>) => void;
   deleteDebt: (id: string) => void;
   addPayment: (debtId: string, payment: Omit<Payment, 'id' | 'createdAt'>) => void;
+  deletePayment: (debtId: string, paymentId: string) => void;
 
-  addSplit: (split: Omit<SplitExpense, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  addSplit: (split: Omit<SplitExpense, 'id' | 'createdAt' | 'updatedAt'>) => string;
   updateSplit: (id: string, updates: Partial<SplitExpense>) => void;
   deleteSplit: (id: string) => void;
   markSplitParticipantPaid: (splitId: string, contactId: string) => void;
+  unmarkSplitParticipantPaid: (splitId: string, contactId: string) => void;
 
   addContact: (contact: Omit<Contact, 'id'>) => void;
   deleteContact: (id: string) => void;
@@ -805,20 +836,36 @@ export interface SavingsState {
 
 // Wallet Types
 export type PremiumTier = 'free' | 'premium';
+export type WalletType = 'bank' | 'ewallet' | 'credit';
 
 export interface Wallet {
   id: string;
   name: string;
+  type: WalletType;
   balance: number;
   icon: string;
   color: string;
   isDefault: boolean;
+  presetId?: string;
+  creditLimit?: number;
+  usedCredit?: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
+export interface WalletTransfer {
+  id: string;
+  fromWalletId: string;
+  toWalletId: string;
+  amount: number;
+  note?: string;
+  date: Date;
+  createdAt: Date;
+}
+
 export interface WalletState {
   wallets: Wallet[];
+  transfers: WalletTransfer[];
   selectedWalletId: string | null;
   addWallet: (wallet: Omit<Wallet, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateWallet: (id: string, updates: Partial<Wallet>) => void;
@@ -827,6 +874,9 @@ export interface WalletState {
   setDefaultWallet: (id: string) => void;
   deductFromWallet: (id: string, amount: number) => void;
   addToWallet: (id: string, amount: number) => void;
+  transferBetweenWallets: (fromId: string, toId: string, amount: number, note?: string) => void;
+  useCredit: (id: string, amount: number) => void;
+  repayCredit: (id: string, amount: number) => void;
 }
 
 export interface PremiumState {

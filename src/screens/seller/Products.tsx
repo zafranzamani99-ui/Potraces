@@ -21,6 +21,11 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import DraggableFlatList, {
+  ScaleDecorator,
+  RenderItemParams,
+} from 'react-native-draggable-flatlist';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { format } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -78,8 +83,17 @@ const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }
 
 // ─── Main component ────────────────────────────────────────────
 const Products: React.FC = () => {
-  const { products, ingredientCosts, addProduct, updateProduct, deleteProduct, addIngredientCost, updateIngredientCost, deleteIngredientCost, markCostSynced } =
-    useSellerStore();
+  const products = useSellerStore((s) => s.products);
+  const ingredientCosts = useSellerStore((s) => s.ingredientCosts);
+  const addProduct = useSellerStore((s) => s.addProduct);
+  const updateProduct = useSellerStore((s) => s.updateProduct);
+  const deleteProduct = useSellerStore((s) => s.deleteProduct);
+  const addIngredientCost = useSellerStore((s) => s.addIngredientCost);
+  const updateIngredientCost = useSellerStore((s) => s.updateIngredientCost);
+  const deleteIngredientCost = useSellerStore((s) => s.deleteIngredientCost);
+  const markCostSynced = useSellerStore((s) => s.markCostSynced);
+  const productOrder = useSellerStore((s) => s.productOrder);
+  const setProductOrder = useSellerStore((s) => s.setProductOrder);
   const addTransaction = usePersonalStore((s) => s.addTransaction);
   const updateTransaction = usePersonalStore((s) => s.updateTransaction);
   const customUnits = useSellerStore((s) => s.customUnits);
@@ -104,15 +118,28 @@ const Products: React.FC = () => {
     return [...ordered, ...remaining];
   }, [customUnits, unitOrder, hiddenUnits]);
 
-  // ─── Filtered products (search only) ───────────────────────
+  // ─── Sorted & filtered products ───────────────────────────
+  const sortedProducts = useMemo(() => {
+    if (productOrder.length === 0) return products;
+    const orderMap = new Map(productOrder.map((id, i) => [id, i]));
+    return [...products].sort((a, b) => {
+      const ai = orderMap.get(a.id);
+      const bi = orderMap.get(b.id);
+      if (ai != null && bi != null) return ai - bi;
+      if (ai != null) return -1;
+      if (bi != null) return 1;
+      return 0;
+    });
+  }, [products, productOrder]);
+
   const filteredProducts = useMemo(() => {
-    if (!search.trim()) return products;
+    if (!search.trim()) return sortedProducts;
     const q = search.trim().toLowerCase();
-    return products.filter((p) =>
+    return sortedProducts.filter((p) =>
       p.name.toLowerCase().includes(q) ||
       p.unit.toLowerCase().includes(q)
     );
-  }, [products, search]);
+  }, [sortedProducts, search]);
 
   // ─── Modal state ───────────────────────────────────────────
   const [showAdd, setShowAdd] = useState(false);
@@ -128,6 +155,9 @@ const Products: React.FC = () => {
   const [newCostPerUnit, setNewCostPerUnit] = useState('');
   const [costDescription, setCostDescription] = useState('');
   const [costAmount, setCostAmount] = useState('');
+  const [newTrackStock, setNewTrackStock] = useState(false);
+  const [newStockQty, setNewStockQty] = useState('');
+  const [reorderMode, setReorderMode] = useState(false);
 
   // ─── Focus state ───────────────────────────────────────────
   const [focusedField, setFocusedField] = useState<string | null>(null);
@@ -223,6 +253,8 @@ const Products: React.FC = () => {
     setPriceError(false);
     setJustAdded(false);
     setFocusedField(null);
+    setNewTrackStock(false);
+    setNewStockQty('');
   }, []);
 
   const openAddModal = useCallback(() => {
@@ -240,6 +272,8 @@ const Products: React.FC = () => {
     setNewPrice(product.pricePerUnit.toString());
     setNewCostPerUnit(product.costPerUnit ? product.costPerUnit.toString() : '');
     setNewUnit(product.unit);
+    setNewTrackStock(product.trackStock || false);
+    setNewStockQty(product.stockQuantity != null ? product.stockQuantity.toString() : '');
     setNameError(false);
     setPriceError(false);
     setJustAdded(false);
@@ -306,6 +340,8 @@ const Products: React.FC = () => {
       costPerUnit: newCostPerUnit ? parseFloat(newCostPerUnit) : undefined,
       unit: newUnit,
       isActive: true,
+      trackStock: newTrackStock || undefined,
+      stockQuantity: newTrackStock && newStockQty ? parseFloat(newStockQty) : undefined,
     });
     successNotification();
 
@@ -354,11 +390,13 @@ const Products: React.FC = () => {
       pricePerUnit: parseFloat(newPrice) || 0,
       costPerUnit: newCostPerUnit ? parseFloat(newCostPerUnit) : undefined,
       unit: newUnit,
+      trackStock: newTrackStock || undefined,
+      stockQuantity: newTrackStock && newStockQty ? parseFloat(newStockQty) : undefined,
     });
     successNotification();
     showToast('product updated', 'success');
     closeAddModal();
-  }, [editingProduct, newName, newPrice, newCostPerUnit, newUnit, updateProduct, showToast, closeAddModal]);
+  }, [editingProduct, newName, newPrice, newCostPerUnit, newUnit, newTrackStock, newStockQty, updateProduct, showToast, closeAddModal]);
 
   const handleAddCost = useCallback(() => {
     const hasDescErr = !costDescription.trim();
@@ -496,6 +534,7 @@ const Products: React.FC = () => {
       const sub: string[] = [];
       if (item.totalSold > 0) sub.push(`${item.totalSold} sold`);
       if (marginPct !== null) sub.push(`${marginPct}% margin`);
+      if (item.trackStock && item.stockQuantity != null) sub.push(`${item.stockQuantity} in stock`);
 
       return (
         <AnimatedProductCard index={index}>
@@ -538,8 +577,58 @@ const Products: React.FC = () => {
         </AnimatedProductCard>
       );
     },
-    [currency, openEditModal, handleToggleActive, handleDelete]
+    [currency, openEditModal, handleToggleActive, handleDelete, reorderMode, sortedProducts, setProductOrder]
   );
+
+  // ─── Drag-to-reorder ──────────────────────────────────────
+  const renderDraggableProduct = useCallback(
+    ({ item, drag, isActive: isDragging }: RenderItemParams<SellerProduct>) => {
+      const initial = item.name.charAt(0).toUpperCase();
+      const sub: string[] = [];
+      if (item.totalSold > 0) sub.push(`${item.totalSold} sold`);
+      if (item.trackStock && item.stockQuantity != null) sub.push(`${item.stockQuantity} in stock`);
+
+      return (
+        <ScaleDecorator>
+          <TouchableOpacity
+            style={[
+              styles.productRow,
+              !item.isActive && styles.productRowInactive,
+              isDragging && styles.productRowDragging,
+            ]}
+            activeOpacity={0.65}
+            onLongPress={drag}
+            delayLongPress={150}
+          >
+            <View style={[styles.rowAvatar, !item.isActive && styles.rowAvatarInactive]}>
+              <Text style={styles.rowAvatarText}>{initial}</Text>
+            </View>
+            <View style={styles.rowContent}>
+              <View style={styles.rowTop}>
+                <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.rowPrice}>
+                  {currency} {item.pricePerUnit.toFixed(2)}
+                  <Text style={styles.rowUnit}>/{item.unit}</Text>
+                </Text>
+              </View>
+              {sub.length > 0 && (
+                <Text style={styles.rowSub} numberOfLines={1}>
+                  {sub.join('  \u00B7  ')}
+                </Text>
+              )}
+            </View>
+            <Feather name="menu" size={18} color={isDragging ? CALM.accent : CALM.neutral} />
+          </TouchableOpacity>
+        </ScaleDecorator>
+      );
+    },
+    [currency]
+  );
+
+  const handleDragEnd = useCallback(({ data }: { data: SellerProduct[] }) => {
+    lightTap();
+    setProductOrder(data.map((p) => p.id));
+  }, [setProductOrder]);
 
   // ─── FlatList render helpers ────────────────────────────────
   const productKeyExtractor = useCallback((p: SellerProduct) => p.id, []);
@@ -555,16 +644,35 @@ const Products: React.FC = () => {
             <Text style={styles.listHeaderBadgeText}>{products.length}</Text>
           </View>
         </View>
-        <TouchableOpacity
-          style={styles.logCostHeaderButton}
-          activeOpacity={0.7}
-          onPress={() => handleOpenCostModal()}
-          accessibilityRole="button"
-          accessibilityLabel="Log ingredient cost"
-        >
-          <Feather name="plus-circle" size={14} color={CALM.bronze} />
-          <Text style={styles.logCostHeaderText}>log cost</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+          {products.length > 1 && (
+            <TouchableOpacity
+              style={[styles.reorderButton, reorderMode && styles.reorderButtonActive]}
+              activeOpacity={0.7}
+              onPress={() => {
+                lightTap();
+                setReorderMode((v) => !v);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={reorderMode ? 'Done reordering' : 'Reorder products'}
+            >
+              <Feather name="list" size={14} color={reorderMode ? '#fff' : CALM.bronze} />
+              <Text style={[styles.reorderText, reorderMode && styles.reorderTextActive]}>
+                {reorderMode ? 'done' : 'reorder'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.logCostHeaderButton}
+            activeOpacity={0.7}
+            onPress={() => handleOpenCostModal()}
+            accessibilityRole="button"
+            accessibilityLabel="Log ingredient cost"
+          >
+            <Feather name="plus-circle" size={14} color={CALM.bronze} />
+            <Text style={styles.logCostHeaderText}>log cost</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search (shows when 4+ products) */}
@@ -812,6 +920,55 @@ const Products: React.FC = () => {
         <Feather name="chevron-right" size={16} color={CALM.textMuted} />
       </TouchableOpacity>
 
+      {/* ── Section: Stock ──────────────────────────────── */}
+      <View style={styles.sectionDivider}>
+        <Text style={styles.sectionLabel}>stock</Text>
+        <View style={styles.sectionLine} />
+      </View>
+
+      <TouchableOpacity
+        style={styles.syncToggleRow}
+        activeOpacity={0.7}
+        onPress={() => {
+          lightTap();
+          setNewTrackStock((v) => !v);
+        }}
+      >
+        <View
+          style={[
+            styles.syncToggleBox,
+            newTrackStock && styles.syncToggleBoxActive,
+          ]}
+        >
+          {newTrackStock && <Feather name="check" size={12} color="#fff" />}
+        </View>
+        <Text style={styles.syncToggleText}>track stock</Text>
+      </TouchableOpacity>
+
+      {newTrackStock && (
+        <View style={{ marginTop: 8 }}>
+          <Text style={styles.modalLabel}>current stock</Text>
+          <View
+            style={[
+              styles.currencyInputRow,
+              focusedField === 'stock' && styles.currencyInputRowFocused,
+            ]}
+          >
+            <TextInput
+              style={[styles.currencyInput, { paddingLeft: 12 }]}
+              value={newStockQty}
+              onChangeText={setNewStockQty}
+              placeholder="0"
+              placeholderTextColor={CALM.textMuted}
+              keyboardType="decimal-pad"
+              onFocus={() => setFocusedField('stock')}
+              onBlur={() => setFocusedField(null)}
+            />
+            <Text style={styles.currencyPrefix}>{newUnit}</Text>
+          </View>
+        </View>
+      )}
+
       </>
       )}
 
@@ -892,6 +1049,23 @@ const Products: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      {reorderMode && sortedProducts.length > 1 ? (
+        <>
+          {ListHeaderComponent}
+          <Text style={styles.dragHint}>hold & drag to reorder</Text>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <DraggableFlatList
+              data={sortedProducts}
+              keyExtractor={productKeyExtractor}
+              renderItem={renderDraggableProduct}
+              onDragEnd={handleDragEnd}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.listContent}
+              activationDistance={5}
+            />
+          </GestureHandlerRootView>
+        </>
+      ) : (
       <FlatList
         data={products.length === 0 ? products : filteredProducts}
         renderItem={renderProduct}
@@ -943,6 +1117,7 @@ const Products: React.FC = () => {
         maxToRenderPerBatch={15}
         windowSize={7}
       />
+      )}
 
       {/* Bottom-anchored add button */}
       {products.length > 0 && (
@@ -1876,6 +2051,37 @@ const styles = StyleSheet.create({
   costDateText: {
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
+  },
+  productRowDragging: {
+    backgroundColor: withAlpha(CALM.accent, 0.06),
+    borderWidth: 1,
+    borderColor: withAlpha(CALM.accent, 0.2),
+  },
+  dragHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.neutral,
+    textAlign: 'center',
+    paddingVertical: SPACING.xs,
+  },
+  reorderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+  },
+  reorderButtonActive: {
+    backgroundColor: CALM.bronze,
+  },
+  reorderText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.bronze,
+  },
+  reorderTextActive: {
+    color: '#fff',
   },
 });
 

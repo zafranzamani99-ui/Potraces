@@ -9,6 +9,7 @@ import {
   FlatList,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { CategoryOption } from '../../types';
 import { lightTap } from '../../services/haptics';
@@ -28,8 +29,22 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
   label,
   layout = 'horizontal',
 }) => {
+  const navigation = useNavigation<any>();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const selectedCategory = categories.find((c) => c.id === selectedId);
+
+  const settingsHint = (
+    <TouchableOpacity
+      style={styles.settingsHint}
+      onPress={() => navigation.navigate('Settings' as any, { scrollTo: 'categories' })}
+      activeOpacity={0.6}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    >
+      <Text style={styles.settingsHintText}>Can't find yours?</Text>
+      <Text style={styles.settingsHintLink}>Manage in Settings</Text>
+      <Feather name="arrow-right" size={12} color={CALM.accent} />
+    </TouchableOpacity>
+  );
 
   const renderCategoryButton = (category: CategoryOption) => (
     <TouchableOpacity
@@ -177,6 +192,19 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
                     </TouchableOpacity>
                   );
                 }}
+                ListFooterComponent={
+                  <TouchableOpacity
+                    style={styles.dropdownFooter}
+                    onPress={() => {
+                      setDropdownOpen(false);
+                      navigation.navigate('Settings' as any, { scrollTo: 'categories' });
+                    }}
+                    activeOpacity={0.6}
+                  >
+                    <Feather name="settings" size={14} color={CALM.accent} />
+                    <Text style={styles.dropdownFooterText}>Manage categories in Settings</Text>
+                  </TouchableOpacity>
+                }
               />
             </View>
           </TouchableOpacity>
@@ -201,6 +229,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
           {categories.map(renderCategoryButton)}
         </View>
       )}
+      {settingsHint}
     </View>
   );
 };
@@ -319,6 +348,37 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.textPrimary,
+  },
+  // Settings hint
+  settingsHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+    paddingHorizontal: 2,
+  },
+  settingsHintText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  settingsHintLink: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.accent,
+  },
+  dropdownFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: CALM.border,
+  },
+  dropdownFooterText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.accent,
   },
 });
 

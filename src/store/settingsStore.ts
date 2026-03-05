@@ -17,6 +17,11 @@ import { usePartTimeStore } from './partTimeStore';
 import { useOnTheRoadStore } from './onTheRoadStore';
 import { useMixedStore } from './mixedStore';
 
+export interface PaymentQr {
+  uri: string;
+  label: string;
+}
+
 interface SettingsState {
   userName: string;
   currency: string;
@@ -24,12 +29,17 @@ interface SettingsState {
   notificationsEnabled: boolean;
   businessModeEnabled: boolean;
   defaultMode: 'personal' | 'business';
+  paymentQrs: PaymentQr[];
   setUserName: (name: string) => void;
   setCurrency: (currency: string) => void;
   setHapticEnabled: (enabled: boolean) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
   setBusinessModeEnabled: (enabled: boolean) => void;
   setDefaultMode: (mode: 'personal' | 'business') => void;
+  addPaymentQr: (uri: string, label: string) => void;
+  removePaymentQr: (index: number) => void;
+  replacePaymentQr: (index: number, uri: string, label?: string) => void;
+  updatePaymentQrLabel: (index: number, label: string) => void;
   clearAllData: () => void;
 }
 
@@ -42,6 +52,7 @@ export const useSettingsStore = create<SettingsState>()(
       notificationsEnabled: true,
       businessModeEnabled: false,
       defaultMode: 'personal',
+      paymentQrs: [],
 
       setUserName: (userName) => set({ userName }),
       setCurrency: (currency) => set({ currency }),
@@ -49,6 +60,18 @@ export const useSettingsStore = create<SettingsState>()(
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setBusinessModeEnabled: (businessModeEnabled) => set({ businessModeEnabled }),
       setDefaultMode: (defaultMode) => set({ defaultMode }),
+      addPaymentQr: (uri, label) => set((s) => ({
+        paymentQrs: s.paymentQrs.length < 2 ? [...s.paymentQrs, { uri, label }] : s.paymentQrs,
+      })),
+      removePaymentQr: (index) => set((s) => ({
+        paymentQrs: s.paymentQrs.filter((_, i) => i !== index),
+      })),
+      replacePaymentQr: (index, uri, label) => set((s) => ({
+        paymentQrs: s.paymentQrs.map((q, i) => i === index ? { uri, label: label ?? q.label } : q),
+      })),
+      updatePaymentQrLabel: (index, label) => set((s) => ({
+        paymentQrs: s.paymentQrs.map((q, i) => i === index ? { ...q, label } : q),
+      })),
 
       clearAllData: () => {
         usePersonalStore.setState({
@@ -144,12 +167,28 @@ export const useSettingsStore = create<SettingsState>()(
           notificationsEnabled: true,
           businessModeEnabled: false,
           defaultMode: 'personal',
+          paymentQrs: [],
         });
       },
     }),
     {
       name: 'settings-storage',
       storage: createJSONStorage(() => AsyncStorage),
+      // Migrate old paymentQrUri/paymentQrUris → paymentQrs
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        const raw = state as any;
+        // Migrate from single string
+        if (raw.paymentQrUri && (!state.paymentQrs || state.paymentQrs.length === 0)) {
+          state.paymentQrs = [{ uri: raw.paymentQrUri, label: 'QR 1' }];
+          delete raw.paymentQrUri;
+        }
+        // Migrate from string array
+        if (raw.paymentQrUris && Array.isArray(raw.paymentQrUris) && raw.paymentQrUris.length > 0 && (!state.paymentQrs || state.paymentQrs.length === 0)) {
+          state.paymentQrs = raw.paymentQrUris.map((uri: string, i: number) => ({ uri, label: `QR ${i + 1}` }));
+          delete raw.paymentQrUris;
+        }
+      },
     }
   )
 );

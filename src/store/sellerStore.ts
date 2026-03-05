@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SellerState, OrderStatus, SellerOrder } from '../types';
+import { SellerState, OrderStatus, SellerOrder, SellerOrderItem, SellerPaymentMethod } from '../types';
 
 // Generate a unique 5-char order code: 2 random uppercase letters + 3 random digits
 function generateOrderCode(existingOrders: SellerOrder[]): string {
@@ -32,6 +32,8 @@ export const useSellerStore = create<SellerState>()(
       customUnits: [],
       hiddenUnits: [],
       unitOrder: [],
+      costTemplates: [],
+      productOrder: [],
 
       // ─── Products ───────────────────────────────────────
       addProduct: (product) =>
@@ -66,11 +68,15 @@ export const useSellerStore = create<SellerState>()(
           const updatedProducts = state.products.map((p) => {
             const orderItem = order.items.find((i) => i.productId === p.id);
             if (orderItem) {
-              return {
+              const updates: any = {
                 ...p,
                 totalSold: p.totalSold + orderItem.quantity,
                 updatedAt: new Date(),
               };
+              if (p.trackStock && p.stockQuantity != null) {
+                updates.stockQuantity = Math.max(0, p.stockQuantity - orderItem.quantity);
+              }
+              return updates;
             }
             return p;
           });
@@ -107,20 +113,116 @@ export const useSellerStore = create<SellerState>()(
       markOrderPaid: (id, paymentMethod) =>
         set((state) => ({
           orders: state.orders.map((o) =>
-            o.id === id ? { ...o, isPaid: true, paymentMethod, paidAt: new Date(), updatedAt: new Date() } : o
+            o.id === id ? { ...o, isPaid: true, paidAmount: o.totalAmount, paymentMethod, paidAt: new Date(), updatedAt: new Date() } : o
           ),
         })),
 
       markOrdersPaid: (ids, paymentMethod) =>
         set((state) => ({
           orders: state.orders.map((o) =>
-            ids.includes(o.id) ? { ...o, isPaid: true, paymentMethod, paidAt: new Date(), updatedAt: new Date() } : o
+            ids.includes(o.id) ? { ...o, isPaid: true, paidAmount: o.totalAmount, paymentMethod, paidAt: new Date(), updatedAt: new Date() } : o
           ),
         })),
 
       deleteOrder: (id) =>
+        set((state) => {
+          const order = state.orders.find((o) => o.id === id);
+          const updatedProducts = order
+            ? state.products.map((p) => {
+                const item = order.items.find((i) => i.productId === p.id);
+                if (item) {
+                  const updates: any = { ...p, totalSold: Math.max(0, p.totalSold - item.quantity), updatedAt: new Date() };
+                  if (p.trackStock && p.stockQuantity != null) {
+                    updates.stockQuantity = p.stockQuantity + item.quantity;
+                  }
+                  return updates;
+                }
+                return p;
+              })
+            : state.products;
+          return {
+            orders: state.orders.filter((o) => o.id !== id),
+            products: updatedProducts,
+          };
+        }),
+
+      deleteOrders: (ids) =>
+        set((state) => {
+          const toDelete = state.orders.filter((o) => ids.includes(o.id));
+          // Aggregate quantity adjustments per product
+          const adjustments = new Map<string, number>();
+          for (const order of toDelete) {
+            for (const item of order.items) {
+              adjustments.set(item.productId, (adjustments.get(item.productId) || 0) + item.quantity);
+            }
+          }
+          const updatedProducts = adjustments.size > 0
+            ? state.products.map((p) => {
+                const qty = adjustments.get(p.id);
+                if (qty) {
+                  const updates: any = { ...p, totalSold: Math.max(0, p.totalSold - qty), updatedAt: new Date() };
+                  if (p.trackStock && p.stockQuantity != null) {
+                    updates.stockQuantity = p.stockQuantity + qty;
+                  }
+                  return updates;
+                }
+                return p;
+              })
+            : state.products;
+          return {
+            orders: state.orders.filter((o) => !ids.includes(o.id)),
+            products: updatedProducts,
+          };
+        }),
+
+      updateOrderItems: (id, newItems) =>
+        set((state) => {
+          const order = state.orders.find((o) => o.id === id);
+          if (!order) return state;
+          const oldItems = order.items;
+          const newTotal = newItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+          // Build per-product quantity diffs
+          const diffs = new Map<string, number>();
+          for (const item of oldItems) diffs.set(item.productId, -(item.quantity));
+          for (const item of newItems) diffs.set(item.productId, (diffs.get(item.productId) || 0) + item.quantity);
+
+          const updatedProducts = state.products.map((p) => {
+            const diff = diffs.get(p.id);
+            if (diff) {
+              const updates: any = { ...p, totalSold: Math.max(0, p.totalSold + diff), updatedAt: new Date() };
+              if (p.trackStock && p.stockQuantity != null) {
+                updates.stockQuantity = Math.max(0, p.stockQuantity - diff);
+              }
+              return updates;
+            }
+            return p;
+          });
+
+          return {
+            orders: state.orders.map((o) =>
+              o.id === id
+                ? { ...o, items: newItems, totalAmount: newTotal, updatedAt: new Date() }
+                : o
+            ),
+            products: updatedProducts,
+          };
+        }),
+
+      recordPayment: (id, amount, paymentMethod) =>
         set((state) => ({
-          orders: state.orders.filter((o) => o.id !== id),
+          orders: state.orders.map((o) => {
+            if (o.id !== id) return o;
+            const newPaidAmount = (o.paidAmount || 0) + amount;
+            const fullyPaid = newPaidAmount >= o.totalAmount;
+            return {
+              ...o,
+              paidAmount: newPaidAmount,
+              isPaid: fullyPaid,
+              paymentMethod,
+              paidAt: fullyPaid ? new Date() : o.paidAt,
+              updatedAt: new Date(),
+            };
+          }),
         })),
 
       markOrdersTransferred: (ids, transferId) =>
@@ -279,6 +381,30 @@ export const useSellerStore = create<SellerState>()(
 
       setUnitOrder: (order) => set({ unitOrder: order }),
 
+      // ─── Product Ordering ──────────────────────────────
+      setProductOrder: (ids) => set({ productOrder: ids }),
+
+      // ─── Cost Templates ────────────────────────────────
+      addCostTemplate: (template) =>
+        set((state) => ({
+          costTemplates: [
+            { ...template, id: Date.now().toString() },
+            ...state.costTemplates,
+          ],
+        })),
+
+      updateCostTemplate: (id, updates) =>
+        set((state) => ({
+          costTemplates: state.costTemplates.map((t) =>
+            t.id === id ? { ...t, ...updates } : t
+          ),
+        })),
+
+      deleteCostTemplate: (id) =>
+        set((state) => ({
+          costTemplates: state.costTemplates.filter((t) => t.id !== id),
+        })),
+
       // ─── Derived Data ──────────────────────────────────
       getSeasonOrders: (seasonId) => {
         return get().orders.filter((o) => o.seasonId === seasonId);
@@ -340,6 +466,8 @@ export const useSellerStore = create<SellerState>()(
         customUnits: state.customUnits,
         hiddenUnits: state.hiddenUnits,
         unitOrder: state.unitOrder,
+        costTemplates: state.costTemplates,
+        productOrder: state.productOrder,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -374,6 +502,13 @@ export const useSellerStore = create<SellerState>()(
           state.customUnits = state.customUnits || [];
           state.hiddenUnits = state.hiddenUnits || [];
           state.unitOrder = state.unitOrder || [];
+          state.costTemplates = state.costTemplates || [];
+          state.productOrder = state.productOrder || [];
+          // Backfill paidAmount for existing orders
+          state.orders = state.orders.map((o: any) => ({
+            ...o,
+            paidAmount: o.paidAmount != null ? o.paidAmount : (o.isPaid ? o.totalAmount : 0),
+          }));
 
           // Backfill order codes for existing orders without one
           const needsCodes = state.orders.some((o: any) => !o.orderNumber);

@@ -1,17 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
+  ScrollView,
   TextInput,
   Switch,
   TouchableOpacity,
   Alert,
   Keyboard,
+  Pressable,
+  ActivityIndicator,
+  Modal,
+  InteractionManager,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -19,7 +24,7 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useAppStore } from '../../store/appStore';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useWalletStore } from '../../store/walletStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { FREE_TIER, PREMIUM_CONFIG } from '../../constants/premium';
 import { RootStackParamList } from '../../types';
 import ModeToggle from '../../components/common/ModeToggle';
@@ -34,6 +39,7 @@ const CURRENCY_OPTIONS = ['RM', 'USD', 'EUR', 'GBP', 'SGD'];
 
 const Settings: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<{ Settings: { scrollTo?: string } }, 'Settings'>>();
   const { showToast } = useToast();
   const mode = useAppStore((state) => state.mode);
   const setMode = useAppStore((state) => state.setMode);
@@ -45,27 +51,58 @@ const Settings: React.FC = () => {
   const walletCount = useWalletStore((s) => s.wallets.length);
   const budgetCount = usePersonalStore((s) => s.budgets.length);
 
+  const [ready, setReady] = useState(false);
   const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
   const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment'>('expense');
   const [unitManagerVisible, setUnitManagerVisible] = useState(false);
+  const [qrActionIndex, setQrActionIndex] = useState<number | null>(null);
+  const [qrLoadingIndex, setQrLoadingIndex] = useState<number | null>(null);
+  const pendingReplaceRef = useRef<number | null>(null);
+  const scrollRef = useRef<any>(null);
+  const sectionY = useRef<Record<string, number>>({});
 
-  const {
-    userName,
-    currency,
-    hapticEnabled,
-    notificationsEnabled,
-    businessModeEnabled,
-    defaultMode,
-    setUserName,
-    setCurrency,
-    setHapticEnabled,
-    setNotificationsEnabled,
-    setBusinessModeEnabled,
-    setDefaultMode,
-    clearAllData,
-  } = useSettingsStore();
+  const userName = useSettingsStore((s) => s.userName);
+  const currency = useSettingsStore((s) => s.currency);
+  const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
+  const notificationsEnabled = useSettingsStore((s) => s.notificationsEnabled);
+  const businessModeEnabled = useSettingsStore((s) => s.businessModeEnabled);
+  const defaultMode = useSettingsStore((s) => s.defaultMode);
+  const setUserName = useSettingsStore((s) => s.setUserName);
+  const setCurrency = useSettingsStore((s) => s.setCurrency);
+  const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
+  const setNotificationsEnabled = useSettingsStore((s) => s.setNotificationsEnabled);
+  const setBusinessModeEnabled = useSettingsStore((s) => s.setBusinessModeEnabled);
+  const setDefaultMode = useSettingsStore((s) => s.setDefaultMode);
+  const paymentQrs = useSettingsStore((s) => s.paymentQrs);
+  const addPaymentQr = useSettingsStore((s) => s.addPaymentQr);
+  const removePaymentQr = useSettingsStore((s) => s.removePaymentQr);
+  const replacePaymentQr = useSettingsStore((s) => s.replacePaymentQr);
+  const updatePaymentQrLabel = useSettingsStore((s) => s.updatePaymentQrLabel);
+  const clearAllData = useSettingsStore((s) => s.clearAllData);
 
-  const handleCurrencyPress = () => {
+  useEffect(() => {
+    if (route.params?.scrollTo) {
+      setReady(true);
+      return;
+    }
+    const task = InteractionManager.runAfterInteractions(() => setReady(true));
+    return () => task.cancel();
+  }, []);
+
+  useEffect(() => {
+    const target = route.params?.scrollTo;
+    if (!target || !ready) return;
+    // Small delay to let onLayout fire after deferred sections render
+    const timer = setTimeout(() => {
+      if (sectionY.current[target] !== undefined) {
+        scrollRef.current?.scrollTo({ y: sectionY.current[target], animated: true });
+      }
+      navigation.setParams({ scrollTo: undefined } as any);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [route.params?.scrollTo, ready]);
+
+  const handleCurrencyPress = useCallback(() => {
     lightTap();
     Alert.alert(
       'Select Currency',
@@ -81,9 +118,9 @@ const Settings: React.FC = () => {
         { text: 'Cancel', style: 'cancel' as const },
       ]
     );
-  };
+  }, [currency, setCurrency, showToast]);
 
-  const handleDefaultModePress = () => {
+  const handleDefaultModePress = useCallback(() => {
     lightTap();
     Alert.alert('Default Mode', 'Choose which mode opens on app launch', [
       {
@@ -102,25 +139,99 @@ const Settings: React.FC = () => {
       },
       { text: 'Cancel', style: 'cancel' },
     ]);
-  };
+  }, [defaultMode, setDefaultMode, showToast]);
 
-  const handleViewReports = () => {
+  const handleViewReports = useCallback(() => {
     lightTap();
     navigation.navigate(
       mode === 'personal' ? 'PersonalReports' : 'BusinessReports'
     );
-  };
+  }, [mode, navigation]);
 
-  const handleExportData = () => {
+  const handleExportData = useCallback(() => {
     lightTap();
     Alert.alert(
       'Export Data',
       'Export functionality will be available in a future update. Your data is safely stored locally on your device.',
       [{ text: 'OK' }]
     );
-  };
+  }, []);
 
-  const handleClearData = () => {
+  const handlePickQrImage = useCallback(async (replaceIndex?: number) => {
+    lightTap();
+    setQrLoadingIndex(replaceIndex ?? paymentQrs.length);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.7,
+    });
+    setQrLoadingIndex(null);
+    if (result.canceled || !result.assets?.[0]) return;
+    const uri = result.assets[0].uri;
+
+    // Prompt for label
+    Alert.prompt(
+      replaceIndex !== undefined ? 'Update QR Label' : 'Name this QR',
+      'e.g. Maybank, TnG, ShopeePay',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Save',
+          onPress: (label?: string) => {
+            const qrLabel = (label || '').trim() || `QR ${replaceIndex !== undefined ? replaceIndex + 1 : paymentQrs.length + 1}`;
+            if (replaceIndex !== undefined) {
+              replacePaymentQr(replaceIndex, uri, qrLabel);
+              showToast('QR updated', 'success');
+            } else {
+              addPaymentQr(uri, qrLabel);
+              showToast('QR added', 'success');
+            }
+          },
+        },
+      ],
+      'plain-text',
+      replaceIndex !== undefined ? paymentQrs[replaceIndex]?.label : '',
+    );
+  }, [paymentQrs, replacePaymentQr, addPaymentQr, showToast]);
+
+  const handleQrLongPress = useCallback((index: number) => {
+    lightTap();
+    setQrActionIndex(index);
+  }, []);
+
+  const handleQrAction = useCallback((action: 'replace' | 'rename' | 'delete') => {
+    const index = qrActionIndex;
+    if (index === null) return;
+    const qr = paymentQrs[index];
+    if (!qr) return;
+    setQrActionIndex(null);
+
+    if (action === 'replace') {
+      // Store index — picker launches from Modal's onDismiss when native VC is truly gone
+      pendingReplaceRef.current = index;
+    } else if (action === 'rename') {
+      Alert.prompt(
+        'Rename QR',
+        'Enter a new label',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Save',
+            onPress: (newLabel?: string) => {
+              if (newLabel?.trim()) updatePaymentQrLabel(index, newLabel.trim());
+            },
+          },
+        ],
+        'plain-text',
+        qr.label,
+      );
+    } else if (action === 'delete') {
+      removePaymentQr(index);
+      showToast('QR removed', 'success');
+    }
+  }, [qrActionIndex, paymentQrs, updatePaymentQrLabel, removePaymentQr, showToast]);
+
+  const handleClearData = useCallback(() => {
     Alert.alert(
       'Clear All Data',
       'This will permanently delete all transactions, subscriptions, budgets, products, sales, suppliers, debts, splits, customers, and orders. This cannot be undone.',
@@ -136,16 +247,18 @@ const Settings: React.FC = () => {
         },
       ]
     );
-  };
+  }, [clearAllData, showToast]);
 
   return (
     <View style={styles.container}>
       <ModeToggle />
-      <KeyboardAwareScrollView
+      <ScrollView
+        ref={scrollRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
       >
         {/* Profile */}
         <Text style={styles.sectionHeader}>Profile</Text>
@@ -280,6 +393,7 @@ const Settings: React.FC = () => {
           </View>
         </Card>
 
+        {ready && <>
         {/* Business Income Type */}
         {businessModeEnabled && mode === 'business' && (
           <>
@@ -311,7 +425,7 @@ const Settings: React.FC = () => {
         {/* Categories — show in personal mode, hide for seller & stall in business mode */}
         {(mode === 'personal' || (incomeType !== 'seller' && incomeType !== 'stall')) && (
           <>
-            <Text style={styles.sectionHeader}>Categories</Text>
+            <Text style={styles.sectionHeader} onLayout={(e) => { sectionY.current.categories = e.nativeEvent.layout.y; }}>Categories</Text>
             <Card style={styles.card}>
               <TouchableOpacity
                 style={styles.settingRow}
@@ -491,6 +605,62 @@ const Settings: React.FC = () => {
           />
         </Card>
 
+        {/* Payment QR */}
+        <Text style={styles.sectionHeader} onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }}>Payment QR</Text>
+        <Card style={styles.card}>
+          <Text style={styles.qrSubtitle}>
+            Add up to 2 QR codes. View them from the Dashboard.
+          </Text>
+          <View style={styles.qrSlots}>
+            {[0, 1].map((idx) => {
+              const qr = paymentQrs[idx];
+              return (
+                <View key={idx} style={styles.qrSlot}>
+                  {qr ? (
+                    <TouchableOpacity
+                      style={styles.qrSlotFilled}
+                      onLongPress={() => handleQrLongPress(idx)}
+                      delayLongPress={400}
+                      activeOpacity={0.7}
+                      disabled={qrLoadingIndex !== null}
+                    >
+                      <View style={styles.qrSlotIcon}>
+                        {qrLoadingIndex === idx ? (
+                          <ActivityIndicator size="small" color={CALM.accent} />
+                        ) : (
+                          <Feather name="check-circle" size={20} color={CALM.accent} />
+                        )}
+                      </View>
+                      <Text style={styles.qrSlotLabel} numberOfLines={1}>
+                        {qrLoadingIndex === idx ? 'Opening...' : qr.label}
+                      </Text>
+                      {qrLoadingIndex !== idx && (
+                        <Feather name="more-vertical" size={16} color={CALM.textMuted} />
+                      )}
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.qrSlotEmpty}
+                      onPress={() => handlePickQrImage()}
+                      activeOpacity={0.6}
+                      disabled={qrLoadingIndex !== null}
+                    >
+                      {qrLoadingIndex === idx ? (
+                        <ActivityIndicator size="small" color={CALM.accent} />
+                      ) : (
+                        <Feather name="plus" size={22} color={CALM.accent} />
+                      )}
+                      <Text style={styles.qrSlotAddText}>
+                        {qrLoadingIndex === idx ? 'Opening...' : 'Add QR'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </Card>
+
         {/* Data */}
         <Text style={styles.sectionHeader}>Data</Text>
         <Card style={styles.card}>
@@ -534,7 +704,70 @@ const Settings: React.FC = () => {
         </Card>
 
         <View style={{ height: SPACING['3xl'] }} />
-      </KeyboardAwareScrollView>
+        </>}
+      </ScrollView>
+
+      {/* QR Action Sheet — Modal is safe here (no native picker launched from inside) */}
+      <Modal
+        visible={qrActionIndex !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setQrActionIndex(null)}
+        onDismiss={() => {
+          if (pendingReplaceRef.current !== null) {
+            const idx = pendingReplaceRef.current;
+            pendingReplaceRef.current = null;
+            handlePickQrImage(idx);
+          }
+        }}
+      >
+        <Pressable style={styles.qrActionOverlay} onPress={() => setQrActionIndex(null)}>
+          <View style={styles.qrActionSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.qrActionTitle}>
+              {qrActionIndex !== null ? paymentQrs[qrActionIndex]?.label ?? '' : ''}
+            </Text>
+
+            <TouchableOpacity
+              style={styles.qrActionItem}
+              onPress={() => handleQrAction('replace')}
+              activeOpacity={0.6}
+            >
+              <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}>
+                <Feather name="image" size={18} color={CALM.accent} />
+              </View>
+              <Text style={styles.qrActionText}>Replace Image</Text>
+              <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.qrActionDivider} />
+
+            <TouchableOpacity
+              style={styles.qrActionItem}
+              onPress={() => handleQrAction('rename')}
+              activeOpacity={0.6}
+            >
+              <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}>
+                <Feather name="edit-2" size={18} color={CALM.accent} />
+              </View>
+              <Text style={styles.qrActionText}>Rename</Text>
+              <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.qrActionDivider} />
+
+            <TouchableOpacity
+              style={styles.qrActionItem}
+              onPress={() => handleQrAction('delete')}
+              activeOpacity={0.6}
+            >
+              <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(CALM.neutral, 0.1) }]}>
+                <Feather name="trash-2" size={18} color={CALM.neutral} />
+              </View>
+              <Text style={[styles.qrActionText, { color: CALM.neutral }]}>Delete</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -666,6 +899,99 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: '#fff',
+  },
+  qrSubtitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    marginBottom: SPACING.md,
+  },
+  qrSlots: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  qrSlot: {
+    flex: 1,
+  },
+  qrSlotFilled: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: withAlpha(CALM.accent, 0.06),
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    gap: SPACING.sm,
+  },
+  qrSlotIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.sm,
+    backgroundColor: withAlpha(CALM.accent, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrSlotLabel: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+  },
+  qrSlotEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: CALM.border,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.lg,
+    gap: SPACING.xs,
+  },
+  qrSlotAddText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.accent,
+  },
+  // QR Action Sheet
+  qrActionOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING['2xl'],
+  },
+  qrActionSheet: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
+  },
+  qrActionTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.textPrimary,
+    marginBottom: SPACING.lg,
+    textAlign: 'center',
+  },
+  qrActionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    gap: SPACING.md,
+  },
+  qrActionIconBg: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrActionText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
+  },
+  qrActionDivider: {
+    height: 1,
+    backgroundColor: CALM.border,
   },
 });
 

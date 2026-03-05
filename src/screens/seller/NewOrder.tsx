@@ -38,8 +38,12 @@ const SEARCH_THRESHOLD = 8;
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────
 const NewOrder: React.FC = () => {
-  const { products, addOrder, orders, sellerCustomers, addSellerCustomer, updateSellerCustomer } =
-    useSellerStore();
+  const products = useSellerStore((s) => s.products);
+  const addOrder = useSellerStore((s) => s.addOrder);
+  const orders = useSellerStore((s) => s.orders);
+  const sellerCustomers = useSellerStore((s) => s.sellerCustomers);
+  const addSellerCustomer = useSellerStore((s) => s.addSellerCustomer);
+  const updateSellerCustomer = useSellerStore((s) => s.updateSellerCustomer);
   const activeSeason = useSellerStore((s) => s.getActiveSeason());
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
@@ -445,7 +449,7 @@ const NewOrder: React.FC = () => {
   }, []);
 
   const handleQtyInputSubmit = useCallback((productId: string) => {
-    const parsed = parseInt(editingQtyValue, 10);
+    const parsed = parseFloat(editingQtyValue);
     if (!isNaN(parsed) && parsed >= 0) {
       handleUpdateQuantity(productId, parsed);
     }
@@ -847,17 +851,17 @@ const NewOrder: React.FC = () => {
                           onChangeText={setEditingQtyValue}
                           onSubmitEditing={() => handleQtyInputSubmit(product.id)}
                           onBlur={() => handleQtyInputSubmit(product.id)}
-                          keyboardType="number-pad"
+                          keyboardType="decimal-pad"
                           selectTextOnFocus
                           autoFocus
-                          maxLength={4}
+                          maxLength={6}
                         />
                       ) : (
                         <TouchableOpacity
                           onPress={() => handleQtyTap(product.id, qty)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Text style={styles.qtyText}>{qty}</Text>
+                          <Text style={styles.qtyText}>{qty % 1 === 0 ? qty : qty.toFixed(1)}</Text>
                         </TouchableOpacity>
                       )}
                       <TouchableOpacity

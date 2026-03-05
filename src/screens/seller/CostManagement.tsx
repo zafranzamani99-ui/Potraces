@@ -56,17 +56,19 @@ function useFadeSlide(delay: number) {
 
 // ─── Component ───────────────────────────────────────────────
 const CostManagement: React.FC = () => {
-  const {
-    ingredientCosts,
-    orders,
-    seasons,
-    addIngredientCost,
-    updateIngredientCost,
-    deleteIngredientCost,
-    markCostSynced,
-    markOrdersTransferred,
-    updateSeasonBudget,
-  } = useSellerStore();
+  const ingredientCosts = useSellerStore((s) => s.ingredientCosts);
+  const orders = useSellerStore((s) => s.orders);
+  const seasons = useSellerStore((s) => s.seasons);
+  const addIngredientCost = useSellerStore((s) => s.addIngredientCost);
+  const updateIngredientCost = useSellerStore((s) => s.updateIngredientCost);
+  const deleteIngredientCost = useSellerStore((s) => s.deleteIngredientCost);
+  const markCostSynced = useSellerStore((s) => s.markCostSynced);
+  const markOrdersTransferred = useSellerStore((s) => s.markOrdersTransferred);
+  const updateSeasonBudget = useSellerStore((s) => s.updateSeasonBudget);
+  const costTemplates = useSellerStore((s) => s.costTemplates);
+  const addCostTemplate = useSellerStore((s) => s.addCostTemplate);
+  const updateCostTemplate = useSellerStore((s) => s.updateCostTemplate);
+  const deleteCostTemplate = useSellerStore((s) => s.deleteCostTemplate);
   const activeSeason = useSellerStore((s) => s.getActiveSeason());
   const addTransaction = usePersonalStore((s) => s.addTransaction);
   const deletePersonalTransaction = usePersonalStore((s) => s.deleteTransaction);
@@ -85,6 +87,12 @@ const CostManagement: React.FC = () => {
   const [costAmtError, setCostAmtError] = useState(false);
   const costDescShakeAnim = useRef(new Animated.Value(0)).current;
   const costAmtShakeAnim = useRef(new Animated.Value(0)).current;
+
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [templateDesc, setTemplateDesc] = useState('');
+  const [templateAmt, setTemplateAmt] = useState('');
+  const [showTemplateEditModal, setShowTemplateEditModal] = useState(false);
 
   // ─── Search state ──────────────────────────────────────────
   const [costSearch, setCostSearch] = useState('');
@@ -273,6 +281,12 @@ const CostManagement: React.FC = () => {
       }
 
       successNotification();
+
+      // Save as template if toggled
+      if (saveAsTemplate) {
+        addCostTemplate({ description: desc, amount });
+      }
+
       showToast(syncToPersonal ? 'cost logged + personal expense' : 'cost logged', 'success');
     }
 
@@ -282,7 +296,8 @@ const CostManagement: React.FC = () => {
     setCostDescription('');
     setCostAmount('');
     setSyncToPersonal(false);
-  }, [costDescription, costAmount, editingCostId, syncToPersonal, addIngredientCost, updateIngredientCost, addTransaction, markCostSynced, activeSeason, showToast]);
+    setSaveAsTemplate(false);
+  }, [costDescription, costAmount, editingCostId, syncToPersonal, saveAsTemplate, addIngredientCost, updateIngredientCost, addTransaction, addCostTemplate, markCostSynced, activeSeason, showToast]);
 
   const handleDeleteCost = useCallback((cost: IngredientCost) => {
     warningNotification();
@@ -616,6 +631,7 @@ const CostManagement: React.FC = () => {
 
       {/* ─── Cost Modal ─────────────────────────────────────── */}
       <Modal visible={showCostModal} transparent animationType="fade">
+        <View style={{flex: 1}}>
         <Pressable style={styles.modalOverlay} onPress={Keyboard.dismiss}>
           <KeyboardAwareScrollView
             contentContainerStyle={styles.modalScrollContent}
@@ -654,6 +670,52 @@ const CostManagement: React.FC = () => {
                 </Text>
               </View>
 
+              {/* Template suggestions */}
+              {!editingCostId && costTemplates.length > 0 && !costDescription.trim() && (
+                <View style={{ marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted }}>templates</Text>
+                    <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted }}>{costTemplates.length}</Text>
+                  </View>
+                  <ScrollView style={{ maxHeight: 140 }} showsVerticalScrollIndicator={costTemplates.length > 4} nestedScrollEnabled>
+                    {costTemplates.map((t) => (
+                      <TouchableOpacity
+                        key={t.id}
+                        onPress={() => {
+                          lightTap();
+                          setCostDescription(t.description);
+                          setCostAmount(t.amount.toString());
+                        }}
+                        onLongPress={() => {
+                          warningNotification();
+                          Alert.alert(t.description, '', [
+                            { text: 'cancel', style: 'cancel' },
+                            {
+                              text: 'edit',
+                              onPress: () => {
+                                setEditingTemplateId(t.id);
+                                setTemplateDesc(t.description);
+                                setTemplateAmt(t.amount.toString());
+                                setShowTemplateEditModal(true);
+                              },
+                            },
+                            { text: 'delete', style: 'destructive', onPress: () => deleteCostTemplate(t.id) },
+                          ]);
+                        }}
+                        delayLongPress={400}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, paddingHorizontal: 12, backgroundColor: withAlpha(CALM.bronze, 0.06), borderRadius: RADIUS.md, marginBottom: 4 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Use template: ${t.description}`}
+                      >
+                        <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.textPrimary }} numberOfLines={1}>{t.description}</Text>
+                        <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.bronze, fontWeight: TYPOGRAPHY.weight.medium as any }}>{currency} {t.amount.toFixed(2)}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <Text style={{ fontSize: 10, color: CALM.textMuted, marginTop: 4 }}>tap to use · hold to edit or delete</Text>
+                </View>
+              )}
+
               <Animated.View style={{ transform: [{ translateX: costDescShakeAnim }] }}>
                 <TextInput
                   style={[styles.modalInput, costDescError && styles.modalInputError]}
@@ -686,24 +748,44 @@ const CostManagement: React.FC = () => {
 
               {/* Sync to personal toggle — only for new costs */}
               {!editingCostId && (
-                <TouchableOpacity
-                  style={styles.syncToggleRow}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    lightTap();
-                    setSyncToPersonal((v) => !v);
-                  }}
-                >
-                  <View
-                    style={[
-                      styles.syncToggleBox,
-                      syncToPersonal && styles.syncToggleBoxActive,
-                    ]}
+                <>
+                  <TouchableOpacity
+                    style={styles.syncToggleRow}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      lightTap();
+                      setSyncToPersonal((v) => !v);
+                    }}
                   >
-                    {syncToPersonal && <Feather name="check" size={12} color="#fff" />}
-                  </View>
-                  <Text style={styles.syncToggleText}>also record as personal expense</Text>
-                </TouchableOpacity>
+                    <View
+                      style={[
+                        styles.syncToggleBox,
+                        syncToPersonal && styles.syncToggleBoxActive,
+                      ]}
+                    >
+                      {syncToPersonal && <Feather name="check" size={12} color="#fff" />}
+                    </View>
+                    <Text style={styles.syncToggleText}>also record as personal expense</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.syncToggleRow}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      lightTap();
+                      setSaveAsTemplate((v) => !v);
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.syncToggleBox,
+                        saveAsTemplate && styles.syncToggleBoxActive,
+                      ]}
+                    >
+                      {saveAsTemplate && <Feather name="check" size={12} color="#fff" />}
+                    </View>
+                    <Text style={styles.syncToggleText}>save as template</Text>
+                  </TouchableOpacity>
+                </>
               )}
 
               <View style={styles.modalActions}>
@@ -736,6 +818,86 @@ const CostManagement: React.FC = () => {
             </Pressable>
           </KeyboardAwareScrollView>
         </Pressable>
+
+        {/* ─── Template Edit overlay (inside cost modal) ─── */}
+        {showTemplateEditModal && (
+          <Pressable style={[StyleSheet.absoluteFill, styles.modalOverlay]} onPress={Keyboard.dismiss}>
+            <KeyboardAwareScrollView
+              contentContainerStyle={styles.modalScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>edit template</Text>
+                  <TouchableOpacity
+                    onPress={() => { lightTap(); setShowTemplateEditModal(false); }}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close"
+                  >
+                    <Feather name="x" size={20} color={CALM.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+
+                <TextInput
+                  style={styles.modalInput}
+                  value={templateDesc}
+                  onChangeText={setTemplateDesc}
+                  placeholder="description"
+                  placeholderTextColor={CALM.textMuted}
+                  autoFocus
+                />
+
+                <View style={styles.currencyInputRow}>
+                  <Text style={styles.currencyPrefix}>{currency}</Text>
+                  <TextInput
+                    style={styles.currencyInput}
+                    value={templateAmt}
+                    onChangeText={setTemplateAmt}
+                    placeholder="0.00"
+                    placeholderTextColor={CALM.textMuted}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    onPress={() => { lightTap(); setShowTemplateEditModal(false); }}
+                    style={styles.modalCancel}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.modalCancelText}>cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (!templateDesc.trim() || !templateAmt.trim()) {
+                        warningNotification();
+                        showToast('fill in description and amount', 'error');
+                        return;
+                      }
+                      if (editingTemplateId) {
+                        updateCostTemplate(editingTemplateId, {
+                          description: templateDesc.trim(),
+                          amount: parseFloat(templateAmt) || 0,
+                        });
+                      }
+                      successNotification();
+                      showToast('template updated', 'success');
+                      setShowTemplateEditModal(false);
+                    }}
+                    style={styles.modalConfirm}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.modalConfirmText}>save</Text>
+                  </TouchableOpacity>
+                </View>
+              </Pressable>
+            </KeyboardAwareScrollView>
+          </Pressable>
+        )}
+        </View>
       </Modal>
 
       {/* ─── Budget Modal ───────────────────────────────────── */}

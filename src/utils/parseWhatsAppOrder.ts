@@ -68,22 +68,34 @@ export function parseWhatsAppOrder(
   return { items, unmatched };
 }
 
+// Malay number words
+const MALAY_NUMBERS: Record<string, number> = {
+  setengah: 0.5, suku: 0.25,
+  satu: 1, dua: 2, tiga: 3, empat: 4, lima: 5,
+  enam: 6, tujuh: 7, lapan: 8, sembilan: 9, sepuluh: 10,
+};
+
 function extractQuantity(text: string): number {
-  // Pattern: "x3", "x 3"
-  const xPattern = text.match(/x\s*(\d+)/i);
-  if (xPattern) return parseInt(xPattern[1], 10);
+  // Pattern: Malay number words ("setengah tin", "dua balang")
+  for (const [word, value] of Object.entries(MALAY_NUMBERS)) {
+    if (text.includes(word)) return value;
+  }
 
-  // Pattern: "3 tin", "2 bekas", "1 balang", "5 pack"
-  const unitPattern = text.match(/(\d+)\s*(tin|bekas|balang|pack|piece|pcs|biji|keping|kotak|box)/i);
-  if (unitPattern) return parseInt(unitPattern[1], 10);
+  // Pattern: "x3", "x 3", "x0.5"
+  const xPattern = text.match(/x\s*(\d+\.?\d*)/i);
+  if (xPattern) return parseFloat(xPattern[1]);
 
-  // Pattern: leading number "2 semperit"
-  const leadingNum = text.match(/^(\d+)\s+/);
-  if (leadingNum) return parseInt(leadingNum[1], 10);
+  // Pattern: "3 tin", "0.5 bekas", "2.5 balang"
+  const unitPattern = text.match(/(\d+\.?\d*)\s*(tin|bekas|balang|pack|piece|pcs|biji|keping|kotak|box)/i);
+  if (unitPattern) return parseFloat(unitPattern[1]);
 
-  // Pattern: trailing number "semperit 2"
-  const trailingNum = text.match(/\s+(\d+)$/);
-  if (trailingNum) return parseInt(trailingNum[1], 10);
+  // Pattern: leading number "2 semperit" or "0.5 semperit"
+  const leadingNum = text.match(/^(\d+\.?\d*)\s+/);
+  if (leadingNum) return parseFloat(leadingNum[1]);
+
+  // Pattern: trailing number "semperit 2" or "semperit 0.5"
+  const trailingNum = text.match(/\s+(\d+\.?\d*)$/);
+  if (trailingNum) return parseFloat(trailingNum[1]);
 
   // No quantity found — default to 1 if any product matched
   return 1;
