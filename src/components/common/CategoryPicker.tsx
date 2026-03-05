@@ -20,6 +20,7 @@ interface CategoryPickerProps {
   onSelect: (id: string) => void;
   label?: string;
   layout?: 'horizontal' | 'grid' | 'dropdown';
+  onNavigateToSettings?: () => void;
 }
 
 const CategoryPicker: React.FC<CategoryPickerProps> = ({
@@ -28,15 +29,17 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
   onSelect,
   label,
   layout = 'horizontal',
+  onNavigateToSettings,
 }) => {
   const navigation = useNavigation<any>();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [dropdownAnimation, setDropdownAnimation] = useState<'fade' | 'none'>('fade');
   const selectedCategory = categories.find((c) => c.id === selectedId);
 
   const settingsHint = (
     <TouchableOpacity
       style={styles.settingsHint}
-      onPress={() => navigation.navigate('Settings' as any, { scrollTo: 'categories' })}
+      onPress={() => onNavigateToSettings ? onNavigateToSettings() : navigation.navigate('Settings' as any, { scrollTo: 'categories' })}
       activeOpacity={0.6}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
@@ -121,7 +124,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
         <Modal
           visible={dropdownOpen}
           transparent
-          animationType="fade"
+          animationType={dropdownAnimation}
           onRequestClose={() => setDropdownOpen(false)}
         >
           <TouchableOpacity
@@ -196,8 +199,16 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
                   <TouchableOpacity
                     style={styles.dropdownFooter}
                     onPress={() => {
+                      setDropdownAnimation('none');
                       setDropdownOpen(false);
-                      navigation.navigate('Settings' as any, { scrollTo: 'categories' });
+                      setTimeout(() => {
+                        setDropdownAnimation('fade');
+                        if (onNavigateToSettings) {
+                          onNavigateToSettings();
+                        } else {
+                          navigation.navigate('Settings' as any, { scrollTo: 'categories' });
+                        }
+                      }, 50);
                     }}
                     activeOpacity={0.6}
                   >

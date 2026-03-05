@@ -81,13 +81,21 @@ const Settings: React.FC = () => {
   const clearAllData = useSettingsStore((s) => s.clearAllData);
 
   useEffect(() => {
+    if (ready) return;
     if (route.params?.scrollTo) {
       setReady(true);
       return;
     }
+    // InteractionManager may never fire if a Modal is still animating when this
+    // screen mounts (navigating from inside a Modal). The 400ms fallback ensures
+    // the screen is never permanently blank/unresponsive.
     const task = InteractionManager.runAfterInteractions(() => setReady(true));
-    return () => task.cancel();
-  }, []);
+    const fallback = setTimeout(() => setReady(true), 400);
+    return () => {
+      task.cancel();
+      clearTimeout(fallback);
+    };
+  }, [route.params?.scrollTo]);
 
   useEffect(() => {
     const target = route.params?.scrollTo;

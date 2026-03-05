@@ -834,6 +834,27 @@ const RootNavigator: React.FC = () => {
           })}
         />
         <Stack.Screen
+          name="Settings"
+          component={Settings}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Settings',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
           name="SellerSettings"
           component={Settings}
           options={({ navigation }) => ({

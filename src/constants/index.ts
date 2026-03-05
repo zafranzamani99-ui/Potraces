@@ -341,7 +341,7 @@ export const SPLIT_METHODS = [
 ];
 
 export const DEBT_TYPES = [
-  { label: 'I Owe', value: 'i_owe', icon: 'arrow-up-circle', color: '#DEAB22' },
+  { label: 'I Owe', value: 'i_owe', icon: 'arrow-up-circle', color: '#C1694F' },
   { label: 'They Owe Me', value: 'they_owe', icon: 'arrow-down-circle', color: '#4F5104' },
 ];
 

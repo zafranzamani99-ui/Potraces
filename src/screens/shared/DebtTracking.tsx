@@ -11,7 +11,6 @@ import {
   Alert,
   Platform,
   Keyboard,
-  ActionSheetIOS,
   FlatList,
   KeyboardAvoidingView,
   ActivityIndicator,
@@ -22,8 +21,9 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { useRoute, RouteProp } from '@react-navigation/native';
-import { format } from 'date-fns';
+import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { format, differenceInDays } from 'date-fns';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import * as Contacts from 'expo-contacts';
 import * as Sharing from 'expo-sharing';
@@ -54,6 +54,8 @@ import ContactPicker from '../../components/common/ContactPicker';
 import FAB from '../../components/common/FAB';
 import WalletPicker from '../../components/common/WalletPicker';
 import CategoryPicker from '../../components/common/CategoryPicker';
+import CategoryManager from '../../components/common/CategoryManager';
+import CalendarPicker from '../../components/common/CalendarPicker';
 import { useToast } from '../../context/ToastContext';
 import {
   Contact,
@@ -81,6 +83,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const DebtTracking: React.FC = () => {
   const route = useRoute<RouteProp<DebtTrackingParams, 'DebtTracking'>>();
+  const navigation = useNavigation();
   const { showToast } = useToast();
   const mode = useAppStore((state) => state.mode);
   const currency = useSettingsStore((state) => state.currency);
@@ -123,14 +126,22 @@ const DebtTracking: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<TabType>('debts');
 
+  // Inline category manager (avoids navigating-from-modal blocking bug)
+  const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment' | null>(null);
+  const categoryManagerCallerRef = useRef<'debt' | 'payment'>('debt');
+
   // Debt modal state
   const [debtModalVisible, setDebtModalVisible] = useState(false);
+  const [debtModalAnimation, setDebtModalAnimation] = useState<'fade' | 'none'>('fade');
   const [editingDebtId, setEditingDebtId] = useState<string | null>(null);
   const [debtContacts, setDebtContacts] = useState<Contact[]>([]);
   const [debtType, setDebtType] = useState<DebtType>('they_owe');
   const [debtAmount, setDebtAmount] = useState('');
   const [debtDescription, setDebtDescription] = useState('');
   const [debtCategory, setDebtCategory] = useState('');
+  const [debtDueDate, setDebtDueDate] = useState('');
+  const [debtDueDateObj, setDebtDueDateObj] = useState<Date | null>(null);
+  const [dueDatePickerOpen, setDueDatePickerOpen] = useState(false);
 
   // Split modal state
   const [splitModalVisible, setSplitModalVisible] = useState(false);
@@ -144,9 +155,14 @@ const DebtTracking: React.FC = () => {
   const [splitItems, setSplitItems] = useState<SplitItem[]>([]);
   const [newItemName, setNewItemName] = useState('');
   const [newItemAmount, setNewItemAmount] = useState('');
+  const [splitWalletId, setSplitWalletId] = useState<string | null>(null);
+  const [splitDueDateObj, setSplitDueDateObj] = useState<Date | null>(null);
+  const [splitDueDate, setSplitDueDate] = useState('');
+  const [splitDueDatePickerOpen, setSplitDueDatePickerOpen] = useState(false);
 
   // Payment modal state
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [paymentModalAnimation, setPaymentModalAnimation] = useState<'fade' | 'none'>('fade');
   const [paymentDebtId, setPaymentDebtId] = useState<string | null>(null);
   const [paymentViewOnly, setPaymentViewOnly] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -183,11 +199,18 @@ const DebtTracking: React.FC = () => {
   const [itemContactSearch, setItemContactSearch] = useState('');
 
   // Request payment modal state
+  const [splitChoiceVisible, setSplitChoiceVisible] = useState(false);
+  const [fabChoiceVisible, setFabChoiceVisible] = useState(false);
   const [requestPaymentVisible, setRequestPaymentVisible] = useState(false);
   const [requestPaymentDebt, setRequestPaymentDebt] = useState<Debt | null>(null);
   const [requestPaymentMessage, setRequestPaymentMessage] = useState('');
   const [messageCopied, setMessageCopied] = useState(false);
   const [messageEditing, setMessageEditing] = useState(false);
+  const [reminderModalVisible, setReminderModalVisible] = useState(false);
+  const [reminderDebt, setReminderDebt] = useState<Debt | null>(null);
+  const [reminderMessage, setReminderMessage] = useState('');
+  const [reminderEditing, setReminderEditing] = useState(false);
+  const [reminderCopied, setReminderCopied] = useState(false);
   const messageInputRef = useRef<TextInput>(null);
   const [showQrPicker, setShowQrPicker] = useState(false);
 
@@ -206,6 +229,7 @@ const DebtTracking: React.FC = () => {
   const [splitSort, setSplitSort] = useState<'newest' | 'oldest' | 'amount_high' | 'amount_low'>('newest');
   const [sortModalVisible, setSortModalVisible] = useState(false);
   const [expandedDebtId, setExpandedDebtId] = useState<string | null>(null);
+  const [expandedPersonIds, setExpandedPersonIds] = useState<Set<string>>(new Set());
 
   // Filtered data
   const modeDebts = useMemo(() => debts.filter((d) => d.mode === mode), [debts, mode]);
@@ -240,6 +264,20 @@ const DebtTracking: React.FC = () => {
     });
     return result;
   }, [modeDebts, debtTypeFilter, debtFilter, searchQuery, debtSort]);
+
+  const groupedDebts = useMemo(() => {
+    const map = new Map<string, { contactId: string; contactName: string; contact: typeof filteredDebts[0]['contact']; debts: typeof filteredDebts; totalRemaining: number }>();
+    filteredDebts.forEach((debt) => {
+      const key = debt.contact.id || debt.contact.name;
+      if (!map.has(key)) {
+        map.set(key, { contactId: key, contactName: debt.contact.name, contact: debt.contact, debts: [], totalRemaining: 0 });
+      }
+      const g = map.get(key)!;
+      g.debts.push(debt);
+      g.totalRemaining += Math.max(0, debt.totalAmount - debt.paidAmount);
+    });
+    return Array.from(map.values());
+  }, [filteredDebts]);
 
   // Search filtered splits
   const searchedSplits = useMemo(() => {
@@ -316,6 +354,26 @@ const DebtTracking: React.FC = () => {
     };
   }, [modeDebts, debtFilter, searchQuery]);
 
+  const getDebtAge = useCallback((createdAt: string | Date): string => {
+    const days = differenceInDays(new Date(), new Date(createdAt));
+    if (days < 7) return `${days}d`;
+    if (days < 30) return `${Math.floor(days / 7)}w`;
+    if (days < 365) return `${Math.floor(days / 30)}mo`;
+    return `${Math.floor(days / 365)}y`;
+  }, []);
+
+  const getReminderTone = useCallback((createdAt: string | Date, contactName: string, amount: number, description: string, currency: string): string => {
+    const days = differenceInDays(new Date(), new Date(createdAt));
+    const amountStr = `${currency} ${amount.toFixed(2)}`;
+    if (days < 7) {
+      return `Hey ${contactName}, just a quick reminder about ${amountStr} for ${description} 😊\n\nNo rush, just checking in!`;
+    } else if (days < 30) {
+      return `Hi ${contactName}, friendly reminder that ${amountStr} for ${description} is still outstanding.\n\nLet me know if you need any details. Thank you!`;
+    } else {
+      return `Hi ${contactName}, could you please settle ${amountStr} for ${description} when you get a chance?\n\nIt's been a while and I'd appreciate it. Thank you!`;
+    }
+  }, []);
+
   // Balance summary
   const balanceSummary = useMemo(() => {
     const youOwe = modeDebts
@@ -352,6 +410,15 @@ const DebtTracking: React.FC = () => {
     }
   }, [route.params?.receiptData]);
 
+  // Close modals when navigating away (e.g. to Settings)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('blur', () => {
+      setDebtModalVisible(false);
+      setSplitModalVisible(false);
+    });
+    return unsubscribe;
+  }, [navigation]);
+
   // ── Debt Handlers ──────────────────────────────────────────
   const resetDebtForm = useCallback(() => {
     setEditingDebtId(null);
@@ -360,6 +427,9 @@ const DebtTracking: React.FC = () => {
     setDebtAmount('');
     setDebtDescription('');
     setDebtCategory('');
+    setDebtDueDate('');
+    setDebtDueDateObj(null);
+    setDueDatePickerOpen(false);
   }, []);
 
   const handleEditDebt = (debt: Debt) => {
@@ -369,6 +439,15 @@ const DebtTracking: React.FC = () => {
     setDebtAmount(debt.totalAmount.toString());
     setDebtDescription(debt.description);
     setDebtCategory(debt.category || '');
+    const rawDue = (debt as any).dueDate;
+    if (rawDue) {
+      const d = new Date(rawDue);
+      setDebtDueDateObj(d);
+      setDebtDueDate(format(d, 'd MMM yyyy'));
+    } else {
+      setDebtDueDateObj(null);
+      setDebtDueDate('');
+    }
     setDebtModalVisible(true);
   };
 
@@ -405,7 +484,8 @@ const DebtTracking: React.FC = () => {
                   totalAmount: newTotal,
                   description: debtDescription.trim(),
                   category: debtCategory || undefined,
-                });
+                  dueDate: debtDueDateObj ? debtDueDateObj.toISOString() : undefined,
+                } as any);
                 showToast('Debt updated & marked as settled', 'success');
                 setDebtModalVisible(false);
                 resetDebtForm();
@@ -422,7 +502,8 @@ const DebtTracking: React.FC = () => {
         totalAmount: newTotal,
         description: debtDescription.trim(),
         category: debtCategory || undefined,
-      });
+        dueDate: debtDueDateObj ? debtDueDateObj.toISOString() : undefined,
+      } as any);
       showToast('Debt updated!', 'success');
     } else {
       addDebt({
@@ -431,8 +512,9 @@ const DebtTracking: React.FC = () => {
         totalAmount: parseFloat(debtAmount),
         description: debtDescription.trim(),
         category: debtCategory || undefined,
+        dueDate: debtDueDateObj ? debtDueDateObj.toISOString() : undefined,
         mode,
-      });
+      } as any);
       showToast('Debt added!', 'success');
     }
 
@@ -747,6 +829,10 @@ const DebtTracking: React.FC = () => {
     setSplitItems([]);
     setNewItemName('');
     setNewItemAmount('');
+    setSplitWalletId(null);
+    setSplitDueDateObj(null);
+    setSplitDueDate('');
+    setSplitDueDatePickerOpen(false);
   }, []);
 
   // When participants change in non-wizard split, clean up orphaned item assignments
@@ -772,6 +858,7 @@ const DebtTracking: React.FC = () => {
     setSplitMethod(split.splitMethod);
     setSplitContacts(split.participants.map((p) => p.contact));
     setSplitPaidBy(split.paidBy ? [split.paidBy] : []);
+    setSplitWalletId(null);
     if (split.splitMethod === 'custom') {
       const amounts: Record<string, string> = {};
       split.participants.forEach((p) => { amounts[p.contact.id] = p.amount.toString(); });
@@ -779,6 +866,15 @@ const DebtTracking: React.FC = () => {
     }
     if (split.splitMethod === 'item_based') {
       setSplitItems(split.items);
+    }
+    const rawSplitDue = (split as any).dueDate;
+    if (rawSplitDue) {
+      const d = new Date(rawSplitDue);
+      setSplitDueDateObj(d);
+      setSplitDueDate(format(d, 'd MMM yyyy'));
+    } else {
+      setSplitDueDateObj(null);
+      setSplitDueDate('');
     }
     setSplitModalVisible(true);
   };
@@ -794,6 +890,10 @@ const DebtTracking: React.FC = () => {
     }
     if (splitContacts.length < 2) {
       showToast('Please add at least 2 participants', 'error');
+      return;
+    }
+    if (!editingSplitId && splitPaidBy.length === 0) {
+      showToast('Please select who paid', 'error');
       return;
     }
     const total = parseFloat(splitAmount);
@@ -859,18 +959,91 @@ const DebtTracking: React.FC = () => {
         participants,
         items: splitMethod === 'item_based' ? splitItems : [],
         paidBy: splitPaidBy.length > 0 ? splitPaidBy[0] : undefined,
-      });
+        dueDate: splitDueDateObj ? splitDueDateObj.toISOString() : undefined,
+      } as any);
       showToast('Split updated!', 'success');
     } else {
-      addSplit({
+      const splitId = addSplit({
         description: splitDescription.trim(),
         totalAmount: total,
         splitMethod,
         participants,
         items: splitMethod === 'item_based' ? splitItems : [],
         paidBy: splitPaidBy.length > 0 ? splitPaidBy[0] : undefined,
+        dueDate: splitDueDateObj ? splitDueDateObj.toISOString() : undefined,
         mode,
-      });
+      } as any);
+
+      const selfId = '__self__';
+      const desc = splitDescription.trim();
+      const payer = splitPaidBy.length > 0 ? splitPaidBy[0] : null;
+
+      if (payer?.id === selfId) {
+        // I paid — create expense transaction + deduct wallet + create debts for others
+        let txId: string | undefined;
+        if (mode === 'personal') {
+          txId = addTransaction({
+            amount: total,
+            category: 'food',
+            description: desc,
+            date: new Date(),
+            type: 'expense',
+            mode,
+            walletId: splitWalletId || undefined,
+            inputMethod: 'manual',
+          });
+        } else {
+          txId = addBusinessTransaction({
+            date: new Date(),
+            amount: total,
+            type: 'cost',
+            category: 'food',
+            note: desc,
+            inputMethod: 'manual',
+          });
+        }
+        if (txId || splitWalletId) {
+          updateSplit(splitId, {
+            linkedTransactionId: txId,
+            walletId: splitWalletId || undefined,
+          });
+        }
+        if (splitWalletId) {
+          const selectedWallet = wallets.find((w) => w.id === splitWalletId);
+          if (selectedWallet?.type === 'credit') {
+            useCredit(splitWalletId, total);
+          } else {
+            deductFromWallet(splitWalletId, total);
+          }
+        }
+        // Others owe me
+        participants
+          .filter((p) => p.contact.id !== selfId && p.amount > 0)
+          .forEach((p) => {
+            addDebt({
+              contact: p.contact,
+              type: 'they_owe',
+              totalAmount: p.amount,
+              description: desc,
+              splitId,
+              mode,
+            });
+          });
+      } else if (payer && payer.id !== selfId) {
+        // Someone else paid — I owe them my share
+        const myShare = participants.find((p) => p.contact.id === selfId);
+        if (myShare && myShare.amount > 0) {
+          addDebt({
+            contact: payer,
+            type: 'i_owe',
+            totalAmount: myShare.amount,
+            description: desc,
+            splitId,
+            mode,
+          });
+        }
+      }
+
       showToast('Split created!', 'success');
     }
 
@@ -1135,6 +1308,11 @@ const DebtTracking: React.FC = () => {
   };
 
   const handleWizardGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      showToast('Gallery permission is required', 'error');
+      return;
+    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 0.8,
@@ -1143,7 +1321,7 @@ const DebtTracking: React.FC = () => {
     await processReceiptImage(result.assets[0].uri);
   };
 
-  const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.tax > 0, [wizardReceipt]);
+const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.tax > 0, [wizardReceipt]);
   const wizardTaxAmount = useMemo(() => wizardReceipt?.tax || 0, [wizardReceipt]);
 
   const handleWizardNext = () => {
@@ -1489,6 +1667,16 @@ const DebtTracking: React.FC = () => {
     setRequestPaymentVisible(true);
   };
 
+  const handleOpenReminder = useCallback((debt: Debt) => {
+    const remaining = debt.totalAmount - debt.paidAmount;
+    const msg = getReminderTone(debt.createdAt, debt.contact.name, remaining, debt.description, currency);
+    setReminderDebt(debt);
+    setReminderMessage(msg);
+    setReminderEditing(false);
+    setReminderCopied(false);
+    setReminderModalVisible(true);
+  }, [getReminderTone, currency]);
+
   const handleCopyPaymentMessage = useCallback(async () => {
     if (!requestPaymentMessage) return;
     await Clipboard.setStringAsync(requestPaymentMessage);
@@ -1532,48 +1720,12 @@ const DebtTracking: React.FC = () => {
 
   // ── FAB Action ─────────────────────────────────────────────
   const showSplitChoice = useCallback(() => {
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Cancel', 'Manual', 'Take Photo', 'Choose from Gallery'],
-          cancelButtonIndex: 0,
-        },
-        (buttonIndex) => {
-          if (buttonIndex === 1) { resetSplitForm(); setSplitModalVisible(true); }
-          if (buttonIndex === 2) { handleWizardScan(); }
-          if (buttonIndex === 3) { handleWizardGallery(); }
-        }
-      );
-    } else {
-      Alert.alert('Split Expense', 'How would you like to split?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Manual', onPress: () => { resetSplitForm(); setSplitModalVisible(true); } },
-        { text: 'Take Photo', onPress: () => { handleWizardScan(); } },
-        { text: 'Gallery', onPress: () => { handleWizardGallery(); } },
-      ]);
-    }
-  }, [resetSplitForm]);
+    setSplitChoiceVisible(true);
+  }, []);
 
   const handleFABPress = useCallback(() => {
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Cancel', 'Add Debt', 'Split Expense'],
-          cancelButtonIndex: 0,
-        },
-        (buttonIndex) => {
-          if (buttonIndex === 1) { resetDebtForm(); setDebtModalVisible(true); }
-          if (buttonIndex === 2) { showSplitChoice(); }
-        }
-      );
-    } else {
-      Alert.alert('New Entry', 'What would you like to add?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Add Debt', onPress: () => { resetDebtForm(); setDebtModalVisible(true); } },
-        { text: 'Split Expense', onPress: () => { showSplitChoice(); } },
-      ]);
-    }
-  }, [resetDebtForm, showSplitChoice]);
+    setFabChoiceVisible(true);
+  }, []);
 
   const getStatusConfig = useCallback((status: string) => {
     return DEBT_STATUSES.find((s) => s.value === status) || DEBT_STATUSES[0];
@@ -1594,16 +1746,30 @@ const DebtTracking: React.FC = () => {
       >
         {/* Balance Summary — Two Mini Cards */}
         <View style={styles.heroGrid}>
-          <View style={[styles.heroMiniCard, { borderLeftColor: CALM.gold }]}>
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => {
+              setDebtTypeFilter(debtTypeFilter === 'i_owe' ? null : 'i_owe');
+              setDebtFilter(debtFilter === 'pending' ? null : 'pending');
+            }}
+            style={[styles.heroMiniCard, { borderLeftColor: '#C1694F' }, debtTypeFilter === 'i_owe' && { borderWidth: 1.5, borderColor: '#C1694F' }]}
+          >
             <View style={styles.heroMiniLabel}>
-              <Feather name="arrow-up-circle" size={14} color={CALM.gold} />
+              <Feather name="arrow-up-circle" size={14} color="#C1694F" />
               <Text style={styles.heroMiniLabelText}>You Owe</Text>
             </View>
-            <Text style={[styles.heroMiniAmount, { color: CALM.gold }]}>
+            <Text style={[styles.heroMiniAmount, { color: '#C1694F' }]}>
               {currency} {balanceSummary.youOwe.toFixed(2)}
             </Text>
-          </View>
-          <View style={[styles.heroMiniCard, { borderLeftColor: CALM.accent }]}>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => {
+              setDebtTypeFilter(debtTypeFilter === 'they_owe' ? null : 'they_owe');
+              setDebtFilter(debtFilter === 'pending' ? null : 'pending');
+            }}
+            style={[styles.heroMiniCard, { borderLeftColor: CALM.accent }, debtTypeFilter === 'they_owe' && { borderWidth: 1.5, borderColor: CALM.accent }]}
+          >
             <View style={styles.heroMiniLabel}>
               <Feather name="arrow-down-circle" size={14} color={CALM.accent} />
               <Text style={styles.heroMiniLabelText}>Owed to You</Text>
@@ -1612,11 +1778,11 @@ const DebtTracking: React.FC = () => {
               {currency} {balanceSummary.owedToYou.toFixed(2)}
             </Text>
             {balanceSummary.collected > 0 && (
-              <Text style={styles.heroMiniSub}>
+              <Text style={[styles.heroMiniSub, { color: '#6BA3BE' }]}>
                 {balanceSummary.collected.toFixed(2)} collected
               </Text>
             )}
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Search Bar */}
@@ -1640,7 +1806,12 @@ const DebtTracking: React.FC = () => {
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={{ paddingLeft: SPACING.xs }}
           >
-            <Feather name="sliders" size={16} color={(activeTab === 'debts' ? debtSort : splitSort) !== 'newest' ? CALM.accent : CALM.textMuted} />
+            <View>
+              <Feather name="sliders" size={16} color={(activeTab === 'debts' ? (debtSort !== 'newest' || debtTypeFilter || debtFilter) : splitSort !== 'newest') ? CALM.accent : CALM.textMuted} />
+              {activeTab === 'debts' && (debtTypeFilter || debtFilter) && (
+                <View style={{ position: 'absolute', top: -3, right: -3, width: 7, height: 7, borderRadius: 4, backgroundColor: CALM.accent }} />
+              )}
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -1695,64 +1866,83 @@ const DebtTracking: React.FC = () => {
         {/* Debts Tab */}
         {activeTab === 'debts' && (
           <>
-            {modeDebts.length > 0 && (
-              <View style={styles.mergedFilterRow}>
-                {/* Type filters */}
-                {([
-                  { key: 'they_owe' as const, label: 'They Owe', color: '#4F5104' },
-                  { key: 'i_owe' as const, label: 'I Owe', color: '#DEAB22' },
-                ]).map((f) => {
-                  const isActive = debtTypeFilter === f.key;
-                  return (
-                    <TouchableOpacity
-                      key={f.key}
-                      style={[
-                        styles.debtFilterPill,
-                        isActive && { backgroundColor: withAlpha(f.color, 0.12), borderColor: f.color },
-                      ]}
-                      onPress={() => setDebtTypeFilter(isActive ? null : f.key)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.debtFilterText, isActive && { color: f.color }]}>
-                        {f.label} ({debtTypeCounts[f.key]})
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-                {/* Status filters — wider gap for visual grouping */}
-                {(['pending', 'partial', 'settled'] as const).map((f, i) => {
-                  const pillColor = f === 'pending' ? '#DEAB22' : f === 'partial' ? '#B2780A' : '#6BA3BE';
-                  const isActive = debtFilter === f;
-                  return (
-                    <TouchableOpacity
-                      key={f}
-                      style={[
-                        styles.debtFilterPill,
-                        i === 0 && { marginLeft: SPACING.md },
-                        isActive && { backgroundColor: withAlpha(pillColor, 0.12), borderColor: pillColor },
-                      ]}
-                      onPress={() => setDebtFilter(isActive ? null : f)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.debtFilterText, isActive && { color: pillColor }]}>
-                        {f.charAt(0).toUpperCase() + f.slice(1)} ({debtFilterCounts[f]})
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+            {/* Active filter summary */}
+            {(debtTypeFilter || debtFilter) && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingVertical: 6 }}>
+                <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.textSecondary }}>
+                  {filteredDebts.length} {filteredDebts.length === 1 ? 'debt' : 'debts'}
+                  {' · RM '}
+                  {filteredDebts.reduce((sum, d) => sum + (d.totalAmount - d.paidAmount), 0).toFixed(2)}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => { setDebtTypeFilter(null); setDebtFilter(null); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                >
+                  <Feather name="x" size={12} color={CALM.gold} />
+                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.gold, fontWeight: '600' }}>Clear</Text>
+                </TouchableOpacity>
               </View>
             )}
             {filteredDebts.length > 0 ? (
-              filteredDebts.map((debt, idx) => {
-                const typeConfig = getTypeConfig(debt.type);
-                const statusConfig = getStatusConfig(debt.status);
-                const remaining = Math.max(0, debt.totalAmount - debt.paidAmount);
-
-                const isSelected = selectionMode === 'debt' && selectedIds.has(debt.id);
-                const inDebtSelection = selectionMode === 'debt';
+              groupedDebts.map((group) => {
+                const isGroupExpanded = expandedPersonIds.has(group.contactId);
+                const showGroupHeader = group.debts.length > 1;
+                const debtsToRender = showGroupHeader && !isGroupExpanded ? [] : group.debts;
 
                 return (
-                  <Card key={`${debt.id}-${idx}`} style={{ ...styles.debtCard, borderLeftColor: statusConfig.color, ...(isSelected ? { borderColor: CALM.accent, borderWidth: 1.5 } : {}) }}>
+                  <View key={group.contactId}>
+                    {/* Group header — only when 2+ debts for same person */}
+                    {showGroupHeader && (
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                          setExpandedPersonIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(group.contactId)) next.delete(group.contactId);
+                            else next.add(group.contactId);
+                            return next;
+                          });
+                        }}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          paddingHorizontal: SPACING.md,
+                          paddingVertical: SPACING.sm,
+                          marginBottom: isGroupExpanded ? 4 : SPACING.sm,
+                          backgroundColor: withAlpha(CALM.accent, 0.04),
+                          borderRadius: RADIUS.md,
+                          borderWidth: 1,
+                          borderColor: CALM.border,
+                        }}
+                      >
+                        <View style={[styles.debtAvatar, { backgroundColor: withAlpha(CALM.accent, 0.12), borderColor: withAlpha(CALM.accent, 0.25) }]}>
+                          <Text style={[styles.debtAvatarText, { color: CALM.accent }]}>
+                            {group.contactName.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1, marginLeft: SPACING.sm }}>
+                          <Text style={[styles.debtName, { fontSize: TYPOGRAPHY.size.base }]}>{group.contactName}</Text>
+                          <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textSecondary }}>{group.debts.length} debts</Text>
+                        </View>
+                        <Text style={[styles.debtAmount, { color: CALM.accent, marginRight: SPACING.sm }]}>
+                          {currency} {group.totalRemaining.toFixed(2)}
+                        </Text>
+                        <Feather name={isGroupExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={CALM.textMuted} />
+                      </TouchableOpacity>
+                    )}
+                    {/* Debt cards (always shown for single debts, conditionally for groups) */}
+                    {debtsToRender.map((debt, idx) => {
+                      const typeConfig = getTypeConfig(debt.type);
+                      const statusConfig = getStatusConfig(debt.status);
+                      const remaining = Math.max(0, debt.totalAmount - debt.paidAmount);
+
+                      const isSelected = selectionMode === 'debt' && selectedIds.has(debt.id);
+                      const inDebtSelection = selectionMode === 'debt';
+
+                      return (
+                        <Card key={`${debt.id}-${idx}`} style={{ ...styles.debtCard, borderLeftColor: statusConfig.color, ...(showGroupHeader ? { marginLeft: SPACING.md } : {}), ...(isSelected ? { borderColor: CALM.accent, borderWidth: 1.5 } : {}) }}>
                     <TouchableOpacity
                       activeOpacity={0.7}
                       onPress={() => {
@@ -1783,9 +1973,50 @@ const DebtTracking: React.FC = () => {
                             <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: typeConfig.color, fontWeight: TYPOGRAPHY.weight.semibold }}>{typeConfig.label}</Text>
                           </View>
                           <Text style={styles.debtDesc} numberOfLines={1}>{debt.description}</Text>
-                          <Text style={styles.debtTimestamp}>
-                            {format(debt.createdAt, 'MMM dd, yyyy')}{debt.dueDate ? ` · Due ${format(debt.dueDate, 'MMM dd')}` : ''}
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={styles.debtTimestamp}>
+                              {format(debt.createdAt, 'MMM dd, yyyy')}{(() => { if (!debt.dueDate) return ''; const d = new Date(debt.dueDate); return isNaN(d.getTime()) ? ` · Due ${debt.dueDate}` : ` · Due ${format(d, 'MMM dd')}`; })()}
+                            </Text>
+                            {debt.status !== 'settled' && (() => {
+                              // Due date badge takes priority
+                              if (debt.dueDate) {
+                                const dueD = new Date(debt.dueDate);
+                                if (!isNaN(dueD.getTime())) {
+                                  const daysUntil = differenceInDays(dueD, new Date());
+                                  const overdue = daysUntil < 0;
+                                  const label = overdue
+                                    ? `overdue ${Math.abs(daysUntil)}d`
+                                    : daysUntil === 0
+                                    ? 'due today'
+                                    : `due in ${daysUntil}d`;
+                                  const bg = overdue
+                                    ? withAlpha('#A0714A', 0.15)
+                                    : daysUntil <= 3
+                                    ? withAlpha(CALM.gold, 0.18)
+                                    : withAlpha(CALM.accent, 0.1);
+                                  const fg = overdue
+                                    ? '#A0714A'
+                                    : daysUntil <= 3
+                                    ? CALM.gold
+                                    : CALM.accent;
+                                  return (
+                                    <View style={{ backgroundColor: bg, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}>
+                                      <Text style={{ fontSize: 10, fontWeight: '600', color: fg }}>{label}</Text>
+                                    </View>
+                                  );
+                                }
+                              }
+                              // Fallback: aging since creation
+                              const days = differenceInDays(new Date(), new Date(debt.createdAt));
+                              const bg = days >= 30 ? withAlpha('#A0714A', 0.15) : days >= 7 ? withAlpha(CALM.gold, 0.15) : withAlpha(CALM.accent, 0.1);
+                              const fg = days >= 30 ? '#A0714A' : days >= 7 ? CALM.gold : CALM.accent;
+                              return (
+                                <View style={{ backgroundColor: bg, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}>
+                                  <Text style={{ fontSize: 10, fontWeight: '600', color: fg }}>{getDebtAge(debt.createdAt)}</Text>
+                                </View>
+                              );
+                            })()}
+                          </View>
                         </View>
                         <View style={styles.debtAmountCol}>
                           <Text style={[styles.debtAmount, { color: typeConfig.color }]}>
@@ -1836,18 +2067,31 @@ const DebtTracking: React.FC = () => {
                           )}
                         </TouchableOpacity>
                         {debt.type === 'they_owe' && debt.status !== 'settled' && (
-                          <TouchableOpacity
-                            style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.gold, 0.1) }]}
-                            onPress={() => handleRequestPayment(debt)}
-                            activeOpacity={0.7}
-                          >
-                            <Feather name="send" size={16} color={CALM.accent} />
-                            <Text style={[styles.debtActionText, { color: CALM.accent }]}>Request</Text>
-                          </TouchableOpacity>
+                          <>
+                            <TouchableOpacity
+                              style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}
+                              onPress={() => handleOpenReminder(debt)}
+                              activeOpacity={0.7}
+                            >
+                              <Feather name="bell" size={16} color={CALM.accent} />
+                              <Text style={[styles.debtActionText, { color: CALM.accent }]}>Remind</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.gold, 0.1) }]}
+                              onPress={() => handleRequestPayment(debt)}
+                              activeOpacity={0.7}
+                            >
+                              <Feather name="send" size={16} color={CALM.gold} />
+                              <Text style={[styles.debtActionText, { color: CALM.gold }]}>Request</Text>
+                            </TouchableOpacity>
+                          </>
                         )}
                       </View>
                     )}
-                  </Card>
+                      </Card>
+                    );
+                  })}
+                  </View>
                 );
               })
             ) : modeDebts.length > 0 ? (
@@ -1922,9 +2166,28 @@ const DebtTracking: React.FC = () => {
                         )}
                         <View style={styles.splitInfo}>
                           <Text style={styles.splitTitle}>{split.description}</Text>
-                          <Text style={styles.splitSubtext}>
-                            {split.paidBy ? `Paid by ${split.paidBy.name} · ` : ''}{format(split.createdAt, 'MMMM dd, yyyy')}
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={styles.splitSubtext}>
+                              {split.paidBy ? `Paid by ${split.paidBy.name} · ` : ''}{format(split.createdAt, 'MMMM dd, yyyy')}{(() => { if (!(split as any).dueDate) return ''; const d = new Date((split as any).dueDate); return isNaN(d.getTime()) ? ` · Due ${(split as any).dueDate}` : ` · Due ${format(d, 'MMM dd')}`; })()}
+                            </Text>
+                            {!isSettled && (() => {
+                              if ((split as any).dueDate) {
+                                const dueD = new Date((split as any).dueDate);
+                                if (!isNaN(dueD.getTime())) {
+                                  const daysUntil = differenceInDays(dueD, new Date());
+                                  const overdue = daysUntil < 0;
+                                  const label = overdue ? `overdue ${Math.abs(daysUntil)}d` : daysUntil === 0 ? 'due today' : `due in ${daysUntil}d`;
+                                  const bg = overdue ? withAlpha('#A0714A', 0.15) : daysUntil <= 3 ? withAlpha(CALM.gold, 0.18) : withAlpha(CALM.accent, 0.1);
+                                  const fg = overdue ? '#A0714A' : daysUntil <= 3 ? CALM.gold : CALM.accent;
+                                  return <View style={{ backgroundColor: bg, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}><Text style={{ fontSize: 10, fontWeight: '600', color: fg }}>{label}</Text></View>;
+                                }
+                              }
+                              const d = differenceInDays(new Date(), new Date(split.createdAt));
+                              const bg = d >= 30 ? withAlpha('#A0714A', 0.12) : d >= 7 ? withAlpha('#DEAB22', 0.12) : withAlpha(CALM.accent, 0.12);
+                              const fg = d >= 30 ? '#A0714A' : d >= 7 ? '#DEAB22' : CALM.accent;
+                              return <View style={{ backgroundColor: bg, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}><Text style={{ fontSize: 10, fontWeight: '600', color: fg }}>{getDebtAge(split.createdAt)}</Text></View>;
+                            })()}
+                          </View>
                         </View>
                         <Text style={styles.splitAmount}>{currency} {split.totalAmount.toFixed(2)}</Text>
                       </View>
@@ -1944,7 +2207,7 @@ const DebtTracking: React.FC = () => {
 
                       <View style={styles.splitParticipants}>
                         {split.participants.slice(0, 4).map((p) => (
-                          <View key={p.contact.id} style={[styles.participantChip, p.isPaid ? styles.participantChipPaid : { borderLeftWidth: 2, borderLeftColor: withAlpha(CALM.gold, 0.5) }]}>
+                          <View key={p.contact.id} style={[styles.participantChip, p.contact.id === '__self__' ? { borderLeftWidth: 2, borderLeftColor: withAlpha('#A688B8', 0.6) } : p.isPaid ? styles.participantChipPaid : { borderLeftWidth: 2, borderLeftColor: withAlpha('#DEAB22', 0.5) }]}>
                             <Text style={[styles.participantChipText, p.isPaid && styles.participantChipTextPaid]} numberOfLines={1}>
                               {p.contact.name.split(' ')[0]}
                             </Text>
@@ -1973,7 +2236,7 @@ const DebtTracking: React.FC = () => {
                 title="No Splits"
                 message="Split expenses with friends, family, or colleagues"
                 actionLabel="Split Expense"
-                onAction={() => { resetSplitForm(); setSplitModalVisible(true); }}
+                onAction={() => showSplitChoice()}
               />
             )}
           </>
@@ -2015,7 +2278,7 @@ const DebtTracking: React.FC = () => {
       )}
 
       {/* ── Add/Edit Debt Modal ──────────────────────────────── */}
-      <Modal visible={debtModalVisible} animationType="fade" transparent onRequestClose={() => { setDebtModalVisible(false); resetDebtForm(); }}>
+      <Modal visible={debtModalVisible} animationType={debtModalAnimation} transparent onRequestClose={() => { setDebtModalVisible(false); resetDebtForm(); }}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setDebtModalVisible(false); resetDebtForm(); }} />
             <View style={styles.modalContent}>
@@ -2036,7 +2299,7 @@ const DebtTracking: React.FC = () => {
                   label="Who?"
                 />
 
-                <Text style={styles.formLabel}>Type</Text>
+                <Text style={[styles.formLabel, { marginTop: SPACING.sm }]}>Type</Text>
                 <View style={styles.typeContainer}>
                   {DEBT_TYPES.map((dt) => (
                     <TouchableOpacity
@@ -2049,11 +2312,7 @@ const DebtTracking: React.FC = () => {
                       ]}
                       onPress={() => setDebtType(dt.value as DebtType)}
                     >
-                      <Feather
-                        name={dt.icon as any}
-                        size={18}
-                        color={dt.color}
-                      />
+                      <Feather name={dt.icon as any} size={18} color={dt.color} />
                       <Text style={[styles.typeText, debtType === dt.value && { color: dt.color }]}>
                         {dt.label}
                       </Text>
@@ -2084,6 +2343,48 @@ const DebtTracking: React.FC = () => {
                   onSubmitEditing={Keyboard.dismiss}
                 />
 
+                <View style={{ marginBottom: -SPACING.lg }}>
+                  <Text style={styles.formLabel}>
+                    Category
+                    <Text style={styles.formLabelOptional}> (optional)</Text>
+                  </Text>
+                  <CategoryPicker
+                    categories={debtType === 'i_owe' ? expenseCategories : incomeCategories}
+                    selectedId={debtCategory}
+                    onSelect={setDebtCategory}
+                    layout="dropdown"
+                    onNavigateToSettings={() => {
+                      categoryManagerCallerRef.current = 'debt';
+                      const type = debtType === 'i_owe' ? 'expense' : 'income';
+                      setDebtModalAnimation('none');
+                      setDebtModalVisible(false);
+                      setTimeout(() => setCategoryManagerType(type), 50);
+                    }}
+                  />
+                </View>
+
+                <Text style={styles.formLabel}>
+                  Due Date
+                  <Text style={styles.formLabelOptional}> (optional)</Text>
+                </Text>
+                <TouchableOpacity
+                  style={[styles.formInput, styles.dateButton]}
+                  onPress={() => { Keyboard.dismiss(); setDueDatePickerOpen((v) => !v); }}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="calendar" size={16} color={debtDueDateObj ? CALM.accent : CALM.textSecondary} />
+                  <Text style={[styles.dateButtonText, !debtDueDateObj && { color: CALM.textSecondary }]}>
+                    {debtDueDateObj ? format(debtDueDateObj, 'd MMM yyyy') : 'Select date'}
+                  </Text>
+                  {debtDueDateObj && (
+                    <TouchableOpacity
+                      onPress={(e) => { e.stopPropagation(); setDebtDueDateObj(null); setDebtDueDate(''); setDueDatePickerOpen(false); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Feather name="x" size={15} color={CALM.textSecondary} />
+                    </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
                 <View style={styles.modalActions}>
                   <Button
                     title="Cancel"
@@ -2100,6 +2401,29 @@ const DebtTracking: React.FC = () => {
                 </View>
               </KeyboardAwareScrollView>
             </View>
+
+            {/* Date picker overlay — custom calendar, no native rendering issues */}
+            {dueDatePickerOpen && (
+              <Pressable style={styles.datePickerOverlay} onPress={() => setDueDatePickerOpen(false)}>
+                <Pressable style={styles.datePickerCard} onPress={(e) => e.stopPropagation()}>
+                  <View style={styles.datePickerHeader}>
+                    <Text style={styles.datePickerTitle}>Select Due Date</Text>
+                    <TouchableOpacity onPress={() => setDueDatePickerOpen(false)}>
+                      <Text style={styles.datePickerDone}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <CalendarPicker
+                    value={debtDueDateObj ?? new Date()}
+                    minimumDate={new Date()}
+                    onChange={(date) => {
+                      setDebtDueDateObj(date);
+                      setDebtDueDate(format(date, 'd MMM yyyy'));
+                      setDueDatePickerOpen(false);
+                    }}
+                  />
+                </Pressable>
+              </Pressable>
+            )}
         </View>
       </Modal>
 
@@ -2172,14 +2496,45 @@ const DebtTracking: React.FC = () => {
                   label="Participants"
                 />
 
-                {!editingSplitId && (
-                  <ContactPicker
-                    selectedContacts={splitPaidBy}
-                    onSelect={setSplitPaidBy}
-                    mode="single"
-                    label="Paid By"
+                <ContactPicker
+                  selectedContacts={splitPaidBy}
+                  onSelect={(contacts) => {
+                    setSplitPaidBy(contacts);
+                    if (contacts.length === 0 || contacts[0].id !== '__self__') {
+                      setSplitWalletId(null);
+                    }
+                  }}
+                  mode="single"
+                  label="Paid By (required)"
+                />
+                {splitPaidBy.length > 0 && splitPaidBy[0].id === '__self__' && (
+                  <WalletPicker
+                    wallets={wallets}
+                    selectedWalletId={splitWalletId}
+                    onSelect={setSplitWalletId}
+                    label="Paid from wallet"
+                    optional
                   />
                 )}
+
+                {/* Due date */}
+                <Text style={styles.formLabel}>Due Date <Text style={{ color: CALM.textMuted, fontWeight: '400' }}>(optional)</Text></Text>
+                <View>
+                  <TouchableOpacity
+                    style={[styles.formInput, styles.dateButton]}
+                    onPress={() => { Keyboard.dismiss(); setSplitDueDatePickerOpen((v) => !v); }}
+                  >
+                    <Feather name="calendar" size={16} color={splitDueDateObj ? CALM.accent : CALM.textSecondary} />
+                    <Text style={[styles.dateButtonText, !splitDueDateObj && { color: CALM.textSecondary }]}>
+                      {splitDueDateObj ? format(splitDueDateObj, 'd MMM yyyy') : 'Select date'}
+                    </Text>
+                    {splitDueDateObj && (
+                      <TouchableOpacity onPress={(e) => { e.stopPropagation(); setSplitDueDateObj(null); setSplitDueDate(''); setSplitDueDatePickerOpen(false); }}>
+                        <Feather name="x" size={15} color={CALM.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </TouchableOpacity>
+                </View>
 
                 {/* Custom amounts per participant */}
                 {splitMethod === 'custom' && splitContacts.length > 0 && (
@@ -2208,18 +2563,6 @@ const DebtTracking: React.FC = () => {
                   <View style={styles.customSection}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Text style={styles.formLabel}>Items</Text>
-                      {!editingSplitId && (
-                        <TouchableOpacity
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingHorizontal: 10, backgroundColor: withAlpha(CALM.accent, 0.08), borderRadius: RADIUS.sm }}
-                          onPress={handleScanReceipt}
-                          disabled={scanningReceipt}
-                        >
-                          <Feather name="camera" size={14} color={CALM.accent} />
-                          <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.accent, fontWeight: TYPOGRAPHY.weight.medium }}>
-                            {scanningReceipt ? 'Scanning...' : 'Scan Receipt'}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
                     </View>
                     {!editingSplitId && (
                       <View style={styles.addItemRow}>
@@ -2279,6 +2622,38 @@ const DebtTracking: React.FC = () => {
                   </View>
                 )}
 
+                {/* Per-person preview */}
+                {splitContacts.length >= 2 && splitAmount && parseFloat(splitAmount) > 0 && (() => {
+                  const total = parseFloat(splitAmount);
+                  let preview: { name: string; amount: number }[] = [];
+                  if (splitMethod === 'equal') {
+                    const per = total / splitContacts.length;
+                    preview = splitContacts.map((c) => ({ name: c.name.split(' ')[0], amount: per }));
+                  } else if (splitMethod === 'custom') {
+                    preview = splitContacts.map((c) => ({ name: c.name.split(' ')[0], amount: parseFloat(customAmounts[c.id] || '0') || 0 }));
+                  } else if (splitMethod === 'item_based' && splitItems.length > 0) {
+                    const map: Record<string, number> = {};
+                    splitContacts.forEach((c) => { map[c.id] = 0; });
+                    splitItems.forEach((item) => {
+                      const share = item.amount / (item.assignedTo.length || 1);
+                      item.assignedTo.forEach((c) => { map[c.id] = (map[c.id] || 0) + share; });
+                    });
+                    preview = splitContacts.map((c) => ({ name: c.name.split(' ')[0], amount: map[c.id] || 0 }));
+                  }
+                  if (preview.length === 0) return null;
+                  return (
+                    <View style={{ marginTop: SPACING.md, marginBottom: SPACING.sm, backgroundColor: withAlpha(CALM.accent, 0.04), borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 1, borderColor: CALM.border }}>
+                      <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textSecondary, fontWeight: TYPOGRAPHY.weight.medium, marginBottom: SPACING.xs, textTransform: 'uppercase', letterSpacing: 0.5 }}>Split Preview</Text>
+                      {preview.map((p, i) => (
+                        <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                          <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.textPrimary }}>{p.name}</Text>
+                          <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: p.amount > 0 ? CALM.textPrimary : CALM.textSecondary }}>RM {p.amount.toFixed(2)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })()}
+
                 <View style={styles.modalActions}>
                   <Button
                     title="Cancel"
@@ -2294,6 +2669,29 @@ const DebtTracking: React.FC = () => {
                   />
                 </View>
               </KeyboardAwareScrollView>
+
+              {/* Calendar overlay — outside ScrollView so it floats above */}
+              {splitDueDatePickerOpen && (
+                <Pressable style={styles.datePickerOverlay} onPress={() => setSplitDueDatePickerOpen(false)}>
+                  <Pressable style={styles.datePickerCard} onPress={(e) => e.stopPropagation()}>
+                    <View style={styles.datePickerHeader}>
+                      <Text style={styles.datePickerTitle}>Select Due Date</Text>
+                      <TouchableOpacity onPress={() => setSplitDueDatePickerOpen(false)}>
+                        <Text style={styles.datePickerDone}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <CalendarPicker
+                      value={splitDueDateObj ?? new Date()}
+                      minimumDate={new Date()}
+                      onChange={(date) => {
+                        setSplitDueDateObj(date);
+                        setSplitDueDate(format(date, 'd MMM yyyy'));
+                        setSplitDueDatePickerOpen(false);
+                      }}
+                    />
+                  </Pressable>
+                </Pressable>
+              )}
             </View>
         </View>
       </Modal>
@@ -2301,7 +2699,7 @@ const DebtTracking: React.FC = () => {
       {/* ── Record Payment Modal ─────────────────────────────── */}
       <Modal
         visible={paymentModalVisible}
-        animationType="fade"
+        animationType={paymentModalAnimation}
         transparent
         onRequestClose={() => setPaymentModalVisible(false)}
       >
@@ -2378,6 +2776,14 @@ const DebtTracking: React.FC = () => {
                               onSelect={setPaymentCategory}
                               label="Category"
                               layout="dropdown"
+                              onNavigateToSettings={() => {
+                                const payDebt2 = debts.find((d) => d.id === paymentDebtId);
+                                categoryManagerCallerRef.current = 'payment';
+                                const type2 = payDebt2?.type === 'they_owe' ? 'income' : 'expense';
+                                setPaymentModalAnimation('none');
+                                setPaymentModalVisible(false);
+                                setTimeout(() => setCategoryManagerType(type2), 50);
+                              }}
                             />
 
                             {/* Amount input */}
@@ -2498,7 +2904,7 @@ const DebtTracking: React.FC = () => {
                 const taxPerPerson = Math.round((selectedSplit.taxAmount / (participantsWithAmount.length || 1)) * 100) / 100;
                 participantsWithAmount.forEach((p) => {
                   const list = itemBreakdown.get(p.contact.id);
-                  if (list) list.push({ name: 'Tax (shared)', amount: taxPerPerson, shared: true });
+                  if (list) list.push({ name: 'Tax', amount: taxPerPerson, shared: true });
                 });
               }
 
@@ -2547,22 +2953,22 @@ const DebtTracking: React.FC = () => {
                     const isPaid = p.isPaid;
                     const isSelf = p.contact.id === '__self__';
 
+                    const participantColor = isSelf ? '#A688B8' : isPaid ? CALM.positive : '#DEAB22';
+
                     return (
                       <View key={p.contact.id} style={[
                         styles.wizardPersonCard,
-                        !isSelf && {
-                          borderLeftWidth: 3,
-                          borderLeftColor: isPaid ? CALM.positive : CALM.gold,
-                        },
+                        { borderLeftWidth: 3, borderLeftColor: participantColor },
                       ]}>
                         <View style={styles.wizardPersonHeader}>
-                          <View style={[styles.participantAvatar, { backgroundColor: withAlpha(isPaid ? CALM.positive : CALM.gold, 0.12) }]}>
-                            <Text style={[styles.participantAvatarText, { color: isPaid ? CALM.positive : CALM.gold }]}>
+                          <View style={[styles.participantAvatar, { backgroundColor: withAlpha(participantColor, 0.12) }]}>
+                            <Text style={[styles.participantAvatarText, { color: participantColor }]}>
                               {p.contact.name.charAt(0).toUpperCase()}
                             </Text>
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.wizardPersonName}>{p.contact.name}</Text>
+                            {isSelf && <Text style={{ fontSize: 10, color: '#A688B8', fontWeight: '600' }}>my share</Text>}
                           </View>
                           {isPaid && !isSelf ? (
                             <TouchableOpacity
@@ -2585,7 +2991,7 @@ const DebtTracking: React.FC = () => {
                               <Text style={styles.splitMarkPaidChipText}>Mark Paid</Text>
                             </TouchableOpacity>
                           ) : null}
-                          <Text style={[styles.wizardPersonTotal, !isSelf && { color: isPaid ? CALM.positive : CALM.gold }]}>
+                          <Text style={[styles.wizardPersonTotal, { color: participantColor }]}>
                             {currency} {p.amount.toFixed(2)}
                           </Text>
                         </View>
@@ -2950,16 +3356,22 @@ const DebtTracking: React.FC = () => {
                   </View>
 
                   <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>Per Person</Text>
-                  {wizardResult.breakdown.map((person) => (
-                    <View key={person.contact.id} style={styles.wizardPersonCard}>
+                  {wizardResult.breakdown.map((person) => {
+                    const isMe = person.contact.id === '__self__';
+                    const cardColor = isMe ? '#A688B8' : CALM.accent;
+                    return (
+                    <View key={person.contact.id} style={[styles.wizardPersonCard, { borderLeftWidth: 3, borderLeftColor: cardColor }]}>
                       <View style={styles.wizardPersonHeader}>
-                        <View style={[styles.participantAvatar, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
-                          <Text style={[styles.participantAvatarText, { color: CALM.accent }]}>
+                        <View style={[styles.participantAvatar, { backgroundColor: withAlpha(cardColor, 0.12) }]}>
+                          <Text style={[styles.participantAvatarText, { color: cardColor }]}>
                             {person.contact.name.charAt(0).toUpperCase()}
                           </Text>
                         </View>
-                        <Text style={styles.wizardPersonName}>{person.contact.name}</Text>
-                        <Text style={styles.wizardPersonTotal}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.wizardPersonName}>{person.contact.name}</Text>
+                          {isMe && <Text style={{ fontSize: 10, color: '#A688B8', fontWeight: '600' }}>my share</Text>}
+                        </View>
+                        <Text style={[styles.wizardPersonTotal, { color: cardColor }]}>
                           {currency} {person.total.toFixed(2)}
                         </Text>
                       </View>
@@ -2982,7 +3394,7 @@ const DebtTracking: React.FC = () => {
                         </View>
                       )}
                     </View>
-                  ))}
+                  );})}
 
                   {/* Debt Preview */}
                   {wizardPaidBy && (() => {
@@ -3149,6 +3561,16 @@ const DebtTracking: React.FC = () => {
                     </View>
                   )}
 
+                  {/* From contacts button */}
+                  <TouchableOpacity
+                    style={styles.assignFromContactsBtn}
+                    onPress={loadItemPhoneContacts}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="book" size={16} color={CALM.accent} />
+                    <Text style={styles.assignFromContactsText}>From Contacts</Text>
+                  </TouchableOpacity>
+
                   {/* Manual name input */}
                   <Text style={styles.assignModalLabel}>Add new person</Text>
                   <View style={styles.assignManualRow}>
@@ -3169,16 +3591,6 @@ const DebtTracking: React.FC = () => {
                       <Feather name="plus" size={18} color="#fff" />
                     </TouchableOpacity>
                   </View>
-
-                  {/* From contacts button */}
-                  <TouchableOpacity
-                    style={styles.assignFromContactsBtn}
-                    onPress={loadItemPhoneContacts}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name="book" size={16} color={CALM.accent} />
-                    <Text style={styles.assignFromContactsText}>From Contacts</Text>
-                  </TouchableOpacity>
 
                   {/* Done button */}
                   <TouchableOpacity
@@ -3296,6 +3708,162 @@ const DebtTracking: React.FC = () => {
         </Modal>
       )}
 
+      {/* ── FAB Choice Modal ─────────────────────────────────────────────── */}
+      <Modal visible={fabChoiceVisible} animationType="fade" transparent onRequestClose={() => setFabChoiceVisible(false)}>
+        <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setFabChoiceVisible(false)}>
+          <Pressable onPress={() => {}} style={styles.choiceCard}>
+            <Text style={styles.choiceTitle}>New Entry</Text>
+            <Text style={styles.choiceSubtitle}>What would you like to add?</Text>
+            {([
+              { icon: 'users' as const, label: 'Add Debt', desc: 'Track money you owe or are owed', onPress: () => { setFabChoiceVisible(false); resetDebtForm(); setDebtModalVisible(true); } },
+              { icon: 'scissors' as const, label: 'Split Expense', desc: 'Divide a bill among a group', onPress: () => { setFabChoiceVisible(false); setSplitChoiceVisible(true); } },
+            ] as const).map((opt, i, arr) => (
+              <TouchableOpacity key={opt.label} onPress={opt.onPress} activeOpacity={0.7} style={[styles.choiceRow, i < arr.length - 1 && styles.choiceRowBorder]}>
+                <View style={styles.choiceIcon}><Feather name={opt.icon} size={18} color={CALM.accent} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.choiceLabel}>{opt.label}</Text>
+                  <Text style={styles.choiceDesc}>{opt.desc}</Text>
+                </View>
+                <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+              </TouchableOpacity>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Split Choice Modal (animationType="none" — instant dismiss, safe for native pickers) ── */}
+      <Modal visible={splitChoiceVisible} animationType="none" transparent onRequestClose={() => setSplitChoiceVisible(false)}>
+        <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setSplitChoiceVisible(false)}>
+          <Pressable onPress={() => {}} style={styles.choiceCard}>
+            <Text style={styles.choiceTitle}>Split Expense</Text>
+            <Text style={styles.choiceSubtitle}>How would you like to split?</Text>
+            {([
+              { icon: 'edit-3' as const, label: 'Manual', desc: 'Enter items and amounts yourself', onPress: () => { setSplitChoiceVisible(false); resetSplitForm(); setSplitModalVisible(true); } },
+              { icon: 'camera' as const, label: 'Take Photo', desc: 'Scan a receipt with your camera', onPress: () => { setSplitChoiceVisible(false); setTimeout(handleWizardScan, 50); } },
+              { icon: 'image' as const, label: 'Choose from Gallery', desc: 'Pick a receipt photo from your gallery', onPress: () => { setSplitChoiceVisible(false); setTimeout(handleWizardGallery, 50); } },
+            ] as const).map((opt, i, arr) => (
+              <TouchableOpacity key={opt.label} onPress={opt.onPress} activeOpacity={0.7} style={[styles.choiceRow, i < arr.length - 1 && styles.choiceRowBorder]}>
+                <View style={styles.choiceIcon}><Feather name={opt.icon} size={18} color={CALM.accent} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.choiceLabel}>{opt.label}</Text>
+                  <Text style={styles.choiceDesc}>{opt.desc}</Text>
+                </View>
+                <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+              </TouchableOpacity>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Reminder Modal ──────────────────────────────── */}
+      <Modal visible={reminderModalVisible} animationType="fade" transparent onRequestClose={() => setReminderModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={{ flex: 1 }} onPress={() => setReminderModalVisible(false)} />
+          <View style={[styles.modalContent, { paddingBottom: SPACING['2xl'] }]}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleAccent}>
+                <Text style={styles.modalTitle}>Send Reminder</Text>
+              </View>
+              <TouchableOpacity onPress={() => setReminderModalVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Feather name="x" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            {reminderDebt && (
+              <>
+                {/* Recipient */}
+                <View style={styles.requestPaymentRecipient}>
+                  <View style={[styles.debtAvatar, { backgroundColor: withAlpha(CALM.accent, 0.12), borderColor: withAlpha(CALM.accent, 0.25) }]}>
+                    <Text style={[styles.debtAvatarText, { color: CALM.accent }]}>
+                      {reminderDebt.contact.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={styles.debtName}>{reminderDebt.contact.name}</Text>
+                    <Text style={styles.requestPaymentOwes}>
+                      Owes {currency} {(reminderDebt.totalAmount - reminderDebt.paidAmount).toFixed(2)}
+                      {' · '}
+                      <Text style={{ color: (() => { const d = differenceInDays(new Date(), new Date(reminderDebt.createdAt)); return d >= 30 ? '#A0714A' : d >= 7 ? CALM.gold : CALM.accent; })() }}>
+                        {getDebtAge(reminderDebt.createdAt)} ago
+                      </Text>
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Message label + edit toggle */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
+                  <Text style={[styles.requestPaymentLabel, { marginBottom: 0 }]}>Message</Text>
+                  {reminderEditing ? (
+                    <TouchableOpacity
+                      onPress={() => { Keyboard.dismiss(); setReminderEditing(false); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.accent }}>Done</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => setReminderEditing(true)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    >
+                      <Feather name="edit-3" size={13} color={CALM.accent} />
+                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.accent }}>Edit</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Message input */}
+                <TextInput
+                  style={[styles.requestPaymentMessageInput, !reminderEditing && { color: CALM.textSecondary }]}
+                  value={reminderMessage}
+                  onChangeText={setReminderMessage}
+                  multiline
+                  textAlignVertical="top"
+                  placeholderTextColor={CALM.textSecondary}
+                  editable={reminderEditing}
+                  onFocus={() => setReminderEditing(true)}
+                  onBlur={() => setReminderEditing(false)}
+                />
+
+                {/* Action buttons */}
+                <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
+                  <TouchableOpacity
+                    style={[styles.requestPaymentCopyBtn, { flex: 1 }, reminderCopied && { backgroundColor: withAlpha(CALM.positive, 0.1) }]}
+                    onPress={async () => {
+                      await Clipboard.setStringAsync(reminderMessage);
+                      setReminderCopied(true);
+                      setTimeout(() => setReminderCopied(false), 2000);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name={reminderCopied ? 'check' : 'copy'} size={18} color={reminderCopied ? CALM.positive : CALM.accent} />
+                    <Text style={[styles.requestPaymentCopyText, reminderCopied && { color: CALM.positive }]}>
+                      {reminderCopied ? 'Copied!' : 'Copy'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {reminderDebt.contact.phone && (
+                    <TouchableOpacity
+                      style={[styles.requestPaymentWhatsAppBtn, { flex: 2 }]}
+                      onPress={() => {
+                        const phone = reminderDebt!.contact.phone!.replace(/[^0-9]/g, '');
+                        const url = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(reminderMessage)}`;
+                        Linking.openURL(url).catch(() => {});
+                        setReminderModalVisible(false);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="message-circle" size={18} color="#fff" />
+                      <Text style={styles.requestPaymentWhatsAppText}>WhatsApp</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* ── Request Payment Modal ──────────────────────────────── */}
       <Modal
         visible={requestPaymentVisible}
@@ -3333,27 +3901,34 @@ const DebtTracking: React.FC = () => {
                 </View>
 
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
-                    <Text style={[styles.requestPaymentLabel, { marginBottom: 0 }]}>Message</Text>
-                    <Feather name="edit-3" size={12} color={CALM.textSecondary} />
-                  </View>
-                  {messageEditing && (
+                  <Text style={[styles.requestPaymentLabel, { marginBottom: 0 }]}>Message</Text>
+                  {messageEditing ? (
                     <TouchableOpacity
                       onPress={() => { Keyboard.dismiss(); setMessageEditing(false); }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.accent }}>Done</Text>
                     </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => { setMessageEditing(true); messageInputRef.current?.focus(); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    >
+                      <Feather name="edit-3" size={13} color={CALM.accent} />
+                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.accent }}>Edit</Text>
+                    </TouchableOpacity>
                   )}
                 </View>
                 <TextInput
                   ref={messageInputRef}
-                  style={styles.requestPaymentMessageInput}
+                  style={[styles.requestPaymentMessageInput, !messageEditing && { color: CALM.textSecondary }]}
                   value={requestPaymentMessage}
                   onChangeText={setRequestPaymentMessage}
                   multiline
                   textAlignVertical="top"
                   placeholderTextColor={CALM.textSecondary}
+                  editable={messageEditing}
                   onFocus={() => setMessageEditing(true)}
                   onBlur={() => setMessageEditing(false)}
                 />
@@ -3436,45 +4011,131 @@ const DebtTracking: React.FC = () => {
 
       {/* ── Sort Modal ─────────────────────────────────────────── */}
       <Modal visible={sortModalVisible} animationType="fade" transparent onRequestClose={() => setSortModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <Pressable style={{ flex: 1 }} onPress={() => setSortModalVisible(false)} />
-          <View style={[styles.modalContent, { paddingBottom: SPACING['2xl'] }]}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalTitleAccent}>
-                <Text style={styles.modalTitle}>Sort By</Text>
-              </View>
-              <TouchableOpacity onPress={() => setSortModalVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Feather name="x" size={24} color={CALM.textPrimary} />
-              </TouchableOpacity>
-            </View>
-            {([
-              { key: 'newest' as const, label: 'Newest First', icon: 'arrow-down' as const },
-              { key: 'oldest' as const, label: 'Oldest First', icon: 'arrow-up' as const },
-              { key: 'amount_high' as const, label: 'Highest Amount', icon: 'trending-up' as const },
-              { key: 'amount_low' as const, label: 'Lowest Amount', icon: 'trending-down' as const },
-            ]).map((option) => {
-              const currentSort = activeTab === 'splits' ? splitSort : debtSort;
-              const isActive = currentSort === option.key;
-              return (
-                <TouchableOpacity
-                  key={option.key}
-                  style={[styles.sortOption, isActive && styles.sortOptionActive]}
-                  onPress={() => {
-                    if (activeTab === 'splits') setSplitSort(option.key);
-                    else setDebtSort(option.key);
-                    setSortModalVisible(false);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Feather name={option.icon} size={18} color={isActive ? CALM.accent : CALM.textSecondary} />
-                  <Text style={[styles.sortOptionText, isActive && styles.sortOptionTextActive]}>{option.label}</Text>
-                  {isActive && <Feather name="check" size={18} color={CALM.accent} />}
-                </TouchableOpacity>
-              );
-            })}
+        <Pressable style={{ flex: 1 }} onPress={() => setSortModalVisible(false)}>
+          <View
+            style={{
+              position: 'absolute',
+              top: 120,
+              right: 16,
+              width: 240,
+              backgroundColor: '#fff',
+              borderRadius: 14,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 8,
+              paddingVertical: 8,
+              overflow: 'hidden',
+            }}
+          >
+            <Pressable onPress={() => {}}>
+              {/* Filter by Type — debts tab only */}
+              {activeTab === 'debts' && (
+                <>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: CALM.textSecondary, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>Filter by Type</Text>
+                  {([
+                    { key: 'they_owe' as const, label: 'They Owe' },
+                    { key: 'i_owe' as const, label: 'I Owe' },
+                  ]).map((f) => {
+                    const isActive = debtTypeFilter === f.key;
+                    return (
+                      <TouchableOpacity
+                        key={f.key}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: isActive ? withAlpha(CALM.accent, 0.06) : 'transparent' }}
+                        onPress={() => setDebtTypeFilter(isActive ? null : f.key)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={{ fontSize: 14, color: isActive ? CALM.accent : CALM.textPrimary, fontWeight: isActive ? '600' : '400' }}>{f.label}</Text>
+                        {isActive && <Feather name="check" size={16} color={CALM.accent} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <View style={{ height: 1, backgroundColor: CALM.border, marginHorizontal: 16, marginVertical: 4 }} />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: CALM.textSecondary, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>Filter by Status</Text>
+                  {([
+                    { key: 'pending' as const, label: 'Pending' },
+                    { key: 'partial' as const, label: 'Partial' },
+                    { key: 'settled' as const, label: 'Settled' },
+                  ]).map((f) => {
+                    const isActive = debtFilter === f.key;
+                    return (
+                      <TouchableOpacity
+                        key={f.key}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: isActive ? withAlpha(CALM.accent, 0.06) : 'transparent' }}
+                        onPress={() => setDebtFilter(isActive ? null : f.key)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={{ fontSize: 14, color: isActive ? CALM.accent : CALM.textPrimary, fontWeight: isActive ? '600' : '400' }}>{f.label}</Text>
+                        {isActive && <Feather name="check" size={16} color={CALM.accent} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <View style={{ height: 1, backgroundColor: CALM.border, marginHorizontal: 16, marginVertical: 4 }} />
+                </>
+              )}
+              {/* Sort By */}
+              <Text style={{ fontSize: 11, fontWeight: '600', color: CALM.textSecondary, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>Sort By</Text>
+              {([
+                { key: 'newest' as const, label: 'Newest First', icon: 'arrow-down' as const },
+                { key: 'oldest' as const, label: 'Oldest First', icon: 'arrow-up' as const },
+                { key: 'amount_high' as const, label: 'Highest Amount', icon: 'trending-up' as const },
+                { key: 'amount_low' as const, label: 'Lowest Amount', icon: 'trending-down' as const },
+              ]).map((option) => {
+                const currentSort = activeTab === 'splits' ? splitSort : debtSort;
+                const isActive = currentSort === option.key;
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: isActive ? withAlpha(CALM.accent, 0.06) : 'transparent' }}
+                    onPress={() => {
+                      if (activeTab === 'splits') setSplitSort(option.key);
+                      else setDebtSort(option.key);
+                      setSortModalVisible(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name={option.icon} size={16} color={isActive ? CALM.accent : CALM.textSecondary} />
+                    <Text style={{ flex: 1, fontSize: 14, color: isActive ? CALM.accent : CALM.textPrimary, fontWeight: isActive ? '600' : '400' }}>{option.label}</Text>
+                    {isActive && <Feather name="check" size={16} color={CALM.accent} />}
+                  </TouchableOpacity>
+                );
+              })}
+              {/* Clear filters button — show when any filter active */}
+              {(debtTypeFilter || debtFilter) && activeTab === 'debts' && (
+                <>
+                  <View style={{ height: 1, backgroundColor: CALM.border, marginHorizontal: 16, marginVertical: 4 }} />
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10 }}
+                    onPress={() => { setDebtTypeFilter(null); setDebtFilter(null); setSortModalVisible(false); }}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="x-circle" size={16} color={CALM.gold} />
+                    <Text style={{ fontSize: 14, color: CALM.gold, fontWeight: '600' }}>Clear Filters</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </Pressable>
           </View>
-        </View>
+        </Pressable>
       </Modal>
+
+      {/* ── Inline Category Manager (no navigation needed) ── */}
+      <CategoryManager
+        visible={categoryManagerType !== null}
+        onClose={() => {
+          setCategoryManagerType(null);
+          if (categoryManagerCallerRef.current === 'payment') {
+            setPaymentModalAnimation('fade');
+            setPaymentModalVisible(true);
+          } else {
+            setDebtModalAnimation('fade');
+            setDebtModalVisible(true);
+          }
+        }}
+        type={categoryManagerType ?? 'expense'}
+        mode={mode === 'personal' ? 'personal' : 'business'}
+      />
     </View>
   );
 };
@@ -3905,11 +4566,16 @@ const styles = StyleSheet.create({
 
   // Form elements
   formLabel: {
-    fontSize: TYPOGRAPHY.size.base,
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
-    marginBottom: SPACING.sm,
-    marginTop: SPACING.lg,
+    color: CALM.textPrimary,
+    marginBottom: SPACING.xs,
+    marginTop: SPACING.md,
+  },
+  formLabelOptional: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: CALM.textSecondary,
   },
   formInput: {
     backgroundColor: CALM.background,
@@ -3920,6 +4586,47 @@ const styles = StyleSheet.create({
     color: CALM.textPrimary,
     borderWidth: 1.5,
     borderColor: withAlpha(CALM.accent, 0.2),
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  dateButtonText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    color: CALM.textPrimary,
+  },
+  datePickerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: SPACING.lg,
+  },
+  datePickerCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+    alignSelf: 'stretch',
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+  },
+  datePickerTitle: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+  },
+  datePickerDone: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.accent,
   },
   typeContainer: {
     flexDirection: 'row',
@@ -4622,6 +5329,60 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  // Choice card (FAB / Split choice)
+  choiceCard: {
+    width: '82%',
+    backgroundColor: CALM.surface,
+    borderRadius: 18,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.xl,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  choiceTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.textPrimary,
+    marginBottom: SPACING.xs,
+  },
+  choiceSubtitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    marginBottom: SPACING.lg,
+  },
+  choiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
+  },
+  choiceRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+  },
+  choiceIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(CALM.accent, 0.1),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  choiceLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+  },
+  choiceDesc: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    marginTop: 1,
+  },
+
   // Request Payment
   requestPaymentRecipient: {
     flexDirection: 'row',
@@ -4651,8 +5412,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     color: CALM.textPrimary,
     lineHeight: 20,
-    minHeight: 120,
-    maxHeight: 200,
+    minHeight: 240,
+    maxHeight: 320,
   },
   requestPaymentCopyBtn: {
     flexDirection: 'row',
@@ -4703,6 +5464,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     backgroundColor: withAlpha(CALM.textSecondary, 0.06),
     borderRadius: RADIUS.md,
+    marginTop: SPACING.lg,
     marginBottom: SPACING.lg,
   },
   requestPaymentQrHintText: {

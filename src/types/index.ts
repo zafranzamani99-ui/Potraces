@@ -378,6 +378,7 @@ export type RootStackParamList = {
   PastSeasons: undefined;
   Goals: undefined;
   FinancialPulse: undefined;
+  Settings: { scrollTo?: string } | undefined;
   SellerSettings: undefined;
   // Stall screens
   StallSessionSetup: undefined;
