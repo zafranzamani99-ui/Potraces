@@ -117,6 +117,45 @@ export const useDebtStore = create<DebtState>()(
           }),
         })),
 
+      updatePayment: (debtId, paymentId, updates) =>
+        set((state) => ({
+          debts: state.debts.map((debt) => {
+            if (debt.id !== debtId) return debt;
+
+            const newPayments = debt.payments.map((p) => {
+              if (p.id !== paymentId) return p;
+              // Snapshot current values into editLog before applying changes
+              const amountChanged = updates.amount !== undefined && updates.amount !== p.amount;
+              const noteChanged = updates.note !== undefined && updates.note !== p.note;
+              const editEntry = (amountChanged || noteChanged)
+                ? { editedAt: new Date(), previousAmount: p.amount, previousNote: p.note }
+                : null;
+              return {
+                ...p,
+                ...updates,
+                editLog: editEntry
+                  ? [...(p.editLog ?? []), editEntry]
+                  : p.editLog,
+              };
+            });
+            const newPaidAmount = newPayments.reduce((sum, p) => sum + p.amount, 0);
+            let newStatus: DebtStatus = 'pending';
+            if (newPaidAmount >= debt.totalAmount) {
+              newStatus = 'settled';
+            } else if (newPaidAmount > 0) {
+              newStatus = 'partial';
+            }
+
+            return {
+              ...debt,
+              payments: newPayments,
+              paidAmount: newPaidAmount,
+              status: newStatus,
+              updatedAt: new Date(),
+            };
+          }),
+        })),
+
       addSplit: (split) => {
         const id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
         set((state) => ({

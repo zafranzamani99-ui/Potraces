@@ -26,6 +26,8 @@ interface ContactPickerProps {
   onSelect: (contacts: Contact[]) => void;
   mode?: 'single' | 'multi';
   label?: string;
+  includeSelf?: boolean;
+  selfName?: string;
 }
 
 const ContactPicker: React.FC<ContactPickerProps> = ({
@@ -33,6 +35,8 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
   onSelect,
   mode = 'single',
   label = 'Contact',
+  includeSelf = false,
+  selfName = 'Me',
 }) => {
   const [phoneModalVisible, setPhoneModalVisible] = useState(false);
   const [manualModalVisible, setManualModalVisible] = useState(false);
@@ -138,6 +142,29 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
 
       {/* Action buttons */}
       <View style={styles.actionRow}>
+        {includeSelf && (() => {
+          const selfContact: Contact = { id: '__self__', name: selfName, isFromPhone: false };
+          const selfSelected = selectedContacts.some((c) => c.id === '__self__');
+          return (
+            <TouchableOpacity
+              style={[styles.actionButton, selfSelected && styles.actionButtonSelected]}
+              onPress={() => {
+                if (mode === 'single') {
+                  onSelect(selfSelected ? [] : [selfContact]);
+                } else {
+                  onSelect(selfSelected
+                    ? selectedContacts.filter((c) => c.id !== '__self__')
+                    : [selfContact, ...selectedContacts.filter((c) => c.id !== '__self__')]
+                  );
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <Feather name="user" size={18} color={selfSelected ? '#fff' : CALM.accent} />
+              <Text style={[styles.actionText, selfSelected && styles.actionTextSelected]}>{selfName}</Text>
+            </TouchableOpacity>
+          );
+        })()}
         <TouchableOpacity style={styles.actionButton} onPress={loadPhoneContacts} activeOpacity={0.7}>
           <Feather name="book" size={18} color={CALM.accent} />
           <Text style={styles.actionText}>From Contacts</Text>
@@ -342,6 +369,13 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.accent,
+  },
+  actionButtonSelected: {
+    backgroundColor: CALM.accent,
+    borderColor: CALM.accent,
+  },
+  actionTextSelected: {
+    color: '#fff',
   },
 
   // Modals

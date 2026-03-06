@@ -591,6 +591,12 @@ export interface Contact {
   isFromPhone: boolean;
 }
 
+export interface PaymentEdit {
+  editedAt: Date;
+  previousAmount: number;
+  previousNote?: string;
+}
+
 export interface Payment {
   id: string;
   amount: number;
@@ -600,6 +606,7 @@ export interface Payment {
   linkedTransactionId?: string;
   walletId?: string;
   createdAt: Date;
+  editLog?: PaymentEdit[];
 }
 
 export interface Debt {
@@ -779,6 +786,7 @@ export interface DebtState {
   deleteDebt: (id: string) => void;
   addPayment: (debtId: string, payment: Omit<Payment, 'id' | 'createdAt'>) => void;
   deletePayment: (debtId: string, paymentId: string) => void;
+  updatePayment: (debtId: string, paymentId: string, updates: Partial<Pick<Payment, 'amount' | 'note'>>) => void;
 
   addSplit: (split: Omit<SplitExpense, 'id' | 'createdAt' | 'updatedAt'>) => string;
   updateSplit: (id: string, updates: Partial<SplitExpense>) => void;

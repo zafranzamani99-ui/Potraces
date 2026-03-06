@@ -60,6 +60,7 @@ import { useToast } from '../../context/ToastContext';
 import {
   Contact,
   Debt,
+  Payment,
   SplitExpense,
   DebtType,
   SplitMethod,
@@ -104,6 +105,7 @@ const DebtTracking: React.FC = () => {
   const deleteDebt = useDebtStore((s) => s.deleteDebt);
   const addPayment = useDebtStore((s) => s.addPayment);
   const deletePayment = useDebtStore((s) => s.deletePayment);
+  const updatePayment = useDebtStore((s) => s.updatePayment);
   const addSplit = useDebtStore((s) => s.addSplit);
   const updateSplit = useDebtStore((s) => s.updateSplit);
   const deleteSplit = useDebtStore((s) => s.deleteSplit);
@@ -111,6 +113,7 @@ const DebtTracking: React.FC = () => {
   const unmarkSplitParticipantPaid = useDebtStore((s) => s.unmarkSplitParticipantPaid);
 
   const addTransaction = usePersonalStore((state) => state.addTransaction);
+  const updateTransaction = usePersonalStore((state) => state.updateTransaction);
   const deleteTransaction = usePersonalStore((state) => state.deleteTransaction);
   const addBusinessTransaction = useBusinessStore((state) => state.addBusinessTransaction);
   const deleteBusinessTransaction = useBusinessStore((state) => state.deleteBusinessTransaction);
@@ -169,6 +172,15 @@ const DebtTracking: React.FC = () => {
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentWalletId, setPaymentWalletId] = useState<string | null>(null);
   const [paymentCategory, setPaymentCategory] = useState('');
+
+  // Payment detail modal state
+  // Payment detail — rendered INSIDE the payment modal (no separate modal, avoids stutter)
+  const [inPayDetail, setInPayDetail] = useState(false);
+  const [payDetailDebtId, setPayDetailDebtId] = useState<string | null>(null);
+  const [payDetailPayment, setPayDetailPayment] = useState<Payment | null>(null);
+  const [editPayAmount, setEditPayAmount] = useState('');
+  const [editPayNote, setEditPayNote] = useState('');
+  const [payDetailSaving, setPayDetailSaving] = useState(false);
 
   // Split detail modal state
   const [splitDetailVisible, setSplitDetailVisible] = useState(false);
@@ -726,6 +738,72 @@ const DebtTracking: React.FC = () => {
     ]);
   };
 
+  // ── Payment Detail / Edit Handler ────────────────────────────
+  // Rendered inside the payment modal — no separate modal, no stutter
+  const handleOpenPayDetail = (debtId: string, payment: Payment) => {
+    setPayDetailDebtId(debtId);
+    setPayDetailPayment(payment);
+    setEditPayAmount(payment.amount.toFixed(2));
+    setEditPayNote(payment.note || '');
+    setInPayDetail(true);
+  };
+
+  const handleClosePayDetail = () => {
+    setInPayDetail(false);
+    setPayDetailPayment(null);
+  };
+
+  const handleSavePayDetail = () => {
+    if (!payDetailDebtId || !payDetailPayment) return;
+    const newAmount = parseFloat(editPayAmount);
+    if (isNaN(newAmount) || newAmount <= 0) {
+      showToast('Enter a valid amount', 'error');
+      return;
+    }
+    setPayDetailSaving(true);
+
+    const amountChanged = newAmount !== payDetailPayment.amount;
+    const noteChanged = editPayNote.trim() !== (payDetailPayment.note || '');
+
+    if (!amountChanged && !noteChanged) {
+      setPayDetailVisible(false);
+      setPayDetailSaving(false);
+      return;
+    }
+
+    // Update the payment in debtStore
+    updatePayment(payDetailDebtId, payDetailPayment.id, {
+      amount: newAmount,
+      note: editPayNote.trim() || undefined,
+    });
+
+    // Sync linked transaction amount if amount changed (personal mode only — no updateBusinessTransaction exists)
+    if (amountChanged && payDetailPayment.linkedTransactionId && mode === 'personal') {
+      updateTransaction(payDetailPayment.linkedTransactionId, { amount: newAmount });
+    }
+
+    // Sync wallet balance if amount changed — read debt type from store directly (avoid stale closure)
+    if (amountChanged && payDetailPayment.walletId) {
+      const diff = newAmount - payDetailPayment.amount;
+      const freshDebt = useDebtStore.getState().debts.find((d) => d.id === payDetailDebtId);
+      if (freshDebt) {
+        // they_owe: payments are income, so positive diff → add, negative → deduct
+        // i_owe: payments are expense, so positive diff → deduct, negative → add
+        if (freshDebt.type === 'they_owe') {
+          if (diff > 0) addToWallet(payDetailPayment.walletId, diff);
+          else deductFromWallet(payDetailPayment.walletId, -diff);
+        } else {
+          if (diff > 0) deductFromWallet(payDetailPayment.walletId, diff);
+          else addToWallet(payDetailPayment.walletId, -diff);
+        }
+      }
+    }
+
+    setPayDetailSaving(false);
+    handleClosePayDetail();
+    showToast('Payment updated', 'success');
+  };
+
   // ── Split Mark Paid / Undo Handlers ──────────────────────────
   const handleSplitMarkPaid = (split: SplitExpense, participant: SplitParticipant) => {
     // Find linked debt for this split + participant
@@ -952,6 +1030,26 @@ const DebtTracking: React.FC = () => {
     }
 
     if (editingSplitId) {
+      // Delete linked debts for participants removed from the split
+      const newParticipantIds = new Set(participants.map((p) => p.contact.id));
+      const linkedDebts = useDebtStore.getState().debts.filter((d) => d.splitId === editingSplitId);
+      linkedDebts.forEach((ld) => {
+        if (!newParticipantIds.has(ld.contact.id)) {
+          // Reverse wallet + transaction before deleting
+          ld.payments.forEach((payment) => {
+            if (payment.linkedTransactionId) {
+              if (ld.mode === 'personal') deleteTransaction(payment.linkedTransactionId);
+              else deleteBusinessTransaction(payment.linkedTransactionId);
+            }
+            if (payment.walletId) {
+              if (ld.type === 'they_owe') deductFromWallet(payment.walletId, payment.amount);
+              else addToWallet(payment.walletId, payment.amount);
+            }
+          });
+          deleteDebt(ld.id);
+        }
+      });
+
       updateSplit(editingSplitId, {
         description: splitDescription.trim(),
         totalAmount: total,
@@ -2049,23 +2147,37 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     {!inDebtSelection && expandedDebtId === debt.id && (
                       <View style={[styles.debtActions, { borderTopWidth: 1, borderTopColor: CALM.border, paddingTop: SPACING.sm }]}>
                         <View style={{ flex: 1 }} />
-                        <TouchableOpacity
-                          style={[styles.debtActionButton, { backgroundColor: debt.status === 'settled' ? withAlpha(CALM.neutral, 0.15) : withAlpha(CALM.positive, 0.1) }]}
-                          onPress={() => openPaymentModal(debt.id, debt.status === 'settled')}
-                          activeOpacity={0.7}
-                        >
-                          {debt.status === 'settled' ? (
-                            <>
-                              <Feather name="clock" size={16} color={CALM.textSecondary} />
-                              <Text style={[styles.debtActionText, { color: CALM.textSecondary }]}>History</Text>
-                            </>
-                          ) : (
-                            <>
+                        {debt.status === 'settled' ? (
+                          <TouchableOpacity
+                            style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.neutral, 0.15) }]}
+                            onPress={() => openPaymentModal(debt.id, true)}
+                            activeOpacity={0.7}
+                          >
+                            <Feather name="clock" size={16} color={CALM.textSecondary} />
+                            <Text style={[styles.debtActionText, { color: CALM.textSecondary }]}>History</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <>
+                            {debt.status === 'partial' && (
+                              <TouchableOpacity
+                                style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.neutral, 0.1) }]}
+                                onPress={() => openPaymentModal(debt.id, true)}
+                                activeOpacity={0.7}
+                              >
+                                <Feather name="clock" size={16} color={CALM.textSecondary} />
+                                <Text style={[styles.debtActionText, { color: CALM.textSecondary }]}>History</Text>
+                              </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                              style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.positive, 0.1) }]}
+                              onPress={() => openPaymentModal(debt.id, false)}
+                              activeOpacity={0.7}
+                            >
                               <Feather name="plus-circle" size={16} color={CALM.positive} />
                               <Text style={[styles.debtActionText, { color: CALM.positive }]}>Record Payment</Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
+                            </TouchableOpacity>
+                          </>
+                        )}
                         {debt.type === 'they_owe' && debt.status !== 'settled' && (
                           <>
                             <TouchableOpacity
@@ -2331,6 +2443,23 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
+                {(() => {
+                  if (!editingDebtId || !debtAmount) return null;
+                  const existing = debts.find((d) => d.id === editingDebtId);
+                  const newVal = parseFloat(debtAmount);
+                  if (!existing || isNaN(newVal) || existing.paidAmount === 0) return null;
+                  if (newVal < existing.paidAmount) {
+                    return (
+                      <View style={styles.amountWarnRow}>
+                        <Feather name="alert-circle" size={13} color={CALM.bronze} />
+                        <Text style={styles.amountWarnText}>
+                          Below amount already paid ({currency} {existing.paidAmount.toFixed(2)}) — debt will be marked settled
+                        </Text>
+                      </View>
+                    );
+                  }
+                  return null;
+                })()}
 
                 <Text style={styles.formLabel}>Description</Text>
                 <TextInput
@@ -2494,6 +2623,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   onSelect={handleSplitContactsChange}
                   mode="multi"
                   label="Participants"
+                  includeSelf
+                  selfName={getSelfContact().name}
                 />
 
                 <ContactPicker
@@ -2506,6 +2637,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   }}
                   mode="single"
                   label="Paid By (required)"
+                  includeSelf
+                  selfName={getSelfContact().name}
                 />
                 {splitPaidBy.length > 0 && splitPaidBy[0].id === '__self__' && (
                   <WalletPicker
@@ -2712,6 +2845,155 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   const remaining = Math.max(0, payDebt.totalAmount - payDebt.paidAmount);
                   const typeConfig = getTypeConfig(payDebt.type);
 
+                  // ── Payment Detail Panel (inline, no separate modal) ──
+                  if (inPayDetail && payDetailPayment) {
+                    const stillExists = payDetailDebtId
+                      ? useDebtStore.getState().debts.find((d) => d.id === payDetailDebtId)?.payments.some((p) => p.id === payDetailPayment.id)
+                      : false;
+                    if (!stillExists) {
+                      setTimeout(() => handleClosePayDetail(), 0);
+                      return null;
+                    }
+                    const wallet = payDetailPayment.walletId ? wallets.find((w) => w.id === payDetailPayment.walletId) : null;
+                    const parsedDate = new Date(payDetailPayment.date);
+                    const dateStr = isNaN(parsedDate.getTime()) ? '—' : format(parsedDate, 'dd MMM yyyy, HH:mm');
+                    return (
+                      <>
+                        <View style={styles.modalHeader}>
+                          <TouchableOpacity onPress={handleClosePayDetail} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                            <Feather name="chevron-left" size={22} color={CALM.accent} />
+                            <Text style={[styles.modalTitle, { fontSize: 18 }]}>Payment Detail</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => { handleClosePayDetail(); setPaymentModalVisible(false); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                            <Feather name="x" size={24} color={CALM.textPrimary} />
+                          </TouchableOpacity>
+                        </View>
+
+                        <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bottomOffset={20}>
+                          {wallet && (
+                            <View style={styles.payDetailRow}>
+                              <Feather name="credit-card" size={15} color={CALM.textMuted} />
+                              <Text style={styles.payDetailMeta}>{wallet.name}</Text>
+                            </View>
+                          )}
+                          <View style={styles.payDetailRow}>
+                            <Feather name="clock" size={15} color={CALM.textMuted} />
+                            <Text style={styles.payDetailMeta}>{dateStr}</Text>
+                          </View>
+                          {payDetailPayment.linkedTransactionId && (
+                            <View style={styles.payDetailRow}>
+                              <Feather name="link" size={15} color={CALM.textMuted} />
+                              <Text style={styles.payDetailMeta}>Linked to transaction</Text>
+                              {mode === 'personal' && <Text style={styles.payDetailMetaHint}> · amount synced on save</Text>}
+                            </View>
+                          )}
+                          {payDetailPayment.tipAmount ? (
+                            <View style={styles.payDetailRow}>
+                              <Feather name="gift" size={15} color={CALM.textMuted} />
+                              <Text style={styles.payDetailMeta}>Tip: {currency} {payDetailPayment.tipAmount.toFixed(2)}</Text>
+                            </View>
+                          ) : null}
+
+                          <View style={styles.payDetailDivider} />
+
+                          <Text style={styles.formLabel}>Amount</Text>
+                          <TextInput
+                            style={styles.formInput}
+                            value={editPayAmount}
+                            onChangeText={setEditPayAmount}
+                            keyboardType="decimal-pad"
+                            returnKeyType="done"
+                            onSubmitEditing={Keyboard.dismiss}
+                            selectTextOnFocus
+                          />
+
+                          <Text style={styles.formLabel}>Note (optional)</Text>
+                          <TextInput
+                            style={styles.formInput}
+                            value={editPayNote}
+                            onChangeText={setEditPayNote}
+                            placeholder="Add a note..."
+                            placeholderTextColor={CALM.textSecondary}
+                            returnKeyType="done"
+                            onSubmitEditing={Keyboard.dismiss}
+                          />
+
+                          {payDetailPayment.editLog && payDetailPayment.editLog.length > 0 && (
+                            <View style={styles.editHistorySection}>
+                              <View style={styles.editHistoryHeader}>
+                                <Feather name="clock" size={13} color={CALM.bronze} />
+                                <Text style={styles.editHistoryTitle}>Edit History</Text>
+                                <Text style={styles.editHistoryCount}>{payDetailPayment.editLog.length} change{payDetailPayment.editLog.length > 1 ? 's' : ''}</Text>
+                              </View>
+                              {[...payDetailPayment.editLog].reverse().map((entry, idx) => {
+                                const entryDate = new Date(entry.editedAt);
+                                const entryDateStr = isNaN(entryDate.getTime()) ? '—' : format(entryDate, 'dd MMM yyyy, HH:mm');
+                                return (
+                                  <View key={idx} style={styles.editHistoryRow}>
+                                    <View style={styles.editHistoryDot} />
+                                    <View style={{ flex: 1 }}>
+                                      <Text style={styles.editHistoryMeta}>{entryDateStr}</Text>
+                                      <Text style={styles.editHistoryDetail}>
+                                        was {currency} {entry.previousAmount.toFixed(2)}
+                                        {entry.previousNote ? ` · "${entry.previousNote}"` : ''}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          )}
+
+                          <View style={styles.payDetailActions}>
+                            <Button
+                              title="Delete"
+                              onPress={() => {
+                                if (!payDetailDebtId || !payDetailPayment) return;
+                                const snapDebtId = payDetailDebtId;
+                                const snapPaymentId = payDetailPayment.id;
+                                Alert.alert('Remove Payment', 'This will undo this payment and its linked transaction. Continue?', [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  {
+                                    text: 'Remove',
+                                    style: 'destructive',
+                                    onPress: () => {
+                                      handleClosePayDetail();
+                                      const freshDebt = useDebtStore.getState().debts.find((d) => d.id === snapDebtId);
+                                      const freshPayment = freshDebt?.payments.find((p) => p.id === snapPaymentId);
+                                      if (!freshPayment || !freshDebt) return;
+                                      if (freshPayment.linkedTransactionId) {
+                                        if (freshDebt.mode === 'personal') deleteTransaction(freshPayment.linkedTransactionId);
+                                        else deleteBusinessTransaction(freshPayment.linkedTransactionId);
+                                      }
+                                      if (freshPayment.walletId) {
+                                        if (freshDebt.type === 'they_owe') deductFromWallet(freshPayment.walletId, freshPayment.amount);
+                                        else addToWallet(freshPayment.walletId, freshPayment.amount);
+                                      }
+                                      if (freshDebt.splitId && freshDebt.status === 'settled') {
+                                        const newPaid = freshDebt.payments.filter((p) => p.id !== snapPaymentId).reduce((s, p) => s + p.amount, 0);
+                                        if (newPaid < freshDebt.totalAmount) unmarkSplitParticipantPaid(freshDebt.splitId, freshDebt.contact.id);
+                                      }
+                                      deletePayment(snapDebtId, snapPaymentId);
+                                      showToast('Payment removed', 'success');
+                                    },
+                                  },
+                                ]);
+                              }}
+                              variant="outline"
+                              style={{ flex: 1 }}
+                            />
+                            <Button
+                              title={payDetailSaving ? 'Saving…' : 'Save'}
+                              onPress={handleSavePayDetail}
+                              icon="check"
+                              style={{ flex: 1 }}
+                            />
+                          </View>
+                        </KeyboardAwareScrollView>
+                      </>
+                    );
+                  }
+
                   return (
                     <>
                       {/* Header */}
@@ -2757,7 +3039,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           <ProgressBar current={payDebt.paidAmount} total={payDebt.totalAmount} color={typeConfig.color} />
                         </View>
 
-                        {!paymentViewOnly && (
+                        {payDebt.status === 'settled' && (
+                          <View style={styles.settledNotice}>
+                            <Feather name="check-circle" size={15} color={CALM.positive} />
+                            <Text style={styles.settledNoticeText}>This debt is fully settled. View history below.</Text>
+                          </View>
+                        )}
+
+                        {!paymentViewOnly && payDebt.status !== 'settled' && (
                           <>
                             {/* Wallet picker (personal mode only) */}
                             {mode === 'personal' && wallets.length > 0 && (
@@ -2835,7 +3124,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           <View style={styles.payHistorySection}>
                             <Text style={styles.payHistoryTitle}>Payment History</Text>
                             {payDebt.payments.slice().reverse().map((payment) => (
-                              <View key={payment.id} style={styles.payHistoryItem}>
+                              <TouchableOpacity
+                                key={payment.id}
+                                style={styles.payHistoryItem}
+                                onPress={() => handleOpenPayDetail(payDebt.id, payment)}
+                                activeOpacity={0.7}
+                              >
                                 <View style={styles.payHistoryIcon}>
                                   <Feather name="check-circle" size={16} color={CALM.positive} />
                                 </View>
@@ -2848,15 +3142,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                     <Text style={styles.payHistoryTip}>incl. tip {currency} {payment.tipAmount.toFixed(2)}</Text>
                                   ) : null}
                                   {payment.note ? <Text style={styles.payHistoryNote}>{payment.note}</Text> : null}
+                                  {payment.editLog && payment.editLog.length > 0 && (
+                                    <View style={styles.payEditedBadge}>
+                                      <Feather name="edit-2" size={10} color={CALM.bronze} />
+                                      <Text style={styles.payEditedBadgeText}>
+                                        edited {format(new Date(payment.editLog[payment.editLog.length - 1].editedAt), 'MMM d, HH:mm')}
+                                      </Text>
+                                    </View>
+                                  )}
                                 </View>
-                                <TouchableOpacity
-                                  onPress={() => handleDeletePayment(payDebt.id, payment.id)}
-                                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                  style={styles.payHistoryDelete}
-                                >
-                                  <Feather name="trash-2" size={15} color={CALM.neutral} />
-                                </TouchableOpacity>
-                              </View>
+                                <View style={styles.payHistoryEditHint}>
+                                  <Feather name="chevron-right" size={14} color={CALM.textMuted} />
+                                </View>
+                              </TouchableOpacity>
                             ))}
                           </View>
                         )}
@@ -5729,6 +6027,119 @@ const styles = StyleSheet.create({
   payHistoryDelete: {
     padding: SPACING.xs,
     marginLeft: SPACING.xs,
+  },
+  payHistoryEditHint: {
+    padding: SPACING.xs,
+    marginLeft: SPACING.xs,
+  },
+  amountWarnRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
+  amountWarnText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.bronze,
+    flex: 1,
+    lineHeight: 16,
+  },
+  settledNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: withAlpha(CALM.positive, 0.08),
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  settledNoticeText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.positive,
+    flex: 1,
+  },
+  // Payment detail modal
+  payDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  payDetailMeta: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+  payDetailMetaHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  payDetailDivider: {
+    height: 1,
+    backgroundColor: withAlpha(CALM.accent, 0.08),
+    marginVertical: SPACING.md,
+  },
+  payDetailActions: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.lg,
+  },
+  // Edited badge on payment history rows
+  payEditedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3,
+  },
+  payEditedBadgeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.bronze,
+  },
+  // Edit history section in payment detail
+  editHistorySection: {
+    marginTop: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: withAlpha(CALM.accent, 0.08),
+    paddingTop: SPACING.md,
+  },
+  editHistoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  editHistoryTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
+    flex: 1,
+  },
+  editHistoryCount: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  editHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.xs,
+  },
+  editHistoryDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: withAlpha(CALM.bronze, 0.5),
+    marginTop: 5,
+  },
+  editHistoryMeta: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginBottom: 1,
+  },
+  editHistoryDetail: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
   },
 });
 
