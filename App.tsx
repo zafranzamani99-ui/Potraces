@@ -19,12 +19,15 @@ export default function App() {
     let cancelled = false;
     let unsubOrderLink: (() => void) | null = null;
 
+    const waitForHydration = () =>
+      new Promise<void>((resolve) => {
+        if (useSellerStore.persist.hasHydrated()) { resolve(); return; }
+        const unsub = useSellerStore.persist.onFinishHydration(() => { unsub(); resolve(); });
+      });
+
     const init = async () => {
-      try {
-        await ensureAnonSession();
-      } catch {
-        // Auth failure is non-fatal; app works fully offline
-      }
+      // Wait for both auth and store hydration before syncing
+      await Promise.allSettled([ensureAnonSession(), waitForHydration()]);
       if (!cancelled) setIsLoading(false);
 
       // Fire-and-forget sync after UI is ready
