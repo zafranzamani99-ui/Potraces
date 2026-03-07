@@ -136,6 +136,8 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
     </div>
     <div class="s-title">Pesanan Dihantar!</div>
     <div class="s-text">Terima kasih. Penjual akan hubungi anda tidak lama lagi.</div>
+    <div id="order-summary" style="width:100%;max-width:360px;margin-top:24px"></div>
+    <button class="submit-btn" style="max-width:360px;margin-top:20px;background:var(--olive)" onclick="orderAgain()">Pesan Lagi</button>
   </div>
 
   <div class="bar" id="bar">
@@ -260,9 +262,7 @@ async function doSubmit() {
       }),
     });
     if (!res.ok) { var txt = await res.text(); throw new Error(txt || 'HTTP ' + res.status); }
-    document.getElementById('main').style.display = 'none';
-    document.getElementById('bar').style.display = 'none';
-    document.getElementById('success').classList.add('show');
+    showSuccess(items, t, name);
   } catch (err) {
     var el = document.getElementById('err');
     el.textContent = 'Ralat: ' + (err.message || 'Sila cuba lagi.');
@@ -270,6 +270,31 @@ async function doSubmit() {
     el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     btn.disabled = false; btn.textContent = 'Hantar Pesanan';
   }
+}
+
+function showSuccess(items, t, customerName) {
+  document.getElementById('main').style.display = 'none';
+  document.getElementById('bar').style.display = 'none';
+  var html = '<div class="cart">';
+  html += '<div style="padding:12px 16px;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--bronze)">Pesanan Anda</div>';
+  for (var i = 0; i < items.length; i++) {
+    var x = items[i];
+    html += '<div class="cart-row"><span>' + x.q + ' ' + x.p.unit + ' ' + x.p.name + '</span><span style="font-weight:600">' + CUR + ' ' + (x.q * x.p.price_per_unit).toFixed(2) + '</span></div>';
+  }
+  html += '<div class="cart-row" style="font-weight:700"><span>Jumlah</span><span>' + CUR + ' ' + t.toFixed(2) + '</span></div>';
+  html += '</div>';
+  document.getElementById('order-summary').innerHTML = html;
+  document.getElementById('success').classList.add('show');
+}
+
+function orderAgain() {
+  cart = {};
+  document.getElementById('success').classList.remove('show');
+  document.getElementById('main').style.display = '';
+  document.getElementById('bar').style.display = '';
+  renderProds();
+  renderCart();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 var slug = params();
