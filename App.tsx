@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Alert } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import { ToastProvider } from './src/context/ToastContext';
 import { ensureAnonSession } from './src/services/supabase';
 import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId } from './src/services/sellerSync';
 import { registerPushNotifications } from './src/services/pushNotifications';
+import { globalShowToast } from './src/context/ToastContext';
 import { useSellerStore } from './src/store/sellerStore';
 
 export default function App() {
@@ -47,8 +48,8 @@ export default function App() {
         if (profileId && !cancelled) {
           unsubOrderLink = subscribeToOrderLinkOrders(profileId, (row) => {
             useSellerStore.getState().addOrderLinkOrder(row);
-            const name = (row.customer_name as string | null) ?? 'pelanggan';
-            Alert.alert('Pesanan Baru!', `${name} baru letak pesanan melalui pautan kedai anda.`);
+            const name = (row.customer_name as string | null) ?? 'Pelanggan';
+            globalShowToast(`Pesanan baru dari ${name}`, 'info');
           });
         }
       } catch {
