@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator, CardStyleInterpolators, StackCardStyleInterpolator } from '@react-navigation/stack';
 import { Feather } from '@expo/vector-icons';
 import { useAppStore } from '../store/appStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { CALM } from '../constants';
 import PersonalNavigator from './PersonalNavigator';
 import BusinessNavigator from './BusinessNavigator';
@@ -14,6 +15,7 @@ import SupplierList from '../screens/business/SupplierList';
 import TransactionsList from '../screens/personal/TransactionsList';
 import DebtTracking from '../screens/shared/DebtTracking';
 import ReceiptScanner from '../screens/shared/ReceiptScanner';
+import Onboarding from '../screens/shared/Onboarding';
 import WalletManagement from '../screens/personal/WalletManagement';
 import AccountOverview from '../screens/personal/AccountOverview';
 import SavingsTracker from '../screens/personal/SavingsTracker';
@@ -107,6 +109,7 @@ const modeTransitionSpec = {
 
 const RootNavigator: React.FC = () => {
   const mode = useAppStore((state) => state.mode);
+  const hasCompletedOnboarding = useSettingsStore((s) => s.hasCompletedOnboarding);
 
   return (
     <NavigationContainer>
@@ -117,7 +120,16 @@ const RootNavigator: React.FC = () => {
           gestureEnabled: true,
         }}
       >
-        {mode === 'personal' ? (
+        {!hasCompletedOnboarding ? (
+          <Stack.Screen
+            name="Onboarding"
+            component={Onboarding}
+            options={{
+              gestureEnabled: false,
+              cardStyleInterpolator: () => ({}),
+            }}
+          />
+        ) : mode === 'personal' ? (
           <Stack.Screen
             name="PersonalMain"
             component={PersonalNavigator}

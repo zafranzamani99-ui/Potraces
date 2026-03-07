@@ -21,10 +21,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import DraggableFlatList, {
-  ScaleDecorator,
-  RenderItemParams,
-} from 'react-native-draggable-flatlist';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { format } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
@@ -357,6 +354,14 @@ const Products: React.FC = () => {
       return;
     }
 
+    if (!parseFloat(newPrice) || parseFloat(newPrice) <= 0) {
+      setPriceError(true);
+      shakeField(priceShakeAnim);
+      warningNotification();
+      showToast('price must be greater than 0.', 'error');
+      return;
+    }
+
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     addProduct({
       name: newName.trim(),
@@ -405,6 +410,14 @@ const Products: React.FC = () => {
     if (hasNameErr || hasPriceErr) {
       warningNotification();
       showToast('please fill in product name and price', 'error');
+      return;
+    }
+
+    if (!parseFloat(newPrice) || parseFloat(newPrice) <= 0) {
+      setPriceError(true);
+      shakeField(priceShakeAnim);
+      warningNotification();
+      showToast('price must be greater than 0.', 'error');
       return;
     }
 
@@ -547,9 +560,9 @@ const Products: React.FC = () => {
     hasError && styles.modalInputError,
   ];
 
-  // ─── Render compact product row ────────────────────────────
+  // ─── Render product row (handles both normal + reorder mode) ──
   const renderProduct = useCallback(
-    ({ item, index }: { item: SellerProduct; index: number }) => {
+    ({ item, getIndex, drag, isActive: isDragging }: RenderItemParams<SellerProduct>) => {
       const initial = item.name.charAt(0).toUpperCase();
       const marginPct = item.costPerUnit && item.pricePerUnit > 0
         ? Math.round(((item.pricePerUnit - item.costPerUnit) / item.pricePerUnit) * 100)
@@ -561,98 +574,58 @@ const Products: React.FC = () => {
       if (item.trackStock && item.stockQuantity != null) sub.push(`${item.stockQuantity} in stock`);
 
       return (
-        <AnimatedProductCard index={index}>
-          <TouchableOpacity
-            style={[styles.productRow, !item.isActive && styles.productRowInactive]}
-            activeOpacity={0.65}
-            onPress={() => openEditModal(item)}
-            onLongPress={() => handleDelete(item)}
-            delayLongPress={500}
-            accessibilityRole="button"
-            accessibilityLabel={`${item.name}. Tap to edit, hold to delete.`}
-          >
-            <View style={[styles.rowAvatar, !item.isActive && styles.rowAvatarInactive]}>
-              <Text style={styles.rowAvatarText}>{initial}</Text>
-            </View>
-            <View style={styles.rowContent}>
-              <View style={styles.rowTop}>
-                <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.rowPrice}>
-                  {currency} {item.pricePerUnit.toFixed(2)}
-                  <Text style={styles.rowUnit}>/{item.unit}</Text>
-                </Text>
-              </View>
-              {sub.length > 0 && (
-                <Text style={styles.rowSub} numberOfLines={1}>
-                  {sub.join('  \u00B7  ')}
-                </Text>
-              )}
-            </View>
-            <Switch
-              value={item.isActive}
-              onValueChange={() => handleToggleActive(item)}
-              trackColor={{ false: CALM.border, true: CALM.bronze }}
-              thumbColor="#fff"
-              style={styles.rowSwitch}
-              accessibilityRole="switch"
-              accessibilityLabel={`Toggle ${item.name} active`}
-            />
-          </TouchableOpacity>
-        </AnimatedProductCard>
-      );
-    },
-    [currency, openEditModal, handleToggleActive, handleDelete, reorderMode, sortedProducts, setProductOrder]
-  );
-
-  // ─── Drag-to-reorder ──────────────────────────────────────
-  const renderDraggableProduct = useCallback(
-    ({ item, drag, isActive: isDragging }: RenderItemParams<SellerProduct>) => {
-      const initial = item.name.charAt(0).toUpperCase();
-      const sub: string[] = [];
-      if (item.totalSold > 0) sub.push(`${item.totalSold} sold`);
-      if (item.trackStock && item.stockQuantity != null) sub.push(`${item.stockQuantity} in stock`);
-
-      return (
         <ScaleDecorator>
-          <TouchableOpacity
-            style={[
-              styles.productRow,
-              !item.isActive && styles.productRowInactive,
-              isDragging && styles.productRowDragging,
-            ]}
-            activeOpacity={0.65}
-            onLongPress={drag}
-            delayLongPress={150}
-          >
-            <View style={[styles.rowAvatar, !item.isActive && styles.rowAvatarInactive]}>
-              <Text style={styles.rowAvatarText}>{initial}</Text>
-            </View>
-            <View style={styles.rowContent}>
-              <View style={styles.rowTop}>
-                <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.rowPrice}>
-                  {currency} {item.pricePerUnit.toFixed(2)}
-                  <Text style={styles.rowUnit}>/{item.unit}</Text>
-                </Text>
+          <AnimatedProductCard index={getIndex() ?? 0}>
+            <TouchableOpacity
+              style={[
+                styles.productRow,
+                !item.isActive && styles.productRowInactive,
+                isDragging && styles.productRowDragging,
+              ]}
+              activeOpacity={reorderMode ? 0.8 : 0.65}
+              onPress={reorderMode ? undefined : () => openEditModal(item)}
+              onLongPress={reorderMode ? drag : () => handleDelete(item)}
+              delayLongPress={reorderMode ? 150 : 500}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.name}. Tap to edit, hold to delete.`}
+            >
+              <View style={[styles.rowAvatar, !item.isActive && styles.rowAvatarInactive]}>
+                <Text style={styles.rowAvatarText}>{initial}</Text>
               </View>
-              {sub.length > 0 && (
-                <Text style={styles.rowSub} numberOfLines={1}>
-                  {sub.join('  \u00B7  ')}
-                </Text>
+              <View style={styles.rowContent}>
+                <View style={styles.rowTop}>
+                  <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.rowPrice}>
+                    {currency} {item.pricePerUnit.toFixed(2)}
+                    <Text style={styles.rowUnit}>/{item.unit}</Text>
+                  </Text>
+                </View>
+                {sub.length > 0 && (
+                  <Text style={styles.rowSub} numberOfLines={1}>
+                    {sub.join('  \u00B7  ')}
+                  </Text>
+                )}
+              </View>
+              {reorderMode ? (
+                <Feather name="menu" size={18} color={isDragging ? CALM.accent : CALM.neutral} />
+              ) : (
+                <Switch
+                  value={item.isActive}
+                  onValueChange={() => handleToggleActive(item)}
+                  trackColor={{ false: CALM.border, true: CALM.bronze }}
+                  thumbColor="#fff"
+                  style={styles.rowSwitch}
+                  accessibilityRole="switch"
+                  accessibilityLabel={`Toggle ${item.name} active`}
+                />
               )}
-            </View>
-            <Feather name="menu" size={18} color={isDragging ? CALM.accent : CALM.neutral} />
-          </TouchableOpacity>
+            </TouchableOpacity>
+          </AnimatedProductCard>
         </ScaleDecorator>
       );
     },
-    [currency]
+    [currency, openEditModal, handleToggleActive, handleDelete, reorderMode]
   );
-
-  const handleDragEnd = useCallback(({ data }: { data: SellerProduct[] }) => {
-    lightTap();
-    setProductOrder(data.map((p) => p.id));
-  }, [setProductOrder]);
 
   // ─── FlatList render helpers ────────────────────────────────
   const productKeyExtractor = useCallback((p: SellerProduct) => p.id, []);
@@ -660,14 +633,9 @@ const Products: React.FC = () => {
   // ─── List header ────────────────────────────────────────────
   const ListHeaderComponent = useMemo(() => (
     <View style={styles.listHeaderWrap}>
-      {/* Title row */}
+      {/* Action row */}
       <View style={styles.listHeader}>
-        <View style={styles.listHeaderLeft}>
-          <Text style={styles.listHeaderTitle}>products</Text>
-          <View style={styles.listHeaderBadge}>
-            <Text style={styles.listHeaderBadgeText}>{products.length}</Text>
-          </View>
-        </View>
+        <View style={{ flex: 1 }} />
         <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
           {products.length > 1 && (
             <TouchableOpacity
@@ -699,37 +667,34 @@ const Products: React.FC = () => {
         </View>
       </View>
 
-      {/* Search (shows when 4+ products) */}
-      {products.length > 3 && (
-        <View style={styles.searchBar}>
-          <Feather name="search" size={14} color={CALM.textMuted} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="search products..."
-            placeholderTextColor={CALM.textMuted}
-            value={search}
-            onChangeText={setSearch}
-            returnKeyType="search"
-            accessibilityLabel="Search products"
-            accessibilityRole="search"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity
-              onPress={() => setSearch('')}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel="Clear search"
-            >
-              <Feather name="x" size={14} color={CALM.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-
+      {/* Search bar */}
+      <View style={styles.searchBar}>
+        <Feather name="search" size={14} color={CALM.textMuted} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="search products..."
+          placeholderTextColor={CALM.textMuted}
+          value={search}
+          onChangeText={setSearch}
+          returnKeyType="search"
+          accessibilityLabel="Search products"
+          accessibilityRole="search"
+        />
+        {search.length > 0 ? (
+          <TouchableOpacity
+            onPress={() => setSearch('')}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+          >
+            <Feather name="x" size={14} color={CALM.textMuted} />
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.searchProductCount}>{products.length}</Text>
+        )}
+      </View>
       {search.trim().length > 0 && (
-        <Text style={styles.searchCount}>
-          {filteredProducts.length} of {products.length}
-        </Text>
+        <Text style={styles.searchCount}>showing {filteredProducts.length} of {products.length}</Text>
       )}
 
       {/* Popular this month */}
@@ -741,13 +706,11 @@ const Products: React.FC = () => {
             return (
               <View key={p.name} style={styles.popularRow}>
                 <View style={styles.popularContent}>
-                  <View style={styles.popularRankBadge}>
-                    <Text style={styles.popularRankText}>{index + 1}</Text>
-                  </View>
+                  <Text style={styles.popularRank}>{index + 1}</Text>
                   <Text style={styles.popularName}>{p.name}</Text>
-                  <Text style={styles.popularQty}>
-                    {p.qty} {p.unit} · {currency} {p.inflow.toFixed(0)}
-                  </Text>
+                  <View style={{ flex: 1 }} />
+                  <Text style={styles.popularQty}>{p.qty} {p.unit}</Text>
+                  <Text style={styles.popularInflow}>  {currency} {p.inflow.toFixed(0)}</Text>
                 </View>
                 <View style={styles.popularBarTrack}>
                   <View style={[styles.popularBarFill, { width: `${barWidth}%` as any }]} />
@@ -1095,33 +1058,15 @@ const Products: React.FC = () => {
   );
 
   // ─── Render ────────────────────────────────────────────────
-  const ItemSeparator = useCallback(() => <View style={styles.rowDivider} />, []);
 
   return (
-    <View style={styles.container}>
-      {reorderMode && sortedProducts.length > 1 ? (
-        <>
-          {ListHeaderComponent}
-          <Text style={styles.dragHint}>hold & drag to reorder</Text>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <DraggableFlatList
-              data={sortedProducts}
-              keyExtractor={productKeyExtractor}
-              renderItem={renderDraggableProduct}
-              onDragEnd={handleDragEnd}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.listContent}
-              activationDistance={5}
-            />
-          </GestureHandlerRootView>
-        </>
-      ) : (
-      <FlatList
-        data={products.length === 0 ? products : filteredProducts}
+    <GestureHandlerRootView style={styles.container}>
+      <DraggableFlatList
+        data={reorderMode ? sortedProducts : (products.length === 0 ? products : filteredProducts)}
         renderItem={renderProduct}
         keyExtractor={productKeyExtractor}
+        onDragEnd={({ data }) => { lightTap(); setProductOrder(data.map((p) => p.id)); }}
         ListHeaderComponent={products.length > 0 ? ListHeaderComponent : undefined}
-        ItemSeparatorComponent={ItemSeparator}
         contentContainerStyle={[
           styles.listContent,
           products.length === 0 && styles.listContentEmpty,
@@ -1163,11 +1108,8 @@ const Products: React.FC = () => {
         }
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        initialNumToRender={15}
-        maxToRenderPerBatch={15}
-        windowSize={7}
+        activationDistance={reorderMode ? 5 : 99999}
       />
-      )}
 
       {/* Bottom-anchored add button */}
       {products.length > 0 && (
@@ -1399,7 +1341,7 @@ const Products: React.FC = () => {
         </Pressable>
       </Modal>
 
-    </View>
+    </GestureHandlerRootView>
   );
 };
 
@@ -1410,7 +1352,7 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.background,
   },
   listContent: {
-    paddingHorizontal: SPACING.md,
+    paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
     paddingBottom: SPACING['3xl'],
   },
@@ -1447,24 +1389,38 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'] as any,
     paddingLeft: SPACING.xs,
   },
+  searchProductCount: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
 
   // Compact product row
   productRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.sm + 2,
-    paddingHorizontal: SPACING.xs,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
-    minHeight: 56,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: CALM.surface,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    marginBottom: SPACING.sm,
+    ...SHADOWS.sm,
   },
   productRowInactive: {
-    opacity: 0.4,
+    opacity: 0.45,
+  },
+  productRowDragging: {
+    backgroundColor: withAlpha(CALM.accent, 0.06),
+    borderColor: withAlpha(CALM.accent, 0.2),
   },
   rowAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     backgroundColor: withAlpha(CALM.bronze, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
@@ -1574,7 +1530,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   listHeaderTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
+    fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.textPrimary,
   },
@@ -2103,17 +2059,6 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
   },
-  productRowDragging: {
-    backgroundColor: withAlpha(CALM.accent, 0.06),
-    borderWidth: 1,
-    borderColor: withAlpha(CALM.accent, 0.2),
-  },
-  dragHint: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.neutral,
-    textAlign: 'center',
-    paddingVertical: SPACING.xs,
-  },
   reorderButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2178,7 +2123,6 @@ const styles = StyleSheet.create({
     color: CALM.accent,
   },
   popularName: {
-    flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.textPrimary,
@@ -2188,16 +2132,27 @@ const styles = StyleSheet.create({
     color: CALM.textMuted,
     fontVariant: ['tabular-nums'] as any,
   },
+  popularRank: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textMuted,
+    width: 18,
+  },
+  popularInflow: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+  },
   popularBarTrack: {
-    height: 3,
-    borderRadius: 2,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: withAlpha(CALM.accent, 0.1),
     overflow: 'hidden',
   },
   popularBarFill: {
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: withAlpha(CALM.accent, 0.45),
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: withAlpha(CALM.accent, 0.6),
   },
 });
 

@@ -541,6 +541,7 @@ const DebtTracking: React.FC = () => {
   };
 
   const cleanupDebtPayments = (debt: Debt) => {
+    const currentWallets = useWalletStore.getState().wallets;
     debt.payments.forEach((payment) => {
       if (payment.linkedTransactionId) {
         if (debt.mode === 'personal') {
@@ -549,7 +550,7 @@ const DebtTracking: React.FC = () => {
           deleteBusinessTransaction(payment.linkedTransactionId);
         }
       }
-      if (payment.walletId) {
+      if (payment.walletId && currentWallets.some(w => w.id === payment.walletId)) {
         if (debt.type === 'they_owe') {
           deductFromWallet(payment.walletId, payment.amount);
         } else {
@@ -621,6 +622,13 @@ const DebtTracking: React.FC = () => {
   };
 
   const processPayment = (debt: Debt, amount: number) => {
+    // Guard: don't process payment on already-settled debt
+    const currentDebt = useDebtStore.getState().debts.find(d => d.id === debt.id);
+    if (currentDebt?.status === 'settled') {
+      showToast('this debt is already settled.', 'info');
+      return;
+    }
+
     // Validate wallet still exists (could be deleted since modal opened)
     if (paymentWalletId) {
       const walletExists = wallets.some((w) => w.id === paymentWalletId);
@@ -891,29 +899,38 @@ const DebtTracking: React.FC = () => {
             );
 
             if (linkedDebt && linkedDebt.payments.length > 0) {
-              // Reverse ALL payments
-              [...linkedDebt.payments].reverse().forEach((payment) => {
+              // Reverse ALL payments — read fresh state each iteration
+              const paymentsToDelete = [...linkedDebt.payments].reverse();
+              for (const payment of paymentsToDelete) {
+                const freshDebt = useDebtStore.getState().debts.find(d => d.id === linkedDebt.id);
+                if (!freshDebt) break;
+                const freshPayment = freshDebt.payments.find(p => p.id === payment.id);
+                if (!freshPayment) continue;
+
                 // Delete linked transaction
-                if (payment.linkedTransactionId) {
-                  if (linkedDebt.mode === 'personal') {
-                    deleteTransaction(payment.linkedTransactionId);
+                if (freshPayment.linkedTransactionId) {
+                  if (freshDebt.mode === 'personal') {
+                    deleteTransaction(freshPayment.linkedTransactionId);
                   } else {
-                    deleteBusinessTransaction(payment.linkedTransactionId);
+                    deleteBusinessTransaction(freshPayment.linkedTransactionId);
                   }
                 }
 
                 // Reverse wallet balance
-                if (payment.walletId) {
-                  if (linkedDebt.type === 'they_owe') {
-                    deductFromWallet(payment.walletId, payment.amount);
-                  } else {
-                    addToWallet(payment.walletId, payment.amount);
+                if (freshPayment.walletId) {
+                  const currentWallets = useWalletStore.getState().wallets;
+                  if (currentWallets.some(w => w.id === freshPayment.walletId)) {
+                    if (freshDebt.type === 'they_owe') {
+                      deductFromWallet(freshPayment.walletId, freshPayment.amount);
+                    } else {
+                      addToWallet(freshPayment.walletId, freshPayment.amount);
+                    }
                   }
                 }
 
                 // Delete the payment from the debt
                 deletePayment(linkedDebt.id, payment.id);
-              });
+              }
             }
 
             // Unmark split participant
@@ -1013,12 +1030,23 @@ const DebtTracking: React.FC = () => {
       showToast('Please select who paid', 'error');
       return;
     }
+    const hasMe = splitContacts.some(c => c.id === '__self__');
+    if (!hasMe) {
+      showToast('add yourself to the split first.', 'error');
+      return;
+    }
     const total = parseFloat(splitAmount);
     let participants: SplitParticipant[] = [];
 
     if (splitMethod === 'equal') {
-      const perPerson = total / splitContacts.length;
-      participants = splitContacts.map((c) => ({ contact: c, amount: perPerson, isPaid: false }));
+      const count = splitContacts.length;
+      const perPerson = Math.floor((total / count) * 100) / 100;
+      const remainder = Math.round((total - perPerson * count) * 100) / 100;
+      participants = splitContacts.map((c, i) => ({
+        contact: c,
+        amount: Math.round((perPerson + (i === 0 ? remainder : 0)) * 100) / 100,
+        isPaid: false,
+      }));
     } else if (splitMethod === 'custom') {
       const customTotal = Object.values(customAmounts).reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
       if (Math.abs(customTotal - total) > 0.01) {
@@ -1101,12 +1129,20 @@ const DebtTracking: React.FC = () => {
 
       // Cascade updated per-participant amounts to linked Debt.totalAmount
       const linkedDebtsForUpdate = useDebtStore.getState().debts.filter((d) => d.splitId === editingSplitId);
+      let totalChanged = false;
       participants.forEach((p) => {
         const linked = linkedDebtsForUpdate.find((d) => d.contact.id === p.contact.id);
         if (linked && linked.totalAmount !== p.amount) {
+          totalChanged = true;
           updateDebt(linked.id, { totalAmount: p.amount } as any);
         }
       });
+
+      // Warn if linked debts have payments and amounts changed
+      const hasPayments = linkedDebtsForUpdate.some(d => d.payments && d.payments.length > 0);
+      if (hasPayments && totalChanged) {
+        showToast('linked debts have payments — review amounts manually.', 'info');
+      }
 
       showToast('Split updated!', 'success');
     } else {
@@ -2709,10 +2745,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 {splitPaidBy.length > 0 && splitPaidBy[0].id === '__self__' && (
                   <WalletPicker
                     wallets={wallets}
-                    selectedWalletId={splitWalletId}
+                    selectedId={splitWalletId}
                     onSelect={setSplitWalletId}
                     label="Paid from wallet"
-                    optional
                   />
                 )}
 

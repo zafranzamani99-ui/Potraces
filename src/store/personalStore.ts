@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PersonalState } from '../types';
+import { useWalletStore } from './walletStore';
 
 export const usePersonalStore = create<PersonalState>()(
   persist(
@@ -12,7 +13,7 @@ export const usePersonalStore = create<PersonalState>()(
       goals: [],
 
       addTransaction: (transaction) => {
-        const id = Date.now().toString();
+        const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
         set((state) => ({
           transactions: [
             {
@@ -64,7 +65,7 @@ export const usePersonalStore = create<PersonalState>()(
           subscriptions: [
             {
               ...subscription,
-              id: Date.now().toString(),
+              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
               createdAt: new Date(),
               updatedAt: new Date(),
             },
@@ -77,7 +78,7 @@ export const usePersonalStore = create<PersonalState>()(
           budgets: [
             {
               ...budget,
-              id: Date.now().toString(),
+              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
               spentAmount: 0,
               createdAt: new Date(),
               updatedAt: new Date(),
@@ -114,7 +115,8 @@ export const usePersonalStore = create<PersonalState>()(
           budgets: state.budgets.filter((b) => b.id !== id),
         })),
 
-      addTransferIncome: (transfer) =>
+      addTransferIncome: (transfer) => {
+        const walletId = (transfer as any).walletId as string | undefined;
         set((state) => ({
           transactions: [
             {
@@ -126,19 +128,24 @@ export const usePersonalStore = create<PersonalState>()(
               type: 'income' as const,
               mode: 'personal' as const,
               inputMethod: 'manual' as const,
+              ...(walletId ? { walletId } : {}),
               createdAt: new Date(),
               updatedAt: new Date(),
             },
             ...state.transactions,
           ],
-        })),
+        }));
+        if (walletId) {
+          useWalletStore.getState().addToWallet(walletId, transfer.amount);
+        }
+      },
 
       addGoal: (goal) =>
         set((state) => ({
           goals: [
             {
               ...goal,
-              id: Date.now().toString(),
+              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
               currentAmount: 0,
               contributions: [],
               milestones: [
@@ -173,12 +180,12 @@ export const usePersonalStore = create<PersonalState>()(
           goals: state.goals.map((goal) => {
             if (goal.id !== goalId) return goal;
             const newContribution = {
-              id: Date.now().toString(),
+              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
               amount,
               note,
               date: new Date(),
             };
-            const newCurrentAmount = goal.currentAmount + amount;
+            const newCurrentAmount = Math.min(goal.currentAmount + amount, goal.targetAmount);
             const updatedMilestones = goal.milestones.map((m) => {
               if (!m.reached && newCurrentAmount >= (m.percentage / 100) * goal.targetAmount) {
                 return { ...m, reached: true, reachedAt: new Date() };

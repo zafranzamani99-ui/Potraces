@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { format, isSameDay } from 'date-fns';
+import { format, isSameDay, parseISO } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
@@ -112,7 +112,7 @@ const TransactionsList: React.FC = () => {
     return Object.entries(grouped)
       .sort(([a], [b]) => b.localeCompare(a))
       .map(([dateKey, data]) => ({
-        title: format(new Date(dateKey), 'EEEE, MMM d, yyyy'),
+        title: format(parseISO(dateKey), 'EEEE, MMM d, yyyy'),
         data,
       }));
   }, [filteredTransactions]);
@@ -158,19 +158,27 @@ const TransactionsList: React.FC = () => {
     const oldWalletId = editingTransaction.walletId;
     const oldType = editingTransaction.type;
 
-    if (oldWalletId) {
-      if (oldType === 'expense') {
-        addToWallet(oldWalletId, oldAmount);
-      } else {
-        deductFromWallet(oldWalletId, oldAmount);
-      }
-    }
+    // H-4 fix: use net-difference for same-wallet edits to avoid double adjustment on type flip
+    const currentWallets = useWalletStore.getState().wallets;
+    const oldWalletExists = oldWalletId ? currentWallets.some(w => w.id === oldWalletId) : false;
+    const newWalletExists = editWalletId ? currentWallets.some(w => w.id === editWalletId) : false;
 
-    if (editWalletId) {
-      if (editType === 'expense') {
-        deductFromWallet(editWalletId, newAmount);
-      } else {
-        addToWallet(editWalletId, newAmount);
+    if (oldWalletId === editWalletId && oldWalletId && oldWalletExists) {
+      // Same wallet: calculate net change
+      const oldEffect = oldType === 'expense' ? -oldAmount : oldAmount;
+      const newEffect = editType === 'expense' ? -newAmount : newAmount;
+      const diff = newEffect - oldEffect;
+      if (diff > 0) addToWallet(oldWalletId, diff);
+      else if (diff < 0) deductFromWallet(oldWalletId, Math.abs(diff));
+    } else {
+      // Different wallets: reverse old, apply new
+      if (oldWalletId && oldWalletExists) {
+        if (oldType === 'expense') addToWallet(oldWalletId, oldAmount);
+        else deductFromWallet(oldWalletId, oldAmount);
+      }
+      if (editWalletId && newWalletExists) {
+        if (editType === 'expense') deductFromWallet(editWalletId, newAmount);
+        else addToWallet(editWalletId, newAmount);
       }
     }
 
@@ -227,10 +235,13 @@ const TransactionsList: React.FC = () => {
 
     const doDelete = () => {
       if (editingTransaction.walletId) {
-        if (editingTransaction.type === 'expense') {
-          addToWallet(editingTransaction.walletId, editingTransaction.amount);
-        } else {
-          deductFromWallet(editingTransaction.walletId, editingTransaction.amount);
+        const deleteWallets = useWalletStore.getState().wallets;
+        if (deleteWallets.some(w => w.id === editingTransaction.walletId)) {
+          if (editingTransaction.type === 'expense') {
+            addToWallet(editingTransaction.walletId, editingTransaction.amount);
+          } else {
+            deductFromWallet(editingTransaction.walletId, editingTransaction.amount);
+          }
         }
       }
       if (isTransferLinked && transferId) {
@@ -819,7 +830,8 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   linkedNoticeText: {
-    ...TYPOGRAPHY.caption,
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.bronze,
     flex: 1,
   },

@@ -128,6 +128,9 @@ export const useWalletStore = create<WalletState>()(
               : w
           ),
         })),
+
+      clearAll: () =>
+        set({ wallets: [], transfers: [], selectedWalletId: null }),
     }),
     {
       name: 'wallet-storage',

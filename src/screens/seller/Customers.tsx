@@ -483,7 +483,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
 
 // ─── Main Component ──────────────────────────────────────────
 const SellerCustomers: React.FC = () => {
-  const { orders, sellerCustomers, addSellerCustomer, updateSellerCustomer, deleteSellerCustomer, deleteOrder, updateOrder } = useSellerStore();
+  const { orders, sellerCustomers, addSellerCustomer, updateSellerCustomer, deleteSellerCustomer, deleteOrder, deleteOrders, updateOrder } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
   const { showToast } = useToast();
   const navigation = useNavigation<any>();
@@ -530,7 +530,9 @@ const SellerCustomers: React.FC = () => {
 
       const entry = map[key];
       entry.totalOrders += 1;
-      entry.totalSpent += order.totalAmount;
+      if (order.isPaid) {
+        entry.totalSpent += order.totalAmount;
+      }
       if (!order.isPaid) {
         entry.unpaidAmount += order.totalAmount;
       }
@@ -744,9 +746,7 @@ const SellerCustomers: React.FC = () => {
               deleteSellerCustomer(customer.storedId!);
             }
             // Delete all orders for this customer
-            for (const order of customer.orders) {
-              deleteOrder(order.id);
-            }
+            deleteOrders(customer.orders.map(o => o.id));
             setSelectedCustomer(null);
             showToast('customer and orders deleted.', 'info');
           },
@@ -1392,7 +1392,7 @@ const SellerCustomers: React.FC = () => {
                   )
                 : contactsList
               }
-              keyExtractor={(item, idx) => item.id || String(idx)}
+              keyExtractor={(item, idx) => (item as any).id ?? String(idx)}
               style={styles.contactList}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"

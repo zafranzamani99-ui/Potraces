@@ -664,6 +664,7 @@ const OrderList: React.FC = () => {
         setDeliveryFilter('all');
         setPaymentFilter('all');
         setOverdueOnly(false);
+        setViewMode('list');
       } else if (initialFilter === 'overdue') {
         setOverdueOnly(true);
         setOnlineOnly(false);
@@ -703,7 +704,7 @@ const OrderList: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
-  const [viewMode, setViewMode] = useState<ViewMode>('grouped');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
 
   // Payment picker state
   const [pendingPayOrder, setPendingPayOrder] = useState<SellerOrder | null>(null);
@@ -1008,8 +1009,16 @@ const OrderList: React.FC = () => {
           `Jumlah: ${currency} ${order.totalAmount.toFixed(2)}\n\n` +
           `Terima kasih! 🙏`;
         let digits = order.customerPhone.replace(/[^0-9]/g, '');
-        if (digits.startsWith('0')) digits = '60' + digits.slice(1);
-        Linking.openURL(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`).catch(() => {});
+        if (digits.startsWith('60')) { /* already correct */ }
+        else if (digits.startsWith('0')) digits = '60' + digits.slice(1);
+        Alert.alert(
+          '',
+          `send confirmation to ${order.customerName} via WhatsApp?`,
+          [
+            { text: 'skip', style: 'cancel' },
+            { text: 'send', onPress: () => { Linking.openURL(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`).catch(() => {}); } },
+          ]
+        );
       }
     },
     [updateOrderStatus, showToast, currency]
@@ -1147,7 +1156,8 @@ const OrderList: React.FC = () => {
       const phone = order.customerPhone;
       if (phone) {
         let digits = phone.replace(/[^0-9]/g, '');
-        if (digits.startsWith('0')) digits = '60' + digits.slice(1);
+        if (digits.startsWith('60')) { /* already correct */ }
+        else if (digits.startsWith('0')) digits = '60' + digits.slice(1);
         Linking.openURL(`https://wa.me/${digits}?text=${encodeURIComponent(text)}`).catch(() => {
           Clipboard.setStringAsync(text).then(() => showToast('receipt copied (WA unavailable).', 'info'));
         });
@@ -1252,7 +1262,8 @@ const OrderList: React.FC = () => {
   const handleWhatsApp = useCallback((phone: string) => {
     let digits = phone.replace(/[^0-9]/g, '');
     // Malaysian numbers: convert leading 0 to country code 60
-    if (digits.startsWith('0')) digits = '60' + digits.slice(1);
+    if (digits.startsWith('60')) { /* already correct */ }
+    else if (digits.startsWith('0')) digits = '60' + digits.slice(1);
     Linking.openURL(`https://wa.me/${digits}`);
   }, []);
 
@@ -1443,7 +1454,7 @@ const OrderList: React.FC = () => {
       <Text style={styles.emptySubtitle}>
         {hasActiveFilters
           ? 'try adjusting your filters or search.'
-          : 'create your first order to get started.'}
+          : 'tap + to record your first order.'}
       </Text>
       {!hasActiveFilters && (
         <TouchableOpacity
@@ -2544,19 +2555,31 @@ const OrderList: React.FC = () => {
                     showToast('enter a valid amount.', 'error');
                     return;
                   }
+                  const remaining = selectedOrder.totalAmount - (selectedOrder.paidAmount || 0);
+                  if (amt > remaining) {
+                    showToast(`maximum deposit is ${currency} ${remaining.toFixed(2)}.`, 'error');
+                    return;
+                  }
                   mediumTap();
                   recordPayment(selectedOrder.id, amt, depositMethod);
+                  const freshOrder = useSellerStore.getState().orders.find(o => o.id === selectedOrder.id);
+                  if (freshOrder) {
+                    setSelectedOrder(freshOrder);
+                  } else {
+                    const newPaid = (selectedOrder.paidAmount || 0) + amt;
+                    const fullyPaid = newPaid >= selectedOrder.totalAmount;
+                    setSelectedOrder({
+                      ...selectedOrder,
+                      paidAmount: newPaid,
+                      isPaid: fullyPaid,
+                      paymentMethod: depositMethod,
+                      paidAt: fullyPaid ? new Date() : selectedOrder.paidAt,
+                      updatedAt: new Date(),
+                    });
+                  }
+                  setShowDepositInput(false);
                   const newPaid = (selectedOrder.paidAmount || 0) + amt;
                   const fullyPaid = newPaid >= selectedOrder.totalAmount;
-                  setSelectedOrder({
-                    ...selectedOrder,
-                    paidAmount: newPaid,
-                    isPaid: fullyPaid,
-                    paymentMethod: depositMethod,
-                    paidAt: fullyPaid ? new Date() : selectedOrder.paidAt,
-                    updatedAt: new Date(),
-                  });
-                  setShowDepositInput(false);
                   showToast(fullyPaid ? 'fully paid!' : `deposit of ${currency} ${amt.toFixed(2)} recorded.`, 'info');
                 }}
                 accessibilityRole="button"

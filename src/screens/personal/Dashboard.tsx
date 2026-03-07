@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { format, addDays, isWithinInterval, startOfMonth, endOfMonth, subMonths, getDaysInMonth } from 'date-fns';
+import { format, addDays, isWithinInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear, subMonths, getDaysInMonth } from 'date-fns';
 
 import { useNavigation } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
@@ -128,7 +128,21 @@ const PersonalDashboard: React.FC = () => {
     const totalUpcoming = upcomingBills.reduce((sum, sub) => sum + sub.amount, 0);
 
     const totalBudget = budgets.reduce((sum, b) => sum + b.allocatedAmount, 0);
-    const totalSpent = budgets.reduce((sum, b) => sum + b.spentAmount, 0);
+    const getDateRange = (budget: { period: string }) => {
+      if (budget.period === 'weekly') {
+        return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
+      } else if (budget.period === 'yearly') {
+        return { start: startOfYear(now), end: endOfYear(now) };
+      }
+      return { start: monthStart, end: monthEnd };
+    };
+    const totalSpent = budgets.reduce((sum, b) => {
+      const range = getDateRange(b);
+      const spent = transactions
+        .filter((t) => t.type === 'expense' && t.category === b.category && isWithinInterval(t.date, range))
+        .reduce((s, t) => s + t.amount, 0);
+      return sum + spent;
+    }, 0);
 
     const personalDebts = debts.filter((d) => d.mode === 'personal');
     const youOwe = personalDebts
@@ -177,7 +191,13 @@ const PersonalDashboard: React.FC = () => {
   );
 
   const recentTransactions = useMemo(() => {
-    return transactions.slice(0, 5);
+    return [...transactions]
+      .sort((a, b) => {
+        const da = a.date instanceof Date ? a.date : new Date(a.date);
+        const db = b.date instanceof Date ? b.date : new Date(b.date);
+        return db.getTime() - da.getTime();
+      })
+      .slice(0, 5);
   }, [transactions]);
 
   // ─── Insight strip data ───────────────────────────────────
@@ -273,8 +293,9 @@ const PersonalDashboard: React.FC = () => {
     const oldWalletId = editingTransaction.walletId;
     const oldType = editingTransaction.type;
 
-    // Reverse old wallet adjustment
-    if (oldWalletId) {
+    // Reverse old wallet adjustment (only if wallet still exists)
+    const wallets = useWalletStore.getState().wallets;
+    if (oldWalletId && wallets.some(w => w.id === oldWalletId)) {
       if (oldType === 'expense') {
         addToWallet(oldWalletId, oldAmount);
       } else {
@@ -282,8 +303,8 @@ const PersonalDashboard: React.FC = () => {
       }
     }
 
-    // Apply new wallet adjustment
-    if (editWalletId) {
+    // Apply new wallet adjustment (only if wallet still exists)
+    if (editWalletId && wallets.some(w => w.id === editWalletId)) {
       if (editType === 'expense') {
         deductFromWallet(editWalletId, newAmount);
       } else {
@@ -339,37 +360,52 @@ const PersonalDashboard: React.FC = () => {
 
     const isTransferLinked = editingTransaction.id.startsWith('transfer-');
     const transferId = isTransferLinked ? editingTransaction.id.replace('transfer-', '') : null;
+    const { linkedDebtId, linkedPaymentId } = editingTransaction;
 
-    Alert.alert(
-      'Delete Transaction',
-      isTransferLinked
-        ? 'This income was transferred from seller mode. Deleting it will allow you to re-transfer those orders.\n\nDelete anyway?'
-        : 'Are you sure you want to delete this transaction?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            if (editingTransaction.walletId) {
-              if (editingTransaction.type === 'expense') {
-                addToWallet(editingTransaction.walletId, editingTransaction.amount);
-              } else {
-                deductFromWallet(editingTransaction.walletId, editingTransaction.amount);
-              }
-            }
-            if (isTransferLinked && transferId) {
-              unmarkOrdersTransferred(transferId);
-              deleteTransfer(transferId);
-            }
-            deleteTransaction(editingTransaction.id);
-            setEditModalVisible(false);
-            setEditingTransaction(null);
-            showToast('Transaction deleted', 'success');
-          },
-        },
-      ]
-    );
+    const doDelete = () => {
+      if (editingTransaction.walletId) {
+        if (editingTransaction.type === 'expense') {
+          addToWallet(editingTransaction.walletId, editingTransaction.amount);
+        } else {
+          deductFromWallet(editingTransaction.walletId, editingTransaction.amount);
+        }
+      }
+      if (isTransferLinked && transferId) {
+        unmarkOrdersTransferred(transferId);
+        deleteTransfer(transferId);
+      }
+      // Also delete the linked debt payment (wallet already reversed above)
+      if (linkedDebtId && linkedPaymentId) {
+        useDebtStore.getState().deletePayment(linkedDebtId, linkedPaymentId);
+      }
+      deleteTransaction(editingTransaction.id);
+      setEditModalVisible(false);
+      setEditingTransaction(null);
+      showToast('Transaction deleted', 'success');
+    };
+
+    // Extra warning if linked to a debt payment
+    if (linkedDebtId) {
+      Alert.alert(
+        'Delete Transaction?',
+        'This will also remove the linked debt payment record.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete Both', style: 'destructive', onPress: doDelete },
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Delete Transaction',
+        isTransferLinked
+          ? 'This income was transferred from seller mode. Deleting it will allow you to re-transfer those orders.\n\nDelete anyway?'
+          : 'Are you sure you want to delete this transaction?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: doDelete },
+        ]
+      );
+    }
   }, [editingTransaction, addToWallet, deductFromWallet, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, showToast]);
 
   const handleEditTypeChange = useCallback((newType: 'expense' | 'income') => {

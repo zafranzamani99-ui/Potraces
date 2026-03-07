@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SellerState, OrderStatus, SellerOrder, SellerOrderItem, SellerPaymentMethod, RecurringFrequency } from '../types';
+import { SellerState, OrderStatus, SellerOrder, SellerOrderItem, SellerPaymentMethod, RecurringFrequency, DepositEntry } from '../types';
 
 // Generate a unique 5-char order code: 2 random uppercase letters + 3 random digits
 function generateOrderCode(existingOrders: SellerOrder[]): string {
@@ -87,7 +87,7 @@ export const useSellerStore = create<SellerState>()(
             orders: [
               {
                 ...order,
-                id: Date.now().toString(),
+                id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
                 orderNumber: generateOrderCode(state.orders),
                 createdAt: new Date(),
                 updatedAt: new Date(),
@@ -107,9 +107,12 @@ export const useSellerStore = create<SellerState>()(
 
       updateOrder: (id, updates) =>
         set((state) => ({
-          orders: state.orders.map((o) =>
-            o.id === id ? { ...o, ...updates, updatedAt: new Date() } : o
-          ),
+          orders: state.orders.map((o) => {
+            if (o.id !== id) return o;
+            // C1: When undoing payment, also clear deposits and paidAmount
+            const extra = updates.isPaid === false ? { deposits: [] as DepositEntry[], paidAmount: 0 } : {};
+            return { ...o, ...updates, ...extra, updatedAt: new Date() };
+          }),
         })),
 
       updateDeposit: (id, index, amount, method) =>
@@ -117,7 +120,8 @@ export const useSellerStore = create<SellerState>()(
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
             const deposits = (o.deposits || []).map((d, i) => i === index ? { ...d, amount, method } : d);
-            const newPaidAmount = deposits.reduce((s, d) => s + d.amount, 0);
+            // C3: Cap paidAmount at totalAmount
+            const newPaidAmount = Math.min(deposits.reduce((s, d) => s + d.amount, 0), o.totalAmount);
             const fullyPaid = newPaidAmount >= o.totalAmount;
             return { ...o, deposits, paidAmount: newPaidAmount, isPaid: fullyPaid, paymentMethod: method, paidAt: fullyPaid ? (o.paidAt || new Date()) : undefined, updatedAt: new Date() };
           }),
@@ -146,9 +150,14 @@ export const useSellerStore = create<SellerState>()(
 
       markOrdersPaid: (ids, paymentMethod) =>
         set((state) => ({
-          orders: state.orders.map((o) =>
-            ids.includes(o.id) ? { ...o, isPaid: true, paidAmount: o.totalAmount, paymentMethod, paidAt: new Date(), updatedAt: new Date() } : o
-          ),
+          orders: state.orders.map((o) => {
+            if (!ids.includes(o.id)) return o;
+            const remaining = o.totalAmount - (o.paidAmount || 0);
+            const depositEntry = remaining > 0
+              ? [{ id: Date.now().toString() + Math.random().toString(36).slice(2, 6), amount: remaining, method: paymentMethod, date: new Date() }]
+              : [];
+            return { ...o, isPaid: true, paidAmount: o.totalAmount, paymentMethod, paidAt: new Date(), deposits: [...(o.deposits || []), ...depositEntry], updatedAt: new Date() };
+          }),
         })),
 
       updateOrdersStatus: (ids, status) =>
@@ -246,9 +255,13 @@ export const useSellerStore = create<SellerState>()(
         set((state) => ({
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
-            const newPaidAmount = (o.paidAmount || 0) + amount;
+            // C2: Cap deposit so paidAmount never exceeds totalAmount
+            const remaining = o.totalAmount - (o.paidAmount || 0);
+            const cappedAmount = Math.min(amount, Math.max(0, remaining));
+            if (cappedAmount <= 0) return o;
+            const newPaidAmount = (o.paidAmount || 0) + cappedAmount;
             const fullyPaid = newPaidAmount >= o.totalAmount;
-            const entry = { amount, method: paymentMethod, date: new Date() };
+            const entry = { amount: cappedAmount, method: paymentMethod, date: new Date() };
             return {
               ...o,
               paidAmount: newPaidAmount,

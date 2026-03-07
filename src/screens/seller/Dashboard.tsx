@@ -100,10 +100,11 @@ const SellerDashboard: React.FC = () => {
     (o) => o.status === 'confirmed'
   );
 
-  // Production list — aggregated items across pending/confirmed orders
+  // Production list — aggregated items across pending/confirmed/ready orders
   const productionList = useMemo(() => {
     const counts: Record<string, { name: string; qty: number; unit: string }> = {};
-    for (const order of confirmedOrders) {
+    for (const order of orders) {
+      if (!['pending', 'confirmed', 'ready'].includes(order.status)) continue;
       for (const item of order.items) {
         const key = item.productName;
         if (!counts[key]) {
@@ -113,7 +114,7 @@ const SellerDashboard: React.FC = () => {
       }
     }
     return Object.values(counts).sort((a, b) => b.qty - a.qty);
-  }, [confirmedOrders]);
+  }, [orders]);
 
   // ── Urgency data ──────────────────────────────────────────
   const today = startOfDay(now);
@@ -172,7 +173,7 @@ const SellerDashboard: React.FC = () => {
     }),
     [orders]
   );
-  const todaysEarnings = todaysOrders.reduce((s, o) => s + o.totalAmount, 0);
+  const todaysEarnings = todaysOrders.filter(o => o.isPaid).reduce((s, o) => s + o.totalAmount, 0);
 
   // ── Today's deliveries with addresses ─────────────────────
   const todaysDeliveries = useMemo(() => {
@@ -309,13 +310,13 @@ const SellerDashboard: React.FC = () => {
     return Object.values(map).sort((a, b) => b.qty - a.qty);
   }, [orders]);
 
-  // First-time user detection
-  const isFirstTime = products.length === 0 && orders.length === 0;
-
   // Getting started step completion
   const hasProducts = products.length > 0;
   const hasOrders = orders.length > 0;
   const hasSeasons = seasons.length > 0;
+
+  // First-time user detection — show checklist until all 3 steps done
+  const isFirstTime = !hasProducts || !hasOrders || !hasSeasons;
 
   // Staggered fade-in animations
   const seasonAnim = useFadeSlide(0);
@@ -607,7 +608,7 @@ const SellerDashboard: React.FC = () => {
             <TouchableOpacity
               style={[styles.quickActionButton, { borderColor: withAlpha(BIZ.success, 0.25), backgroundColor: withAlpha(BIZ.success, 0.08) }]}
               activeOpacity={0.7}
-              onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerOrderList', { initialFilter: 'online' }); }}
+              onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'online' }); }}
               accessibilityRole="button"
               accessibilityLabel="View online orders"
             >
@@ -698,91 +699,25 @@ const SellerDashboard: React.FC = () => {
         {/* ── First-time getting started ─────────────── */}
         {isFirstTime ? (
           <Animated.View style={[styles.gettingStartedCard, gettingStartedAnim]}>
-            <Text style={styles.gettingStartedTitle}>GET STARTED</Text>
+            <Text style={styles.gettingStartedTitle}>Let's get started 👋</Text>
             <Text style={styles.gettingStartedSubtitle}>
-              get started in 3 steps
+              3 simple steps to set up your store
             </Text>
 
-            {/* Step 1: Add products */}
+            {/* Step 1: Start a season */}
             <TouchableOpacity
               style={styles.gettingStartedStep}
-              activeOpacity={0.7}
-              onPress={() => navigation.getParent()?.navigate('SellerProducts')}
-              accessibilityRole="button"
-              accessibilityLabel={`Step 1: Add products. ${hasProducts ? 'Completed.' : 'Not yet completed.'}`}
-            >
-              <View style={styles.stepLeft}>
-                <View style={[styles.stepNumber, hasProducts && styles.stepNumberDone]}>
-                  {hasProducts ? (
-                    <Feather name="check" size={14} color={CALM.surface} />
-                  ) : (
-                    <Text style={styles.stepNumberText}>1</Text>
-                  )}
-                </View>
-                <Feather
-                  name="package"
-                  size={18}
-                  color={hasProducts ? CALM.textMuted : CALM.textPrimary}
-                  style={styles.stepIcon}
-                />
-                <Text style={[styles.stepText, hasProducts && styles.stepTextDone]}>
-                  add products
-                </Text>
-              </View>
-              <Feather
-                name={hasProducts ? 'check' : 'chevron-right'}
-                size={16}
-                color={hasProducts ? CALM.accent : CALM.textMuted}
-              />
-            </TouchableOpacity>
-
-            {/* Step 2: Take first order */}
-            <TouchableOpacity
-              style={styles.gettingStartedStep}
-              activeOpacity={0.7}
-              onPress={() => navigation.getParent()?.navigate('SellerNewOrder')}
-              accessibilityRole="button"
-              accessibilityLabel={`Step 2: Create an order. ${hasOrders ? 'Completed.' : 'Not yet completed.'}`}
-            >
-              <View style={styles.stepLeft}>
-                <View style={[styles.stepNumber, hasOrders && styles.stepNumberDone]}>
-                  {hasOrders ? (
-                    <Feather name="check" size={14} color={CALM.surface} />
-                  ) : (
-                    <Text style={styles.stepNumberText}>2</Text>
-                  )}
-                </View>
-                <Feather
-                  name="clipboard"
-                  size={18}
-                  color={hasOrders ? CALM.textMuted : CALM.textPrimary}
-                  style={styles.stepIcon}
-                />
-                <Text style={[styles.stepText, hasOrders && styles.stepTextDone]}>
-                  create an order
-                </Text>
-              </View>
-              <Feather
-                name={hasOrders ? 'check' : 'chevron-right'}
-                size={16}
-                color={hasOrders ? CALM.accent : CALM.textMuted}
-              />
-            </TouchableOpacity>
-
-            {/* Step 3: Start a season */}
-            <TouchableOpacity
-              style={[styles.gettingStartedStep, styles.gettingStartedStepLast]}
               activeOpacity={0.7}
               onPress={() => navigation.getParent()?.navigate('PastSeasons')}
               accessibilityRole="button"
-              accessibilityLabel={`Step 3: Start a season. ${hasSeasons ? 'Completed.' : 'Not yet completed.'}`}
+              accessibilityLabel={`Step 1: Start a season. ${hasSeasons ? 'Completed.' : 'Not yet completed.'}`}
             >
               <View style={styles.stepLeft}>
                 <View style={[styles.stepNumber, hasSeasons && styles.stepNumberDone]}>
                   {hasSeasons ? (
                     <Feather name="check" size={14} color={CALM.surface} />
                   ) : (
-                    <Text style={styles.stepNumberText}>3</Text>
+                    <Text style={styles.stepNumberText}>1</Text>
                   )}
                 </View>
                 <Feather
@@ -791,14 +726,95 @@ const SellerDashboard: React.FC = () => {
                   color={hasSeasons ? CALM.textMuted : CALM.textPrimary}
                   style={styles.stepIcon}
                 />
-                <Text style={[styles.stepText, hasSeasons && styles.stepTextDone]}>
-                  start a season
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.stepText, hasSeasons && styles.stepTextDone]}>
+                    start a season
+                  </Text>
+                  {!hasSeasons && (
+                    <Text style={styles.stepHint}>e.g. Raya 2025, CNY, or any event</Text>
+                  )}
+                </View>
               </View>
               <Feather
                 name={hasSeasons ? 'check' : 'chevron-right'}
                 size={16}
                 color={hasSeasons ? CALM.accent : CALM.textMuted}
+              />
+            </TouchableOpacity>
+
+            {/* Step 2: Add products */}
+            <TouchableOpacity
+              style={styles.gettingStartedStep}
+              activeOpacity={0.7}
+              onPress={() => navigation.getParent()?.navigate('SellerProducts')}
+              accessibilityRole="button"
+              accessibilityLabel={`Step 2: Add products. ${hasProducts ? 'Completed.' : 'Not yet completed.'}`}
+            >
+              <View style={styles.stepLeft}>
+                <View style={[styles.stepNumber, hasProducts && styles.stepNumberDone]}>
+                  {hasProducts ? (
+                    <Feather name="check" size={14} color={CALM.surface} />
+                  ) : (
+                    <Text style={styles.stepNumberText}>2</Text>
+                  )}
+                </View>
+                <Feather
+                  name="package"
+                  size={18}
+                  color={hasProducts ? CALM.textMuted : CALM.textPrimary}
+                  style={styles.stepIcon}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.stepText, hasProducts && styles.stepTextDone]}>
+                    add your products
+                  </Text>
+                  {!hasProducts && (
+                    <Text style={styles.stepHint}>name, price, and unit</Text>
+                  )}
+                </View>
+              </View>
+              <Feather
+                name={hasProducts ? 'check' : 'chevron-right'}
+                size={16}
+                color={hasProducts ? CALM.accent : CALM.textMuted}
+              />
+            </TouchableOpacity>
+
+            {/* Step 3: Take first order */}
+            <TouchableOpacity
+              style={[styles.gettingStartedStep, styles.gettingStartedStepLast]}
+              activeOpacity={0.7}
+              onPress={() => navigation.getParent()?.navigate('SellerNewOrder')}
+              accessibilityRole="button"
+              accessibilityLabel={`Step 3: Create an order. ${hasOrders ? 'Completed.' : 'Not yet completed.'}`}
+            >
+              <View style={styles.stepLeft}>
+                <View style={[styles.stepNumber, hasOrders && styles.stepNumberDone]}>
+                  {hasOrders ? (
+                    <Feather name="check" size={14} color={CALM.surface} />
+                  ) : (
+                    <Text style={styles.stepNumberText}>3</Text>
+                  )}
+                </View>
+                <Feather
+                  name="clipboard"
+                  size={18}
+                  color={hasOrders ? CALM.textMuted : CALM.textPrimary}
+                  style={styles.stepIcon}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.stepText, hasOrders && styles.stepTextDone]}>
+                    record your first order
+                  </Text>
+                  {!hasOrders && (
+                    <Text style={styles.stepHint}>customer name, product, quantity</Text>
+                  )}
+                </View>
+              </View>
+              <Feather
+                name={hasOrders ? 'check' : 'chevron-right'}
+                size={16}
+                color={hasOrders ? CALM.accent : CALM.textMuted}
               />
             </TouchableOpacity>
           </Animated.View>
@@ -809,7 +825,7 @@ const SellerDashboard: React.FC = () => {
               <Animated.View style={[styles.emptyStateCard, emptyStateAnim]}>
                 <Feather name="calendar" size={32} color={CALM.textMuted} />
                 <Text style={styles.emptyStateTitle}>no orders this month yet.</Text>
-                <Text style={styles.emptyStateSubtitle}>tap + to start taking orders.</Text>
+                <Text style={styles.emptyStateSubtitle}>tap + to record a new order.</Text>
                 <TouchableOpacity
                   style={styles.emptyStateCta}
                   activeOpacity={0.7}
@@ -1591,14 +1607,18 @@ const styles = StyleSheet.create({
     marginRight: SPACING.sm, // 8pt
   },
   stepText: {
-    fontSize: TYPOGRAPHY.size.base, // 15
-    fontWeight: TYPOGRAPHY.weight.medium, // 500
-    color: CALM.textPrimary, // #1A1A1A
-    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
   },
   stepTextDone: {
-    color: CALM.textMuted, // #A0A0A0
+    color: CALM.textMuted,
     textDecorationLine: 'line-through',
+  },
+  stepHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginTop: 1,
   },
 
   // ── Action cards (pipeline replacement) ───────────────────
@@ -2408,7 +2428,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   itemsModalTitle: {
-    fontSize: TYPOGRAPHY.size.md,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.textPrimary,
   },

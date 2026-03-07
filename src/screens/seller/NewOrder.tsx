@@ -213,8 +213,14 @@ const NewOrder: React.FC = () => {
   const handleReorder = useCallback((order: SellerOrder) => {
     mediumTap();
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setItems(order.items.map((item) => ({ ...item })));
-  }, []);
+    setItems(order.items.map((item) => {
+      const currentProduct = products.find(p => p.id === item.productId);
+      return {
+        ...item,
+        unitPrice: currentProduct ? currentProduct.pricePerUnit : item.unitPrice,
+      };
+    }));
+  }, [products]);
 
   // Delivery
   const handleDeliveryToday = useCallback(() => {
@@ -1381,7 +1387,7 @@ const NewOrder: React.FC = () => {
             </View>
             <FlatList
               data={filteredContacts}
-              keyExtractor={(item, idx) => item.id || String(idx)}
+              keyExtractor={(item, idx) => (item as any).id ?? String(idx)}
               style={styles.contactList}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"

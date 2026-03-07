@@ -30,6 +30,7 @@ interface SettingsState {
   businessModeEnabled: boolean;
   defaultMode: 'personal' | 'business';
   paymentQrs: PaymentQr[];
+  hasCompletedOnboarding: boolean;
   setUserName: (name: string) => void;
   setCurrency: (currency: string) => void;
   setHapticEnabled: (enabled: boolean) => void;
@@ -40,6 +41,7 @@ interface SettingsState {
   removePaymentQr: (index: number) => void;
   replacePaymentQr: (index: number, uri: string, label?: string) => void;
   updatePaymentQrLabel: (index: number, label: string) => void;
+  setHasCompletedOnboarding: (value: boolean) => void;
   clearAllData: () => void;
 }
 
@@ -53,6 +55,7 @@ export const useSettingsStore = create<SettingsState>()(
       businessModeEnabled: false,
       defaultMode: 'personal',
       paymentQrs: [],
+      hasCompletedOnboarding: false,
 
       setUserName: (userName) => set({ userName }),
       setCurrency: (currency) => set({ currency }),
@@ -72,6 +75,7 @@ export const useSettingsStore = create<SettingsState>()(
       updatePaymentQrLabel: (index, label) => set((s) => ({
         paymentQrs: s.paymentQrs.map((q, i) => i === index ? { ...q, label } : q),
       })),
+      setHasCompletedOnboarding: (hasCompletedOnboarding) => set({ hasCompletedOnboarding }),
 
       clearAllData: () => {
         usePersonalStore.setState({
@@ -107,6 +111,10 @@ export const useSettingsStore = create<SettingsState>()(
           seasons: [],
           ingredientCosts: [],
           customUnits: [],
+          sellerCustomers: [],
+          seenOnlineOrderIds: [],
+          costTemplates: [],
+          recurringCosts: [],
         });
 
         useCategoryStore.setState({
@@ -148,6 +156,7 @@ export const useSettingsStore = create<SettingsState>()(
 
         useWalletStore.setState({
           wallets: [],
+          transfers: [],
           selectedWalletId: null,
         });
 
@@ -168,6 +177,7 @@ export const useSettingsStore = create<SettingsState>()(
           businessModeEnabled: false,
           defaultMode: 'personal',
           paymentQrs: [],
+          hasCompletedOnboarding: false,
         });
       },
     }),

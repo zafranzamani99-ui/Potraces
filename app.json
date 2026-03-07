@@ -3,24 +3,30 @@
     "name": "Potraces",
     "slug": "potraces",
     "version": "1.0.0",
+    "icon": "./assets/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "splash": {
       "resizeMode": "contain",
-      "backgroundColor": "#6366F1"
+      "backgroundColor": "#F9F9F7"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.potraces.app"
+      "bundleIdentifier": "com.potraces.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#6366F1"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#F9F9F7"
       },
       "package": "com.potraces.app",
+      "softwareKeyboardLayoutMode": "adjustResize",
       "permissions": [
         "android.permission.READ_CONTACTS",
         "android.permission.WRITE_CONTACTS",

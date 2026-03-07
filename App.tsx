@@ -69,12 +69,8 @@ export default function App() {
   React.useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        try {
-          const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
-          syncAll(products, orders, seasons, sellerCustomers);
-        } catch {
-          // Non-fatal
-        }
+        const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
+        syncAll(products, orders, seasons, sellerCustomers).catch(() => {});
       }
     });
     return () => sub.remove();

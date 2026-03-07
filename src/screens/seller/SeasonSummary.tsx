@@ -900,6 +900,15 @@ const SeasonSummary: React.FC = () => {
                 style={styles.deleteSeasonBtn}
                 activeOpacity={0.7}
                 onPress={() => {
+                  // Block deleting active season
+                  if (!season.endDate) {
+                    Alert.alert(
+                      'Season is still active',
+                      'End the season first before deleting.',
+                      [{ text: 'OK' }]
+                    );
+                    return;
+                  }
                   const transferredOrders = seasonOrders.filter((o) => o.transferredToPersonal);
                   if (transferredOrders.length > 0) {
                     const totalTransferred = transferredOrders.reduce((s, o) => s + o.totalAmount, 0);

@@ -108,6 +108,7 @@ export interface SellerProduct {
 }
 
 export interface DepositEntry {
+  id?: string;
   amount: number;
   method: SellerPaymentMethod;
   date: Date;
@@ -418,6 +419,8 @@ export type RootStackParamList = {
   SellerProducts: undefined;
   SeasonSummary: { seasonId?: string } | undefined;
   PastSeasons: undefined;
+  SellerCosts: undefined;
+  SellerCustomersStack: undefined;
   Goals: undefined;
   FinancialPulse: undefined;
   Settings: { scrollTo?: string } | undefined;
