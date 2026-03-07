@@ -218,7 +218,7 @@ function sbFetch(path, opts) {
 async function loadShop(slug) {
   var dbg = document.getElementById('loading');
   dbg.innerHTML = 'Loading profile...';
-  var r1 = await sbFetch('/rest/v1/seller_profiles?select=id,user_id,display_name,currency&slug=eq.' + encodeURIComponent(slug) + '&limit=1');
+  var r1 = await sbFetch('/rest/v1/seller_profiles?select=id,user_id,display_name,currency&slug=eq.' + encodeURIComponent(slug) + '&order=updated_at.desc&limit=1');
   var profiles = await r1.json();
   dbg.innerHTML = 'Profile result: <pre style="font-size:11px;word-break:break-all;white-space:pre-wrap">' + JSON.stringify(profiles) + '</pre>';
   if (!profiles || !profiles.length) {
