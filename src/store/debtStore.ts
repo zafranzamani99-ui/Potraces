@@ -61,14 +61,16 @@ export const useDebtStore = create<DebtState>()(
           debts: state.debts.filter((d) => d.id !== id),
         })),
 
-      addPayment: (debtId, payment) =>
+      addPayment: (debtId, payment) => {
+        const paymentId = Date.now().toString() + Math.random().toString(36).slice(2, 7);
         set((state) => ({
           debts: state.debts.map((debt) => {
             if (debt.id !== debtId) return debt;
+            if (debt.status === 'settled') return debt;
 
             const newPayment = {
               ...payment,
-              id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
+              id: paymentId,
               createdAt: new Date(),
             };
 
@@ -88,7 +90,9 @@ export const useDebtStore = create<DebtState>()(
               updatedAt: new Date(),
             };
           }),
-        })),
+        }));
+        return paymentId;
+      },
 
       deletePayment: (debtId, paymentId) =>
         set((state) => ({

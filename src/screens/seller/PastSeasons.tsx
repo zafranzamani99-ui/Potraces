@@ -92,12 +92,13 @@ const PulsingDot: React.FC = React.memo(() => {
 });
 
 const PastSeasons: React.FC = () => {
-  const { seasons, orders, ingredientCosts, addSeason } = useSellerStore();
+  const { seasons, orders, ingredientCosts, addSeason, useSeasonTemplate } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
 
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
+  const [templateSeasonId, setTemplateSeasonId] = useState<string | null>(null);
 
   const activeSeason = seasons.find((s) => s.isActive);
   const pastSeasons = seasons.filter((s) => !s.isActive);
@@ -118,7 +119,17 @@ const PastSeasons: React.FC = () => {
       startDate: new Date(),
       isActive: true,
     });
+    // Apply template after adding — Zustand set() is synchronous so getState() is safe here.
+    // Validate the new season by matching name + isActive to avoid mistaking an existing season.
+    if (templateSeasonId) {
+      const trimmedName = newName.trim();
+      const newSeason = useSellerStore.getState().seasons.find(
+        (s) => s.isActive && s.name === trimmedName
+      );
+      if (newSeason) useSeasonTemplate(newSeason.id, templateSeasonId);
+    }
     setNewName('');
+    setTemplateSeasonId(null);
     setShowAdd(false);
   };
 
@@ -333,9 +344,40 @@ const PastSeasons: React.FC = () => {
               placeholderTextColor={CALM.textSecondary}
               autoFocus
             />
+            {pastSeasons.length > 0 && (
+              <View style={styles.templateSection}>
+                <Text style={styles.templateLabel}>copy from previous season</Text>
+                <View style={styles.templatePills}>
+                  <TouchableOpacity
+                    style={[styles.templatePill, templateSeasonId === null && styles.templatePillActive]}
+                    onPress={() => setTemplateSeasonId(null)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.templatePillText, templateSeasonId === null && styles.templatePillTextActive]}>
+                      none
+                    </Text>
+                  </TouchableOpacity>
+                  {pastSeasons.slice(0, 3).map((s) => (
+                    <TouchableOpacity
+                      key={s.id}
+                      style={[styles.templatePill, templateSeasonId === s.id && styles.templatePillActive]}
+                      onPress={() => setTemplateSeasonId(s.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.templatePillText, templateSeasonId === s.id && styles.templatePillTextActive]} numberOfLines={1}>
+                        {s.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {templateSeasonId && (
+                  <Text style={styles.templateHint}>copies costs, budget & product prices</Text>
+                )}
+              </View>
+            )}
             <View style={styles.modalActions}>
               <TouchableOpacity
-                onPress={() => setShowAdd(false)}
+                onPress={() => { setShowAdd(false); setTemplateSeasonId(null); }}
                 style={styles.modalCancel}
                 activeOpacity={0.7}
                 accessibilityRole="button"
@@ -535,12 +577,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,                       // 8pt
-    backgroundColor: CALM.bronze,          // #B2780A
-    borderRadius: RADIUS.lg,              // 14
-    paddingVertical: SPACING.lg,           // 16pt
+    gap: SPACING.sm,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.xl,
+    paddingVertical: SPACING.lg,
     alignSelf: 'stretch',
-    marginTop: SPACING.sm,                // 8pt
+    marginTop: SPACING.sm,
+    ...SHADOWS.sm,
   },
   emptyCTAText: {
     fontSize: TYPOGRAPHY.size.base,        // 15
@@ -557,11 +600,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,                       // 8pt
-    backgroundColor: CALM.bronze,          // #B2780A
-    borderRadius: RADIUS.lg,              // 14
-    paddingVertical: SPACING.lg,           // 16pt
-    ...SHADOWS.sm,                         // subtle elevation
+    gap: SPACING.sm,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.xl,
+    paddingVertical: SPACING.lg,
+    ...SHADOWS.sm,
   },
   addButtonText: {
     fontSize: TYPOGRAPHY.size.base,        // 15
@@ -614,10 +657,10 @@ const styles = StyleSheet.create({
     color: CALM.textSecondary,             // #6B6B6B
   },
   modalConfirm: {
-    paddingVertical: SPACING.sm,           // 8pt
-    paddingHorizontal: SPACING.lg,         // 16pt
-    backgroundColor: CALM.bronze,          // #B2780A
-    borderRadius: RADIUS.md,               // 10
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.xl,
     minHeight: 44,
     justifyContent: 'center',
   },
@@ -625,6 +668,41 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,          // 13
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
     color: '#fff',
+  },
+  templateSection: {
+    gap: SPACING.xs,
+  },
+  templateLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    letterSpacing: 0.3,
+  },
+  templatePills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+  },
+  templatePill: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    maxWidth: 120,
+  },
+  templatePillActive: {
+    backgroundColor: withAlpha(CALM.accent, 0.12),
+  },
+  templatePillText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  templatePillTextActive: {
+    color: CALM.accent,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+  },
+  templateHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontStyle: 'italic',
   },
 });
 

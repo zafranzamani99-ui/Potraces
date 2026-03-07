@@ -481,6 +481,12 @@ const DebtTracking: React.FC = () => {
       const existingDebt = debts.find((d) => d.id === editingDebtId);
       const newTotal = parseFloat(debtAmount);
 
+      // Block type change if payments already exist (wallet direction would invert)
+      if (existingDebt && debtType !== existingDebt.type && existingDebt.payments.length > 0) {
+        showToast('Cannot change debt direction after payments have been recorded.', 'error');
+        return;
+      }
+
       if (existingDebt && newTotal < existingDebt.paidAmount) {
         Alert.alert(
           'Amount Below Paid',
@@ -561,7 +567,13 @@ const DebtTracking: React.FC = () => {
         style: 'destructive',
         onPress: () => {
           const debt = debts.find((d) => d.id === id);
-          if (debt) cleanupDebtPayments(debt);
+          if (debt) {
+            cleanupDebtPayments(debt);
+            // Unmark split participant if this debt was linked to a split
+            if (debt.splitId) {
+              unmarkSplitParticipantPaid(debt.splitId, debt.contact.id);
+            }
+          }
           deleteDebt(id);
           showToast('Debt deleted', 'success');
         },
@@ -609,6 +621,15 @@ const DebtTracking: React.FC = () => {
   };
 
   const processPayment = (debt: Debt, amount: number) => {
+    // Validate wallet still exists (could be deleted since modal opened)
+    if (paymentWalletId) {
+      const walletExists = wallets.some((w) => w.id === paymentWalletId);
+      if (!walletExists) {
+        showToast('Selected wallet no longer exists. Please pick another.', 'error');
+        return;
+      }
+    }
+
     let linkedTransactionId: string | undefined;
     const remainingAmount = debt.totalAmount - debt.paidAmount;
     const tip = amount > remainingAmount ? Math.round((amount - remainingAmount) * 100) / 100 : 0;
@@ -658,7 +679,7 @@ const DebtTracking: React.FC = () => {
       }
     }
 
-    addPayment(debt.id, {
+    const paymentId = addPayment(debt.id, {
       amount,
       date: new Date(),
       note: paymentNote.trim() || undefined,
@@ -666,6 +687,14 @@ const DebtTracking: React.FC = () => {
       linkedTransactionId,
       walletId: paymentWalletId || undefined,
     });
+
+    // Store reverse link on transaction so edits can sync back
+    if (linkedTransactionId && paymentId && mode === 'personal') {
+      updateTransaction(linkedTransactionId, {
+        linkedPaymentId: paymentId,
+        linkedDebtId: debt.id,
+      });
+    }
 
     // Check if debt is now settled → mark split participant as paid
     const newPaidAmount = debt.paidAmount + amount;
@@ -763,10 +792,20 @@ const DebtTracking: React.FC = () => {
     setPayDetailSaving(true);
 
     const amountChanged = newAmount !== payDetailPayment.amount;
+
+    // Guard: block amount edits on settled debts — would silently un-settle
+    if (amountChanged) {
+      const freshDebt = useDebtStore.getState().debts.find((d) => d.id === payDetailDebtId);
+      if (freshDebt?.status === 'settled') {
+        setPayDetailSaving(false);
+        showToast('Cannot change amount on a settled debt', 'error');
+        return;
+      }
+    }
     const noteChanged = editPayNote.trim() !== (payDetailPayment.note || '');
 
     if (!amountChanged && !noteChanged) {
-      setPayDetailVisible(false);
+      setInPayDetail(false);
       setPayDetailSaving(false);
       return;
     }
@@ -852,29 +891,29 @@ const DebtTracking: React.FC = () => {
             );
 
             if (linkedDebt && linkedDebt.payments.length > 0) {
-              // Reverse the most recent payment
-              const lastPayment = linkedDebt.payments[linkedDebt.payments.length - 1];
-
-              // Delete linked transaction
-              if (lastPayment.linkedTransactionId) {
-                if (linkedDebt.mode === 'personal') {
-                  deleteTransaction(lastPayment.linkedTransactionId);
-                } else {
-                  deleteBusinessTransaction(lastPayment.linkedTransactionId);
+              // Reverse ALL payments
+              [...linkedDebt.payments].reverse().forEach((payment) => {
+                // Delete linked transaction
+                if (payment.linkedTransactionId) {
+                  if (linkedDebt.mode === 'personal') {
+                    deleteTransaction(payment.linkedTransactionId);
+                  } else {
+                    deleteBusinessTransaction(payment.linkedTransactionId);
+                  }
                 }
-              }
 
-              // Reverse wallet balance
-              if (lastPayment.walletId) {
-                if (linkedDebt.type === 'they_owe') {
-                  deductFromWallet(lastPayment.walletId, lastPayment.amount);
-                } else {
-                  addToWallet(lastPayment.walletId, lastPayment.amount);
+                // Reverse wallet balance
+                if (payment.walletId) {
+                  if (linkedDebt.type === 'they_owe') {
+                    deductFromWallet(payment.walletId, payment.amount);
+                  } else {
+                    addToWallet(payment.walletId, payment.amount);
+                  }
                 }
-              }
 
-              // Delete the payment from the debt
-              deletePayment(linkedDebt.id, lastPayment.id);
+                // Delete the payment from the debt
+                deletePayment(linkedDebt.id, payment.id);
+              });
             }
 
             // Unmark split participant
@@ -1059,6 +1098,16 @@ const DebtTracking: React.FC = () => {
         paidBy: splitPaidBy.length > 0 ? splitPaidBy[0] : undefined,
         dueDate: splitDueDateObj ? splitDueDateObj.toISOString() : undefined,
       } as any);
+
+      // Cascade updated per-participant amounts to linked Debt.totalAmount
+      const linkedDebtsForUpdate = useDebtStore.getState().debts.filter((d) => d.splitId === editingSplitId);
+      participants.forEach((p) => {
+        const linked = linkedDebtsForUpdate.find((d) => d.contact.id === p.contact.id);
+        if (linked && linked.totalAmount !== p.amount) {
+          updateDebt(linked.id, { totalAmount: p.amount } as any);
+        }
+      });
+
       showToast('Split updated!', 'success');
     } else {
       const splitId = addSplit({
@@ -2180,14 +2229,31 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         )}
                         {debt.type === 'they_owe' && debt.status !== 'settled' && (
                           <>
-                            <TouchableOpacity
-                              style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}
-                              onPress={() => handleOpenReminder(debt)}
-                              activeOpacity={0.7}
-                            >
-                              <Feather name="bell" size={16} color={CALM.accent} />
-                              <Text style={[styles.debtActionText, { color: CALM.accent }]}>Remind</Text>
-                            </TouchableOpacity>
+                            {debt.contact.phone ? (
+                              <TouchableOpacity
+                                style={[styles.debtActionButton, { backgroundColor: '#E8F5E2' }]}
+                                onPress={() => {
+                                  const remaining = debt.totalAmount - debt.paidAmount;
+                                  const msg = `Hi ${debt.contact.name}, just a reminder you have ${currency} ${remaining.toFixed(2)} outstanding for ${debt.description}. Thank you! 🙏`;
+                                  let digits = debt.contact.phone!.replace(/[^0-9]/g, '');
+                                  if (digits.startsWith('0')) digits = '60' + digits.slice(1);
+                                  Linking.openURL(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`).catch(() => {});
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <Feather name="message-circle" size={16} color="#25D366" />
+                                <Text style={[styles.debtActionText, { color: '#25D366' }]}>WhatsApp</Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <TouchableOpacity
+                                style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}
+                                onPress={() => handleOpenReminder(debt)}
+                                activeOpacity={0.7}
+                              >
+                                <Feather name="bell" size={16} color={CALM.accent} />
+                                <Text style={[styles.debtActionText, { color: CALM.accent }]}>Remind</Text>
+                              </TouchableOpacity>
+                            )}
                             <TouchableOpacity
                               style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.gold, 0.1) }]}
                               onPress={() => handleRequestPayment(debt)}

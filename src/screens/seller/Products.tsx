@@ -84,6 +84,7 @@ const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }
 // ─── Main component ────────────────────────────────────────────
 const Products: React.FC = () => {
   const products = useSellerStore((s) => s.products);
+  const orders = useSellerStore((s) => s.orders);
   const ingredientCosts = useSellerStore((s) => s.ingredientCosts);
   const addProduct = useSellerStore((s) => s.addProduct);
   const updateProduct = useSellerStore((s) => s.updateProduct);
@@ -140,6 +141,29 @@ const Products: React.FC = () => {
       p.unit.toLowerCase().includes(q)
     );
   }, [sortedProducts, search]);
+
+  // ─── Popular this month ────────────────────────────────────
+  const topProducts = useMemo(() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const monthOrders = orders.filter((o) => {
+      const d = o.date instanceof Date ? o.date : new Date(o.date);
+      return d >= monthStart && d <= monthEnd;
+    });
+    const counts: Record<string, { name: string; qty: number; unit: string; inflow: number }> = {};
+    for (const order of monthOrders) {
+      for (const item of order.items) {
+        if (!counts[item.productName]) {
+          counts[item.productName] = { name: item.productName, qty: 0, unit: item.unit, inflow: 0 };
+        }
+        counts[item.productName].qty += item.quantity;
+        counts[item.productName].inflow += item.quantity * item.unitPrice;
+      }
+    }
+    return Object.values(counts).sort((a, b) => b.qty - a.qty).slice(0, 5);
+  }, [orders]);
+  const topMax = topProducts.length > 0 ? topProducts[0].qty : 1;
 
   // ─── Modal state ───────────────────────────────────────────
   const [showAdd, setShowAdd] = useState(false);
@@ -304,7 +328,7 @@ const Products: React.FC = () => {
   }, [newName, products, editingProduct]);
 
   // ─── Profit preview with margin % ─────────────────────────
-  const profitPreview = useMemo(() => {
+  const keptPreview = useMemo(() => {
     const price = parseFloat(newPrice);
     const cost = parseFloat(newCostPerUnit);
     if (!isNaN(price) && !isNaN(cost) && price > 0 && cost > 0) {
@@ -707,8 +731,34 @@ const Products: React.FC = () => {
           {filteredProducts.length} of {products.length}
         </Text>
       )}
+
+      {/* Popular this month */}
+      {topProducts.length > 0 && (
+        <View style={styles.popularSection}>
+          <Text style={styles.popularHeader}>POPULAR THIS MONTH</Text>
+          {topProducts.map((p, index) => {
+            const barWidth = topMax > 0 ? (p.qty / topMax) * 100 : 0;
+            return (
+              <View key={p.name} style={styles.popularRow}>
+                <View style={styles.popularContent}>
+                  <View style={styles.popularRankBadge}>
+                    <Text style={styles.popularRankText}>{index + 1}</Text>
+                  </View>
+                  <Text style={styles.popularName}>{p.name}</Text>
+                  <Text style={styles.popularQty}>
+                    {p.qty} {p.unit} · {currency} {p.inflow.toFixed(0)}
+                  </Text>
+                </View>
+                <View style={styles.popularBarTrack}>
+                  <View style={[styles.popularBarFill, { width: `${barWidth}%` as any }]} />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
     </View>
-  ), [products.length, handleOpenCostModal, search, filteredProducts.length]);
+  ), [products.length, handleOpenCostModal, search, filteredProducts.length, topProducts, topMax, currency]);
 
   // ─── Live preview values ───────────────────────────────────
   const previewName = newName.trim() || 'product name';
@@ -774,10 +824,10 @@ const Products: React.FC = () => {
               {currency} {previewPriceStr} / {newUnit}
             </Text>
           </View>
-          {profitPreview && (
+          {keptPreview && (
             <View style={styles.previewBadge}>
               <Text style={styles.previewBadgeText}>
-                +{profitPreview.margin}%
+                +{keptPreview.margin}%
               </Text>
             </View>
           )}
@@ -870,25 +920,25 @@ const Products: React.FC = () => {
       </View>
 
       {/* Profit preview with margin % */}
-      {profitPreview && (
+      {keptPreview && (
         <View style={styles.profitRow}>
           <Feather name="trending-up" size={13} color={BIZ.profit} />
           <Text style={styles.profitText}>
-            kept per unit: {currency} {profitPreview.kept}
+            kept per unit: {currency} {keptPreview.kept}
           </Text>
           <View
             style={[
               styles.marginBadge,
-              profitPreview.margin >= 50 && styles.marginBadgeHigh,
+              keptPreview.margin >= 50 && styles.marginBadgeHigh,
             ]}
           >
             <Text
               style={[
                 styles.marginBadgeText,
-                profitPreview.margin >= 50 && styles.marginBadgeTextHigh,
+                keptPreview.margin >= 50 && styles.marginBadgeTextHigh,
               ]}
             >
-              {profitPreview.margin}%
+              {keptPreview.margin}%
             </Text>
           </View>
         </View>
@@ -1383,7 +1433,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
-    minHeight: 38,
+    minHeight: 44,
   },
   searchInput: {
     flex: 1,
@@ -1590,11 +1640,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.bronze,
-    borderRadius: RADIUS.lg,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.xl,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
     marginTop: SPACING.md,
+    ...SHADOWS.sm,
   },
   emptyCTAText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -1612,8 +1663,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.bronze,
-    borderRadius: RADIUS.lg,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     ...SHADOWS.sm,
   },
@@ -1812,8 +1863,8 @@ const styles = StyleSheet.create({
   modalConfirm: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: CALM.bronze,
-    borderRadius: RADIUS.md,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.xl,
     minHeight: 44,
     justifyContent: 'center',
   },
@@ -2082,6 +2133,71 @@ const styles = StyleSheet.create({
   },
   reorderTextActive: {
     color: '#fff',
+  },
+
+  // ── Popular this month ──
+  popularSection: {
+    marginTop: SPACING.md,
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+    marginBottom: SPACING.sm,
+    ...SHADOWS.sm,
+  },
+  popularHeader: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textMuted,
+    letterSpacing: 0.8,
+    marginBottom: SPACING.sm,
+  },
+  popularRow: {
+    marginBottom: SPACING.sm,
+  },
+  popularContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: 4,
+  },
+  popularRankBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: withAlpha(CALM.accent, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  popularRankText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.accent,
+  },
+  popularName: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
+  },
+  popularQty: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  popularBarTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: withAlpha(CALM.accent, 0.1),
+    overflow: 'hidden',
+  },
+  popularBarFill: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: withAlpha(CALM.accent, 0.45),
   },
 });
 

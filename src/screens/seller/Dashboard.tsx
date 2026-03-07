@@ -11,6 +11,8 @@ import {
   Platform,
   Alert,
   RefreshControl,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -22,52 +24,10 @@ import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from
 import { explainSellerMonth } from '../../utils/explainSellerMonth';
 import { lightTap, mediumTap } from '../../services/haptics';
 import ModeToggle from '../../components/common/ModeToggle';
+import { getSellerProfile, updateSellerProfile } from '../../services/sellerSync';
+import * as Clipboard from 'expo-clipboard';
 
-// ─── Animation helper ────────────────────────────────────────
-function useFadeSlide(delay: number) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(8)).current;
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateY, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }, delay);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  return { opacity, transform: [{ translateY }] };
-}
-
-// ─── Top products aggregator ─────────────────────────────────
-function getTopProducts(
-  orders: { items: { productName: string; quantity: number; unit: string; unitPrice: number }[] }[]
-) {
-  const counts: Record<string, { name: string; qty: number; unit: string; revenue: number }> = {};
-  for (const order of orders) {
-    for (const item of order.items) {
-      if (!counts[item.productName]) {
-        counts[item.productName] = { name: item.productName, qty: 0, unit: item.unit, revenue: 0 };
-      }
-      counts[item.productName].qty += item.quantity;
-      counts[item.productName].revenue += item.quantity * item.unitPrice;
-    }
-  }
-  return Object.values(counts)
-    .sort((a, b) => b.qty - a.qty)
-    .slice(0, 5);
-}
+import { useFadeSlide } from '../../utils/fadeSlide';
 
 // ─── Component ───────────────────────────────────────────────
 const SellerDashboard: React.FC = () => {
@@ -236,6 +196,25 @@ const SellerDashboard: React.FC = () => {
 
   // ── Pull-to-refresh ───────────────────────────────────────
   const [refreshing, setRefreshing] = useState(false);
+  const [showItemsModal, setShowItemsModal] = useState(false);
+
+  // ── Shop link state ───────────────────────────────────────
+  const [shopSlug, setShopSlug] = useState<string | null>(null);
+  const [shopDisplayName, setShopDisplayName] = useState<string | null>(null);
+  const [showShopModal, setShowShopModal] = useState(false);
+  const [shopModalSlug, setShopModalSlug] = useState('');
+  const [shopModalName, setShopModalName] = useState('');
+  const [shopSaving, setShopSaving] = useState(false);
+  const [shopError, setShopError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getSellerProfile().then((profile) => {
+      if (profile) {
+        setShopSlug(profile.slug);
+        setShopDisplayName(profile.displayName);
+      }
+    }).catch(() => {});
+  }, []);
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 800);
@@ -266,7 +245,7 @@ const SellerDashboard: React.FC = () => {
   }, [kept, prevKept, previousOrders.length]);
 
   // ── Profit margin ───────────────────────────────────────
-  const profitMargin = totalIncome > 0 ? (kept / totalIncome) * 100 : null;
+  const keptRate = totalIncome > 0 ? (kept / totalIncome) * 100 : null;
 
   // ── Collection rate ─────────────────────────────────────
   const totalOrderValue = currentOrders.reduce((s, o) => s + o.totalAmount, 0);
@@ -307,11 +286,20 @@ const SellerDashboard: React.FC = () => {
     [currentOrders, previousOrders, currentCosts]
   );
 
-  // Top products for the month
-  const topProducts = useMemo(
-    () => (currentOrders.length > 0 ? getTopProducts(currentOrders) : []),
-    [currentOrders]
-  );
+  // Items still to make — aggregate qty from pending/confirmed/ready orders
+  const itemOrderStats = useMemo(() => {
+    const map: Record<string, { name: string; qty: number; unit: string }> = {};
+    for (const order of orders) {
+      if (!['pending', 'confirmed', 'ready'].includes(order.status)) continue;
+      for (const item of order.items) {
+        if (!map[item.productName]) {
+          map[item.productName] = { name: item.productName, qty: 0, unit: item.unit };
+        }
+        map[item.productName].qty += item.quantity;
+      }
+    }
+    return Object.values(map).sort((a, b) => b.qty - a.qty);
+  }, [orders]);
 
   // First-time user detection
   const isFirstTime = products.length === 0 && orders.length === 0;
@@ -328,8 +316,7 @@ const SellerDashboard: React.FC = () => {
   const heroAnim = useFadeSlide(80);
   const insightAnim = useFadeSlide(120);
   const pipelineAnim = useFadeSlide(160);
-  const revenueAnim = useFadeSlide(200);
-  const topProductsAnim = useFadeSlide(240);
+  const inflowAnim = useFadeSlide(200);
   const productionAnim = useFadeSlide(180);
   const earningsAnim = useFadeSlide(30);
   const sparklineAnim = useFadeSlide(40);
@@ -339,6 +326,24 @@ const SellerDashboard: React.FC = () => {
   const gettingStartedAnim = useFadeSlide(80);
 
   // ── Maps app picker (delivery route) ─────────────────────
+  // Update after deploying to Vercel — replace with your actual Vercel URL
+  const ORDER_PAGE_BASE = 'https://potraces.vercel.app';
+  const shopLinkUrl = shopSlug ? `${ORDER_PAGE_BASE}/?slug=${shopSlug}` : null;
+
+  const handleSaveShopLink = useCallback(async () => {
+    setShopError(null);
+    setShopSaving(true);
+    const err = await updateSellerProfile(shopModalName, shopModalSlug);
+    setShopSaving(false);
+    if (err) {
+      setShopError(err);
+      return;
+    }
+    setShopSlug(shopModalSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''));
+    setShopDisplayName(shopModalName.trim() || null);
+    setShowShopModal(false);
+  }, [shopModalName, shopModalSlug]);
+
   const handleOpenMaps = useCallback((address: string) => {
     lightTap();
     const encoded = encodeURIComponent(address);
@@ -401,8 +406,6 @@ const SellerDashboard: React.FC = () => {
   }
 
   const unpaidTotal = unpaidOrders.reduce((s, o) => s + o.totalAmount, 0);
-  const maxQty = topProducts.length > 0 ? topProducts[0].qty : 1;
-
   return (
     <View style={styles.container}>
       <ModeToggle />
@@ -410,6 +413,8 @@ const SellerDashboard: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CALM.bronze} colors={[CALM.bronze]} />
         }
@@ -446,182 +451,130 @@ const SellerDashboard: React.FC = () => {
             </View>
           ) : (
             <TouchableOpacity
-              style={styles.seasonPill}
-              activeOpacity={0.7}
+              style={styles.seasonPillEmpty}
+              activeOpacity={0.6}
               onPress={() => { lightTap(); navigation.getParent()?.navigate('PastSeasons'); }}
               accessibilityRole="button"
               accessibilityLabel="No active season. Tap to manage seasons."
             >
-              <Feather name="calendar" size={14} color={CALM.textMuted} />
-              <Text style={[styles.seasonPillText, { color: CALM.textMuted }]}>no active season</Text>
-              <Feather name="chevron-right" size={14} color={CALM.textMuted} />
+              <Feather name="calendar" size={13} color={CALM.textMuted} />
+              <Text style={styles.seasonPillEmptyText}>no active season</Text>
             </TouchableOpacity>
           )}
         </Animated.View>
 
-        {/* ── TODAY urgency section ──────────────────────── */}
-        {hasUrgency && !isFirstTime && (
-          <Animated.View style={[styles.urgencyCard, urgencyAnim]}>
-            {/* Overdue orders */}
-            {overdueOrders.length > 0 && (
-              <TouchableOpacity
-                style={[styles.urgencyRow, { backgroundColor: withAlpha(BIZ.overdue, 0.06), borderRadius: RADIUS.sm, marginHorizontal: -SPACING.sm, paddingHorizontal: SPACING.sm }]}
-                activeOpacity={0.7}
-                onPress={() => navigation.navigate('SellerOrders', { initialFilter: 'overdue' })}
-                accessibilityRole="button"
-                accessibilityLabel={`${overdueOrders.length} overdue orders. Tap to view.`}
-              >
-                <View style={styles.urgencyRowLeft}>
-                  <View style={[styles.urgencyDot, styles.urgencyDotOverdue]} />
-                  <Text style={styles.urgencyTextOverdue}>
-                    {overdueOrders.length} overdue
-                  </Text>
-                </View>
-                <Feather name="chevron-right" size={14} color={CALM.textMuted} />
-              </TouchableOpacity>
+        {/* ── Hero section + sparkline ──────────────────── */}
+        <Animated.View style={[styles.heroSection, heroAnim]}>
+          <View style={styles.heroLabelRow}>
+            <Text style={styles.heroLabel}>PROFIT THIS MONTH</Text>
+            <View style={{ flex: 1 }} />
+            {momDelta !== null && (
+              <View style={styles.heroMomBadge}>
+                <Feather
+                  name={momDelta >= 0 ? 'trending-up' : 'trending-down'}
+                  size={12}
+                  color={momDelta >= 0 ? BIZ.profit : BIZ.loss}
+                />
+                <Text style={[styles.heroMomText, { color: momDelta >= 0 ? BIZ.profit : BIZ.loss }]}>
+                  {momDelta >= 0 ? '+' : ''}{momDelta.toFixed(0)}%
+                </Text>
+              </View>
             )}
-
-            {/* Deliver today */}
-            {deliverToday.length > 0 && (
-              <TouchableOpacity
-                style={styles.urgencyRow}
-                activeOpacity={0.7}
-                onPress={() => navigation.navigate('SellerOrders')}
-                accessibilityRole="button"
-                accessibilityLabel={`${deliverToday.length} orders to deliver today. Tap to view.`}
-              >
-                <View style={styles.urgencyRowLeft}>
-                  <View style={[styles.urgencyDot, styles.urgencyDotToday]} />
-                  <Text style={styles.urgencyTextToday}>
-                    {deliverToday.length} to deliver today
-                  </Text>
-                </View>
-                <Feather name="chevron-right" size={14} color={CALM.textMuted} />
-              </TouchableOpacity>
-            )}
-
-            {/* Deliver tomorrow */}
-            {deliverTomorrow.length > 0 && (
-              <TouchableOpacity
-                style={[styles.urgencyRow, styles.urgencyRowLast]}
-                activeOpacity={0.7}
-                onPress={() => navigation.navigate('SellerOrders')}
-                accessibilityRole="button"
-                accessibilityLabel={`${deliverTomorrow.length} orders to deliver tomorrow. Tap to view.`}
-              >
-                <View style={styles.urgencyRowLeft}>
-                  <View style={styles.urgencyDot} />
-                  <Text style={styles.urgencyTextTomorrow}>
-                    {deliverTomorrow.length} tomorrow
-                  </Text>
-                </View>
-                <Feather name="chevron-right" size={14} color={CALM.textMuted} />
-              </TouchableOpacity>
-            )}
-          </Animated.View>
-        )}
-
-        {/* ── Unpaid aging ─────────────────────────────────── */}
-        {unpaidAging && unpaidAging.older.length > 0 && !isFirstTime && (
-          <Animated.View style={[styles.unpaidAgingCard, urgencyAnim]}>
             <TouchableOpacity
-              style={styles.unpaidAgingRow}
+              style={styles.shopLinkBtn}
               activeOpacity={0.7}
-              onPress={() => navigation.navigate('SellerOrders', { initialFilter: 'unpaid' })}
+              onPress={() => {
+                lightTap();
+                setShopModalSlug(shopSlug || '');
+                setShopModalName(shopDisplayName || '');
+                setShopError(null);
+                setShowShopModal(true);
+              }}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               accessibilityRole="button"
-              accessibilityLabel={`${unpaidAging.older.length} orders unpaid for more than 2 weeks.`}
+              accessibilityLabel="My shop link"
             >
-              <Feather name="alert-circle" size={16} color={BIZ.overdue} />
-              <Text style={styles.unpaidAgingText}>
-                {unpaidAging.older.length} unpaid over 2 weeks
-              </Text>
-              <Text style={styles.unpaidAgingAmount}>
-                {currency} {unpaidAging.older.reduce((s, o) => s + o.totalAmount, 0).toFixed(0)}
-              </Text>
-              <Feather name="chevron-right" size={14} color={BIZ.overdue} />
+              <Feather name="link-2" size={22} color={shopLinkUrl ? BIZ.success : CALM.textMuted} />
             </TouchableOpacity>
-          </Animated.View>
-        )}
-
-        {/* ── Today's earnings ──────────────────────────── */}
-        {!isFirstTime && todaysOrders.length > 0 && (
-          <Animated.View style={[styles.earningsRow, earningsAnim]}>
-            <View style={styles.earningsLeft}>
-              <Feather name="sun" size={14} color={CALM.gold} />
-              <Text style={styles.earningsLabel}>today</Text>
-            </View>
-            <Text style={styles.earningsValue}>
-              {currency} {todaysEarnings.toFixed(0)}
+          </View>
+          <Text
+            style={[styles.heroAmount, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}
+            accessibilityLabel={`Profit this month: ${currency} ${kept.toFixed(2)}`}
+          >
+            {currency} {kept.toFixed(0)}
+          </Text>
+          {totalCosts > 0 && (
+            <Text style={[styles.heroCostsSubtitle, kept < 0 && { color: BIZ.loss }]}>
+              after {currency} {totalCosts.toFixed(0)} in costs
             </Text>
-            <Text style={styles.earningsCount}>
-              from {todaysOrders.length} {todaysOrders.length === 1 ? 'order' : 'orders'}
+          )}
+          {keptRate !== null && totalIncome > 0 && (
+            <Text style={styles.heroMargin}>
+              kept {keptRate.toFixed(0)}%
+              {todaysOrders.length > 0 && (
+                <Text style={styles.heroTodayInline}>
+                  {'  ·  '}today {currency} {todaysEarnings.toFixed(0)}
+                </Text>
+              )}
             </Text>
-          </Animated.View>
-        )}
+          )}
+          {keptRate === null && todaysOrders.length > 0 && (
+            <Text style={styles.heroMargin}>
+              today {currency} {todaysEarnings.toFixed(0)} · {todaysOrders.length} {todaysOrders.length === 1 ? 'order' : 'orders'}
+            </Text>
+          )}
 
-        {/* ── 7-day activity sparkline ──────────────────── */}
-        {!isFirstTime && (
-          <Animated.View style={sparklineAnim}>
+          {/* Inline 7-day sparkline */}
+          {!isFirstTime && (
             <TouchableOpacity
-              style={styles.sparklineCard}
+              style={styles.heroSparkline}
               activeOpacity={0.7}
               onPress={() => { lightTap(); navigation.navigate('SellerOrders'); }}
               accessibilityRole="button"
-              accessibilityLabel="7-day order activity. Tap to view orders."
+              accessibilityLabel="7-day order activity"
             >
-              <View style={styles.sparklineHeader}>
-                <Text style={styles.sparklineTitle}>LAST 7 DAYS</Text>
-                <Text style={styles.sparklineTotal}>
-                  {weeklyActivity.reduce((s, d) => s + d.count, 0)} orders
-                </Text>
-              </View>
-              <View style={styles.sparklineBarsRow}>
+              <View style={styles.heroSparklineBars}>
                 {weeklyActivity.map((day, i) => {
                   const heightPct = sparklineMax > 0 ? (day.count / sparklineMax) * 100 : 0;
                   const isActive = isToday(day.date);
                   return (
-                    <View key={i} style={styles.sparklineBarCol}>
-                      <View style={styles.sparklineBarTrack}>
+                    <View key={i} style={styles.heroSparklineCol}>
+                      <View style={styles.heroSparklineTrack}>
                         <View
                           style={[
-                            styles.sparklineBar,
+                            styles.heroSparklineBar,
                             {
-                              height: `${Math.max(heightPct, 4)}%`,
+                              height: `${Math.max(heightPct, 6)}%`,
                               backgroundColor: isActive
-                                ? BIZ.success
-                                : withAlpha(BIZ.success, 0.15),
+                                ? withAlpha(kept >= 0 ? BIZ.profit : BIZ.loss, 0.9)
+                                : withAlpha(kept >= 0 ? BIZ.profit : BIZ.loss, 0.18),
                             },
                           ]}
                         />
                       </View>
-                      <Text style={[styles.sparklineDayLabel, isActive && styles.sparklineDayLabelActive]}>
+                      <Text style={[styles.heroSparklineLabel, isActive && styles.heroSparklineLabelActive]}>
                         {day.label}
                       </Text>
-                      {day.count > 0 && (
-                        <Text style={[styles.sparklineCount, isActive && styles.sparklineCountActive]}>
-                          {day.count}
-                        </Text>
-                      )}
                     </View>
                   );
                 })}
               </View>
+              <Text style={styles.heroSparklineHint}>
+                {weeklyActivity.reduce((s, d) => s + d.count, 0)} orders this week
+              </Text>
             </TouchableOpacity>
+          )}
+        </Animated.View>
+
+        {/* ── AI insight (unpaid summary / observations) ── */}
+        {insight && (
+          <Animated.View style={[styles.insightContainer, insightAnim]}>
+            <Text style={styles.insightText}>{insight}</Text>
           </Animated.View>
         )}
 
-        {/* ── Quick actions — primary CTA + secondary row ── */}
+        {/* ── Quick actions — secondary shortcuts only ── */}
         <Animated.View style={quickActionsAnim}>
-          <TouchableOpacity
-            style={styles.primaryCta}
-            activeOpacity={0.7}
-            onPress={() => { mediumTap(); navigation.getParent()?.navigate('SellerNewOrder'); }}
-            accessibilityRole="button"
-            accessibilityLabel="Create a new order"
-          >
-            <Feather name="plus" size={18} color="#fff" />
-            <Text style={styles.primaryCtaText}>new order</Text>
-          </TouchableOpacity>
           <View style={styles.quickActionsRow}>
             <TouchableOpacity
               style={[styles.quickActionButton, { borderColor: withAlpha(CALM.accent, 0.25), backgroundColor: withAlpha(CALM.accent, 0.08) }]}
@@ -656,46 +609,54 @@ const SellerDashboard: React.FC = () => {
           </View>
         </Animated.View>
 
-        {/* ── Hero section ─────────────────────────────── */}
-        <Animated.View style={[styles.heroSection, heroAnim]}>
-          <View style={styles.heroLabelRow}>
-            <Text style={styles.heroLabel}>PROFIT THIS MONTH</Text>
-            {momDelta !== null && (
-              <View style={styles.heroMomBadge}>
-                <Feather
-                  name={momDelta >= 0 ? 'trending-up' : 'trending-down'}
-                  size={12}
-                  color={momDelta >= 0 ? BIZ.profit : BIZ.loss}
-                />
-                <Text style={[styles.heroMomText, { color: momDelta >= 0 ? BIZ.profit : BIZ.loss }]}>
-                  {momDelta >= 0 ? '+' : ''}{momDelta.toFixed(0)}%
-                </Text>
+        {/* ── Item order counts ────────────────────────────── */}
+        {itemOrderStats.length > 0 && !isFirstTime && (
+          <Animated.View style={urgencyAnim}>
+            <TouchableOpacity
+              style={styles.itemStatsCard}
+              activeOpacity={0.8}
+              onPress={() => { lightTap(); setShowItemsModal(true); }}
+            >
+              {/* Card header */}
+              <View style={styles.itemStatsHeader}>
+                <Text style={styles.itemStatsHeaderTitle}>to make</Text>
+                <View style={styles.itemStatsHeaderRight}>
+                  <Text style={styles.itemStatsHeaderSub}>pending orders</Text>
+                  <Feather name="chevron-right" size={14} color={CALM.textMuted} />
+                </View>
               </View>
-            )}
-          </View>
-          <Text
-            style={[styles.heroAmount, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}
-            accessibilityLabel={`Profit this month: ${currency} ${kept.toFixed(2)}`}
-          >
-            {currency} {kept.toFixed(0)}
-          </Text>
-          {totalCosts > 0 && (
-            <Text style={[styles.heroCostsSubtitle, kept < 0 && { color: BIZ.loss }]}>
-              after {currency} {totalCosts.toFixed(0)} in costs
-            </Text>
-          )}
-          {profitMargin !== null && totalIncome > 0 && (
-            <Text style={styles.heroMargin}>
-              margin {profitMargin.toFixed(0)}%
-            </Text>
-          )}
-        </Animated.View>
-
-        {/* ── AI insight ───────────────────────────────── */}
-        {insight && (
-          <Animated.View style={[styles.insightContainer, insightAnim]}>
-            <Text style={styles.insightText}>{insight}</Text>
+              {/* Rows */}
+              {itemOrderStats.slice(0, 4).map((item, i) => (
+                <View key={item.name} style={[styles.itemStatsRow, i < Math.min(itemOrderStats.length, 4) - 1 && styles.itemStatsRowBorder]}>
+                  <Text style={styles.itemStatsName} numberOfLines={1}>{item.name}</Text>
+                  <View style={styles.itemStatsCountBadge}>
+                    <Text style={styles.itemStatsCountText}>×{item.qty}</Text>
+                  </View>
+                </View>
+              ))}
+              {itemOrderStats.length > 4 && (
+                <View style={styles.itemStatsMore}>
+                  <Text style={styles.itemStatsMoreText}>+{itemOrderStats.length - 4} more items</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </Animated.View>
+        )}
+
+        {/* ── Break-even indicator ─────────────────────── */}
+        {totalCosts > 0 && (
+          <View style={[styles.breakEvenCard, kept >= 0 ? styles.breakEvenCardCovered : styles.breakEvenCardShort]}>
+            <Feather
+              name={kept >= 0 ? 'check-circle' : 'target'}
+              size={14}
+              color={kept >= 0 ? BIZ.profit : CALM.bronze}
+            />
+            <Text style={[styles.breakEvenText, { color: kept >= 0 ? BIZ.profit : CALM.bronze }]}>
+              {kept >= 0
+                ? `costs covered · ${currency} ${kept.toFixed(0)} above break-even`
+                : `need ${currency} ${Math.abs(kept).toFixed(0)} more to cover costs`}
+            </Text>
+          </View>
         )}
 
         {/* ── First-time getting started ─────────────── */}
@@ -935,6 +896,7 @@ const SellerDashboard: React.FC = () => {
                         index === productionList.length - 1 && styles.productionRowLast,
                       ]}
                       activeOpacity={0.7}
+                      delayPressIn={50}
                       onPress={() => toggleChecked(item.name)}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: done }}
@@ -1028,145 +990,37 @@ const SellerDashboard: React.FC = () => {
               </Animated.View>
             )}
 
-            {/* ── Top customer this month ───────────────── */}
-            {topCustomer && (
-              <Animated.View style={topCustomerAnim}>
-                <TouchableOpacity
-                  style={styles.topCustomerCard}
-                  activeOpacity={0.7}
-                  onPress={() => { lightTap(); navigation.navigate('SellerCustomers'); }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Top customer: ${topCustomer.name}, ${topCustomer.count} orders, ${currency} ${topCustomer.total.toFixed(0)} total. Tap to view customers.`}
-                >
-                  <View style={styles.topCustomerHeader}>
-                    <View style={styles.topCustomerHeaderLeft}>
-                      <Feather name="award" size={16} color={BIZ.success} />
-                      <Text style={styles.topCustomerHeaderText}>TOP CUSTOMER</Text>
-                    </View>
-                    <Feather name="chevron-right" size={14} color={CALM.textMuted} />
-                  </View>
-                  <Text style={styles.topCustomerName}>{topCustomer.name}</Text>
-                  <View style={styles.topCustomerStats}>
-                    <Text style={styles.topCustomerStat}>
-                      {topCustomer.count} {topCustomer.count === 1 ? 'order' : 'orders'}
-                    </Text>
-                    <Text style={styles.topCustomerDot}>{'\u00B7'}</Text>
-                    <Text style={styles.topCustomerStat}>
-                      {currency} {topCustomer.total.toFixed(0)}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </Animated.View>
-            )}
-
-            {/* ── Revenue breakdown card ──────────────── */}
-            <Animated.View style={[styles.revenueCard, revenueAnim]}>
-              {/* Collection rate bar */}
-              {totalOrderValue > 0 && (
-                <View style={styles.collectionRateSection}>
-                  <View style={styles.collectionRateHeader}>
-                    <Text style={styles.collectionRateLabel}>collected</Text>
-                    <Text style={styles.collectionRateValue}>{collectionRate.toFixed(0)}%</Text>
-                  </View>
-                  <View style={styles.collectionRateTrack}>
-                    <View style={[styles.collectionRateFill, { width: `${Math.min(collectionRate, 100)}%` }]} />
-                  </View>
-                </View>
-              )}
-
-              {/* Paid row */}
+            {/* ── Revenue breakdown ──────────────────── */}
+            <Animated.View style={[styles.revenueCard, inflowAnim]}>
+              {/* Came in row */}
               <View style={styles.revenueRow}>
-                <View style={styles.revenueRowLeft}>
-                  <Feather name="check-circle" size={16} color={CALM.textSecondary} />
-                  <Text style={styles.revenueRowLabel}>paid</Text>
+                <Text style={styles.revenueRowLabel}>came in</Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.revenueRowAmount}>{currency} {totalIncome.toFixed(2)}</Text>
+                  {unpaidTotal > 0 && (
+                    <Text style={styles.revenueRowNote}>+ {currency} {unpaidTotal.toFixed(0)} unpaid</Text>
+                  )}
                 </View>
-                <Text
-                  style={styles.revenueRowAmount}
-                  accessibilityLabel={`Paid: ${currency} ${totalIncome.toFixed(2)}`}
-                >
-                  {currency} {totalIncome.toFixed(2)}
-                </Text>
               </View>
-
-              {/* Unpaid row */}
-              {unpaidTotal > 0 && (
-                <View style={styles.revenueRow}>
-                  <View style={styles.revenueRowLeft}>
-                    <Feather name="clock" size={16} color={BIZ.unpaid} />
-                    <Text style={[styles.revenueRowLabel, { color: BIZ.unpaid }]}>unpaid</Text>
-                  </View>
-                  <Text
-                    style={[styles.revenueRowAmount, { color: BIZ.unpaid }]}
-                    accessibilityLabel={`Unpaid: ${currency} ${unpaidTotal.toFixed(2)}`}
-                  >
-                    {currency} {unpaidTotal.toFixed(2)}
-                  </Text>
-                </View>
-              )}
 
               {/* Costs row */}
               <View style={styles.revenueRow}>
-                <View style={styles.revenueRowLeft}>
-                  <Feather name="shopping-bag" size={16} color={CALM.textSecondary} />
-                  <Text style={styles.revenueRowLabel}>costs</Text>
-                </View>
-                <Text
-                  style={styles.revenueRowAmount}
-                  accessibilityLabel={`Costs: ${currency} ${totalCosts.toFixed(2)}`}
-                >
-                  {currency} {totalCosts.toFixed(2)}
-                </Text>
+                <Text style={styles.revenueRowLabel}>costs</Text>
+                <Text style={styles.revenueRowAmount}>{currency} {totalCosts.toFixed(2)}</Text>
               </View>
 
-              {/* Profit row — highlighted, separated */}
-              <View style={styles.revenueProfitSection}>
-                <View style={[styles.revenueRow, { paddingVertical: 0 }]}>
-                  <View style={styles.revenueRowLeft}>
-                    <Feather name="pocket" size={16} color={kept >= 0 ? BIZ.profit : BIZ.loss} />
-                    <Text style={[styles.revenueKeptLabel, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}>profit</Text>
-                  </View>
-                  <Text
-                    style={[styles.revenueKeptAmount, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}
-                    accessibilityLabel={`Profit: ${currency} ${kept.toFixed(2)}`}
-                  >
-                    {currency} {kept.toFixed(2)}
-                  </Text>
-                </View>
+              {/* Divider */}
+              <View style={styles.revenueDivider} />
+
+              {/* Kept row */}
+              <View style={[styles.revenueRow, { paddingVertical: 0 }]}>
+                <Text style={[styles.revenueKeptLabel, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}>kept</Text>
+                <Text style={[styles.revenueKeptAmount, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}>
+                  {currency} {kept.toFixed(2)}
+                </Text>
               </View>
             </Animated.View>
           </>
-        )}
-
-        {/* ── Top products ─────────────────────────────── */}
-        {topProducts.length > 0 && (
-          <Animated.View style={[styles.topProductsSection, topProductsAnim]}>
-            <Text style={styles.topProductsHeader}>POPULAR THIS MONTH</Text>
-            {topProducts.map((p, index) => {
-              const barWidth = maxQty > 0 ? (p.qty / maxQty) * 100 : 0;
-              return (
-                <View key={p.name} style={styles.topProductRow}>
-                  <View style={styles.topProductContent}>
-                    {/* Rank badge */}
-                    <View style={styles.rankBadge}>
-                      <Text style={styles.rankBadgeText}>{index + 1}</Text>
-                    </View>
-                    {/* Product name */}
-                    <Text style={styles.topProductName}>{p.name}</Text>
-                    {/* Quantity + revenue */}
-                    <Text style={styles.topProductQty}>
-                      {p.qty} {p.unit} {'\u00B7'} {currency} {p.revenue.toFixed(0)}
-                    </Text>
-                  </View>
-                  {/* Proportional bar */}
-                  <View style={styles.barTrack}>
-                    <View
-                      style={[styles.barFill, { width: `${barWidth}%` }]}
-                    />
-                  </View>
-                </View>
-              );
-            })}
-          </Animated.View>
         )}
 
         {/* ── Change setup link ────────────────────────── */}
@@ -1182,6 +1036,126 @@ const SellerDashboard: React.FC = () => {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* ── Shop link modal ──────────────────────────────── */}
+      <Modal
+        visible={showShopModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowShopModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.shopModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowShopModal(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.shopModalCard} onPress={() => {}}>
+            {/* Header */}
+            <View style={styles.shopModalHeader}>
+              <View style={styles.shopModalIconWrap}>
+                <Feather name="link-2" size={18} color={BIZ.success} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.shopModalTitle}>my shop link</Text>
+                <Text style={styles.shopModalSubtitle}>customers use this to place orders</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowShopModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Feather name="x" size={18} color={CALM.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.shopModalDivider} />
+
+            <View style={styles.shopModalField}>
+              <Text style={styles.shopModalFieldLabel}>shop name</Text>
+              <TextInput
+                style={styles.shopModalInput}
+                value={shopModalName}
+                onChangeText={setShopModalName}
+                placeholder="e.g. Kuih Raya Mak Cik Ton"
+                placeholderTextColor={CALM.textMuted}
+                autoCapitalize="words"
+              />
+            </View>
+
+            <View style={styles.shopModalField}>
+              <Text style={styles.shopModalFieldLabel}>
+                shop url{' '}
+                <Text style={styles.shopModalFieldHint}>(lowercase, numbers, -)</Text>
+              </Text>
+              <TextInput
+                style={styles.shopModalInput}
+                value={shopModalSlug}
+                onChangeText={(t) => setShopModalSlug(t.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                placeholder="e.g. kuih-raya-ton"
+                placeholderTextColor={CALM.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            {shopModalSlug.length > 0 && (
+              <View style={styles.shopModalPreview}>
+                <Text style={styles.shopModalPreviewLabel}>your link</Text>
+                <Text style={styles.shopModalPreviewUrl} numberOfLines={2}>
+                  {ORDER_PAGE_BASE}/?slug={shopModalSlug}
+                </Text>
+              </View>
+            )}
+
+            {shopError && (
+              <Text style={styles.shopModalError}>{shopError}</Text>
+            )}
+
+            <TouchableOpacity
+              style={[styles.shopModalSaveBtn, (shopSaving || !shopModalSlug) && { opacity: 0.5 }]}
+              disabled={shopSaving || !shopModalSlug}
+              onPress={handleSaveShopLink}
+              activeOpacity={0.8}
+            >
+              <Feather name="check" size={15} color="#fff" />
+              <Text style={styles.shopModalSaveBtnText}>
+                {shopSaving ? 'saving...' : 'save'}
+              </Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── All items modal ───────────────────────────────── */}
+      {showItemsModal && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowItemsModal(false)}
+        >
+          <TouchableOpacity
+            style={styles.itemsModalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowItemsModal(false)}
+          >
+            <View style={styles.itemsModalCard} onStartShouldSetResponder={() => true}>
+              <View style={styles.itemsModalHeader}>
+                <Text style={styles.itemsModalTitle}>to make</Text>
+                <TouchableOpacity onPress={() => setShowItemsModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Feather name="x" size={18} color={CALM.textMuted} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+                {itemOrderStats.map((item, i) => (
+                  <View key={item.name} style={[styles.itemStatsRow, i < itemOrderStats.length - 1 && styles.itemStatsRowBorder]}>
+                    <Text style={styles.itemStatsName} numberOfLines={1}>{item.name}</Text>
+                    <View style={styles.itemStatsCountBadge}>
+                      <Text style={styles.itemStatsCountText}>×{item.qty}</Text>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
 
     </View>
   );
@@ -1226,6 +1200,20 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium, // 500
     color: CALM.bronze, // #B2780A
   },
+  seasonPillEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    alignSelf: 'flex-start',
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    paddingVertical: 4,
+  },
+  seasonPillEmptyText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+    fontWeight: TYPOGRAPHY.weight.regular as '400',
+  },
   viewAllSeasonsText: {
     fontSize: TYPOGRAPHY.size.sm, // 13
     color: CALM.bronze, // #B2780A
@@ -1243,6 +1231,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
     borderLeftWidth: 3,
     borderLeftColor: BIZ.warning,
+    ...SHADOWS.sm,
   },
   urgencyRow: {
     flexDirection: 'row',
@@ -1301,10 +1290,15 @@ const styles = StyleSheet.create({
 
   // ── Unpaid aging card ──────────────────────────────────
   unpaidAgingCard: {
-    backgroundColor: CALM.highlight,
+    backgroundColor: CALM.surface,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    borderLeftWidth: 3,
+    borderLeftColor: BIZ.overdue,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
+    ...SHADOWS.sm,
   },
   unpaidAgingRow: {
     flexDirection: 'row',
@@ -1331,17 +1325,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    minHeight: 48,
-    borderRadius: RADIUS.lg,
-    backgroundColor: CALM.bronze,
-    paddingVertical: SPACING.sm + 2,
+    minHeight: 52,
+    borderRadius: RADIUS.xl,
+    backgroundColor: CALM.deepOlive,
+    paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
     marginBottom: SPACING.sm,
+    ...SHADOWS.md,
   },
   primaryCtaText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
+    letterSpacing: 0.2,
   },
   quickActionsRow: {
     flexDirection: 'row',
@@ -1354,24 +1350,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    minHeight: 40,
-    borderRadius: RADIUS.md,
+    minHeight: 44,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.25),
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    borderColor: CALM.border,
+    backgroundColor: CALM.surface,
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
   },
   quickActionLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textSecondary,
   },
 
   // ── Hero section ──────────────────────────────────────────
   heroSection: {
-    paddingTop: SPACING['2xl'], // 24pt — tightened
-    paddingBottom: SPACING.lg,  // 16pt — tightened
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.lg,
   },
   heroLabelRow: {
     flexDirection: 'row',
@@ -1397,10 +1393,12 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   heroAmount: {
-    ...TYPE.amount, // fontWeight 200, tabular-nums
-    fontSize: 40,   // larger than 36 (4xl) for hero prominence
-    color: CALM.textPrimary, // #1A1A1A
-    marginBottom: SPACING.xs, // 4pt
+    ...TYPE.amount, // tabular-nums
+    fontSize: 44,
+    fontWeight: '300' as const,
+    color: CALM.textPrimary,
+    marginBottom: SPACING.xs,
+    letterSpacing: -1,
   },
   heroCostsSubtitle: {
     ...TYPE.muted, // fontSize 12, color #A0A0A0
@@ -1410,13 +1408,84 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
+  heroTodayInline: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
+
+  // ── Inline hero sparkline ─────────────────────────────────
+  heroSparkline: {
+    marginTop: SPACING.lg,
+  },
+  heroSparklineBars: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 3,
+    height: 28,
+    marginBottom: SPACING.xs,
+  },
+  heroSparklineCol: {
+    flex: 1,
+    alignItems: 'center',
+    height: '100%',
+  },
+  heroSparklineTrack: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  heroSparklineBar: {
+    width: '60%',
+    borderRadius: 2,
+    minHeight: 2,
+  },
+  heroSparklineLabel: {
+    fontSize: 9,
+    color: CALM.textMuted,
+    marginTop: 3,
+    textTransform: 'lowercase' as const,
+  },
+  heroSparklineLabelActive: {
+    color: CALM.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  heroSparklineHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginTop: SPACING.xs,
+  },
+
+  breakEvenCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    marginTop: SPACING.sm,
+  },
+  breakEvenCardCovered: {
+    backgroundColor: withAlpha(BIZ.profit, 0.08),
+    borderColor: withAlpha(BIZ.profit, 0.25),
+  },
+  breakEvenCardShort: {
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    borderColor: withAlpha(CALM.bronze, 0.25),
+  },
+  breakEvenText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
 
   // ── AI insight ────────────────────────────────────────────
   insightContainer: {
     borderLeftWidth: 3,
     borderLeftColor: CALM.accent, // olive — intelligence
     paddingLeft: SPACING.lg, // 16pt
-    marginBottom: SPACING['2xl'], // 24pt
+    marginBottom: SPACING.sm,
   },
   insightText: {
     ...TYPE.insight, // fontSize 14, lineHeight 22
@@ -1425,12 +1494,12 @@ const styles = StyleSheet.create({
 
   // ── Getting started card ──────────────────────────────────
   gettingStartedCard: {
-    backgroundColor: CALM.surface, // #FFFFFF
+    backgroundColor: CALM.surface,
     borderWidth: 1,
-    borderColor: CALM.border, // #EBEBEB
-    borderRadius: RADIUS.lg, // 14
-    padding: SPACING.xl, // 24pt
-    marginBottom: SPACING.xl, // 24pt
+    borderColor: CALM.border,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.xl,
+    marginBottom: SPACING.xl,
   },
   gettingStartedTitle: {
     ...TYPE.label, // fontSize 12, color #6B6B6B, uppercase, letterSpacing 1
@@ -1497,11 +1566,12 @@ const styles = StyleSheet.create({
   },
   actionCard: {
     flex: 1,
-    backgroundColor: CALM.surface, // #FFFFFF
+    backgroundColor: CALM.surface,
     borderWidth: 1,
-    borderColor: CALM.border, // #EBEBEB
-    borderRadius: RADIUS.lg, // 14
+    borderColor: CALM.border,
+    borderRadius: RADIUS.lg,
     minHeight: 44,
+    ...SHADOWS.sm,
   },
   actionCardUnpaid: {
     borderLeftWidth: 3,
@@ -1597,59 +1667,56 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
-  // ── Revenue breakdown card ────────────────────────────────
+  // ── Revenue breakdown ─────────────────────────────────────
   revenueCard: {
-    backgroundColor: CALM.surface, // #FFFFFF
-    borderWidth: 1,
-    borderColor: CALM.border, // #EBEBEB
-    borderRadius: RADIUS.lg, // 14
-    padding: SPACING.lg, // 16pt
-    marginBottom: SPACING.xl, // 24pt
+    marginBottom: SPACING.xl,
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: CALM.border,
   },
   revenueRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    minHeight: 40,
-    paddingVertical: SPACING.xs, // 4pt
+    paddingVertical: SPACING.xs,
   },
   revenueRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm, // 8pt
+    gap: SPACING.sm,
   },
   revenueRowLabel: {
-    fontSize: TYPOGRAPHY.size.base, // 15
-    fontWeight: TYPOGRAPHY.weight.regular, // 400
-    color: CALM.textSecondary, // #6B6B6B
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.regular as '400',
+    color: CALM.textMuted,
   },
   revenueRowAmount: {
-    fontSize: TYPOGRAPHY.size.base, // 15
-    fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary, // #1A1A1A
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
+  },
+  revenueRowNote: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: BIZ.unpaid,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+    marginTop: 2,
   },
   revenueDivider: {
     height: 1,
-    backgroundColor: CALM.border, // #EBEBEB
-    marginVertical: SPACING.sm, // 8pt
+    backgroundColor: CALM.border,
+    marginVertical: SPACING.sm,
   },
-  revenueProfitSection: {
-    marginTop: SPACING.sm,
-    backgroundColor: withAlpha(BIZ.profit, 0.06),
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.sm,
-  },
+  revenueProfitSection: {},
   revenueKeptLabel: {
-    fontSize: TYPOGRAPHY.size.base, // 15
-    fontWeight: TYPOGRAPHY.weight.bold, // 700
-    color: CALM.textPrimary, // #1A1A1A
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.textPrimary,
   },
   revenueKeptAmount: {
-    fontSize: TYPOGRAPHY.size.xl, // 20 — larger for prominence
-    fontWeight: TYPOGRAPHY.weight.bold, // 700
-    color: CALM.textPrimary, // #1A1A1A
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1681,7 +1748,7 @@ const styles = StyleSheet.create({
   rankBadgeText: {
     fontSize: 12,
     fontWeight: TYPOGRAPHY.weight.bold, // 700
-    color: '#FFFFFF',
+    color: CALM.surface,
   },
   topProductName: {
     ...TYPE.insight, // fontSize 14, lineHeight 22
@@ -1917,36 +1984,54 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
-  // ── Collection rate ────────────────────────────────────
-  collectionRateSection: {
+  // ── Collection bar ────────────────────────────────────
+  collectionBarWrap: {
     marginBottom: SPACING.md,
   },
-  collectionRateHeader: {
+  collectionBarTrack: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+    backgroundColor: withAlpha(BIZ.unpaid, 0.12),
     marginBottom: SPACING.xs,
   },
+  collectionBarPaid: {
+    backgroundColor: BIZ.success,
+  },
+  collectionBarUnpaid: {
+    backgroundColor: withAlpha(BIZ.unpaid, 0.5),
+  },
+  collectionBarLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  collectionBarLabelLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  collectionBarLabelRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  collectionDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: BIZ.success,
+  },
+  collectionBarLabelText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
+  // kept for legacy (unused now but avoids TS error if referenced)
   collectionRateLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  collectionRateValue: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: BIZ.success,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
-  },
-  collectionRateTrack: {
-    height: 4,
-    backgroundColor: withAlpha(BIZ.success, 0.08),
-    borderRadius: 2,
-  },
-  collectionRateFill: {
-    height: 4,
-    backgroundColor: BIZ.success,
-    borderRadius: 2,
   },
 
   // ── Top customer ───────────────────────────────────────
@@ -2038,10 +2123,246 @@ const styles = StyleSheet.create({
     minHeight: 44,
     justifyContent: 'center',
   },
+
+  // ── Shop link card ──
+  shopLinkBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(BIZ.success, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Shop link modal ──
+  shopModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  shopModalCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    width: '100%',
+    ...SHADOWS.lg,
+  },
+  shopModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  shopModalIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(BIZ.success, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  shopModalTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: CALM.textPrimary,
+  },
+  shopModalSubtitle: {
+    fontSize: 11,
+    color: CALM.textMuted,
+    marginTop: 1,
+  },
+  shopModalDivider: {
+    height: 1,
+    backgroundColor: CALM.border,
+    marginBottom: SPACING.md,
+  },
+  shopModalField: {
+    marginBottom: SPACING.sm,
+  },
+  shopModalFieldLabel: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase' as const,
+    color: CALM.textMuted,
+    marginBottom: 5,
+  },
+  shopModalFieldHint: {
+    fontSize: 10,
+    fontWeight: '400' as any,
+    textTransform: 'none' as const,
+    letterSpacing: 0,
+    color: CALM.textMuted,
+  },
+  shopModalInput: {
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+  },
+  shopModalPreview: {
+    backgroundColor: withAlpha(BIZ.success, 0.07),
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: withAlpha(BIZ.success, 0.2),
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  shopModalPreviewLabel: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: BIZ.success,
+    marginBottom: 3,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  shopModalPreviewUrl: {
+    fontSize: 11,
+    color: BIZ.success,
+    lineHeight: 16,
+  },
+  shopModalError: {
+    fontSize: 12,
+    color: '#C1694F',
+    marginBottom: SPACING.sm,
+  },
+  shopModalSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    backgroundColor: BIZ.success,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.sm + 2,
+    marginTop: SPACING.sm,
+  },
+  shopModalSaveBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: '#fff',
+  },
   changeSetupText: {
     ...TYPE.muted, // fontSize 12, color #A0A0A0
     color: CALM.textSecondary, // #6B6B6B
     textDecorationLine: 'underline' as const,
+  },
+
+  // ── Item stats card ──
+  itemStatsCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    overflow: 'hidden',
+    ...SHADOWS.sm,
+  },
+  itemStatsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+    marginBottom: SPACING.xs,
+  },
+  itemStatsHeaderTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textSecondary,
+    letterSpacing: 0.3,
+  },
+  itemStatsHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  itemStatsHeaderSub: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  itemStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: SPACING.sm,
+  },
+  itemStatsRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: withAlpha(CALM.border, 0.5),
+  },
+  itemStatsName: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
+  },
+  itemStatsCountBadge: {
+    backgroundColor: withAlpha(CALM.accent, 0.1),
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    minWidth: 32,
+    alignItems: 'center',
+  },
+  itemStatsCountText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.accent,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  itemStatsMore: {
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: withAlpha(CALM.border, 0.5),
+    marginTop: 2,
+  },
+  itemStatsMoreText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+
+  // ── Items modal ──
+  itemsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  itemsModalCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    width: '100%',
+    maxHeight: '65%',
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.lg,
+    ...SHADOWS.lg,
+  },
+  itemsModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+    marginBottom: SPACING.xs,
+  },
+  itemsModalTitle: {
+    fontSize: TYPOGRAPHY.size.md,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
   },
 });
 

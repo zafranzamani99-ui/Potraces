@@ -29,6 +29,7 @@ import { Transaction } from '../../types';
 import { useWalletStore } from '../../store/walletStore';
 import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
+import { useDebtStore } from '../../store/debtStore';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 
@@ -182,6 +183,24 @@ const TransactionsList: React.FC = () => {
       tags: editTags ? editTags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     });
 
+    // Sync amount change back to linked debt payment (no double wallet adjustment)
+    if (newAmount !== oldAmount) {
+      const { linkedDebtId, linkedPaymentId } = editingTransaction;
+      if (linkedDebtId && linkedPaymentId) {
+        useDebtStore.getState().updatePayment(linkedDebtId, linkedPaymentId, { amount: newAmount });
+      } else {
+        // Fallback: search debts for a payment linked to this transaction
+        const allDebts = useDebtStore.getState().debts;
+        for (const debt of allDebts) {
+          const match = debt.payments.find((p) => p.linkedTransactionId === editingTransaction.id);
+          if (match) {
+            useDebtStore.getState().updatePayment(debt.id, match.id, { amount: newAmount });
+            break;
+          }
+        }
+      }
+    }
+
     // Sync back to seller ingredient cost if linked
     const linkedCost = useSellerStore.getState().ingredientCosts.find(
       (c) => c.personalTransactionId === editingTransaction.id
@@ -204,6 +223,42 @@ const TransactionsList: React.FC = () => {
 
     const isTransferLinked = editingTransaction.id.startsWith('transfer-');
     const transferId = isTransferLinked ? editingTransaction.id.replace('transfer-', '') : null;
+    const { linkedDebtId, linkedPaymentId } = editingTransaction;
+
+    const doDelete = () => {
+      if (editingTransaction.walletId) {
+        if (editingTransaction.type === 'expense') {
+          addToWallet(editingTransaction.walletId, editingTransaction.amount);
+        } else {
+          deductFromWallet(editingTransaction.walletId, editingTransaction.amount);
+        }
+      }
+      if (isTransferLinked && transferId) {
+        unmarkOrdersTransferred(transferId);
+        deleteTransfer(transferId);
+      }
+      // Also delete the linked debt payment (wallet already reversed above)
+      if (linkedDebtId && linkedPaymentId) {
+        useDebtStore.getState().deletePayment(linkedDebtId, linkedPaymentId);
+      }
+      deleteTransaction(editingTransaction.id);
+      setEditModalVisible(false);
+      setEditingTransaction(null);
+      showToast('Transaction deleted', 'success');
+    };
+
+    // Extra warning if linked to a debt payment
+    if (linkedDebtId) {
+      Alert.alert(
+        'Delete Transaction?',
+        'This will also remove the linked debt payment record.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete Both', style: 'destructive', onPress: doDelete },
+        ]
+      );
+      return;
+    }
 
     Alert.alert(
       'Delete Transaction',
@@ -212,28 +267,7 @@ const TransactionsList: React.FC = () => {
         : 'Are you sure you want to delete this transaction?',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            if (editingTransaction.walletId) {
-              if (editingTransaction.type === 'expense') {
-                addToWallet(editingTransaction.walletId, editingTransaction.amount);
-              } else {
-                deductFromWallet(editingTransaction.walletId, editingTransaction.amount);
-              }
-            }
-            // Clean up seller/business side for transfer-linked transactions
-            if (isTransferLinked && transferId) {
-              unmarkOrdersTransferred(transferId);
-              deleteTransfer(transferId);
-            }
-            deleteTransaction(editingTransaction.id);
-            setEditModalVisible(false);
-            setEditingTransaction(null);
-            showToast('Transaction deleted', 'success');
-          },
-        },
+        { text: 'Delete', style: 'destructive', onPress: doDelete },
       ]
     );
   };
@@ -413,14 +447,15 @@ const TransactionsList: React.FC = () => {
 
               <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <Text style={styles.editLabel}>Type</Text>
-                <View style={styles.typeContainer}>
+                <View style={[styles.typeContainer, editingTransaction?.linkedDebtId ? { opacity: 0.6 } : undefined]}>
                   <TouchableOpacity
                     style={[
                       styles.typeButton,
                       editType === 'expense' && [styles.typeButtonActive, { backgroundColor: CALM.accent }],
                       { borderColor: CALM.accent },
                     ]}
-                    onPress={() => handleEditTypeChange('expense')}
+                    onPress={() => !editingTransaction?.linkedDebtId && handleEditTypeChange('expense')}
+                    activeOpacity={editingTransaction?.linkedDebtId ? 1 : 0.7}
                   >
                     <Feather
                       name="arrow-down-circle"
@@ -438,7 +473,8 @@ const TransactionsList: React.FC = () => {
                       editType === 'income' && [styles.typeButtonActive, { backgroundColor: CALM.positive }],
                       { borderColor: CALM.positive },
                     ]}
-                    onPress={() => handleEditTypeChange('income')}
+                    onPress={() => !editingTransaction?.linkedDebtId && handleEditTypeChange('income')}
+                    activeOpacity={editingTransaction?.linkedDebtId ? 1 : 0.7}
                   >
                     <Feather
                       name="arrow-up-circle"
@@ -450,6 +486,12 @@ const TransactionsList: React.FC = () => {
                     </Text>
                   </TouchableOpacity>
                 </View>
+                {editingTransaction?.linkedDebtId && (
+                  <View style={styles.typeLockedCaption}>
+                    <Feather name="lock" size={10} color={CALM.neutral} />
+                    <Text style={styles.typeLockedCaptionText}>locked · determined by debt direction</Text>
+                  </View>
+                )}
 
                 <Text style={styles.editLabel}>Amount</Text>
                 <TextInput
@@ -497,6 +539,13 @@ const TransactionsList: React.FC = () => {
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
+
+                {editingTransaction?.linkedDebtId && (
+                  <View style={styles.linkedNotice}>
+                    <Feather name="link" size={12} color={CALM.bronze} />
+                    <Text style={styles.linkedNoticeText}>Amount syncs to the linked debt payment</Text>
+                  </View>
+                )}
 
                 <View style={styles.modalActions}>
                   <Button
@@ -747,6 +796,32 @@ const styles = StyleSheet.create({
   deleteButton: {
     flex: 1,
     borderColor: CALM.neutral,
+  },
+  typeLockedCaption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    marginBottom: SPACING.sm,
+  },
+  typeLockedCaptionText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.neutral,
+  },
+  linkedNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 8,
+    marginTop: SPACING.md,
+  },
+  linkedNoticeText: {
+    ...TYPOGRAPHY.caption,
+    color: CALM.bronze,
+    flex: 1,
   },
 });
 

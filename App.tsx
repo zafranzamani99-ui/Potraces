@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -7,16 +7,68 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import RootNavigator from './src/navigation/RootNavigator';
 import { COLORS, SPACING, TYPOGRAPHY } from './src/constants';
 import { ToastProvider } from './src/context/ToastContext';
+import { ensureAnonSession } from './src/services/supabase';
+import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId } from './src/services/sellerSync';
+import { useSellerStore } from './src/store/sellerStore';
 
 export default function App() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 100);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    let unsubOrderLink: (() => void) | null = null;
+
+    const init = async () => {
+      try {
+        await ensureAnonSession();
+      } catch {
+        // Auth failure is non-fatal; app works fully offline
+      }
+      if (!cancelled) setIsLoading(false);
+
+      // Fire-and-forget sync after UI is ready
+      try {
+        const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
+        await syncAll(products, orders, seasons, sellerCustomers);
+
+        // Pull any order_link orders placed while app was closed
+        await pullOrderLinkOrders();
+
+        // Subscribe to new order_link orders in real time
+        const profileId = getCachedProfileId();
+        if (profileId && !cancelled) {
+          unsubOrderLink = subscribeToOrderLinkOrders(profileId, (row) => {
+            useSellerStore.getState().addOrderLinkOrder(row);
+            const name = (row.customer_name as string | null) ?? 'pelanggan';
+            Alert.alert('Pesanan Baru!', `${name} baru letak pesanan melalui pautan kedai anda.`);
+          });
+        }
+      } catch {
+        // Sync errors are non-fatal
+      }
+    };
+
+    init();
+    return () => {
+      cancelled = true;
+      unsubOrderLink?.();
+    };
+  }, []);
+
+  // Re-sync whenever the app comes back to the foreground
+  React.useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        try {
+          const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
+          syncAll(products, orders, seasons, sellerCustomers);
+        } catch {
+          // Non-fatal
+        }
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   if (error) {

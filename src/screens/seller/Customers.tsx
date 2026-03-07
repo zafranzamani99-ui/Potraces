@@ -33,6 +33,7 @@ interface DerivedCustomer {
   phone?: string;
   address?: string;
   note?: string;
+  isVip?: boolean;
   storedId?: string;
   orders: SellerOrder[];
 }
@@ -158,9 +159,17 @@ const CustomerCard: React.FC<CustomerCardProps> = React.memo(({
 
         {/* Content */}
         <View style={styles.cardContent}>
-          <Text style={styles.customerName} numberOfLines={1}>
-            {customer.name}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.customerName} numberOfLines={1}>
+              {customer.name}
+            </Text>
+            {customer.isVip && (
+              <View style={styles.vipBadge}>
+                <Feather name="star" size={10} color={CALM.gold} />
+                <Text style={styles.vipBadgeText}>VIP</Text>
+              </View>
+            )}
+          </View>
           <Text style={styles.customerStats}>
             {customer.totalOrders} order{customer.totalOrders !== 1 ? 's' : ''} · {currency} {customer.totalSpent.toFixed(0)} · last {lastOrderLabel}
           </Text>
@@ -490,6 +499,7 @@ const SellerCustomers: React.FC = () => {
   const [editAddress, setEditAddress] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editName, setEditName] = useState('');
+  const [editIsVip, setEditIsVip] = useState(false);
 
   // ─── Contact picker state ─────────────────────────────────
   const [showContactPicker, setShowContactPicker] = useState(false);
@@ -548,6 +558,7 @@ const SellerCustomers: React.FC = () => {
         if (stored.phone) entry.phone = stored.phone;
         if (stored.address) entry.address = stored.address;
         if (stored.note) entry.note = stored.note;
+        if (stored.isVip) entry.isVip = stored.isVip;
       }
     }
 
@@ -760,6 +771,7 @@ const SellerCustomers: React.FC = () => {
     setEditPhone(customer.phone || '');
     setEditAddress(customer.address || '');
     setEditNote(customer.note || '');
+    setEditIsVip(customer.isVip || false);
     setEditModalVisible(true);
   }, []);
 
@@ -808,6 +820,7 @@ const SellerCustomers: React.FC = () => {
       phone: customerPhone || undefined,
       address: editAddress.trim() || undefined,
       note: editNote.trim() || undefined,
+      isVip: editIsVip,
     };
 
     if (editingCustomer.storedId) {
@@ -828,7 +841,7 @@ const SellerCustomers: React.FC = () => {
     showToast('customer saved.', 'info');
     setEditModalVisible(false);
     setEditingCustomer(null);
-  }, [editingCustomer, editName, editPhone, editAddress, editNote, derivedCustomers, updateSellerCustomer, addSellerCustomer, updateOrder, showToast]);
+  }, [editingCustomer, editName, editPhone, editAddress, editNote, editIsVip, derivedCustomers, updateSellerCustomer, addSellerCustomer, updateOrder, showToast]);
 
   const handleClearFilters = useCallback(() => {
     lightTap();
@@ -1292,10 +1305,23 @@ const SellerCustomers: React.FC = () => {
                 style={styles.modalInput}
                 value={editNote}
                 onChangeText={setEditNote}
-                placeholder="note"
+                placeholder="allergies, delivery notes, preferences..."
                 placeholderTextColor={CALM.textMuted}
                 accessibilityLabel="Customer note"
               />
+
+              <TouchableOpacity
+                style={styles.vipToggle}
+                onPress={() => setEditIsVip((v) => !v)}
+                activeOpacity={0.7}
+                accessibilityRole="checkbox"
+                accessibilityLabel="Mark as VIP customer"
+              >
+                <View style={[styles.vipCheckbox, editIsVip && styles.vipCheckboxActive]}>
+                  {editIsVip && <Feather name="star" size={12} color="#fff" />}
+                </View>
+                <Text style={[styles.vipLabel, editIsVip && styles.vipLabelActive]}>VIP customer</Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.saveButton}
@@ -1806,6 +1832,53 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
+  // ── VIP ──
+  vipBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: withAlpha(CALM.gold, 0.12),
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: withAlpha(CALM.gold, 0.3),
+  },
+  vipBadgeText: {
+    fontSize: 9,
+    fontWeight: '700' as '700',
+    color: CALM.gold,
+    letterSpacing: 0.5,
+  },
+  vipToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  vipCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: CALM.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vipCheckboxActive: {
+    backgroundColor: CALM.gold,
+    borderColor: CALM.gold,
+  },
+  vipLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+  vipLabelActive: {
+    color: CALM.gold,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+  },
+
   // ── Note ──
   noteRow: {
     flexDirection: 'row',
@@ -1911,7 +1984,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.bronze,
+    backgroundColor: CALM.deepOlive,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     minHeight: 44,
@@ -2156,12 +2229,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: CALM.bronze,
-    borderRadius: RADIUS.lg,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.xl,
     paddingVertical: SPACING.md,
     marginTop: SPACING['2xl'],
     gap: SPACING.sm,
-    minHeight: 48,
+    minHeight: 52,
+    ...SHADOWS.sm,
   },
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,

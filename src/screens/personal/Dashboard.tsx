@@ -300,6 +300,23 @@ const PersonalDashboard: React.FC = () => {
       tags: editTags ? editTags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     });
 
+    // Sync amount change back to linked debt payment (no double wallet adjustment)
+    if (newAmount !== oldAmount) {
+      const { linkedDebtId, linkedPaymentId } = editingTransaction;
+      if (linkedDebtId && linkedPaymentId) {
+        useDebtStore.getState().updatePayment(linkedDebtId, linkedPaymentId, { amount: newAmount });
+      } else {
+        const allDebts = useDebtStore.getState().debts;
+        for (const debt of allDebts) {
+          const match = debt.payments.find((p) => p.linkedTransactionId === editingTransaction.id);
+          if (match) {
+            useDebtStore.getState().updatePayment(debt.id, match.id, { amount: newAmount });
+            break;
+          }
+        }
+      }
+    }
+
     // Sync back to seller ingredient cost if linked
     const linkedCost = useSellerStore.getState().ingredientCosts.find(
       (c) => c.personalTransactionId === editingTransaction.id

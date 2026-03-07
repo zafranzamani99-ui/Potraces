@@ -91,7 +91,7 @@ export type Transfer = {
 
 // ─── SELLER TYPES ─────────────────────────────────────────
 export type OrderStatus = 'pending' | 'confirmed' | 'ready' | 'delivered' | 'completed';
-export type SellerPaymentMethod = 'cash' | 'bank_transfer' | 'ewallet';
+export type SellerPaymentMethod = 'cash' | 'bank_transfer' | 'duitnow' | 'tng' | 'grab' | 'boost' | 'maybank_qr' | 'ewallet';
 
 export interface SellerProduct {
   id: string;
@@ -105,6 +105,12 @@ export interface SellerProduct {
   stockQuantity?: number;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface DepositEntry {
+  amount: number;
+  method: SellerPaymentMethod;
+  date: Date;
 }
 
 export interface SellerOrderItem {
@@ -128,11 +134,14 @@ export interface SellerOrder {
   paidAmount?: number;
   paymentMethod?: SellerPaymentMethod;
   paidAt?: Date;
+  deposits?: DepositEntry[];
   note?: string;
   rawWhatsApp?: string;
   date: Date;
   deliveryDate?: Date;
   seasonId?: string;
+  source?: 'app' | 'order_link'; // 'order_link' = placed by customer via web
+  supabaseId?: string;            // Supabase row UUID (set when pulled from cloud)
   transferredToPersonal?: boolean;
   transferId?: string;
   createdAt: Date;
@@ -147,6 +156,7 @@ export interface Season {
   isActive: boolean;
   note?: string;
   costBudget?: number;
+  revenueTarget?: number;
   createdAt: Date;
 }
 
@@ -161,12 +171,26 @@ export interface IngredientCost {
   personalTransactionId?: string;
 }
 
+export type RecurringFrequency = 'weekly' | 'biweekly' | 'monthly';
+
+export interface RecurringCost {
+  id: string;
+  description: string;
+  amount: number;
+  frequency: RecurringFrequency;
+  nextDue: Date;
+  seasonId?: string;
+  isActive: boolean;
+  createdAt: Date;
+}
+
 export interface SellerCustomer {
   id: string;
   name: string;
   phone?: string;
   address?: string;
   note?: string;
+  isVip?: boolean;
   createdAt: Date;
 }
 
@@ -184,6 +208,7 @@ export interface SellerState {
   sellerCustomers: SellerCustomer[];
   customUnits: string[];
   costTemplates: CostTemplate[];
+  recurringCosts: RecurringCost[];
   productOrder: string[];
 
   addProduct: (product: Omit<SellerProduct, 'id' | 'totalSold' | 'createdAt' | 'updatedAt'>) => void;
@@ -196,8 +221,11 @@ export interface SellerState {
   updateOrder: (id: string, updates: Partial<Pick<SellerOrder, 'customerName' | 'note' | 'deliveryDate' | 'customerPhone' | 'customerAddress' | 'isPaid' | 'paymentMethod' | 'paidAt'>>) => void;
   updateOrderItems: (id: string, items: SellerOrderItem[]) => void;
   recordPayment: (id: string, amount: number, paymentMethod: SellerPaymentMethod) => void;
+  updateDeposit: (id: string, index: number, amount: number, method: SellerPaymentMethod) => void;
+  removeDeposit: (id: string, index: number) => void;
   markOrderPaid: (id: string, paymentMethod: SellerPaymentMethod) => void;
   markOrdersPaid: (ids: string[], paymentMethod: SellerPaymentMethod) => void;
+  updateOrdersStatus: (ids: string[], status: OrderStatus) => void;
   deleteOrder: (id: string) => void;
   deleteOrders: (ids: string[]) => void;
   markOrdersTransferred: (ids: string[], transferId: string) => void;
@@ -209,6 +237,8 @@ export interface SellerState {
   getActiveSeason: () => Season | null;
   updateSeasonName: (seasonId: string, name: string) => void;
   updateSeasonBudget: (seasonId: string, budget: number | undefined) => void;
+  updateSeasonTarget: (seasonId: string, target: number | undefined) => void;
+  useSeasonTemplate: (newSeasonId: string, templateSeasonId: string) => void;
 
   addIngredientCost: (cost: Omit<IngredientCost, 'id'>) => string;
   updateIngredientCost: (id: string, updates: Partial<IngredientCost>) => void;
@@ -218,6 +248,13 @@ export interface SellerState {
   addCostTemplate: (template: Omit<CostTemplate, 'id'>) => void;
   updateCostTemplate: (id: string, updates: Partial<Omit<CostTemplate, 'id'>>) => void;
   deleteCostTemplate: (id: string) => void;
+
+  addRecurringCost: (cost: Omit<RecurringCost, 'id' | 'createdAt'>) => void;
+  updateRecurringCost: (id: string, updates: Partial<RecurringCost>) => void;
+  deleteRecurringCost: (id: string) => void;
+  applyRecurringCost: (id: string, seasonId?: string) => string;
+
+  addOrderLinkOrder: (row: Record<string, unknown>) => void;
 
   addSellerCustomer: (customer: Omit<SellerCustomer, 'id' | 'createdAt'>) => void;
   updateSellerCustomer: (id: string, updates: Partial<SellerCustomer>) => void;
@@ -438,6 +475,15 @@ export type BusinessStackParamList = {
   StallRegulars: undefined;
 };
 
+export interface TransactionEdit {
+  editedAt: Date;
+  previousAmount?: number;
+  previousCategory?: string;
+  previousDescription?: string;
+  previousType?: 'expense' | 'income';
+  previousWalletId?: string | null;
+}
+
 export interface Transaction {
   id: string;
   amount: number;
@@ -460,6 +506,9 @@ export interface Transaction {
   confidence?: 'high' | 'low';
   createdAt: Date;
   updatedAt: Date;
+  linkedPaymentId?: string;
+  linkedDebtId?: string;
+  editLog?: TransactionEdit[];
 }
 
 export interface AIMessage {
@@ -784,9 +833,9 @@ export interface DebtState {
   addDebt: (debt: Omit<Debt, 'id' | 'paidAmount' | 'status' | 'payments' | 'createdAt' | 'updatedAt'>) => string;
   updateDebt: (id: string, updates: Partial<Debt>) => void;
   deleteDebt: (id: string) => void;
-  addPayment: (debtId: string, payment: Omit<Payment, 'id' | 'createdAt'>) => void;
+  addPayment: (debtId: string, payment: Omit<Payment, 'id' | 'createdAt'>) => string;
   deletePayment: (debtId: string, paymentId: string) => void;
-  updatePayment: (debtId: string, paymentId: string, updates: Partial<Pick<Payment, 'amount' | 'note'>>) => void;
+  updatePayment: (debtId: string, paymentId: string, updates: Partial<Pick<Payment, 'amount' | 'note' | 'linkedTransactionId' | 'walletId'>>) => void;
 
   addSplit: (split: Omit<SplitExpense, 'id' | 'createdAt' | 'updatedAt'>) => string;
   updateSplit: (id: string, updates: Partial<SplitExpense>) => void;

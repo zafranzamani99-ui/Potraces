@@ -167,7 +167,8 @@ export const RADIUS = {
 };
 
 // ─── SHADOWS ────────────────────────────────────────────────
-// Spec: no drop shadows with opacity above 0.06
+// Inspired by Stripe/Linear: shadows are felt, not seen.
+// Use ONLY on floating/elevated elements — not on regular cards.
 export const SHADOWS = {
   none: {
     shadowColor: 'transparent',
@@ -176,50 +177,61 @@ export const SHADOWS = {
     shadowRadius: 0,
     elevation: 0,
   },
-  sm: {
+  // xs — active pill floating inside a segment track
+  xs: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
     shadowRadius: 3,
     elevation: 1,
   },
-  md: {
+  // sm — primary CTAs, alert cards that need to pop
+  sm: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  lg: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
+    shadowRadius: 10,
     elevation: 3,
   },
+  // md — bottom bars, sticky headers
+  md: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  // lg — modals, popovers
+  lg: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.10,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  // xl — prominent modals, action sheets
   xl: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.06,
-    shadowRadius: 24,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 32,
+    elevation: 14,
   },
   '2xl': {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.06,
-    shadowRadius: 32,
-    elevation: 5,
+    shadowOpacity: 0.14,
+    shadowRadius: 40,
+    elevation: 18,
   },
 };
 
-// Helper function for colored shadows — capped at 0.06 per spec
 export const coloredShadow = (color: string) => ({
   shadowColor: color,
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.06,
-  shadowRadius: 12,
-  elevation: 2,
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.12,
+  shadowRadius: 10,
+  elevation: 4,
 });
 
 // ─── BLUR VALUES ────────────────────────────────────────────────
@@ -377,6 +389,8 @@ export const CALM = {
   positive: '#4F5104',      // olive (no green as success)
   neutral: '#B8AFBC',
   border: '#EBEBEB',
+  inputBorder: 'rgba(26,26,26,0.18)',  // clearly visible input/field borders
+  pillBg: 'rgba(26,26,26,0.07)',       // inactive pill / tab background
   bar: '#D4D4D4',
   barActive: '#4F5104',
   highlight: '#FFF7E6',

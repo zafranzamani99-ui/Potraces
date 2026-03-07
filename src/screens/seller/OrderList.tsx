@@ -11,6 +11,7 @@ import {
   Alert,
   Linking,
   TextInput,
+  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -21,8 +22,9 @@ import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha, BIZ } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
 import { SellerOrder, SellerOrderItem, OrderStatus, SellerPaymentMethod, SellerProduct } from '../../types';
+import CalendarPicker from '../../components/common/CalendarPicker';
 
 // ─── STATUS HELPERS ──────────────────────────────────────────
 function statusColor(status: OrderStatus): string {
@@ -48,11 +50,6 @@ const DELIVERY_TABS: { label: string; value: DeliveryFilter }[] = [
   { label: 'completed', value: 'completed' },
 ];
 
-const PAYMENT_TABS: { label: string; value: PaymentFilter; icon: keyof typeof Feather.glyphMap }[] = [
-  { label: 'all', value: 'all', icon: 'layers' },
-  { label: 'paid', value: 'paid', icon: 'check-circle' },
-  { label: 'unpaid', value: 'unpaid', icon: 'alert-circle' },
-];
 
 const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
   pending: 'confirmed',
@@ -64,9 +61,9 @@ const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
 
 // ─── PAYMENT METHOD OPTIONS ──────────────────────────────────
 const PAYMENT_METHODS: { value: SellerPaymentMethod; label: string; icon: keyof typeof Feather.glyphMap }[] = [
-  { value: 'cash', label: 'cash', icon: 'dollar-sign' },
-  { value: 'bank_transfer', label: 'transfer', icon: 'send' },
-  { value: 'ewallet', label: 'e-wallet', icon: 'smartphone' },
+  { value: 'cash', label: 'CASH', icon: 'dollar-sign' },
+  { value: 'ewallet', label: 'E-WALLET', icon: 'credit-card' },
+  { value: 'duitnow', label: 'QR', icon: 'grid' },
 ];
 
 type SortOption = 'newest' | 'oldest' | 'highest' | 'delivery';
@@ -111,8 +108,27 @@ function advanceIcon(currentStatus: OrderStatus): keyof typeof Feather.glyphMap 
 function paymentMethodIcon(method?: SellerPaymentMethod): keyof typeof Feather.glyphMap {
   switch (method) {
     case 'bank_transfer': return 'send';
+    case 'duitnow': return 'zap';
+    case 'tng': return 'credit-card';
+    case 'grab': return 'map-pin';
+    case 'boost': return 'trending-up';
+    case 'maybank_qr': return 'grid';
     case 'ewallet': return 'smartphone';
     default: return 'dollar-sign';
+  }
+}
+
+function paymentMethodLabel(method?: SellerPaymentMethod): string {
+  switch (method) {
+    case 'cash': return 'cash';
+    case 'bank_transfer': return 'transfer';
+    case 'duitnow': return 'DuitNow';
+    case 'tng': return 'TnG';
+    case 'grab': return 'GrabPay';
+    case 'boost': return 'Boost';
+    case 'maybank_qr': return 'MAE QR';
+    case 'ewallet': return 'e-wallet';
+    default: return method || 'cash';
   }
 }
 
@@ -244,12 +260,14 @@ const AnimatedOrderCard: React.FC<{
   currency: string;
   selectMode: boolean;
   isSelected: boolean;
-  onPress: (item: SellerOrder) => void;
+  isExpanded: boolean;
+  onToggleExpand: (id: string) => void;
+  onOpenDetail: (item: SellerOrder) => void;
   onLongPress: (item: SellerOrder) => void;
   onToggleSelect: (id: string) => void;
-  onAdvanceStatus: (order: SellerOrder) => void;
-  onMarkPaid: (order: SellerOrder) => void;
-}> = React.memo(({ item, index, currency, selectMode, isSelected, onPress, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid }) => {
+  onAdvanceStatus: (item: SellerOrder) => void;
+  onMarkPaid: (item: SellerOrder) => void;
+}> = React.memo(({ item, index, currency, selectMode, isSelected, isExpanded, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid }) => {
   const alreadySeen = _animatedOrderIds.has(item.id);
   const fadeAnim = useRef(new Animated.Value(alreadySeen ? 1 : 0)).current;
 
@@ -272,8 +290,6 @@ const AnimatedOrderCard: React.FC<{
 
   const dateLabel = smartDateLabel(item.date);
   const deliveryInfo = getDeliveryDateInfo(item);
-  const nextStatus = NEXT_STATUS[item.status];
-  const showMarkPaid = !item.isPaid;
 
   return (
     <Animated.View style={{ opacity: fadeAnim }}>
@@ -281,7 +297,6 @@ const AnimatedOrderCard: React.FC<{
         activeOpacity={0.7}
         style={[
           styles.orderCard,
-          { borderLeftColor: color },
           selectMode && isSelected && styles.orderCardSelected,
         ]}
         onPress={() => {
@@ -290,7 +305,7 @@ const AnimatedOrderCard: React.FC<{
             onToggleSelect(item.id);
           } else {
             lightTap();
-            onPress(item);
+            onToggleExpand(item.id);
           }
         }}
         onLongPress={() => { mediumTap(); onLongPress(item); }}
@@ -304,140 +319,128 @@ const AnimatedOrderCard: React.FC<{
           </View>
         )}
 
-        {/* Header row: customer name + order code + status badge */}
-        <View style={styles.orderHeader}>
-          <View style={styles.customerRow}>
-            <Feather
-              name="user"
-              size={14}
-              color={CALM.textMuted}
-              style={styles.customerIcon}
-            />
-            <Text style={styles.customerName} numberOfLines={1}>
-              {item.customerName || 'walk-in'}
-            </Text>
-            {!!item.orderNumber && (
-              <Text style={styles.orderCodeBadge}>{item.orderNumber}</Text>
-            )}
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: withAlpha(color, 0.15) }]}>
-            <Text style={[styles.statusText, { color }]}>{item.status}</Text>
-          </View>
-        </View>
-
-        {/* Compact info row: date · phone · delivery */}
-        <View style={styles.cardInfoRow}>
-          <Text style={styles.cardInfoText}>{dateLabel}</Text>
-          {!!item.customerPhone && (
-            <>
-              <Text style={styles.cardInfoDot}>{'\u00B7'}</Text>
-              <Text style={styles.cardInfoText} numberOfLines={1}>{item.customerPhone}</Text>
-            </>
-          )}
-          {!!item.customerAddress && (
-            <>
-              <Text style={styles.cardInfoDot}>{'\u00B7'}</Text>
-              <Feather name="map-pin" size={9} color={CALM.textMuted} />
-            </>
-          )}
-          {deliveryInfo && (
-            <>
-              <Text style={styles.cardInfoDot}>{'\u00B7'}</Text>
-              <Feather
-                name="truck"
-                size={10}
-                color={
-                  deliveryInfo.isOverdue
-                    ? BIZ.overdue
-                    : deliveryInfo.isTodayDelivery
-                      ? BIZ.warning
-                      : CALM.textMuted
-                }
-              />
-              <Text
-                style={[
-                  styles.cardInfoText,
-                  deliveryInfo.isTodayDelivery && styles.deliveryToday,
-                  deliveryInfo.isOverdue && styles.deliveryOverdue,
-                ]}
-              >
-                {deliveryInfo.label}
-              </Text>
-            </>
-          )}
-        </View>
-
-        {/* Items row */}
-        <Text style={styles.orderItems} numberOfLines={2}>
-          {itemsText}
-        </Text>
-
-        {/* Footer row: amount + paid/unpaid indicator */}
-        <View style={styles.orderFooter}>
+        {/* Row 1: customer name + amount */}
+        <View style={styles.orderRow}>
+          <Text style={styles.customerName} numberOfLines={1}>
+            {item.customerName || 'walk-in'}
+          </Text>
           <Text style={styles.orderTotal}>
             {currency} {item.totalAmount.toFixed(2)}
           </Text>
-          {item.isPaid ? (
-            <View style={styles.paidBadge}>
-              <Feather name={paymentMethodIcon(item.paymentMethod)} size={10} color={BIZ.success} />
-              <Text style={styles.paidBadgeText}>paid</Text>
-            </View>
-          ) : (
-            <View style={styles.unpaidBadge}>
-              <Text style={styles.unpaidBadgeText}>unpaid</Text>
-            </View>
-          )}
         </View>
 
-        {/* Quick-advance action row */}
-        {!selectMode && (nextStatus || showMarkPaid) && (
-          <View style={styles.quickActionRow}>
-            {nextStatus && (
+        {/* Row 2: delivery (left) · date · order number | status tags (right) */}
+        <View style={styles.orderMetaRow}>
+          <View style={styles.orderMetaLeft}>
+            {deliveryInfo && (
+              <>
+                <Feather
+                  name="truck"
+                  size={11}
+                  color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : CALM.textMuted}
+                />
+                <Text style={[
+                  styles.orderMetaDelivery,
+                  deliveryInfo.isOverdue && styles.deliveryOverdue,
+                  deliveryInfo.isTodayDelivery && styles.deliveryToday,
+                ]}>
+                  {deliveryInfo.label}
+                </Text>
+                <Text style={styles.orderMetaDot}>·</Text>
+              </>
+            )}
+            <Feather name="calendar" size={11} color={CALM.textMuted} />
+            <Text style={styles.orderMetaText} numberOfLines={1}>
+              {dateLabel}{item.orderNumber ? `  ·  ${item.orderNumber}` : ''}
+            </Text>
+          </View>
+          <View style={styles.orderTags}>
+            <Text style={[styles.orderTag, { color }]}>{item.status}</Text>
+            <View style={[styles.paymentBadge, { backgroundColor: item.isPaid ? withAlpha(BIZ.success, 0.1) : withAlpha(CALM.bronze, 0.1) }]}>
+              <Text style={[styles.paymentBadgeText, { color: item.isPaid ? BIZ.success : CALM.bronze }]}>
+                {item.isPaid ? 'paid' : 'unpaid'}
+              </Text>
+            </View>
+            {item.source === 'order_link' && (
+              <View style={styles.onlineBadge}>
+                <Feather name="globe" size={9} color={BIZ.success} />
+                <Text style={styles.onlineBadgeText}>online</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* ── Expanded content ── */}
+        {isExpanded && (
+          <View style={styles.expandedSection}>
+            {/* All items */}
+            {item.items.map((it, idx) => (
+              <View key={idx} style={styles.expandedItemRow}>
+                <Text style={styles.expandedItemName} numberOfLines={1}>{it.productName}</Text>
+                <Text style={styles.expandedItemQty}>×{it.quantity}</Text>
+              </View>
+            ))}
+
+            {(!!item.customerPhone || !!item.customerAddress || !!item.note) && (
+              <View style={styles.expandedDivider} />
+            )}
+
+            {!!item.customerPhone && (
+              <View style={styles.expandedRow}>
+                <Feather name="phone" size={12} color={CALM.textMuted} />
+                <Text style={styles.expandedText}>{item.customerPhone}</Text>
+              </View>
+            )}
+
+            {!!item.customerAddress && (
+              <View style={styles.expandedRow}>
+                <Feather name="map-pin" size={12} color={CALM.textMuted} />
+                <Text style={styles.expandedText} numberOfLines={2}>{item.customerAddress}</Text>
+              </View>
+            )}
+
+            {!!item.note && (
+              <Text style={styles.expandedNote} numberOfLines={2}>{item.note}</Text>
+            )}
+
+            <View style={styles.expandedActions}>
+              {/* Action row: mark as [status] left, mark paid right */}
+              <View style={styles.expandedActionsRow}>
+                {NEXT_STATUS[item.status] ? (
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(statusColor(NEXT_STATUS[item.status]!), 0.1) }]}
+                    onPress={() => { mediumTap(); onAdvanceStatus(item); }}
+                  >
+                    <Feather name="arrow-right" size={11} color={statusColor(NEXT_STATUS[item.status]!)} />
+                    <Text style={[styles.expandedAdvanceBtnText, { color: statusColor(NEXT_STATUS[item.status]!) }]}>
+                      {NEXT_STATUS[item.status]}
+                    </Text>
+                  </TouchableOpacity>
+                ) : <View />}
+                {!item.isPaid && (
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(BIZ.success, 0.1) }]}
+                    onPress={() => { mediumTap(); onMarkPaid(item); }}
+                  >
+                    <Feather name="dollar-sign" size={11} color={BIZ.success} />
+                    <Text style={[styles.expandedAdvanceBtnText, { color: BIZ.success }]}>mark paid</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {/* View details — centered with lines */}
               <TouchableOpacity
                 activeOpacity={0.7}
-                style={[styles.quickActionPill, { backgroundColor: withAlpha(statusColor(nextStatus), 0.07) }]}
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  mediumTap();
-                  onAdvanceStatus(item);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`Mark as ${nextStatus}`}
-                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                style={styles.viewDetailLink}
+                onPress={() => { lightTap(); onOpenDetail(item); }}
+                hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
               >
-                <Feather
-                  name={advanceIcon(item.status)}
-                  size={13}
-                  color={statusColor(nextStatus)}
-                />
-                <Text style={[styles.quickActionText, { color: statusColor(nextStatus) }]}>
-                  mark {nextStatus}
-                </Text>
+                <View style={styles.viewDetailLine} />
+                <Text style={styles.viewDetailText}>view details</Text>
+                <View style={styles.viewDetailLine} />
               </TouchableOpacity>
-            )}
-            {showMarkPaid && (
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={[styles.quickActionPill, styles.quickActionPillPaid]}
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  mediumTap();
-                  onMarkPaid(item);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Mark as paid"
-                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-              >
-                <Feather
-                  name="dollar-sign"
-                  size={13}
-                  color={BIZ.success}
-                />
-                <Text style={[styles.quickActionText, { color: BIZ.success }]}>
-                  mark paid
-                </Text>
-              </TouchableOpacity>
-            )}
+            </View>
           </View>
         )}
       </TouchableOpacity>
@@ -452,12 +455,14 @@ const GroupedCustomerCard: React.FC<{
   currency: string;
   selectMode: boolean;
   selectedIds: Set<string>;
-  onPress: (item: SellerOrder) => void;
+  expandedId: string | null;
+  onToggleExpand: (id: string) => void;
+  onOpenDetail: (item: SellerOrder) => void;
   onLongPress: (item: SellerOrder) => void;
   onToggleSelect: (id: string) => void;
-  onAdvanceStatus: (order: SellerOrder) => void;
-  onMarkPaid: (order: SellerOrder) => void;
-}> = React.memo(({ group, index, currency, selectMode, selectedIds, onPress, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid }) => {
+  onAdvanceStatus: (item: SellerOrder) => void;
+  onMarkPaid: (item: SellerOrder) => void;
+}> = React.memo(({ group, index, currency, selectMode, selectedIds, expandedId, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid }) => {
   const alreadySeen = _animatedOrderIds.has(`group_${group.customerKey}`);
   const fadeAnim = useRef(new Animated.Value(alreadySeen ? 1 : 0)).current;
 
@@ -483,11 +488,12 @@ const GroupedCustomerCard: React.FC<{
         currency={currency}
         selectMode={selectMode}
         isSelected={selectedIds.has(group.orders[0].id)}
-        onPress={onPress}
+        isExpanded={expandedId === group.orders[0].id}
+        onToggleExpand={onToggleExpand}
+        onOpenDetail={onOpenDetail}
         onLongPress={onLongPress}
         onToggleSelect={onToggleSelect}
         onAdvanceStatus={onAdvanceStatus}
-        onMarkPaid={onMarkPaid}
       />
     );
   }
@@ -497,14 +503,11 @@ const GroupedCustomerCard: React.FC<{
       <View style={styles.groupCard}>
         {/* Group header */}
         <View style={styles.groupHeader}>
-          <View style={styles.customerRow}>
-            <Feather name="user" size={14} color={CALM.textMuted} style={styles.customerIcon} />
-            <Text style={styles.customerName} numberOfLines={1}>
-              {group.customerName}
-            </Text>
-          </View>
+          <Text style={styles.customerName} numberOfLines={1}>
+            {group.customerName}
+          </Text>
           <View style={styles.groupBadge}>
-            <Text style={styles.groupBadgeText}>{group.orders.length} orders</Text>
+            <Text style={styles.groupBadgeText}>{group.orders.length}</Text>
           </View>
         </View>
 
@@ -512,16 +515,9 @@ const GroupedCustomerCard: React.FC<{
         {group.orders.map((order, i) => {
           const color = statusColor(order.status);
           const dateLabel = smartDateLabel(order.date);
-          const timeLabel = format(
-            order.date instanceof Date ? order.date : new Date(order.date),
-            'h:mm a'
-          );
-          const itemsShort = order.items
-            .map((it) => `${it.productName} \u00D7${it.quantity}`)
-            .join(', ');
-          const nextStatus = NEXT_STATUS[order.status];
-          const showMarkPaid = !order.isPaid;
+          const deliveryInfo = getDeliveryDateInfo(order);
           const isSelected = selectedIds.has(order.id);
+          const isExpanded = expandedId === order.id;
 
           return (
             <TouchableOpacity
@@ -529,17 +525,12 @@ const GroupedCustomerCard: React.FC<{
               activeOpacity={0.7}
               style={[
                 styles.subOrderRow,
-                i < group.orders.length - 1 && styles.subOrderRowBorder,
+                i < group.orders.length - 1 && !isExpanded && styles.subOrderRowBorder,
                 selectMode && isSelected && styles.subOrderSelected,
               ]}
               onPress={() => {
-                if (selectMode) {
-                  selectionChanged();
-                  onToggleSelect(order.id);
-                } else {
-                  lightTap();
-                  onPress(order);
-                }
+                if (selectMode) { selectionChanged(); onToggleSelect(order.id); }
+                else { lightTap(); onToggleExpand(order.id); }
               }}
               onLongPress={() => { mediumTap(); onLongPress(order); }}
             >
@@ -548,55 +539,108 @@ const GroupedCustomerCard: React.FC<{
                   {isSelected && <Feather name="check" size={10} color="#fff" />}
                 </View>
               )}
-              <View style={[styles.subOrderDot, { backgroundColor: color }]} />
               <View style={styles.subOrderInfo}>
+                {/* Row 1: amount */}
                 <View style={styles.subOrderTopRow}>
-                  <Text style={styles.subOrderDate}>
-                    {order.orderNumber ? `${order.orderNumber}  ` : ''}{dateLabel}, {timeLabel}
-                  </Text>
-                  <View style={[styles.statusBadgeSmall, { backgroundColor: withAlpha(color, 0.15) }]}>
-                    <Text style={[styles.statusTextSmall, { color }]}>{order.status}</Text>
+                  <Text style={styles.subOrderAmount}>{currency} {order.totalAmount.toFixed(2)}</Text>
+                </View>
+
+                {/* Row 2: delivery · date · order number | status tags */}
+                <View style={styles.orderMetaRow}>
+                  <View style={styles.orderMetaLeft}>
+                    {deliveryInfo && (
+                      <>
+                        <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : CALM.textMuted} />
+                        <Text style={[styles.orderMetaDelivery, deliveryInfo.isOverdue && styles.deliveryOverdue, deliveryInfo.isTodayDelivery && styles.deliveryToday]}>
+                          {deliveryInfo.label}
+                        </Text>
+                        <Text style={styles.orderMetaDot}>·</Text>
+                      </>
+                    )}
+                    <Feather name="calendar" size={11} color={CALM.textMuted} />
+                    <Text style={styles.orderMetaText} numberOfLines={1}>
+                      {dateLabel}{order.orderNumber ? `  ·  ${order.orderNumber}` : ''}
+                    </Text>
+                  </View>
+                  <View style={styles.orderTags}>
+                    <Text style={[styles.orderTag, { color }]}>{order.status}</Text>
+                    <View style={[styles.paymentBadge, { backgroundColor: order.isPaid ? withAlpha(BIZ.success, 0.1) : withAlpha(CALM.bronze, 0.1) }]}>
+                      <Text style={[styles.paymentBadgeText, { color: order.isPaid ? BIZ.success : CALM.bronze }]}>
+                        {order.isPaid ? 'paid' : 'unpaid'}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-                <Text style={styles.subOrderItems} numberOfLines={1}>{itemsShort}</Text>
-                <View style={styles.subOrderBottomRow}>
-                  <Text style={styles.subOrderAmount}>{currency} {order.totalAmount.toFixed(2)}</Text>
-                  {order.isPaid ? (
-                    <View style={styles.paidBadgeSmall}>
-                      <Feather name={paymentMethodIcon(order.paymentMethod)} size={8} color={BIZ.success} />
-                      <Text style={styles.paidBadgeSmallText}>paid</Text>
+
+                {/* Expanded */}
+                {isExpanded && (
+                  <View style={styles.expandedSection}>
+                    {order.items.map((it, idx) => (
+                      <View key={idx} style={styles.expandedItemRow}>
+                        <Text style={styles.expandedItemName} numberOfLines={1}>{it.productName}</Text>
+                        <Text style={styles.expandedItemQty}>×{it.quantity}</Text>
+                      </View>
+                    ))}
+
+                    {(!!order.customerPhone || !!order.customerAddress || !!order.note) && (
+                      <View style={styles.expandedDivider} />
+                    )}
+
+                    {!!order.customerPhone && (
+                      <View style={styles.expandedRow}>
+                        <Feather name="phone" size={12} color={CALM.textMuted} />
+                        <Text style={styles.expandedText}>{order.customerPhone}</Text>
+                      </View>
+                    )}
+                    {!!order.customerAddress && (
+                      <View style={styles.expandedRow}>
+                        <Feather name="map-pin" size={12} color={CALM.textMuted} />
+                        <Text style={styles.expandedText} numberOfLines={2}>{order.customerAddress}</Text>
+                      </View>
+                    )}
+                    {!!order.note && (
+                      <Text style={styles.expandedNote} numberOfLines={2}>{order.note}</Text>
+                    )}
+
+                    <View style={styles.expandedActions}>
+                      <View style={styles.expandedActionsRow}>
+                        {NEXT_STATUS[order.status] ? (
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(statusColor(NEXT_STATUS[order.status]!), 0.1) }]}
+                            onPress={() => { mediumTap(); onAdvanceStatus(order); }}
+                          >
+                            <Feather name="arrow-right" size={11} color={statusColor(NEXT_STATUS[order.status]!)} />
+                            <Text style={[styles.expandedAdvanceBtnText, { color: statusColor(NEXT_STATUS[order.status]!) }]}>
+                              {NEXT_STATUS[order.status]}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : <View />}
+                        {!order.isPaid && (
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(BIZ.success, 0.1) }]}
+                            onPress={() => { mediumTap(); onMarkPaid(order); }}
+                          >
+                            <Feather name="dollar-sign" size={11} color={BIZ.success} />
+                            <Text style={[styles.expandedAdvanceBtnText, { color: BIZ.success }]}>mark paid</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={styles.viewDetailLink}
+                        onPress={() => { lightTap(); onOpenDetail(order); }}
+                        hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                      >
+                        <View style={styles.viewDetailLine} />
+                        <Text style={styles.viewDetailText}>view details</Text>
+                        <View style={styles.viewDetailLine} />
+                      </TouchableOpacity>
                     </View>
-                  ) : (
-                    <View style={styles.unpaidBadgeSmall}>
-                      <Text style={styles.unpaidBadgeSmallText}>unpaid</Text>
-                    </View>
-                  )}
-                </View>
+                  </View>
+                )}
               </View>
-              {!selectMode && (nextStatus || showMarkPaid) && (
-                <View style={styles.subOrderActions}>
-                  {nextStatus && (
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      style={styles.subOrderActionBtn}
-                      onPress={(e) => { e.stopPropagation?.(); mediumTap(); onAdvanceStatus(order); }}
-                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                    >
-                      <Feather name={advanceIcon(order.status)} size={14} color={statusColor(nextStatus)} />
-                    </TouchableOpacity>
-                  )}
-                  {showMarkPaid && (
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      style={styles.subOrderActionBtn}
-                      onPress={(e) => { e.stopPropagation?.(); mediumTap(); onMarkPaid(order); }}
-                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                    >
-                      <Feather name="dollar-sign" size={14} color={BIZ.success} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
             </TouchableOpacity>
           );
         })}
@@ -622,11 +666,15 @@ const OrderList: React.FC = () => {
   const updateOrder = useSellerStore((s) => s.updateOrder);
   const updateOrderItems = useSellerStore((s) => s.updateOrderItems);
   const recordPayment = useSellerStore((s) => s.recordPayment);
+  const updateDeposit = useSellerStore((s) => s.updateDeposit);
+  const removeDeposit = useSellerStore((s) => s.removeDeposit);
   const markOrderPaid = useSellerStore((s) => s.markOrderPaid);
   const markOrdersPaid = useSellerStore((s) => s.markOrdersPaid);
+  const updateOrdersStatus = useSellerStore((s) => s.updateOrdersStatus);
   const deleteOrder = useSellerStore((s) => s.deleteOrder);
   const deleteOrders = useSellerStore((s) => s.deleteOrders);
   const currency = useSettingsStore((s) => s.currency);
+  const userName = useSettingsStore((s) => s.userName);
   const { showToast } = useToast();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -664,7 +712,6 @@ const OrderList: React.FC = () => {
     }
   }, [initialFilter]);
 
-  const [showTabHint, setShowTabHint] = useState(true);
   const [searchInput, setSearchInput] = useState(initialSearch || '');
   const [searchQuery, setSearchQuery] = useState(initialSearch || '');
 
@@ -691,12 +738,23 @@ const OrderList: React.FC = () => {
   const [pendingPayOrder, setPendingPayOrder] = useState<SellerOrder | null>(null);
   const [bulkPayIds, setBulkPayIds] = useState<string[]>([]);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<SellerPaymentMethod | null>(null);
+  const [paymentNote, setPaymentNote] = useState('');
 
   // Navigation app picker
   const [navAddress, setNavAddress] = useState<string | null>(null);
 
   // Payment method sub-filter (when viewing 'paid' tab)
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<SellerPaymentMethod | 'all'>('all');
+
+  // Expandable cards — only one at a time
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Delivery date keyboard modal (inside edit mode)
+  const [showDeliveryDateModal, setShowDeliveryDateModal] = useState(false);
+  // Payment history editing
+  const [editingPayHistory, setEditingPayHistory] = useState(false);
+  const [editPayIdx, setEditPayIdx] = useState<number | null>(null);
+  const [editPayAmount, setEditPayAmount] = useState('');
+  const [editPayMethod, setEditPayMethod] = useState<SellerPaymentMethod>('cash');
 
   // Bulk select mode — selectMode derived from selectedIds.size to avoid sync bugs
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -707,15 +765,14 @@ const OrderList: React.FC = () => {
   const [editNote, setEditNote] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editAddress, setEditAddress] = useState('');
-  // Item editing state
-  const [editingItems, setEditingItems] = useState(false);
   const [editItems, setEditItems] = useState<SellerOrderItem[]>([]);
   // Partial payment state
   const [showDepositInput, setShowDepositInput] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [depositMethod, setDepositMethod] = useState<SellerPaymentMethod>('cash');
-  const [editDeliveryDate, setEditDeliveryDate] = useState('');
-  const [editError, setEditError] = useState('');
+  const [editDeliveryDate, setEditDeliveryDate] = useState<Date | null>(null);
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [addProductSearch, setAddProductSearch] = useState('');
 
   // Count per status for tab badges
   const statusCounts = useMemo(() => {
@@ -935,31 +992,8 @@ const OrderList: React.FC = () => {
       mediumTap();
       updateOrderStatus(order.id, next);
       showToast(`marked as ${next}.`, 'info');
-      setSelectedOrder(null);
-      setShowRawWhatsApp(false);
-      setIsEditing(false);
     },
     [updateOrderStatus, showToast]
-  );
-
-  // Quick-advance from card (no modal close needed)
-  const handleQuickAdvance = useCallback(
-    (order: SellerOrder) => {
-      const next = NEXT_STATUS[order.status];
-      if (!next) return;
-      updateOrderStatus(order.id, next);
-      showToast(`marked as ${next}.`, 'info');
-    },
-    [updateOrderStatus, showToast]
-  );
-
-  const handleQuickMarkPaid = useCallback(
-    (order: SellerOrder) => {
-      lightTap();
-      setPendingPayOrder(order);
-      setSelectedPaymentMethod(null);
-    },
-    []
   );
 
   const handleConfirmPayment = useCallback(() => {
@@ -976,31 +1010,19 @@ const OrderList: React.FC = () => {
     setPendingPayOrder(null);
     setBulkPayIds([]);
     setSelectedPaymentMethod(null);
+    setPaymentNote('');
   }, [pendingPayOrder, bulkPayIds, selectedPaymentMethod, markOrderPaid, markOrdersPaid, showToast]);
 
   const handleCloseModal = useCallback(() => {
     setSelectedOrder(null);
     setShowRawWhatsApp(false);
     setIsEditing(false);
-    setEditingItems(false);
     setShowDepositInput(false);
+    setEditingPayHistory(false);
+    setEditPayIdx(null);
+    setShowAddProductModal(false);
+    setAddProductSearch('');
   }, []);
-
-  // Duplicate / reorder — carry items, address, and note so seller doesn't retype
-  const handleDuplicateOrder = useCallback(
-    (order: SellerOrder) => {
-      setSelectedOrder(null);
-      setShowRawWhatsApp(false);
-      setIsEditing(false);
-      navigation.navigate('SellerNewOrder', {
-        customerName: order.customerName,
-        customerPhone: order.customerPhone,
-        customerAddress: order.customerAddress,
-        prefillItems: order.items,
-      });
-    },
-    [navigation]
-  );
 
   // Delete order
   const handleDeleteOrder = useCallback(
@@ -1050,24 +1072,74 @@ const OrderList: React.FC = () => {
     [currency, showToast]
   );
 
-  // Copy receipt
-  const handleCopyReceipt = useCallback(
-    (order: SellerOrder) => {
+  // Build invoice text
+  const buildReceiptText = useCallback(
+    (order: SellerOrder): string => {
       const orderDate = format(
         order.date instanceof Date ? order.date : new Date(order.date),
         'dd MMM yyyy'
       );
+      const sep = '─'.repeat(28);
+      const padRow = (label: string, value: string, width = 28) => {
+        const maxLabel = width - value.length - 1;
+        const trimmed = label.length > maxLabel ? label.slice(0, maxLabel - 1) + '…' : label;
+        const space = width - trimmed.length - value.length;
+        return `${trimmed}${' '.repeat(Math.max(1, space))}${value}`;
+      };
+      const header = userName ? `${userName}\n` : '';
+      const orderRef = order.orderNumber ? `No: #${order.orderNumber}\n` : '';
+      const dateRow = `Tarikh: ${orderDate}\n`;
+      const customer = order.customerName ? `Pelanggan: ${order.customerName}\n` : '';
+      const address = order.customerAddress ? `Alamat: ${order.customerAddress}\n` : '';
       const itemLines = order.items
-        .map((i) => `${i.productName} x${i.quantity} ${i.unit} — ${currency} ${(i.unitPrice * i.quantity).toFixed(2)}`)
+        .map((i) => padRow(`${i.productName} ×${i.quantity} ${i.unit}`, `${currency} ${(i.unitPrice * i.quantity).toFixed(2)}`))
         .join('\n');
-      const receipt = `RESIT PESANAN${order.orderNumber ? ` ${order.orderNumber}` : ''}\nPelanggan: ${order.customerName || '-'}\nTarikh: ${orderDate}\n${'─'.repeat(20)}\n${itemLines}\n${'─'.repeat(20)}\nJUMLAH: ${currency} ${order.totalAmount.toFixed(2)}\nStatus: ${order.isPaid ? 'dibayar' : 'belum bayar'}`;
+      const payMethod = order.paymentMethod ? `\nBayaran: ${paymentMethodLabel(order.paymentMethod)}` : '';
+      const status = order.isPaid ? 'dibayar ✓' : 'belum bayar';
 
-      Clipboard.setStringAsync(receipt).then(() => {
+      return (
+        `${header}${sep}\n` +
+        `${orderRef}${dateRow}${customer}${address}` +
+        `${sep}\n` +
+        `${itemLines}\n` +
+        `${sep}\n` +
+        `${padRow('JUMLAH:', `${currency} ${order.totalAmount.toFixed(2)}`)}\n` +
+        `${sep}${payMethod}\nStatus: ${status}\n\nTerima kasih! 🙏`
+      );
+    },
+    [currency, userName]
+  );
+
+  // Copy receipt
+  const handleCopyReceipt = useCallback(
+    (order: SellerOrder) => {
+      Clipboard.setStringAsync(buildReceiptText(order)).then(() => {
         lightTap();
         showToast('receipt copied.', 'info');
       });
     },
-    [currency, showToast]
+    [buildReceiptText, showToast]
+  );
+
+  // Share receipt via WhatsApp
+  const handleShareReceiptWA = useCallback(
+    (order: SellerOrder) => {
+      const text = buildReceiptText(order);
+      const phone = order.customerPhone;
+      if (phone) {
+        let digits = phone.replace(/[^0-9]/g, '');
+        if (digits.startsWith('0')) digits = '60' + digits.slice(1);
+        Linking.openURL(`https://wa.me/${digits}?text=${encodeURIComponent(text)}`).catch(() => {
+          Clipboard.setStringAsync(text).then(() => showToast('receipt copied (WA unavailable).', 'info'));
+        });
+      } else {
+        Clipboard.setStringAsync(text).then(() => {
+          lightTap();
+          showToast('receipt copied — no phone on file.', 'info');
+        });
+      }
+    },
+    [buildReceiptText, showToast]
   );
 
   // Edit mode handlers
@@ -1075,17 +1147,14 @@ const OrderList: React.FC = () => {
     const isSettled = order.isPaid && (order.status === 'delivered' || order.status === 'completed');
     const doEdit = () => {
       setIsEditing(true);
-      setEditError('');
       setEditNote(order.note || '');
       setEditPhone(order.customerPhone || '');
       setEditAddress(order.customerAddress || '');
+      setEditItems([...order.items]);
       setEditDeliveryDate(
         order.deliveryDate
-          ? format(
-              order.deliveryDate instanceof Date ? order.deliveryDate : new Date(order.deliveryDate),
-              'dd/MM/yyyy'
-            )
-          : ''
+          ? (order.deliveryDate instanceof Date ? order.deliveryDate : new Date(order.deliveryDate))
+          : null
       );
     };
     if (isSettled) {
@@ -1110,34 +1179,29 @@ const OrderList: React.FC = () => {
     if (editPhone !== (selectedOrder.customerPhone || '')) updates.customerPhone = editPhone || undefined;
     if (editAddress !== (selectedOrder.customerAddress || '')) updates.customerAddress = editAddress || undefined;
 
-    // Parse delivery date (dd/MM/yyyy)
-    if (editDeliveryDate.trim()) {
-      const parts = editDeliveryDate.trim().split('/');
-      if (parts.length === 3) {
-        const parsed = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-        if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 2000) {
-          updates.deliveryDate = parsed;
-        } else {
-          setEditError('invalid date — use dd/mm/yyyy');
-          return;
-        }
-      } else {
-        setEditError('invalid date — use dd/mm/yyyy');
-        return;
-      }
+    // Delivery date (already a Date object from CalendarPicker)
+    if (editDeliveryDate) {
+      updates.deliveryDate = editDeliveryDate;
     } else {
       updates.deliveryDate = undefined;
     }
-    setEditError('');
 
-    if (Object.keys(updates).length > 0) {
-      updateOrder(selectedOrder.id, updates);
-      setSelectedOrder({ ...selectedOrder, ...updates, updatedAt: new Date() });
+    // Save items if changed
+    const itemsChanged = JSON.stringify(editItems.map(i => ({ id: i.productId, q: i.quantity }))) !==
+      JSON.stringify(selectedOrder.items.map(i => ({ id: i.productId, q: i.quantity })));
+    if (itemsChanged && editItems.length > 0) {
+      updateOrderItems(selectedOrder.id, editItems);
+    }
+
+    if (Object.keys(updates).length > 0 || itemsChanged) {
+      if (Object.keys(updates).length > 0) updateOrder(selectedOrder.id, updates);
+      setSelectedOrder({ ...selectedOrder, ...updates, items: itemsChanged ? editItems : selectedOrder.items, totalAmount: itemsChanged ? editItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0) : selectedOrder.totalAmount, updatedAt: new Date() });
       mediumTap();
       showToast('order updated.', 'info');
     }
     setIsEditing(false);
-  }, [selectedOrder, editNote, editPhone, editAddress, editDeliveryDate, updateOrder, showToast]);
+  }, [selectedOrder, editNote, editPhone, editAddress, editDeliveryDate, editItems, updateOrder, updateOrderItems, showToast]);
+
 
   // Undo paid (with warning)
   const handleUndoPaid = useCallback((order: SellerOrder) => {
@@ -1205,7 +1269,8 @@ const OrderList: React.FC = () => {
 
   // Bulk select handlers
   const handleLongPress = useCallback((order: SellerOrder) => {
-    if (selectedIds.size === 0 && !order.isPaid) {
+    if (selectedIds.size === 0) {
+      setExpandedId(null);
       setSelectedIds(new Set([order.id]));
     }
   }, [selectedIds.size]);
@@ -1231,7 +1296,23 @@ const OrderList: React.FC = () => {
     setBulkPayIds(ids);
     setPendingPayOrder(null);
     setSelectedPaymentMethod(null);
+    setPaymentNote('');
   }, [selectedIds]);
+
+  const handleBulkMarkDelivered = useCallback(() => {
+    const ids = Array.from(selectedIds).filter((id) => {
+      const o = orders.find((ord) => ord.id === id);
+      return o && o.status !== 'delivered' && o.status !== 'completed';
+    });
+    if (ids.length === 0) {
+      showToast('already delivered.', 'info');
+      return;
+    }
+    mediumTap();
+    updateOrdersStatus(ids, 'delivered');
+    setSelectedIds(new Set());
+    showToast(`${ids.length} order${ids.length > 1 ? 's' : ''} marked delivered.`, 'info');
+  }, [selectedIds, orders, updateOrdersStatus, showToast]);
 
   const handleBulkDelete = useCallback(() => {
     const ids = Array.from(selectedIds);
@@ -1269,18 +1350,14 @@ const OrderList: React.FC = () => {
     lightTap();
   }, []);
 
-  // Stable tab scroll handler — avoids inline function recreated 60x/sec
-  const showTabHintRef = useRef(true);
-  const handleTabScroll = useCallback((e: any) => {
-    const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
-    const atEnd = contentOffset.x + layoutMeasurement.width >= contentSize.width - 8;
-    if (atEnd && showTabHintRef.current) {
-      showTabHintRef.current = false;
-      setShowTabHint(false);
-    } else if (!atEnd && !showTabHintRef.current) {
-      showTabHintRef.current = true;
-      setShowTabHint(true);
-    }
+  const handleToggleExpand = useCallback((id: string) => {
+    setExpandedId(prev => prev === id ? null : id);
+  }, []);
+
+  const handleMarkPaidFromCard = useCallback((order: SellerOrder) => {
+    setPendingPayOrder(order);
+    setSelectedPaymentMethod(null);
+    setPaymentNote('');
   }, []);
 
   const renderOrder = useCallback(
@@ -1291,14 +1368,16 @@ const OrderList: React.FC = () => {
         currency={currency}
         selectMode={selectMode}
         isSelected={selectedIds.has(item.id)}
-        onPress={setSelectedOrder}
+        isExpanded={expandedId === item.id}
+        onToggleExpand={handleToggleExpand}
+        onOpenDetail={setSelectedOrder}
         onLongPress={handleLongPress}
         onToggleSelect={handleToggleSelect}
-        onAdvanceStatus={handleQuickAdvance}
-        onMarkPaid={handleQuickMarkPaid}
+        onAdvanceStatus={handleAdvanceStatus}
+        onMarkPaid={handleMarkPaidFromCard}
       />
     ),
-    [currency, selectMode, selectedIds, handleQuickAdvance, handleQuickMarkPaid, handleLongPress, handleToggleSelect]
+    [currency, selectMode, selectedIds, expandedId, handleToggleExpand, handleLongPress, handleToggleSelect, handleAdvanceStatus, handleMarkPaidFromCard]
   );
 
   const renderGroup = useCallback(
@@ -1309,14 +1388,16 @@ const OrderList: React.FC = () => {
         currency={currency}
         selectMode={selectMode}
         selectedIds={selectedIds}
-        onPress={setSelectedOrder}
+        expandedId={expandedId}
+        onToggleExpand={handleToggleExpand}
+        onOpenDetail={setSelectedOrder}
         onLongPress={handleLongPress}
         onToggleSelect={handleToggleSelect}
-        onAdvanceStatus={handleQuickAdvance}
-        onMarkPaid={handleQuickMarkPaid}
+        onAdvanceStatus={handleAdvanceStatus}
+        onMarkPaid={handleMarkPaidFromCard}
       />
     ),
-    [currency, selectMode, selectedIds, handleQuickAdvance, handleQuickMarkPaid, handleLongPress, handleToggleSelect]
+    [currency, selectMode, selectedIds, expandedId, handleToggleExpand, handleLongPress, handleToggleSelect, handleAdvanceStatus, handleMarkPaidFromCard]
   );
 
   // Stable keyExtractor — avoids creating new function reference every render
@@ -1367,55 +1448,13 @@ const OrderList: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* ─── Delivery status tabs ─── */}
-      <View style={styles.tabBarWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.tabBar}
-          contentContainerStyle={styles.tabBarContent}
-          onScroll={handleTabScroll}
-          scrollEventThrottle={16}
-        >
-          {DELIVERY_TABS.map((tab) => {
-            const isActive = deliveryFilter === tab.value;
-            const count = statusCounts[tab.value] || 0;
-            return (
-              <TouchableOpacity
-                key={tab.value}
-                activeOpacity={0.7}
-                style={[styles.tab, isActive && styles.tabActive]}
-                onPress={() => { selectionChanged(); setDeliveryFilter(tab.value); setOverdueOnly(false); }}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: isActive }}
-                accessibilityLabel={`${tab.label} tab, ${count} orders`}
-              >
-                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
-                  {tab.label}
-                </Text>
-                {count > 0 && (
-                  <Text style={[styles.tabCount, isActive && styles.tabCountActive]}>
-                    {count}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-        {showTabHint && (
-          <View style={styles.tabScrollHint} pointerEvents="none">
-            <Feather name="chevron-right" size={14} color={CALM.textMuted} />
-          </View>
-        )}
-      </View>
-
       {/* ─── Search bar + sort ─── */}
       <View style={styles.searchRow}>
         <View style={styles.searchContainer}>
-          <Feather name="search" size={16} color={CALM.textMuted} style={styles.searchIcon} />
+          <Feather name="search" size={16} color={CALM.textMuted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="search name, phone, address, product"
+            placeholder="search orders..."
             placeholderTextColor={CALM.textMuted}
             value={searchInput}
             onChangeText={setSearchInput}
@@ -1435,145 +1474,110 @@ const OrderList: React.FC = () => {
           )}
         </View>
         <TouchableOpacity
-          style={[styles.viewToggle, viewMode === 'grouped' && styles.viewToggleActive]}
-          activeOpacity={0.7}
-          onPress={() => {
-            selectionChanged();
-            setViewMode((v) => v === 'list' ? 'grouped' : 'list');
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={viewMode === 'grouped' ? 'Switch to list view' : 'Switch to grouped view'}
-        >
-          <Feather
-            name={viewMode === 'grouped' ? 'layers' : 'list'}
-            size={18}
-            color={viewMode === 'grouped' ? CALM.bronze : CALM.textMuted}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.sortButton, sortBy !== 'newest' && styles.sortButtonActive]}
+          style={[styles.sortButton, (sortBy !== 'newest' || deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly) && styles.sortButtonActive]}
           activeOpacity={0.7}
           onPress={() => { lightTap(); setShowSortMenu(true); }}
           accessibilityRole="button"
           accessibilityLabel={`Sort by ${sortBy}`}
         >
-          <Feather name="sliders" size={18} color={sortBy !== 'newest' ? '#fff' : CALM.bronze} />
+          <Feather name="sliders" size={18} color={CALM.bronze} />
+          {(sortBy !== 'newest' || deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly) && <View style={styles.sortActiveDot} />}
         </TouchableOpacity>
       </View>
 
-      {/* ─── Payment state + Period filter (combined row) ─── */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterBar}
-        contentContainerStyle={styles.filterBarContent}
-      >
-        {PAYMENT_TABS.map((tab) => {
-          const isActive = paymentFilter === tab.value;
-          const count = tab.value === 'all' ? undefined : (statusCounts[tab.value] || 0);
-          return (
-            <TouchableOpacity
-              key={tab.value}
-              style={[styles.filterPill, isActive && styles.filterPillActive]}
-              activeOpacity={0.7}
-              onPress={() => { selectionChanged(); setPaymentFilter(tab.value); setOverdueOnly(false); if (tab.value !== 'paid') setPaymentMethodFilter('all'); }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isActive }}
-            >
-              <Feather name={tab.icon} size={11} color={isActive ? CALM.bronze : CALM.textMuted} />
-              <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
-                {tab.label}
-              </Text>
-              {count !== undefined && count > 0 && (
-                <Text style={[styles.filterPillCount, isActive && styles.filterPillCountActive]}>
-                  {count}
-                </Text>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-        <View style={styles.filterDivider} />
-        {PERIOD_FILTERS.map((pf) => {
-          const isActive = periodFilter === pf.value;
-          return (
-            <TouchableOpacity
-              key={pf.value}
-              style={[styles.filterPill, isActive && styles.filterPillActive]}
-              activeOpacity={0.7}
-              onPress={() => { selectionChanged(); setPeriodFilter(pf.value); }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isActive }}
-            >
-              <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
-                {pf.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {/* ─── Payment method sub-filter (visible when 'paid' filter active) ─── */}
-      {paymentFilter === 'paid' && (
-        <View style={styles.payMethodRow}>
-          <TouchableOpacity
-            style={[styles.payMethodPill, paymentMethodFilter === 'all' && styles.payMethodPillActive]}
-            activeOpacity={0.7}
-            onPress={() => { selectionChanged(); setPaymentMethodFilter('all'); }}
-          >
-            <Text style={[styles.payMethodPillText, paymentMethodFilter === 'all' && styles.payMethodPillTextActive]}>
-              all
-            </Text>
-            {(statusCounts['paid'] || 0) > 0 && (
-              <Text style={[styles.payMethodCount, paymentMethodFilter === 'all' && styles.payMethodCountActive]}>
-                {statusCounts['paid']}
-              </Text>
-            )}
-          </TouchableOpacity>
-          {PAYMENT_METHODS.map((pm) => {
-            const isActive = paymentMethodFilter === pm.value;
-            const count = statusCounts[`paid_${pm.value}`] || 0;
+      {/* ─── Delivery status chips ─── */}
+      <View style={styles.quickFilterWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.quickFilterScroll}
+          contentContainerStyle={styles.quickFilterRow}
+        >
+          {DELIVERY_TABS.map((tab) => {
+            const isActive = deliveryFilter === tab.value && !overdueOnly;
+            const count = statusCounts[tab.value] || 0;
+            const statusClr = tab.value !== 'all' ? statusColor(tab.value as OrderStatus) : CALM.textMuted;
             return (
               <TouchableOpacity
-                key={pm.value}
-                style={[styles.payMethodPill, isActive && styles.payMethodPillActive]}
+                key={`d_${tab.value}`}
+                style={[styles.quickChip, isActive && styles.quickChipActive]}
                 activeOpacity={0.7}
-                onPress={() => { selectionChanged(); setPaymentMethodFilter(pm.value); }}
+                onPress={() => { selectionChanged(); setDeliveryFilter(tab.value); setOverdueOnly(false); }}
               >
-                <Feather name={pm.icon} size={12} color={isActive ? CALM.bronze : CALM.textMuted} />
-                <Text style={[styles.payMethodPillText, isActive && styles.payMethodPillTextActive]}>
-                  {pm.label}
+                <Text style={[styles.quickChipText, isActive && styles.quickChipTextActive]}>
+                  {tab.label}
                 </Text>
-                {count > 0 && (
-                  <Text style={[styles.payMethodCount, isActive && styles.payMethodCountActive]}>
-                    {count}
-                  </Text>
+                {count > 0 && tab.value !== 'all' && (
+                  <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(statusClr, 0.15) }]}>
+                    <Text style={[styles.chipCountText, { color: statusClr }]}>
+                      {count}
+                    </Text>
+                  </View>
                 )}
               </TouchableOpacity>
             );
           })}
+        </ScrollView>
+        {/* Right-edge scroll hint */}
+        <View style={styles.scrollHintRight} pointerEvents="none">
+          <Feather name="chevron-right" size={16} color={CALM.textMuted} />
         </View>
-      )}
+      </View>
 
-      {/* ─── Result count + clear filters ─── */}
+      {/* ─── Payment chips (second row) ─── */}
+      <View style={styles.paymentChipRow}>
+        <TouchableOpacity
+          style={[styles.quickChip, styles.unpaidChip, paymentFilter === 'unpaid' && styles.unpaidChipActive]}
+          activeOpacity={0.7}
+          onPress={() => { selectionChanged(); setPaymentFilter(paymentFilter === 'unpaid' ? 'all' : 'unpaid'); }}
+        >
+          <Text style={[styles.unpaidChipText, paymentFilter === 'unpaid' && styles.unpaidChipTextActive]}>unpaid</Text>
+          {statusCounts['unpaid'] > 0 && (
+            <View style={styles.unpaidCountBadge}>
+              <Text style={styles.unpaidCountText}>{statusCounts['unpaid']}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.quickChip, styles.paidChip, paymentFilter === 'paid' && styles.paidChipActive]}
+          activeOpacity={0.7}
+          onPress={() => { selectionChanged(); setPaymentFilter(paymentFilter === 'paid' ? 'all' : 'paid'); }}
+        >
+          <Text style={[styles.paidChipText, paymentFilter === 'paid' && styles.paidChipTextActive]}>paid</Text>
+          {statusCounts['paid'] > 0 && (
+            <View style={styles.paidCountBadge}>
+              <Text style={styles.paidCountText}>{statusCounts['paid']}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* View mode toggle */}
+        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={styles.viewModeToggle}
+            onPress={() => { selectionChanged(); setViewMode(v => v === 'grouped' ? 'list' : 'grouped'); }}
+          >
+            <Feather name={viewMode === 'grouped' ? 'layers' : 'list'} size={16} color={CALM.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ─── Active filter summary ─── */}
       {hasActiveFilters && (
         <View style={styles.resultRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-            <Text style={styles.resultText}>
-              {filteredOrders.length} of {orders.length} order{orders.length !== 1 ? 's' : ''}
-            </Text>
-            {overdueOnly && (
-              <View style={{ backgroundColor: withAlpha(BIZ.overdue, 0.12), borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 2 }}>
-                <Text style={{ fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.semibold as any, color: BIZ.overdue }}>overdue</Text>
-              </View>
-            )}
-          </View>
+          <Text style={styles.resultText}>
+            {filteredOrders.length} of {orders.length}
+          </Text>
           <TouchableOpacity
             onPress={handleClearFilters}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            activeOpacity={0.7}
+            style={styles.clearFiltersBtn}
             accessibilityRole="button"
             accessibilityLabel="Clear all filters"
           >
-            <Text style={styles.clearFiltersText}>clear filters</Text>
+            <Feather name="x" size={14} color={CALM.bronze} />
+            <Text style={styles.clearFiltersText}>clear</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1616,38 +1620,39 @@ const OrderList: React.FC = () => {
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={[
-              styles.bulkPayButton,
-              selectedIds.size === 0 && styles.bulkPayButtonDisabled,
-            ]}
+            style={[styles.bulkIconButton, { backgroundColor: BIZ.success }, selectedIds.size === 0 && styles.bulkPayButtonDisabled]}
             activeOpacity={0.7}
             onPress={handleBulkMarkPaid}
             disabled={selectedIds.size === 0}
             accessibilityRole="button"
             accessibilityLabel={`Mark ${selectedIds.size} orders as paid`}
           >
-            <Feather name="dollar-sign" size={16} color="#fff" />
-            <Text style={styles.bulkPayText}>mark paid</Text>
+            <Feather name="dollar-sign" size={18} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[
-              styles.bulkPayButton,
-              { backgroundColor: BIZ.error },
-              selectedIds.size === 0 && styles.bulkPayButtonDisabled,
-            ]}
+            style={[styles.bulkIconButton, { backgroundColor: CALM.accent }, selectedIds.size === 0 && styles.bulkPayButtonDisabled]}
+            activeOpacity={0.7}
+            onPress={handleBulkMarkDelivered}
+            disabled={selectedIds.size === 0}
+            accessibilityRole="button"
+            accessibilityLabel={`Mark ${selectedIds.size} orders as delivered`}
+          >
+            <Feather name="package" size={18} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.bulkIconButton, { backgroundColor: BIZ.error }, selectedIds.size === 0 && styles.bulkPayButtonDisabled]}
             activeOpacity={0.7}
             onPress={handleBulkDelete}
             disabled={selectedIds.size === 0}
             accessibilityRole="button"
             accessibilityLabel={`Delete ${selectedIds.size} orders`}
           >
-            <Feather name="trash-2" size={16} color="#fff" />
-            <Text style={styles.bulkPayText}>delete</Text>
+            <Feather name="trash-2" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
       )}
 
-      {/* ─── Sort menu modal (lazy-mounted) ─── */}
+      {/* ─── Filter & sort modal (lazy-mounted) ─── */}
       {showSortMenu && <Modal
         visible
         transparent
@@ -1659,33 +1664,136 @@ const OrderList: React.FC = () => {
           activeOpacity={1}
           onPress={() => setShowSortMenu(false)}
         >
-          <View style={styles.sortSheet} onStartShouldSetResponder={() => true}>
-            <Text style={styles.sortSheetTitle}>sort by</Text>
-            {SORT_OPTIONS.map((opt) => {
-              const isActive = sortBy === opt.value;
-              return (
+          <View style={styles.filterSortSheet} onStartShouldSetResponder={() => true}>
+            {/* Header */}
+            <View style={styles.filterSortHeader}>
+              <Text style={styles.sortSheetTitle}>filter & sort</Text>
+              {(sortBy !== 'newest' || deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly) && (
                 <TouchableOpacity
-                  key={opt.value}
-                  style={[styles.sortOption, isActive && styles.sortOptionActive]}
                   activeOpacity={0.7}
-                  onPress={() => {
-                    selectionChanged();
-                    setSortBy(opt.value);
-                    setShowSortMenu(false);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isActive }}
+                  onPress={() => { handleClearFilters(); setSortBy('newest'); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <View style={styles.sortOptionLeft}>
-                    <Feather name={opt.icon} size={16} color={isActive ? CALM.bronze : CALM.textMuted} />
-                    <Text style={[styles.sortOptionText, isActive && styles.sortOptionTextActive]}>
-                      {opt.label}
-                    </Text>
-                  </View>
-                  {isActive && <Feather name="check" size={16} color={CALM.bronze} />}
+                  <Text style={styles.filterSortClear}>reset</Text>
                 </TouchableOpacity>
-              );
-            })}
+              )}
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.filterSortScroll}>
+              {/* Sort */}
+              <Text style={styles.filterSectionLabel}>sort by</Text>
+              <View style={styles.filterSectionPills}>
+                {SORT_OPTIONS.map((opt) => {
+                  const isActive = sortBy === opt.value;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[styles.filterPill, isActive && styles.filterPillActive]}
+                      activeOpacity={0.7}
+                      onPress={() => { selectionChanged(); setSortBy(opt.value); }}
+                    >
+                      <Feather name={opt.icon} size={13} color={isActive ? CALM.bronze : CALM.textMuted} />
+                      <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Status */}
+              <Text style={styles.filterSectionLabel}>status</Text>
+              <View style={styles.filterSectionPills}>
+                {DELIVERY_TABS.map((tab) => {
+                  const isActive = deliveryFilter === tab.value;
+                  const count = statusCounts[tab.value] || 0;
+                  return (
+                    <TouchableOpacity
+                      key={`d_${tab.value}`}
+                      style={[styles.filterPill, isActive && styles.filterPillActive]}
+                      activeOpacity={0.7}
+                      onPress={() => { selectionChanged(); setDeliveryFilter(tab.value); setOverdueOnly(false); }}
+                    >
+                      <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                        {tab.label}
+                      </Text>
+                      {count > 0 && tab.value !== 'all' && (
+                        <Text style={[styles.filterPillCount, isActive && styles.filterPillCountActive]}>
+                          {count}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Payment */}
+              <Text style={styles.filterSectionLabel}>payment</Text>
+              <View style={styles.filterSectionPills}>
+                {(['all', 'unpaid', 'paid'] as ('all' | PaymentFilter)[]).map((pv) => {
+                  const isActive = paymentFilter === pv;
+                  const count = pv !== 'all' ? (statusCounts[pv] || 0) : 0;
+                  return (
+                    <TouchableOpacity
+                      key={`p_${pv}`}
+                      style={[styles.filterPill, isActive && styles.filterPillActive]}
+                      activeOpacity={0.7}
+                      onPress={() => { selectionChanged(); setPaymentFilter(pv); }}
+                    >
+                      <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                        {pv}
+                      </Text>
+                      {count > 0 && (
+                        <Text style={[styles.filterPillCount, isActive && styles.filterPillCountActive]}>
+                          {count}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Period */}
+              <Text style={styles.filterSectionLabel}>period</Text>
+              <View style={styles.filterSectionPills}>
+                {PERIOD_FILTERS.map((pf) => {
+                  const isActive = periodFilter === pf.value;
+                  return (
+                    <TouchableOpacity
+                      key={`t_${pf.value}`}
+                      style={[styles.filterPill, isActive && styles.filterPillActive]}
+                      activeOpacity={0.7}
+                      onPress={() => { selectionChanged(); setPeriodFilter(pf.value); }}
+                    >
+                      <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                        {pf.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Overdue toggle */}
+              <TouchableOpacity
+                style={[styles.filterPill, overdueOnly && styles.filterPillOverdue, { alignSelf: 'flex-start', marginTop: SPACING.xs }]}
+                activeOpacity={0.7}
+                onPress={() => { selectionChanged(); setOverdueOnly(!overdueOnly); }}
+              >
+                <Feather name="alert-circle" size={13} color={overdueOnly ? BIZ.overdue : CALM.textMuted} />
+                <Text style={[styles.filterPillText, overdueOnly && styles.filterPillOverdueText]}>
+                  overdue only
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+            {/* Done button */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.filterSortDone}
+              onPress={() => setShowSortMenu(false)}
+            >
+              <Text style={styles.filterSortDoneText}>done</Text>
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>}
@@ -1695,12 +1803,12 @@ const OrderList: React.FC = () => {
         visible
         transparent
         animationType="fade"
-        onRequestClose={() => { setPendingPayOrder(null); setBulkPayIds([]); setSelectedPaymentMethod(null); }}
+        onRequestClose={() => { setPendingPayOrder(null); setBulkPayIds([]); setSelectedPaymentMethod(null); setPaymentNote(''); }}
       >
         <TouchableOpacity
           style={styles.sortOverlay}
           activeOpacity={1}
-          onPress={() => { setPendingPayOrder(null); setBulkPayIds([]); setSelectedPaymentMethod(null); }}
+          onPress={() => { setPendingPayOrder(null); setBulkPayIds([]); setSelectedPaymentMethod(null); setPaymentNote(''); }}
         >
           <View style={styles.paymentSheet} onStartShouldSetResponder={() => true}>
             <Text style={styles.paymentSheetTitle}>
@@ -1745,14 +1853,23 @@ const OrderList: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel={`Pay by ${m.label}`}
                   >
-                    <Feather name={m.icon} size={14} color={active ? '#fff' : CALM.textSecondary} />
-                    <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>
-                      {m.label}
-                    </Text>
+                    <Feather name={m.icon} size={14} color={active ? BIZ.success : CALM.textSecondary} />
+                    <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
+            {!!selectedPaymentMethod && (
+              <TextInput
+                style={styles.paymentNoteInput}
+                value={paymentNote}
+                onChangeText={setPaymentNote}
+                placeholder="note (optional)"
+                placeholderTextColor={CALM.textMuted}
+                returnKeyType="done"
+              />
+            )}
+
             <TouchableOpacity
               activeOpacity={0.7}
               style={[styles.paymentConfirmBtn, !selectedPaymentMethod && styles.paymentConfirmBtnDisabled]}
@@ -1784,60 +1901,61 @@ const OrderList: React.FC = () => {
           onPress={handleCloseModal}
         >
           <View style={styles.modalSheet} onStartShouldSetResponder={() => true}>
-            <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-              {selectedOrder && (
-                <>
-                  {/* Handle */}
-                  <View style={styles.modalHandleRow}>
-                    <View style={styles.modalHandle} />
-                  </View>
-
-                  {/* ── Section: Header ── */}
-                  <View style={styles.modalHeader}>
-                    <View style={styles.modalHeaderLeft}>
-                      <View style={styles.modalTitleRow}>
-                        <Text style={styles.modalTitle}>
-                          {selectedOrder.customerName || 'Order'}
-                        </Text>
-                        {!!selectedOrder.orderNumber && (
-                          <Text style={styles.modalOrderCode}>{selectedOrder.orderNumber}</Text>
-                        )}
-                      </View>
-                      {customerContext && (
-                        <Text style={styles.customerContextText}>
-                          {customerContext.orderCount} order{customerContext.orderCount !== 1 ? 's' : ''} · {currency} {customerContext.totalSpent.toFixed(2)} paid
-                        </Text>
+            {/* Fixed handle + header — does not scroll */}
+            {selectedOrder && (
+              <>
+                <View style={styles.modalHandleRow}>
+                  <View style={styles.modalHandle} />
+                </View>
+                <View style={styles.modalHeader}>
+                  <View style={styles.modalHeaderLeft}>
+                    <View style={styles.modalTitleRow}>
+                      <Text style={styles.modalTitle}>
+                        {selectedOrder.customerName || 'Order'}
+                      </Text>
+                      {!!selectedOrder.orderNumber && (
+                        <Text style={styles.modalOrderCode}>{selectedOrder.orderNumber}</Text>
                       )}
                     </View>
-                    <View style={styles.modalHeaderRight}>
-                      <View
+                    {customerContext && (
+                      <Text style={styles.customerContextText}>
+                        {customerContext.orderCount} order{customerContext.orderCount !== 1 ? 's' : ''} · {currency} {customerContext.totalSpent.toFixed(2)} paid
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.modalHeaderRight}>
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        { borderWidth: 1, borderColor: withAlpha(statusColor(selectedOrder.status), 0.5) },
+                      ]}
+                    >
+                      <Text
                         style={[
-                          styles.statusBadge,
-                          { backgroundColor: withAlpha(statusColor(selectedOrder.status), 0.15) },
+                          styles.statusText,
+                          { color: statusColor(selectedOrder.status) },
                         ]}
                       >
-                        <Text
-                          style={[
-                            styles.statusText,
-                            { color: statusColor(selectedOrder.status) },
-                          ]}
-                        >
-                          {selectedOrder.status}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.modalCloseButton}
-                        activeOpacity={0.7}
-                        onPress={handleCloseModal}
-                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Close"
-                      >
-                        <Feather name="x" size={18} color={CALM.textMuted} />
-                      </TouchableOpacity>
+                        {selectedOrder.status}
+                      </Text>
                     </View>
+                    <TouchableOpacity
+                      style={styles.modalCloseButton}
+                      activeOpacity={0.7}
+                      onPress={handleCloseModal}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close"
+                    >
+                      <Feather name="x" size={18} color={CALM.textMuted} />
+                    </TouchableOpacity>
                   </View>
-
+                </View>
+              </>
+            )}
+            <ScrollView bounces={false} showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+              {selectedOrder && (
+                <>
                   {/* ── Section: Contact ── */}
                   {!isEditing && (!!selectedOrder.customerPhone || !!selectedOrder.customerAddress) && (
                     <View style={styles.modalSection}>
@@ -1890,6 +2008,52 @@ const OrderList: React.FC = () => {
                   {/* ── Edit mode ── */}
                   {isEditing && (
                     <View style={styles.editSection}>
+                      {/* ── Items ── */}
+                      <Text style={styles.editFieldLabel}>items</Text>
+                      <View style={styles.editItemsList}>
+                        {editItems.map((item, i) => (
+                          <View key={`ei_${i}`} style={[styles.editItemRow, i < editItems.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: CALM.border }]}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.editItemName} numberOfLines={1}>{item.productName}</Text>
+                              <Text style={styles.editItemPrice}>{currency} {item.unitPrice.toFixed(2)} / {item.unit}</Text>
+                            </View>
+                            <View style={styles.editItemStepper}>
+                              <TouchableOpacity
+                                onPress={() => { lightTap(); setEditItems(prev => prev.map((it, idx) => idx === i ? { ...it, quantity: Math.max(1, it.quantity - 1) } : it)); }}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Feather name="minus-circle" size={20} color={CALM.textMuted} />
+                              </TouchableOpacity>
+                              <Text style={styles.editItemQty}>{item.quantity}</Text>
+                              <TouchableOpacity
+                                onPress={() => { lightTap(); setEditItems(prev => prev.map((it, idx) => idx === i ? { ...it, quantity: it.quantity + 1 } : it)); }}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Feather name="plus-circle" size={20} color={CALM.bronze} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => { lightTap(); setEditItems(prev => prev.filter((_, idx) => idx !== i)); }}
+                                hitSlop={{ top: 8, bottom: 8, left: 12, right: 8 }}
+                                style={{ marginLeft: 6 }}
+                              >
+                                <Feather name="trash-2" size={16} color={CALM.textMuted} />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ))}
+                        {products.filter(p => p.isActive && !editItems.some(ei => ei.productId === p.id)).length > 0 && (
+                          <TouchableOpacity
+                            style={styles.editItemAddBtn}
+                            activeOpacity={0.7}
+                            onPress={() => { lightTap(); setShowAddProductModal(true); }}
+                          >
+                            <Feather name="plus" size={14} color={CALM.bronze} />
+                            <Text style={styles.editItemAddText}>add product</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {/* ── Phone ── */}
                       <Text style={styles.editFieldLabel}>phone</Text>
                       <TextInput
                         style={styles.editInput}
@@ -1899,24 +2063,38 @@ const OrderList: React.FC = () => {
                         placeholderTextColor={CALM.textMuted}
                         keyboardType="phone-pad"
                       />
+
+                      {/* ── Address ── */}
                       <Text style={styles.editFieldLabel}>address</Text>
                       <TextInput
-                        style={styles.editInput}
+                        style={[styles.editInput, styles.editInputMultiline]}
                         value={editAddress}
                         onChangeText={setEditAddress}
                         placeholder="customer address"
                         placeholderTextColor={CALM.textMuted}
+                        multiline
+                        numberOfLines={3}
                       />
-                      <Text style={styles.editFieldLabel}>delivery date (dd/mm/yyyy)</Text>
-                      <TextInput
-                        style={[styles.editInput, !!editError && styles.editInputError]}
-                        value={editDeliveryDate}
-                        onChangeText={(t) => { setEditDeliveryDate(t); setEditError(''); }}
-                        placeholder="e.g. 15/03/2026"
-                        placeholderTextColor={CALM.textMuted}
-                        keyboardType="number-pad"
-                      />
-                      {!!editError && <Text style={styles.errorText}>{editError}</Text>}
+
+                      {/* ── Delivery date (keyboard modal) ── */}
+                      <Text style={styles.editFieldLabel}>delivery date</Text>
+                      <TouchableOpacity
+                        style={[styles.editInput, styles.editDateButton]}
+                        activeOpacity={0.7}
+                        onPress={() => setShowDeliveryDateModal(true)}
+                      >
+                        <Feather name="calendar" size={15} color={editDeliveryDate ? CALM.bronze : CALM.textMuted} />
+                        <Text style={[styles.editDateButtonText, !editDeliveryDate && { color: CALM.textMuted }]}>
+                          {editDeliveryDate ? format(editDeliveryDate, 'd MMM yyyy') : 'tap to set'}
+                        </Text>
+                        {!!editDeliveryDate && (
+                          <TouchableOpacity onPress={() => setEditDeliveryDate(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                            <Feather name="x" size={14} color={CALM.textMuted} />
+                          </TouchableOpacity>
+                        )}
+                      </TouchableOpacity>
+
+                      {/* ── Note ── */}
                       <Text style={styles.editFieldLabel}>note</Text>
                       <TextInput
                         style={[styles.editInput, styles.editInputMultiline]}
@@ -1926,19 +2104,12 @@ const OrderList: React.FC = () => {
                         placeholderTextColor={CALM.textMuted}
                         multiline
                       />
+
                       <View style={styles.editActions}>
-                        <TouchableOpacity
-                          style={styles.editCancelButton}
-                          activeOpacity={0.7}
-                          onPress={() => setIsEditing(false)}
-                        >
+                        <TouchableOpacity style={styles.editCancelButton} activeOpacity={0.7} onPress={() => setIsEditing(false)}>
                           <Text style={styles.editCancelText}>cancel</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.editSaveButton}
-                          activeOpacity={0.7}
-                          onPress={handleSaveEdit}
-                        >
+                        <TouchableOpacity style={styles.editSaveButton} activeOpacity={0.7} onPress={handleSaveEdit}>
                           <Feather name="check" size={16} color="#fff" />
                           <Text style={styles.editSaveText}>save</Text>
                         </TouchableOpacity>
@@ -1999,23 +2170,7 @@ const OrderList: React.FC = () => {
 
                   {/* ── Section: Items ── */}
                   <View style={styles.modalSection}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={styles.modalSectionLabel}>items</Text>
-                      {!isEditing && (
-                        <TouchableOpacity
-                          onPress={() => {
-                            lightTap();
-                            setEditItems(selectedOrder.items.map((i) => ({ ...i })));
-                            setEditingItems(true);
-                          }}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          accessibilityRole="button"
-                          accessibilityLabel="Edit items"
-                        >
-                          <Feather name="edit-2" size={14} color={CALM.bronze} />
-                        </TouchableOpacity>
-                      )}
-                    </View>
+                    <Text style={styles.modalSectionLabel}>items</Text>
 
                     {selectedOrder.items.map((item, i) => (
                       <View
@@ -2033,27 +2188,56 @@ const OrderList: React.FC = () => {
                         </Text>
                       </View>
                     ))}
-                    <View style={styles.modalTotalRow}>
-                      <Text style={styles.modalTotalLabel}>total</Text>
-                      <Text style={styles.modalTotalAmount}>
-                        {currency} {selectedOrder.totalAmount.toFixed(2)}
-                      </Text>
-                    </View>
-                    {/* Partial payment progress */}
-                    {!selectedOrder.isPaid && (selectedOrder.paidAmount || 0) > 0 && (
-                      <View style={{ marginTop: 6 }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted }}>paid so far</Text>
-                          <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: BIZ.success, fontWeight: TYPOGRAPHY.weight.semibold }}>
-                            {currency} {(selectedOrder.paidAmount || 0).toFixed(2)} / {selectedOrder.totalAmount.toFixed(2)}
+                  </View>
+
+                  {/* ── Payment history ── */}
+                  {((selectedOrder.deposits && selectedOrder.deposits.length > 0) || selectedOrder.isPaid) && (
+                    <View style={styles.modalSection}>
+                      <View style={styles.payHistoryHeader}>
+                        <Text style={[styles.modalSectionLabel, { marginBottom: 0 }]}>payment history</Text>
+                        {(selectedOrder.deposits && selectedOrder.deposits.length > 0) && (
+                          <TouchableOpacity
+                            onPress={() => { lightTap(); setEditingPayHistory(true); setEditPayIdx(null); }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Feather name="edit-2" size={14} color={CALM.bronze} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {(selectedOrder.deposits && selectedOrder.deposits.length > 0)
+                        ? selectedOrder.deposits.map((d, i) => {
+                            const d2 = d.date instanceof Date ? d.date : new Date(d.date);
+                            return (
+                              <View key={i} style={[styles.payHistoryRow, i < selectedOrder.deposits!.length - 1 && styles.modalItemRowBorder]}>
+                                <Feather name={paymentMethodIcon(d.method)} size={13} color={BIZ.success} />
+                                <Text style={styles.payHistoryMethod}>{paymentMethodLabel(d.method)}</Text>
+                                <Text style={styles.payHistoryDate}>{format(d2, 'dd MMM, h:mm a')}</Text>
+                                <Text style={styles.payHistoryAmount}>{currency} {d.amount.toFixed(2)}</Text>
+                              </View>
+                            );
+                          })
+                        : (
+                          <View style={styles.payHistoryRow}>
+                            <Feather name={paymentMethodIcon(selectedOrder.paymentMethod)} size={13} color={BIZ.success} />
+                            <Text style={styles.payHistoryMethod}>{paymentMethodLabel(selectedOrder.paymentMethod)}</Text>
+                            {selectedOrder.paidAt && (
+                              <Text style={styles.payHistoryDate}>{format(selectedOrder.paidAt instanceof Date ? selectedOrder.paidAt : new Date(selectedOrder.paidAt), 'dd MMM')}</Text>
+                            )}
+                            <Text style={styles.payHistoryAmount}>{currency} {selectedOrder.totalAmount.toFixed(2)}</Text>
+                          </View>
+                        )
+                      }
+                      {!selectedOrder.isPaid && (selectedOrder.paidAmount || 0) > 0 && (
+                        <View style={styles.payHistoryBalance}>
+                          <Text style={styles.payHistoryBalanceLabel}>remaining</Text>
+                          <Text style={styles.payHistoryBalanceAmount}>
+                            {currency} {(selectedOrder.totalAmount - (selectedOrder.paidAmount || 0)).toFixed(2)}
                           </Text>
                         </View>
-                        <View style={{ height: 4, backgroundColor: CALM.border, borderRadius: 2 }}>
-                          <View style={{ height: 4, backgroundColor: BIZ.success, borderRadius: 2, width: `${Math.min(100, ((selectedOrder.paidAmount || 0) / selectedOrder.totalAmount) * 100)}%` }} />
-                        </View>
-                      </View>
-                    )}
-                  </View>
+                      )}
+                    </View>
+                  )}
 
                   {/* Note */}
                   {!isEditing && selectedOrder.note && (
@@ -2091,22 +2275,6 @@ const OrderList: React.FC = () => {
                   {/* ── Actions ── */}
                   {!isEditing && (
                     <View style={styles.modalActions}>
-                      {/* Primary actions — full width */}
-                      {NEXT_STATUS[selectedOrder.status] && (
-                        <TouchableOpacity
-                          activeOpacity={0.7}
-                          style={[styles.advanceButton, { backgroundColor: statusColor(NEXT_STATUS[selectedOrder.status]!) }]}
-                          onPress={() => handleAdvanceStatus(selectedOrder)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Mark order as ${NEXT_STATUS[selectedOrder.status]}`}
-                        >
-                          <Feather name={advanceIcon(selectedOrder.status)} size={18} color="#fff" />
-                          <Text style={styles.advanceButtonText}>
-                            mark as {NEXT_STATUS[selectedOrder.status]}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-
                       {!selectedOrder.isPaid && (
                         <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
                           <TouchableOpacity
@@ -2131,6 +2299,7 @@ const OrderList: React.FC = () => {
                               lightTap();
                               setPendingPayOrder(selectedOrder);
                               setSelectedPaymentMethod(null);
+                              setPaymentNote('');
                               setSelectedOrder(null);
                               setShowRawWhatsApp(false);
                               setIsEditing(false);
@@ -2144,33 +2313,18 @@ const OrderList: React.FC = () => {
                         </View>
                       )}
 
-                      {selectedOrder.isPaid && (
-                        <View style={styles.paidInfoRow}>
-                          <Feather name={paymentMethodIcon(selectedOrder.paymentMethod)} size={14} color={BIZ.success} />
-                          <Text style={styles.paidInfoText}>
-                            paid {selectedOrder.paymentMethod === 'bank_transfer' ? 'via transfer' :
-                                  selectedOrder.paymentMethod === 'ewallet' ? 'via e-wallet' :
-                                  selectedOrder.paymentMethod === 'cash' ? 'cash' : ''}
-                          </Text>
-                          {selectedOrder.paidAt && (
-                            <Text style={styles.paidInfoDate}>
-                              {format(selectedOrder.paidAt instanceof Date ? selectedOrder.paidAt : new Date(selectedOrder.paidAt), 'dd MMM')}
-                            </Text>
-                          )}
-                        </View>
-                      )}
 
                       {/* Secondary actions — 2-column grid */}
                       <View style={styles.secondaryActionsGrid}>
                         <TouchableOpacity
                           activeOpacity={0.7}
                           style={styles.gridAction}
-                          onPress={() => handleCopyReceipt(selectedOrder)}
+                          onPress={() => handleShareReceiptWA(selectedOrder)}
                           accessibilityRole="button"
-                          accessibilityLabel="Copy receipt"
+                          accessibilityLabel="Send receipt via WhatsApp"
                         >
-                          <Feather name="file-text" size={16} color={CALM.bronze} />
-                          <Text style={styles.gridActionText}>receipt</Text>
+                          <Feather name="send" size={16} color={CALM.accent} />
+                          <Text style={[styles.gridActionText, { color: CALM.accent }]}>send receipt</Text>
                         </TouchableOpacity>
 
                         {!selectedOrder.isPaid && (
@@ -2197,30 +2351,23 @@ const OrderList: React.FC = () => {
                           <Text style={styles.gridActionText}>edit</Text>
                         </TouchableOpacity>
 
+                      </View>
+
+                      {/* Mark as next status — at bottom */}
+                      {NEXT_STATUS[selectedOrder.status] && (
                         <TouchableOpacity
                           activeOpacity={0.7}
-                          style={styles.gridAction}
-                          onPress={() => handleDuplicateOrder(selectedOrder)}
+                          style={[styles.advanceButton, { backgroundColor: statusColor(NEXT_STATUS[selectedOrder.status]!) }]}
+                          onPress={() => handleAdvanceStatus(selectedOrder)}
                           accessibilityRole="button"
-                          accessibilityLabel="Reorder"
+                          accessibilityLabel={`Mark order as ${NEXT_STATUS[selectedOrder.status]}`}
                         >
-                          <Feather name="copy" size={16} color={CALM.bronze} />
-                          <Text style={styles.gridActionText}>reorder</Text>
+                          <Feather name={advanceIcon(selectedOrder.status)} size={18} color="#fff" />
+                          <Text style={styles.advanceButtonText}>
+                            mark as {NEXT_STATUS[selectedOrder.status]}
+                          </Text>
                         </TouchableOpacity>
-
-                        {selectedOrder.isPaid && (
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            style={styles.gridAction}
-                            onPress={() => handleUndoPaid(selectedOrder)}
-                            accessibilityRole="button"
-                            accessibilityLabel="Undo payment"
-                          >
-                            <Feather name="rotate-ccw" size={16} color={BIZ.error} />
-                            <Text style={[styles.gridActionText, styles.gridActionTextDanger]}>undo paid</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
+                      )}
 
                       {/* Delete — minimal, at bottom */}
                       <TouchableOpacity
@@ -2237,6 +2384,28 @@ const OrderList: React.FC = () => {
                 </>
               )}
             </ScrollView>
+
+            {/* ─── Delivery date calendar overlay (inside modalSheet — same native layer) ─── */}
+            {showDeliveryDateModal && (
+              <TouchableOpacity
+                style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }]}
+                activeOpacity={1}
+                onPress={() => setShowDeliveryDateModal(false)}
+              >
+                <View style={[styles.dateModalSheet, { padding: SPACING.md }]} onStartShouldSetResponder={() => true}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
+                    <Text style={styles.dateModalTitle}>delivery date</Text>
+                    <TouchableOpacity onPress={() => setShowDeliveryDateModal(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                      <Feather name="x" size={17} color={CALM.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                  <CalendarPicker
+                    value={editDeliveryDate ?? new Date()}
+                    onChange={(date) => { setEditDeliveryDate(date); setShowDeliveryDateModal(false); }}
+                  />
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
         </TouchableOpacity>
 
@@ -2294,11 +2463,9 @@ const OrderList: React.FC = () => {
                       accessibilityRole="button"
                       accessibilityLabel={`Deposit via ${m.label}`}
                     >
-                      <Feather name={m.icon} size={14} color={active ? '#fff' : CALM.textSecondary} />
-                      <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>
-                        {m.label}
-                      </Text>
-                    </TouchableOpacity>
+                      <Feather name={m.icon} size={14} color={active ? BIZ.success : CALM.textSecondary} />
+                      <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
+                      </TouchableOpacity>
                   );
                 })}
               </View>
@@ -2337,133 +2504,190 @@ const OrderList: React.FC = () => {
           </TouchableOpacity>
         )}
 
-        {/* ─── Edit items overlay (inside detail modal) ─── */}
-        {editingItems && (
-          <TouchableOpacity
-            style={[StyleSheet.absoluteFill, styles.modalOverlay]}
-            activeOpacity={1}
-            onPress={() => setEditingItems(false)}
-          >
-            <View style={styles.modalSheet} onStartShouldSetResponder={() => true}>
-              <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-                <View style={styles.modalHandleRow}>
-                  <View style={styles.modalHandle} />
-                </View>
+        {/* ─── Payment history edit sheet (full-screen level) ─── */}
+        {editingPayHistory && selectedOrder && (selectedOrder.deposits && selectedOrder.deposits.length > 0) && (
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={StyleSheet.absoluteFill} pointerEvents="box-none">
+            <TouchableOpacity style={[StyleSheet.absoluteFill, styles.sortOverlay]} activeOpacity={1} onPress={() => { setEditingPayHistory(false); setEditPayIdx(null); }}>
+              <View style={styles.paymentSheet} onStartShouldSetResponder={() => true}>
+                <Text style={styles.paymentSheetTitle}>edit payments</Text>
 
-                <View style={styles.modalHeader}>
-                  <View style={styles.modalHeaderLeft}>
-                    <Text style={styles.modalTitle}>edit items</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.modalCloseButton}
-                    activeOpacity={0.7}
-                    onPress={() => setEditingItems(false)}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  >
-                    <Feather name="x" size={18} color={CALM.textMuted} />
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.modalSection}>
-                  {editItems.map((item, i) => (
-                    <View key={i} style={[styles.modalItemRow, i < editItems.length - 1 && styles.modalItemRowBorder]}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.modalItemName} numberOfLines={1}>
-                          {item.productName}
-                        </Text>
-                        <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted }}>
-                          {currency} {item.unitPrice.toFixed(2)} / {item.unit}
-                        </Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {selectedOrder.deposits.map((d, i) => {
+                  const d2 = d.date instanceof Date ? d.date : new Date(d.date);
+                  const isEditingThis = editPayIdx === i;
+                  return (
+                    <View key={i} style={[{ paddingVertical: SPACING.sm }, i < selectedOrder.deposits!.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: CALM.border }]}>
+                      {/* Entry row */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                        <Feather name={paymentMethodIcon(d.method)} size={14} color={BIZ.success} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: BIZ.success }}>{paymentMethodLabel(d.method)}</Text>
+                          <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, marginTop: 1 }}>{format(d2, 'dd MMM yyyy, h:mm a')}</Text>
+                        </View>
+                        <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.textPrimary }}>{currency} {d.amount.toFixed(2)}</Text>
+                        <TouchableOpacity
+                          onPress={() => { lightTap(); if (isEditingThis) { setEditPayIdx(null); } else { setEditPayIdx(i); setEditPayAmount(d.amount.toFixed(2)); setEditPayMethod(d.method); } }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Feather name={isEditingThis ? 'chevron-up' : 'edit-2'} size={15} color={CALM.bronze} />
+                        </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => {
                             lightTap();
-                            const qty = item.quantity - 1;
-                            if (qty <= 0) {
-                              setEditItems((prev) => prev.filter((_, idx) => idx !== i));
-                            } else {
-                              setEditItems((prev) => prev.map((it, idx) => idx === i ? { ...it, quantity: qty } : it));
-                            }
+                            Alert.alert(
+                              'remove payment',
+                              `remove ${paymentMethodLabel(d.method)} · ${currency} ${d.amount.toFixed(2)}?`,
+                              [
+                                { text: 'cancel', style: 'cancel' },
+                                {
+                                  text: 'remove',
+                                  style: 'destructive',
+                                  onPress: () => {
+                                    mediumTap();
+                                    removeDeposit(selectedOrder.id, i);
+                                    const deps = selectedOrder.deposits!.filter((_, idx) => idx !== i);
+                                    const newPaid = deps.reduce((s, dep) => s + dep.amount, 0);
+                                    const fullyPaid = newPaid >= selectedOrder.totalAmount;
+                                    setSelectedOrder({ ...selectedOrder, deposits: deps, paidAmount: newPaid, isPaid: fullyPaid, paymentMethod: deps.length > 0 ? deps[deps.length - 1].method : undefined, paidAt: fullyPaid ? selectedOrder.paidAt : undefined, updatedAt: new Date() });
+                                    if (editPayIdx === i) setEditPayIdx(null);
+                                    if (deps.length === 0) setEditingPayHistory(false);
+                                    showToast('payment removed.', 'info');
+                                  },
+                                },
+                              ]
+                            );
                           }}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Feather name="minus-circle" size={20} color={BIZ.error} />
-                        </TouchableOpacity>
-                        <Text style={{ fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.textPrimary, minWidth: 28, textAlign: 'center' }}>
-                          {item.quantity}
-                        </Text>
-                        <TouchableOpacity
-                          onPress={() => {
-                            lightTap();
-                            setEditItems((prev) => prev.map((it, idx) => idx === i ? { ...it, quantity: it.quantity + 1 } : it));
-                          }}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Feather name="plus-circle" size={20} color={CALM.bronze} />
+                          <Feather name="trash-2" size={15} color={CALM.textMuted} />
                         </TouchableOpacity>
                       </View>
+
+                      {/* Inline edit form */}
+                      {isEditingThis && (
+                        <View style={{ marginTop: SPACING.xs, gap: SPACING.sm }}>
+                          <TextInput
+                            autoFocus
+                            style={styles.payHistoryEditInput}
+                            value={editPayAmount}
+                            onChangeText={setEditPayAmount}
+                            keyboardType="decimal-pad"
+                            placeholder="amount"
+                            placeholderTextColor={CALM.textMuted}
+                            returnKeyType="done"
+                          />
+                          <View style={styles.paymentPickerRow}>
+                            {PAYMENT_METHODS.map((m) => {
+                              const active = editPayMethod === m.value;
+                              return (
+                                <TouchableOpacity
+                                  key={m.value}
+                                  activeOpacity={0.7}
+                                  style={[styles.paymentPill, active && styles.paymentPillActive]}
+                                  onPress={() => { lightTap(); setEditPayMethod(m.value as SellerPaymentMethod); }}
+                                >
+                                  <Feather name={m.icon} size={13} color={active ? BIZ.success : CALM.textSecondary} />
+                                  <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
+                                              </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            style={styles.paymentConfirmBtn}
+                            onPress={() => {
+                              const amt = parseFloat(editPayAmount);
+                              if (!amt || amt <= 0) { showToast('enter a valid amount.', 'error'); return; }
+                              mediumTap();
+                              updateDeposit(selectedOrder.id, i, amt, editPayMethod);
+                              const deps = selectedOrder.deposits!.map((dep, idx) => idx === i ? { ...dep, amount: amt, method: editPayMethod } : dep);
+                              const newPaid = deps.reduce((s, dep) => s + dep.amount, 0);
+                              const fullyPaid = newPaid >= selectedOrder.totalAmount;
+                              setSelectedOrder({ ...selectedOrder, deposits: deps, paidAmount: newPaid, isPaid: fullyPaid, paymentMethod: editPayMethod, paidAt: fullyPaid ? (selectedOrder.paidAt || new Date()) : undefined, updatedAt: new Date() });
+                              setEditPayIdx(null);
+                              showToast('payment updated.', 'info');
+                            }}
+                          >
+                            <Feather name="check" size={16} color="#fff" />
+                            <Text style={styles.paymentConfirmText}>save</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
-                  ))}
+                  );
+                })}
 
-                  {/* Add product button */}
-                  {products.filter((p) => p.isActive && !editItems.some((ei) => ei.productId === p.id)).length > 0 && (
+              </View>
+            </TouchableOpacity>
+          </KeyboardAvoidingView>
+        )}
+
+        {/* ─── Add product picker overlay (inside detail modal, flex:1 level) ─── */}
+        {showAddProductModal && (
+          <TouchableOpacity
+            style={[StyleSheet.absoluteFill, styles.sortOverlay]}
+            activeOpacity={1}
+            onPress={() => { setShowAddProductModal(false); setAddProductSearch(''); }}
+          >
+            <View style={[styles.paymentSheet, { maxHeight: '70%' }]} onStartShouldSetResponder={() => true}>
+              {/* Header */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
+                <Text style={styles.paymentSheetTitle}>add items</Text>
+                <TouchableOpacity onPress={() => { setShowAddProductModal(false); setAddProductSearch(''); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                  <Feather name="x" size={18} color={CALM.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Search */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: CALM.border, borderRadius: RADIUS.md, paddingHorizontal: SPACING.sm, marginBottom: SPACING.sm, gap: SPACING.xs }}>
+                <Feather name="search" size={14} color={CALM.textMuted} />
+                <TextInput
+                  style={{ flex: 1, fontSize: TYPOGRAPHY.size.sm, color: CALM.textPrimary, paddingVertical: SPACING.sm }}
+                  value={addProductSearch}
+                  onChangeText={setAddProductSearch}
+                  placeholder="search products..."
+                  placeholderTextColor={CALM.textMuted}
+                />
+                {addProductSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setAddProductSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Feather name="x" size={13} color={CALM.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Product list */}
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                {products
+                  .filter(p => p.isActive && !editItems.some(ei => ei.productId === p.id))
+                  .filter(p => !addProductSearch || p.name.toLowerCase().includes(addProductSearch.toLowerCase()))
+                  .map((p, idx, arr) => (
                     <TouchableOpacity
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderTopWidth: 1, borderTopColor: CALM.border, marginTop: SPACING.xs }}
+                      key={p.id}
+                      activeOpacity={0.7}
+                      style={[
+                        { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm },
+                        idx < arr.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: CALM.border },
+                      ]}
                       onPress={() => {
-                        const available = products.filter((p) => p.isActive && !editItems.some((ei) => ei.productId === p.id));
-                        if (available.length > 0) {
-                          const p = available[0];
-                          lightTap();
-                          setEditItems((prev) => [...prev, { productId: p.id, productName: p.name, quantity: 1, unitPrice: p.pricePerUnit, unit: p.unit }]);
-                        }
+                        lightTap();
+                        setEditItems(prev => [...prev, { productId: p.id, productName: p.name, quantity: 1, unitPrice: p.pricePerUnit, unit: p.unit }]);
+                        setShowAddProductModal(false);
+                        setAddProductSearch('');
                       }}
                     >
-                      <Feather name="plus" size={16} color={CALM.bronze} />
-                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.bronze, fontWeight: TYPOGRAPHY.weight.medium }}>add product</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: CALM.textPrimary }}>{p.name}</Text>
+                        <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, marginTop: 2 }}>{currency} {p.pricePerUnit.toFixed(2)} / {p.unit}</Text>
+                      </View>
+                      <Feather name="plus-circle" size={18} color={CALM.bronze} />
                     </TouchableOpacity>
-                  )}
-
-                  {/* Total preview */}
-                  <View style={[styles.modalTotalRow, { marginTop: SPACING.md }]}>
-                    <Text style={styles.modalTotalLabel}>new total</Text>
-                    <Text style={styles.modalTotalAmount}>
-                      {currency} {editItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0).toFixed(2)}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: SPACING.md, paddingHorizontal: SPACING.lg, paddingBottom: SPACING.lg }}>
-                  <TouchableOpacity
-                    onPress={() => setEditingItems(false)}
-                    style={{ paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg }}
-                  >
-                    <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.textMuted }}>cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (editItems.length === 0) {
-                        showToast('add at least one item.', 'error');
-                        return;
-                      }
-                      mediumTap();
-                      updateOrderItems(selectedOrder.id, editItems);
-                      const newTotal = editItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-                      setSelectedOrder({ ...selectedOrder, items: editItems, totalAmount: newTotal, updatedAt: new Date() });
-                      setEditingItems(false);
-                      showToast('items updated.', 'info');
-                    }}
-                    style={{ paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl, backgroundColor: CALM.bronze, borderRadius: RADIUS.md }}
-                  >
-                    <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: '#fff', fontWeight: TYPOGRAPHY.weight.semibold }}>save</Text>
-                  </TouchableOpacity>
-                </View>
+                  ))
+                }
               </ScrollView>
             </View>
           </TouchableOpacity>
         )}
 
-        </View>
+</View>
       </Modal>}
 
       {/* ─── Navigation app picker modal (lazy-mounted, renders after detail modal) ─── */}
@@ -2544,71 +2768,6 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.background,
   },
 
-  // ── Delivery status pill tabs ──
-  tabBarWrapper: {
-    flexShrink: 0,
-  },
-  tabBar: {
-    flexGrow: 0,
-  },
-  tabBarContent: {
-    paddingHorizontal: SPACING.lg,
-    paddingRight: SPACING['3xl'],
-    paddingVertical: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
-    minHeight: 36,
-    justifyContent: 'center',
-  },
-  tabActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
-  },
-  tabText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
-  },
-  tabTextActive: {
-    color: CALM.bronze,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  tabCount: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
-    fontVariant: ['tabular-nums'],
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: RADIUS.full,
-    overflow: 'hidden',
-    minWidth: 18,
-    textAlign: 'center',
-  },
-  tabCountActive: {
-    color: '#fff',
-    backgroundColor: CALM.bronze,
-  },
-  tabScrollHint: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(CALM.background, 0.85),
-    borderTopRightRadius: RADIUS.full,
-    borderBottomRightRadius: RADIUS.full,
-  },
-
   // ── Search bar + sort ──
   searchRow: {
     flexDirection: 'row',
@@ -2628,9 +2787,7 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
     paddingHorizontal: SPACING.md,
     minHeight: 44,
-  },
-  searchIcon: {
-    marginRight: SPACING.sm,
+    gap: SPACING.sm,
   },
   searchInput: {
     flex: 1,
@@ -2642,24 +2799,175 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: CALM.surface,
+    borderWidth: 1,
+    borderColor: CALM.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sortButtonActive: {
+    borderColor: CALM.bronze,
+  },
+  sortActiveDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: CALM.bronze,
+    borderWidth: 1.5,
+    borderColor: CALM.background,
   },
 
-  // ── Combined payment + period filter bar ──
-  filterBar: {
+  // ── Quick filter chips (inline bar) ──
+  quickFilterWrapper: {
+    position: 'relative',
+  },
+  quickFilterScroll: {
     flexGrow: 0,
   },
-  filterBarContent: {
-    paddingHorizontal: SPACING.lg,
+  scrollHintRight: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Fade from transparent to background to blend chips out
+    backgroundColor: withAlpha(CALM.background, 0.85),
+  },
+  quickFilterRow: {
+    paddingHorizontal: 8,
     paddingVertical: SPACING.xs,
+    gap: 6,
+    alignItems: 'flex-start',
+  },
+  quickChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.xs,
+    paddingHorizontal: 10,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  quickChipActive: {
+    borderColor: CALM.bronze,
+  },
+  quickChipText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textSecondary,
+  },
+  quickChipTextActive: {
+    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  chipCountBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: withAlpha(CALM.textMuted, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  chipCountBadgeActive: {
+    backgroundColor: withAlpha(CALM.bronze, 0.2),
+  },
+  chipCountText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+    lineHeight: 14,
+  },
+  chipCountTextActive: {
+    color: CALM.bronze,
+  },
+  paymentChipRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 8,
+    paddingBottom: SPACING.sm,
+    gap: 6,
     alignItems: 'center',
   },
+  viewModeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+  },
+  viewModeToggleText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+  },
+  unpaidChip: {
+    borderColor: 'transparent',
+  },
+  unpaidChipActive: {
+    borderColor: CALM.bronze,
+  },
+  unpaidChipText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.bronze,
+  },
+  unpaidChipTextActive: {
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  paidChip: {
+    borderColor: 'transparent',
+  },
+  paidChipActive: {
+    borderColor: BIZ.success,
+  },
+  paidChipText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: BIZ.success,
+  },
+  paidChipTextActive: {
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  unpaidCountBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: withAlpha(CALM.bronze, 0.2),
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  unpaidCountText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
+    lineHeight: 14,
+  },
+  paidCountBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: withAlpha(BIZ.success, 0.2),
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  paidCountText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: BIZ.success,
+    lineHeight: 14,
+  },
+
+  // ── Filter pills (shared — used inside filter modal) ──
   filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2667,11 +2975,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm + 2,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
-    minHeight: 28,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    minHeight: 30,
   },
   filterPillActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    borderColor: CALM.bronze,
   },
   filterPillText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -2680,9 +2989,10 @@ const styles = StyleSheet.create({
   },
   filterPillTextActive: {
     color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
   filterPillCount: {
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
     fontVariant: ['tabular-nums'] as any,
@@ -2691,49 +3001,13 @@ const styles = StyleSheet.create({
   filterPillCountActive: {
     color: CALM.bronze,
   },
-  filterDivider: {
-    width: 1,
-    height: 16,
-    backgroundColor: CALM.border,
-    marginHorizontal: SPACING.xs,
+  filterPillOverdue: {
+    backgroundColor: withAlpha(BIZ.overdue, 0.12),
   },
-
-  // ── Payment method sub-filter ──
-  payMethodRow: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.xs,
-    gap: SPACING.sm,
-  },
-  payMethodPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
-    minHeight: 28,
-  },
-  payMethodPillActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
-  },
-  payMethodPillText: {
+  filterPillOverdueText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  payMethodPillTextActive: {
-    color: CALM.bronze,
-  },
-  payMethodCount: {
-    fontSize: 10,
-    color: CALM.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    marginLeft: 2,
-  },
-  payMethodCountActive: {
-    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: BIZ.overdue,
   },
 
   // ── Result count ──
@@ -2749,10 +3023,19 @@ const styles = StyleSheet.create({
     color: CALM.textMuted,
     fontVariant: ['tabular-nums'],
   },
+  clearFiltersBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.xs,
+  },
   clearFiltersText: {
-    fontSize: TYPOGRAPHY.size.xs,
+    fontSize: TYPOGRAPHY.size.sm,
+    lineHeight: 14,
     color: CALM.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
+    includeFontPadding: false,
   },
 
   // ── Order list ──
@@ -2769,13 +3052,14 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: CALM.border,
-    borderLeftWidth: 3,
-    padding: SPACING.md,
-    gap: 6,
+    paddingVertical: SPACING.md - 2,
+    paddingHorizontal: SPACING.md,
+    gap: 3,
+    ...SHADOWS.xs,
   },
   orderCardSelected: {
+    borderColor: withAlpha(CALM.bronze, 0.4),
     backgroundColor: withAlpha(CALM.bronze, 0.04),
-    borderColor: CALM.bronze,
   },
   selectCheckbox: {
     width: 22,
@@ -2792,65 +3076,197 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.bronze,
     borderColor: CALM.bronze,
   },
-  orderHeader: {
+  orderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  customerRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: SPACING.sm,
-  },
-  customerIcon: {
-    marginRight: SPACING.xs,
-  },
   customerName: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.textPrimary,
+    marginRight: SPACING.sm,
   },
-  orderCodeBadge: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
-    paddingHorizontal: SPACING.xs + 1,
-    paddingVertical: 1,
-    borderRadius: RADIUS.sm,
-    marginLeft: SPACING.xs,
+  orderTotal: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
-    letterSpacing: 0.5,
   },
-  cardInfoRow: {
+  orderItemsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  orderItems: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    lineHeight: 18,
+    marginRight: SPACING.sm,
+  },
+  orderMetaText: {
+    flexShrink: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'],
+  },
+  orderTags: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    flexWrap: 'wrap',
+    flexShrink: 0,
   },
-  cardInfoText: {
+  orderTag: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  paymentBadge: {
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.xs + 1,
+    paddingVertical: 2,
+  },
+  paymentBadgeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  onlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
+    backgroundColor: withAlpha(BIZ.success, 0.1),
+  },
+  onlineBadgeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: BIZ.success,
+  },
+
+  // ── Always-visible meta row (delivery · date · order no | status) ──
+  orderMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 3,
+    gap: SPACING.xs,
+  },
+  orderMetaLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    overflow: 'hidden',
+  },
+  orderMetaDelivery: {
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
-    fontVariant: ['tabular-nums'],
   },
-  cardInfoDot: {
+  orderMetaDot: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.border,
+    color: CALM.textMuted,
   },
+
+  // ── Expanded card content ──
+  expandedSection: {
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(CALM.border, 0.5),
+    gap: SPACING.xs + 1,
+  },
+  expandedMeta: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  expandedItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  expandedItemName: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+  expandedItemQty: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+    marginLeft: SPACING.sm,
+  },
+  expandedDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: withAlpha(CALM.border, 0.5),
+    marginVertical: 2,
+  },
+  expandedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  expandedText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    flex: 1,
+  },
+  expandedNote: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+    fontStyle: 'italic',
+  },
+  expandedActions: {
+    flexDirection: 'column',
+    paddingTop: SPACING.xs,
+    gap: SPACING.sm,
+  },
+  expandedActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  expandedAdvanceBtn: {
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-end',
+  },
+  expandedAdvanceBtnText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  viewDetailLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  viewDetailLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: withAlpha(CALM.textMuted, 0.25),
+  },
+  viewDetailText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.bronze,
+  },
+
+  // ── Shared badges (detail modal, grouped) ──
   statusBadge: {
-    paddingVertical: 3,
-    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    paddingHorizontal: SPACING.sm + 2,
     borderRadius: RADIUS.full,
   },
   statusText: {
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
   },
-
   deliveryToday: {
     color: BIZ.warning,
     fontWeight: TYPOGRAPHY.weight.semibold,
@@ -2858,84 +3274,6 @@ const styles = StyleSheet.create({
   deliveryOverdue: {
     color: BIZ.overdue,
     fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-
-  orderItems: {
-    fontSize: TYPOGRAPHY.size.sm,
-    lineHeight: 20,
-    color: CALM.textSecondary,
-  },
-  orderFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  orderTotal: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  unpaidBadge: {
-    backgroundColor: withAlpha(BIZ.unpaid, 0.1),
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: RADIUS.full,
-  },
-  unpaidBadgeText: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: BIZ.unpaid,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  paidBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: withAlpha(BIZ.success, 0.1),
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: RADIUS.full,
-  },
-  paidBadgeText: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: BIZ.success,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  // ── Quick-action row on card ──
-  quickActionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginTop: SPACING.xs,
-    borderTopWidth: 1,
-    borderTopColor: CALM.border,
-    paddingTop: SPACING.sm,
-  },
-  quickActionPill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(CALM.bronze, 0.07),
-    minHeight: 38,
-  },
-  quickActionPillPaid: {
-    backgroundColor: withAlpha(BIZ.success, 0.07),
-  },
-  quickActionText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
   },
 
   // ── Empty state ──
@@ -3045,6 +3383,13 @@ const styles = StyleSheet.create({
   bulkPayButtonDisabled: {
     opacity: 0.4,
   },
+  bulkIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   bulkPayText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
@@ -3092,6 +3437,54 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
+  // ── Filter + sort modal ──
+  filterSortSheet: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    paddingTop: SPACING.lg,
+    paddingHorizontal: SPACING['2xl'],
+    paddingBottom: SPACING.md,
+    width: '88%',
+    maxWidth: 360,
+    maxHeight: '70%',
+  },
+  filterSortHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  filterSortClear: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.bronze,
+  },
+  filterSortScroll: {
+    flexGrow: 0,
+  },
+  filterSectionLabel: {
+    ...TYPE.label,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
+  },
+  filterSectionPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+  },
+  filterSortDone: {
+    alignItems: 'center',
+    paddingVertical: SPACING.sm + 2,
+    marginTop: SPACING.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: CALM.border,
+  },
+  filterSortDoneText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
+  },
+
   // ── Payment picker modal ──
   paymentSheet: {
     backgroundColor: CALM.surface,
@@ -3102,11 +3495,15 @@ const styles = StyleSheet.create({
     maxWidth: 340,
   },
   paymentSheetTitle: {
-    ...TYPE.label,
-    marginBottom: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: CALM.textMuted,
+    letterSpacing: 1,
+    marginBottom: SPACING.md,
+    textTransform: 'uppercase',
   },
   paymentContext: {
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(CALM.textMuted, 0.04),
     borderRadius: RADIUS.md,
     padding: SPACING.sm + 2,
     marginBottom: SPACING.md,
@@ -3142,25 +3539,36 @@ const styles = StyleSheet.create({
   },
   paymentPill: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.xs,
+    gap: 2,
     paddingVertical: SPACING.sm + 2,
     borderRadius: RADIUS.lg,
     backgroundColor: withAlpha(CALM.textMuted, 0.06),
-    minHeight: 44,
+    minHeight: 52,
   },
   paymentPillActive: {
-    backgroundColor: BIZ.success,
+    backgroundColor: withAlpha(BIZ.success, 0.1),
+    borderWidth: 1,
+    borderColor: withAlpha(BIZ.success, 0.3),
   },
   paymentPillText: {
-    fontSize: TYPOGRAPHY.size.xs,
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.textSecondary,
   },
   paymentPillTextActive: {
-    color: '#fff',
+    color: BIZ.success,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  paymentPillHint: {
+    fontSize: 10,
+    color: CALM.textMuted,
+    textAlign: 'center',
+  },
+  paymentPillHintActive: {
+    color: withAlpha(BIZ.success, 0.7),
   },
   paymentConfirmBtn: {
     flexDirection: 'row',
@@ -3179,6 +3587,16 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
+  },
+  paymentNoteInput: {
+    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    marginBottom: SPACING.md,
+    minHeight: 40,
   },
 
   // ── Navigation app picker ──
@@ -3217,24 +3635,97 @@ const styles = StyleSheet.create({
   },
 
   // ── Paid info row (detail modal) ──
-  paidInfoRow: {
+  payHistoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xs,
+  },
+  payHistoryEditBtn: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  payHistoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: withAlpha(BIZ.success, 0.06),
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 1,
   },
-  paidInfoText: {
+  payHistoryMethod: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
     color: BIZ.success,
+    fontWeight: TYPOGRAPHY.weight.medium,
     flex: 1,
   },
-  paidInfoDate: {
+  payHistoryDate: {
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
+  },
+  payHistoryAmount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: BIZ.success,
+  },
+  payHistoryEditInput: {
+    backgroundColor: CALM.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: CALM.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.base,
+    color: CALM.textPrimary,
+  },
+  payHistoryMethodChip: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 2,
+    borderRadius: RADIUS.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: CALM.border,
+    backgroundColor: CALM.surface,
+  },
+  payHistoryMethodChipActive: {
+    backgroundColor: CALM.bronze,
+    borderColor: CALM.bronze,
+  },
+  payHistoryMethodChipText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+  },
+  payHistoryMethodChipTextActive: {
+    color: '#fff',
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  payHistorySaveBtn: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.sm,
+    backgroundColor: CALM.bronze,
+    borderRadius: RADIUS.md,
+  },
+  payHistorySaveBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: '#fff',
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  payHistoryBalance: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+    paddingTop: SPACING.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: CALM.border,
+  },
+  payHistoryBalanceLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  payHistoryBalanceAmount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
   },
   // ── Modal ──
   modalOverlay: {
@@ -3249,6 +3740,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
     paddingBottom: SPACING['3xl'],
     maxHeight: '88%',
+    flex: 1,
   },
   modalHandleRow: {
     alignItems: 'center',
@@ -3315,7 +3807,7 @@ const styles = StyleSheet.create({
   modalSection: {
     marginTop: SPACING.md,
     paddingTop: SPACING.md,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: CALM.border,
   },
   modalSectionLabel: {
@@ -3415,7 +3907,7 @@ const styles = StyleSheet.create({
   editSection: {
     marginTop: SPACING.md,
     paddingTop: SPACING.md,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: CALM.border,
     gap: SPACING.sm,
   },
@@ -3484,6 +3976,124 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 
+  // ── Edit: items inline ──
+  editItemsList: {
+    borderWidth: 1,
+    borderColor: CALM.border,
+    borderRadius: RADIUS.md,
+    backgroundColor: CALM.background,
+    overflow: 'hidden',
+  },
+  editItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  editItemName: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
+  },
+  editItemPrice: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginTop: 2,
+  },
+  editItemStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  editItemQty: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+    minWidth: 24,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'] as any,
+  },
+  editItemAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: CALM.border,
+  },
+  editItemAddText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
+  // ── Edit: delivery date button ──
+  editDateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    justifyContent: 'flex-start',
+  },
+  editDateButtonText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    color: CALM.textPrimary,
+  },
+
+  // ── Delivery date keyboard modal ──
+  dateModalSheet: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    paddingTop: SPACING.xl,
+    paddingHorizontal: SPACING['2xl'],
+    paddingBottom: SPACING['2xl'],
+    width: '85%',
+    maxWidth: 340,
+    alignItems: 'stretch',
+    gap: SPACING.sm,
+  },
+  dateModalTitle: {
+    ...TYPE.label,
+    textAlign: 'center',
+    marginBottom: SPACING.xs,
+  },
+  dateModalHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    textAlign: 'center',
+    marginBottom: SPACING.xs,
+  },
+  dateModalInput: {
+    backgroundColor: CALM.background,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.xl,
+    color: CALM.textPrimary,
+    textAlign: 'center',
+    letterSpacing: 2,
+    fontVariant: ['tabular-nums'] as any,
+    minHeight: 56,
+  },
+  dateModalDone: {
+    backgroundColor: CALM.bronze,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  dateModalDoneText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: '#fff',
+  },
+
   // ── Modal items ──
   modalItemRow: {
     flexDirection: 'row',
@@ -3492,7 +4102,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
   },
   modalItemRowBorder: {
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: CALM.border,
   },
   modalItemName: {
@@ -3512,7 +4122,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: CALM.border,
     paddingTop: SPACING.md,
     marginTop: SPACING.xs,
@@ -3614,7 +4224,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(CALM.textMuted, 0.05),
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     minHeight: 44,
@@ -3628,6 +4238,22 @@ const styles = StyleSheet.create({
     color: BIZ.error,
   },
 
+  duplicateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    minHeight: 44,
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    borderRadius: RADIUS.md,
+    marginTop: SPACING.xs,
+  },
+  duplicateButtonText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.bronze,
+  },
   deleteButton: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -3641,19 +4267,6 @@ const styles = StyleSheet.create({
     color: CALM.textMuted,
   },
 
-  // ── View toggle ──
-  viewToggle: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewToggleActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
-  },
-
   // ── Grouped customer card ──
   groupCard: {
     backgroundColor: CALM.surface,
@@ -3661,15 +4274,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CALM.border,
     overflow: 'hidden',
+    ...SHADOWS.xs,
   },
   groupHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    backgroundColor: withAlpha(CALM.bronze, 0.04),
-    borderBottomWidth: 1,
+    paddingVertical: SPACING.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: CALM.border,
   },
   groupBadge: {
@@ -3690,14 +4303,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     gap: SPACING.sm,
-    minHeight: 60,
   },
   subOrderRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(CALM.border, 0.6),
   },
   subOrderSelected: {
-    backgroundColor: withAlpha(CALM.bronze, 0.04),
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
   },
   selectCheckboxSmall: {
     width: 18,
@@ -3708,11 +4320,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  subOrderDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
   subOrderInfo: {
     flex: 1,
     gap: 2,
@@ -3722,87 +4329,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  subOrderDate: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
-    fontVariant: ['tabular-nums'],
-  },
-  statusBadgeSmall: {
-    paddingVertical: 1,
-    paddingHorizontal: SPACING.xs,
-    borderRadius: RADIUS.full,
-  },
-  statusTextSmall: {
-    fontSize: 9,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
   subOrderItems: {
+    flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
-    lineHeight: 18,
-  },
-  subOrderBottomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
+    color: CALM.textPrimary,
+    marginRight: SPACING.sm,
   },
   subOrderAmount: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
-  unpaidBadgeSmall: {
-    backgroundColor: withAlpha(BIZ.unpaid, 0.1),
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 1,
-    borderRadius: RADIUS.full,
-  },
-  unpaidBadgeSmallText: {
-    fontSize: 9,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: BIZ.unpaid,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  paidBadgeSmall: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    backgroundColor: withAlpha(BIZ.success, 0.1),
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 1,
-    borderRadius: RADIUS.full,
-  },
-  paidBadgeSmallText: {
-    fontSize: 9,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: BIZ.success,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  subOrderActions: {
-    flexDirection: 'column',
-    gap: SPACING.xs,
-  },
-  subOrderActionBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: withAlpha(CALM.bronze, 0.07),
-    alignItems: 'center',
-    justifyContent: 'center',
+  subOrderDate: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'],
   },
   groupFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    backgroundColor: withAlpha(CALM.textMuted, 0.03),
-    borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(CALM.border, 0.6),
   },
   groupTotalLabel: {
     fontSize: TYPOGRAPHY.size.xs,

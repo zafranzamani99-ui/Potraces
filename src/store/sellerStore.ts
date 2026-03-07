@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SellerState, OrderStatus, SellerOrder, SellerOrderItem, SellerPaymentMethod } from '../types';
+import { SellerState, OrderStatus, SellerOrder, SellerOrderItem, SellerPaymentMethod, RecurringFrequency } from '../types';
 
 // Generate a unique 5-char order code: 2 random uppercase letters + 3 random digits
 function generateOrderCode(existingOrders: SellerOrder[]): string {
@@ -33,6 +33,7 @@ export const useSellerStore = create<SellerState>()(
       hiddenUnits: [],
       unitOrder: [],
       costTemplates: [],
+      recurringCosts: [],
       productOrder: [],
 
       // ─── Products ───────────────────────────────────────
@@ -110,17 +111,49 @@ export const useSellerStore = create<SellerState>()(
           ),
         })),
 
+      updateDeposit: (id, index, amount, method) =>
+        set((state) => ({
+          orders: state.orders.map((o) => {
+            if (o.id !== id) return o;
+            const deposits = (o.deposits || []).map((d, i) => i === index ? { ...d, amount, method } : d);
+            const newPaidAmount = deposits.reduce((s, d) => s + d.amount, 0);
+            const fullyPaid = newPaidAmount >= o.totalAmount;
+            return { ...o, deposits, paidAmount: newPaidAmount, isPaid: fullyPaid, paymentMethod: method, paidAt: fullyPaid ? (o.paidAt || new Date()) : undefined, updatedAt: new Date() };
+          }),
+        })),
+
+      removeDeposit: (id, index) =>
+        set((state) => ({
+          orders: state.orders.map((o) => {
+            if (o.id !== id) return o;
+            const deposits = (o.deposits || []).filter((_, i) => i !== index);
+            const newPaidAmount = deposits.reduce((s, d) => s + d.amount, 0);
+            const fullyPaid = newPaidAmount >= o.totalAmount;
+            return { ...o, deposits, paidAmount: newPaidAmount, isPaid: fullyPaid, paymentMethod: deposits.length > 0 ? deposits[deposits.length - 1].method : undefined, paidAt: fullyPaid ? o.paidAt : undefined, updatedAt: new Date() };
+          }),
+        })),
+
       markOrderPaid: (id, paymentMethod) =>
         set((state) => ({
-          orders: state.orders.map((o) =>
-            o.id === id ? { ...o, isPaid: true, paidAmount: o.totalAmount, paymentMethod, paidAt: new Date(), updatedAt: new Date() } : o
-          ),
+          orders: state.orders.map((o) => {
+            if (o.id !== id) return o;
+            const remaining = o.totalAmount - (o.paidAmount || 0);
+            const entry = { amount: remaining > 0 ? remaining : o.totalAmount, method: paymentMethod, date: new Date() };
+            return { ...o, isPaid: true, paidAmount: o.totalAmount, paymentMethod, paidAt: new Date(), deposits: [...(o.deposits || []), entry], updatedAt: new Date() };
+          }),
         })),
 
       markOrdersPaid: (ids, paymentMethod) =>
         set((state) => ({
           orders: state.orders.map((o) =>
             ids.includes(o.id) ? { ...o, isPaid: true, paidAmount: o.totalAmount, paymentMethod, paidAt: new Date(), updatedAt: new Date() } : o
+          ),
+        })),
+
+      updateOrdersStatus: (ids, status) =>
+        set((state) => ({
+          orders: state.orders.map((o) =>
+            ids.includes(o.id) ? { ...o, status, updatedAt: new Date() } : o
           ),
         })),
 
@@ -214,12 +247,14 @@ export const useSellerStore = create<SellerState>()(
             if (o.id !== id) return o;
             const newPaidAmount = (o.paidAmount || 0) + amount;
             const fullyPaid = newPaidAmount >= o.totalAmount;
+            const entry = { amount, method: paymentMethod, date: new Date() };
             return {
               ...o,
               paidAmount: newPaidAmount,
               isPaid: fullyPaid,
               paymentMethod,
               paidAt: fullyPaid ? new Date() : o.paidAt,
+              deposits: [...(o.deposits || []), entry],
               updatedAt: new Date(),
             };
           }),
@@ -289,6 +324,67 @@ export const useSellerStore = create<SellerState>()(
           ),
         })),
 
+      updateSeasonTarget: (seasonId, target) =>
+        set((state) => ({
+          seasons: state.seasons.map((s) =>
+            s.id === seasonId ? { ...s, revenueTarget: target } : s
+          ),
+        })),
+
+      useSeasonTemplate: (newSeasonId, templateSeasonId) => {
+        const state = get();
+        const template = state.seasons.find((s) => s.id === templateSeasonId);
+        if (!template) return;
+
+        // Copy costBudget + revenueTarget from template season
+        if (template.costBudget || template.revenueTarget) {
+          set((st) => ({
+            seasons: st.seasons.map((s) =>
+              s.id === newSeasonId
+                ? { ...s, costBudget: template.costBudget, revenueTarget: template.revenueTarget }
+                : s
+            ),
+          }));
+        }
+
+        // Copy ingredient costs from template season as new entries in new season
+        const templateCosts = state.ingredientCosts.filter((c) => c.seasonId === templateSeasonId);
+        if (templateCosts.length > 0) {
+          const now = new Date();
+          const newCosts = templateCosts.map((c) => ({
+            ...c,
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            date: now,
+            seasonId: newSeasonId,
+            syncedToPersonal: false,
+            personalTransactionId: undefined,
+          }));
+          set((st) => ({
+            ingredientCosts: [...newCosts, ...st.ingredientCosts],
+          }));
+        }
+
+        // Update product prices to match last-used price in template season's orders
+        const templateOrders = state.orders.filter((o) => o.seasonId === templateSeasonId);
+        const lastPriceMap = new Map<string, number>();
+        // Orders stored newest-first, so first match = most recent price
+        for (const order of templateOrders) {
+          for (const item of order.items) {
+            if (!lastPriceMap.has(item.productId)) {
+              lastPriceMap.set(item.productId, item.unitPrice);
+            }
+          }
+        }
+        if (lastPriceMap.size > 0) {
+          set((st) => ({
+            products: st.products.map((p) => {
+              const price = lastPriceMap.get(p.id);
+              return price != null ? { ...p, pricePerUnit: price, updatedAt: new Date() } : p;
+            }),
+          }));
+        }
+      },
+
       // ─── Ingredient Costs ──────────────────────────────
       addIngredientCost: (cost) => {
         const id = Date.now().toString();
@@ -321,6 +417,38 @@ export const useSellerStore = create<SellerState>()(
               : c
           ),
         })),
+
+      // ─── Order Link Orders ───────────────────────────────
+      addOrderLinkOrder: (row: Record<string, unknown>) =>
+        set((state) => {
+          // Deduplicate by supabaseId
+          if (state.orders.some((o) => o.supabaseId === (row.id as string))) return state;
+
+          const newOrder = {
+            id: Date.now().toString(),
+            supabaseId: row.id as string,
+            orderNumber: (row.order_number as string | null) ?? undefined,
+            items: (row.items as any[]) || [],
+            customerName: (row.customer_name as string | null) ?? undefined,
+            customerPhone: (row.customer_phone as string | null) ?? undefined,
+            customerAddress: (row.customer_address as string | null) ?? undefined,
+            totalAmount: parseFloat(String(row.total_amount)) || 0,
+            status: ((row.status as string) || 'pending') as any,
+            isPaid: Boolean(row.is_paid),
+            paidAmount: row.paid_amount != null ? parseFloat(String(row.paid_amount)) : undefined,
+            paymentMethod: (row.payment_method as any) ?? undefined,
+            paidAt: row.paid_at ? new Date(row.paid_at as string) : undefined,
+            note: (row.note as string | null) ?? undefined,
+            date: row.created_at ? new Date(row.created_at as string) : new Date(),
+            deliveryDate: row.delivery_date ? new Date(row.delivery_date as string) : undefined,
+            seasonId: undefined,
+            source: 'order_link' as const,
+            createdAt: row.created_at ? new Date(row.created_at as string) : new Date(),
+            updatedAt: row.updated_at ? new Date(row.updated_at as string) : new Date(),
+          };
+
+          return { orders: [newOrder, ...state.orders] };
+        }),
 
       // ─── Seller Customers ────────────────────────────────
       addSellerCustomer: (customer) =>
@@ -404,6 +532,62 @@ export const useSellerStore = create<SellerState>()(
         set((state) => ({
           costTemplates: state.costTemplates.filter((t) => t.id !== id),
         })),
+
+      // ─── Recurring Costs ────────────────────────────────
+      addRecurringCost: (cost) =>
+        set((state) => ({
+          recurringCosts: [
+            { ...cost, id: Date.now().toString(), createdAt: new Date() },
+            ...state.recurringCosts,
+          ],
+        })),
+
+      updateRecurringCost: (id, updates) =>
+        set((state) => ({
+          recurringCosts: state.recurringCosts.map((r) =>
+            r.id === id ? { ...r, ...updates } : r
+          ),
+        })),
+
+      deleteRecurringCost: (id) =>
+        set((state) => ({
+          recurringCosts: state.recurringCosts.filter((r) => r.id !== id),
+        })),
+
+      applyRecurringCost: (id, seasonId) => {
+        const state = get();
+        const recurring = state.recurringCosts.find((r) => r.id === id);
+        if (!recurring) return '';
+
+        // Compute next due
+        const now = new Date();
+        let nextDue = new Date(recurring.nextDue);
+        while (nextDue <= now) {
+          if (recurring.frequency === 'weekly') nextDue.setDate(nextDue.getDate() + 7);
+          else if (recurring.frequency === 'biweekly') nextDue.setDate(nextDue.getDate() + 14);
+          else nextDue.setMonth(nextDue.getMonth() + 1);
+        }
+
+        // Create ingredient cost
+        const costId = Date.now().toString();
+        set((state) => ({
+          ingredientCosts: [
+            {
+              id: costId,
+              description: recurring.description,
+              amount: recurring.amount,
+              date: new Date(),
+              seasonId: seasonId ?? recurring.seasonId,
+              syncedToPersonal: false,
+            },
+            ...state.ingredientCosts,
+          ],
+          recurringCosts: state.recurringCosts.map((r) =>
+            r.id === id ? { ...r, nextDue } : r
+          ),
+        }));
+        return costId;
+      },
 
       // ─── Derived Data ──────────────────────────────────
       getSeasonOrders: (seasonId) => {

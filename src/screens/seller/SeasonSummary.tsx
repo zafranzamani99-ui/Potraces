@@ -96,7 +96,7 @@ const AnimatedKeptAmount: React.FC<{ value: number; currency: string }> = React.
 const SeasonSummary: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { seasons, orders, ingredientCosts, endSeason, addSeason, markOrdersTransferred, unmarkOrdersTransferred, deleteSeason, updateSeasonName } = useSellerStore();
+  const { seasons, orders, ingredientCosts, endSeason, addSeason, markOrdersTransferred, unmarkOrdersTransferred, deleteSeason, updateSeasonName, updateSeasonTarget } = useSellerStore();
   const addTransfer = useBusinessStore((s) => s.addTransfer);
   const deleteTransfer = useBusinessStore((s) => s.deleteTransfer);
   const addTransferIncome = usePersonalStore((s) => s.addTransferIncome);
@@ -189,6 +189,45 @@ const SeasonSummary: React.FC = () => {
   const [showCostsModal, setShowCostsModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+  const [showTargetInput, setShowTargetInput] = useState(false);
+  const [targetInput, setTargetInput] = useState('');
+  const [showCompare, setShowCompare] = useState(false);
+  const [compareSeasonId, setCompareSeasonId] = useState<string | null>(null);
+
+  // Past seasons (excluding current) sorted newest-first
+  const pastSeasons = useMemo(() =>
+    seasons
+      .filter((s) => !s.isActive && s.id !== season?.id)
+      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
+    [seasons, season]
+  );
+
+  // Auto-select the most recent past season for comparison
+  useEffect(() => {
+    if (pastSeasons.length === 0) {
+      setCompareSeasonId(null);
+    } else if (compareSeasonId === null || !pastSeasons.find((s) => s.id === compareSeasonId)) {
+      // Auto-select or recover if selected season was deleted
+      setCompareSeasonId(pastSeasons[0].id);
+    }
+  }, [pastSeasons]);
+
+  const compareStats = useMemo(() => {
+    if (!compareSeasonId) return null;
+    const cOrders = orders.filter((o) => o.seasonId === compareSeasonId);
+    const cCosts = ingredientCosts.filter((c) => c.seasonId === compareSeasonId);
+    const cPaid = cOrders.filter((o) => o.isPaid);
+    const totalIncome = cPaid.reduce((s, o) => s + o.totalAmount, 0);
+    const totalCosts = cCosts.reduce((s, c) => s + c.amount, 0);
+    const customers = new Set(cOrders.filter((o) => o.customerName).map((o) => o.customerName!));
+    return {
+      totalOrders: cOrders.length,
+      totalIncome,
+      totalCosts,
+      kept: totalIncome - totalCosts,
+      customerCount: customers.size,
+    };
+  }, [compareSeasonId, orders, ingredientCosts]);
 
   useEffect(() => {
     if (untransferredAmount > 0) {
@@ -467,6 +506,113 @@ const SeasonSummary: React.FC = () => {
           </View>
         </FadeInSection>
 
+        {/* Revenue target progress */}
+        <FadeInSection delay={175}>
+          {season.revenueTarget ? (
+            <View style={styles.targetCard}>
+              <View style={styles.targetRow}>
+                <Feather name="target" size={14} color={CALM.accent} />
+                <Text style={styles.targetLabel}>
+                  {currency} {stats.totalIncome.toFixed(0)} / {currency} {season.revenueTarget.toFixed(0)} target
+                </Text>
+                <TouchableOpacity onPress={() => { setTargetInput(String(season.revenueTarget)); setShowTargetInput(true); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Feather name="edit-2" size={12} color={CALM.textMuted} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.targetBarBg}>
+                <View style={[styles.targetBarFill, { width: `${Math.min(100, (stats.totalIncome / season.revenueTarget) * 100)}%` as any, backgroundColor: stats.totalIncome >= season.revenueTarget ? BIZ.profit : CALM.accent }]} />
+              </View>
+              <Text style={styles.targetPct}>
+                {stats.totalIncome >= season.revenueTarget
+                  ? `target reached \u2714`
+                  : `${((stats.totalIncome / season.revenueTarget) * 100).toFixed(0)}% · need ${currency} ${(season.revenueTarget - stats.totalIncome).toFixed(0)} more`}
+              </Text>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.setTargetBtn} onPress={() => { setTargetInput(''); setShowTargetInput(true); }} activeOpacity={0.7}>
+              <Feather name="target" size={14} color={CALM.textMuted} />
+              <Text style={styles.setTargetText}>set season target</Text>
+            </TouchableOpacity>
+          )}
+        </FadeInSection>
+
+        {/* Season comparison */}
+        {pastSeasons.length > 0 && (
+          <FadeInSection delay={190}>
+            <TouchableOpacity
+              style={styles.compareToggle}
+              onPress={() => { lightTap(); setShowCompare((v) => !v); }}
+              activeOpacity={0.7}
+            >
+              <Feather name="bar-chart-2" size={14} color={CALM.textMuted} />
+              <Text style={styles.compareToggleText}>compare with previous season</Text>
+              <Feather name={showCompare ? 'chevron-up' : 'chevron-down'} size={14} color={CALM.textMuted} />
+            </TouchableOpacity>
+            {showCompare && (
+              <View style={styles.compareCard}>
+                {/* Season picker pills */}
+                {pastSeasons.length > 1 && (
+                  <View style={styles.comparePickerRow}>
+                    {pastSeasons.slice(0, 4).map((s) => (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={[styles.comparePill, compareSeasonId === s.id && styles.comparePillActive]}
+                        onPress={() => setCompareSeasonId(s.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.comparePillText, compareSeasonId === s.id && styles.comparePillTextActive]} numberOfLines={1}>
+                          {s.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                {compareStats && (
+                  <View style={styles.compareGrid}>
+                    <View style={styles.compareHeaderRow}>
+                      <Text style={styles.compareHeaderLabel} />
+                      <Text style={styles.compareHeaderThis}>this</Text>
+                      <Text style={styles.compareHeaderPrev}>{seasons.find((s) => s.id === compareSeasonId)?.name ?? 'prev'}</Text>
+                      <Text style={styles.compareHeaderDelta}>Δ</Text>
+                    </View>
+                    {([
+                      { label: 'orders', cur: stats.totalOrders, prev: compareStats.totalOrders, fmt: (v: number) => String(v) },
+                      { label: 'customers', cur: stats.customerCount, prev: compareStats.customerCount, fmt: (v: number) => String(v) },
+                      { label: 'came in', cur: stats.totalIncome, prev: compareStats.totalIncome, fmt: (v: number) => `${currency} ${v.toFixed(0)}` },
+                      { label: 'costs', cur: stats.totalCosts, prev: compareStats.totalCosts, fmt: (v: number) => `${currency} ${v.toFixed(0)}` },
+                      { label: 'kept', cur: stats.kept, prev: compareStats.kept, fmt: (v: number) => `${currency} ${v.toFixed(0)}` },
+                    ] as const).map(({ label, cur, prev, fmt }) => {
+                      const diff = cur - prev;
+                      const pct = prev !== 0 ? Math.abs(diff / prev) * 100 : null;
+                      const up = diff > 0;
+                      const same = diff === 0;
+                      const isGood = label === 'costs' ? !up : up;
+                      return (
+                        <View key={label} style={styles.compareRow}>
+                          <Text style={styles.compareRowLabel}>{label}</Text>
+                          <Text style={styles.compareRowCur}>{fmt(cur)}</Text>
+                          <Text style={styles.compareRowPrev}>{fmt(prev)}</Text>
+                          <View style={styles.compareRowDelta}>
+                            {!same && (
+                              <>
+                                <Feather name={up ? 'arrow-up' : 'arrow-down'} size={10} color={isGood ? BIZ.profit : CALM.bronze} />
+                                <Text style={[styles.compareRowDeltaText, { color: isGood ? BIZ.profit : CALM.bronze }]}>
+                                  {pct != null ? `${pct.toFixed(0)}%` : (up ? '+' : '−')}
+                                </Text>
+                              </>
+                            )}
+                            {same && <Text style={styles.compareRowDeltaText}>—</Text>}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+          </FadeInSection>
+        )}
+
         {/* Unpaid notice */}
         {stats.unpaidOrders > 0 && (
           <FadeInSection delay={200}>
@@ -659,12 +805,12 @@ const SeasonSummary: React.FC = () => {
                 accessibilityLabel="End this season"
               >
                 <View style={styles.actionRowLeft}>
-                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha('#E53935', 0.08) }]}>
-                    <Feather name="x-circle" size={16} color="#E53935" />
+                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(BIZ.warning, 0.1) }]}>
+                    <Feather name="x-circle" size={16} color={BIZ.warning} />
                   </View>
-                  <Text style={[styles.actionRowText, { color: '#E53935' }]}>end this season</Text>
+                  <Text style={[styles.actionRowText, { color: BIZ.warning }]}>end this season</Text>
                 </View>
-                <Feather name="chevron-right" size={16} color="#E53935" />
+                <Feather name="chevron-right" size={16} color={BIZ.warning} />
               </TouchableOpacity>
             </View>
           ) : (
@@ -783,7 +929,7 @@ const SeasonSummary: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Delete this season"
               >
-                <Feather name="trash-2" size={16} color="#E53935" />
+                <Feather name="trash-2" size={16} color={BIZ.error} />
                 <Text style={styles.deleteSeasonText}>delete this season</Text>
               </TouchableOpacity>
             </View>
@@ -998,6 +1144,47 @@ const SeasonSummary: React.FC = () => {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* ─── Season Target Modal ─── */}
+      <Modal visible={showTargetInput} transparent animationType="fade" onRequestClose={() => setShowTargetInput(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowTargetInput(false)}>
+          <Pressable style={styles.renameModalContent} onPress={() => {}}>
+            <Text style={styles.renameModalTitle}>season target</Text>
+            <TextInput
+              style={styles.renameModalInput}
+              value={targetInput}
+              onChangeText={setTargetInput}
+              placeholder="e.g. 2000"
+              placeholderTextColor={CALM.textSecondary}
+              keyboardType="numeric"
+              autoFocus
+              selectTextOnFocus
+            />
+            <View style={styles.renameModalActions}>
+              <TouchableOpacity
+                onPress={() => { if (season) updateSeasonTarget(season.id, undefined); setShowTargetInput(false); }}
+                style={styles.renameModalCancel}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.renameModalCancelText, { color: CALM.textMuted }]}>clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  const val = parseFloat(targetInput);
+                  if (!isNaN(val) && val > 0 && season) {
+                    updateSeasonTarget(season.id, val);
+                  }
+                  setShowTargetInput(false);
+                }}
+                style={[styles.renameModalConfirm, { backgroundColor: CALM.accent }]}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.renameModalConfirmText}>save</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -1065,12 +1252,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,                     // 8pt
-    backgroundColor: CALM.bronze,        // #B2780A
-    borderRadius: RADIUS.lg,             // 14
-    paddingVertical: SPACING.lg,         // 16pt
-    paddingHorizontal: SPACING['2xl'],   // 24pt
-    marginTop: SPACING.lg,              // 16pt
+    gap: SPACING.sm,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.xl,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING['2xl'],
+    marginTop: SPACING.lg,
+    ...SHADOWS.sm,
   },
   startSeasonButtonText: {
     fontSize: TYPOGRAPHY.size.base,      // 15
@@ -1613,11 +1801,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,                     // 8pt
-    backgroundColor: CALM.bronze,        // #B2780A
-    borderRadius: RADIUS.lg,             // 14
-    paddingVertical: SPACING.lg,         // 16pt
-    minHeight: 48,
+    gap: SPACING.sm,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.xl,
+    paddingVertical: SPACING.lg,
+    minHeight: 52,
+    ...SHADOWS.sm,
   },
   newSeasonButtonText: {
     fontSize: TYPOGRAPHY.size.base,      // 15
@@ -1674,13 +1863,61 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: withAlpha('#E53935', 0.2),
-    backgroundColor: withAlpha('#E53935', 0.04),
+    borderColor: withAlpha(BIZ.error, 0.2),
+    backgroundColor: withAlpha(BIZ.error, 0.04),
   },
   deleteSeasonText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: '#E53935',
+    color: BIZ.error,
+  },
+
+  // -- Season target -----------------------------------------------
+  targetCard: {
+    backgroundColor: withAlpha(CALM.accent, 0.06),
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: withAlpha(CALM.accent, 0.2),
+    padding: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  targetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  targetLabel: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.accent,
+    fontVariant: ['tabular-nums'],
+  },
+  targetBarBg: {
+    height: 6,
+    backgroundColor: withAlpha(CALM.accent, 0.15),
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  targetBarFill: {
+    height: '100%',
+    borderRadius: 3,
+    minWidth: 4,
+  },
+  targetPct: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'],
+  },
+  setTargetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    justifyContent: 'center',
+  },
+  setTargetText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
   },
 
   // -- Rename season modal -----------------------------------------------
@@ -1820,14 +2057,128 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: SPACING.md,
-    borderRadius: RADIUS.md,
-    backgroundColor: CALM.bronze,
+    borderRadius: RADIUS.xl,
+    backgroundColor: CALM.deepOlive,
     minHeight: 48,
   },
   endModalConfirmText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
     color: '#fff',
+  },
+
+  // ─── Season comparison ────────────────────────────────────
+  compareToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+  },
+  compareToggleText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+  },
+  compareCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
+    ...SHADOWS.sm,
+  },
+  comparePickerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+  },
+  comparePill: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+    borderRadius: RADIUS.full,
+    maxWidth: 110,
+  },
+  comparePillActive: {
+    backgroundColor: withAlpha(CALM.accent, 0.12),
+  },
+  comparePillText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  comparePillTextActive: {
+    color: CALM.accent,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+  },
+  compareGrid: {
+    gap: 2,
+  },
+  compareHeaderRow: {
+    flexDirection: 'row',
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+    marginBottom: 4,
+  },
+  compareHeaderLabel: {
+    flex: 1.2,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  compareHeaderThis: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    textAlign: 'right',
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+  },
+  compareHeaderPrev: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    textAlign: 'right',
+  },
+  compareHeaderDelta: {
+    width: 36,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    textAlign: 'right',
+  },
+  compareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: CALM.border,
+  },
+  compareRowLabel: {
+    flex: 1.2,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+  compareRowCur: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    textAlign: 'right',
+  },
+  compareRowPrev: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+    textAlign: 'right',
+  },
+  compareRowDelta: {
+    width: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 2,
+  },
+  compareRowDeltaText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
   },
 });
 

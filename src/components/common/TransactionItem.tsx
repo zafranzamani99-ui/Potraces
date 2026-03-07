@@ -23,6 +23,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress 
   const categories = transaction.type === 'expense' ? expenseCategories : incomeCategories;
   const category = categories.find((cat) => cat.id === transaction.category);
   const isExpense = transaction.type === 'expense';
+  const editCount = transaction.editLog?.length ?? 0;
+  const lastEdit = editCount > 0 ? transaction.editLog![editCount - 1] : null;
 
   const opacityAnim = useRef(new Animated.Value(1)).current;
 
@@ -63,9 +65,24 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress 
           <View style={styles.categoryRow}>
             <Text style={styles.category}>{category?.name || transaction.category}</Text>
             {transaction.emotionalFlag && <View style={styles.emotionalDot} />}
+            {transaction.linkedDebtId && (
+              <View style={styles.linkedBadge}>
+                <Feather name="link" size={9} color={CALM.bronze} />
+              </View>
+            )}
           </View>
           <Text style={styles.description} numberOfLines={1}>{transaction.description}</Text>
           <Text style={styles.date}>{format(transaction.date, 'MMM dd, yyyy • HH:mm')}</Text>
+          {lastEdit && (
+            <View style={styles.editedBadge}>
+              <Feather name="edit-2" size={9} color={CALM.bronze} />
+              <Text style={styles.editedBadgeText}>
+                edited {format(new Date(lastEdit.editedAt), 'MMM d, HH:mm')}
+                {editCount > 1 ? ` · ${editCount}×` : ''}
+                {lastEdit.previousType ? ` · was ${lastEdit.previousType}` : ''}
+              </Text>
+            </View>
+          )}
           {wallet && (
             <View style={styles.walletBadge}>
               <Feather name={wallet.icon as keyof typeof Feather.glyphMap} size={10} color={wallet.color} />
@@ -136,8 +153,18 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
   },
   tag: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium, color: CALM.textSecondary },
+  editedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
+  editedBadgeText: { fontSize: 9, color: CALM.bronze },
   walletBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
   walletBadgeText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.medium },
+  linkedBadge: {
+    width: 15,
+    height: 15,
+    borderRadius: 3,
+    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 
 export default React.memo(TransactionItem);

@@ -29,11 +29,29 @@ export const usePersonalStore = create<PersonalState>()(
 
       updateTransaction: (id, updates) =>
         set((state) => ({
-          transactions: state.transactions.map((transaction) =>
-            transaction.id === id
-              ? { ...transaction, ...updates, updatedAt: new Date() }
-              : transaction
-          ),
+          transactions: state.transactions.map((t) => {
+            if (t.id !== id) return t;
+            const amountChanged = updates.amount !== undefined && updates.amount !== t.amount;
+            const categoryChanged = updates.category !== undefined && updates.category !== t.category;
+            const descriptionChanged = updates.description !== undefined && updates.description !== t.description;
+            const typeChanged = updates.type !== undefined && updates.type !== t.type;
+            const walletChanged = updates.walletId !== undefined && updates.walletId !== t.walletId;
+            const financiallyChanged = amountChanged || categoryChanged || descriptionChanged || typeChanged || walletChanged;
+            const editEntry: import('../types').TransactionEdit | null = financiallyChanged ? {
+              editedAt: new Date(),
+              previousAmount: amountChanged ? t.amount : undefined,
+              previousCategory: categoryChanged ? t.category : undefined,
+              previousDescription: descriptionChanged ? t.description : undefined,
+              previousType: typeChanged ? t.type : undefined,
+              previousWalletId: walletChanged ? (t.walletId ?? null) : undefined,
+            } : null;
+            return {
+              ...t,
+              ...updates,
+              updatedAt: new Date(),
+              editLog: editEntry ? [...(t.editLog ?? []), editEntry] : t.editLog,
+            };
+          }),
         })),
 
       deleteTransaction: (id) =>
@@ -186,6 +204,10 @@ export const usePersonalStore = create<PersonalState>()(
           date: t.date instanceof Date ? t.date.toISOString() : t.date,
           createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt,
           updatedAt: t.updatedAt instanceof Date ? t.updatedAt.toISOString() : t.updatedAt,
+          editLog: (t.editLog ?? []).map((e) => ({
+            ...e,
+            editedAt: e.editedAt instanceof Date ? e.editedAt.toISOString() : e.editedAt,
+          })),
         })),
         subscriptions: state.subscriptions.map((s) => ({
           ...s,
@@ -223,6 +245,10 @@ export const usePersonalStore = create<PersonalState>()(
             date: new Date(t.date),
             createdAt: new Date(t.createdAt),
             updatedAt: new Date(t.updatedAt),
+            editLog: (t.editLog ?? []).map((e: any) => ({
+              ...e,
+              editedAt: new Date(e.editedAt),
+            })),
           }));
           state.subscriptions = state.subscriptions.map((s: any) => ({
             ...s,

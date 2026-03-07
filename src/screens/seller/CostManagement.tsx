@@ -24,7 +24,7 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
-import { IngredientCost } from '../../types';
+import { IngredientCost, RecurringFrequency } from '../../types';
 import { createTransfer } from '../../utils/transferBridge';
 import {
   lightTap,
@@ -36,23 +36,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// ─── Animation helper ────────────────────────────────────────
-function useFadeSlide(delay: number) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(8)).current;
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: 0, duration: 200, useNativeDriver: true }),
-      ]).start();
-    }, delay);
-    return () => clearTimeout(timer);
-  }, []);
-
-  return { opacity, transform: [{ translateY }] };
-}
+import { useFadeSlide } from '../../utils/fadeSlide';
 
 // ─── Component ───────────────────────────────────────────────
 const CostManagement: React.FC = () => {
@@ -69,6 +53,10 @@ const CostManagement: React.FC = () => {
   const addCostTemplate = useSellerStore((s) => s.addCostTemplate);
   const updateCostTemplate = useSellerStore((s) => s.updateCostTemplate);
   const deleteCostTemplate = useSellerStore((s) => s.deleteCostTemplate);
+  const recurringCosts = useSellerStore((s) => s.recurringCosts);
+  const addRecurringCost = useSellerStore((s) => s.addRecurringCost);
+  const deleteRecurringCost = useSellerStore((s) => s.deleteRecurringCost);
+  const applyRecurringCost = useSellerStore((s) => s.applyRecurringCost);
   const activeSeason = useSellerStore((s) => s.getActiveSeason());
   const addTransaction = usePersonalStore((s) => s.addTransaction);
   const deletePersonalTransaction = usePersonalStore((s) => s.deleteTransaction);
@@ -76,6 +64,12 @@ const CostManagement: React.FC = () => {
   const addTransfer = useBusinessStore((s) => s.addTransfer);
   const currency = useSettingsStore((s) => s.currency);
   const { showToast } = useToast();
+
+  // ─── Recurring cost state ──────────────────────────────────
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
+  const [recurringDesc, setRecurringDesc] = useState('');
+  const [recurringAmount, setRecurringAmount] = useState('');
+  const [recurringFreq, setRecurringFreq] = useState<'weekly' | 'biweekly' | 'monthly'>('weekly');
 
   // ─── Cost modal state ──────────────────────────────────────
   const [showCostModal, setShowCostModal] = useState(false);
@@ -121,7 +115,7 @@ const CostManagement: React.FC = () => {
       : orders;
     const totalIncome = seasonOrders.filter((o) => o.isPaid).reduce((s, o) => s + o.totalAmount, 0);
     const totalCosts = seasonCosts.reduce((s, c) => s + c.amount, 0);
-    return { totalIncome, totalCosts, profit: totalIncome - totalCosts };
+    return { totalIncome, totalCosts, kept: totalIncome - totalCosts };
   }, [activeSeason, ingredientCosts, orders]);
 
   const seasonCostEntries = useMemo(() => {
@@ -375,7 +369,7 @@ const CostManagement: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ─── Profit Summary ──────────────────────────────── */}
+        {/* ─── Summary ──────────────────────────────── */}
         <Animated.View style={[styles.summaryCard, summaryAnim]}>
           {activeSeason && (
             <Text style={styles.summarySeasonLabel}>
@@ -385,25 +379,25 @@ const CostManagement: React.FC = () => {
           <Text
             style={[
               styles.summaryHero,
-              seasonStats.profit >= 0 ? styles.summaryHeroProfit : styles.summaryHeroLoss,
+              seasonStats.kept >= 0 ? styles.summaryHeroProfit : styles.summaryHeroLoss,
             ]}
           >
-            {currency} {seasonStats.profit.toFixed(0)}
+            {currency} {seasonStats.kept.toFixed(0)}
           </Text>
           <Text style={styles.summaryHeroLabel}>
-            {seasonStats.profit >= 0 ? 'profit' : 'loss'}
+            {seasonStats.kept >= 0 ? 'kept' : 'shortfall'}
           </Text>
           <View style={styles.summaryBreakdown}>
             <View style={styles.summaryBreakdownItem}>
-              <Feather name="arrow-down-circle" size={14} color={BIZ.profit} />
+              <Feather name="arrow-up-circle" size={14} color={BIZ.profit} />
               <Text style={styles.summaryBreakdownValue}>
                 {currency} {seasonStats.totalIncome.toFixed(0)}
               </Text>
-              <Text style={styles.summaryBreakdownLabel}>income</Text>
+              <Text style={styles.summaryBreakdownLabel}>came in</Text>
             </View>
             <View style={styles.summaryBreakdownDot} />
             <View style={styles.summaryBreakdownItem}>
-              <Feather name="arrow-up-circle" size={14} color={BIZ.loss} />
+              <Feather name="arrow-down-circle" size={14} color={BIZ.loss} />
               <Text style={styles.summaryBreakdownValue}>
                 {currency} {seasonStats.totalCosts.toFixed(0)}
               </Text>
@@ -522,6 +516,72 @@ const CostManagement: React.FC = () => {
           </Animated.View>
         )}
 
+        {/* ─── Recurring Costs ────────────────────────────── */}
+        {recurringCosts.length > 0 && (
+          <View style={styles.recurringCard}>
+            <View style={styles.recurringHeader}>
+              <Feather name="repeat" size={14} color={CALM.bronze} />
+              <Text style={styles.recurringTitle}>recurring</Text>
+              <TouchableOpacity
+                onPress={() => { setRecurringDesc(''); setRecurringAmount(''); setRecurringFreq('weekly'); setShowRecurringModal(true); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Feather name="plus" size={16} color={CALM.bronze} />
+              </TouchableOpacity>
+            </View>
+            {recurringCosts.filter((r) => r.isActive).map((r) => {
+              const dueDate = new Date(r.nextDue);
+              const isDue = dueDate <= new Date();
+              return (
+                <View key={r.id} style={styles.recurringRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.recurringDesc}>{r.description}</Text>
+                    <Text style={styles.recurringMeta}>
+                      {currency} {r.amount.toFixed(2)} · {r.frequency === 'weekly' ? 'weekly' : r.frequency === 'biweekly' ? 'every 2 weeks' : 'monthly'}
+                    </Text>
+                    <Text style={[styles.recurringDue, isDue && styles.recurringDueNow]}>
+                      {isDue ? 'due now' : `next: ${format(dueDate, 'dd MMM')}`}
+                    </Text>
+                  </View>
+                  <View style={{ gap: 6 }}>
+                    <TouchableOpacity
+                      style={[styles.recurringApplyBtn, !isDue && styles.recurringApplyBtnMuted]}
+                      onPress={() => {
+                        if (!activeSeason) {
+                          showToast('start a season first to log costs.', 'error');
+                          return;
+                        }
+                        lightTap();
+                        applyRecurringCost(r.id, activeSeason.id);
+                        showToast(`${r.description} logged.`, 'success');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.recurringApplyText, !isDue && { color: CALM.textMuted }]}>apply</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => { warningNotification(); deleteRecurringCost(r.id); }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Feather name="trash-2" size={14} color={CALM.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+        {recurringCosts.length === 0 && (
+          <TouchableOpacity
+            style={styles.recurringAddRow}
+            onPress={() => { setRecurringDesc(''); setRecurringAmount(''); setRecurringFreq('weekly'); setShowRecurringModal(true); }}
+            activeOpacity={0.7}
+          >
+            <Feather name="repeat" size={14} color={CALM.textMuted} />
+            <Text style={styles.recurringAddText}>add recurring cost</Text>
+          </TouchableOpacity>
+        )}
+
         {/* ─── Cost History ────────────────────────────────── */}
         <Animated.View style={[styles.historyCard, historyAnim]}>
           <View style={styles.historyHeader}>
@@ -628,6 +688,67 @@ const CostManagement: React.FC = () => {
           <Text style={styles.fabText}>log cost</Text>
         </TouchableOpacity>
       </View>
+
+      {/* ─── Recurring Cost Modal ──────────────────────────── */}
+      <Modal visible={showRecurringModal} transparent animationType="fade" onRequestClose={() => setShowRecurringModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowRecurringModal(false)}>
+          <Pressable style={[styles.modalCard, { gap: SPACING.md }]} onPress={() => {}}>
+            <Text style={styles.modalTitle}>recurring cost</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={recurringDesc}
+              onChangeText={setRecurringDesc}
+              placeholder="e.g. Tepung from Billion"
+              placeholderTextColor={CALM.textMuted}
+              autoFocus
+            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+              <Text style={{ color: CALM.textMuted, fontSize: TYPOGRAPHY.size.sm }}>{currency}</Text>
+              <TextInput
+                style={[styles.modalInput, { flex: 1 }]}
+                value={recurringAmount}
+                onChangeText={setRecurringAmount}
+                placeholder="amount"
+                placeholderTextColor={CALM.textMuted}
+                keyboardType="numeric"
+              />
+            </View>
+            <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+              {(['weekly', 'biweekly', 'monthly'] as const).map((f) => (
+                <TouchableOpacity
+                  key={f}
+                  style={[styles.freqPill, recurringFreq === f && styles.freqPillActive]}
+                  onPress={() => setRecurringFreq(f)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.freqPillText, recurringFreq === f && styles.freqPillTextActive]}>
+                    {f === 'weekly' ? 'weekly' : f === 'biweekly' ? 'every 2 wk' : 'monthly'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity
+              style={styles.modalSave}
+              activeOpacity={0.7}
+              onPress={() => {
+                const desc = recurringDesc.trim();
+                const amount = parseFloat(recurringAmount);
+                if (!desc || isNaN(amount) || amount <= 0) return;
+                const now = new Date();
+                let nextDue = new Date(now);
+                if (recurringFreq === 'weekly') nextDue.setDate(nextDue.getDate() + 7);
+                else if (recurringFreq === 'biweekly') nextDue.setDate(nextDue.getDate() + 14);
+                else nextDue.setMonth(nextDue.getMonth() + 1);
+                addRecurringCost({ description: desc, amount, frequency: recurringFreq, nextDue, isActive: true, seasonId: activeSeason?.id });
+                showToast('recurring cost added.', 'success');
+                setShowRecurringModal(false);
+              }}
+            >
+              <Text style={styles.modalSaveText}>save</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* ─── Cost Modal ─────────────────────────────────────── */}
       <Modal visible={showCostModal} transparent animationType="fade">
@@ -1381,8 +1502,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.bronze,
-    borderRadius: RADIUS.lg,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     ...SHADOWS.sm,
   },
@@ -1453,8 +1574,8 @@ const styles = StyleSheet.create({
   modalConfirm: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: CALM.bronze,
-    borderRadius: RADIUS.md,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.xl,
     minHeight: 44,
     justifyContent: 'center',
   },
@@ -1525,6 +1646,119 @@ const styles = StyleSheet.create({
   budgetModalHint: {
     fontSize: TYPOGRAPHY.size.sm,
     color: CALM.textSecondary,
+  },
+
+  // ─── Recurring costs ──────────────────────────────────────
+  recurringCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    ...SHADOWS.sm,
+  },
+  recurringHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  recurringTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: CALM.textSecondary,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  recurringRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: CALM.border,
+    gap: SPACING.sm,
+  },
+  recurringDesc: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+    flex: 1,
+  },
+  recurringMeta: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginTop: 2,
+  },
+  recurringDue: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  recurringDueNow: {
+    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+  },
+  recurringApplyBtn: {
+    backgroundColor: withAlpha(BIZ.success, 0.12),
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+  },
+  recurringApplyBtnMuted: {
+    backgroundColor: CALM.background,
+  },
+  recurringApplyText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: BIZ.success,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+  },
+  recurringAddRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+  },
+  recurringAddText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+  },
+
+  // ─── Recurring modal ──────────────────────────────────────
+  modalCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    marginHorizontal: SPACING.xl,
+    ...SHADOWS.lg,
+  },
+  modalSave: {
+    backgroundColor: CALM.accent,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+  },
+  modalSaveText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: '#fff',
+  },
+  freqPill: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+  },
+  freqPillActive: {
+    backgroundColor: withAlpha(CALM.accent, 0.12),
+  },
+  freqPillText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+  },
+  freqPillTextActive: {
+    color: CALM.accent,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
   },
 });
 
