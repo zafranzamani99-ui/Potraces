@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://iydqeeonaljqapulboaz.supabase.co; img-src 'self'; frame-ancestors 'none'">
+<meta name="referrer" content="no-referrer">
 <title>Kedai Dalam Talian</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -125,19 +127,19 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
         <div class="sec-title">Maklumat Anda</div>
         <div class="field">
           <div class="field-label">Nama <span class="req">*</span></div>
-          <input id="cname" type="text" placeholder="Nama anda..." autocomplete="name" oninput="updBtn()">
+          <input id="cname" type="text" placeholder="Nama anda..." autocomplete="name" maxlength="100" oninput="updBtn()">
         </div>
         <div class="field">
           <div class="field-label">No. Telefon</div>
-          <input id="cphone" type="tel" placeholder="01X-XXXXXXX" autocomplete="tel">
+          <input id="cphone" type="tel" placeholder="01X-XXXXXXX" autocomplete="tel" maxlength="20">
         </div>
         <div class="field">
           <div class="field-label">Alamat</div>
-          <textarea id="caddr" rows="2" placeholder="Alamat penghantaran..." autocomplete="street-address"></textarea>
+          <textarea id="caddr" rows="2" placeholder="Alamat penghantaran..." autocomplete="street-address" maxlength="300"></textarea>
         </div>
         <div class="field">
           <div class="field-label">Nota / Permintaan Khas</div>
-          <textarea id="cnote" rows="2" placeholder="Sebarang permintaan..."></textarea>
+          <textarea id="cnote" rows="2" placeholder="Sebarang permintaan..." maxlength="500"></textarea>
         </div>
       </div>
 
@@ -195,9 +197,14 @@ function total() { return PRODS.reduce(function(s, p) { return s + (cart[p.id] |
 function cartItems() { return PRODS.filter(function(p) { return (cart[p.id] || 0) > 0; }).map(function(p) { return { p: p, q: cart[p.id], sub: cart[p.id] * p.price_per_unit }; }); }
 
 function escH(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function escAttr(s) { return String(s).replace(/[&"'<>]/g, function(c) { return {'&':'&amp;','"':'&quot;',"'":'&#39;','<':'&lt;','>':'&gt;'}[c]; }); }
+
+var MAX_QTY = 9999;
+var _submitting = false;
 
 function setQty(id, d) {
-  var n = Math.max(0, (cart[id] || 0) + d);
+  if (!PRODS.some(function(p) { return p.id === id; })) return;
+  var n = Math.max(0, Math.min(MAX_QTY, (cart[id] || 0) + d));
   if (n === 0) delete cart[id]; else cart[id] = n;
   var qv = document.getElementById('qv-' + id);
   var mb = document.getElementById('mb-' + id);
@@ -210,15 +217,16 @@ function renderProds() {
   var el = document.getElementById('prod-list');
   if (!PRODS.length) { el.innerHTML = '<div class="empty-prods">Tiada produk tersedia buat masa ini.</div>'; return; }
   el.innerHTML = PRODS.map(function(p) {
+    var safeId = escAttr(p.id);
     return '<div class="prod-card">' +
       '<div class="prod-info">' +
         '<div class="prod-name">' + escH(p.name) + '</div>' +
         '<div class="prod-price">' + fmt(p.price_per_unit) + ' / ' + escH(p.unit) + '</div>' +
       '</div>' +
       '<div class="qty-ctrl">' +
-        '<button class="qty-btn" id="mb-' + p.id + '" style="opacity:.3;color:var(--text2)" onclick="setQty(\'' + p.id + '\',-1)" aria-label="Kurang">&#8722;</button>' +
-        '<span class="qty-val z" id="qv-' + p.id + '">0</span>' +
-        '<button class="qty-btn" onclick="setQty(\'' + p.id + '\',1)" aria-label="Tambah">+</button>' +
+        '<button class="qty-btn" id="mb-' + safeId + '" style="opacity:.3;color:var(--text2)" onclick="setQty(\'' + safeId + '\',-1)" aria-label="Kurang">&#8722;</button>' +
+        '<span class="qty-val z" id="qv-' + safeId + '">0</span>' +
+        '<button class="qty-btn" onclick="setQty(\'' + safeId + '\',1)" aria-label="Tambah">+</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -271,12 +279,14 @@ async function loadShop(slug) {
 }
 
 async function doSubmit() {
-  var name = document.getElementById('cname').value.trim();
-  var phone = document.getElementById('cphone').value.trim();
-  var addr = document.getElementById('caddr').value.trim();
-  var note = document.getElementById('cnote').value.trim();
+  if (_submitting) return;
+  var name = document.getElementById('cname').value.trim().slice(0, 100);
+  var phone = document.getElementById('cphone').value.trim().slice(0, 20);
+  var addr = document.getElementById('caddr').value.trim().slice(0, 300);
+  var note = document.getElementById('cnote').value.trim().slice(0, 500);
   var items = cartItems(); var t = total();
   if (!name || !items.length) return;
+  _submitting = true;
   var btn = document.getElementById('sbtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span>Menghantar...';
@@ -292,7 +302,7 @@ async function doSubmit() {
         total_amount: t, status: 'pending', is_paid: false,
       }),
     });
-    if (!res.ok) { var txt = await res.text(); throw new Error(txt || 'HTTP ' + res.status); }
+    if (!res.ok) throw new Error('Gagal menghantar. Sila cuba lagi.');
     showSuccess(items, t, name);
   } catch (err) {
     var el = document.getElementById('err');
@@ -301,6 +311,7 @@ async function doSubmit() {
     el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     btn.disabled = false; btn.textContent = 'Hantar Pesanan';
   }
+  _submitting = false;
 }
 
 function getHistory() {
@@ -322,7 +333,7 @@ function showSuccess(items, t, customerName) {
   html += '<div style="padding:12px 16px;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--bronze)">Pesanan Anda</div>';
   for (var i = 0; i < items.length; i++) {
     var x = items[i];
-    html += '<div class="cart-row"><span>' + x.q + ' ' + x.p.unit + ' ' + x.p.name + '</span><span style="font-weight:600">' + CUR + ' ' + (x.q * x.p.price_per_unit).toFixed(2) + '</span></div>';
+    html += '<div class="cart-row"><span>' + x.q + ' ' + escH(x.p.unit) + ' ' + escH(x.p.name) + '</span><span style="font-weight:600">' + CUR + ' ' + (x.q * x.p.price_per_unit).toFixed(2) + '</span></div>';
   }
   html += '<div class="cart-row" style="font-weight:700"><span>Jumlah</span><span>' + CUR + ' ' + t.toFixed(2) + '</span></div>';
   html += '</div>';
@@ -391,8 +402,10 @@ function hideHistory() {
 if (getHistory().length > 0) document.getElementById('hist-btn').style.display = 'block';
 
 var slug = params();
-if (slug) {
+if (slug && /^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$/.test(slug)) {
   loadShop(slug);
+} else if (slug) {
+  document.getElementById('loading').innerHTML = '<b>Pautan tidak sah.</b><br><small>Semak semula pautan anda.</small>';
 } else {
   document.getElementById('loading').innerHTML = '<b>Pautan tidak sah.</b><br><small>Minta penjual hantar semula pautan.</small>';
 }
