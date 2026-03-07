@@ -60,7 +60,7 @@ export async function updateSellerProfile(
     .eq('user_id', session.user.id);
 
   if (error) {
-    if (error.code === '23505') return 'URL ini sudah digunakan. Cuba yang lain.';
+    if (error.code === '23505') return 'This link is already taken. Try a different one.';
     return error.message;
   }
   return null;
