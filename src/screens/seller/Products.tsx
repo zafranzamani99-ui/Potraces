@@ -1357,7 +1357,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING['3xl'],
   },
   listContentEmpty: {
-    flex: 1,
+    minHeight: Dimensions.get('window').height * 0.6,
     justifyContent: 'center',
   },
 
