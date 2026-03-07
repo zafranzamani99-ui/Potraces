@@ -132,6 +132,10 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
           <input id="cphone" type="tel" placeholder="01X-XXXXXXX" autocomplete="tel">
         </div>
         <div class="field">
+          <div class="field-label">Alamat</div>
+          <textarea id="caddr" rows="2" placeholder="Alamat penghantaran..." autocomplete="street-address"></textarea>
+        </div>
+        <div class="field">
           <div class="field-label">Nota / Permintaan Khas</div>
           <textarea id="cnote" rows="2" placeholder="Sebarang permintaan..."></textarea>
         </div>
@@ -269,6 +273,7 @@ async function loadShop(slug) {
 async function doSubmit() {
   var name = document.getElementById('cname').value.trim();
   var phone = document.getElementById('cphone').value.trim();
+  var addr = document.getElementById('caddr').value.trim();
   var note = document.getElementById('cnote').value.trim();
   var items = cartItems(); var t = total();
   if (!name || !items.length) return;
@@ -283,7 +288,7 @@ async function doSubmit() {
       body: JSON.stringify({
         user_id: null, source: 'order_link', seller_id: SELLER_ID,
         items: items.map(function(x) { return { productId: x.p.id, productName: x.p.name, quantity: x.q, unitPrice: x.p.price_per_unit, unit: x.p.unit }; }),
-        customer_name: name || null, customer_phone: phone || null, note: note || null,
+        customer_name: name || null, customer_phone: phone || null, customer_address: addr || null, note: note || null,
         total_amount: t, status: 'pending', is_paid: false,
       }),
     });
@@ -330,6 +335,13 @@ function orderAgain() {
   document.getElementById('success').classList.remove('show');
   document.getElementById('main').style.display = '';
   document.getElementById('bar').style.display = '';
+  document.getElementById('cname').value = '';
+  document.getElementById('cphone').value = '';
+  document.getElementById('caddr').value = '';
+  document.getElementById('cnote').value = '';
+  var btn = document.getElementById('sbtn');
+  btn.disabled = true;
+  btn.textContent = 'Hantar Pesanan';
   renderProds();
   renderCart();
   window.scrollTo({ top: 0, behavior: 'smooth' });
