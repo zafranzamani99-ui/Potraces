@@ -135,9 +135,10 @@ function paymentMethodLabel(method?: SellerPaymentMethod): string {
 // ─── SMART DATE LABEL ────────────────────────────────────────
 function smartDateLabel(date: Date | string): string {
   const d = date instanceof Date ? date : new Date(date);
-  if (isToday(d)) return 'today';
-  if (isYesterday(d)) return 'yesterday';
-  return format(d, 'dd MMM');
+  const time = format(d, 'h:mm a').toLowerCase();
+  if (isToday(d)) return `today, ${time}`;
+  if (isYesterday(d)) return `yesterday, ${time}`;
+  return `${format(d, 'dd MMM')}, ${time}`;
 }
 
 // ─── DELIVERY DATE HELPERS ────────────────────────────────────
@@ -261,13 +262,14 @@ const AnimatedOrderCard: React.FC<{
   selectMode: boolean;
   isSelected: boolean;
   isExpanded: boolean;
+  isUnseen: boolean;
   onToggleExpand: (id: string) => void;
   onOpenDetail: (item: SellerOrder) => void;
   onLongPress: (item: SellerOrder) => void;
   onToggleSelect: (id: string) => void;
   onAdvanceStatus: (item: SellerOrder) => void;
   onMarkPaid: (item: SellerOrder) => void;
-}> = React.memo(({ item, index, currency, selectMode, isSelected, isExpanded, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid }) => {
+}> = React.memo(({ item, index, currency, selectMode, isSelected, isExpanded, isUnseen, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid }) => {
   const alreadySeen = _animatedOrderIds.has(item.id);
   const fadeAnim = useRef(new Animated.Value(alreadySeen ? 1 : 0)).current;
 
@@ -298,6 +300,7 @@ const AnimatedOrderCard: React.FC<{
         style={[
           styles.orderCard,
           selectMode && isSelected && styles.orderCardSelected,
+          isUnseen && styles.orderCardUnseen,
         ]}
         onPress={() => {
           if (selectMode) {
@@ -312,136 +315,105 @@ const AnimatedOrderCard: React.FC<{
         accessibilityRole="button"
         accessibilityLabel={`Order from ${item.customerName || 'unknown customer'}, ${item.status}, ${currency} ${item.totalAmount.toFixed(2)}`}
       >
-        {/* Select mode checkbox */}
-        {selectMode && (
-          <View style={[styles.selectCheckbox, isSelected && styles.selectCheckboxActive]}>
-            {isSelected && <Feather name="check" size={14} color="#fff" />}
-          </View>
-        )}
-
-        {/* Row 1: customer name + amount */}
-        <View style={styles.orderRow}>
-          <Text style={styles.customerName} numberOfLines={1}>
-            {item.customerName || 'walk-in'}
-          </Text>
-          <Text style={styles.orderTotal}>
-            {currency} {item.totalAmount.toFixed(2)}
-          </Text>
-        </View>
-
-        {/* Row 2: delivery (left) · date · order number | status tags (right) */}
-        <View style={styles.orderMetaRow}>
-          <View style={styles.orderMetaLeft}>
-            {deliveryInfo && (
-              <>
-                <Feather
-                  name="truck"
-                  size={11}
-                  color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : CALM.textMuted}
-                />
-                <Text style={[
-                  styles.orderMetaDelivery,
-                  deliveryInfo.isOverdue && styles.deliveryOverdue,
-                  deliveryInfo.isTodayDelivery && styles.deliveryToday,
-                ]}>
-                  {deliveryInfo.label}
-                </Text>
-                <Text style={styles.orderMetaDot}>·</Text>
-              </>
-            )}
-            <Feather name="calendar" size={11} color={CALM.textMuted} />
-            <Text style={styles.orderMetaText} numberOfLines={1}>
-              {dateLabel}{item.orderNumber ? `  ·  ${item.orderNumber}` : ''}
-            </Text>
-          </View>
-          <View style={styles.orderTags}>
-            <Text style={[styles.orderTag, { color }]}>{item.status}</Text>
-            <View style={[styles.paymentBadge, { backgroundColor: item.isPaid ? withAlpha(BIZ.success, 0.1) : withAlpha(CALM.bronze, 0.1) }]}>
-              <Text style={[styles.paymentBadgeText, { color: item.isPaid ? BIZ.success : CALM.bronze }]}>
-                {item.isPaid ? 'paid' : 'unpaid'}
-              </Text>
+        {selectMode ? (
+          <View style={styles.selectRow}>
+            <View style={[styles.selectCheckbox, isSelected && styles.selectCheckboxActive]}>
+              {isSelected && <Feather name="check" size={14} color="#fff" />}
             </View>
-            {item.source === 'order_link' && (
-              <View style={styles.onlineBadge}>
-                <Feather name="globe" size={9} color={BIZ.success} />
-                <Text style={styles.onlineBadgeText}>online</Text>
+            <View style={{ flex: 1, gap: 3 }}>
+              <View style={styles.orderRow}>
+                <Text style={styles.customerName} numberOfLines={1}>{item.customerName || 'walk-in'}</Text>
+                <Text style={styles.orderTotal}>{currency} {item.totalAmount.toFixed(2)}</Text>
               </View>
-            )}
+              <View style={styles.orderMetaRow}>
+                <View style={styles.orderMetaLeft}>
+                  {deliveryInfo && (
+                    <>
+                      <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : CALM.textMuted} />
+                      <Text style={[styles.orderMetaDelivery, deliveryInfo.isOverdue && styles.deliveryOverdue, deliveryInfo.isTodayDelivery && styles.deliveryToday]}>{deliveryInfo.label}</Text>
+                      <Text style={styles.orderMetaDot}>·</Text>
+                    </>
+                  )}
+                  <Feather name="calendar" size={11} color={CALM.textMuted} />
+                  <Text style={styles.orderMetaText} numberOfLines={1}>{dateLabel}{item.orderNumber ? `  ·  ${item.orderNumber}` : ''}</Text>
+                </View>
+                <View style={styles.orderTags}>
+                  <Text style={[styles.orderTag, { color }]}>{item.status}</Text>
+                </View>
+              </View>
+            </View>
           </View>
-        </View>
-
-        {/* ── Expanded content ── */}
-        {isExpanded && (
-          <View style={styles.expandedSection}>
-            {/* All items */}
-            {item.items.map((it, idx) => (
-              <View key={idx} style={styles.expandedItemRow}>
-                <Text style={styles.expandedItemName} numberOfLines={1}>{it.productName}</Text>
-                <Text style={styles.expandedItemQty}>×{it.quantity}</Text>
+        ) : (
+          <>
+            <View style={styles.orderRow}>
+              <Text style={styles.customerName} numberOfLines={1}>{item.customerName || 'walk-in'}</Text>
+              <Text style={styles.orderTotal}>{currency} {item.totalAmount.toFixed(2)}</Text>
+            </View>
+            <View style={styles.orderMetaRow}>
+              <View style={styles.orderMetaLeft}>
+                {deliveryInfo && (
+                  <>
+                    <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : CALM.textMuted} />
+                    <Text style={[styles.orderMetaDelivery, deliveryInfo.isOverdue && styles.deliveryOverdue, deliveryInfo.isTodayDelivery && styles.deliveryToday]}>{deliveryInfo.label}</Text>
+                    <Text style={styles.orderMetaDot}>·</Text>
+                  </>
+                )}
+                <Feather name="calendar" size={11} color={CALM.textMuted} />
+                <Text style={styles.orderMetaText} numberOfLines={1}>{dateLabel}{item.orderNumber ? `  ·  ${item.orderNumber}` : ''}</Text>
               </View>
-            ))}
-
-            {(!!item.customerPhone || !!item.customerAddress || !!item.note) && (
-              <View style={styles.expandedDivider} />
-            )}
-
-            {!!item.customerPhone && (
-              <View style={styles.expandedRow}>
-                <Feather name="phone" size={12} color={CALM.textMuted} />
-                <Text style={styles.expandedText}>{item.customerPhone}</Text>
-              </View>
-            )}
-
-            {!!item.customerAddress && (
-              <View style={styles.expandedRow}>
-                <Feather name="map-pin" size={12} color={CALM.textMuted} />
-                <Text style={styles.expandedText} numberOfLines={2}>{item.customerAddress}</Text>
-              </View>
-            )}
-
-            {!!item.note && (
-              <Text style={styles.expandedNote} numberOfLines={2}>{item.note}</Text>
-            )}
-
-            <View style={styles.expandedActions}>
-              {/* Action row: mark as [status] left, mark paid right */}
-              <View style={styles.expandedActionsRow}>
-                {NEXT_STATUS[item.status] ? (
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(statusColor(NEXT_STATUS[item.status]!), 0.1) }]}
-                    onPress={() => { mediumTap(); onAdvanceStatus(item); }}
-                  >
-                    <Feather name="arrow-right" size={11} color={statusColor(NEXT_STATUS[item.status]!)} />
-                    <Text style={[styles.expandedAdvanceBtnText, { color: statusColor(NEXT_STATUS[item.status]!) }]}>
-                      {NEXT_STATUS[item.status]}
-                    </Text>
-                  </TouchableOpacity>
-                ) : <View />}
-                {!item.isPaid && (
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(BIZ.success, 0.1) }]}
-                    onPress={() => { mediumTap(); onMarkPaid(item); }}
-                  >
-                    <Feather name="dollar-sign" size={11} color={BIZ.success} />
-                    <Text style={[styles.expandedAdvanceBtnText, { color: BIZ.success }]}>mark paid</Text>
-                  </TouchableOpacity>
+              <View style={styles.orderTags}>
+                <Text style={[styles.orderTag, { color }]}>{item.status}</Text>
+                <View style={[styles.paymentBadge, { backgroundColor: item.isPaid ? withAlpha(BIZ.success, 0.1) : withAlpha(CALM.bronze, 0.1) }]}>
+                  <Text style={[styles.paymentBadgeText, { color: item.isPaid ? BIZ.success : CALM.bronze }]}>{item.isPaid ? 'paid' : 'unpaid'}</Text>
+                </View>
+                {item.source === 'order_link' && (
+                  <View style={styles.onlineBadge}>
+                    <Feather name="globe" size={9} color={BIZ.success} />
+                    <Text style={styles.onlineBadgeText}>online</Text>
+                  </View>
                 )}
               </View>
-              {/* View details — centered with lines */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={styles.viewDetailLink}
-                onPress={() => { lightTap(); onOpenDetail(item); }}
-                hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-              >
-                <View style={styles.viewDetailLine} />
-                <Text style={styles.viewDetailText}>view details</Text>
-                <View style={styles.viewDetailLine} />
-              </TouchableOpacity>
             </View>
-          </View>
+            {isExpanded && (
+              <View style={styles.expandedSection}>
+                {item.items.map((it, idx) => (
+                  <View key={idx} style={styles.expandedItemRow}>
+                    <Text style={styles.expandedItemName} numberOfLines={1}>{it.productName}</Text>
+                    <Text style={styles.expandedItemQty}>×{it.quantity}</Text>
+                  </View>
+                ))}
+                <View style={styles.expandedActionsRow}>
+                  {NEXT_STATUS[item.status] ? (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(statusColor(NEXT_STATUS[item.status]!), 0.1) }]}
+                      onPress={() => { mediumTap(); onAdvanceStatus(item); }}
+                    >
+                      <Feather name={advanceIcon(item.status)} size={13} color={statusColor(NEXT_STATUS[item.status]!)} />
+                      <Text style={[styles.expandedAdvanceBtnText, { color: statusColor(NEXT_STATUS[item.status]!) }]}>{NEXT_STATUS[item.status]}</Text>
+                    </TouchableOpacity>
+                  ) : !item.isPaid ? (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(BIZ.success, 0.1) }]}
+                      onPress={() => { mediumTap(); onMarkPaid(item); }}
+                    >
+                      <Feather name="dollar-sign" size={13} color={BIZ.success} />
+                      <Text style={[styles.expandedAdvanceBtnText, { color: BIZ.success }]}>mark paid</Text>
+                    </TouchableOpacity>
+                  ) : <View style={{ flex: 0.85 }} />}
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.expandedDetailBtn}
+                    onPress={() => { lightTap(); onOpenDetail(item); }}
+                    hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+                  >
+                    <Feather name="more-horizontal" size={16} color={CALM.textMuted} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </>
         )}
       </TouchableOpacity>
     </Animated.View>
@@ -456,13 +428,14 @@ const GroupedCustomerCard: React.FC<{
   selectMode: boolean;
   selectedIds: Set<string>;
   expandedId: string | null;
+  seenSet: Set<string>;
   onToggleExpand: (id: string) => void;
   onOpenDetail: (item: SellerOrder) => void;
   onLongPress: (item: SellerOrder) => void;
   onToggleSelect: (id: string) => void;
   onAdvanceStatus: (item: SellerOrder) => void;
   onMarkPaid: (item: SellerOrder) => void;
-}> = React.memo(({ group, index, currency, selectMode, selectedIds, expandedId, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid }) => {
+}> = React.memo(({ group, index, currency, selectMode, selectedIds, expandedId, seenSet, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid }) => {
   const alreadySeen = _animatedOrderIds.has(`group_${group.customerKey}`);
   const fadeAnim = useRef(new Animated.Value(alreadySeen ? 1 : 0)).current;
 
@@ -489,11 +462,13 @@ const GroupedCustomerCard: React.FC<{
         selectMode={selectMode}
         isSelected={selectedIds.has(group.orders[0].id)}
         isExpanded={expandedId === group.orders[0].id}
+        isUnseen={group.orders[0].source === 'order_link' && !seenSet.has(group.orders[0].id)}
         onToggleExpand={onToggleExpand}
         onOpenDetail={onOpenDetail}
         onLongPress={onLongPress}
         onToggleSelect={onToggleSelect}
         onAdvanceStatus={onAdvanceStatus}
+        onMarkPaid={onMarkPaid}
       />
     );
   }
@@ -527,6 +502,7 @@ const GroupedCustomerCard: React.FC<{
                 styles.subOrderRow,
                 i < group.orders.length - 1 && !isExpanded && styles.subOrderRowBorder,
                 selectMode && isSelected && styles.subOrderSelected,
+                order.source === 'order_link' && !seenSet.has(order.id) && styles.subOrderUnseen,
               ]}
               onPress={() => {
                 if (selectMode) { selectionChanged(); onToggleSelect(order.id); }
@@ -582,60 +558,36 @@ const GroupedCustomerCard: React.FC<{
                       </View>
                     ))}
 
-                    {(!!order.customerPhone || !!order.customerAddress || !!order.note) && (
-                      <View style={styles.expandedDivider} />
-                    )}
-
-                    {!!order.customerPhone && (
-                      <View style={styles.expandedRow}>
-                        <Feather name="phone" size={12} color={CALM.textMuted} />
-                        <Text style={styles.expandedText}>{order.customerPhone}</Text>
-                      </View>
-                    )}
-                    {!!order.customerAddress && (
-                      <View style={styles.expandedRow}>
-                        <Feather name="map-pin" size={12} color={CALM.textMuted} />
-                        <Text style={styles.expandedText} numberOfLines={2}>{order.customerAddress}</Text>
-                      </View>
-                    )}
-                    {!!order.note && (
-                      <Text style={styles.expandedNote} numberOfLines={2}>{order.note}</Text>
-                    )}
-
-                    <View style={styles.expandedActions}>
-                      <View style={styles.expandedActionsRow}>
-                        {NEXT_STATUS[order.status] ? (
-                          <TouchableOpacity
-                            activeOpacity={0.8}
-                            style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(statusColor(NEXT_STATUS[order.status]!), 0.1) }]}
-                            onPress={() => { mediumTap(); onAdvanceStatus(order); }}
-                          >
-                            <Feather name="arrow-right" size={11} color={statusColor(NEXT_STATUS[order.status]!)} />
-                            <Text style={[styles.expandedAdvanceBtnText, { color: statusColor(NEXT_STATUS[order.status]!) }]}>
-                              {NEXT_STATUS[order.status]}
-                            </Text>
-                          </TouchableOpacity>
-                        ) : <View />}
-                        {!order.isPaid && (
-                          <TouchableOpacity
-                            activeOpacity={0.8}
-                            style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(BIZ.success, 0.1) }]}
-                            onPress={() => { mediumTap(); onMarkPaid(order); }}
-                          >
-                            <Feather name="dollar-sign" size={11} color={BIZ.success} />
-                            <Text style={[styles.expandedAdvanceBtnText, { color: BIZ.success }]}>mark paid</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
+                    {/* One primary action + details button */}
+                    <View style={styles.expandedActionsRow}>
+                      {NEXT_STATUS[order.status] ? (
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(statusColor(NEXT_STATUS[order.status]!), 0.1) }]}
+                          onPress={() => { mediumTap(); onAdvanceStatus(order); }}
+                        >
+                          <Feather name={advanceIcon(order.status)} size={13} color={statusColor(NEXT_STATUS[order.status]!)} />
+                          <Text style={[styles.expandedAdvanceBtnText, { color: statusColor(NEXT_STATUS[order.status]!) }]}>
+                            {NEXT_STATUS[order.status]}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : !order.isPaid ? (
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(BIZ.success, 0.1) }]}
+                          onPress={() => { mediumTap(); onMarkPaid(order); }}
+                        >
+                          <Feather name="dollar-sign" size={13} color={BIZ.success} />
+                          <Text style={[styles.expandedAdvanceBtnText, { color: BIZ.success }]}>mark paid</Text>
+                        </TouchableOpacity>
+                      ) : <View style={{ flex: 0.85 }} />}
                       <TouchableOpacity
                         activeOpacity={0.7}
-                        style={styles.viewDetailLink}
+                        style={styles.expandedDetailBtn}
                         onPress={() => { lightTap(); onOpenDetail(order); }}
                         hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
                       >
-                        <View style={styles.viewDetailLine} />
-                        <Text style={styles.viewDetailText}>view details</Text>
-                        <View style={styles.viewDetailLine} />
+                        <Feather name="more-horizontal" size={16} color={CALM.textMuted} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -673,6 +625,10 @@ const OrderList: React.FC = () => {
   const updateOrdersStatus = useSellerStore((s) => s.updateOrdersStatus);
   const deleteOrder = useSellerStore((s) => s.deleteOrder);
   const deleteOrders = useSellerStore((s) => s.deleteOrders);
+  const markOrdersSeen = useSellerStore((s) => s.markOrdersSeen);
+  const markAllOnlineSeen = useSellerStore((s) => s.markAllOnlineSeen);
+  const markOrderUnseen = useSellerStore((s) => s.markOrderUnseen);
+  const seenOnlineOrderIds = useSellerStore((s) => s.seenOnlineOrderIds);
   const currency = useSettingsStore((s) => s.currency);
   const userName = useSettingsStore((s) => s.userName);
   const { showToast } = useToast();
@@ -693,6 +649,12 @@ const OrderList: React.FC = () => {
   );
   const [overdueOnly, setOverdueOnly] = useState(initialFilter === 'overdue');
   const [onlineOnly, setOnlineOnly] = useState(initialFilter === 'online');
+
+  const seenSet = useMemo(() => new Set(seenOnlineOrderIds), [seenOnlineOrderIds]);
+  const unseenOnlineCount = useMemo(
+    () => orders.filter((o) => o.source === 'order_link' && !seenSet.has(o.id)).length,
+    [orders, seenSet],
+  );
 
   // Update filter/search when navigating back with new params
   useEffect(() => {
@@ -952,6 +914,30 @@ const OrderList: React.FC = () => {
     return groups;
   }, [filteredOrders, viewMode, sortBy]);
 
+  // Which primary chip is active (mutually exclusive shortcuts)
+  const activeChip = useMemo(() => {
+    if (onlineOnly && deliveryFilter === 'all' && paymentFilter === 'all' && !overdueOnly) return 'online';
+    if (overdueOnly && deliveryFilter === 'all' && paymentFilter === 'all' && !onlineOnly) return 'overdue';
+    if (deliveryFilter === 'pending' && paymentFilter === 'all' && !onlineOnly && !overdueOnly) return 'pending';
+    if (paymentFilter === 'unpaid' && deliveryFilter === 'all' && !onlineOnly && !overdueOnly) return 'unpaid';
+    if (deliveryFilter === 'all' && paymentFilter === 'all' && !onlineOnly && !overdueOnly) return 'all';
+    return null; // custom combo from modal
+  }, [deliveryFilter, paymentFilter, onlineOnly, overdueOnly]);
+
+  // Whether the modal has advanced filters beyond what chips show
+  const modalHasAdvancedFilters = sortBy !== 'newest' || periodFilter !== 'all' || paymentMethodFilter !== 'all'
+    || (deliveryFilter !== 'all' && deliveryFilter !== 'pending') // confirmed/ready/delivered/completed set via modal
+    || (paymentFilter === 'paid'); // paid is only in modal
+
+  // Overdue count for badge
+  const overdueCount = useMemo(() => {
+    return orders.filter((o) => {
+      if (!o.deliveryDate) return false;
+      const d = o.deliveryDate instanceof Date ? o.deliveryDate : new Date(o.deliveryDate as string);
+      return isPast(startOfDay(d)) && !isToday(d) && o.status !== 'delivered' && o.status !== 'completed';
+    }).length;
+  }, [orders]);
+
   // Whether any filters are active
   const hasActiveFilters = deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly || onlineOnly || searchInput.trim().length > 0 || paymentMethodFilter !== 'all';
 
@@ -1009,8 +995,24 @@ const OrderList: React.FC = () => {
       mediumTap();
       updateOrderStatus(order.id, next);
       showToast(`marked as ${next}.`, 'info');
+
+      // Auto-send WhatsApp confirmation when confirming an order
+      if (next === 'confirmed' && order.customerPhone) {
+        const items = order.items.map((i) => `• ${i.productName} ×${i.quantity}`).join('\n');
+        const orderRef = order.orderNumber ? `No. Pesanan: #${order.orderNumber}\n` : '';
+        const msg =
+          `Salam ${order.customerName || ''}! ✅\n\n` +
+          `Pesanan anda telah disahkan.\n\n` +
+          `${orderRef}` +
+          `${items}\n` +
+          `Jumlah: ${currency} ${order.totalAmount.toFixed(2)}\n\n` +
+          `Terima kasih! 🙏`;
+        let digits = order.customerPhone.replace(/[^0-9]/g, '');
+        if (digits.startsWith('0')) digits = '60' + digits.slice(1);
+        Linking.openURL(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`).catch(() => {});
+      }
     },
-    [updateOrderStatus, showToast]
+    [updateOrderStatus, showToast, currency]
   );
 
   const handleConfirmPayment = useCallback(() => {
@@ -1316,20 +1318,14 @@ const OrderList: React.FC = () => {
     setPaymentNote('');
   }, [selectedIds]);
 
-  const handleBulkMarkDelivered = useCallback(() => {
-    const ids = Array.from(selectedIds).filter((id) => {
-      const o = orders.find((ord) => ord.id === id);
-      return o && o.status !== 'delivered' && o.status !== 'completed';
-    });
-    if (ids.length === 0) {
-      showToast('already delivered.', 'info');
-      return;
-    }
-    mediumTap();
-    updateOrdersStatus(ids, 'delivered');
+  const handleBulkMarkUnseen = useCallback(() => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    lightTap();
+    for (const id of ids) markOrderUnseen(id);
     setSelectedIds(new Set());
-    showToast(`${ids.length} order${ids.length > 1 ? 's' : ''} marked delivered.`, 'info');
-  }, [selectedIds, orders, updateOrdersStatus, showToast]);
+    showToast(`${ids.length} order${ids.length > 1 ? 's' : ''} marked unseen.`, 'info');
+  }, [selectedIds, markOrderUnseen, showToast]);
 
   const handleBulkDelete = useCallback(() => {
     const ids = Array.from(selectedIds);
@@ -1363,13 +1359,23 @@ const OrderList: React.FC = () => {
     setPeriodFilter('all');
     setPaymentMethodFilter('all');
     setOverdueOnly(false);
+    setOnlineOnly(false);
     setSearchInput('');
     lightTap();
   }, []);
 
   const handleToggleExpand = useCallback((id: string) => {
-    setExpandedId(prev => prev === id ? null : id);
-  }, []);
+    setExpandedId(prev => {
+      const isOpening = prev !== id;
+      if (isOpening) {
+        const order = orders.find((o) => o.id === id);
+        if (order?.source === 'order_link' && !seenSet.has(id)) {
+          markOrdersSeen([id]);
+        }
+      }
+      return prev === id ? null : id;
+    });
+  }, [orders, seenSet, markOrdersSeen]);
 
   const handleMarkPaidFromCard = useCallback((order: SellerOrder) => {
     setPendingPayOrder(order);
@@ -1386,6 +1392,7 @@ const OrderList: React.FC = () => {
         selectMode={selectMode}
         isSelected={selectedIds.has(item.id)}
         isExpanded={expandedId === item.id}
+        isUnseen={item.source === 'order_link' && !seenSet.has(item.id)}
         onToggleExpand={handleToggleExpand}
         onOpenDetail={setSelectedOrder}
         onLongPress={handleLongPress}
@@ -1394,7 +1401,7 @@ const OrderList: React.FC = () => {
         onMarkPaid={handleMarkPaidFromCard}
       />
     ),
-    [currency, selectMode, selectedIds, expandedId, handleToggleExpand, handleLongPress, handleToggleSelect, handleAdvanceStatus, handleMarkPaidFromCard]
+    [currency, selectMode, selectedIds, expandedId, seenSet, handleToggleExpand, handleLongPress, handleToggleSelect, handleAdvanceStatus, handleMarkPaidFromCard]
   );
 
   const renderGroup = useCallback(
@@ -1406,6 +1413,7 @@ const OrderList: React.FC = () => {
         selectMode={selectMode}
         selectedIds={selectedIds}
         expandedId={expandedId}
+        seenSet={seenSet}
         onToggleExpand={handleToggleExpand}
         onOpenDetail={setSelectedOrder}
         onLongPress={handleLongPress}
@@ -1414,7 +1422,7 @@ const OrderList: React.FC = () => {
         onMarkPaid={handleMarkPaidFromCard}
       />
     ),
-    [currency, selectMode, selectedIds, expandedId, handleToggleExpand, handleLongPress, handleToggleSelect, handleAdvanceStatus, handleMarkPaidFromCard]
+    [currency, selectMode, selectedIds, expandedId, seenSet, handleToggleExpand, handleLongPress, handleToggleSelect, handleAdvanceStatus, handleMarkPaidFromCard]
   );
 
   // Stable keyExtractor — avoids creating new function reference every render
@@ -1465,7 +1473,7 @@ const OrderList: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* ─── Search bar + sort ─── */}
+      {/* ─── Search bar + filter + view toggle ─── */}
       <View style={styles.searchRow}>
         <View style={styles.searchContainer}>
           <Feather name="search" size={16} color={CALM.textMuted} />
@@ -1491,18 +1499,27 @@ const OrderList: React.FC = () => {
           )}
         </View>
         <TouchableOpacity
-          style={[styles.sortButton, (sortBy !== 'newest' || deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly) && styles.sortButtonActive]}
+          style={[styles.sortButton, modalHasAdvancedFilters && styles.sortButtonActive]}
           activeOpacity={0.7}
           onPress={() => { lightTap(); setShowSortMenu(true); }}
           accessibilityRole="button"
-          accessibilityLabel={`Sort by ${sortBy}`}
+          accessibilityLabel="Filter and sort"
         >
           <Feather name="sliders" size={18} color={CALM.bronze} />
-          {(sortBy !== 'newest' || deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly) && <View style={styles.sortActiveDot} />}
+          {modalHasAdvancedFilters && <View style={styles.sortActiveDot} />}
+        </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={styles.viewModeToggle}
+          onPress={() => { selectionChanged(); setViewMode(v => v === 'grouped' ? 'list' : 'grouped'); }}
+          accessibilityRole="button"
+          accessibilityLabel={`View mode: ${viewMode}`}
+        >
+          <Feather name={viewMode === 'grouped' ? 'layers' : 'list'} size={16} color={CALM.textSecondary} />
         </TouchableOpacity>
       </View>
 
-      {/* ─── Delivery status chips ─── */}
+      {/* ─── Primary quick chips (single row) ─── */}
       <View style={styles.quickFilterWrapper}>
         <ScrollView
           horizontal
@@ -1510,86 +1527,90 @@ const OrderList: React.FC = () => {
           style={styles.quickFilterScroll}
           contentContainerStyle={styles.quickFilterRow}
         >
-          {DELIVERY_TABS.map((tab) => {
-            const isActive = deliveryFilter === tab.value && !overdueOnly && !onlineOnly;
-            const count = statusCounts[tab.value] || 0;
-            const statusClr = tab.value !== 'all' ? statusColor(tab.value as OrderStatus) : CALM.textMuted;
-            return (
-              <TouchableOpacity
-                key={`d_${tab.value}`}
-                style={[styles.quickChip, isActive && styles.quickChipActive]}
-                activeOpacity={0.7}
-                onPress={() => { selectionChanged(); setDeliveryFilter(tab.value); setOverdueOnly(false); setOnlineOnly(false); }}
-              >
-                <Text style={[styles.quickChipText, isActive && styles.quickChipTextActive]}>
-                  {tab.label}
-                </Text>
-                {count > 0 && tab.value !== 'all' && (
-                  <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(statusClr, 0.15) }]}>
-                    <Text style={[styles.chipCountText, { color: statusClr }]}>
-                      {count}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
+          {/* All */}
           <TouchableOpacity
-            style={[styles.quickChip, onlineOnly && styles.quickChipActive]}
+            style={[styles.quickChip, activeChip === 'all' && styles.quickChipActive]}
             activeOpacity={0.7}
-            onPress={() => { selectionChanged(); setOnlineOnly(!onlineOnly); if (!onlineOnly) { setDeliveryFilter('all'); setOverdueOnly(false); } }}
+            onPress={() => { selectionChanged(); setDeliveryFilter('all'); setPaymentFilter('all'); setOnlineOnly(false); setOverdueOnly(false); }}
           >
-            <Feather name="globe" size={12} color={onlineOnly ? '#fff' : BIZ.success} style={{ marginRight: 4 }} />
-            <Text style={[styles.quickChipText, onlineOnly && styles.quickChipTextActive]}>online</Text>
-            {(statusCounts['online'] || 0) > 0 && (
-              <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(BIZ.success, 0.15) }]}>
-                <Text style={[styles.chipCountText, { color: onlineOnly ? '#fff' : BIZ.success }]}>{statusCounts['online']}</Text>
+            <Text style={[styles.quickChipText, activeChip === 'all' && styles.quickChipTextActive]}>all</Text>
+          </TouchableOpacity>
+
+          {/* Pending */}
+          <TouchableOpacity
+            style={[styles.quickChip, activeChip === 'pending' && styles.quickChipActive]}
+            activeOpacity={0.7}
+            onPress={() => { selectionChanged(); setDeliveryFilter('pending'); setPaymentFilter('all'); setOnlineOnly(false); setOverdueOnly(false); }}
+          >
+            <Text style={[styles.quickChipText, activeChip === 'pending' && styles.quickChipTextActive]}>pending</Text>
+            {(statusCounts['pending'] || 0) > 0 && (
+              <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(statusColor('pending'), 0.15) }]}>
+                <Text style={[styles.chipCountText, { color: statusColor('pending') }]}>{statusCounts['pending']}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* Unpaid */}
+          <TouchableOpacity
+            style={[styles.quickChip, activeChip === 'unpaid' && styles.quickChipActive]}
+            activeOpacity={0.7}
+            onPress={() => { selectionChanged(); setPaymentFilter('unpaid'); setDeliveryFilter('all'); setOnlineOnly(false); setOverdueOnly(false); }}
+          >
+            <Text style={[styles.quickChipText, activeChip === 'unpaid' && styles.quickChipTextActive]}>unpaid</Text>
+            {(statusCounts['unpaid'] || 0) > 0 && (
+              <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(CALM.bronze, 0.15) }]}>
+                <Text style={[styles.chipCountText, { color: CALM.bronze }]}>{statusCounts['unpaid']}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* Online */}
+          <TouchableOpacity
+            style={[styles.quickChip, activeChip === 'online' && styles.quickChipActive]}
+            activeOpacity={0.7}
+            onPress={() => { selectionChanged(); setOnlineOnly(true); setDeliveryFilter('all'); setPaymentFilter('all'); setOverdueOnly(false); }}
+          >
+            <Feather name="globe" size={12} color={BIZ.success} style={{ marginRight: 4 }} />
+            <Text style={[styles.quickChipText, activeChip === 'online' && styles.quickChipTextActive]}>online</Text>
+            {unseenOnlineCount > 0 && (
+              <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(BIZ.warning, 0.2) }]}>
+                <Text style={[styles.chipCountText, { color: BIZ.warning }]}>{unseenOnlineCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          {activeChip === 'online' && unseenOnlineCount > 0 && (
+            <>
+              <View style={styles.unseenHint}>
+                <View style={styles.unseenHintBar} />
+                <Text style={styles.unseenHintText}>{unseenOnlineCount} new</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.markAllSeenBtn}
+                activeOpacity={0.7}
+                onPress={() => { markAllOnlineSeen(); selectionChanged(); }}
+              >
+                <Text style={styles.markAllSeenText}>mark all seen</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* Overdue */}
+          <TouchableOpacity
+            style={[styles.quickChip, activeChip === 'overdue' && styles.quickChipActive]}
+            activeOpacity={0.7}
+            onPress={() => { selectionChanged(); setOverdueOnly(true); setDeliveryFilter('all'); setPaymentFilter('all'); setOnlineOnly(false); }}
+          >
+            <Feather name="alert-circle" size={12} color={BIZ.warning} style={{ marginRight: 4 }} />
+            <Text style={[styles.quickChipText, activeChip === 'overdue' && styles.quickChipTextActive]}>overdue</Text>
+            {(overdueCount || 0) > 0 && (
+              <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(BIZ.warning, 0.15) }]}>
+                <Text style={[styles.chipCountText, { color: BIZ.warning }]}>{overdueCount}</Text>
               </View>
             )}
           </TouchableOpacity>
         </ScrollView>
-        {/* Right-edge scroll hint */}
         <View style={styles.scrollHintRight} pointerEvents="none">
           <Feather name="chevron-right" size={16} color={CALM.textMuted} />
-        </View>
-      </View>
-
-      {/* ─── Payment chips (second row) ─── */}
-      <View style={styles.paymentChipRow}>
-        <TouchableOpacity
-          style={[styles.quickChip, styles.unpaidChip, paymentFilter === 'unpaid' && styles.unpaidChipActive]}
-          activeOpacity={0.7}
-          onPress={() => { selectionChanged(); setPaymentFilter(paymentFilter === 'unpaid' ? 'all' : 'unpaid'); }}
-        >
-          <Text style={[styles.unpaidChipText, paymentFilter === 'unpaid' && styles.unpaidChipTextActive]}>unpaid</Text>
-          {statusCounts['unpaid'] > 0 && (
-            <View style={styles.unpaidCountBadge}>
-              <Text style={styles.unpaidCountText}>{statusCounts['unpaid']}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.quickChip, styles.paidChip, paymentFilter === 'paid' && styles.paidChipActive]}
-          activeOpacity={0.7}
-          onPress={() => { selectionChanged(); setPaymentFilter(paymentFilter === 'paid' ? 'all' : 'paid'); }}
-        >
-          <Text style={[styles.paidChipText, paymentFilter === 'paid' && styles.paidChipTextActive]}>paid</Text>
-          {statusCounts['paid'] > 0 && (
-            <View style={styles.paidCountBadge}>
-              <Text style={styles.paidCountText}>{statusCounts['paid']}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        {/* View mode toggle */}
-        <View style={{ flex: 1, alignItems: 'flex-end' }}>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            style={styles.viewModeToggle}
-            onPress={() => { selectionChanged(); setViewMode(v => v === 'grouped' ? 'list' : 'grouped'); }}
-          >
-            <Feather name={viewMode === 'grouped' ? 'layers' : 'list'} size={16} color={CALM.textSecondary} />
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -1660,14 +1681,14 @@ const OrderList: React.FC = () => {
             <Feather name="dollar-sign" size={18} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.bulkIconButton, { backgroundColor: CALM.accent }, selectedIds.size === 0 && styles.bulkPayButtonDisabled]}
+            style={[styles.bulkIconButton, { backgroundColor: BIZ.warning }, selectedIds.size === 0 && styles.bulkPayButtonDisabled]}
             activeOpacity={0.7}
-            onPress={handleBulkMarkDelivered}
+            onPress={handleBulkMarkUnseen}
             disabled={selectedIds.size === 0}
             accessibilityRole="button"
-            accessibilityLabel={`Mark ${selectedIds.size} orders as delivered`}
+            accessibilityLabel={`Mark ${selectedIds.size} orders as unseen`}
           >
-            <Feather name="package" size={18} color="#fff" />
+            <Feather name="eye-off" size={18} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.bulkIconButton, { backgroundColor: BIZ.error }, selectedIds.size === 0 && styles.bulkPayButtonDisabled]}
@@ -1698,7 +1719,7 @@ const OrderList: React.FC = () => {
             {/* Header */}
             <View style={styles.filterSortHeader}>
               <Text style={styles.sortSheetTitle}>filter & sort</Text>
-              {(sortBy !== 'newest' || deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly) && (
+              {(sortBy !== 'newest' || deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly || onlineOnly) && (
                 <TouchableOpacity
                   activeOpacity={0.7}
                   onPress={() => { handleClearFilters(); setSortBy('newest'); }}
@@ -1803,17 +1824,30 @@ const OrderList: React.FC = () => {
                 })}
               </View>
 
-              {/* Overdue toggle */}
-              <TouchableOpacity
-                style={[styles.filterPill, overdueOnly && styles.filterPillOverdue, { alignSelf: 'flex-start', marginTop: SPACING.xs }]}
-                activeOpacity={0.7}
-                onPress={() => { selectionChanged(); setOverdueOnly(!overdueOnly); }}
-              >
-                <Feather name="alert-circle" size={13} color={overdueOnly ? BIZ.overdue : CALM.textMuted} />
-                <Text style={[styles.filterPillText, overdueOnly && styles.filterPillOverdueText]}>
-                  overdue only
-                </Text>
-              </TouchableOpacity>
+              {/* Toggles */}
+              <Text style={styles.filterSectionLabel}>toggles</Text>
+              <View style={styles.filterSectionPills}>
+                <TouchableOpacity
+                  style={[styles.filterPill, overdueOnly && styles.filterPillOverdue]}
+                  activeOpacity={0.7}
+                  onPress={() => { selectionChanged(); setOverdueOnly(!overdueOnly); }}
+                >
+                  <Feather name="alert-circle" size={13} color={overdueOnly ? BIZ.overdue : CALM.textMuted} />
+                  <Text style={[styles.filterPillText, overdueOnly && styles.filterPillOverdueText]}>
+                    overdue only
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterPill, onlineOnly && styles.filterPillActive]}
+                  activeOpacity={0.7}
+                  onPress={() => { selectionChanged(); setOnlineOnly(!onlineOnly); }}
+                >
+                  <Feather name="globe" size={13} color={onlineOnly ? CALM.bronze : CALM.textMuted} />
+                  <Text style={[styles.filterPillText, onlineOnly && styles.filterPillTextActive]}>
+                    online only
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
 
             {/* Done button */}
@@ -2381,6 +2415,7 @@ const OrderList: React.FC = () => {
                           <Text style={styles.gridActionText}>edit</Text>
                         </TouchableOpacity>
 
+
                       </View>
 
                       {/* Mark as next status — at bottom */}
@@ -2920,81 +2955,12 @@ const styles = StyleSheet.create({
   chipCountTextActive: {
     color: CALM.bronze,
   },
-  paymentChipRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingBottom: SPACING.sm,
-    gap: 6,
-    alignItems: 'center',
-  },
   viewModeToggle: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
-  },
-  viewModeToggleText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
-  },
-  unpaidChip: {
-    borderColor: 'transparent',
-  },
-  unpaidChipActive: {
-    borderColor: CALM.bronze,
-  },
-  unpaidChipText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
-  },
-  unpaidChipTextActive: {
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  paidChip: {
-    borderColor: 'transparent',
-  },
-  paidChipActive: {
-    borderColor: BIZ.success,
-  },
-  paidChipText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: BIZ.success,
-  },
-  paidChipTextActive: {
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  unpaidCountBadge: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: withAlpha(CALM.bronze, 0.2),
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  unpaidCountText: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
-    lineHeight: 14,
-  },
-  paidCountBadge: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: withAlpha(BIZ.success, 0.2),
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  paidCountText: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: BIZ.success,
-    lineHeight: 14,
   },
 
   // ── Filter pills (shared — used inside filter modal) ──
@@ -3091,16 +3057,23 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(CALM.bronze, 0.4),
     backgroundColor: withAlpha(CALM.bronze, 0.04),
   },
+  orderCardUnseen: {
+    borderLeftWidth: 3,
+    borderLeftColor: BIZ.warning,
+  },
+  selectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
   selectCheckbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: CALM.border,
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'flex-end',
-    marginBottom: -2,
   },
   selectCheckboxActive: {
     backgroundColor: CALM.bronze,
@@ -3173,6 +3146,36 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: BIZ.success,
+  },
+  unseenHint: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+    marginLeft: SPACING.xs,
+  },
+  unseenHintBar: {
+    width: 3,
+    height: 12,
+    borderRadius: 1.5,
+    backgroundColor: BIZ.warning,
+  },
+  unseenHintText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: BIZ.warning,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  markAllSeenBtn: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(BIZ.warning, 0.12),
+    alignSelf: 'center',
+    marginLeft: SPACING.xs,
+  },
+  markAllSeenText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: BIZ.warning,
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
 
   // ── Always-visible meta row (delivery · date · order no | status) ──
@@ -3247,43 +3250,33 @@ const styles = StyleSheet.create({
     color: CALM.textMuted,
     fontStyle: 'italic',
   },
-  expandedActions: {
-    flexDirection: 'column',
-    paddingTop: SPACING.xs,
-    gap: SPACING.sm,
-  },
   expandedActionsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: SPACING.sm,
+    paddingTop: SPACING.xs,
   },
   expandedAdvanceBtn: {
+    flex: 0.85,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs + 1,
+    paddingVertical: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    alignSelf: 'flex-end',
+    justifyContent: 'center',
+    gap: 5,
   },
   expandedAdvanceBtnText: {
-    fontSize: TYPOGRAPHY.size.xs,
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
-  viewDetailLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  viewDetailLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: withAlpha(CALM.textMuted, 0.25),
-  },
-  viewDetailText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+  expandedDetailBtn: {
+    flex: 0.15,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
   },
 
   // ── Shared badges (detail modal, grouped) ──
@@ -4340,6 +4333,10 @@ const styles = StyleSheet.create({
   },
   subOrderSelected: {
     backgroundColor: withAlpha(CALM.bronze, 0.06),
+  },
+  subOrderUnseen: {
+    borderLeftWidth: 3,
+    borderLeftColor: BIZ.warning,
   },
   selectCheckboxSmall: {
     width: 18,

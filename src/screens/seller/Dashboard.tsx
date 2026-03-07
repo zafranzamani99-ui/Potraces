@@ -267,11 +267,12 @@ const SellerDashboard: React.FC = () => {
   }, [orders]);
   const sparklineMax = Math.max(...weeklyActivity.map((d) => d.count), 1);
 
-  // ── Online order count (pending order_link orders) ──────
-  const onlineOrderCount = useMemo(
-    () => orders.filter((o) => o.source === 'order_link' && o.status === 'pending').length,
-    [orders],
-  );
+  // ── Unseen online order count ───────────────────────────
+  const seenOnlineOrderIds = useSellerStore((s) => s.seenOnlineOrderIds);
+  const unseenOnlineCount = useMemo(() => {
+    const seen = new Set(seenOnlineOrderIds);
+    return orders.filter((o) => o.source === 'order_link' && !seen.has(o.id)).length;
+  }, [orders, seenOnlineOrderIds]);
 
   // ── Top customer this month ─────────────────────────────
   const topCustomer = useMemo(() => {
@@ -441,10 +442,10 @@ const SellerDashboard: React.FC = () => {
                 accessibilityLabel={`Active season: ${activeSeason.name}. Tap to view summary.`}
               >
                 <Animated.View style={{ opacity: seasonBreathAnim }}>
-                  <Feather name="calendar" size={14} color={CALM.bronze} />
+                  <Feather name="calendar" size={20} color={CALM.accent} />
                 </Animated.View>
                 <Text style={styles.seasonPillText}>{activeSeason.name}</Text>
-                <Feather name="chevron-right" size={14} color={CALM.bronze} />
+                <Feather name="chevron-right" size={14} color={CALM.textMuted} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => { lightTap(); navigation.getParent()?.navigate('PastSeasons'); }}
@@ -612,9 +613,9 @@ const SellerDashboard: React.FC = () => {
             >
               <Feather name="globe" size={16} color={BIZ.success} />
               <Text style={[styles.quickActionLabel, { color: BIZ.success }]}>online</Text>
-              {onlineOrderCount > 0 && (
+              {unseenOnlineCount > 0 && (
                 <View style={styles.notiBadge}>
-                  <Text style={styles.notiBadgeText}>{onlineOrderCount}</Text>
+                  <Text style={styles.notiBadgeText}>{unseenOnlineCount}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -1209,25 +1210,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: SPACING.md,  // 16pt
-    marginBottom: SPACING.sm, // 8pt
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
   },
   seasonPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs, // 4pt
-    backgroundColor: CALM.highlight, // #FFF7E6
+    gap: SPACING.xs,
     alignSelf: 'flex-start',
-    borderRadius: RADIUS.full, // 9999
-    paddingVertical: SPACING.xs + 2, // 6pt
-    paddingHorizontal: SPACING.md,   // 16pt
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.xs,
   },
   seasonPillText: {
-    fontSize: TYPOGRAPHY.size.base, // 15
-    fontWeight: TYPOGRAPHY.weight.medium, // 500
-    color: CALM.bronze, // #B2780A
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
   },
   seasonPillEmpty: {
     flexDirection: 'row',

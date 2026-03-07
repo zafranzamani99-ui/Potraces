@@ -49,7 +49,8 @@ export default function App() {
           unsubOrderLink = subscribeToOrderLinkOrders(profileId, (row) => {
             useSellerStore.getState().addOrderLinkOrder(row);
             const name = (row.customer_name as string | null) ?? 'Pelanggan';
-            globalShowToast(`Pesanan baru dari ${name}`, 'info');
+            const amt = row.total_amount != null ? ` · RM ${Number(row.total_amount).toFixed(2)}` : '';
+            globalShowToast(`Pesanan baru dari ${name}${amt}`, 'info');
           });
         }
       } catch {

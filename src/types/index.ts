@@ -256,6 +256,11 @@ export interface SellerState {
 
   addOrderLinkOrder: (row: Record<string, unknown>) => void;
 
+  seenOnlineOrderIds: string[];
+  markOrdersSeen: (ids: string[]) => void;
+  markAllOnlineSeen: () => void;
+  markOrderUnseen: (id: string) => void;
+
   addSellerCustomer: (customer: Omit<SellerCustomer, 'id' | 'createdAt'>) => void;
   updateSellerCustomer: (id: string, updates: Partial<SellerCustomer>) => void;
   deleteSellerCustomer: (id: string) => void;

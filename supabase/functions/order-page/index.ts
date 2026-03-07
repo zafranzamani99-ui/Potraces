@@ -59,6 +59,7 @@ function htmlRes(body: string, status = 200) {
       'Content-Type': 'text/html; charset=utf-8',
       'Content-Disposition': 'inline',
       'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
     },
   });
 }
@@ -214,8 +215,9 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
         <input id="cname" type="text" placeholder="Nama anda..." autocomplete="name" oninput="updBtn()">
       </div>
       <div class="field">
-        <div class="field-label">No. Telefon</div>
+        <div class="field-label">No. WhatsApp</div>
         <input id="cphone" type="tel" placeholder="01X-XXXXXXX" autocomplete="tel">
+        <div style="font-size:11px;color:#888;margin-top:3px;">Masukkan nombor WhatsApp untuk terima pengesahan pesanan</div>
       </div>
       <div class="field">
         <div class="field-label">Nota / Permintaan Khas</div>

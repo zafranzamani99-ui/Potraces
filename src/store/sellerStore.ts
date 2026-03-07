@@ -35,6 +35,7 @@ export const useSellerStore = create<SellerState>()(
       costTemplates: [],
       recurringCosts: [],
       productOrder: [],
+      seenOnlineOrderIds: [],
 
       // ─── Products ───────────────────────────────────────
       addProduct: (product) =>
@@ -450,6 +451,31 @@ export const useSellerStore = create<SellerState>()(
           return { orders: [newOrder, ...state.orders] };
         }),
 
+      // ─── Seen Online Orders ──────────────────────────────
+      markOrdersSeen: (ids: string[]) =>
+        set((state) => {
+          const next = new Set(state.seenOnlineOrderIds);
+          for (const id of ids) next.add(id);
+          const onlineIds = new Set(
+            state.orders.filter((o) => o.source === 'order_link').map((o) => o.id),
+          );
+          const pruned = [...next].filter((id) => onlineIds.has(id)).slice(-200);
+          return { seenOnlineOrderIds: pruned };
+        }),
+
+      markAllOnlineSeen: () =>
+        set((state) => ({
+          seenOnlineOrderIds: state.orders
+            .filter((o) => o.source === 'order_link')
+            .map((o) => o.id)
+            .slice(-200),
+        })),
+
+      markOrderUnseen: (id: string) =>
+        set((state) => ({
+          seenOnlineOrderIds: state.seenOnlineOrderIds.filter((i) => i !== id),
+        })),
+
       // ─── Seller Customers ────────────────────────────────
       addSellerCustomer: (customer) =>
         set((state) => ({
@@ -652,6 +678,7 @@ export const useSellerStore = create<SellerState>()(
         unitOrder: state.unitOrder,
         costTemplates: state.costTemplates,
         productOrder: state.productOrder,
+        seenOnlineOrderIds: state.seenOnlineOrderIds,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -697,6 +724,7 @@ export const useSellerStore = create<SellerState>()(
           state.unitOrder = state.unitOrder || [];
           state.costTemplates = state.costTemplates || [];
           state.productOrder = state.productOrder || [];
+          state.seenOnlineOrderIds = state.seenOnlineOrderIds || [];
           // Backfill paidAmount for existing orders
           state.orders = state.orders.map((o: any) => ({
             ...o,
