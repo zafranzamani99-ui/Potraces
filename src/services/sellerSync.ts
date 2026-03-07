@@ -137,9 +137,12 @@ export async function pushProducts(products: SellerProduct[]): Promise<void> {
     stock_quantity: p.stockQuantity ?? null,
   }));
 
-  await supabase
+  const { error } = await supabase
     .from('seller_products')
     .upsert(rows, { onConflict: 'user_id,local_id' });
+
+  if (error) console.warn('[sellerSync] pushProducts error:', error.message, error.code, error.details);
+  else console.warn('[sellerSync] pushProducts OK:', rows.length, 'products for user', session.user.id);
 }
 
 export async function pushOrders(
