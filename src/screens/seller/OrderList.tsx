@@ -692,21 +692,30 @@ const OrderList: React.FC = () => {
     initialFilter === 'paid' ? 'paid' : initialFilter === 'unpaid' ? 'unpaid' : 'all'
   );
   const [overdueOnly, setOverdueOnly] = useState(initialFilter === 'overdue');
+  const [onlineOnly, setOnlineOnly] = useState(initialFilter === 'online');
 
   // Update filter/search when navigating back with new params
   useEffect(() => {
     if (initialFilter) {
-      if (initialFilter === 'overdue') {
+      if (initialFilter === 'online') {
+        setOnlineOnly(true);
+        setDeliveryFilter('all');
+        setPaymentFilter('all');
+        setOverdueOnly(false);
+      } else if (initialFilter === 'overdue') {
         setOverdueOnly(true);
+        setOnlineOnly(false);
         setDeliveryFilter('all');
         setPaymentFilter('all');
       } else if (initialFilter === 'paid' || initialFilter === 'unpaid') {
         setPaymentFilter(initialFilter);
         setDeliveryFilter('all');
         setOverdueOnly(false);
+        setOnlineOnly(false);
       } else if (['pending', 'confirmed', 'ready', 'delivered', 'completed'].includes(initialFilter)) {
         setDeliveryFilter(initialFilter as DeliveryFilter);
         setOverdueOnly(false);
+        setOnlineOnly(false);
       }
       navigation.setParams({ initialFilter: undefined });
     }
@@ -786,6 +795,9 @@ const OrderList: React.FC = () => {
       } else {
         counts['unpaid'] = (counts['unpaid'] || 0) + 1;
       }
+      if (o.source === 'order_link') {
+        counts['online'] = (counts['online'] || 0) + 1;
+      }
     }
     return counts;
   }, [orders]);
@@ -824,6 +836,11 @@ const OrderList: React.FC = () => {
 
   const filteredOrders = useMemo(() => {
     let result = sortedOrders;
+
+    // Online orders filter
+    if (onlineOnly) {
+      result = result.filter((o) => o.source === 'order_link');
+    }
 
     // Delivery status filter
     if (deliveryFilter !== 'all') {
@@ -876,7 +893,7 @@ const OrderList: React.FC = () => {
     }
 
     return result;
-  }, [sortedOrders, deliveryFilter, paymentFilter, overdueOnly, searchQuery, periodFilter, paymentMethodFilter]);
+  }, [sortedOrders, deliveryFilter, paymentFilter, overdueOnly, onlineOnly, searchQuery, periodFilter, paymentMethodFilter]);
 
   // Group orders by customer name
   const groupedData = useMemo((): CustomerGroup[] => {
@@ -936,7 +953,7 @@ const OrderList: React.FC = () => {
   }, [filteredOrders, viewMode, sortBy]);
 
   // Whether any filters are active
-  const hasActiveFilters = deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly || searchInput.trim().length > 0 || paymentMethodFilter !== 'all';
+  const hasActiveFilters = deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly || onlineOnly || searchInput.trim().length > 0 || paymentMethodFilter !== 'all';
 
   // Unpaid orders for select-all
   const unpaidFilteredIds = useMemo(
@@ -1494,7 +1511,7 @@ const OrderList: React.FC = () => {
           contentContainerStyle={styles.quickFilterRow}
         >
           {DELIVERY_TABS.map((tab) => {
-            const isActive = deliveryFilter === tab.value && !overdueOnly;
+            const isActive = deliveryFilter === tab.value && !overdueOnly && !onlineOnly;
             const count = statusCounts[tab.value] || 0;
             const statusClr = tab.value !== 'all' ? statusColor(tab.value as OrderStatus) : CALM.textMuted;
             return (
@@ -1502,7 +1519,7 @@ const OrderList: React.FC = () => {
                 key={`d_${tab.value}`}
                 style={[styles.quickChip, isActive && styles.quickChipActive]}
                 activeOpacity={0.7}
-                onPress={() => { selectionChanged(); setDeliveryFilter(tab.value); setOverdueOnly(false); }}
+                onPress={() => { selectionChanged(); setDeliveryFilter(tab.value); setOverdueOnly(false); setOnlineOnly(false); }}
               >
                 <Text style={[styles.quickChipText, isActive && styles.quickChipTextActive]}>
                   {tab.label}
@@ -1517,6 +1534,19 @@ const OrderList: React.FC = () => {
               </TouchableOpacity>
             );
           })}
+          <TouchableOpacity
+            style={[styles.quickChip, onlineOnly && styles.quickChipActive]}
+            activeOpacity={0.7}
+            onPress={() => { selectionChanged(); setOnlineOnly(!onlineOnly); if (!onlineOnly) { setDeliveryFilter('all'); setOverdueOnly(false); } }}
+          >
+            <Feather name="globe" size={12} color={onlineOnly ? '#fff' : BIZ.success} style={{ marginRight: 4 }} />
+            <Text style={[styles.quickChipText, onlineOnly && styles.quickChipTextActive]}>online</Text>
+            {(statusCounts['online'] || 0) > 0 && (
+              <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(BIZ.success, 0.15) }]}>
+                <Text style={[styles.chipCountText, { color: onlineOnly ? '#fff' : BIZ.success }]}>{statusCounts['online']}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </ScrollView>
         {/* Right-edge scroll hint */}
         <View style={styles.scrollHintRight} pointerEvents="none">

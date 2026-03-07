@@ -267,6 +267,12 @@ const SellerDashboard: React.FC = () => {
   }, [orders]);
   const sparklineMax = Math.max(...weeklyActivity.map((d) => d.count), 1);
 
+  // ── Online order count (pending order_link orders) ──────
+  const onlineOrderCount = useMemo(
+    () => orders.filter((o) => o.source === 'order_link' && o.status === 'pending').length,
+    [orders],
+  );
+
   // ── Top customer this month ─────────────────────────────
   const topCustomer = useMemo(() => {
     const map: Record<string, { name: string; count: number; total: number }> = {};
@@ -600,12 +606,17 @@ const SellerDashboard: React.FC = () => {
             <TouchableOpacity
               style={[styles.quickActionButton, { borderColor: withAlpha(BIZ.success, 0.25), backgroundColor: withAlpha(BIZ.success, 0.08) }]}
               activeOpacity={0.7}
-              onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerCustomersStack'); }}
+              onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerOrderList', { initialFilter: 'online' }); }}
               accessibilityRole="button"
-              accessibilityLabel="View customers"
+              accessibilityLabel="View online orders"
             >
-              <Feather name="users" size={16} color={BIZ.success} />
-              <Text style={[styles.quickActionLabel, { color: BIZ.success }]}>customers</Text>
+              <Feather name="globe" size={16} color={BIZ.success} />
+              <Text style={[styles.quickActionLabel, { color: BIZ.success }]}>online</Text>
+              {onlineOrderCount > 0 && (
+                <View style={styles.notiBadge}>
+                  <Text style={styles.notiBadgeText}>{onlineOrderCount}</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -1380,6 +1391,23 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.textSecondary,
+  },
+  notiBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: BIZ.pending,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  notiBadgeText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: '#fff',
   },
 
   // ── Hero section ──────────────────────────────────────────
