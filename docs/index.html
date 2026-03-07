@@ -216,10 +216,13 @@ function sbFetch(path, opts) {
 }
 
 async function loadShop(slug) {
+  var dbg = document.getElementById('loading');
+  dbg.innerHTML = 'Loading profile...';
   var r1 = await sbFetch('/rest/v1/seller_profiles?select=id,user_id,display_name,currency&slug=eq.' + encodeURIComponent(slug) + '&limit=1');
   var profiles = await r1.json();
+  dbg.innerHTML = 'Profile result: <pre style="font-size:11px;word-break:break-all;white-space:pre-wrap">' + JSON.stringify(profiles) + '</pre>';
   if (!profiles || !profiles.length) {
-    document.getElementById('loading').innerHTML = '<b>Kedai tidak dijumpai.</b><br><small>Semak semula pautan anda.</small>';
+    dbg.innerHTML = '<b>Kedai tidak dijumpai.</b><br><small>slug: ' + slug + '</small>';
     return;
   }
   var profile = profiles[0];
@@ -228,14 +231,18 @@ async function loadShop(slug) {
   document.getElementById('shop-name').textContent = profile.display_name || slug;
   document.title = profile.display_name || slug;
 
+  dbg.innerHTML = 'Loading products for user_id: ' + profile.user_id + '...';
   var r2 = await sbFetch('/rest/v1/seller_products?select=id,name,price_per_unit,unit&user_id=eq.' + encodeURIComponent(profile.user_id) + '&is_active=eq.true&order=name');
   var prods = await r2.json();
+  dbg.innerHTML = 'Products result: <pre style="font-size:11px;word-break:break-all;white-space:pre-wrap">' + JSON.stringify(prods) + '</pre>';
   PRODS = (prods || []).map(function(p) { return { id: p.id, name: p.name, price_per_unit: parseFloat(p.price_per_unit), unit: p.unit }; });
 
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
-  renderProds();
-  renderCart();
+  setTimeout(function() {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    renderProds();
+    renderCart();
+  }, 3000);
 }
 
 async function doSubmit() {
