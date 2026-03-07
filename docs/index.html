@@ -84,6 +84,22 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
 /* Spinner */
 .spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes sp{to{transform:rotate(360deg)}}
+
+/* History */
+.hist-view{display:none;min-height:100vh;padding-bottom:40px}
+.hist-view.show{display:block}
+.hist-btn{position:absolute;top:50%;right:16px;transform:translateY(-50%);background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.25);border-radius:var(--rs);padding:7px 14px;font-size:13px;font-weight:600;color:#fff;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.hist-btn:active{background:rgba(255,255,255,.3)}
+.hist-back{display:inline-flex;align-items:center;gap:6px;padding:14px 16px;font-size:14px;color:var(--olive);font-weight:600;background:none;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.hist-card{background:var(--white);border-radius:var(--r);margin:0 16px 12px;overflow:hidden}
+.hist-hdr{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border2)}
+.hist-time{font-size:12px;color:var(--text3)}
+.hist-name{font-size:13px;font-weight:600;color:var(--olive)}
+.hist-item{display:flex;justify-content:space-between;padding:8px 16px;font-size:13px;color:var(--text2)}
+.hist-total{display:flex;justify-content:space-between;padding:10px 16px;font-weight:700;font-size:14px;background:var(--border2)}
+.hist-empty{padding:60px 24px;text-align:center;color:var(--text3);font-size:14px}
+.hist-link{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--bronze);background:none;border:none;cursor:pointer;padding:0;-webkit-tap-highlight-color:transparent}
+.s-actions{display:flex;flex-direction:column;gap:10px;width:100%;max-width:360px;margin-top:20px}
 </style>
 </head>
 <body>
@@ -92,7 +108,8 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
 
 <div id="app" style="display:none">
   <div id="main">
-    <div class="header">
+    <div class="header" style="position:relative">
+      <button id="hist-btn" class="hist-btn" onclick="showHistory()" style="display:none">Sejarah</button>
       <div class="hdr-sub">Tempah di sini</div>
       <div class="hdr-name" id="shop-name">...</div>
     </div>
@@ -138,6 +155,15 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
     <div class="s-text">Terima kasih. Penjual akan hubungi anda tidak lama lagi.</div>
     <div id="order-summary" style="width:100%;max-width:360px;margin-top:24px"></div>
     <button class="submit-btn" style="max-width:360px;margin-top:20px;background:var(--olive)" onclick="orderAgain()">Pesan Lagi</button>
+  </div>
+
+  <div class="hist-view" id="hist-view">
+    <div class="header" style="position:relative">
+      <button class="hist-btn" onclick="hideHistory()" style="display:block">Kembali</button>
+      <div class="hdr-sub">Sejarah</div>
+      <div class="hdr-name" id="hist-shop-name">...</div>
+    </div>
+    <div style="padding-top:16px" id="hist-list"></div>
   </div>
 
   <div class="bar" id="bar">
@@ -272,7 +298,19 @@ async function doSubmit() {
   }
 }
 
+function getHistory() {
+  try { return JSON.parse(sessionStorage.getItem('order_history') || '[]'); } catch(e) { return []; }
+}
+function saveToHistory(items, t, customerName) {
+  var hist = getHistory();
+  hist.unshift({ items: items.map(function(x) { return { name: x.p.name, qty: x.q, unit: x.p.unit, price: x.p.price_per_unit }; }), total: t, name: customerName, time: new Date().toISOString() });
+  if (hist.length > 20) hist = hist.slice(0, 20);
+  sessionStorage.setItem('order_history', JSON.stringify(hist));
+  document.getElementById('hist-btn').style.display = 'block';
+}
+
 function showSuccess(items, t, customerName) {
+  saveToHistory(items, t, customerName);
   document.getElementById('main').style.display = 'none';
   document.getElementById('bar').style.display = 'none';
   var html = '<div class="cart">';
@@ -296,6 +334,49 @@ function orderAgain() {
   renderCart();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+function fmtTime(iso) {
+  var d = new Date(iso);
+  var h = d.getHours(); var m = d.getMinutes();
+  var ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  var day = d.getDate(); var mon = ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogo','Sep','Okt','Nov','Dis'][d.getMonth()];
+  return day + ' ' + mon + ', ' + h + ':' + (m < 10 ? '0' : '') + m + ' ' + ampm;
+}
+
+function showHistory() {
+  var hist = getHistory();
+  document.getElementById('main').style.display = 'none';
+  document.getElementById('bar').style.display = 'none';
+  document.getElementById('success').classList.remove('show');
+  document.getElementById('hist-shop-name').textContent = document.getElementById('shop-name').textContent;
+  var el = document.getElementById('hist-list');
+  if (!hist.length) { el.innerHTML = '<div class="hist-empty">Belum ada pesanan lagi.</div>'; }
+  else {
+    el.innerHTML = hist.map(function(o) {
+      var h = '<div class="hist-card">';
+      h += '<div class="hist-hdr"><span class="hist-name">' + escH(o.name) + '</span><span class="hist-time">' + fmtTime(o.time) + '</span></div>';
+      for (var i = 0; i < o.items.length; i++) {
+        var it = o.items[i];
+        h += '<div class="hist-item"><span>' + it.qty + ' ' + escH(it.unit) + ' ' + escH(it.name) + '</span><span>' + CUR + ' ' + (it.qty * it.price).toFixed(2) + '</span></div>';
+      }
+      h += '<div class="hist-total"><span>Jumlah</span><span>' + CUR + ' ' + o.total.toFixed(2) + '</span></div>';
+      h += '</div>';
+      return h;
+    }).join('');
+  }
+  document.getElementById('hist-view').classList.add('show');
+  window.scrollTo({ top: 0 });
+}
+
+function hideHistory() {
+  document.getElementById('hist-view').classList.remove('show');
+  document.getElementById('main').style.display = '';
+  document.getElementById('bar').style.display = '';
+  window.scrollTo({ top: 0 });
+}
+
+if (getHistory().length > 0) document.getElementById('hist-btn').style.display = 'block';
 
 var slug = params();
 if (slug) {

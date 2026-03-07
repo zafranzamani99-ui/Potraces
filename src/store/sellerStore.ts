@@ -425,7 +425,7 @@ export const useSellerStore = create<SellerState>()(
           if (state.orders.some((o) => o.supabaseId === (row.id as string))) return state;
 
           const newOrder = {
-            id: Date.now().toString(),
+            id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
             supabaseId: row.id as string,
             orderNumber: (row.order_number as string | null) ?? undefined,
             items: (row.items as any[]) || [],
@@ -660,15 +660,24 @@ export const useSellerStore = create<SellerState>()(
             createdAt: new Date(p.createdAt),
             updatedAt: new Date(p.updatedAt),
           }));
-          state.orders = state.orders.map((o: any) => ({
-            ...o,
-            date: new Date(o.date),
-            deliveryDate: o.deliveryDate ? new Date(o.deliveryDate) : undefined,
-            paidAt: o.paidAt ? new Date(o.paidAt) : undefined,
-            status: o.status === 'paid' ? 'delivered' : o.status,
-            createdAt: new Date(o.createdAt),
-            updatedAt: new Date(o.updatedAt),
-          }));
+          // Deduplicate orders by id (fix for old Date.now() collisions)
+          const seenIds = new Set<string>();
+          state.orders = state.orders
+            .map((o: any) => {
+              let id = o.id;
+              if (seenIds.has(id)) id = id + Math.random().toString(36).slice(2, 6);
+              seenIds.add(id);
+              return {
+                ...o,
+                id,
+                date: new Date(o.date),
+                deliveryDate: o.deliveryDate ? new Date(o.deliveryDate) : undefined,
+                paidAt: o.paidAt ? new Date(o.paidAt) : undefined,
+                status: o.status === 'paid' ? 'delivered' : o.status,
+                createdAt: new Date(o.createdAt),
+                updatedAt: new Date(o.updatedAt),
+              };
+            });
           state.seasons = state.seasons.map((s: any) => ({
             ...s,
             startDate: new Date(s.startDate),

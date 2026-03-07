@@ -206,6 +206,7 @@ const SellerDashboard: React.FC = () => {
   const [shopModalName, setShopModalName] = useState('');
   const [shopSaving, setShopSaving] = useState(false);
   const [shopError, setShopError] = useState<string | null>(null);
+  const [shopLinkCopied, setShopLinkCopied] = useState(false);
 
   useEffect(() => {
     getSellerProfile().then((profile) => {
@@ -609,34 +610,57 @@ const SellerDashboard: React.FC = () => {
           </View>
         </Animated.View>
 
-        {/* ── Item order counts ────────────────────────────── */}
-        {itemOrderStats.length > 0 && !isFirstTime && (
+        {/* ── Production checklist (preview) ──────────────── */}
+        {productionList.length > 0 && !isFirstTime && (
           <Animated.View style={urgencyAnim}>
             <TouchableOpacity
               style={styles.itemStatsCard}
               activeOpacity={0.8}
               onPress={() => { lightTap(); setShowItemsModal(true); }}
             >
-              {/* Card header */}
-              <View style={styles.itemStatsHeader}>
-                <Text style={styles.itemStatsHeaderTitle}>to make</Text>
-                <View style={styles.itemStatsHeaderRight}>
-                  <Text style={styles.itemStatsHeaderSub}>pending orders</Text>
+              {/* Header */}
+              <View style={styles.productionHeader}>
+                <View style={styles.productionHeaderLeft}>
+                  <Feather name="list" size={16} color={CALM.accent} />
+                  <Text style={styles.productionHeaderText}>TO MAKE</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
+                  <Text style={styles.productionCount}>{checkedCount}/{productionList.length} done</Text>
                   <Feather name="chevron-right" size={14} color={CALM.textMuted} />
                 </View>
               </View>
-              {/* Rows */}
-              {itemOrderStats.slice(0, 4).map((item, i) => (
-                <View key={item.name} style={[styles.itemStatsRow, i < Math.min(itemOrderStats.length, 4) - 1 && styles.itemStatsRowBorder]}>
-                  <Text style={styles.itemStatsName} numberOfLines={1}>{item.name}</Text>
-                  <View style={styles.itemStatsCountBadge}>
-                    <Text style={styles.itemStatsCountText}>×{item.qty}</Text>
-                  </View>
-                </View>
-              ))}
-              {itemOrderStats.length > 4 && (
+              {/* Progress bar */}
+              <View style={styles.productionProgressTrack}>
+                <View style={[styles.productionProgressFill, { width: `${(checkedCount / productionList.length) * 100}%` }]} />
+              </View>
+              {/* First 4 rows */}
+              {productionList.slice(0, 4).map((item, index) => {
+                const done = !!checkedItems[item.name];
+                return (
+                  <TouchableOpacity
+                    key={item.name}
+                    style={[styles.productionRow, index === Math.min(productionList.length, 4) - 1 && styles.productionRowLast]}
+                    activeOpacity={0.7}
+                    delayPressIn={50}
+                    onPress={() => { toggleChecked(item.name); }}
+                  >
+                    <View style={styles.productionItemLeft}>
+                      <View style={[styles.productionCheckbox, done && styles.productionCheckboxDone]}>
+                        {done && <Feather name="check" size={12} color={CALM.surface} />}
+                      </View>
+                      <Text style={[styles.productionItemName, done && styles.productionItemNameDone]} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                    </View>
+                    <Text style={[styles.productionItemQty, done && styles.productionItemQtyDone]}>
+                      {item.qty} {item.unit}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              {productionList.length > 4 && (
                 <View style={styles.itemStatsMore}>
-                  <Text style={styles.itemStatsMoreText}>+{itemOrderStats.length - 4} more items</Text>
+                  <Text style={styles.itemStatsMoreText}>+{productionList.length - 4} more items</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -863,61 +887,6 @@ const SellerDashboard: React.FC = () => {
               </TouchableOpacity>
             </Animated.View>
 
-            {/* ── Production checklist (to make) ───────────── */}
-            {productionList.length > 0 && (
-              <Animated.View style={[styles.productionCard, productionAnim]}>
-                <View style={styles.productionHeader}>
-                  <View style={styles.productionHeaderLeft}>
-                    <Feather name="list" size={16} color={CALM.accent} />
-                    <Text style={styles.productionHeaderText}>TO MAKE</Text>
-                  </View>
-                  <Text style={styles.productionCount}>
-                    {checkedCount}/{productionList.length} done
-                  </Text>
-                </View>
-                {/* Progress bar */}
-                {productionList.length > 0 && (
-                  <View style={styles.productionProgressTrack}>
-                    <View
-                      style={[
-                        styles.productionProgressFill,
-                        { width: `${(checkedCount / productionList.length) * 100}%` },
-                      ]}
-                    />
-                  </View>
-                )}
-                {productionList.map((item, index) => {
-                  const done = !!checkedItems[item.name];
-                  return (
-                    <TouchableOpacity
-                      key={item.name}
-                      style={[
-                        styles.productionRow,
-                        index === productionList.length - 1 && styles.productionRowLast,
-                      ]}
-                      activeOpacity={0.7}
-                      delayPressIn={50}
-                      onPress={() => toggleChecked(item.name)}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: done }}
-                      accessibilityLabel={`${item.name}: ${item.qty} ${item.unit}. ${done ? 'Done.' : 'Not done.'}`}
-                    >
-                      <View style={styles.productionItemLeft}>
-                        <View style={[styles.productionCheckbox, done && styles.productionCheckboxDone]}>
-                          {done && <Feather name="check" size={12} color={CALM.surface} />}
-                        </View>
-                        <Text style={[styles.productionItemName, done && styles.productionItemNameDone]}>
-                          {item.name}
-                        </Text>
-                      </View>
-                      <Text style={[styles.productionItemQty, done && styles.productionItemQtyDone]}>
-                        {item.qty} {item.unit}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </Animated.View>
-            )}
 
             {/* ── Delivery route ──────────────────────────── */}
             {todaysDeliveries.length > 0 && (
@@ -994,7 +963,10 @@ const SellerDashboard: React.FC = () => {
             <Animated.View style={[styles.revenueCard, inflowAnim]}>
               {/* Came in row */}
               <View style={styles.revenueRow}>
-                <Text style={styles.revenueRowLabel}>came in</Text>
+                <View style={styles.revenueRowLeft}>
+                  <Feather name="arrow-down-circle" size={15} color={BIZ.success} />
+                  <Text style={styles.revenueRowLabel}>came in</Text>
+                </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={styles.revenueRowAmount}>{currency} {totalIncome.toFixed(2)}</Text>
                   {unpaidTotal > 0 && (
@@ -1005,7 +977,10 @@ const SellerDashboard: React.FC = () => {
 
               {/* Costs row */}
               <View style={styles.revenueRow}>
-                <Text style={styles.revenueRowLabel}>costs</Text>
+                <View style={styles.revenueRowLeft}>
+                  <Feather name="shopping-bag" size={15} color={CALM.bronze} />
+                  <Text style={styles.revenueRowLabel}>costs</Text>
+                </View>
                 <Text style={styles.revenueRowAmount}>{currency} {totalCosts.toFixed(2)}</Text>
               </View>
 
@@ -1014,7 +989,10 @@ const SellerDashboard: React.FC = () => {
 
               {/* Kept row */}
               <View style={[styles.revenueRow, { paddingVertical: 0 }]}>
-                <Text style={[styles.revenueKeptLabel, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}>kept</Text>
+                <View style={styles.revenueRowLeft}>
+                  <Feather name="pocket" size={15} color={kept >= 0 ? BIZ.profit : BIZ.loss} />
+                  <Text style={[styles.revenueKeptLabel, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}>kept</Text>
+                </View>
                 <Text style={[styles.revenueKeptAmount, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}>
                   {currency} {kept.toFixed(2)}
                 </Text>
@@ -1094,12 +1072,28 @@ const SellerDashboard: React.FC = () => {
               />
             </View>
 
-            {shopModalSlug.length > 0 && (
+            {shopModalSlug.length > 0 && shopSlug && (
               <View style={styles.shopModalPreview}>
                 <Text style={styles.shopModalPreviewLabel}>your link</Text>
-                <Text style={styles.shopModalPreviewUrl} numberOfLines={2}>
-                  {ORDER_PAGE_BASE}/?slug={shopModalSlug}
-                </Text>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                  onPress={async () => {
+                    const url = `${ORDER_PAGE_BASE}/?slug=${shopSlug}`;
+                    await Clipboard.setStringAsync(url);
+                    setShopLinkCopied(true);
+                    setTimeout(() => setShopLinkCopied(false), 2000);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.shopModalPreviewUrl, { flex: 1 }]} numberOfLines={1}>
+                    {ORDER_PAGE_BASE}/?slug={shopModalSlug}
+                  </Text>
+                  <Feather
+                    name={shopLinkCopied ? 'check' : 'copy'}
+                    size={18}
+                    color={shopLinkCopied ? CALM.textMuted : BIZ.success}
+                  />
+                </TouchableOpacity>
               </View>
             )}
 
@@ -1137,20 +1131,44 @@ const SellerDashboard: React.FC = () => {
           >
             <View style={styles.itemsModalCard} onStartShouldSetResponder={() => true}>
               <View style={styles.itemsModalHeader}>
-                <Text style={styles.itemsModalTitle}>to make</Text>
-                <TouchableOpacity onPress={() => setShowItemsModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                  <Feather name="x" size={18} color={CALM.textMuted} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                  <Feather name="list" size={16} color={CALM.accent} />
+                  <Text style={styles.itemsModalTitle}>to make</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                  <Text style={styles.productionCount}>{checkedCount}/{productionList.length} done</Text>
+                  <TouchableOpacity onPress={() => setShowItemsModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                    <Feather name="x" size={18} color={CALM.textMuted} />
+                  </TouchableOpacity>
+                </View>
               </View>
               <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
-                {itemOrderStats.map((item, i) => (
-                  <View key={item.name} style={[styles.itemStatsRow, i < itemOrderStats.length - 1 && styles.itemStatsRowBorder]}>
-                    <Text style={styles.itemStatsName} numberOfLines={1}>{item.name}</Text>
-                    <View style={styles.itemStatsCountBadge}>
-                      <Text style={styles.itemStatsCountText}>×{item.qty}</Text>
-                    </View>
-                  </View>
-                ))}
+                {productionList.map((item, index) => {
+                  const done = !!checkedItems[item.name];
+                  return (
+                    <TouchableOpacity
+                      key={item.name}
+                      style={[styles.productionRow, index === productionList.length - 1 && styles.productionRowLast]}
+                      activeOpacity={0.7}
+                      delayPressIn={50}
+                      onPress={() => toggleChecked(item.name)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: done }}
+                    >
+                      <View style={styles.productionItemLeft}>
+                        <View style={[styles.productionCheckbox, done && styles.productionCheckboxDone]}>
+                          {done && <Feather name="check" size={12} color={CALM.surface} />}
+                        </View>
+                        <Text style={[styles.productionItemName, done && styles.productionItemNameDone]}>
+                          {item.name}
+                        </Text>
+                      </View>
+                      <Text style={[styles.productionItemQty, done && styles.productionItemQtyDone]}>
+                        {item.qty} {item.unit}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             </View>
           </TouchableOpacity>
@@ -1621,6 +1639,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginTop: SPACING.md,
     marginBottom: SPACING.md,
   },
   productionHeaderLeft: {
@@ -1633,17 +1652,17 @@ const styles = StyleSheet.create({
     color: CALM.accent,
   },
   productionCount: {
-    ...TYPE.muted,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   productionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.xs + 2,
     borderBottomWidth: 1,
     borderBottomColor: CALM.border,
-    minHeight: 44,
   },
   productionRowLast: {
     borderBottomWidth: 0,
@@ -1669,16 +1688,21 @@ const styles = StyleSheet.create({
 
   // ── Revenue breakdown ─────────────────────────────────────
   revenueCard: {
+    backgroundColor: CALM.surface,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.md,
     marginBottom: SPACING.xl,
-    paddingTop: SPACING.sm,
-    borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    ...SHADOWS.sm,
   },
   revenueRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.xs + 2,
   },
   revenueRowLeft: {
     flexDirection: 'row',
@@ -1688,11 +1712,11 @@ const styles = StyleSheet.create({
   revenueRowLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.regular as '400',
-    color: CALM.textMuted,
+    color: CALM.textSecondary,
   },
   revenueRowAmount: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
     color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
@@ -1705,7 +1729,7 @@ const styles = StyleSheet.create({
   revenueDivider: {
     height: 1,
     backgroundColor: CALM.border,
-    marginVertical: SPACING.sm,
+    marginVertical: SPACING.xs + 2,
   },
   revenueProfitSection: {},
   revenueKeptLabel: {
@@ -1716,7 +1740,6 @@ const styles = StyleSheet.create({
   revenueKeptAmount: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1810,15 +1833,15 @@ const styles = StyleSheet.create({
 
   // ── Production checklist additions ─────────────────────
   productionProgressTrack: {
-    height: 3,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
-    borderRadius: 1.5,
-    marginBottom: SPACING.md,
+    height: 5,
+    backgroundColor: withAlpha(CALM.accent, 0.15),
+    borderRadius: 3,
+    marginBottom: SPACING.sm,
   },
   productionProgressFill: {
-    height: 3,
+    height: 5,
     backgroundColor: CALM.accent,
-    borderRadius: 1.5,
+    borderRadius: 3,
   },
   productionCheckbox: {
     width: 24,
