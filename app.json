@@ -20,7 +20,13 @@
       "adaptiveIcon": {
         "backgroundColor": "#6366F1"
       },
-      "package": "com.potraces.app"
+      "package": "com.potraces.app",
+      "permissions": [
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {},
     "plugins": [
@@ -38,7 +44,19 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-audio"
-    ]
+      "expo-audio",
+      [
+        "expo-notifications",
+        {
+          "sounds": []
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "fbef59ba-65ba-42fd-abbf-74c40f3e2366"
+      }
+    },
+    "owner": "zafranzamani12"
   }
 }

@@ -9,6 +9,7 @@ import { COLORS, SPACING, TYPOGRAPHY } from './src/constants';
 import { ToastProvider } from './src/context/ToastContext';
 import { ensureAnonSession } from './src/services/supabase';
 import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId } from './src/services/sellerSync';
+import { registerPushNotifications } from './src/services/pushNotifications';
 import { useSellerStore } from './src/store/sellerStore';
 
 export default function App() {
@@ -38,7 +39,10 @@ export default function App() {
         // Pull any order_link orders placed while app was closed
         await pullOrderLinkOrders();
 
-        // Subscribe to new order_link orders in real time
+        // Register push notifications (saves token to Supabase)
+        registerPushNotifications().catch(() => {});
+
+        // Subscribe to new order_link orders in real time (in-app alert when foregrounded)
         const profileId = getCachedProfileId();
         if (profileId && !cancelled) {
           unsubOrderLink = subscribeToOrderLinkOrders(profileId, (row) => {
