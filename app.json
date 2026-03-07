@@ -36,6 +36,7 @@
     },
     "web": {},
     "plugins": [
+      "react-native-keyboard-controller",
       [
         "expo-contacts",
         {
