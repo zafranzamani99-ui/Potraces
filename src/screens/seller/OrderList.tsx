@@ -1009,6 +1009,7 @@ const OrderList: React.FC = () => {
           `${orderRef}` +
           `${items}\n` +
           `Jumlah: ${currency} ${order.totalAmount.toFixed(2)}\n\n` +
+          `Please reply *CONFIRM* to confirm your order.\n\n` +
           `Terima kasih! 🙏`;
         let digits = order.customerPhone.replace(/[^0-9]/g, '');
         if (digits.startsWith('60')) { /* already correct */ }
