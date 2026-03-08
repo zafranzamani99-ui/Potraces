@@ -27,9 +27,17 @@ const FreelancerDashboard: React.FC = () => {
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
 
-  const now = new Date();
-  const monthStart = startOfMonth(now);
-  const monthEnd = endOfMonth(now);
+  // ─── TIME BOUNDARIES (stable across renders) ──────────────
+  const dateBounds = useMemo(() => {
+    const now = new Date();
+    return {
+      now,
+      monthStart: startOfMonth(now),
+      monthEnd: endOfMonth(now),
+    };
+  }, []);
+
+  const { now, monthStart, monthEnd } = dateBounds;
 
   const inRange = (d: Date | string, start: Date, end: Date) =>
     isWithinInterval(toDate(d), { start, end });
@@ -40,7 +48,7 @@ const FreelancerDashboard: React.FC = () => {
       businessTransactions.filter(
         (t) => t.type === 'income' && inRange(t.date, monthStart, monthEnd)
       ),
-    [businessTransactions]
+    [businessTransactions, monthStart, monthEnd] // monthStart/monthEnd are stable from dateBounds memo
   );
 
   const currentMonthTotal = currentMonthPayments.reduce((s, t) => s + t.amount, 0);
@@ -51,7 +59,7 @@ const FreelancerDashboard: React.FC = () => {
     return businessTransactions.filter(
       (t) => t.type === 'income' && inRange(t.date, sixAgo, monthEnd)
     );
-  }, [businessTransactions]);
+  }, [businessTransactions, now, monthEnd]); // now/monthEnd are stable from dateBounds memo
 
   // Hero: 6-month average
   const sixMonthAvg = useMemo(() => getSixMonthAverage(), [businessTransactions]);
@@ -86,39 +94,32 @@ const FreelancerDashboard: React.FC = () => {
     [currentMonthPayments, previousMonthsPayments, clients]
   );
 
-  // Top 3 clients by total earned all-time
-  const topClients = useMemo(() => {
-    return clients
-      .map((client) => {
-        const payments = getClientPayments(client.id);
-        const totalEarned = payments.reduce((s, t) => s + t.amount, 0);
-        const lastPayment = payments[0] || null;
-        return { client, totalEarned, lastPayment };
-      })
+  const { topClients, gapAlert } = useMemo(() => {
+    const enriched = clients.map((client) => {
+      const payments = getClientPayments(client.id);
+      const totalEarned = payments.reduce((s, t) => s + t.amount, 0);
+      const lastPayment = getClientLastPayment(client.id);
+      const avgGap = getClientAverageGap(client.id);
+      return { client, totalEarned, lastPayment, avgGap };
+    });
+
+    const top = enriched
       .filter((c) => c.totalEarned > 0)
       .sort((a, b) => b.totalEarned - a.totalEarned)
       .slice(0, 3);
-  }, [clients, businessTransactions]);
 
-  // Gap alert — find client with longest overdue gap
-  const gapAlert = useMemo(() => {
     let longestOverdue: { name: string; daysSince: number } | null = null;
-
-    for (const client of clients) {
-      const avgGap = getClientAverageGap(client.id);
-      const lastPayment = getClientLastPayment(client.id);
-      if (avgGap === null || !lastPayment) continue;
-
-      const daysSince = differenceInDays(now, toDate(lastPayment.date));
-      // Only active clients (had payment within reasonable time)
-      if (daysSince > avgGap * 1.5) {
+    for (const entry of enriched) {
+      if (entry.avgGap === null || !entry.lastPayment) continue;
+      const daysSince = differenceInDays(now, toDate(entry.lastPayment.date));
+      if (daysSince > entry.avgGap * 1.5) {
         if (!longestOverdue || daysSince > longestOverdue.daysSince) {
-          longestOverdue = { name: client.name, daysSince };
+          longestOverdue = { name: entry.client.name, daysSince };
         }
       }
     }
 
-    return longestOverdue;
+    return { topClients: top, gapAlert: longestOverdue };
   }, [clients, businessTransactions]);
 
   return (

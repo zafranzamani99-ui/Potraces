@@ -13,6 +13,8 @@ import {
   ActivityIndicator,
   Modal,
   InteractionManager,
+  Image,
+  Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
@@ -57,7 +59,9 @@ const Settings: React.FC = () => {
   const [unitManagerVisible, setUnitManagerVisible] = useState(false);
   const [qrActionIndex, setQrActionIndex] = useState<number | null>(null);
   const [qrLoadingIndex, setQrLoadingIndex] = useState<number | null>(null);
-  const pendingReplaceRef = useRef<number | null>(null);
+  const [qrLabelModal, setQrLabelModal] = useState<{ visible: boolean; uri?: string; replaceIndex?: number; renameIndex?: number; defaultLabel: string }>({ visible: false, defaultLabel: '' });
+  const [qrLabelInput, setQrLabelInput] = useState('');
+  const [qrPreviewIndex, setQrPreviewIndex] = useState<number | null>(null);
   const scrollRef = useRef<any>(null);
   const sectionY = useRef<Record<string, number>>({});
 
@@ -176,31 +180,10 @@ const Settings: React.FC = () => {
     setQrLoadingIndex(null);
     if (result.canceled || !result.assets?.[0]) return;
     const uri = result.assets[0].uri;
-
-    // Prompt for label
-    Alert.prompt(
-      replaceIndex !== undefined ? 'Update QR Label' : 'Name this QR',
-      'e.g. Maybank, TnG, ShopeePay',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Save',
-          onPress: (label?: string) => {
-            const qrLabel = (label || '').trim() || `QR ${replaceIndex !== undefined ? replaceIndex + 1 : paymentQrs.length + 1}`;
-            if (replaceIndex !== undefined) {
-              replacePaymentQr(replaceIndex, uri, qrLabel);
-              showToast('QR updated', 'success');
-            } else {
-              addPaymentQr(uri, qrLabel);
-              showToast('QR added', 'success');
-            }
-          },
-        },
-      ],
-      'plain-text',
-      replaceIndex !== undefined ? paymentQrs[replaceIndex]?.label : '',
-    );
-  }, [paymentQrs, replacePaymentQr, addPaymentQr, showToast]);
+    const defaultLabel = replaceIndex !== undefined ? (paymentQrs[replaceIndex]?.label || '') : '';
+    setQrLabelInput(defaultLabel);
+    setQrLabelModal({ visible: true, uri, replaceIndex, defaultLabel });
+  }, [paymentQrs]);
 
   const handleQrLongPress = useCallback((index: number) => {
     lightTap();
@@ -215,24 +198,11 @@ const Settings: React.FC = () => {
     setQrActionIndex(null);
 
     if (action === 'replace') {
-      // Store index — picker launches from Modal's onDismiss when native VC is truly gone
-      pendingReplaceRef.current = index;
+      // Close modal first, then launch picker after delay (onDismiss is iOS-only)
+      setTimeout(() => handlePickQrImage(index), 100);
     } else if (action === 'rename') {
-      Alert.prompt(
-        'Rename QR',
-        'Enter a new label',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Save',
-            onPress: (newLabel?: string) => {
-              if (newLabel?.trim()) updatePaymentQrLabel(index, newLabel.trim());
-            },
-          },
-        ],
-        'plain-text',
-        qr.label,
-      );
+      setQrLabelInput(qr.label);
+      setQrLabelModal({ visible: true, renameIndex: index, defaultLabel: qr.label });
     } else if (action === 'delete') {
       removePaymentQr(index);
       showToast('QR removed', 'success');
@@ -627,6 +597,7 @@ const Settings: React.FC = () => {
                   {qr ? (
                     <TouchableOpacity
                       style={styles.qrSlotFilled}
+                      onPress={() => setQrPreviewIndex(idx)}
                       onLongPress={() => handleQrLongPress(idx)}
                       delayLongPress={400}
                       activeOpacity={0.7}
@@ -719,15 +690,9 @@ const Settings: React.FC = () => {
       <Modal
         visible={qrActionIndex !== null}
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setQrActionIndex(null)}
-        onDismiss={() => {
-          if (pendingReplaceRef.current !== null) {
-            const idx = pendingReplaceRef.current;
-            pendingReplaceRef.current = null;
-            handlePickQrImage(idx);
-          }
-        }}
       >
         <Pressable style={styles.qrActionOverlay} onPress={() => setQrActionIndex(null)}>
           <View style={styles.qrActionSheet} onStartShouldSetResponder={() => true}>
@@ -775,6 +740,108 @@ const Settings: React.FC = () => {
             </TouchableOpacity>
           </View>
         </Pressable>
+      </Modal>
+
+      {/* ─── QR Label Prompt Modal (cross-platform Alert.prompt replacement) ─── */}
+      <Modal
+        visible={qrLabelModal.visible}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setQrLabelModal((s) => ({ ...s, visible: false }))}
+      >
+        <Pressable style={styles.qrLabelOverlay} onPress={() => setQrLabelModal((s) => ({ ...s, visible: false }))}>
+          <Pressable style={styles.qrLabelCard} onPress={() => {}}>
+            <Text style={styles.qrLabelTitle}>
+              {qrLabelModal.renameIndex !== undefined ? 'rename QR' : 'name this QR'}
+            </Text>
+            <TextInput
+              style={styles.qrLabelInput}
+              value={qrLabelInput}
+              onChangeText={setQrLabelInput}
+              placeholder="e.g. Maybank, TnG, ShopeePay"
+              placeholderTextColor={CALM.textMuted}
+              autoFocus
+              selectTextOnFocus
+            />
+            <View style={{ flexDirection: 'row', gap: SPACING.md, justifyContent: 'flex-end' }}>
+              <TouchableOpacity
+                style={styles.qrLabelCancel}
+                onPress={() => setQrLabelModal((s) => ({ ...s, visible: false }))}
+              >
+                <Text style={{ color: CALM.textSecondary, fontWeight: TYPOGRAPHY.weight.medium as any }}>cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.qrLabelSave}
+                onPress={() => {
+                  const label = qrLabelInput.trim();
+                  if (qrLabelModal.renameIndex !== undefined) {
+                    if (label) updatePaymentQrLabel(qrLabelModal.renameIndex, label);
+                  } else if (qrLabelModal.uri) {
+                    const qrLabel = label || `QR ${qrLabelModal.replaceIndex !== undefined ? qrLabelModal.replaceIndex + 1 : paymentQrs.length + 1}`;
+                    if (qrLabelModal.replaceIndex !== undefined) {
+                      replacePaymentQr(qrLabelModal.replaceIndex, qrLabelModal.uri, qrLabel);
+                      showToast('QR updated', 'success');
+                    } else {
+                      addPaymentQr(qrLabelModal.uri, qrLabel);
+                      showToast('QR added', 'success');
+                    }
+                  }
+                  setQrLabelModal((s) => ({ ...s, visible: false }));
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: TYPOGRAPHY.weight.semibold as any }}>save</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ─── QR Fullscreen Preview ─── */}
+      <Modal
+        visible={qrPreviewIndex !== null}
+        transparent
+        statusBarTranslucent
+        animationType="none"
+        onRequestClose={() => setQrPreviewIndex(null)}
+      >
+        <View style={styles.qrPreviewOverlay}>
+          <TouchableOpacity
+            style={styles.qrPreviewClose}
+            onPress={() => setQrPreviewIndex(null)}
+            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+          >
+            <Feather name="x" size={28} color="#fff" />
+          </TouchableOpacity>
+
+          {qrPreviewIndex !== null && paymentQrs[qrPreviewIndex] && (
+            <Text style={styles.qrPreviewLabel}>{paymentQrs[qrPreviewIndex].label}</Text>
+          )}
+
+          {qrPreviewIndex !== null && paymentQrs[qrPreviewIndex] && (
+            <Image
+              source={{ uri: paymentQrs[qrPreviewIndex].uri }}
+              style={styles.qrPreviewImage}
+              resizeMode="contain"
+            />
+          )}
+
+          {paymentQrs.length > 1 && (
+            <View style={styles.qrPreviewTabs}>
+              {paymentQrs.map((qr, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.qrPreviewTab, qrPreviewIndex === i && styles.qrPreviewTabActive]}
+                  onPress={() => { lightTap(); setQrPreviewIndex(i); }}
+                >
+                  <Text style={[styles.qrPreviewTabText, qrPreviewIndex === i && styles.qrPreviewTabTextActive]}>
+                    {qr.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
       </Modal>
     </View>
   );
@@ -1000,6 +1067,112 @@ const styles = StyleSheet.create({
   qrActionDivider: {
     height: 1,
     backgroundColor: CALM.border,
+  },
+
+  // ── QR Label Prompt ──
+  qrLabelOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING['2xl'],
+  },
+  qrLabelCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING['2xl'],
+    width: '100%',
+    maxWidth: 340,
+    gap: SPACING.lg,
+  },
+  qrLabelTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: CALM.textPrimary,
+  },
+  qrLabelInput: {
+    borderWidth: 1,
+    borderColor: CALM.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
+    color: CALM.textPrimary,
+    backgroundColor: CALM.background,
+  },
+  qrLabelCancel: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+  },
+  qrLabelSave: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xl,
+    backgroundColor: CALM.accent,
+    borderRadius: RADIUS.md,
+  },
+
+  // ── QR Preview (matches Dashboard style) ──
+  qrPreviewOverlay: {
+    flex: 1,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrPreviewClose: {
+    position: 'absolute',
+    top: 72,
+    right: SPACING.xl,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  qrPreviewLabel: {
+    position: 'absolute',
+    top: 80,
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold as any,
+    color: '#fff',
+    zIndex: 10,
+  },
+  qrPreviewImage: {
+    width: Dimensions.get('window').width - SPACING['2xl'] * 2,
+    height: Dimensions.get('window').width - SPACING['2xl'] * 2,
+    borderRadius: RADIUS.lg,
+    backgroundColor: '#fff',
+  },
+  qrPreviewTabs: {
+    position: 'absolute',
+    bottom: 60,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    zIndex: 10,
+  },
+  qrPreviewTab: {
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  qrPreviewTabActive: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  qrPreviewTabText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  qrPreviewTabTextActive: {
+    color: '#fff',
   },
 });
 

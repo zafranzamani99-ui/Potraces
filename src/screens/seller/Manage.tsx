@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -14,13 +14,13 @@ const SellerManage: React.FC = () => {
   const navigation = useNavigation<any>();
 
   const activeSeason = seasons.find((s) => s.isActive) || null;
-  const totalCostsThisMonth = ingredientCosts
+  const totalCostsThisMonth = useMemo(() => ingredientCosts
     .filter((c) => {
       const d = c.date instanceof Date ? c.date : new Date(c.date);
       const now = new Date();
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     })
-    .reduce((sum, c) => sum + c.amount, 0);
+    .reduce((sum, c) => sum + c.amount, 0), [ingredientCosts]);
 
   // Staggered animations
   const headerAnim = useFadeSlide(0);

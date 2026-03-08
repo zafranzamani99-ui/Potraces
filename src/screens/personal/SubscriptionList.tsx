@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, addWeeks, addMonths, addYears } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -29,6 +30,7 @@ import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 
 const SubscriptionList: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { subscriptions, addSubscription, updateSubscription, deleteSubscription } = usePersonalStore();
   const currency = useSettingsStore(state => state.currency);
@@ -74,7 +76,7 @@ const SubscriptionList: React.FC = () => {
     return result;
   }, [subscriptions, filterStatus, searchQuery, sortBy, sortOrder]);
 
-  const handleEdit = (id: string) => {
+  const handleEdit = useCallback((id: string) => {
     const subscription = subscriptions.find((s) => s.id === id);
     if (!subscription) return;
     setEditingId(id);
@@ -87,9 +89,9 @@ const SubscriptionList: React.FC = () => {
     setIsInstallment(subscription.isInstallment || false);
     setTotalInstallments(subscription.totalInstallments?.toString() || '');
     setModalVisible(true);
-  };
+  }, [subscriptions]);
 
-  const handleAdd = () => {
+  const handleAdd = useCallback(() => {
     if (!name.trim()) {
       showToast('Please enter subscription name', 'error');
       return;
@@ -181,9 +183,9 @@ const SubscriptionList: React.FC = () => {
 
     setModalVisible(false);
     resetForm();
-  };
+  }, [name, amount, category, billingCycle, reminderDays, startDate, isInstallment, totalInstallments, editingId, subscriptions, addSubscription, updateSubscription, showToast]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setEditingId(null);
     setName('');
     setAmount('');
@@ -193,9 +195,9 @@ const SubscriptionList: React.FC = () => {
     setStartDate(format(new Date(), 'yyyy-MM-dd'));
     setIsInstallment(false);
     setTotalInstallments('');
-  };
+  }, [expenseCategories]);
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = useCallback((id: string, name: string) => {
     Alert.alert(
       'Delete Subscription',
       `Are you sure you want to delete "${name}"?`,
@@ -208,9 +210,9 @@ const SubscriptionList: React.FC = () => {
         },
       ]
     );
-  };
+  }, [deleteSubscription]);
 
-  const totalMonthly = subscriptions
+  const totalMonthly = useMemo(() => subscriptions
     .filter((sub) => sub.isActive)
     .reduce((sum, sub) => {
       const monthlyAmount = (() => {
@@ -224,7 +226,7 @@ const SubscriptionList: React.FC = () => {
         }
       })();
       return sum + monthlyAmount;
-    }, 0);
+    }, 0), [subscriptions]);
 
   return (
     <View style={styles.container}>
@@ -413,13 +415,14 @@ const SubscriptionList: React.FC = () => {
         onPress={() => setModalVisible(true)}
         icon="plus"
         size="large"
-        style={styles.addButton}
+        style={{ ...styles.addButton, bottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }}
       />
 
       <Modal
         visible={modalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => { setModalVisible(false); resetForm(); }}
       >
         <Pressable style={styles.modalOverlay} onPress={() => { setModalVisible(false); resetForm(); }}>
@@ -431,7 +434,7 @@ const SubscriptionList: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
               <Text style={styles.label}>Name</Text>
               <TextInput
                 style={styles.input}

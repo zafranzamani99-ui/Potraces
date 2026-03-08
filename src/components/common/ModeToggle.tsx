@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -24,11 +24,11 @@ const ModeToggle: React.FC = () => {
     }).start();
   }, [mode, slideAnim]);
 
-  const handlePress = (newMode: 'personal' | 'business') => {
+  const handlePress = useCallback((newMode: 'personal' | 'business') => {
     if (newMode === mode) return;
     selectionChanged();
     setMode(newMode);
-  };
+  }, [mode, setMode]);
 
   if (!businessModeEnabled) return null;
 
@@ -129,4 +129,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ModeToggle;
+export default React.memo(ModeToggle);

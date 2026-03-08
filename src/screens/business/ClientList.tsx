@@ -135,7 +135,7 @@ const ClientList: React.FC = () => {
       </TouchableOpacity>
 
       {/* Add client modal */}
-      <Modal visible={showAddClient} transparent animationType="fade">
+      <Modal visible={showAddClient} transparent statusBarTranslucent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>new client</Text>
@@ -160,7 +160,7 @@ const ClientList: React.FC = () => {
       </Modal>
 
       {/* Payment modal */}
-      <Modal visible={showPayment} transparent animationType="fade">
+      <Modal visible={showPayment} transparent statusBarTranslucent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>

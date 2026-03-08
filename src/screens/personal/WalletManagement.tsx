@@ -24,9 +24,11 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
 import PaywallModal from '../../components/common/PaywallModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTap } from '../../services/haptics';
 
 const WalletManagement: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const currency = useSettingsStore((s) => s.currency);
   const wallets = useWalletStore((s) => s.wallets);
   const transfers = useWalletStore((s) => s.transfers);
@@ -639,6 +641,7 @@ const WalletManagement: React.FC = () => {
         visible={modalVisible}
         transparent
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => { setModalVisible(false); resetForm(); }}
       >
         <Pressable
@@ -658,7 +661,7 @@ const WalletManagement: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
               {/* Step 1: Choose Type */}
               {addStep === 'type' && !editingWallet && (
                 <View style={styles.typeGrid}>
@@ -840,6 +843,7 @@ const WalletManagement: React.FC = () => {
         visible={transferVisible}
         transparent
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => setTransferVisible(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setTransferVisible(false)}>
@@ -851,7 +855,7 @@ const WalletManagement: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
               <Text style={styles.formLabel}>From</Text>
               <View style={styles.walletSelectGrid}>
                 {wallets.map((w) => (
@@ -916,6 +920,7 @@ const WalletManagement: React.FC = () => {
         visible={repayVisible}
         transparent
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => setRepayVisible(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setRepayVisible(false)}>
@@ -927,7 +932,7 @@ const WalletManagement: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
               {repayWalletId && (() => {
                 const cw = wallets.find((w) => w.id === repayWalletId);
                 if (!cw) return null;

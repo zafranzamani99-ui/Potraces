@@ -60,6 +60,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
     <Modal
       visible={visible}
       transparent
+      statusBarTranslucent
       animationType="fade"
       onRequestClose={onClose}
     >

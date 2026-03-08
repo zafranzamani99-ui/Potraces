@@ -38,6 +38,7 @@ import CollapsibleSection from '../../components/common/CollapsibleSection';
 import { useWalletStore } from '../../store/walletStore';
 import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToast } from '../../context/ToastContext';
 import { Transaction } from '../../types';
 import { lightTap } from '../../services/haptics';
@@ -63,6 +64,7 @@ const QUICK_ACTIONS = [
 ];
 
 const PersonalDashboard: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const transactions = usePersonalStore((s) => s.transactions);
   const subscriptions = usePersonalStore((s) => s.subscriptions);
@@ -97,6 +99,8 @@ const PersonalDashboard: React.FC = () => {
   // QR modal
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [qrViewIndex, setQrViewIndex] = useState(0);
+
+  const greeting = useMemo(() => getGreeting(), []);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -435,7 +439,7 @@ const PersonalDashboard: React.FC = () => {
       >
         {/* Zone 1 — Greeting (small) */}
         <View style={styles.greetingRow}>
-          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <Text style={styles.greeting}>{greeting}</Text>
           <TouchableOpacity
             style={styles.qrButton}
             onPress={() => {
@@ -728,6 +732,7 @@ const PersonalDashboard: React.FC = () => {
         visible={showAllQuickActions}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => setShowAllQuickActions(false)}
       >
         <TouchableOpacity
@@ -774,6 +779,7 @@ const PersonalDashboard: React.FC = () => {
         visible={editModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => {
           setEditModalVisible(false);
           setEditingTransaction(null);
@@ -791,7 +797,7 @@ const PersonalDashboard: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
                 <Text style={styles.label}>Type</Text>
                 <View style={styles.typeContainer}>
                   <TouchableOpacity

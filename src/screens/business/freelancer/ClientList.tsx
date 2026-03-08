@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -88,7 +88,7 @@ const FreelancerClientList: React.FC = () => {
     setSortMode((prev) => (prev === 'recent' ? 'total' : 'recent'));
   };
 
-  const renderClient = ({
+  const renderClient = useCallback(({
     item,
   }: {
     item: (typeof sortedClients)[0];
@@ -124,7 +124,7 @@ const FreelancerClientList: React.FC = () => {
         <Feather name="chevron-right" size={16} color={CALM.textMuted} />
       </View>
     </TouchableOpacity>
-  );
+  ), [currency, navigation]);
 
   return (
     <View style={styles.container}>
@@ -163,6 +163,9 @@ const FreelancerClientList: React.FC = () => {
           renderItem={renderClient}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews
+          windowSize={5}
+          maxToRenderPerBatch={8}
         />
       )}
 
@@ -171,6 +174,7 @@ const FreelancerClientList: React.FC = () => {
         visible={showAddModal}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => setShowAddModal(false)}
       >
         <TouchableOpacity

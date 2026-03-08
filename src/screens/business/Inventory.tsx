@@ -13,6 +13,7 @@ import {
   Alert,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -26,6 +27,7 @@ import CategoryPicker from '../../components/common/CategoryPicker';
 import { useToast } from '../../context/ToastContext';
 
 const Inventory: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { products, addProduct, updateProduct, deleteProduct } = useBusinessStore();
   const currency = useSettingsStore(state => state.currency);
@@ -176,10 +178,10 @@ const Inventory: React.FC = () => {
     setCategory(PRODUCT_CATEGORIES[0].id);
   };
 
-  const lowStockProducts = products.filter(
+  const lowStockProducts = useMemo(() => products.filter(
     (p) => p.stock > 0 && p.stock <= p.lowStockThreshold
-  );
-  const outOfStockProducts = products.filter((p) => p.stock === 0);
+  ), [products]);
+  const outOfStockProducts = useMemo(() => products.filter((p) => p.stock === 0), [products]);
 
   return (
     <View style={styles.container}>
@@ -396,10 +398,11 @@ const Inventory: React.FC = () => {
         visible={modalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 {editingId ? 'Edit Product' : 'Add Product'}
@@ -525,10 +528,11 @@ const Inventory: React.FC = () => {
         visible={stockModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => setStockModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: 300 }]}>
+          <View style={[styles.modalContent, { maxHeight: 300, paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add Stock</Text>
               <TouchableOpacity onPress={() => setStockModalVisible(false)}>

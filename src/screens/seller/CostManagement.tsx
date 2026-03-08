@@ -16,6 +16,7 @@ import {
   Animated,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { format, isToday, isYesterday } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
@@ -40,6 +41,7 @@ import { useFadeSlide } from '../../utils/fadeSlide';
 
 // ─── Component ───────────────────────────────────────────────
 const CostManagement: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const ingredientCosts = useSellerStore((s) => s.ingredientCosts);
   const orders = useSellerStore((s) => s.orders);
   const seasons = useSellerStore((s) => s.seasons);
@@ -161,8 +163,16 @@ const CostManagement: React.FC = () => {
     return groups;
   }, [filteredCostEntries]);
 
-  const budget = activeSeason?.costBudget;
-  const budgetPercent = budget && budget > 0 ? Math.round((seasonStats.totalCosts / budget) * 100) : 0;
+  const { budget, budgetPercent, budgetColor } = useMemo(() => {
+    const _budget = activeSeason?.costBudget;
+    const _budgetPercent = _budget && _budget > 0 ? Math.round((seasonStats.totalCosts / _budget) * 100) : 0;
+    const _budgetColor = _budgetPercent >= 100
+      ? BIZ.loss
+      : _budgetPercent >= 80
+      ? CALM.bronze
+      : BIZ.profit;
+    return { budget: _budget, budgetPercent: _budgetPercent, budgetColor: _budgetColor };
+  }, [activeSeason?.costBudget, seasonStats.totalCosts]);
 
   const untransferredOrders = useMemo(() => {
     if (activeSeason) {
@@ -353,13 +363,6 @@ const CostManagement: React.FC = () => {
     showToast('transferred to personal', 'success');
     setShowTransfer(false);
   }, [transferAmount, activeSeason, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast]);
-
-  // ─── Budget bar color ──────────────────────────────────────
-  const budgetColor = budgetPercent >= 100
-    ? BIZ.loss
-    : budgetPercent >= 80
-    ? CALM.bronze
-    : BIZ.profit;
 
   return (
     <View style={styles.container}>
@@ -676,7 +679,7 @@ const CostManagement: React.FC = () => {
       </ScrollView>
 
       {/* ─── FAB: Log Cost ──────────────────────────────────── */}
-      <View style={styles.fabWrapper}>
+      <View style={[styles.fabWrapper, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
         <TouchableOpacity
           style={styles.fab}
           activeOpacity={0.7}
@@ -690,7 +693,7 @@ const CostManagement: React.FC = () => {
       </View>
 
       {/* ─── Recurring Cost Modal ──────────────────────────── */}
-      <Modal visible={showRecurringModal} transparent animationType="fade" onRequestClose={() => setShowRecurringModal(false)}>
+      <Modal visible={showRecurringModal} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowRecurringModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowRecurringModal(false)}>
           <Pressable style={[styles.modalCard, { gap: SPACING.md }]} onPress={() => {}}>
             <Text style={styles.modalTitle}>recurring cost</Text>
@@ -751,7 +754,7 @@ const CostManagement: React.FC = () => {
       </Modal>
 
       {/* ─── Cost Modal ─────────────────────────────────────── */}
-      <Modal visible={showCostModal} transparent animationType="fade">
+      <Modal visible={showCostModal} transparent statusBarTranslucent animationType="fade">
         <View style={{flex: 1}}>
         <Pressable style={styles.modalOverlay} onPress={Keyboard.dismiss}>
           <KeyboardAwareScrollView
@@ -1022,7 +1025,7 @@ const CostManagement: React.FC = () => {
       </Modal>
 
       {/* ─── Budget Modal ───────────────────────────────────── */}
-      <Modal visible={showBudgetModal} transparent animationType="fade">
+      <Modal visible={showBudgetModal} transparent statusBarTranslucent animationType="fade">
         <Pressable style={styles.modalOverlay} onPress={Keyboard.dismiss}>
           <KeyboardAwareScrollView
             contentContainerStyle={styles.modalScrollContent}

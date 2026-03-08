@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
@@ -10,6 +10,80 @@ interface CustomTabBarProps extends BottomTabBarProps {
   centerButtonGradient?: [string, string]; // kept for API compat, ignored
 }
 
+// ─── Memoized tab item components ────────────────────────────
+interface TabItemProps {
+  routeKey: string;
+  routeName: string;
+  label: string;
+  isFocused: boolean;
+  iconName: React.ComponentProps<typeof Feather>['name'];
+  accentColor: string;
+  accessibilityLabel?: string;
+  onPress: () => void;
+  onLongPress: () => void;
+}
+
+const TabItem = React.memo<TabItemProps>(({
+  label,
+  isFocused,
+  iconName,
+  accentColor,
+  accessibilityLabel,
+  onPress,
+  onLongPress,
+}) => (
+  <TouchableOpacity
+    accessibilityRole="button"
+    accessibilityState={isFocused ? { selected: true } : {}}
+    accessibilityLabel={accessibilityLabel}
+    onPress={onPress}
+    onLongPress={onLongPress}
+    style={styles.tabButton}
+    activeOpacity={0.7}
+  >
+    <Feather
+      name={iconName}
+      size={24}
+      color={isFocused ? accentColor : CALM.textMuted}
+    />
+    {isFocused && (
+      <Text
+        style={[styles.tabLabel, { color: accentColor }]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    )}
+  </TouchableOpacity>
+));
+
+const CenterTabItem = React.memo<TabItemProps>(({
+  label,
+  isFocused,
+  iconName,
+  accentColor,
+  accessibilityLabel,
+  onPress,
+  onLongPress,
+}) => (
+  <View style={styles.centerButtonContainer}>
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityState={isFocused ? { selected: true } : {}}
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={styles.centerButtonTouchable}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.centerButton, { backgroundColor: accentColor }]}>
+        <Feather name={iconName} size={26} color="#FFFFFF" />
+      </View>
+      <Text style={styles.centerLabel}>{label}</Text>
+    </TouchableOpacity>
+  </View>
+));
+
 const CustomTabBar: React.FC<CustomTabBarProps> = ({
   state,
   descriptors,
@@ -18,6 +92,24 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const centerIndex = Math.floor(state.routes.length / 2);
+
+  const handlePress = useCallback((routeKey: string, routeName: string, isFocused: boolean) => {
+    const event = navigation.emit({
+      type: 'tabPress',
+      target: routeKey,
+      canPreventDefault: true,
+    });
+    if (!isFocused && !event.defaultPrevented) {
+      navigation.navigate(routeName);
+    }
+  }, [navigation]);
+
+  const handleLongPress = useCallback((routeKey: string) => {
+    navigation.emit({
+      type: 'tabLongPress',
+      target: routeKey,
+    });
+  }, [navigation]);
 
   return (
     <View
@@ -43,84 +135,27 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
         const isFocused = state.index === index;
         const isCenterButton = index === centerIndex;
 
-        const onPress = () => {
-          const event = navigation.emit({
-            type: 'tabPress',
-            target: route.key,
-            canPreventDefault: true,
-          });
-
-          if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name);
-          }
-        };
-
-        const onLongPress = () => {
-          navigation.emit({
-            type: 'tabLongPress',
-            target: route.key,
-          });
-        };
-
         // Get icon
-        const iconName = options.tabBarIcon
+        const iconName: React.ComponentProps<typeof Feather>['name'] = options.tabBarIcon
           ? ((options.tabBarIcon as any)({ focused: isFocused, color: '', size: 24 }) as any)
               .props.name
           : 'circle';
 
-        if (isCenterButton) {
-          return (
-            <View key={route.key} style={styles.centerButtonContainer}>
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityState={isFocused ? { selected: true } : {}}
-                accessibilityLabel={options.tabBarAccessibilityLabel}
-                onPress={onPress}
-                onLongPress={onLongPress}
-                style={styles.centerButtonTouchable}
-                activeOpacity={0.7}
-              >
-                {/* Solid accent — no gradient per spec */}
-                <View style={[styles.centerButton, { backgroundColor: accentColor }]}>
-                  <Feather name={iconName} size={26} color="#FFFFFF" />
-                </View>
-                <Text style={styles.centerLabel}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          );
-        }
+        const Component = isCenterButton ? CenterTabItem : TabItem;
 
         return (
-          <TouchableOpacity
+          <Component
             key={route.key}
-            accessibilityRole="button"
-            accessibilityState={isFocused ? { selected: true } : {}}
+            routeKey={route.key}
+            routeName={route.name}
+            label={label}
+            isFocused={isFocused}
+            iconName={iconName}
+            accentColor={accentColor}
             accessibilityLabel={options.tabBarAccessibilityLabel}
-            onPress={onPress}
-            onLongPress={onLongPress}
-            style={styles.tabButton}
-            activeOpacity={0.7}
-          >
-            <Feather
-              name={iconName}
-              size={24}
-              color={isFocused ? accentColor : CALM.textMuted}
-            />
-            {/* Spec: no tab labels on inactive tabs — icon only, label on active */}
-            {isFocused && (
-              <Text
-                style={[
-                  styles.tabLabel,
-                  { color: accentColor },
-                ]}
-                numberOfLines={1}
-              >
-                {label}
-              </Text>
-            )}
-          </TouchableOpacity>
+            onPress={() => handlePress(route.key, route.name, isFocused)}
+            onLongPress={() => handleLongPress(route.key)}
+          />
         );
       })}
     </View>
@@ -189,4 +224,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default CustomTabBar;
+export default React.memo(CustomTabBar);

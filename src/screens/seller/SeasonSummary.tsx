@@ -154,6 +154,10 @@ const SeasonSummary: React.FC = () => {
       seasonOrders.filter((o) => o.customerName).map((o) => o.customerName!)
     );
 
+    const maxQty = topProducts.length > 0
+      ? Math.max(...topProducts.map((p) => p.qty))
+      : 1;
+
     return {
       totalOrders: seasonOrders.length,
       paidOrders: paidOrders.length,
@@ -164,6 +168,7 @@ const SeasonSummary: React.FC = () => {
       kept,
       topProducts,
       customerCount: customers.size,
+      maxQty,
     };
   }, [season, orders, ingredientCosts]);
 
@@ -415,12 +420,7 @@ const SeasonSummary: React.FC = () => {
   }
 
   // Emotional messaging based on results
-  const emotionalMessage = getEmotionalMessage(stats.kept, stats.totalOrders, stats.customerCount);
-
-  // Max qty for proportional bars
-  const maxQty = stats.topProducts.length > 0
-    ? Math.max(...stats.topProducts.map((p) => p.qty))
-    : 1;
+  const emotionalMessage = useMemo(() => getEmotionalMessage(stats.kept, stats.totalOrders, stats.customerCount), [stats.kept, stats.totalOrders, stats.customerCount]);
 
   return (
     <View style={styles.container}>
@@ -684,7 +684,7 @@ const SeasonSummary: React.FC = () => {
             <View style={styles.topSection}>
               <Text style={styles.sectionTitle}>what people ordered most</Text>
               {stats.topProducts.map((p, i) => {
-                const proportion = maxQty > 0 ? p.qty / maxQty : 0;
+                const proportion = stats.maxQty > 0 ? p.qty / stats.maxQty : 0;
                 return (
                   <View key={p.name} style={styles.topProductItem}>
                     <View style={styles.topProductRow}>
@@ -947,7 +947,7 @@ const SeasonSummary: React.FC = () => {
       </ScrollView>
 
       {/* ─── End Season Modal ─── */}
-      <Modal visible={showEndModal} transparent animationType="fade" onRequestClose={() => setShowEndModal(false)}>
+      <Modal visible={showEndModal} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowEndModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowEndModal(false)}>
           <Pressable style={styles.endModalContent} onPress={() => {}}>
             <View style={styles.endModalHeader}>
@@ -1009,7 +1009,7 @@ const SeasonSummary: React.FC = () => {
       </Modal>
 
       {/* ─── Orders Modal ─── */}
-      <Modal visible={showOrdersModal} transparent animationType="fade" onRequestClose={() => setShowOrdersModal(false)}>
+      <Modal visible={showOrdersModal} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowOrdersModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowOrdersModal(false)}>
           <Pressable style={styles.listModalContent} onPress={() => {}}>
             <View style={styles.listModalHeader}>
@@ -1064,7 +1064,7 @@ const SeasonSummary: React.FC = () => {
       </Modal>
 
       {/* ─── Costs Modal ─── */}
-      <Modal visible={showCostsModal} transparent animationType="fade" onRequestClose={() => setShowCostsModal(false)}>
+      <Modal visible={showCostsModal} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowCostsModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowCostsModal(false)}>
           <Pressable style={styles.listModalContent} onPress={() => {}}>
             <View style={styles.listModalHeader}>
@@ -1114,7 +1114,7 @@ const SeasonSummary: React.FC = () => {
       </Modal>
 
       {/* ─── Rename Season Modal ─── */}
-      <Modal visible={showRenameModal} transparent animationType="fade" onRequestClose={() => setShowRenameModal(false)}>
+      <Modal visible={showRenameModal} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowRenameModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowRenameModal(false)}>
           <Pressable style={styles.renameModalContent} onPress={() => {}}>
             <Text style={styles.renameModalTitle}>rename season</Text>
@@ -1155,7 +1155,7 @@ const SeasonSummary: React.FC = () => {
       </Modal>
 
       {/* ─── Season Target Modal ─── */}
-      <Modal visible={showTargetInput} transparent animationType="fade" onRequestClose={() => setShowTargetInput(false)}>
+      <Modal visible={showTargetInput} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowTargetInput(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowTargetInput(false)}>
           <Pressable style={styles.renameModalContent} onPress={() => {}}>
             <Text style={styles.renameModalTitle}>season target</Text>
@@ -1339,7 +1339,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CALM.border,            // #EBEBEB
     marginBottom: SPACING.md,            // 16pt
-    ...SHADOWS.sm,
   },
   statBox: {
     flex: 1,
@@ -1365,7 +1364,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,       // 16pt
     alignItems: 'flex-start',
     gap: SPACING.xs,                     // 4pt
-    ...SHADOWS.sm,
   },
   statIconCircle: {
     width: 36,
@@ -1396,7 +1394,6 @@ const styles = StyleSheet.create({
     borderLeftColor: BIZ.unpaid,          // warm sand — unpaid semantic
     padding: SPACING.lg,                 // 16pt
     marginBottom: SPACING.xl,            // 24pt
-    ...SHADOWS.sm,
   },
   unpaidContent: {
     gap: SPACING.md,                     // 16pt between text and action
@@ -1425,7 +1422,6 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
     padding: SPACING.md,
     marginBottom: SPACING.lg,
-    ...SHADOWS.sm,
   },
   transferHeader: {
     flexDirection: 'row',
@@ -1559,7 +1555,6 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
     padding: SPACING.md,
     marginBottom: SPACING.md,
-    ...SHADOWS.sm,
   },
   inlineListHeader: {
     flexDirection: 'row',
@@ -1618,7 +1613,6 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     marginBottom: SPACING.sm,
     gap: SPACING.sm,
-    ...SHADOWS.sm,
   },
   listTapLabel: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1737,7 +1731,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CALM.border,            // #EBEBEB
     marginTop: SPACING.lg,              // 16pt
-    ...SHADOWS.sm,
   },
   actionRow: {
     flexDirection: 'row',

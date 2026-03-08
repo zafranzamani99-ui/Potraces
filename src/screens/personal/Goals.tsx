@@ -30,6 +30,7 @@ import Card from '../../components/common/Card';
 import ProgressBar from '../../components/common/ProgressBar';
 import EmptyState from '../../components/common/EmptyState';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import { Goal } from '../../types';
@@ -82,6 +83,7 @@ const MAX_GOALS = 10;
 
 // ── MAIN COMPONENT ────────────────────────────────────────────
 const Goals: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const goals = usePersonalStore((s) => s.goals);
   const addGoal = usePersonalStore((s) => s.addGoal);
@@ -117,6 +119,18 @@ const Goals: React.FC = () => {
     ).length;
     return { totalSaved, totalTarget, overallPercentage, completedCount };
   }, [goalsList]);
+
+  const enrichedGoals = useMemo(() =>
+    goalsList.map((goal: Goal) => {
+      const percentage = goal.targetAmount > 0
+        ? Math.min((goal.currentAmount / goal.targetAmount) * 100, 100)
+        : 0;
+      const isCompleted = goal.currentAmount >= goal.targetAmount;
+      const daysUntilDeadline = goal.deadline
+        ? differenceInCalendarDays(new Date(goal.deadline), new Date())
+        : null;
+      return { ...goal, percentage, isCompleted, daysUntilDeadline };
+    }), [goalsList]);
 
   // ── Form reset ──
   const resetGoalForm = useCallback(() => {
@@ -412,16 +426,9 @@ const Goals: React.FC = () => {
         )}
 
         {/* ── Goal Cards ── */}
-        {goalsList.length > 0 ? (
-          goalsList.map((goal: Goal) => {
-            const percentage =
-              goal.targetAmount > 0
-                ? Math.min(
-                    (goal.currentAmount / goal.targetAmount) * 100,
-                    100
-                  )
-                : 0;
-            const isCompleted = goal.currentAmount >= goal.targetAmount;
+        {enrichedGoals.length > 0 ? (
+          enrichedGoals.map((goal) => {
+            const { percentage, isCompleted, daysUntilDeadline } = goal;
 
             return (
               <Card key={goal.id} style={styles.goalCard}>
@@ -454,14 +461,13 @@ const Goals: React.FC = () => {
                       {' / '}
                       {currency} {goal.targetAmount.toFixed(2)}
                     </Text>
-                    {goal.deadline && (() => {
-                      const daysLeft = differenceInCalendarDays(new Date(goal.deadline), new Date());
-                      const isOverdue = daysLeft < 0;
+                    {goal.deadline && daysUntilDeadline !== null && (() => {
+                      const isOverdue = daysUntilDeadline < 0;
                       const daysText = isOverdue
-                        ? `${Math.abs(daysLeft)}d overdue`
-                        : daysLeft === 0
+                        ? `${Math.abs(daysUntilDeadline)}d overdue`
+                        : daysUntilDeadline === 0
                           ? 'due today'
-                          : `${daysLeft}d left`;
+                          : `${daysUntilDeadline}d left`;
                       return (
                         <Text style={styles.goalDeadline}>
                           <Feather name="calendar" size={11} color={CALM.neutral} />{' '}
@@ -591,6 +597,7 @@ const Goals: React.FC = () => {
         visible={goalModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={closeGoalModal}
       >
         <Pressable style={styles.modalOverlay} onPress={() => { closeGoalModal(); }}>
@@ -607,6 +614,7 @@ const Goals: React.FC = () => {
             <KeyboardAwareScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}
             >
               {/* Goal Name */}
               <Text style={styles.label}>Goal Name</Text>
@@ -754,6 +762,7 @@ const Goals: React.FC = () => {
         visible={contributeModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={closeContributeModal}
       >
         <Pressable style={styles.modalOverlay} onPress={() => { closeContributeModal(); }}>
@@ -802,6 +811,7 @@ const Goals: React.FC = () => {
             <KeyboardAwareScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}
             >
               <Text style={styles.label}>Amount ({currency})</Text>
               <TextInput

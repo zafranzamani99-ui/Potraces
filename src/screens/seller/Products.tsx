@@ -1057,6 +1057,8 @@ const Products: React.FC = () => {
     </>
   );
 
+  const onDragEnd = useCallback(({ data }: { data: SellerProduct[] }) => { lightTap(); setProductOrder(data.map((p) => p.id)); }, [setProductOrder]);
+
   // ─── Render ────────────────────────────────────────────────
 
   return (
@@ -1065,7 +1067,7 @@ const Products: React.FC = () => {
         data={reorderMode ? sortedProducts : (products.length === 0 ? products : filteredProducts)}
         renderItem={renderProduct}
         keyExtractor={productKeyExtractor}
-        onDragEnd={({ data }) => { lightTap(); setProductOrder(data.map((p) => p.id)); }}
+        onDragEnd={onDragEnd}
         ListHeaderComponent={products.length > 0 ? ListHeaderComponent : undefined}
         contentContainerStyle={[
           styles.listContent,
@@ -1109,6 +1111,9 @@ const Products: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         activationDistance={reorderMode ? 5 : 99999}
+        windowSize={5}
+        maxToRenderPerBatch={8}
+        removeClippedSubviews
       />
 
       {/* Bottom-anchored add button */}
@@ -1128,7 +1133,7 @@ const Products: React.FC = () => {
       )}
 
       {/* ── Add / Edit product modal ────────────────────────── */}
-      <Modal visible={showAdd} transparent animationType="fade">
+      <Modal visible={showAdd} transparent statusBarTranslucent animationType="fade">
         <View style={styles.modalOverlay}>
           <KeyboardAwareScrollView
             contentContainerStyle={styles.modalScrollContent}
@@ -1243,7 +1248,7 @@ const Products: React.FC = () => {
       </Modal>
 
       {/* ── Log cost modal ──────────────────────────────────── */}
-      <Modal visible={showCostModal} transparent animationType="fade">
+      <Modal visible={showCostModal} transparent statusBarTranslucent animationType="fade">
         <Pressable style={styles.modalOverlay} onPress={Keyboard.dismiss}>
           <KeyboardAwareScrollView
             contentContainerStyle={styles.modalScrollContent}
@@ -1408,7 +1413,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CALM.border,
     marginBottom: SPACING.sm,
-    ...SHADOWS.sm,
   },
   productRowInactive: {
     opacity: 0.45,
@@ -2091,7 +2095,6 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
     marginBottom: SPACING.sm,
-    ...SHADOWS.sm,
   },
   popularHeader: {
     fontSize: TYPOGRAPHY.size.xs,

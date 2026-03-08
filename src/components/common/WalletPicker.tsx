@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -46,7 +46,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
     });
   }, [wallets, typeFilter]);
 
-  const selectedWallet = wallets.find((w) => w.id === selectedId);
+  const selectedWallet = useMemo(() => wallets.find((w) => w.id === selectedId), [wallets, selectedId]);
 
   // Group wallets by type for section display
   const groupedWallets = useMemo(() => {
@@ -60,6 +60,84 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
     });
     return groups;
   }, [filteredWallets, typeFilter]);
+
+  const renderGroupItem = useCallback(({ item: group }: { item: { type: WalletType; wallets: Wallet[] } }) => (
+    <View>
+      {!typeFilter && (
+        <View style={styles.sectionHeader}>
+          <Feather
+            name={WALLET_TYPE_CONFIG[group.type].icon as keyof typeof Feather.glyphMap}
+            size={14}
+            color={CALM.textMuted}
+          />
+          <Text style={styles.sectionTitle}>
+            {WALLET_TYPE_CONFIG[group.type].label}
+          </Text>
+        </View>
+      )}
+      {group.wallets.map((item) => {
+        const isSelected = item.id === selectedId;
+        return (
+          <TouchableOpacity
+            key={item.id}
+            style={[
+              styles.item,
+              isSelected && {
+                backgroundColor: withAlpha(item.color, 0.1),
+              },
+            ]}
+            onPress={() => {
+              lightTap();
+              onSelect(item.id);
+              setDropdownOpen(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <View
+              style={[
+                styles.itemIcon,
+                {
+                  backgroundColor: isSelected
+                    ? item.color
+                    : withAlpha(item.color, 0.15),
+                },
+              ]}
+            >
+              <Feather
+                name={item.icon as keyof typeof Feather.glyphMap}
+                size={18}
+                color={isSelected ? '#fff' : item.color}
+              />
+            </View>
+            <View style={styles.itemTextGroup}>
+              <Text
+                style={[
+                  styles.itemName,
+                  isSelected && {
+                    color: item.color,
+                    fontWeight: TYPOGRAPHY.weight.bold,
+                  },
+                ]}
+              >
+                {item.name}
+              </Text>
+              <Text style={styles.itemBalance}>
+                {getDisplayBalance(item)}
+              </Text>
+            </View>
+            {item.isDefault && (
+              <View style={styles.defaultBadge}>
+                <Text style={styles.defaultText}>Default</Text>
+              </View>
+            )}
+            {isSelected && (
+              <Feather name="check" size={18} color={item.color} />
+            )}
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  ), [selectedId, onSelect, typeFilter, currency]);
 
   if (wallets.length === 0) return null;
 
@@ -129,6 +207,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
       <Modal
         visible={dropdownOpen}
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setDropdownOpen(false)}
       >
@@ -148,84 +227,10 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
               data={groupedWallets}
               keyExtractor={(group) => group.type}
               showsVerticalScrollIndicator={false}
-              renderItem={({ item: group }) => (
-                <View>
-                  {/* Section header (only if not filtered to single type) */}
-                  {!typeFilter && (
-                    <View style={styles.sectionHeader}>
-                      <Feather
-                        name={WALLET_TYPE_CONFIG[group.type].icon as keyof typeof Feather.glyphMap}
-                        size={14}
-                        color={CALM.textMuted}
-                      />
-                      <Text style={styles.sectionTitle}>
-                        {WALLET_TYPE_CONFIG[group.type].label}
-                      </Text>
-                    </View>
-                  )}
-                  {group.wallets.map((item) => {
-                    const isSelected = item.id === selectedId;
-                    return (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={[
-                          styles.item,
-                          isSelected && {
-                            backgroundColor: withAlpha(item.color, 0.1),
-                          },
-                        ]}
-                        onPress={() => {
-                          lightTap();
-                          onSelect(item.id);
-                          setDropdownOpen(false);
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <View
-                          style={[
-                            styles.itemIcon,
-                            {
-                              backgroundColor: isSelected
-                                ? item.color
-                                : withAlpha(item.color, 0.15),
-                            },
-                          ]}
-                        >
-                          <Feather
-                            name={item.icon as keyof typeof Feather.glyphMap}
-                            size={18}
-                            color={isSelected ? '#fff' : item.color}
-                          />
-                        </View>
-                        <View style={styles.itemTextGroup}>
-                          <Text
-                            style={[
-                              styles.itemName,
-                              isSelected && {
-                                color: item.color,
-                                fontWeight: TYPOGRAPHY.weight.bold,
-                              },
-                            ]}
-                          >
-                            {item.name}
-                          </Text>
-                          <Text style={styles.itemBalance}>
-                            {getDisplayBalance(item)}
-                          </Text>
-                        </View>
-                        {item.isDefault && (
-                          <View style={styles.defaultBadge}>
-                            <Text style={styles.defaultText}>Default</Text>
-                          </View>
-                        )}
-                        {isSelected && (
-                          <Feather name="check" size={18} color={item.color} />
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
+              removeClippedSubviews
+              windowSize={5}
+              maxToRenderPerBatch={8}
+              renderItem={renderGroupItem}
             />
           </View>
         </TouchableOpacity>
@@ -382,4 +387,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default WalletPicker;
+export default React.memo(WalletPicker);

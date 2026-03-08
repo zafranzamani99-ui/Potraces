@@ -182,6 +182,7 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
     <Modal
       visible={visible}
       transparent
+      statusBarTranslucent
       animationType="fade"
       onRequestClose={onClose}
     >
@@ -243,6 +244,7 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
       <Modal
         visible={editModalVisible}
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setEditModalVisible(false)}
       >

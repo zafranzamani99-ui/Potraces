@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
@@ -23,6 +24,7 @@ import EmptyState from '../../components/common/EmptyState';
 import { useToast } from '../../context/ToastContext';
 
 const SupplierList: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useBusinessStore();
   const currency = useSettingsStore(state => state.currency);
@@ -253,10 +255,11 @@ const SupplierList: React.FC = () => {
         visible={modalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => { setModalVisible(false); resetForm(); }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editingId ? 'Edit Supplier' : 'Add Supplier'}</Text>
               <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }}>

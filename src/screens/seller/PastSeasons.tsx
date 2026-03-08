@@ -103,7 +103,7 @@ const PastSeasons: React.FC = () => {
   const activeSeason = seasons.find((s) => s.isActive);
   const pastSeasons = seasons.filter((s) => !s.isActive);
 
-  const handleStartSeason = () => {
+  const handleStartSeason = useCallback(() => {
     if (!newName.trim()) return;
 
     if (activeSeason) {
@@ -119,8 +119,6 @@ const PastSeasons: React.FC = () => {
       startDate: new Date(),
       isActive: true,
     });
-    // Apply template after adding — Zustand set() is synchronous so getState() is safe here.
-    // Validate the new season by matching name + isActive to avoid mistaking an existing season.
     if (templateSeasonId) {
       const trimmedName = newName.trim();
       const newSeason = useSellerStore.getState().seasons.find(
@@ -131,35 +129,39 @@ const PastSeasons: React.FC = () => {
     setNewName('');
     setTemplateSeasonId(null);
     setShowAdd(false);
-  };
+  }, [newName, activeSeason, templateSeasonId, addSeason, useSeasonTemplate]);
 
-  const getStats = (seasonId: string) => {
-    const seasonOrders = orders.filter((o) => o.seasonId === seasonId);
-    const seasonCosts = ingredientCosts.filter((c) => c.seasonId === seasonId);
-    const totalIncome = seasonOrders.filter((o) => o.isPaid).reduce((s, o) => s + o.totalAmount, 0);
-    const totalCosts = seasonCosts.reduce((s, c) => s + c.amount, 0);
-    const customers = new Set(
-      seasonOrders.filter((o) => o.customerName).map((o) => o.customerName!)
-    );
-    return {
-      orderCount: seasonOrders.length,
-      kept: totalIncome - totalCosts,
-      customerCount: customers.size,
-    };
-  };
+  const statsMap = useMemo(() => {
+    const map: Record<string, { orderCount: number; kept: number; customerCount: number }> = {};
+    for (const s of seasons) {
+      const seasonOrders = orders.filter((o) => o.seasonId === s.id);
+      const seasonCosts = ingredientCosts.filter((c) => c.seasonId === s.id);
+      const totalIncome = seasonOrders.filter((o) => o.isPaid).reduce((sum, o) => sum + o.totalAmount, 0);
+      const totalCosts = seasonCosts.reduce((sum, c) => sum + c.amount, 0);
+      const customers = new Set(
+        seasonOrders.filter((o) => o.customerName).map((o) => o.customerName!)
+      );
+      map[s.id] = {
+        orderCount: seasonOrders.length,
+        kept: totalIncome - totalCosts,
+        customerCount: customers.size,
+      };
+    }
+    return map;
+  }, [seasons, orders, ingredientCosts]);
 
   // Show active season first, then past seasons
   const allSeasons = useMemo(() => {
     return activeSeason ? [activeSeason, ...pastSeasons] : pastSeasons;
   }, [activeSeason, pastSeasons]);
 
-  const navigateToSeason = (seasonId: string) => {
+  const navigateToSeason = useCallback((seasonId: string) => {
     navigation.navigate('SeasonSummary', { seasonId });
-  };
+  }, [navigation]);
 
   const renderSeason = useCallback(
     ({ item, index }: { item: Season; index: number }) => {
-      const stats = getStats(item.id);
+      const stats = statsMap[item.id] || { orderCount: 0, kept: 0, customerCount: 0 };
       const isActive = item.isActive;
       const isLast = index === allSeasons.length - 1;
 
@@ -273,7 +275,7 @@ const PastSeasons: React.FC = () => {
         </AnimatedSeasonCard>
       );
     },
-    [orders, ingredientCosts, currency, navigation, allSeasons.length]
+    [statsMap, currency, navigateToSeason, allSeasons.length]
   );
 
   // Page header above FlatList
@@ -314,6 +316,9 @@ const PastSeasons: React.FC = () => {
             </TouchableOpacity>
           </View>
         }
+        removeClippedSubviews
+        windowSize={5}
+        maxToRenderPerBatch={8}
       />
 
       {/* Bottom-anchored add button (only when seasons exist and no active season) */}
@@ -332,7 +337,7 @@ const PastSeasons: React.FC = () => {
         </View>
       )}
 
-      <Modal visible={showAdd} transparent animationType="fade">
+      <Modal visible={showAdd} transparent statusBarTranslucent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>new season</Text>

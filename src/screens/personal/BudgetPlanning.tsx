@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -26,11 +26,13 @@ import EmptyState from '../../components/common/EmptyState';
 import ProgressBar from '../../components/common/ProgressBar';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import PaywallModal from '../../components/common/PaywallModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
 import { Budget } from '../../types';
 
 const BudgetPlanning: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { budgets, addBudget, updateBudget, deleteBudget, transactions } = usePersonalStore();
   const currency = useSettingsStore(state => state.currency);
@@ -65,7 +67,7 @@ const BudgetPlanning: React.FC = () => {
     });
   }, [transactions]);
 
-  const handleAdd = () => {
+  const handleAdd = useCallback(() => {
     if (!amount || parseFloat(amount) <= 0) {
       showToast('Please enter a valid amount', 'error');
       return;
@@ -104,17 +106,17 @@ const BudgetPlanning: React.FC = () => {
       closeModal();
       showToast('budget created.', 'success');
     }
-  };
+  }, [amount, category, period, editingBudget, budgets, addBudget, updateBudget, showToast]);
 
-  const handleEdit = (budget: Budget) => {
+  const handleEdit = useCallback((budget: Budget) => {
     setEditingBudget(budget);
     setCategory(budget.category);
     setAmount(budget.allocatedAmount.toString());
     setPeriod(budget.period);
     setModalVisible(true);
-  };
+  }, []);
 
-  const handleDelete = (budget: Budget) => {
+  const handleDelete = useCallback((budget: Budget) => {
     Alert.alert(
       'Delete Budget',
       `Are you sure you want to delete this budget?`,
@@ -130,22 +132,22 @@ const BudgetPlanning: React.FC = () => {
         },
       ]
     );
-  };
+  }, [deleteBudget, showToast]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setAmount('');
     setCategory(expenseCategories[0].id);
     setPeriod('monthly');
     setEditingBudget(null);
-  };
+  }, [expenseCategories]);
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setModalVisible(false);
     resetForm();
-  };
+  }, [resetForm]);
 
-  const totalAllocated = budgets.reduce((sum, b) => sum + b.allocatedAmount, 0);
-  const totalSpent = budgets.reduce((sum, b) => sum + b.spentAmount, 0);
+  const totalAllocated = useMemo(() => budgets.reduce((sum, b) => sum + b.allocatedAmount, 0), [budgets]);
+  const totalSpent = useMemo(() => budgets.reduce((sum, b) => sum + b.spentAmount, 0), [budgets]);
 
   return (
     <View style={styles.container}>
@@ -301,6 +303,7 @@ const BudgetPlanning: React.FC = () => {
         visible={modalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={closeModal}
       >
         <Pressable style={styles.modalOverlay} onPress={() => { closeModal(); }}>
@@ -312,7 +315,7 @@ const BudgetPlanning: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
               <CategoryPicker
                 categories={expenseCategories}
                 selectedId={category}

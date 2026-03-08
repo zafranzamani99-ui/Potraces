@@ -102,6 +102,29 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
 .hist-empty{padding:60px 24px;text-align:center;color:var(--text3);font-size:14px}
 .hist-link{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--bronze);background:none;border:none;cursor:pointer;padding:0;-webkit-tap-highlight-color:transparent}
 .s-actions{display:flex;flex-direction:column;gap:10px;width:100%;max-width:360px;margin-top:20px}
+.opt{color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0}
+
+/* Confirm modal */
+.confirm-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center;padding:24px}
+.confirm-overlay.show{display:flex}
+.confirm-card{background:var(--white);border-radius:var(--r);width:100%;max-width:400px;max-height:80vh;overflow:auto;-webkit-overflow-scrolling:touch}
+.confirm-header{padding:20px 20px 12px;text-align:center}
+.confirm-title{font-size:17px;font-weight:700;color:var(--olive)}
+.confirm-sub{font-size:13px;color:var(--text2);margin-top:4px}
+.confirm-items{padding:0 16px 12px}
+.confirm-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border2);font-size:14px}
+.confirm-item:last-child{border-bottom:none}
+.confirm-total{display:flex;justify-content:space-between;padding:14px 16px;background:var(--border2);font-weight:700;font-size:15px}
+.confirm-info{padding:12px 16px;font-size:13px;color:var(--text2);border-top:1px solid var(--border2)}
+.confirm-info span{font-weight:600;color:var(--text)}
+.confirm-actions{display:flex;gap:8px;padding:16px}
+.confirm-cancel{flex:1;padding:14px;border:1px solid var(--border);border-radius:var(--rs);background:transparent;color:var(--text2);font-size:15px;font-weight:500;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.confirm-cancel:active{background:var(--border2)}
+.confirm-go{flex:2;padding:14px;border:none;border-radius:var(--rs);background:var(--sky);color:#fff;font-size:15px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.confirm-go:active{opacity:.85}
+
+/* Honeypot */
+.hp-field{position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden;pointer-events:none;tab-index:-1}
 </style>
 </head>
 <body>
@@ -130,18 +153,19 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
           <input id="cname" type="text" placeholder="Nama anda..." autocomplete="name" maxlength="100" oninput="updBtn()">
         </div>
         <div class="field">
-          <div class="field-label">No. WhatsApp</div>
+          <div class="field-label">No. WhatsApp <span class="opt">(pilihan)</span></div>
           <input id="cphone" type="tel" placeholder="01X-XXXXXXX" autocomplete="tel" maxlength="20">
           <div style="font-size:11px;color:#888;margin-top:3px;">Masukkan nombor WhatsApp untuk terima pengesahan pesanan</div>
         </div>
         <div class="field">
-          <div class="field-label">Alamat</div>
+          <div class="field-label">Alamat <span class="opt">(pilihan)</span></div>
           <textarea id="caddr" rows="2" placeholder="Alamat penghantaran..." autocomplete="street-address" maxlength="300"></textarea>
         </div>
         <div class="field">
-          <div class="field-label">Nota / Permintaan Khas</div>
+          <div class="field-label">Nota / Permintaan Khas <span class="opt">(pilihan)</span></div>
           <textarea id="cnote" rows="2" placeholder="Sebarang permintaan..." maxlength="500"></textarea>
         </div>
+        <div class="hp-field" aria-hidden="true"><label>Jangan isi ini<input id="hp-email" type="email" tabindex="-1" autocomplete="off"></label></div>
       </div>
 
       <div class="div"></div>
@@ -173,8 +197,24 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
     <div style="padding-top:16px" id="hist-list"></div>
   </div>
 
+  <div class="confirm-overlay" id="confirm-modal">
+    <div class="confirm-card">
+      <div class="confirm-header">
+        <div class="confirm-title">Sahkan Pesanan</div>
+        <div class="confirm-sub">Sila semak sebelum menghantar</div>
+      </div>
+      <div class="confirm-items" id="confirm-items"></div>
+      <div class="confirm-total" id="confirm-total"></div>
+      <div class="confirm-info" id="confirm-info"></div>
+      <div class="confirm-actions">
+        <button class="confirm-cancel" onclick="hideConfirm()">Ubah</button>
+        <button class="confirm-go" id="confirm-go" onclick="confirmSubmit()">Hantar Pesanan</button>
+      </div>
+    </div>
+  </div>
+
   <div class="bar" id="bar">
-    <button class="submit-btn" id="sbtn" disabled onclick="doSubmit()">Hantar Pesanan</button>
+    <button class="submit-btn" id="sbtn" disabled onclick="showConfirm()">Hantar Pesanan</button>
   </div>
 </div>
 
@@ -202,6 +242,11 @@ function escAttr(s) { return String(s).replace(/[&"'<>]/g, function(c) { return 
 
 var MAX_QTY = 9999;
 var _submitting = false;
+var _lastSubmitTime = 0;
+var _submitCount = 0;
+var RATE_LIMIT_WINDOW = 300000; // 5 min
+var RATE_LIMIT_MAX = 3; // max 3 orders per window
+var COOLDOWN_MS = 15000; // 15s between orders
 
 function setQty(id, d) {
   if (!PRODS.some(function(p) { return p.id === id; })) return;
@@ -279,19 +324,70 @@ async function loadShop(slug) {
   renderCart();
 }
 
-async function doSubmit() {
+function showConfirm() {
+  var items = cartItems(); var t = total();
+  var name = document.getElementById('cname').value.trim();
+  if (!name || !items.length) return;
+
+  // Honeypot check
+  if (document.getElementById('hp-email').value) return;
+
+  // Rate limit check
+  var now = Date.now();
+  if (now - _lastSubmitTime < COOLDOWN_MS) {
+    showErr('Sila tunggu sebentar sebelum menghantar lagi.'); return;
+  }
+  if (_submitCount >= RATE_LIMIT_MAX && now - _lastSubmitTime < RATE_LIMIT_WINDOW) {
+    showErr('Terlalu banyak pesanan. Sila cuba selepas beberapa minit.'); return;
+  }
+
+  // Build confirmation content
+  var itemsHtml = items.map(function(x) {
+    return '<div class="confirm-item"><span>' + x.q + ' ' + escH(x.p.unit) + ' ' + escH(x.p.name) + '</span><span style="font-weight:600">' + fmt(x.sub) + '</span></div>';
+  }).join('');
+  document.getElementById('confirm-items').innerHTML = itemsHtml;
+  document.getElementById('confirm-total').innerHTML = '<span>Jumlah</span><span>' + fmt(t) + '</span>';
+
+  var phone = document.getElementById('cphone').value.trim();
+  var addr = document.getElementById('caddr').value.trim();
+  var info = '<span>' + escH(name) + '</span>';
+  if (phone) info += '<br>' + escH(phone);
+  if (addr) info += '<br>' + escH(addr);
+  document.getElementById('confirm-info').innerHTML = info;
+
+  document.getElementById('confirm-modal').classList.add('show');
+}
+
+function hideConfirm() {
+  document.getElementById('confirm-modal').classList.remove('show');
+}
+
+function showErr(msg) {
+  var el = document.getElementById('err');
+  el.textContent = msg;
+  el.classList.add('show');
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function confirmSubmit() {
   if (_submitting) return;
+
+  // Honeypot
+  if (document.getElementById('hp-email').value) { hideConfirm(); return; }
+
   var name = document.getElementById('cname').value.trim().slice(0, 100);
   var phone = document.getElementById('cphone').value.trim().slice(0, 20);
   var addr = document.getElementById('caddr').value.trim().slice(0, 300);
   var note = document.getElementById('cnote').value.trim().slice(0, 500);
   var items = cartItems(); var t = total();
   if (!name || !items.length) return;
+
   _submitting = true;
-  var btn = document.getElementById('sbtn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span>Menghantar...';
+  var goBtn = document.getElementById('confirm-go');
+  goBtn.disabled = true;
+  goBtn.innerHTML = '<span class="spin"></span>Menghantar...';
   document.getElementById('err').classList.remove('show');
+
   try {
     var res = await sbFetch('/rest/v1/seller_orders', {
       method: 'POST',
@@ -304,14 +400,18 @@ async function doSubmit() {
       }),
     });
     if (!res.ok) throw new Error('Gagal menghantar. Sila cuba lagi.');
+    _lastSubmitTime = Date.now();
+    _submitCount++;
+    hideConfirm();
     showSuccess(items, t, name);
   } catch (err) {
-    var el = document.getElementById('err');
-    el.textContent = 'Ralat: ' + (err.message || 'Sila cuba lagi.');
-    el.classList.add('show');
-    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    btn.disabled = false; btn.textContent = 'Hantar Pesanan';
+    hideConfirm();
+    showErr('Ralat: ' + (err.message || 'Sila cuba lagi.'));
+    document.getElementById('sbtn').disabled = false;
+    document.getElementById('sbtn').textContent = 'Hantar Pesanan';
   }
+  goBtn.disabled = false;
+  goBtn.textContent = 'Hantar Pesanan';
   _submitting = false;
 }
 

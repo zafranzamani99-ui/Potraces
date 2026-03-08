@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -183,15 +183,15 @@ const AccountOverview: React.FC = () => {
     };
   }, [transactions, subscriptions, budgets, debts, wallets, savingsAccounts]);
 
-  const navigateRoot = (screen: string) => {
+  const navigateRoot = useCallback((screen: string) => {
     lightTap();
     navigation.navigate(screen);
-  };
+  }, [navigation]);
 
-  const navigateTab = (screen: string) => {
+  const navigateTab = useCallback((screen: string) => {
     lightTap();
     navigation.navigate('PersonalMain', { screen });
-  };
+  }, [navigation]);
 
   return (
     <ScrollView

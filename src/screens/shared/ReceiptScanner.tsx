@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -69,7 +69,7 @@ const ReceiptScanner: React.FC = () => {
     return status === 'granted';
   };
 
-  const handleTakePhoto = async () => {
+  const handleTakePhoto = useCallback(async () => {
     const granted = await requestPermission('camera');
     if (!granted) {
       Alert.alert('Permission Required', 'Please grant camera permission to scan receipts.');
@@ -86,9 +86,9 @@ const ReceiptScanner: React.FC = () => {
       setImageUri(result.assets[0].uri);
       setReceipt(null);
     }
-  };
+  }, []);
 
-  const handlePickImage = async () => {
+  const handlePickImage = useCallback(async () => {
     const granted = await requestPermission('gallery');
     if (!granted) {
       Alert.alert('Permission Required', 'Please grant photo library permission to scan receipts.');
@@ -105,9 +105,9 @@ const ReceiptScanner: React.FC = () => {
       setImageUri(result.assets[0].uri);
       setReceipt(null);
     }
-  };
+  }, []);
 
-  const handleExtract = async () => {
+  const handleExtract = useCallback(async () => {
     if (!imageUri) return;
 
     if (!canScanReceipt()) {
@@ -129,9 +129,9 @@ const ReceiptScanner: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [imageUri, canScanReceipt, incrementScanCount, showToast]);
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setImageUri(null);
     setReceipt(null);
     setEditVendor('');
@@ -139,27 +139,27 @@ const ReceiptScanner: React.FC = () => {
     setEditTotal('');
     setNewItemName('');
     setNewItemAmount('');
-  };
+  }, []);
 
-  const handleRemoveItem = (index: number) => {
+  const handleRemoveItem = useCallback((index: number) => {
     const updated = editItems.filter((_, i) => i !== index);
     setEditItems(updated);
     const newTotal = updated.reduce((sum, item) => sum + item.amount, 0);
     setEditTotal(newTotal.toFixed(2));
-  };
+  }, [editItems]);
 
-  const handleUpdateItemAmount = (index: number, value: string) => {
+  const handleUpdateItemAmount = useCallback((index: number, value: string) => {
     const updated = editItems.map((item, i) =>
       i === index ? { ...item, amount: parseFloat(value) || 0 } : item
     );
     setEditItems(updated);
-  };
+  }, [editItems]);
 
-  const handleUpdateItemName = (index: number, value: string) => {
+  const handleUpdateItemName = useCallback((index: number, value: string) => {
     setEditItems(editItems.map((item, i) => (i === index ? { ...item, name: value } : item)));
-  };
+  }, [editItems]);
 
-  const handleAddItem = () => {
+  const handleAddItem = useCallback(() => {
     if (!newItemName.trim() || !newItemAmount || parseFloat(newItemAmount) <= 0) {
       showToast('Enter item name and amount', 'error');
       return;
@@ -169,9 +169,9 @@ const ReceiptScanner: React.FC = () => {
     setEditTotal((parseFloat(editTotal) + amount).toFixed(2));
     setNewItemName('');
     setNewItemAmount('');
-  };
+  }, [newItemName, newItemAmount, editItems, editTotal, showToast]);
 
-  const handleAddAsExpense = () => {
+  const handleAddAsExpense = useCallback(() => {
     const total = parseFloat(editTotal);
     if (!total || total <= 0) {
       showToast('Please enter a valid total', 'error');
@@ -196,7 +196,7 @@ const ReceiptScanner: React.FC = () => {
 
     showToast('Expense added from receipt!', 'success');
     navigation.goBack();
-  };
+  }, [editTotal, editVendor, mode, selectedWalletId, imageUri, addTransaction, deductFromWallet, showToast, navigation]);
 
   const handleSplitBill = () => {
     const total = parseFloat(editTotal);

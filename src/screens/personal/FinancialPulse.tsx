@@ -49,16 +49,31 @@ const FinancialPulse: React.FC = () => {
   const currency = useSettingsStore((state) => state.currency);
   const expenseCategories = useCategories('expense');
 
-  // ─── TIME BOUNDARIES ──────────────────────────────────────
-  const now = new Date();
-  const monthStart = startOfMonth(now);
-  const monthEnd = endOfMonth(now);
-  const lastMonthStart = startOfMonth(subMonths(now, 1));
-  const lastMonthEnd = endOfMonth(subMonths(now, 1));
+  // ─── TIME BOUNDARIES (stable across renders) ──────────────
+  const dateBounds = useMemo(() => {
+    const now = new Date();
+    return {
+      now,
+      monthStart: startOfMonth(now),
+      monthEnd: endOfMonth(now),
+      lastMonthStart: startOfMonth(subMonths(now, 1)),
+      lastMonthEnd: endOfMonth(subMonths(now, 1)),
+      dayOfMonth: now.getDate(),
+      daysInCurrentMonth: getDaysInMonth(now),
+      daysInLastMonth: getDaysInMonth(subMonths(now, 1)),
+    };
+  }, []);
 
-  const dayOfMonth = now.getDate();
-  const daysInCurrentMonth = getDaysInMonth(now);
-  const daysInLastMonth = getDaysInMonth(subMonths(now, 1));
+  const {
+    now,
+    monthStart,
+    monthEnd,
+    lastMonthStart,
+    lastMonthEnd,
+    dayOfMonth,
+    daysInCurrentMonth,
+    daysInLastMonth,
+  } = dateBounds;
 
   // ─── FILTERED TRANSACTIONS ────────────────────────────────
   const thisMonth = useMemo(
@@ -66,7 +81,7 @@ const FinancialPulse: React.FC = () => {
       transactions.filter((t) =>
         isWithinInterval(t.date, { start: monthStart, end: monthEnd })
       ),
-    [transactions, monthStart, monthEnd]
+    [transactions, monthStart, monthEnd] // monthStart/monthEnd are stable from dateBounds memo
   );
 
   const lastMonth = useMemo(
@@ -74,7 +89,7 @@ const FinancialPulse: React.FC = () => {
       transactions.filter((t) =>
         isWithinInterval(t.date, { start: lastMonthStart, end: lastMonthEnd })
       ),
-    [transactions, lastMonthStart, lastMonthEnd]
+    [transactions, lastMonthStart, lastMonthEnd] // stable from dateBounds memo
   );
 
   // ─── MONTHLY TOTALS ──────────────────────────────────────
@@ -234,7 +249,7 @@ const FinancialPulse: React.FC = () => {
     }
 
     return { currentStreak, bestStreak, noSpendDays, daysElapsed };
-  }, [thisMonth, dayOfMonth, now]);
+  }, [thisMonth, dayOfMonth, now]); // now is stable from dateBounds memo
 
   // ─── 6. WEEKLY PATTERN ────────────────────────────────────
   const weeklyPattern = useMemo(() => {
@@ -288,7 +303,7 @@ const FinancialPulse: React.FC = () => {
 
     const total = upcoming.reduce((sum, sub) => sum + sub.amount, 0);
     return { list: upcoming, total };
-  }, [subscriptions, now]);
+  }, [subscriptions, now]); // now is stable from dateBounds memo
 
   // ─── EMPTY STATE ──────────────────────────────────────────
   if (transactions.length === 0) {

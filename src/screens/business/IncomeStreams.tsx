@@ -96,7 +96,7 @@ const IncomeStreamsScreen: React.FC = () => {
         <Text style={styles.addButtonText}>add stream</Text>
       </TouchableOpacity>
 
-      <Modal visible={showAdd} transparent animationType="fade">
+      <Modal visible={showAdd} transparent statusBarTranslucent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>new income stream</Text>

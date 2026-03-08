@@ -33,6 +33,7 @@ import { SellerOrderItem, SellerProduct, SellerOrder } from '../../types';
 import { parseWhatsAppOrder } from '../../utils/parseWhatsAppOrder';
 import { parseWhatsAppOrderAI } from '../../services/aiService';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTap, selectionChanged, successNotification, mediumTap } from '../../services/haptics';
 
 // Enable LayoutAnimation on Android
@@ -45,6 +46,7 @@ const WHATSAPP_GREEN = '#25D366'; // WhatsApp brand color — intentional except
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────
 const NewOrder: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const products = useSellerStore((s) => s.products);
   const addOrder = useSellerStore((s) => s.addOrder);
   const orders = useSellerStore((s) => s.orders);
@@ -995,6 +997,7 @@ const NewOrder: React.FC = () => {
       <Modal
         visible={showDatePicker}
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setShowDatePicker(false)}
       >
@@ -1061,6 +1064,7 @@ const NewOrder: React.FC = () => {
       <Modal
         visible={showReviewModal}
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setShowReviewModal(false)}
       >
@@ -1170,6 +1174,7 @@ const NewOrder: React.FC = () => {
       <Modal
         visible={showProductPicker}
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setShowProductPicker(false)}
       >
@@ -1354,6 +1359,7 @@ const NewOrder: React.FC = () => {
         visible={showContactPicker}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => setShowContactPicker(false)}
       >
         <KeyboardAvoidingView
@@ -1361,7 +1367,7 @@ const NewOrder: React.FC = () => {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowContactPicker(false)} />
-          <View style={styles.contactPickerSheet}>
+          <View style={[styles.contactPickerSheet, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
             <View style={styles.contactSheetHandle} />
             <View style={styles.contactSheetHeader}>
               <Text style={styles.contactSheetTitle}>pick contact</Text>
@@ -1392,6 +1398,9 @@ const NewOrder: React.FC = () => {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
+              removeClippedSubviews
+              windowSize={5}
+              maxToRenderPerBatch={8}
               renderItem={({ item: contact }) => {
                 const phone = contact.phoneNumbers?.[0]?.number || '';
                 return (
@@ -1435,6 +1444,7 @@ const NewOrder: React.FC = () => {
       <Modal
         visible={showConfirmModal}
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={handleDone}
       >
@@ -2174,7 +2184,6 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
     borderRadius: RADIUS.lg,
     backgroundColor: CALM.background,
-    ...SHADOWS.sm,
   },
   pickerSearchInput: {
     flex: 1,

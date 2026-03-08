@@ -85,20 +85,32 @@ const SellerDashboard: React.FC = () => {
     [ingredientCosts]
   );
 
-  const totalIncome = currentOrders
-    .filter((o) => o.isPaid)
-    .reduce((s, o) => s + o.totalAmount, 0);
-  const totalCosts = currentCosts.reduce((s, c) => s + c.amount, 0);
-  const kept = totalIncome - totalCosts;
-  const unpaidOrders = currentOrders.filter(
-    (o) => !o.isPaid && o.status !== 'pending' && o.status !== 'confirmed'
-  );
-  const pendingOrders = currentOrders.filter(
-    (o) => o.status === 'pending'
-  );
-  const confirmedOrders = currentOrders.filter(
-    (o) => o.status === 'confirmed'
-  );
+  const { totalIncome, totalCosts, kept, unpaidOrders, pendingOrders, confirmedOrders, unpaidTotal } = useMemo(() => {
+    const _totalIncome = currentOrders
+      .filter((o) => o.isPaid)
+      .reduce((s, o) => s + o.totalAmount, 0);
+    const _totalCosts = currentCosts.reduce((s, c) => s + c.amount, 0);
+    const _kept = _totalIncome - _totalCosts;
+    const _unpaidOrders = currentOrders.filter(
+      (o) => !o.isPaid && o.status !== 'pending' && o.status !== 'confirmed'
+    );
+    const _pendingOrders = currentOrders.filter(
+      (o) => o.status === 'pending'
+    );
+    const _confirmedOrders = currentOrders.filter(
+      (o) => o.status === 'confirmed'
+    );
+    const _unpaidTotal = _unpaidOrders.reduce((s, o) => s + o.totalAmount, 0);
+    return {
+      totalIncome: _totalIncome,
+      totalCosts: _totalCosts,
+      kept: _kept,
+      unpaidOrders: _unpaidOrders,
+      pendingOrders: _pendingOrders,
+      confirmedOrders: _confirmedOrders,
+      unpaidTotal: _unpaidTotal,
+    };
+  }, [currentOrders, currentCosts]);
 
   // Production list — aggregated items across pending/confirmed/ready orders
   const productionList = useMemo(() => {
@@ -228,16 +240,22 @@ const SellerDashboard: React.FC = () => {
     mediumTap();
     setCheckedItems((prev) => ({ ...prev, [itemName]: !prev[itemName] }));
   }, []);
-  const checkedCount = productionList.filter((item) => checkedItems[item.name]).length;
+  const checkedCount = useMemo(() => productionList.filter((item) => checkedItems[item.name]).length, [productionList, checkedItems]);
 
   // ── Previous month costs ────────────────────────────────
   const previousCosts = useMemo(
     () => ingredientCosts.filter((c) => inRange(c.date, prevStart, prevEnd)),
     [ingredientCosts]
   );
-  const prevIncome = previousOrders.filter((o) => o.isPaid).reduce((s, o) => s + o.totalAmount, 0);
-  const prevTotalCosts = previousCosts.reduce((s, c) => s + c.amount, 0);
-  const prevKept = prevIncome - prevTotalCosts;
+  const { prevIncome, prevTotalCosts, prevKept } = useMemo(() => {
+    const _prevIncome = previousOrders.filter((o) => o.isPaid).reduce((s, o) => s + o.totalAmount, 0);
+    const _prevTotalCosts = previousCosts.reduce((s, c) => s + c.amount, 0);
+    return {
+      prevIncome: _prevIncome,
+      prevTotalCosts: _prevTotalCosts,
+      prevKept: _prevIncome - _prevTotalCosts,
+    };
+  }, [previousOrders, previousCosts]);
 
   // ── Month-over-month delta ──────────────────────────────
   const momDelta = useMemo(() => {
@@ -247,14 +265,15 @@ const SellerDashboard: React.FC = () => {
   }, [kept, prevKept, previousOrders.length]);
 
   // ── Profit margin ───────────────────────────────────────
-  const keptRate = totalIncome > 0 ? (kept / totalIncome) * 100 : null;
-
-  // ── Collection rate ─────────────────────────────────────
-  const totalOrderValue = currentOrders.reduce((s, o) => s + o.totalAmount, 0);
-  const collectionRate = totalOrderValue > 0 ? (totalIncome / totalOrderValue) * 100 : 0;
+  const { keptRate, totalOrderValue, collectionRate } = useMemo(() => {
+    const _keptRate = totalIncome > 0 ? (kept / totalIncome) * 100 : null;
+    const _totalOrderValue = currentOrders.reduce((s, o) => s + o.totalAmount, 0);
+    const _collectionRate = _totalOrderValue > 0 ? (totalIncome / _totalOrderValue) * 100 : 0;
+    return { keptRate: _keptRate, totalOrderValue: _totalOrderValue, collectionRate: _collectionRate };
+  }, [totalIncome, kept, currentOrders]);
 
   // ── 7-day activity sparkline ────────────────────────────
-  const weeklyActivity = useMemo(() => {
+  const { weeklyActivity, sparklineMax } = useMemo(() => {
     const days: { date: Date; count: number; label: string }[] = [];
     for (let i = 6; i >= 0; i--) {
       const d = startOfDay(subDays(now, i));
@@ -264,9 +283,8 @@ const SellerDashboard: React.FC = () => {
       }).length;
       days.push({ date: d, count, label: format(d, 'EEE').slice(0, 3) });
     }
-    return days;
+    return { weeklyActivity: days, sparklineMax: Math.max(...days.map((d) => d.count), 1) };
   }, [orders]);
-  const sparklineMax = Math.max(...weeklyActivity.map((d) => d.count), 1);
 
   // ── Unseen online order count ───────────────────────────
   const seenOnlineOrderIds = useSellerStore((s) => s.seenOnlineOrderIds);
@@ -339,7 +357,7 @@ const SellerDashboard: React.FC = () => {
   const ORDER_PAGE_BASE = 'https://potraces.vercel.app';
   const shopLinkUrl = shopSlug ? `${ORDER_PAGE_BASE}/?slug=${shopSlug}` : null;
 
-  const handleSaveShopLink = useCallback(async () => {
+  const doSaveShopLink = useCallback(async () => {
     setShopError(null);
     setShopSaving(true);
     const err = await updateSellerProfile(shopModalName, shopModalSlug);
@@ -352,6 +370,21 @@ const SellerDashboard: React.FC = () => {
     setShopDisplayName(shopModalName.trim() || null);
     setShowShopModal(false);
   }, [shopModalName, shopModalSlug]);
+
+  const handleSaveShopLink = useCallback(() => {
+    if (shopSlug) {
+      doSaveShopLink();
+      return;
+    }
+    Alert.alert(
+      'confirm shop link',
+      `your shop url will be:\n\n${ORDER_PAGE_BASE}/?slug=${shopModalSlug}\n\nthis cannot be changed later. are you sure?`,
+      [
+        { text: 'go back', style: 'cancel' },
+        { text: 'confirm', onPress: doSaveShopLink },
+      ],
+    );
+  }, [shopSlug, shopModalSlug, doSaveShopLink]);
 
   const handleOpenMaps = useCallback((address: string) => {
     lightTap();
@@ -414,7 +447,6 @@ const SellerDashboard: React.FC = () => {
     );
   }
 
-  const unpaidTotal = unpaidOrders.reduce((s, o) => s + o.totalAmount, 0);
   return (
     <View style={styles.container}>
       <ModeToggle />
@@ -1047,6 +1079,7 @@ const SellerDashboard: React.FC = () => {
       <Modal
         visible={showShopModal}
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setShowShopModal(false)}
       >
@@ -1087,17 +1120,21 @@ const SellerDashboard: React.FC = () => {
             <View style={styles.shopModalField}>
               <Text style={styles.shopModalFieldLabel}>
                 shop url{' '}
-                <Text style={styles.shopModalFieldHint}>(lowercase, numbers, -)</Text>
+                {!shopSlug && <Text style={styles.shopModalFieldHint}>(lowercase, numbers, -)</Text>}
               </Text>
               <TextInput
-                style={styles.shopModalInput}
+                style={[styles.shopModalInput, !!shopSlug && { color: CALM.textMuted, backgroundColor: CALM.border }]}
                 value={shopModalSlug}
                 onChangeText={(t) => setShopModalSlug(t.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                 placeholder="e.g. kuih-raya-ton"
                 placeholderTextColor={CALM.textMuted}
                 autoCapitalize="none"
                 autoCorrect={false}
+                editable={!shopSlug}
               />
+              <Text style={[styles.shopModalFieldHint, { marginTop: 4, color: shopSlug ? CALM.textMuted : CALM.bronze }]}>
+                {shopSlug ? 'link cannot be changed' : 'choose carefully — this is permanent'}
+              </Text>
             </View>
 
             {shopModalSlug.length > 0 && shopSlug && (
@@ -1149,6 +1186,7 @@ const SellerDashboard: React.FC = () => {
         <Modal
           visible
           transparent
+          statusBarTranslucent
           animationType="fade"
           onRequestClose={() => setShowItemsModal(false)}
         >
@@ -1273,7 +1311,6 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
     borderLeftWidth: 3,
     borderLeftColor: BIZ.warning,
-    ...SHADOWS.sm,
   },
   urgencyRow: {
     flexDirection: 'row',
@@ -1340,7 +1377,6 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
-    ...SHADOWS.sm,
   },
   unpaidAgingRow: {
     flexDirection: 'row',
@@ -1634,7 +1670,6 @@ const styles = StyleSheet.create({
     borderColor: CALM.border,
     borderRadius: RADIUS.lg,
     minHeight: 44,
-    ...SHADOWS.sm,
   },
   actionCardUnpaid: {
     borderLeftWidth: 3,
@@ -1741,7 +1776,6 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.md,
     paddingBottom: SPACING.md,
     marginBottom: SPACING.xl,
-    ...SHADOWS.sm,
   },
   revenueRow: {
     flexDirection: 'row',
@@ -2331,7 +2365,6 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     overflow: 'hidden',
-    ...SHADOWS.sm,
   },
   itemStatsHeader: {
     flexDirection: 'row',

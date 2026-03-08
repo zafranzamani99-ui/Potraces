@@ -635,6 +635,7 @@ const POS: React.FC = () => {
         visible={paymentModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => {
           setPaymentModalVisible(false);
           setSelectedCustomerId(null);

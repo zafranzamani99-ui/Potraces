@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -194,7 +194,7 @@ const ExpenseEntry: React.FC = () => {
     setIsProcessing(false);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = useCallback(() => {
     if (!amount || parseFloat(amount) <= 0) {
       showToast('Please enter a valid amount', 'error');
       return;
@@ -249,13 +249,13 @@ const ExpenseEntry: React.FC = () => {
 
     successNotification();
     showToast(`${type === 'expense' ? 'Expense' : 'Income'} added.`, 'success');
-  };
+  }, [amount, description, category, type, tags, selectedWalletId, rawInput, inputMethod, confidence, transactions, addTransaction, deductFromWallet, addToWallet, showToast]);
 
-  const handleTypeChange = (newType: 'expense' | 'income') => {
+  const handleTypeChange = useCallback((newType: 'expense' | 'income') => {
     setType(newType);
     const newCategories = newType === 'expense' ? expenseCategories : incomeCategories;
     setCategory(newCategories[0].id);
-  };
+  }, [expenseCategories, incomeCategories]);
 
   return (
     <View style={styles.container}>

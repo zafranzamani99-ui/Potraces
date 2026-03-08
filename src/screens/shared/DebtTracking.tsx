@@ -35,6 +35,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useWalletStore } from '../../store/walletStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   CALM,
   SPACING,
@@ -83,6 +84,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 const DebtTracking: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const route = useRoute<RouteProp<DebtTrackingParams, 'DebtTracking'>>();
   const navigation = useNavigation();
   const { showToast } = useToast();
@@ -444,7 +446,7 @@ const DebtTracking: React.FC = () => {
     setDueDatePickerOpen(false);
   }, []);
 
-  const handleEditDebt = (debt: Debt) => {
+  const handleEditDebt = useCallback((debt: Debt) => {
     setEditingDebtId(debt.id);
     setDebtContacts([debt.contact]);
     setDebtType(debt.type);
@@ -461,9 +463,9 @@ const DebtTracking: React.FC = () => {
       setDebtDueDate('');
     }
     setDebtModalVisible(true);
-  };
+  }, []);
 
-  const handleSaveDebt = () => {
+  const handleSaveDebt = useCallback(() => {
     if (debtContacts.length === 0) {
       showToast('Please select a contact', 'error');
       return;
@@ -481,7 +483,6 @@ const DebtTracking: React.FC = () => {
       const existingDebt = debts.find((d) => d.id === editingDebtId);
       const newTotal = parseFloat(debtAmount);
 
-      // Block type change if payments already exist (wallet direction would invert)
       if (existingDebt && debtType !== existingDebt.type && existingDebt.payments.length > 0) {
         showToast('Cannot change debt direction after payments have been recorded.', 'error');
         return;
@@ -538,7 +539,7 @@ const DebtTracking: React.FC = () => {
 
     setDebtModalVisible(false);
     resetDebtForm();
-  };
+  }, [debtContacts, debtAmount, debtDescription, editingDebtId, debts, debtType, debtCategory, debtDueDateObj, mode, updateDebt, addDebt, showToast, resetDebtForm]);
 
   const cleanupDebtPayments = (debt: Debt) => {
     const currentWallets = useWalletStore.getState().wallets;
@@ -560,7 +561,7 @@ const DebtTracking: React.FC = () => {
     });
   };
 
-  const handleDeleteDebt = (id: string) => {
+  const handleDeleteDebt = useCallback((id: string) => {
     Alert.alert('Delete Debt', 'Are you sure you want to delete this debt? Linked transactions and wallet changes will also be reversed.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -570,7 +571,6 @@ const DebtTracking: React.FC = () => {
           const debt = debts.find((d) => d.id === id);
           if (debt) {
             cleanupDebtPayments(debt);
-            // Unmark split participant if this debt was linked to a split
             if (debt.splitId) {
               unmarkSplitParticipantPaid(debt.splitId, debt.contact.id);
             }
@@ -580,10 +580,10 @@ const DebtTracking: React.FC = () => {
         },
       },
     ]);
-  };
+  }, [debts, deleteDebt, showToast, unmarkSplitParticipantPaid]);
 
   // ── Payment Handlers ───────────────────────────────────────
-  const openPaymentModal = (debtId: string, historyOnly = false) => {
+  const openPaymentModal = useCallback((debtId: string, historyOnly = false) => {
     const debt = debts.find((d) => d.id === debtId);
     setPaymentDebtId(debtId);
     setPaymentViewOnly(historyOnly);
@@ -592,9 +592,9 @@ const DebtTracking: React.FC = () => {
     setPaymentWalletId(wallets.find((w) => w.isDefault)?.id || null);
     setPaymentCategory(debt?.type === 'they_owe' ? 'debt_paid' : 'debt_payment');
     setPaymentModalVisible(true);
-  };
+  }, [debts, wallets]);
 
-  const handleRecordPayment = () => {
+  const handleRecordPayment = useCallback(() => {
     if (!paymentDebtId) return;
     if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
       showToast('Please enter a valid amount', 'error');
@@ -619,7 +619,7 @@ const DebtTracking: React.FC = () => {
       return;
     }
     processPayment(debt, amount);
-  };
+  }, [paymentDebtId, paymentAmount, debts, currency, showToast]);
 
   const processPayment = (debt: Debt, amount: number) => {
     // Guard: don't process payment on already-settled debt
@@ -731,7 +731,7 @@ const DebtTracking: React.FC = () => {
     }
   };
 
-  const handleDeletePayment = (debtId: string, paymentId: string) => {
+  const handleDeletePayment = useCallback((debtId: string, paymentId: string) => {
     const debt = debts.find((d) => d.id === debtId);
     const payment = debt?.payments.find((p) => p.id === paymentId);
 
@@ -741,7 +741,6 @@ const DebtTracking: React.FC = () => {
         text: 'Remove',
         style: 'destructive',
         onPress: () => {
-          // Also remove the auto-created transaction (income or expense)
           if (payment?.linkedTransactionId) {
             if (debt?.mode === 'personal') {
               deleteTransaction(payment.linkedTransactionId);
@@ -749,17 +748,13 @@ const DebtTracking: React.FC = () => {
               deleteBusinessTransaction(payment.linkedTransactionId);
             }
           }
-          // Reverse wallet balance change
           if (payment?.walletId && debt) {
             if (debt.type === 'they_owe') {
-              // Original payment was income (added to wallet), so deduct on delete
               deductFromWallet(payment.walletId, payment.amount);
             } else {
-              // Original payment was expense (deducted from wallet), so add back on delete
               addToWallet(payment.walletId, payment.amount);
             }
           }
-          // If debt was settled and has a linked split, unmark the participant
           if (debt && debt.splitId && debt.status === 'settled') {
             const newPaidAmount = debt.payments
               .filter((p) => p.id !== paymentId)
@@ -773,10 +768,8 @@ const DebtTracking: React.FC = () => {
         },
       },
     ]);
-  };
+  }, [debts, deleteTransaction, deleteBusinessTransaction, deductFromWallet, addToWallet, unmarkSplitParticipantPaid, deletePayment, showToast]);
 
-  // ── Payment Detail / Edit Handler ────────────────────────────
-  // Rendered inside the payment modal — no separate modal, no stutter
   const handleOpenPayDetail = (debtId: string, payment: Payment) => {
     setPayDetailDebtId(debtId);
     setPayDetailPayment(payment);
@@ -985,7 +978,7 @@ const DebtTracking: React.FC = () => {
     setSplitContacts(contacts);
   };
 
-  const handleEditSplit = (split: SplitExpense) => {
+  const handleEditSplit = useCallback((split: SplitExpense) => {
     setEditingSplitId(split.id);
     setSplitDescription(split.description);
     setSplitAmount(split.totalAmount.toString());
@@ -1011,9 +1004,9 @@ const DebtTracking: React.FC = () => {
       setSplitDueDate('');
     }
     setSplitModalVisible(true);
-  };
+  }, []);
 
-  const handleSaveSplit = () => {
+  const handleSaveSplit = useCallback(() => {
     if (!splitDescription.trim()) {
       showToast('Please add a description', 'error');
       return;
@@ -1232,7 +1225,7 @@ const DebtTracking: React.FC = () => {
 
     setSplitModalVisible(false);
     resetSplitForm();
-  };
+  }, [splitDescription, splitAmount, splitContacts, splitPaidBy, editingSplitId, splitMethod, customAmounts, splitItems, splitDueDateObj, splitWalletId, mode, currency, addSplit, updateSplit, addDebt, updateDebt, deleteDebt, addTransaction, addBusinessTransaction, deductFromWallet, useCredit, deleteTransaction, deleteBusinessTransaction, addToWallet, resetSplitForm, showToast]);
 
   const cleanupSplitTransaction = (split: SplitExpense) => {
     // Delete linked expense transaction
@@ -1254,7 +1247,7 @@ const DebtTracking: React.FC = () => {
     }
   };
 
-  const handleDeleteSplit = (id: string) => {
+  const handleDeleteSplit = useCallback((id: string) => {
     Alert.alert('Delete Split', 'Are you sure you want to delete this split? Linked debts, transactions, and wallet changes will also be reversed.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -1262,9 +1255,7 @@ const DebtTracking: React.FC = () => {
         style: 'destructive',
         onPress: () => {
           const split = splits.find((s) => s.id === id);
-          // Clean up linked expense + wallet
           if (split) cleanupSplitTransaction(split);
-          // Find and clean up all linked debts
           const linkedDebts = debts.filter((d) => d.splitId === id);
           linkedDebts.forEach((debt) => {
             cleanupDebtPayments(debt);
@@ -1276,7 +1267,7 @@ const DebtTracking: React.FC = () => {
         },
       },
     ]);
-  };
+  }, [splits, debts, deleteDebt, deleteSplit, showToast]);
 
   // ── Selection Mode Handlers ──────────────────────────────────
   const enterSelectionMode = useCallback((type: 'debt' | 'split', firstId: string) => {
@@ -2492,10 +2483,10 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       )}
 
       {/* ── Add/Edit Debt Modal ──────────────────────────────── */}
-      <Modal visible={debtModalVisible} animationType={debtModalAnimation} transparent onRequestClose={() => { setDebtModalVisible(false); resetDebtForm(); }}>
+      <Modal visible={debtModalVisible} animationType={debtModalAnimation} transparent statusBarTranslucent onRequestClose={() => { setDebtModalVisible(false); resetDebtForm(); }}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setDebtModalVisible(false); resetDebtForm(); }} />
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
               <View style={styles.modalHeader}>
                 <View style={styles.modalTitleAccent}>
                   <Text style={styles.modalTitle}>{editingDebtId ? 'Edit Debt' : 'Add Debt'}</Text>
@@ -2659,10 +2650,10 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       </Modal>
 
       {/* ── Add/Edit Split Modal ─────────────────────────────── */}
-      <Modal visible={splitModalVisible} animationType="fade" transparent onRequestClose={() => { setSplitModalVisible(false); resetSplitForm(); }}>
+      <Modal visible={splitModalVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => { setSplitModalVisible(false); resetSplitForm(); }}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setSplitModalVisible(false); resetSplitForm(); }} />
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
               <View style={styles.modalHeader}>
                 <View style={styles.modalTitleAccent}>
                   <Text style={styles.modalTitle}>{editingSplitId ? 'Edit Split' : 'Split Expense'}</Text>
@@ -2935,11 +2926,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         visible={paymentModalVisible}
         animationType={paymentModalAnimation}
         transparent
+        statusBarTranslucent
         onRequestClose={() => setPaymentModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => setPaymentModalVisible(false)} />
-              <View style={styles.modalContent}>
+              <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
                 {(() => {
                   const payDebt = debts.find((d) => d.id === paymentDebtId);
                   if (!payDebt) return null;
@@ -3268,10 +3260,10 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       </Modal>
 
       {/* ── Split Detail Modal (Summary View) ─────────────────── */}
-      <Modal visible={splitDetailVisible} animationType="fade" transparent onRequestClose={() => setSplitDetailVisible(false)}>
+      <Modal visible={splitDetailVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setSplitDetailVisible(false)}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => setSplitDetailVisible(false)} />
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleAccent}>
                 <Text style={styles.modalTitle}>Split Summary</Text>
@@ -3420,12 +3412,13 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         visible={wizardVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={handleWizardBack}
       >
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setWizardVisible(false); resetWizardForm(); }} />
-          <View style={styles.wizardContent}>
+          <View style={[styles.wizardContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
             {/* Step Indicator */}
             <View style={styles.wizardStepRow}>
               {[1, 2, ...(wizardHasTax ? [3] : []), 4, 5, 6].map((step, idx) => {
@@ -4096,7 +4089,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
       {/* ── Scanning Loading Overlay ──────────────────────────── */}
       {scanningReceipt && (
-        <Modal visible transparent animationType="fade">
+        <Modal visible transparent statusBarTranslucent animationType="fade">
           <View style={styles.scanningOverlay}>
             <View style={styles.scanningCard}>
               <ActivityIndicator size="large" color={CALM.accent} />
@@ -4108,7 +4101,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       )}
 
       {/* ── FAB Choice Modal ─────────────────────────────────────────────── */}
-      <Modal visible={fabChoiceVisible} animationType="fade" transparent onRequestClose={() => setFabChoiceVisible(false)}>
+      <Modal visible={fabChoiceVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setFabChoiceVisible(false)}>
         <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setFabChoiceVisible(false)}>
           <Pressable onPress={() => {}} style={styles.choiceCard}>
             <Text style={styles.choiceTitle}>New Entry</Text>
@@ -4131,7 +4124,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       </Modal>
 
       {/* ── Split Choice Modal (animationType="none" — instant dismiss, safe for native pickers) ── */}
-      <Modal visible={splitChoiceVisible} animationType="none" transparent onRequestClose={() => setSplitChoiceVisible(false)}>
+      <Modal visible={splitChoiceVisible} animationType="none" transparent statusBarTranslucent onRequestClose={() => setSplitChoiceVisible(false)}>
         <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setSplitChoiceVisible(false)}>
           <Pressable onPress={() => {}} style={styles.choiceCard}>
             <Text style={styles.choiceTitle}>Split Expense</Text>
@@ -4155,10 +4148,10 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       </Modal>
 
       {/* ── Reminder Modal ──────────────────────────────── */}
-      <Modal visible={reminderModalVisible} animationType="fade" transparent onRequestClose={() => setReminderModalVisible(false)}>
+      <Modal visible={reminderModalVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setReminderModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => setReminderModalVisible(false)} />
-          <View style={[styles.modalContent, { paddingBottom: SPACING['2xl'] }]}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleAccent}>
                 <Text style={styles.modalTitle}>Send Reminder</Text>
@@ -4268,12 +4261,13 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         visible={requestPaymentVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => { setRequestPaymentVisible(false); setRequestPaymentDebt(null); setShowQrPicker(false); }}
       >
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setRequestPaymentVisible(false); setRequestPaymentDebt(null); setShowQrPicker(false); }} />
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleAccent}>
                 <Text style={styles.modalTitle}>Request Payment</Text>
@@ -4409,7 +4403,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       </Modal>
 
       {/* ── Sort Modal ─────────────────────────────────────────── */}
-      <Modal visible={sortModalVisible} animationType="fade" transparent onRequestClose={() => setSortModalVisible(false)}>
+      <Modal visible={sortModalVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setSortModalVisible(false)}>
         <Pressable style={{ flex: 1 }} onPress={() => setSortModalVisible(false)}>
           <View
             style={{

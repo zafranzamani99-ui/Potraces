@@ -14,6 +14,7 @@ import {
   ActionSheetIOS,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useCRMStore } from '../../store/crmStore';
@@ -62,6 +63,7 @@ const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
 
 // ─── COMPONENT ────────────────────────────────────────────────
 const CRM: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const currency = useSettingsStore((state) => state.currency);
   const { products } = useBusinessStore();
@@ -674,13 +676,14 @@ const CRM: React.FC = () => {
         visible={customerModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => {
           setCustomerModalVisible(false);
           resetCustomerForm();
         }}
       >
         <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
                   {editingCustomerId ? 'Edit Customer' : 'Add Customer'}
@@ -810,13 +813,14 @@ const CRM: React.FC = () => {
         visible={detailModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => {
           setDetailModalVisible(false);
           setSelectedCustomer(null);
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.detailModalContent]}>
+          <View style={[styles.modalContent, styles.detailModalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Customer Details</Text>
               <TouchableOpacity
@@ -1138,13 +1142,14 @@ const CRM: React.FC = () => {
         visible={orderModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => {
           setOrderModalVisible(false);
           resetOrderForm();
         }}
       >
         <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
                   {editingOrderId ? 'Edit Order' : 'Add Order'}
@@ -1377,10 +1382,11 @@ const CRM: React.FC = () => {
         visible={paymentModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => setPaymentModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Record Payment</Text>
                 <TouchableOpacity

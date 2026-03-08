@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useSavingsStore } from '../../store/savingsStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -38,13 +39,14 @@ const MAX_ACCOUNTS = 5;
 const FALLBACK_TYPE: CategoryOption = { id: 'other', name: 'Other', icon: 'briefcase', color: '#9CA3B4' };
 
 const SavingsTracker: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { accounts, addAccount, updateAccount, deleteAccount, addSnapshot } =
     useSavingsStore();
   const currency = useSettingsStore((s) => s.currency);
   const investmentTypes = useCategories('investment');
-  const getTypeInfo = (typeId: string): CategoryOption =>
-    investmentTypes.find((t) => t.id === typeId) || FALLBACK_TYPE;
+  const getTypeInfo = useCallback((typeId: string): CategoryOption =>
+    investmentTypes.find((t) => t.id === typeId) || FALLBACK_TYPE, [investmentTypes]);
 
   // Add / Edit modal
   const [modalVisible, setModalVisible] = useState(false);
@@ -78,7 +80,7 @@ const SavingsTracker: React.FC = () => {
   }, [accounts]);
 
   // ── Handlers ──
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setEditingAccount(null);
     setName('');
     setSelectedType('tng_plus');
@@ -86,18 +88,18 @@ const SavingsTracker: React.FC = () => {
     setInitialInvestment('');
     setCurrentValue('');
     setTypeDropdownOpen(false);
-  };
+  }, []);
 
-  const openAdd = () => {
+  const openAdd = useCallback(() => {
     if (accounts.length >= MAX_ACCOUNTS) {
       showToast(`Maximum ${MAX_ACCOUNTS} savings accounts allowed`, 'error');
       return;
     }
     resetForm();
     setModalVisible(true);
-  };
+  }, [accounts.length, resetForm, showToast]);
 
-  const openEdit = (account: SavingsAccount) => {
+  const openEdit = useCallback((account: SavingsAccount) => {
     setEditingAccount(account);
     setName(account.name);
     setSelectedType(account.type);
@@ -106,9 +108,9 @@ const SavingsTracker: React.FC = () => {
     setCurrentValue(account.currentValue.toString());
     setTypeDropdownOpen(false);
     setModalVisible(true);
-  };
+  }, []);
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     if (!name.trim()) {
       showToast('Please enter an account name', 'error');
       return;
@@ -145,9 +147,9 @@ const SavingsTracker: React.FC = () => {
     }
     setModalVisible(false);
     resetForm();
-  };
+  }, [name, selectedType, description, initialInvestment, currentValue, editingAccount, addAccount, updateAccount, resetForm, showToast]);
 
-  const handleDelete = (account: SavingsAccount) => {
+  const handleDelete = useCallback((account: SavingsAccount) => {
     Alert.alert(
       'Delete Account',
       `Remove "${account.name}" from your savings?`,
@@ -163,16 +165,16 @@ const SavingsTracker: React.FC = () => {
         },
       ]
     );
-  };
+  }, [deleteAccount, showToast]);
 
-  const openUpdateValue = (account: SavingsAccount) => {
+  const openUpdateValue = useCallback((account: SavingsAccount) => {
     setUpdatingAccount(account);
     setNewValue(account.currentValue.toString());
     setUpdateNote('');
     setUpdateModalVisible(true);
-  };
+  }, []);
 
-  const handleUpdateValue = () => {
+  const handleUpdateValue = useCallback(() => {
     if (!updatingAccount) return;
     const val = parseFloat(newValue);
     if (!val || val < 0) {
@@ -183,12 +185,20 @@ const SavingsTracker: React.FC = () => {
     showToast('Value updated', 'success');
     setUpdateModalVisible(false);
     setUpdatingAccount(null);
-  };
+  }, [updatingAccount, newValue, updateNote, addSnapshot, showToast]);
 
-  const openHistory = (account: SavingsAccount) => {
+  const openHistory = useCallback((account: SavingsAccount) => {
     setHistoryAccount(account);
     setHistoryModalVisible(true);
-  };
+  }, []);
+
+  const enrichedAccounts = useMemo(() =>
+    accounts.map((account) => {
+      const typeInfo = getTypeInfo(account.type);
+      const gain = account.currentValue - account.initialInvestment;
+      const returnPct = account.initialInvestment > 0 ? (gain / account.initialInvestment) * 100 : 0;
+      return { ...account, typeInfo, gain, returnPct };
+    }), [accounts, getTypeInfo]);
 
   return (
     <View style={styles.container}>
@@ -258,14 +268,11 @@ const SavingsTracker: React.FC = () => {
         )}
 
         {/* ── Account Cards ── */}
-        {accounts.length > 0 ? (
-          accounts.map((account) => {
-            const info = getTypeInfo(account.type);
-            const gain = account.currentValue - account.initialInvestment;
-            const returnPct =
-              account.initialInvestment > 0
-                ? (gain / account.initialInvestment) * 100
-                : 0;
+        {enrichedAccounts.length > 0 ? (
+          enrichedAccounts.map((account) => {
+            const info = account.typeInfo;
+            const gain = account.gain;
+            const returnPct = account.returnPct;
             const lastSnapshot =
               account.history.length > 0
                 ? account.history[account.history.length - 1]
@@ -430,7 +437,7 @@ const SavingsTracker: React.FC = () => {
           onPress={openAdd}
           icon="plus"
           size="large"
-          style={styles.fab}
+          style={{ ...styles.fab, bottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }}
         />
       )}
 
@@ -439,6 +446,7 @@ const SavingsTracker: React.FC = () => {
         visible={modalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => {
           setModalVisible(false);
           resetForm();
@@ -463,6 +471,7 @@ const SavingsTracker: React.FC = () => {
               <KeyboardAwareScrollView
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}
               >
                 <Text style={styles.label}>Account Name</Text>
                 <TextInput
@@ -613,6 +622,7 @@ const SavingsTracker: React.FC = () => {
         visible={updateModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => setUpdateModalVisible(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => { setUpdateModalVisible(false); }}>
@@ -641,6 +651,7 @@ const SavingsTracker: React.FC = () => {
               <KeyboardAwareScrollView
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}
               >
                 <Text style={styles.label}>New Value</Text>
                 <TextInput
@@ -722,6 +733,7 @@ const SavingsTracker: React.FC = () => {
         visible={historyModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => setHistoryModalVisible(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => { setHistoryModalVisible(false); }}>
@@ -778,7 +790,7 @@ const SavingsTracker: React.FC = () => {
               </View>
             )}
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
               {historyAccount?.history
                 .slice()
                 .reverse()

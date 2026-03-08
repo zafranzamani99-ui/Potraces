@@ -4,6 +4,8 @@ import {
   TextInput, Animated, Linking, Platform, Alert, Modal, KeyboardAvoidingView,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useNavigation } from '@react-navigation/native';
 import { isToday, isYesterday, format } from 'date-fns';
 import * as Clipboard from 'expo-clipboard';
@@ -47,6 +49,12 @@ const SORT_OPTIONS: { label: string; value: SortOption; icon: keyof typeof Feath
   { label: 'most orders', value: 'orders', icon: 'shopping-bag' },
   { label: 'most spent', value: 'spent', icon: 'dollar-sign' },
   { label: 'highest debt', value: 'debt', icon: 'alert-circle' },
+];
+
+const FILTERS: { key: FilterTab; label: string }[] = [
+  { key: 'all', label: 'all' },
+  { key: 'owes', label: 'outstanding' },
+  { key: 'repeat', label: 'returning' },
 ];
 
 // ─── Stats Summary ────────────────────────────────────────────
@@ -219,9 +227,10 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
   onDeleteCustomer,
   onNewOrder,
 }) => {
-  if (!customer) return null;
+  const insets = useSafeAreaInsets();
 
   const recentOrders = useMemo(() => {
+    if (!customer) return [];
     return [...customer.orders]
       .sort((a, b) => {
         const dateA = a.date instanceof Date ? a.date : new Date(a.date);
@@ -229,7 +238,9 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
         return dateB.getTime() - dateA.getTime();
       })
       .slice(0, 3);
-  }, [customer.orders]);
+  }, [customer?.orders]);
+
+  if (!customer) return null;
 
   const avgOrder = customer.totalOrders > 0
     ? customer.totalSpent / customer.totalOrders
@@ -258,11 +269,12 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
       visible={visible}
       animationType="fade"
       transparent
+      statusBarTranslucent
       onRequestClose={onClose}
     >
       <View style={styles.detailOverlay}>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
-        <View style={styles.detailSheet} onStartShouldSetResponder={() => true}>
+        <View style={[styles.detailSheet, { paddingBottom: Math.max(SPACING['3xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
           <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
             <View style={styles.modalHandle} />
 
@@ -483,6 +495,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
 
 // ─── Main Component ──────────────────────────────────────────
 const SellerCustomers: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { orders, sellerCustomers, addSellerCustomer, updateSellerCustomer, deleteSellerCustomer, deleteOrder, deleteOrders, updateOrder } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
   const { showToast } = useToast();
@@ -849,13 +862,6 @@ const SellerCustomers: React.FC = () => {
     setSearch('');
   }, []);
 
-  // ─── Filter tab definitions ────────────────────────────────
-  const FILTERS: { key: FilterTab; label: string }[] = [
-    { key: 'all', label: 'all' },
-    { key: 'owes', label: 'outstanding' },
-    { key: 'repeat', label: 'returning' },
-  ];
-
   // ─── Empty state helper ───────────────────────────────────
   const openAddCustomerModal = useCallback(() => {
     lightTap();
@@ -1140,6 +1146,7 @@ const SellerCustomers: React.FC = () => {
         initialNumToRender={10}
         maxToRenderPerBatch={10}
         windowSize={5}
+        removeClippedSubviews
       />
       </>
       )}
@@ -1164,6 +1171,7 @@ const SellerCustomers: React.FC = () => {
       <Modal
         visible={showSortMenu}
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setShowSortMenu(false)}
       >
@@ -1208,15 +1216,13 @@ const SellerCustomers: React.FC = () => {
         visible={editModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => {
           setEditModalVisible(false);
           setEditingCustomer(null);
         }}
       >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        <View style={styles.modalOverlay}>
           <TouchableOpacity
             style={{ flex: 1 }}
             activeOpacity={1}
@@ -1229,7 +1235,7 @@ const SellerCustomers: React.FC = () => {
             style={styles.modalContent}
             onStartShouldSetResponder={() => true}
           >
-            <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+            <KeyboardAwareScrollView bounces={false} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Math.max(SPACING['3xl'], insets.bottom + SPACING.lg) }}>
               <View style={styles.modalHandle} />
 
               <View style={styles.modalHeader}>
@@ -1333,9 +1339,9 @@ const SellerCustomers: React.FC = () => {
                 <Feather name="check" size={18} color="#fff" />
                 <Text style={styles.saveButtonText}>save</Text>
               </TouchableOpacity>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* ─── Contact picker modal ─── */}
@@ -1343,11 +1349,12 @@ const SellerCustomers: React.FC = () => {
         visible={showContactPicker}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => setShowContactPicker(false)}
       >
         <KeyboardAvoidingView
           style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="height"
         >
           <TouchableOpacity
             style={{ flex: 1 }}
@@ -1397,6 +1404,9 @@ const SellerCustomers: React.FC = () => {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
+              removeClippedSubviews
+              windowSize={5}
+              maxToRenderPerBatch={8}
               renderItem={({ item: contact }) => {
                 const phone = contact.phoneNumbers?.[0]?.number || '';
                 const alreadyExists = derivedCustomers.some(
@@ -2176,7 +2186,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     paddingHorizontal: SPACING['2xl'],
-    paddingBottom: SPACING['3xl'],
     maxHeight: '80%',
   },
   modalHandle: {

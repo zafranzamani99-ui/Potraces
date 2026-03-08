@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,7 @@ import { useWalletStore } from '../../store/walletStore';
 import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useDebtStore } from '../../store/debtStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 
@@ -42,6 +43,7 @@ const FILTERS: { key: FilterType; label: string }[] = [
 ];
 
 const TransactionsList: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { transactions, updateTransaction, deleteTransaction } = usePersonalStore();
   const currency = useSettingsStore(state => state.currency);
   const wallets = useWalletStore((s) => s.wallets);
@@ -127,9 +129,9 @@ const TransactionsList: React.FC = () => {
     return { income, expenses, net: income - expenses };
   }, [filteredTransactions]);
 
-  const editCategories = editType === 'expense' ? expenseCategories : incomeCategories;
+  const editCategories = useMemo(() => editType === 'expense' ? expenseCategories : incomeCategories, [editType, expenseCategories, incomeCategories]);
 
-  const handleEditTransaction = (transaction: Transaction) => {
+  const handleEditTransaction = useCallback((transaction: Transaction) => {
     setEditingTransaction(transaction);
     setEditAmount(transaction.amount.toString());
     setEditDescription(transaction.description);
@@ -138,9 +140,9 @@ const TransactionsList: React.FC = () => {
     setEditTags(transaction.tags?.join(', ') || '');
     setEditWalletId(transaction.walletId || null);
     setEditModalVisible(true);
-  };
+  }, []);
 
-  const handleUpdateTransaction = () => {
+  const handleUpdateTransaction = useCallback(() => {
     if (!editingTransaction) return;
 
     if (!editAmount || parseFloat(editAmount) <= 0) {
@@ -224,9 +226,9 @@ const TransactionsList: React.FC = () => {
     setEditModalVisible(false);
     setEditingTransaction(null);
     showToast('transaction updated.', 'success');
-  };
+  }, [editingTransaction, editAmount, editDescription, editCategory, editType, editTags, editWalletId, updateTransaction, addToWallet, deductFromWallet, updateIngredientCost, showToast]);
 
-  const handleDeleteTransaction = () => {
+  const handleDeleteTransaction = useCallback(() => {
     if (!editingTransaction) return;
 
     const isTransferLinked = editingTransaction.id.startsWith('transfer-');
@@ -251,6 +253,13 @@ const TransactionsList: React.FC = () => {
       // Also delete the linked debt payment (wallet already reversed above)
       if (linkedDebtId && linkedPaymentId) {
         useDebtStore.getState().deletePayment(linkedDebtId, linkedPaymentId);
+      }
+      // Also delete linked seller ingredient cost if synced
+      const linkedCost = useSellerStore.getState().ingredientCosts.find(
+        (c) => c.personalTransactionId === editingTransaction.id
+      );
+      if (linkedCost) {
+        useSellerStore.getState().deleteIngredientCost(linkedCost.id);
       }
       deleteTransaction(editingTransaction.id);
       setEditModalVisible(false);
@@ -281,13 +290,28 @@ const TransactionsList: React.FC = () => {
         { text: 'Delete', style: 'destructive', onPress: doDelete },
       ]
     );
-  };
+  }, [editingTransaction, addToWallet, deductFromWallet, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, showToast]);
 
   const handleEditTypeChange = (newType: 'expense' | 'income') => {
     setEditType(newType);
     const newCategories = newType === 'expense' ? expenseCategories : incomeCategories;
     setEditCategory(newCategories[0].id);
   };
+
+  const keyExtractor = useCallback((item: Transaction) => item.id, []);
+
+  const renderItem = useCallback(({ item }: { item: Transaction }) => (
+    <TransactionItem
+      transaction={item}
+      onPress={() => handleEditTransaction(item)}
+    />
+  ), [handleEditTransaction]);
+
+  const renderSectionHeader = useCallback(({ section: { title } }: { section: { title: string } }) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionHeaderText}>{title}</Text>
+    </View>
+  ), []);
 
   return (
     <View style={styles.container}>
@@ -404,21 +428,15 @@ const TransactionsList: React.FC = () => {
       {sections.length > 0 ? (
         <SectionList
           sections={sections}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TransactionItem
-              transaction={item}
-              onPress={() => handleEditTransaction(item)}
-            />
-          )}
-          renderSectionHeader={({ section: { title } }) => (
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionHeaderText}>{title}</Text>
-            </View>
-          )}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          renderSectionHeader={renderSectionHeader}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
           stickySectionHeadersEnabled={false}
+          removeClippedSubviews={true}
+          windowSize={5}
+          maxToRenderPerBatch={8}
         />
       ) : (
         <View style={styles.emptyContainer}>
@@ -439,6 +457,7 @@ const TransactionsList: React.FC = () => {
         visible={editModalVisible}
         animationType="fade"
         transparent
+        statusBarTranslucent
         onRequestClose={() => {
           setEditModalVisible(false);
           setEditingTransaction(null);
@@ -456,7 +475,7 @@ const TransactionsList: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
                 <Text style={styles.editLabel}>Type</Text>
                 <View style={[styles.typeContainer, editingTransaction?.linkedDebtId ? { opacity: 0.6 } : undefined]}>
                   <TouchableOpacity

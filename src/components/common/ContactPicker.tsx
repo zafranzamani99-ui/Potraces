@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import {
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { Contact } from '../../types';
 import Button from './Button';
@@ -38,6 +39,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
   includeSelf = false,
   selfName = 'Me',
 }) => {
+  const insets = useSafeAreaInsets();
   const [phoneModalVisible, setPhoneModalVisible] = useState(false);
   const [manualModalVisible, setManualModalVisible] = useState(false);
   const [phoneContacts, setPhoneContacts] = useState<Contact[]>([]);
@@ -46,7 +48,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
   const [manualPhone, setManualPhone] = useState('');
   const phoneInputRef = useRef<TextInput>(null);
 
-  const loadPhoneContacts = async () => {
+  const loadPhoneContacts = useCallback(async () => {
     const { status } = await Contacts.requestPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(
@@ -73,9 +75,9 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
 
     setPhoneContacts(mapped);
     setPhoneModalVisible(true);
-  };
+  }, []);
 
-  const handleSelectPhoneContact = (contact: Contact) => {
+  const handleSelectPhoneContact = useCallback((contact: Contact) => {
     if (mode === 'single') {
       onSelect([contact]);
       setPhoneModalVisible(false);
@@ -87,9 +89,9 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
         onSelect([...selectedContacts, contact]);
       }
     }
-  };
+  }, [mode, onSelect, selectedContacts]);
 
-  const handleAddManual = () => {
+  const handleAddManual = useCallback(() => {
     if (!manualName.trim()) {
       Alert.alert('Error', 'Please enter a name');
       return;
@@ -111,15 +113,41 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
     setManualName('');
     setManualPhone('');
     setManualModalVisible(false);
-  };
+  }, [manualName, manualPhone, mode, onSelect, selectedContacts]);
 
-  const handleRemove = (contactId: string) => {
+  const handleRemove = useCallback((contactId: string) => {
     onSelect(selectedContacts.filter((c) => c.id !== contactId));
-  };
+  }, [onSelect, selectedContacts]);
 
-  const filteredPhoneContacts = phoneContacts.filter((c) =>
+  const filteredPhoneContacts = useMemo(() => phoneContacts.filter((c) =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ), [phoneContacts, searchQuery]);
+
+  const renderPhoneContact = useCallback(({ item }: { item: Contact }) => {
+    const isSelected = selectedContacts.some((c) => c.id === item.id);
+    return (
+      <TouchableOpacity
+        style={[styles.contactRow, isSelected && styles.contactRowSelected]}
+        onPress={() => handleSelectPhoneContact(item)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.contactAvatar}>
+          <Text style={styles.contactAvatarText}>
+            {item.name.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.contactInfo}>
+          <Text style={styles.contactName}>{item.name}</Text>
+          {item.phone && (
+            <Text style={styles.contactPhone}>{item.phone}</Text>
+          )}
+        </View>
+        {isSelected && (
+          <Feather name="check-circle" size={20} color={CALM.positive} />
+        )}
+      </TouchableOpacity>
+    );
+  }, [selectedContacts, handleSelectPhoneContact]);
 
   return (
     <View style={styles.container}>
@@ -176,13 +204,13 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
       </View>
 
       {/* Phone Contacts Modal */}
-      <Modal visible={phoneModalVisible} animationType="fade" transparent onRequestClose={() => setPhoneModalVisible(false)}>
+      <Modal visible={phoneModalVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setPhoneModalVisible(false)}>
         <KeyboardAvoidingView
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <Pressable style={{ flex: 1 }} onPress={() => setPhoneModalVisible(false)} />
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(24, insets.bottom + SPACING.lg) }]}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Select Contact</Text>
                 <TouchableOpacity onPress={() => { setPhoneModalVisible(false); setSearchQuery(''); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -206,31 +234,10 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                 keyExtractor={(item) => item.id}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
-                renderItem={({ item }) => {
-                  const isSelected = selectedContacts.some((c) => c.id === item.id);
-                  return (
-                    <TouchableOpacity
-                      style={[styles.contactRow, isSelected && styles.contactRowSelected]}
-                      onPress={() => handleSelectPhoneContact(item)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.contactAvatar}>
-                        <Text style={styles.contactAvatarText}>
-                          {item.name.charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                      <View style={styles.contactInfo}>
-                        <Text style={styles.contactName}>{item.name}</Text>
-                        {item.phone && (
-                          <Text style={styles.contactPhone}>{item.phone}</Text>
-                        )}
-                      </View>
-                      {isSelected && (
-                        <Feather name="check-circle" size={20} color={CALM.positive} />
-                      )}
-                    </TouchableOpacity>
-                  );
-                }}
+                removeClippedSubviews
+                windowSize={5}
+                maxToRenderPerBatch={8}
+                renderItem={renderPhoneContact}
                 ListEmptyComponent={
                   <View style={styles.emptyContainer}>
                     <Feather name="users" size={32} color={CALM.neutral} />
@@ -253,10 +260,10 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
       </Modal>
 
       {/* Manual Entry Modal */}
-      <Modal visible={manualModalVisible} animationType="fade" transparent onRequestClose={() => setManualModalVisible(false)}>
+      <Modal visible={manualModalVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setManualModalVisible(false)}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
-            <View style={styles.manualModalSheet} onStartShouldSetResponder={() => true}>
+            <View style={[styles.manualModalSheet, { paddingBottom: Math.max(24, insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Add Contact</Text>
                 <TouchableOpacity onPress={() => { setManualModalVisible(false); setManualName(''); setManualPhone(''); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -491,4 +498,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ContactPicker;
+export default React.memo(ContactPicker);

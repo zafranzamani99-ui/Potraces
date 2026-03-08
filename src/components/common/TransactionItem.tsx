@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
@@ -17,11 +17,11 @@ interface TransactionItemProps {
 const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress }) => {
   const currency = useSettingsStore(state => state.currency);
   const wallets = useWalletStore((s) => s.wallets);
-  const wallet = transaction.walletId ? wallets.find((w) => w.id === transaction.walletId) : null;
+  const wallet = useMemo(() => transaction.walletId ? wallets.find((w) => w.id === transaction.walletId) : null, [transaction.walletId, wallets]);
   const expenseCategories = useCategories('expense');
   const incomeCategories = useCategories('income');
   const categories = transaction.type === 'expense' ? expenseCategories : incomeCategories;
-  const category = categories.find((cat) => cat.id === transaction.category);
+  const category = useMemo(() => categories.find((cat) => cat.id === transaction.category), [categories, transaction.category]);
   const isExpense = transaction.type === 'expense';
   const editCount = transaction.editLog?.length ?? 0;
   const lastEdit = editCount > 0 ? transaction.editLog![editCount - 1] : null;

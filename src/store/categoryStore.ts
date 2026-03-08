@@ -12,6 +12,11 @@ import {
 
 type CategoryType = 'expense' | 'income' | 'investment';
 
+// ─── Module-level caches for getter memoization ──────────────
+let _expenseCategoriesCache: { key: string; result: CategoryOption[] } | null = null;
+let _incomeCategoriesCache: { key: string; result: CategoryOption[] } | null = null;
+let _investmentCategoriesCache: { key: string; result: CategoryOption[] } | null = null;
+
 interface CategoryOverride {
   name?: string;
   icon?: string;
@@ -151,68 +156,73 @@ export const useCategoryStore = create<CategoryState>()(
 
       getExpenseCategories: (mode = 'personal') => {
         const state = get();
-        let cats: CategoryOption[];
-        let order: string[];
-        if (mode === 'business') {
-          const defaults = BUSINESS_EXPENSE_CATEGORIES.map((cat) => ({
-            ...cat,
-            ...state.businessExpenseCategoryOverrides[cat.id],
-          }));
-          cats = [...defaults, ...state.customBusinessExpenseCategories];
-          order = state.businessExpenseCategoryOrder;
-        } else {
-          const defaults = EXPENSE_CATEGORIES.map((cat) => ({
-            ...cat,
-            ...state.expenseCategoryOverrides[cat.id],
-          }));
-          cats = [...defaults, ...state.customExpenseCategories];
-          order = state.expenseCategoryOrder;
+        const overrides = mode === 'business' ? state.businessExpenseCategoryOverrides : state.expenseCategoryOverrides;
+        const custom = mode === 'business' ? state.customBusinessExpenseCategories : state.customExpenseCategories;
+        const order = mode === 'business' ? state.businessExpenseCategoryOrder : state.expenseCategoryOrder;
+
+        const cacheKey = mode + '|' + custom.length + '|' + custom.map(c => c.id).join(',') + '|' + order.join(',') + '|' + JSON.stringify(overrides);
+        if (_expenseCategoriesCache && _expenseCategoriesCache.key === cacheKey) {
+          return _expenseCategoriesCache.result;
         }
+
+        const defaults = (mode === 'business' ? BUSINESS_EXPENSE_CATEGORIES : EXPENSE_CATEGORIES).map((cat) => ({
+          ...cat,
+          ...overrides[cat.id],
+        }));
+        const cats = [...defaults, ...custom];
         if (order.length > 0) {
           const orderMap = new Map(order.map((id, i) => [id, i]));
           cats.sort((a, b) => (orderMap.get(a.id) ?? 999) - (orderMap.get(b.id) ?? 999));
         }
+        _expenseCategoriesCache = { key: cacheKey, result: cats };
         return cats;
       },
 
       getIncomeCategories: (mode = 'personal') => {
         const state = get();
-        let cats: CategoryOption[];
-        let order: string[];
-        if (mode === 'business') {
-          const defaults = BUSINESS_INCOME_CATEGORIES.map((cat) => ({
-            ...cat,
-            ...state.businessIncomeCategoryOverrides[cat.id],
-          }));
-          cats = [...defaults, ...state.customBusinessIncomeCategories];
-          order = state.businessIncomeCategoryOrder;
-        } else {
-          const defaults = INCOME_CATEGORIES.map((cat) => ({
-            ...cat,
-            ...state.incomeCategoryOverrides[cat.id],
-          }));
-          cats = [...defaults, ...state.customIncomeCategories];
-          order = state.incomeCategoryOrder;
+        const overrides = mode === 'business' ? state.businessIncomeCategoryOverrides : state.incomeCategoryOverrides;
+        const custom = mode === 'business' ? state.customBusinessIncomeCategories : state.customIncomeCategories;
+        const order = mode === 'business' ? state.businessIncomeCategoryOrder : state.incomeCategoryOrder;
+
+        const cacheKey = mode + '|' + custom.length + '|' + custom.map(c => c.id).join(',') + '|' + order.join(',') + '|' + JSON.stringify(overrides);
+        if (_incomeCategoriesCache && _incomeCategoriesCache.key === cacheKey) {
+          return _incomeCategoriesCache.result;
         }
+
+        const defaults = (mode === 'business' ? BUSINESS_INCOME_CATEGORIES : INCOME_CATEGORIES).map((cat) => ({
+          ...cat,
+          ...overrides[cat.id],
+        }));
+        const cats = [...defaults, ...custom];
         if (order.length > 0) {
           const orderMap = new Map(order.map((id, i) => [id, i]));
           cats.sort((a, b) => (orderMap.get(a.id) ?? 999) - (orderMap.get(b.id) ?? 999));
         }
+        _incomeCategoriesCache = { key: cacheKey, result: cats };
         return cats;
       },
 
       getInvestmentCategories: () => {
         const state = get();
+        const overrides = state.investmentCategoryOverrides;
+        const custom = state.customInvestmentCategories;
+        const order = state.investmentCategoryOrder;
+
+        const cacheKey = custom.length + '|' + custom.map(c => c.id).join(',') + '|' + order.join(',') + '|' + JSON.stringify(overrides);
+        if (_investmentCategoriesCache && _investmentCategoriesCache.key === cacheKey) {
+          return _investmentCategoriesCache.result;
+        }
+
         const defaults = INVESTMENT_CATEGORIES.map((cat) => ({
           ...cat,
-          ...state.investmentCategoryOverrides[cat.id],
+          ...overrides[cat.id],
         }));
-        const cats = [...defaults, ...state.customInvestmentCategories];
-        const order = state.investmentCategoryOrder;
+        const cats = [...defaults, ...custom];
         if (order.length > 0) {
           const orderMap = new Map(order.map((id, i) => [id, i]));
           cats.sort((a, b) => (orderMap.get(a.id) ?? 999) - (orderMap.get(b.id) ?? 999));
         }
+        _investmentCategoriesCache = { key: cacheKey, result: cats };
         return cats;
       },
     }),

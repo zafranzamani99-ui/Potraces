@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -34,7 +34,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
   const navigation = useNavigation<any>();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dropdownAnimation, setDropdownAnimation] = useState<'fade' | 'none'>('fade');
-  const selectedCategory = categories.find((c) => c.id === selectedId);
+  const selectedCategory = useMemo(() => categories.find((c) => c.id === selectedId), [categories, selectedId]);
 
   const settingsHint = (
     <TouchableOpacity
@@ -48,6 +48,57 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
       <Feather name="arrow-right" size={12} color={CALM.accent} />
     </TouchableOpacity>
   );
+
+  const renderDropdownItem = useCallback(({ item }: { item: CategoryOption }) => {
+    const isSelected = item.id === selectedId;
+    return (
+      <TouchableOpacity
+        style={[
+          styles.dropdownItem,
+          isSelected && {
+            backgroundColor: withAlpha(item.color, 0.1),
+          },
+        ]}
+        onPress={() => {
+          lightTap();
+          onSelect(item.id);
+          setDropdownOpen(false);
+        }}
+        activeOpacity={0.7}
+      >
+        <View
+          style={[
+            styles.dropdownItemIcon,
+            {
+              backgroundColor: isSelected
+                ? item.color
+                : withAlpha(item.color, 0.15),
+            },
+          ]}
+        >
+          <Feather
+            name={item.icon as keyof typeof Feather.glyphMap}
+            size={18}
+            color={isSelected ? '#fff' : item.color}
+          />
+        </View>
+        <Text
+          style={[
+            styles.dropdownItemText,
+            isSelected && {
+              color: item.color,
+              fontWeight: TYPOGRAPHY.weight.bold,
+            },
+          ]}
+        >
+          {item.name}
+        </Text>
+        {isSelected && (
+          <Feather name="check" size={18} color={item.color} />
+        )}
+      </TouchableOpacity>
+    );
+  }, [selectedId, onSelect]);
 
   const renderCategoryButton = (category: CategoryOption) => (
     <TouchableOpacity
@@ -124,6 +175,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
         <Modal
           visible={dropdownOpen}
           transparent
+          statusBarTranslucent
           animationType={dropdownAnimation}
           onRequestClose={() => setDropdownOpen(false)}
         >
@@ -145,56 +197,10 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
                 data={categories}
                 keyExtractor={(item) => item.id}
                 showsVerticalScrollIndicator={false}
-                renderItem={({ item }) => {
-                  const isSelected = item.id === selectedId;
-                  return (
-                    <TouchableOpacity
-                      style={[
-                        styles.dropdownItem,
-                        isSelected && {
-                          backgroundColor: withAlpha(item.color, 0.1),
-                        },
-                      ]}
-                      onPress={() => {
-                        lightTap();
-                        onSelect(item.id);
-                        setDropdownOpen(false);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <View
-                        style={[
-                          styles.dropdownItemIcon,
-                          {
-                            backgroundColor: isSelected
-                              ? item.color
-                              : withAlpha(item.color, 0.15),
-                          },
-                        ]}
-                      >
-                        <Feather
-                          name={item.icon as keyof typeof Feather.glyphMap}
-                          size={18}
-                          color={isSelected ? '#fff' : item.color}
-                        />
-                      </View>
-                      <Text
-                        style={[
-                          styles.dropdownItemText,
-                          isSelected && {
-                            color: item.color,
-                            fontWeight: TYPOGRAPHY.weight.bold,
-                          },
-                        ]}
-                      >
-                        {item.name}
-                      </Text>
-                      {isSelected && (
-                        <Feather name="check" size={18} color={item.color} />
-                      )}
-                    </TouchableOpacity>
-                  );
-                }}
+                removeClippedSubviews
+                windowSize={5}
+                maxToRenderPerBatch={8}
+                renderItem={renderDropdownItem}
                 ListFooterComponent={
                   <TouchableOpacity
                     style={styles.dropdownFooter}
@@ -393,4 +399,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default CategoryPicker;
+export default React.memo(CategoryPicker);

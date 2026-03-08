@@ -22,9 +22,10 @@ import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha, BIZ } from '../../constants';
 import { SellerOrder, SellerOrderItem, OrderStatus, SellerPaymentMethod, SellerProduct } from '../../types';
 import CalendarPicker from '../../components/common/CalendarPicker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ─── STATUS HELPERS ──────────────────────────────────────────
 function statusColor(status: OrderStatus): string {
@@ -612,6 +613,7 @@ const GroupedCustomerCard: React.FC<{
 
 // ─── MAIN COMPONENT ─────────────────────────────────────────
 const OrderList: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const orders = useSellerStore((s) => s.orders);
   const products = useSellerStore((s) => s.products);
   const updateOrderStatus = useSellerStore((s) => s.updateOrderStatus);
@@ -926,9 +928,9 @@ const OrderList: React.FC = () => {
   }, [deliveryFilter, paymentFilter, onlineOnly, overdueOnly]);
 
   // Whether the modal has advanced filters beyond what chips show
-  const modalHasAdvancedFilters = sortBy !== 'newest' || periodFilter !== 'all' || paymentMethodFilter !== 'all'
-    || (deliveryFilter !== 'all' && deliveryFilter !== 'pending') // confirmed/ready/delivered/completed set via modal
-    || (paymentFilter === 'paid'); // paid is only in modal
+  const modalHasAdvancedFilters = useMemo(() => sortBy !== 'newest' || periodFilter !== 'all' || paymentMethodFilter !== 'all'
+    || (deliveryFilter !== 'all' && deliveryFilter !== 'pending')
+    || (paymentFilter === 'paid'), [sortBy, periodFilter, paymentMethodFilter, deliveryFilter, paymentFilter]);
 
   // Overdue count for badge
   const overdueCount = useMemo(() => {
@@ -940,7 +942,7 @@ const OrderList: React.FC = () => {
   }, [orders]);
 
   // Whether any filters are active
-  const hasActiveFilters = deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly || onlineOnly || searchInput.trim().length > 0 || paymentMethodFilter !== 'all';
+  const hasActiveFilters = useMemo(() => deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly || onlineOnly || searchInput.trim().length > 0 || paymentMethodFilter !== 'all', [deliveryFilter, paymentFilter, periodFilter, overdueOnly, onlineOnly, searchInput, paymentMethodFilter]);
 
   // Unpaid orders for select-all
   const unpaidFilteredIds = useMemo(
@@ -1718,6 +1720,7 @@ const OrderList: React.FC = () => {
       {showSortMenu && <Modal
         visible
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setShowSortMenu(false)}
       >
@@ -1877,6 +1880,7 @@ const OrderList: React.FC = () => {
       {(!!pendingPayOrder || bulkPayIds.length > 0) && <Modal
         visible
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => { setPendingPayOrder(null); setBulkPayIds([]); setSelectedPaymentMethod(null); setPaymentNote(''); }}
       >
@@ -1966,6 +1970,7 @@ const OrderList: React.FC = () => {
       {!!selectedOrder && <Modal
         visible
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={handleCloseModal}
       >
@@ -2028,7 +2033,7 @@ const OrderList: React.FC = () => {
                 </View>
               </>
             )}
-            <ScrollView bounces={false} showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+            <ScrollView bounces={false} showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: Math.max(SPACING['3xl'], insets.bottom + SPACING.lg) }}>
               {selectedOrder && (
                 <>
                   {/* ── Section: Contact ── */}
@@ -2782,6 +2787,7 @@ const OrderList: React.FC = () => {
       {!!navAddress && <Modal
         visible
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setNavAddress(null)}
       >
@@ -3074,7 +3080,6 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md - 2,
     paddingHorizontal: SPACING.md,
     gap: 3,
-    ...SHADOWS.xs,
   },
   orderCardSelected: {
     borderColor: withAlpha(CALM.bronze, 0.4),
@@ -3784,7 +3789,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     paddingHorizontal: SPACING['2xl'],
-    paddingBottom: SPACING['3xl'],
     maxHeight: '88%',
     flex: 1,
   },
@@ -4320,7 +4324,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CALM.border,
     overflow: 'hidden',
-    ...SHADOWS.xs,
   },
   groupHeader: {
     flexDirection: 'row',

@@ -63,7 +63,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
 
   const isCustom = (id: string) => id.startsWith('custom_');
 
-  const openEdit = (category: CategoryOption) => {
+  const openEdit = useCallback((category: CategoryOption) => {
     lightTap();
     setEditingCategory(category);
     setIsNewCategory(false);
@@ -71,9 +71,9 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
     setEditIcon(category.icon);
     setEditColor(category.color);
     setEditModalVisible(true);
-  };
+  }, []);
 
-  const openNew = () => {
+  const openNew = useCallback(() => {
     lightTap();
     setEditingCategory(null);
     setIsNewCategory(true);
@@ -81,9 +81,9 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
     setEditIcon('tag');
     setEditColor(COLOR_OPTIONS[0]);
     setEditModalVisible(true);
-  };
+  }, []);
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     Keyboard.dismiss();
     const trimmedName = editName.trim();
     if (!trimmedName) {
@@ -100,7 +100,6 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
       showToast('Category added', 'success');
     } else if (editingCategory) {
       if (isCustom(editingCategory.id)) {
-        // For custom categories, delete old and add updated
         deleteCustomCategory(type, editingCategory.id, mode);
         addCustomCategory(type, {
           name: trimmedName,
@@ -108,7 +107,6 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
           color: editColor,
         }, mode);
       } else {
-        // For default categories, save as override
         updateCategoryOverride(type, editingCategory.id, {
           name: trimmedName,
           icon: editIcon,
@@ -118,9 +116,9 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
     }
 
     setEditModalVisible(false);
-  };
+  }, [editName, isNewCategory, editIcon, editColor, editingCategory, type, mode, addCustomCategory, deleteCustomCategory, updateCategoryOverride, showToast]);
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     if (!editingCategory || !isCustom(editingCategory.id)) return;
 
     Alert.alert('Delete Category', `Delete "${editingCategory.name}"?`, [
@@ -135,7 +133,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
         },
       },
     ]);
-  };
+  }, [editingCategory, type, mode, deleteCustomCategory, showToast]);
 
   const handleDragEnd = useCallback(({ data }: { data: CategoryOption[] }) => {
     lightTap();
@@ -181,6 +179,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
     <Modal
       visible={visible}
       transparent
+      statusBarTranslucent
       animationType="fade"
       onRequestClose={onClose}
     >
@@ -224,6 +223,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
       <Modal
         visible={editModalVisible}
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setEditModalVisible(false)}
       >

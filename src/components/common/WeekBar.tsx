@@ -21,11 +21,11 @@ function getISOWeek(date: Date): number {
   return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
 }
 
-export default function WeekBar({ transactions }: WeekBarProps) {
+function WeekBar({ transactions }: WeekBarProps) {
   const currency = useSettingsStore((s) => s.currency);
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
 
-  const weeks: WeekData[] = useMemo(() => {
+  const { weeks, maxTotal } = useMemo(() => {
     const now = new Date();
     const result: WeekData[] = [];
 
@@ -46,10 +46,8 @@ export default function WeekBar({ transactions }: WeekBarProps) {
       result.push({ weekLabel: `W${weekNum}`, total });
     }
 
-    return result;
+    return { weeks: result, maxTotal: Math.max(...result.map((w) => w.total), 1) };
   }, [transactions]);
-
-  const maxTotal = Math.max(...weeks.map((w) => w.total), 1);
   const BAR_MAX_HEIGHT = 80;
 
   return (
@@ -124,3 +122,5 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
+export default React.memo(WeekBar);
