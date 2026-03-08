@@ -1,11 +1,11 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, FlatList, TouchableOpacity,
-  TextInput, Animated, Linking, Platform, Alert, Modal, KeyboardAvoidingView,
+  TextInput, Animated, Linking, Platform, Alert, Modal,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView, KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
 import { useNavigation } from '@react-navigation/native';
 import { isToday, isYesterday, format } from 'date-fns';
 import * as Clipboard from 'expo-clipboard';
@@ -1352,15 +1352,8 @@ const SellerCustomers: React.FC = () => {
         statusBarTranslucent
         onRequestClose={() => setShowContactPicker(false)}
       >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior="height"
-        >
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            activeOpacity={1}
-            onPress={() => setShowContactPicker(false)}
-          />
+        <KAView style={styles.modalOverlay} behavior="padding">
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setShowContactPicker(false)} />
           <View style={styles.contactPickerSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
@@ -1401,6 +1394,7 @@ const SellerCustomers: React.FC = () => {
               }
               keyExtractor={(item, idx) => (item as any).id ?? String(idx)}
               style={styles.contactList}
+              contentContainerStyle={{ paddingBottom: SPACING.xl }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
@@ -1460,7 +1454,7 @@ const SellerCustomers: React.FC = () => {
               }
             />
           </View>
-        </KeyboardAvoidingView>
+        </KAView>
       </Modal>
     </View>
   );
@@ -2276,7 +2270,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '80%',
     paddingHorizontal: SPACING.xl,
-    paddingBottom: SPACING.xl,
     ...SHADOWS.lg,
   },
   contactSearchBar: {

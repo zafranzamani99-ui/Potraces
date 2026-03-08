@@ -32,7 +32,7 @@ import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from
 import { SellerOrderItem, SellerProduct, SellerOrder } from '../../types';
 import { parseWhatsAppOrder } from '../../utils/parseWhatsAppOrder';
 import { parseWhatsAppOrderAI } from '../../services/aiService';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView, KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTap, selectionChanged, successNotification, mediumTap } from '../../services/haptics';
 
@@ -1362,12 +1362,9 @@ const NewOrder: React.FC = () => {
         statusBarTranslucent
         onRequestClose={() => setShowContactPicker(false)}
       >
-        <KeyboardAvoidingView
-          style={styles.contactModalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowContactPicker(false)} />
-          <View style={[styles.contactPickerSheet, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+        <KAView style={styles.contactModalOverlay} behavior="padding">
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setShowContactPicker(false)} />
+          <View style={styles.contactPickerSheet}>
             <View style={styles.contactSheetHandle} />
             <View style={styles.contactSheetHeader}>
               <Text style={styles.contactSheetTitle}>pick contact</Text>
@@ -1395,6 +1392,7 @@ const NewOrder: React.FC = () => {
               data={filteredContacts}
               keyExtractor={(item, idx) => (item as any).id ?? String(idx)}
               style={styles.contactList}
+              contentContainerStyle={{ paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
@@ -1437,7 +1435,7 @@ const NewOrder: React.FC = () => {
               }
             />
           </View>
-        </KeyboardAvoidingView>
+        </KAView>
       </Modal>
 
       {/* ── Confirmation modal ───────────────────────────────── */}
@@ -2057,7 +2055,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     maxHeight: '75%',
-    paddingBottom: SPACING['2xl'],
     ...SHADOWS.lg,
   },
   contactSheetHandle: {

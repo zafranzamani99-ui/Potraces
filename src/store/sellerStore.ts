@@ -441,7 +441,7 @@ export const useSellerStore = create<SellerState>()(
           const newOrder = {
             id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
             supabaseId: row.id as string,
-            orderNumber: (row.order_number as string | null) ?? undefined,
+            orderNumber: (row.order_number as string | null) ?? generateOrderCode(state.orders),
             items: (row.items as any[]) || [],
             customerName: (row.customer_name as string | null) ?? undefined,
             customerPhone: (row.customer_phone as string | null) ?? undefined,

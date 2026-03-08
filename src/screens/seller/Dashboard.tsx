@@ -816,7 +816,7 @@ const SellerDashboard: React.FC = () => {
             <TouchableOpacity
               style={[styles.gettingStartedStep, styles.gettingStartedStepLast]}
               activeOpacity={0.7}
-              onPress={() => navigation.getParent()?.navigate('SellerNewOrder')}
+              onPress={() => navigation.navigate('SellerNewOrder')}
               accessibilityRole="button"
               accessibilityLabel={`Step 3: Create an order. ${hasOrders ? 'Completed.' : 'Not yet completed.'}`}
             >
@@ -861,7 +861,7 @@ const SellerDashboard: React.FC = () => {
                 <TouchableOpacity
                   style={styles.emptyStateCta}
                   activeOpacity={0.7}
-                  onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerNewOrder'); }}
+                  onPress={() => { lightTap(); navigation.navigate('SellerNewOrder'); }}
                   accessibilityRole="button"
                   accessibilityLabel="Create new order"
                 >
@@ -1561,6 +1561,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     marginTop: SPACING.sm,
+    marginBottom: SPACING.md,
   },
   breakEvenCardCovered: {
     backgroundColor: withAlpha(BIZ.profit, 0.08),
