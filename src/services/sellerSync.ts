@@ -19,6 +19,7 @@ async function getSession() {
 export interface SellerProfileData {
   displayName: string | null;
   slug: string | null;
+  shopNotice: string | null;
 }
 
 export async function getSellerProfile(): Promise<SellerProfileData | null> {
@@ -27,18 +28,19 @@ export async function getSellerProfile(): Promise<SellerProfileData | null> {
 
   const { data } = await supabase
     .from('seller_profiles')
-    .select('display_name, slug')
+    .select('display_name, slug, shop_notice')
     .eq('user_id', session.user.id)
     .maybeSingle();
 
-  if (!data) return { displayName: null, slug: null };
-  return { displayName: data.display_name, slug: data.slug };
+  if (!data) return { displayName: null, slug: null, shopNotice: null };
+  return { displayName: data.display_name, slug: data.slug, shopNotice: data.shop_notice };
 }
 
-/** Create or update display_name + slug. Returns error string or null. */
+/** Create or update display_name + slug + shop_notice. Returns error string or null. */
 export async function updateSellerProfile(
   displayName: string,
   slug: string,
+  shopNotice?: string,
 ): Promise<string | null> {
   const session = await getSession();
   if (!session) {
@@ -56,7 +58,11 @@ export async function updateSellerProfile(
 
   const { error } = await supabase
     .from('seller_profiles')
-    .update({ display_name: displayName.trim() || null, slug: cleanSlug })
+    .update({
+      display_name: displayName.trim() || null,
+      slug: cleanSlug,
+      shop_notice: shopNotice?.trim() || null,
+    })
     .eq('user_id', session.user.id);
 
   if (error) {
@@ -128,6 +134,7 @@ export async function pushProducts(products: SellerProduct[]): Promise<void> {
     user_id: session.user.id,
     local_id: p.id,
     name: p.name,
+    description: p.description ?? null,
     price_per_unit: p.pricePerUnit,
     cost_per_unit: p.costPerUnit ?? null,
     unit: p.unit,
@@ -149,37 +156,61 @@ export async function pushOrders(
   orders: SellerOrder[],
   profileId: string,
 ): Promise<void> {
-  // Only push app-originated orders (not order_link orders placed by customers)
-  const appOrders = orders.filter((o) => o.source !== 'order_link');
-  if (appOrders.length === 0) return;
-
   const session = await getSession();
   if (!session) return;
 
-  const rows = appOrders.map((o) => ({
-    user_id: session.user.id,
-    local_id: o.id,
-    order_number: o.orderNumber ?? null,
-    items: o.items,
-    customer_name: o.customerName ?? null,
-    customer_phone: o.customerPhone ?? null,
-    customer_address: o.customerAddress ?? null,
-    total_amount: o.totalAmount,
-    status: o.status,
-    is_paid: o.isPaid,
-    paid_amount: o.paidAmount ?? null,
-    payment_method: o.paymentMethod ?? null,
-    paid_at: toIso(o.paidAt),
-    note: o.note ?? null,
-    delivery_date: toIso(o.deliveryDate),
-    season_local_id: o.seasonId ?? null,
-    source: 'app',
-    seller_id: profileId,
-  }));
+  // Only push app-originated orders (not order_link orders placed by customers)
+  const appOrders = orders.filter((o) => o.source !== 'order_link');
+  const localIds = appOrders.map((o) => o.id);
 
-  await supabase
+  if (appOrders.length > 0) {
+    const rows = appOrders.map((o) => ({
+      user_id: session.user.id,
+      local_id: o.id,
+      order_number: o.orderNumber ?? null,
+      items: o.items,
+      customer_name: o.customerName ?? null,
+      customer_phone: o.customerPhone ?? null,
+      customer_address: o.customerAddress ?? null,
+      total_amount: o.totalAmount,
+      status: o.status,
+      is_paid: o.isPaid,
+      paid_amount: o.paidAmount ?? null,
+      payment_method: o.paymentMethod ?? null,
+      paid_at: toIso(o.paidAt),
+      note: o.note ?? null,
+      delivery_date: toIso(o.deliveryDate),
+      season_local_id: o.seasonId ?? null,
+      source: 'app',
+      seller_id: profileId,
+    }));
+
+    await supabase
+      .from('seller_orders')
+      .upsert(rows, { onConflict: 'user_id,local_id' });
+  }
+
+  // Delete remote app orders that no longer exist locally
+  const { data: remoteOrders } = await supabase
     .from('seller_orders')
-    .upsert(rows, { onConflict: 'user_id,local_id' });
+    .select('local_id')
+    .eq('user_id', session.user.id)
+    .eq('source', 'app');
+
+  if (remoteOrders && remoteOrders.length > 0) {
+    const toDelete = remoteOrders
+      .map((r) => r.local_id as string)
+      .filter((id) => id && !localIds.includes(id));
+
+    if (toDelete.length > 0) {
+      await supabase
+        .from('seller_orders')
+        .delete()
+        .eq('user_id', session.user.id)
+        .eq('source', 'app')
+        .in('local_id', toDelete);
+    }
+  }
 }
 
 export async function pushSeasons(seasons: Season[]): Promise<void> {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -10,8 +10,12 @@ import { ToastProvider } from './src/context/ToastContext';
 import { ensureAnonSession } from './src/services/supabase';
 import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId } from './src/services/sellerSync';
 import { registerPushNotifications } from './src/services/pushNotifications';
+import * as Notifications from 'expo-notifications';
 import { globalShowToast } from './src/context/ToastContext';
 import { useSellerStore } from './src/store/sellerStore';
+import { useAppStore } from './src/store/appStore';
+import { navigationRef } from './src/navigation/navigationRef';
+import QuickAddExpense, { openQuickAdd } from './src/components/common/QuickAddExpense';
 
 export default function App() {
   const [isLoading, setIsLoading] = React.useState(true);
@@ -76,6 +80,38 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
+  // Deep link: potraces://quick-add → open quick expense modal
+  React.useEffect(() => {
+    const handleUrl = ({ url }: { url: string }) => {
+      if (url?.includes('quick-add')) openQuickAdd();
+    };
+    // Handle app opened via deep link
+    Linking.getInitialURL().then((url) => {
+      if (url) handleUrl({ url });
+    });
+    // Handle deep link while app is open
+    const sub = Linking.addEventListener('url', handleUrl);
+    return () => sub.remove();
+  }, []);
+
+  // Push notification tap → navigate to order
+  React.useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as { type?: string; orderId?: string } | undefined;
+      if (data?.type === 'new_order' && data.orderId) {
+        // Switch to business mode and navigate to order
+        useAppStore.getState().setMode('business');
+        // Small delay to let mode switch + navigator mount
+        setTimeout(() => {
+          if (navigationRef.isReady()) {
+            navigationRef.navigate('SellerOrderList' as never, { orderId: data.orderId } as never);
+          }
+        }, 300);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   if (error) {
     return (
       <View style={styles.errorContainer}>
@@ -103,6 +139,7 @@ export default function App() {
               <ToastProvider>
                 <StatusBar style="auto" />
                 <RootNavigator />
+                <QuickAddExpense />
               </ToastProvider>
             </View>
           </TouchableWithoutFeedback>

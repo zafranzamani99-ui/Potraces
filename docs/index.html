@@ -20,6 +20,7 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
 .header{background:var(--olive);padding:24px 20px 28px;text-align:center}
 .hdr-sub{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.6);margin-bottom:6px}
 .hdr-name{font-size:22px;font-weight:700;color:#fff}
+.shop-notice{background:rgba(255,255,255,.12);border-radius:var(--rs);padding:8px 14px;margin:10px 20px 0;font-size:13px;color:rgba(255,255,255,.85);line-height:1.4;text-align:center}
 
 /* Section */
 .sec{padding:20px 16px 8px}
@@ -30,6 +31,7 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
 .prod-card{background:var(--white);border-radius:var(--rs);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .prod-info{flex:1;min-width:0}
 .prod-name{font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prod-desc{font-size:12px;color:var(--text2);margin-top:1px;opacity:.7}
 .prod-price{font-size:13px;color:var(--text2);margin-top:2px}
 
 /* Qty */
@@ -141,6 +143,7 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
       <button id="hist-btn" class="hist-btn" onclick="showHistory()" style="display:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
       <div class="hdr-sub">Tempah di sini</div>
       <div class="hdr-name" id="shop-name">...</div>
+      <div class="shop-notice" id="shop-notice" style="display:none"></div>
     </div>
     <div class="wrap">
       <div class="sec">
@@ -278,6 +281,7 @@ function renderProds() {
     return '<div class="prod-card">' +
       '<div class="prod-info">' +
         '<div class="prod-name">' + escH(p.name) + '</div>' +
+        (p.description ? '<div class="prod-desc">' + escH(p.description) + '</div>' : '') +
         '<div class="prod-price">' + fmt(p.price_per_unit) + ' / ' + escH(p.unit) + '</div>' +
       '</div>' +
       '<div class="qty-ctrl">' +
@@ -313,7 +317,7 @@ function sbFetch(path, opts) {
 }
 
 async function loadShop(slug) {
-  var r1 = await sbFetch('/rest/v1/seller_profiles?select=id,user_id,display_name,currency&slug=eq.' + encodeURIComponent(slug) + '&order=updated_at.desc&limit=1');
+  var r1 = await sbFetch('/rest/v1/seller_profiles?select=id,user_id,display_name,currency,shop_notice&slug=eq.' + encodeURIComponent(slug) + '&order=updated_at.desc&limit=1');
   var profiles = await r1.json();
   if (!profiles || !profiles.length) {
     document.getElementById('loading').innerHTML = '<b>Kedai tidak dijumpai.</b><br><small>Semak semula pautan anda.</small>';
@@ -324,10 +328,15 @@ async function loadShop(slug) {
   CUR = profile.currency || 'RM';
   document.getElementById('shop-name').textContent = profile.display_name || slug;
   document.title = profile.display_name || slug;
+  if (profile.shop_notice) {
+    var noticeEl = document.getElementById('shop-notice');
+    noticeEl.textContent = profile.shop_notice;
+    noticeEl.style.display = 'block';
+  }
 
-  var r2 = await sbFetch('/rest/v1/seller_products?select=id,name,price_per_unit,unit&user_id=eq.' + encodeURIComponent(profile.user_id) + '&is_active=eq.true&order=name');
+  var r2 = await sbFetch('/rest/v1/seller_products?select=id,name,description,price_per_unit,unit&user_id=eq.' + encodeURIComponent(profile.user_id) + '&is_active=eq.true&order=name');
   var prods = await r2.json();
-  PRODS = (prods || []).map(function(p) { return { id: p.id, name: p.name, price_per_unit: parseFloat(p.price_per_unit), unit: p.unit }; });
+  PRODS = (prods || []).map(function(p) { return { id: p.id, name: p.name, description: p.description || '', price_per_unit: parseFloat(p.price_per_unit), unit: p.unit }; });
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').style.display = 'block';

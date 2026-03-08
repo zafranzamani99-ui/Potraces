@@ -13,6 +13,9 @@ import {
   RefreshControl,
   Modal,
   TextInput,
+  Image,
+  StatusBar,
+  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -31,9 +34,10 @@ import { useFadeSlide } from '../../utils/fadeSlide';
 
 // ─── Component ───────────────────────────────────────────────
 const SellerDashboard: React.FC = () => {
-  const { orders, products, ingredientCosts, seasons, sellerCustomers } = useSellerStore();
+  const { orders, products, ingredientCosts, seasons, sellerCustomers, skippedOnboardingSteps, skipOnboardingStep } = useSellerStore();
   const { businessSetupComplete, incomeType } = useBusinessStore();
   const currency = useSettingsStore((s) => s.currency);
+  const paymentQrs = useSettingsStore((s) => s.paymentQrs);
   const navigation = useNavigation<any>();
 
   const now = new Date();
@@ -217,15 +221,22 @@ const SellerDashboard: React.FC = () => {
   const [showShopModal, setShowShopModal] = useState(false);
   const [shopModalSlug, setShopModalSlug] = useState('');
   const [shopModalName, setShopModalName] = useState('');
+  const [shopModalNotice, setShopModalNotice] = useState('');
+  const [shopNotice, setShopNotice] = useState<string | null>(null);
   const [shopSaving, setShopSaving] = useState(false);
   const [shopError, setShopError] = useState<string | null>(null);
   const [shopLinkCopied, setShopLinkCopied] = useState(false);
+
+  // QR modal
+  const [qrModalVisible, setQrModalVisible] = useState(false);
+  const [qrViewIndex, setQrViewIndex] = useState(0);
 
   useEffect(() => {
     getSellerProfile().then((profile) => {
       if (profile) {
         setShopSlug(profile.slug);
         setShopDisplayName(profile.displayName);
+        setShopNotice(profile.shopNotice);
       }
     }).catch(() => {});
   }, []);
@@ -333,8 +344,12 @@ const SellerDashboard: React.FC = () => {
   const hasOrders = orders.length > 0;
   const hasSeasons = seasons.length > 0;
 
-  // First-time user detection — show checklist until all 3 steps done
-  const isFirstTime = !hasProducts || !hasOrders || !hasSeasons;
+  const seasonDone = hasSeasons || skippedOnboardingSteps.includes('season');
+  const productsDone = hasProducts || skippedOnboardingSteps.includes('products');
+  const ordersDone = hasOrders || skippedOnboardingSteps.includes('orders');
+
+  // First-time user detection — show checklist until all 3 steps done or skipped
+  const isFirstTime = !seasonDone || !productsDone || !ordersDone;
 
   // Staggered fade-in animations
   const seasonAnim = useFadeSlide(0);
@@ -360,7 +375,7 @@ const SellerDashboard: React.FC = () => {
   const doSaveShopLink = useCallback(async () => {
     setShopError(null);
     setShopSaving(true);
-    const err = await updateSellerProfile(shopModalName, shopModalSlug);
+    const err = await updateSellerProfile(shopModalName, shopModalSlug, shopModalNotice);
     setShopSaving(false);
     if (err) {
       setShopError(err);
@@ -368,8 +383,9 @@ const SellerDashboard: React.FC = () => {
     }
     setShopSlug(shopModalSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''));
     setShopDisplayName(shopModalName.trim() || null);
+    setShopNotice(shopModalNotice.trim() || null);
     setShowShopModal(false);
-  }, [shopModalName, shopModalSlug]);
+  }, [shopModalName, shopModalSlug, shopModalNotice]);
 
   const handleSaveShopLink = useCallback(() => {
     if (shopSlug) {
@@ -522,12 +538,38 @@ const SellerDashboard: React.FC = () => {
               </View>
             )}
             <TouchableOpacity
+              style={styles.qrButton}
+              activeOpacity={0.7}
+              onPress={() => {
+                lightTap();
+                if (paymentQrs.length > 0) {
+                  setQrViewIndex(0);
+                  setQrModalVisible(true);
+                } else {
+                  Alert.alert(
+                    'No Payment QR',
+                    'Add your payment QR code in Settings so you can show it here.',
+                    [
+                      { text: 'Later', style: 'cancel' },
+                      { text: 'Go to Settings', onPress: () => navigation.navigate('SellerSettings' as any, { scrollTo: 'qr' }) },
+                    ]
+                  );
+                }
+              }}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              accessibilityRole="button"
+              accessibilityLabel="Show payment QR"
+            >
+              <Feather name="maximize" size={20} color={paymentQrs.length > 0 ? CALM.accent : CALM.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity
               style={styles.shopLinkBtn}
               activeOpacity={0.7}
               onPress={() => {
                 lightTap();
                 setShopModalSlug(shopSlug || '');
                 setShopModalName(shopDisplayName || '');
+                setShopModalNotice(shopNotice || '');
                 setShopError(null);
                 setShowShopModal(true);
               }}
@@ -737,118 +779,97 @@ const SellerDashboard: React.FC = () => {
             </Text>
 
             {/* Step 1: Start a season */}
-            <TouchableOpacity
-              style={styles.gettingStartedStep}
-              activeOpacity={0.7}
-              onPress={() => navigation.getParent()?.navigate('PastSeasons')}
-              accessibilityRole="button"
-              accessibilityLabel={`Step 1: Start a season. ${hasSeasons ? 'Completed.' : 'Not yet completed.'}`}
-            >
-              <View style={styles.stepLeft}>
-                <View style={[styles.stepNumber, hasSeasons && styles.stepNumberDone]}>
-                  {hasSeasons ? (
-                    <Feather name="check" size={14} color={CALM.surface} />
-                  ) : (
-                    <Text style={styles.stepNumberText}>1</Text>
-                  )}
+            {!seasonDone && (
+            <View style={styles.gettingStartedStep}>
+              <TouchableOpacity
+                style={styles.stepLeft}
+                activeOpacity={0.7}
+                onPress={() => navigation.getParent()?.navigate('PastSeasons')}
+                accessibilityRole="button"
+                accessibilityLabel="Step 1: Start a season"
+              >
+                <View style={styles.stepNumber}>
+                  <Text style={styles.stepNumberText}>1</Text>
                 </View>
-                <Feather
-                  name="calendar"
-                  size={18}
-                  color={hasSeasons ? CALM.textMuted : CALM.textPrimary}
-                  style={styles.stepIcon}
-                />
+                <Feather name="calendar" size={18} color={CALM.textPrimary} style={styles.stepIcon} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.stepText, hasSeasons && styles.stepTextDone]}>
-                    start a season
-                  </Text>
-                  {!hasSeasons && (
-                    <Text style={styles.stepHint}>e.g. Raya 2025, CNY, or any event</Text>
-                  )}
+                  <Text style={styles.stepText}>start a season</Text>
+                  <Text style={styles.stepHint}>e.g. Raya 2025, CNY, or any event</Text>
                 </View>
-              </View>
-              <Feather
-                name={hasSeasons ? 'check' : 'chevron-right'}
-                size={16}
-                color={hasSeasons ? CALM.accent : CALM.textMuted}
-              />
-            </TouchableOpacity>
+                <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.skipBtn}
+                activeOpacity={0.7}
+                onPress={() => skipOnboardingStep('season')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.skipText}>skip</Text>
+              </TouchableOpacity>
+            </View>
+            )}
 
             {/* Step 2: Add products */}
-            <TouchableOpacity
-              style={styles.gettingStartedStep}
-              activeOpacity={0.7}
-              onPress={() => navigation.getParent()?.navigate('SellerProducts')}
-              accessibilityRole="button"
-              accessibilityLabel={`Step 2: Add products. ${hasProducts ? 'Completed.' : 'Not yet completed.'}`}
-            >
-              <View style={styles.stepLeft}>
-                <View style={[styles.stepNumber, hasProducts && styles.stepNumberDone]}>
-                  {hasProducts ? (
-                    <Feather name="check" size={14} color={CALM.surface} />
-                  ) : (
-                    <Text style={styles.stepNumberText}>2</Text>
-                  )}
+            {!productsDone && (
+            <View style={styles.gettingStartedStep}>
+              <TouchableOpacity
+                style={styles.stepLeft}
+                activeOpacity={0.7}
+                onPress={() => navigation.getParent()?.navigate('SellerProducts')}
+                accessibilityRole="button"
+                accessibilityLabel="Step 2: Add products"
+              >
+                <View style={styles.stepNumber}>
+                  <Text style={styles.stepNumberText}>2</Text>
                 </View>
-                <Feather
-                  name="package"
-                  size={18}
-                  color={hasProducts ? CALM.textMuted : CALM.textPrimary}
-                  style={styles.stepIcon}
-                />
+                <Feather name="package" size={18} color={CALM.textPrimary} style={styles.stepIcon} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.stepText, hasProducts && styles.stepTextDone]}>
-                    add your products
-                  </Text>
-                  {!hasProducts && (
-                    <Text style={styles.stepHint}>name, price, and unit</Text>
-                  )}
+                  <Text style={styles.stepText}>add your products</Text>
+                  <Text style={styles.stepHint}>name, price, and unit</Text>
                 </View>
-              </View>
-              <Feather
-                name={hasProducts ? 'check' : 'chevron-right'}
-                size={16}
-                color={hasProducts ? CALM.accent : CALM.textMuted}
-              />
-            </TouchableOpacity>
+                <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.skipBtn}
+                activeOpacity={0.7}
+                onPress={() => skipOnboardingStep('products')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.skipText}>skip</Text>
+              </TouchableOpacity>
+            </View>
+            )}
 
             {/* Step 3: Take first order */}
-            <TouchableOpacity
-              style={[styles.gettingStartedStep, styles.gettingStartedStepLast]}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('SellerNewOrder')}
-              accessibilityRole="button"
-              accessibilityLabel={`Step 3: Create an order. ${hasOrders ? 'Completed.' : 'Not yet completed.'}`}
-            >
-              <View style={styles.stepLeft}>
-                <View style={[styles.stepNumber, hasOrders && styles.stepNumberDone]}>
-                  {hasOrders ? (
-                    <Feather name="check" size={14} color={CALM.surface} />
-                  ) : (
-                    <Text style={styles.stepNumberText}>3</Text>
-                  )}
+            {!ordersDone && (
+            <View style={[styles.gettingStartedStep, styles.gettingStartedStepLast]}>
+              <TouchableOpacity
+                style={styles.stepLeft}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('SellerNewOrder')}
+                accessibilityRole="button"
+                accessibilityLabel="Step 3: Create an order"
+              >
+                <View style={styles.stepNumber}>
+                  <Text style={styles.stepNumberText}>3</Text>
                 </View>
-                <Feather
-                  name="clipboard"
-                  size={18}
-                  color={hasOrders ? CALM.textMuted : CALM.textPrimary}
-                  style={styles.stepIcon}
-                />
+                <Feather name="clipboard" size={18} color={CALM.textPrimary} style={styles.stepIcon} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.stepText, hasOrders && styles.stepTextDone]}>
-                    record your first order
-                  </Text>
-                  {!hasOrders && (
-                    <Text style={styles.stepHint}>customer name, product, quantity</Text>
-                  )}
+                  <Text style={styles.stepText}>record your first order</Text>
+                  <Text style={styles.stepHint}>customer name, product, quantity</Text>
                 </View>
-              </View>
-              <Feather
-                name={hasOrders ? 'check' : 'chevron-right'}
-                size={16}
-                color={hasOrders ? CALM.accent : CALM.textMuted}
-              />
-            </TouchableOpacity>
+                <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.skipBtn}
+                activeOpacity={0.7}
+                onPress={() => skipOnboardingStep('orders')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.skipText}>skip</Text>
+              </TouchableOpacity>
+            </View>
+            )}
           </Animated.View>
         ) : (
           <>
@@ -1162,6 +1183,22 @@ const SellerDashboard: React.FC = () => {
               </View>
             )}
 
+            <View style={styles.shopModalField}>
+              <Text style={styles.shopModalFieldLabel}>shop notice <Text style={styles.shopModalFieldHint}>(optional)</Text></Text>
+              <TextInput
+                style={[styles.shopModalInput, { minHeight: 60, textAlignVertical: 'top' }]}
+                value={shopModalNotice}
+                onChangeText={setShopModalNotice}
+                placeholder="e.g. COD Ipoh only. Luar kawasan sila WhatsApp kami"
+                placeholderTextColor={CALM.textMuted}
+                multiline
+                maxLength={200}
+              />
+              <Text style={[styles.shopModalFieldHint, { marginTop: 4 }]}>
+                shown on your order page for customers
+              </Text>
+            </View>
+
             {shopError && (
               <Text style={styles.shopModalError}>{shopError}</Text>
             )}
@@ -1241,9 +1278,59 @@ const SellerDashboard: React.FC = () => {
         </Modal>
       )}
 
+      {/* QR Fullscreen Modal */}
+      <Modal
+        visible={qrModalVisible}
+        transparent
+        animationType="none"
+        onRequestClose={() => setQrModalVisible(false)}
+        statusBarTranslucent
+      >
+        <View style={styles.qrModalOverlay}>
+          <StatusBar barStyle="light-content" />
+          <TouchableOpacity
+            style={styles.qrCloseBtn}
+            onPress={() => setQrModalVisible(false)}
+            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+          >
+            <Feather name="x" size={28} color="#fff" />
+          </TouchableOpacity>
+
+          {paymentQrs[qrViewIndex] && (
+            <Text style={styles.qrLabel}>{paymentQrs[qrViewIndex].label}</Text>
+          )}
+
+          {paymentQrs[qrViewIndex] && (
+            <Image
+              source={{ uri: paymentQrs[qrViewIndex].uri }}
+              style={styles.qrFullImage}
+              resizeMode="contain"
+            />
+          )}
+
+          {paymentQrs.length > 1 && (
+            <View style={styles.qrTabs}>
+              {paymentQrs.map((qr, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.qrTab, qrViewIndex === i && styles.qrTabActive]}
+                  onPress={() => { lightTap(); setQrViewIndex(i); }}
+                >
+                  <Text style={[styles.qrTabText, qrViewIndex === i && styles.qrTabTextActive]}>
+                    {qr.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+      </Modal>
+
     </View>
   );
 };
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─── Styles ──────────────────────────────────────────────────
 const styles = StyleSheet.create({
@@ -1656,6 +1743,14 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
     marginTop: 1,
+  },
+  skipBtn: {
+    alignSelf: 'flex-end',
+    paddingTop: SPACING.xs,
+  },
+  skipText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
   },
 
   // ── Action cards (pipeline replacement) ───────────────────
@@ -2466,6 +2561,25 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.textPrimary,
   },
+
+  // ── QR modal ──
+  qrButton: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.lg,
+    backgroundColor: withAlpha(CALM.accent, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrModalOverlay: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
+  qrCloseBtn: { position: 'absolute', top: 72, right: SPACING.xl, width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', zIndex: 20 },
+  qrLabel: { position: 'absolute', top: 80, left: 0, right: 0, textAlign: 'center', fontSize: TYPOGRAPHY.size['2xl'], fontWeight: TYPOGRAPHY.weight.bold, color: '#fff', zIndex: 10 },
+  qrFullImage: { width: SCREEN_WIDTH - SPACING['2xl'] * 2, height: SCREEN_WIDTH - SPACING['2xl'] * 2, borderRadius: RADIUS.lg, backgroundColor: '#fff' },
+  qrTabs: { position: 'absolute', bottom: 60, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm, zIndex: 10 },
+  qrTab: { paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md, borderRadius: RADIUS.full, backgroundColor: 'rgba(255,255,255,0.1)' },
+  qrTabActive: { backgroundColor: 'rgba(255,255,255,0.25)' },
+  qrTabText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: 'rgba(255,255,255,0.5)' },
+  qrTabTextActive: { color: '#fff' },
 });
 
 export default SellerDashboard;

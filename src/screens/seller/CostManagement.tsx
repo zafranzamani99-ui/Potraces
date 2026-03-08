@@ -108,6 +108,7 @@ const CostManagement: React.FC = () => {
   const historyAnim = useFadeSlide(180);
 
   // ─── Computed ──────────────────────────────────────────────
+  const now = useMemo(() => new Date(), []);
   const seasonStats = useMemo(() => {
     const seasonCosts = activeSeason
       ? ingredientCosts.filter((c) => c.seasonId === activeSeason.id)
@@ -534,7 +535,7 @@ const CostManagement: React.FC = () => {
             </View>
             {recurringCosts.filter((r) => r.isActive).map((r) => {
               const dueDate = new Date(r.nextDue);
-              const isDue = dueDate <= new Date();
+              const isDue = dueDate <= now;
               return (
                 <View key={r.id} style={styles.recurringRow}>
                   <View style={{ flex: 1 }}>

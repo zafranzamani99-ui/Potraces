@@ -21,6 +21,11 @@ function generateOrderCode(existingOrders: SellerOrder[]): string {
   return `ZZ${Date.now().toString().slice(-3)}`;
 }
 
+// Module-level caches for derived selectors (avoids new arrays every call)
+let _seasonOrdersCache: { key: string; val: any[] } = { key: '', val: [] };
+let _seasonCostsCache: { key: string; val: any[] } = { key: '', val: [] };
+let _seasonStatsCache: { key: string; val: any } = { key: '', val: null };
+
 export const useSellerStore = create<SellerState>()(
   persist(
     (set, get) => ({
@@ -36,6 +41,7 @@ export const useSellerStore = create<SellerState>()(
       recurringCosts: [],
       productOrder: [],
       seenOnlineOrderIds: [],
+      skippedOnboardingSteps: [],
 
       // ─── Products ───────────────────────────────────────
       addProduct: (product) =>
@@ -115,11 +121,11 @@ export const useSellerStore = create<SellerState>()(
           }),
         })),
 
-      updateDeposit: (id, index, amount, method) =>
+      updateDeposit: (id, index, amount, method, note) =>
         set((state) => ({
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
-            const deposits = (o.deposits || []).map((d, i) => i === index ? { ...d, amount, method } : d);
+            const deposits = (o.deposits || []).map((d, i) => i === index ? { ...d, amount, method, note } : d);
             // C3: Cap paidAmount at totalAmount
             const newPaidAmount = Math.min(deposits.reduce((s, d) => s + d.amount, 0), o.totalAmount);
             const fullyPaid = newPaidAmount >= o.totalAmount;
@@ -138,23 +144,23 @@ export const useSellerStore = create<SellerState>()(
           }),
         })),
 
-      markOrderPaid: (id, paymentMethod) =>
+      markOrderPaid: (id, paymentMethod, note) =>
         set((state) => ({
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
             const remaining = o.totalAmount - (o.paidAmount || 0);
-            const entry = { amount: remaining > 0 ? remaining : o.totalAmount, method: paymentMethod, date: new Date() };
+            const entry = { amount: remaining > 0 ? remaining : o.totalAmount, method: paymentMethod, date: new Date(), ...(note ? { note } : {}) };
             return { ...o, isPaid: true, paidAmount: o.totalAmount, paymentMethod, paidAt: new Date(), deposits: [...(o.deposits || []), entry], updatedAt: new Date() };
           }),
         })),
 
-      markOrdersPaid: (ids, paymentMethod) =>
+      markOrdersPaid: (ids, paymentMethod, note) =>
         set((state) => ({
           orders: state.orders.map((o) => {
             if (!ids.includes(o.id)) return o;
             const remaining = o.totalAmount - (o.paidAmount || 0);
             const depositEntry = remaining > 0
-              ? [{ id: Date.now().toString() + Math.random().toString(36).slice(2, 6), amount: remaining, method: paymentMethod, date: new Date() }]
+              ? [{ id: Date.now().toString() + Math.random().toString(36).slice(2, 6), amount: remaining, method: paymentMethod, date: new Date(), ...(note ? { note } : {}) }]
               : [];
             return { ...o, isPaid: true, paidAmount: o.totalAmount, paymentMethod, paidAt: new Date(), deposits: [...(o.deposits || []), ...depositEntry], updatedAt: new Date() };
           }),
@@ -251,7 +257,7 @@ export const useSellerStore = create<SellerState>()(
           };
         }),
 
-      recordPayment: (id, amount, paymentMethod) =>
+      recordPayment: (id, amount, paymentMethod, note) =>
         set((state) => ({
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
@@ -261,7 +267,7 @@ export const useSellerStore = create<SellerState>()(
             if (cappedAmount <= 0) return o;
             const newPaidAmount = (o.paidAmount || 0) + cappedAmount;
             const fullyPaid = newPaidAmount >= o.totalAmount;
-            const entry = { amount: cappedAmount, method: paymentMethod, date: new Date() };
+            const entry = { amount: cappedAmount, method: paymentMethod, date: new Date(), ...(note ? { note } : {}) };
             return {
               ...o,
               paidAmount: newPaidAmount,
@@ -489,6 +495,13 @@ export const useSellerStore = create<SellerState>()(
           seenOnlineOrderIds: state.seenOnlineOrderIds.filter((i) => i !== id),
         })),
 
+      skipOnboardingStep: (step: string) =>
+        set((state) => ({
+          skippedOnboardingSteps: state.skippedOnboardingSteps.includes(step)
+            ? state.skippedOnboardingSteps
+            : [...state.skippedOnboardingSteps, step],
+        })),
+
       // ─── Seller Customers ────────────────────────────────
       addSellerCustomer: (customer) =>
         set((state) => ({
@@ -628,24 +641,36 @@ export const useSellerStore = create<SellerState>()(
         return costId;
       },
 
-      // ─── Derived Data ──────────────────────────────────
+      // ─── Derived Data (cached) ──────────────────────────
       getSeasonOrders: (seasonId) => {
-        return get().orders.filter((o) => o.seasonId === seasonId);
+        const orders = get().orders;
+        const key = `${seasonId}:${orders.length}`;
+        if (_seasonOrdersCache.key === key) return _seasonOrdersCache.val;
+        const result = orders.filter((o) => o.seasonId === seasonId);
+        _seasonOrdersCache = { key, val: result };
+        return result;
       },
 
       getSeasonCosts: (seasonId) => {
-        return get().ingredientCosts.filter((c) => c.seasonId === seasonId);
+        const costs = get().ingredientCosts;
+        const key = `${seasonId}:${costs.length}`;
+        if (_seasonCostsCache.key === key) return _seasonCostsCache.val;
+        const result = costs.filter((c) => c.seasonId === seasonId);
+        _seasonCostsCache = { key, val: result };
+        return result;
       },
 
       getSeasonStats: (seasonId) => {
         const state = get();
+        const key = `${seasonId}:${state.orders.length}:${state.ingredientCosts.length}`;
+        if (_seasonStatsCache.key === key) return _seasonStatsCache.val;
         const orders = state.orders.filter((o) => o.seasonId === seasonId);
         const costs = state.ingredientCosts.filter((c) => c.seasonId === seasonId);
         const totalIncome = orders.filter((o) => o.isPaid).reduce((s, o) => s + o.totalAmount, 0);
         const totalCosts = costs.reduce((s, c) => s + c.amount, 0);
         const unpaid = orders.filter((o) => !o.isPaid);
 
-        return {
+        const result = {
           totalOrders: orders.length,
           totalIncome,
           totalCosts,
@@ -653,6 +678,8 @@ export const useSellerStore = create<SellerState>()(
           unpaidCount: unpaid.length,
           unpaidAmount: unpaid.reduce((s, o) => s + o.totalAmount, 0),
         };
+        _seasonStatsCache = { key, val: result };
+        return result;
       },
     }),
     {
@@ -692,6 +719,7 @@ export const useSellerStore = create<SellerState>()(
         costTemplates: state.costTemplates,
         productOrder: state.productOrder,
         seenOnlineOrderIds: state.seenOnlineOrderIds,
+        skippedOnboardingSteps: state.skippedOnboardingSteps,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -738,6 +766,7 @@ export const useSellerStore = create<SellerState>()(
           state.costTemplates = state.costTemplates || [];
           state.productOrder = state.productOrder || [];
           state.seenOnlineOrderIds = state.seenOnlineOrderIds || [];
+          state.skippedOnboardingSteps = state.skippedOnboardingSteps || [];
           // Backfill paidAmount for existing orders
           state.orders = state.orders.map((o: any) => ({
             ...o,

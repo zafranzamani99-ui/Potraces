@@ -15,6 +15,8 @@ import {
   InteractionManager,
   Image,
   Dimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
@@ -229,7 +231,6 @@ const Settings: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         ref={scrollRef}
         style={styles.scrollView}
@@ -238,6 +239,7 @@ const Settings: React.FC = () => {
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}
       >
+        <ModeToggle />
         {/* Profile */}
         <Text style={styles.sectionHeader}>Profile</Text>
         <Card style={styles.card}>
@@ -750,7 +752,8 @@ const Settings: React.FC = () => {
         animationType="fade"
         onRequestClose={() => setQrLabelModal((s) => ({ ...s, visible: false }))}
       >
-        <Pressable style={styles.qrLabelOverlay} onPress={() => setQrLabelModal((s) => ({ ...s, visible: false }))}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }}>
+        <Pressable style={[styles.qrLabelOverlay, { backgroundColor: 'transparent' }]} onPress={() => setQrLabelModal((s) => ({ ...s, visible: false }))}>
           <Pressable style={styles.qrLabelCard} onPress={() => {}}>
             <Text style={styles.qrLabelTitle}>
               {qrLabelModal.renameIndex !== undefined ? 'rename QR' : 'name this QR'}
@@ -795,6 +798,7 @@ const Settings: React.FC = () => {
             </View>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ─── QR Fullscreen Preview ─── */}

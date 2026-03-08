@@ -4175,7 +4175,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     <Text style={styles.requestPaymentOwes}>
                       Owes {currency} {(reminderDebt.totalAmount - reminderDebt.paidAmount).toFixed(2)}
                       {' · '}
-                      <Text style={{ color: (() => { const d = differenceInDays(new Date(), new Date(reminderDebt.createdAt)); return d >= 30 ? '#A0714A' : d >= 7 ? CALM.gold : CALM.accent; })() }}>
+                      <Text style={{ color: (() => { const d = differenceInDays(Date.now(), new Date(reminderDebt.createdAt)); return d >= 30 ? '#A0714A' : d >= 7 ? CALM.gold : CALM.accent; })() }}>
                         {getDebtAge(reminderDebt.createdAt)} ago
                       </Text>
                     </Text>

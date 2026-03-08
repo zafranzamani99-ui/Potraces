@@ -135,7 +135,8 @@ const Products: React.FC = () => {
     const q = search.trim().toLowerCase();
     return sortedProducts.filter((p) =>
       p.name.toLowerCase().includes(q) ||
-      p.unit.toLowerCase().includes(q)
+      p.unit.toLowerCase().includes(q) ||
+      (p.description && p.description.toLowerCase().includes(q))
     );
   }, [sortedProducts, search]);
 
@@ -172,10 +173,17 @@ const Products: React.FC = () => {
   // ─── Form state (shared between add & edit) ────────────────
   const [newName, setNewName] = useState('');
   const [newPrice, setNewPrice] = useState('');
-  const [newUnit, setNewUnit] = useState('tin');
+  const [newUnit, setNewUnit] = useState(() => {
+    const combined = [...DEFAULT_UNITS, ...customUnits].filter((u) => !hiddenUnits.includes(u));
+    if (unitOrder.length === 0) return combined[0] || 'tin';
+    const ordered = unitOrder.filter((u) => combined.includes(u));
+    const remaining = combined.filter((u) => !unitOrder.includes(u));
+    return [...ordered, ...remaining][0] || 'tin';
+  });
   const [newCostPerUnit, setNewCostPerUnit] = useState('');
   const [costDescription, setCostDescription] = useState('');
   const [costAmount, setCostAmount] = useState('');
+  const [newDescription, setNewDescription] = useState('');
   const [newTrackStock, setNewTrackStock] = useState(false);
   const [newStockQty, setNewStockQty] = useState('');
   const [reorderMode, setReorderMode] = useState(false);
@@ -187,7 +195,7 @@ const Products: React.FC = () => {
   const [showUnitPicker, setShowUnitPicker] = useState(false);
 
   // ─── Remember last used unit (session only) ────────────────
-  const lastUsedUnitRef = useRef('tin');
+  const lastUsedUnitRef = useRef(allUnits[0] || 'tin');
 
   // ─── Validation state ──────────────────────────────────────
   const [nameError, setNameError] = useState(false);
@@ -269,6 +277,7 @@ const Products: React.FC = () => {
     setNewName('');
     setNewPrice('');
     setNewCostPerUnit('');
+    setNewDescription('');
     setNewUnit(lastUsedUnitRef.current);
     setNameError(false);
     setPriceError(false);
@@ -290,6 +299,7 @@ const Products: React.FC = () => {
   const openEditModal = useCallback((product: SellerProduct) => {
     setEditingProduct(product);
     setNewName(product.name);
+    setNewDescription(product.description || '');
     setNewPrice(product.pricePerUnit.toString());
     setNewCostPerUnit(product.costPerUnit ? product.costPerUnit.toString() : '');
     setNewUnit(product.unit);
@@ -365,6 +375,7 @@ const Products: React.FC = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     addProduct({
       name: newName.trim(),
+      description: newDescription.trim() || undefined,
       pricePerUnit: parseFloat(newPrice) || 0,
       costPerUnit: newCostPerUnit ? parseFloat(newCostPerUnit) : undefined,
       unit: newUnit,
@@ -389,12 +400,13 @@ const Products: React.FC = () => {
 
     // Reset form for next product
     setNewName('');
+    setNewDescription('');
     setNewPrice('');
     setNewCostPerUnit('');
     // Keep last used unit
     setNameError(false);
     setPriceError(false);
-  }, [newName, newPrice, newCostPerUnit, newUnit, addProduct, showToast]);
+  }, [newName, newDescription, newPrice, newCostPerUnit, newUnit, addProduct, showToast]);
 
   const handleSaveEdit = useCallback(() => {
     if (!editingProduct) return;
@@ -424,6 +436,7 @@ const Products: React.FC = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     updateProduct(editingProduct.id, {
       name: newName.trim(),
+      description: newDescription.trim() || undefined,
       pricePerUnit: parseFloat(newPrice) || 0,
       costPerUnit: newCostPerUnit ? parseFloat(newCostPerUnit) : undefined,
       unit: newUnit,
@@ -433,7 +446,7 @@ const Products: React.FC = () => {
     successNotification();
     showToast('product updated', 'success');
     closeAddModal();
-  }, [editingProduct, newName, newPrice, newCostPerUnit, newUnit, newTrackStock, newStockQty, updateProduct, showToast, closeAddModal]);
+  }, [editingProduct, newName, newDescription, newPrice, newCostPerUnit, newUnit, newTrackStock, newStockQty, updateProduct, showToast, closeAddModal]);
 
   const handleAddCost = useCallback(() => {
     const hasDescErr = !costDescription.trim();
@@ -569,6 +582,7 @@ const Products: React.FC = () => {
         : null;
 
       const sub: string[] = [];
+      if (item.description) sub.push(item.description);
       if (item.totalSold > 0) sub.push(`${item.totalSold} sold`);
       if (marginPct !== null) sub.push(`${marginPct}% margin`);
       if (item.trackStock && item.stockQuantity != null) sub.push(`${item.stockQuantity} in stock`);
@@ -786,6 +800,9 @@ const Products: React.FC = () => {
             <Text style={styles.previewPrice}>
               {currency} {previewPriceStr} / {newUnit}
             </Text>
+            {newDescription.trim() ? (
+              <Text style={styles.previewDesc} numberOfLines={1}>{newDescription.trim()}</Text>
+            ) : null}
           </View>
           {keptPreview && (
             <View style={styles.previewBadge}>
@@ -826,6 +843,17 @@ const Products: React.FC = () => {
           </Text>
         </View>
       )}
+
+      {/* Description input (optional) */}
+      <TextInput
+        style={getInputStyle('desc', false)}
+        value={newDescription}
+        onChangeText={setNewDescription}
+        placeholder="description (optional) e.g. 40+ pieces"
+        placeholderTextColor={CALM.textMuted}
+        onFocus={() => setFocusedField('desc')}
+        onBlur={() => setFocusedField(null)}
+      />
 
       {/* ── Section: Pricing ──────────────────────────────── */}
       <View style={styles.sectionDivider}>
@@ -1182,6 +1210,9 @@ const Products: React.FC = () => {
                   keyExtractor={(u) => u}
                   style={styles.unitModalList}
                   showsVerticalScrollIndicator={false}
+                  removeClippedSubviews
+                  windowSize={5}
+                  maxToRenderPerBatch={8}
                   renderItem={({ item: u }) => {
                     const isSelected = newUnit === u;
                     return (
@@ -1359,7 +1390,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
-    paddingBottom: SPACING['3xl'],
+    paddingBottom: 80,
   },
   listContentEmpty: {
     minHeight: Dimensions.get('window').height * 0.6,
@@ -1615,8 +1646,14 @@ const styles = StyleSheet.create({
 
   // Bottom add button
   addButtonWrapper: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.lg,
+    paddingTop: SPACING.sm,
+    backgroundColor: CALM.background,
   },
   addButton: {
     flexDirection: 'row',
@@ -1884,6 +1921,11 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textSecondary,
     fontVariant: ['tabular-nums'],
+    marginTop: 1,
+  },
+  previewDesc: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
     marginTop: 1,
   },
   previewBadge: {

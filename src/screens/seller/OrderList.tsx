@@ -13,11 +13,13 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  AppState,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { format, isToday, isYesterday, isPast, startOfDay, isThisWeek, isThisMonth } from 'date-fns';
 import * as Clipboard from 'expo-clipboard';
+import * as Sharing from 'expo-sharing';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
@@ -633,13 +635,15 @@ const OrderList: React.FC = () => {
   const seenOnlineOrderIds = useSellerStore((s) => s.seenOnlineOrderIds);
   const currency = useSettingsStore((s) => s.currency);
   const userName = useSettingsStore((s) => s.userName);
+  const paymentQrs = useSettingsStore((s) => s.paymentQrs);
   const { showToast } = useToast();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
 
-  // Accept initialFilter and searchQuery from navigation
-  const initialFilter = (route.params as { initialFilter?: string; searchQuery?: string } | undefined)?.initialFilter;
+  // Accept initialFilter, searchQuery, and orderId from navigation
+  const initialFilter = (route.params as { initialFilter?: string; searchQuery?: string; orderId?: string } | undefined)?.initialFilter;
   const initialSearch = (route.params as { searchQuery?: string } | undefined)?.searchQuery;
+  const targetOrderId = (route.params as { orderId?: string } | undefined)?.orderId;
 
   // Two independent filter dimensions: delivery stage + payment state
   const [deliveryFilter, setDeliveryFilter] = useState<DeliveryFilter>(
@@ -701,7 +705,17 @@ const OrderList: React.FC = () => {
       navigation.setParams({ searchQuery: undefined });
     }
   }, [initialSearch]);
+
   const [selectedOrder, setSelectedOrder] = useState<SellerOrder | null>(null);
+
+  // Auto-open order from push notification tap
+  useEffect(() => {
+    if (targetOrderId) {
+      const match = orders.find((o) => o.id === targetOrderId || o.supabaseId === targetOrderId);
+      if (match) setSelectedOrder(match);
+      navigation.setParams({ orderId: undefined });
+    }
+  }, [targetOrderId]);
   const [showRawWhatsApp, setShowRawWhatsApp] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -720,6 +734,23 @@ const OrderList: React.FC = () => {
   // Payment method sub-filter (when viewing 'paid' tab)
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<SellerPaymentMethod | 'all'>('all');
 
+  // Pending QR share — auto-send QR when returning from WhatsApp
+  const pendingQrUri = useRef<string | null>(null);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (state) => {
+      if (state === 'active' && pendingQrUri.current) {
+        const uri = pendingQrUri.current;
+        pendingQrUri.current = null;
+        // Small delay so WhatsApp fully closes
+        await new Promise((r) => setTimeout(r, 600));
+        try {
+          await Sharing.shareAsync(uri, { mimeType: 'image/*' });
+        } catch { /* user cancelled */ }
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   // Expandable cards — only one at a time
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // Delivery date keyboard modal (inside edit mode)
@@ -729,6 +760,7 @@ const OrderList: React.FC = () => {
   const [editPayIdx, setEditPayIdx] = useState<number | null>(null);
   const [editPayAmount, setEditPayAmount] = useState('');
   const [editPayMethod, setEditPayMethod] = useState<SellerPaymentMethod>('cash');
+  const [editPayNote, setEditPayNote] = useState('');
 
   // Bulk select mode — selectMode derived from selectedIds.size to avoid sync bugs
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -744,6 +776,7 @@ const OrderList: React.FC = () => {
   const [showDepositInput, setShowDepositInput] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [depositMethod, setDepositMethod] = useState<SellerPaymentMethod>('cash');
+  const [depositNote, setDepositNote] = useState('');
   const [editDeliveryDate, setEditDeliveryDate] = useState<Date | null>(null);
   const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [addProductSearch, setAddProductSearch] = useState('');
@@ -1030,11 +1063,12 @@ const OrderList: React.FC = () => {
   const handleConfirmPayment = useCallback(() => {
     if (!selectedPaymentMethod) return;
     mediumTap();
+    const note = paymentNote.trim() || undefined;
     if (pendingPayOrder) {
-      markOrderPaid(pendingPayOrder.id, selectedPaymentMethod);
+      markOrderPaid(pendingPayOrder.id, selectedPaymentMethod, note);
       showToast('marked as paid.', 'info');
     } else if (bulkPayIds.length > 0) {
-      markOrdersPaid(bulkPayIds, selectedPaymentMethod);
+      markOrdersPaid(bulkPayIds, selectedPaymentMethod, note);
       showToast(`${bulkPayIds.length} order${bulkPayIds.length > 1 ? 's' : ''} marked paid.`, 'info');
       setSelectedIds(new Set());
     }
@@ -1042,7 +1076,7 @@ const OrderList: React.FC = () => {
     setBulkPayIds([]);
     setSelectedPaymentMethod(null);
     setPaymentNote('');
-  }, [pendingPayOrder, bulkPayIds, selectedPaymentMethod, markOrderPaid, markOrdersPaid, showToast]);
+  }, [pendingPayOrder, bulkPayIds, selectedPaymentMethod, paymentNote, markOrderPaid, markOrdersPaid, showToast]);
 
   const handleCloseModal = useCallback(() => {
     setSelectedOrder(null);
@@ -1172,6 +1206,50 @@ const OrderList: React.FC = () => {
       }
     },
     [buildReceiptText, showToast]
+  );
+
+  // Send QR with order total via WhatsApp — message first, then QR image on return
+  const handleSendQR = useCallback(
+    (order: SellerOrder) => {
+      if (paymentQrs.length === 0) {
+        Alert.alert(
+          'No Payment QR',
+          'Add your payment QR code in Settings first.',
+          [
+            { text: 'Later', style: 'cancel' },
+            { text: 'Go to Settings', onPress: () => navigation.navigate('SellerSettings' as any, { scrollTo: 'qr' }) },
+          ]
+        );
+        return;
+      }
+      const text =
+        `Hi ${order.customerName || 'customer'},\n\n` +
+        `Pesanan${order.orderNumber ? ` #${order.orderNumber}` : ''}\n` +
+        `*Jumlah: ${currency} ${order.totalAmount.toFixed(2)}*\n\n` +
+        `Sila scan QR untuk bayaran.\n` +
+        `Selepas bayar, mohon hantar resit/screenshot sebagai bukti.\n\nTerima kasih! 🙏`;
+
+      const phone = order.customerPhone;
+      // Queue QR image to auto-share when user returns from WhatsApp
+      pendingQrUri.current = paymentQrs[0].uri;
+
+      if (phone) {
+        let digits = phone.replace(/[^0-9]/g, '');
+        if (digits.startsWith('60')) { /* already correct */ }
+        else if (digits.startsWith('0')) digits = '60' + digits.slice(1);
+        Linking.openURL(`https://wa.me/${digits}?text=${encodeURIComponent(text)}`).catch(() => {
+          pendingQrUri.current = null;
+          Clipboard.setStringAsync(text).then(() => showToast('message copied (WA unavailable).', 'info'));
+        });
+      } else {
+        pendingQrUri.current = null;
+        Clipboard.setStringAsync(text).then(() => {
+          lightTap();
+          showToast('message copied — no phone on file.', 'info');
+        });
+      }
+    },
+    [currency, paymentQrs, showToast, navigation]
   );
 
   // Edit mode handlers
@@ -1885,8 +1963,9 @@ const OrderList: React.FC = () => {
         animationType="fade"
         onRequestClose={() => { setPendingPayOrder(null); setBulkPayIds([]); setSelectedPaymentMethod(null); setPaymentNote(''); }}
       >
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
         <TouchableOpacity
-          style={styles.sortOverlay}
+          style={[styles.sortOverlay, { backgroundColor: 'transparent' }]}
           activeOpacity={1}
           onPress={() => { setPendingPayOrder(null); setBulkPayIds([]); setSelectedPaymentMethod(null); setPaymentNote(''); }}
         >
@@ -1965,6 +2044,7 @@ const OrderList: React.FC = () => {
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>}
 
       {/* ─── Order detail bottom sheet (lazy-mounted) ─── */}
@@ -2290,11 +2370,12 @@ const OrderList: React.FC = () => {
                         ? selectedOrder.deposits.map((d, i) => {
                             const d2 = d.date instanceof Date ? d.date : new Date(d.date);
                             return (
-                              <View key={i} style={[styles.payHistoryRow, i < selectedOrder.deposits!.length - 1 && styles.modalItemRowBorder]}>
+                              <View key={i} style={[styles.payHistoryRow, { flexWrap: 'wrap' }, i < selectedOrder.deposits!.length - 1 && styles.modalItemRowBorder]}>
                                 <Feather name={paymentMethodIcon(d.method)} size={13} color={BIZ.success} />
                                 <Text style={styles.payHistoryMethod}>{paymentMethodLabel(d.method)}</Text>
                                 <Text style={styles.payHistoryDate}>{format(d2, 'dd MMM, h:mm a')}</Text>
                                 <Text style={styles.payHistoryAmount}>{currency} {d.amount.toFixed(2)}</Text>
+                                {d.note ? <Text style={{ width: '100%', fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, marginTop: 2, paddingLeft: 21 }}>{d.note}</Text> : null}
                               </View>
                             );
                           })
@@ -2365,6 +2446,7 @@ const OrderList: React.FC = () => {
                               lightTap();
                               setDepositAmount('');
                               setDepositMethod('cash');
+                              setDepositNote('');
                               setShowDepositInput(true);
                             }}
                             accessibilityRole="button"
@@ -2397,16 +2479,31 @@ const OrderList: React.FC = () => {
 
                       {/* Secondary actions — 2-column grid */}
                       <View style={styles.secondaryActionsGrid}>
-                        <TouchableOpacity
-                          activeOpacity={0.7}
-                          style={styles.gridAction}
-                          onPress={() => handleShareReceiptWA(selectedOrder)}
-                          accessibilityRole="button"
-                          accessibilityLabel="Send receipt via WhatsApp"
-                        >
-                          <Feather name="send" size={16} color={CALM.accent} />
-                          <Text style={[styles.gridActionText, { color: CALM.accent }]}>send receipt</Text>
-                        </TouchableOpacity>
+                        {!selectedOrder.isPaid && (
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            style={styles.gridAction}
+                            onPress={() => handleSendQR(selectedOrder)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Send QR with total via WhatsApp"
+                          >
+                            <Feather name="maximize" size={16} color={CALM.accent} />
+                            <Text style={[styles.gridActionText, { color: CALM.accent }]}>send QR</Text>
+                          </TouchableOpacity>
+                        )}
+
+                        {selectedOrder.status === 'completed' && (
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            style={styles.gridAction}
+                            onPress={() => handleShareReceiptWA(selectedOrder)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Send receipt via WhatsApp"
+                          >
+                            <Feather name="send" size={16} color={CALM.accent} />
+                            <Text style={[styles.gridActionText, { color: CALM.accent }]}>send receipt</Text>
+                          </TouchableOpacity>
+                        )}
 
                         {!selectedOrder.isPaid && (
                           <TouchableOpacity
@@ -2492,228 +2589,6 @@ const OrderList: React.FC = () => {
         </TouchableOpacity>
 
         {/* ─── Deposit overlay (inside detail modal) ─── */}
-        {showDepositInput && (
-          <TouchableOpacity
-            style={[StyleSheet.absoluteFill, styles.sortOverlay]}
-            activeOpacity={1}
-            onPress={() => setShowDepositInput(false)}
-          >
-            <View style={styles.paymentSheet} onStartShouldSetResponder={() => true}>
-              <Text style={styles.paymentSheetTitle}>record deposit</Text>
-
-              {/* Context */}
-              <View style={styles.paymentContext}>
-                <View style={styles.paymentContextRow}>
-                  <Text style={styles.paymentContextName} numberOfLines={1}>
-                    {selectedOrder.customerName || 'walk-in'}
-                  </Text>
-                  <Text style={styles.paymentContextAmount}>
-                    {currency} {selectedOrder.totalAmount.toFixed(2)}
-                  </Text>
-                </View>
-                {(selectedOrder.paidAmount || 0) > 0 && (
-                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: BIZ.success, marginTop: 2 }}>
-                    paid so far: {currency} {(selectedOrder.paidAmount || 0).toFixed(2)}
-                  </Text>
-                )}
-              </View>
-
-              {/* Amount input */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: CALM.border, borderRadius: RADIUS.md, paddingHorizontal: SPACING.md, marginBottom: SPACING.sm }}>
-                <Text style={{ color: CALM.textMuted, fontSize: TYPOGRAPHY.size.sm }}>{currency}</Text>
-                <TextInput
-                  style={{ flex: 1, fontSize: TYPOGRAPHY.size.base, color: CALM.textPrimary, paddingVertical: SPACING.md, paddingLeft: SPACING.xs }}
-                  value={depositAmount}
-                  onChangeText={setDepositAmount}
-                  placeholder="amount"
-                  placeholderTextColor={CALM.textMuted}
-                  keyboardType="decimal-pad"
-                  autoFocus
-                />
-              </View>
-
-              {/* Payment method */}
-              <View style={styles.paymentPickerRow}>
-                {PAYMENT_METHODS.map((m) => {
-                  const active = depositMethod === m.value;
-                  return (
-                    <TouchableOpacity
-                      key={m.value}
-                      activeOpacity={0.7}
-                      style={[styles.paymentPill, active && styles.paymentPillActive]}
-                      onPress={() => { selectionChanged(); setDepositMethod(m.value); }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Deposit via ${m.label}`}
-                    >
-                      <Feather name={m.icon} size={14} color={active ? BIZ.success : CALM.textSecondary} />
-                      <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
-                      </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={styles.paymentConfirmBtn}
-                onPress={() => {
-                  const amt = parseFloat(depositAmount);
-                  if (!amt || amt <= 0) {
-                    showToast('enter a valid amount.', 'error');
-                    return;
-                  }
-                  const remaining = selectedOrder.totalAmount - (selectedOrder.paidAmount || 0);
-                  if (amt > remaining) {
-                    showToast(`maximum deposit is ${currency} ${remaining.toFixed(2)}.`, 'error');
-                    return;
-                  }
-                  mediumTap();
-                  recordPayment(selectedOrder.id, amt, depositMethod);
-                  const freshOrder = useSellerStore.getState().orders.find(o => o.id === selectedOrder.id);
-                  if (freshOrder) {
-                    setSelectedOrder(freshOrder);
-                  } else {
-                    const newPaid = (selectedOrder.paidAmount || 0) + amt;
-                    const fullyPaid = newPaid >= selectedOrder.totalAmount;
-                    setSelectedOrder({
-                      ...selectedOrder,
-                      paidAmount: newPaid,
-                      isPaid: fullyPaid,
-                      paymentMethod: depositMethod,
-                      paidAt: fullyPaid ? new Date() : selectedOrder.paidAt,
-                      updatedAt: new Date(),
-                    });
-                  }
-                  setShowDepositInput(false);
-                  const newPaid = (selectedOrder.paidAmount || 0) + amt;
-                  const fullyPaid = newPaid >= selectedOrder.totalAmount;
-                  showToast(fullyPaid ? 'fully paid!' : `deposit of ${currency} ${amt.toFixed(2)} recorded.`, 'info');
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Save deposit"
-              >
-                <Feather name="check" size={16} color="#fff" />
-                <Text style={styles.paymentConfirmText}>save deposit</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        )}
-
-        {/* ─── Payment history edit sheet (full-screen level) ─── */}
-        {editingPayHistory && selectedOrder && (selectedOrder.deposits && selectedOrder.deposits.length > 0) && (
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={StyleSheet.absoluteFill} pointerEvents="box-none">
-            <TouchableOpacity style={[StyleSheet.absoluteFill, styles.sortOverlay]} activeOpacity={1} onPress={() => { setEditingPayHistory(false); setEditPayIdx(null); }}>
-              <View style={styles.paymentSheet} onStartShouldSetResponder={() => true}>
-                <Text style={styles.paymentSheetTitle}>edit payments</Text>
-
-                {selectedOrder.deposits.map((d, i) => {
-                  const d2 = d.date instanceof Date ? d.date : new Date(d.date);
-                  const isEditingThis = editPayIdx === i;
-                  return (
-                    <View key={i} style={[{ paddingVertical: SPACING.sm }, i < selectedOrder.deposits!.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: CALM.border }]}>
-                      {/* Entry row */}
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-                        <Feather name={paymentMethodIcon(d.method)} size={14} color={BIZ.success} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: BIZ.success }}>{paymentMethodLabel(d.method)}</Text>
-                          <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, marginTop: 1 }}>{format(d2, 'dd MMM yyyy, h:mm a')}</Text>
-                        </View>
-                        <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.textPrimary }}>{currency} {d.amount.toFixed(2)}</Text>
-                        <TouchableOpacity
-                          onPress={() => { lightTap(); if (isEditingThis) { setEditPayIdx(null); } else { setEditPayIdx(i); setEditPayAmount(d.amount.toFixed(2)); setEditPayMethod(d.method); } }}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Feather name={isEditingThis ? 'chevron-up' : 'edit-2'} size={15} color={CALM.bronze} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => {
-                            lightTap();
-                            Alert.alert(
-                              'remove payment',
-                              `remove ${paymentMethodLabel(d.method)} · ${currency} ${d.amount.toFixed(2)}?`,
-                              [
-                                { text: 'cancel', style: 'cancel' },
-                                {
-                                  text: 'remove',
-                                  style: 'destructive',
-                                  onPress: () => {
-                                    mediumTap();
-                                    removeDeposit(selectedOrder.id, i);
-                                    const deps = selectedOrder.deposits!.filter((_, idx) => idx !== i);
-                                    const newPaid = deps.reduce((s, dep) => s + dep.amount, 0);
-                                    const fullyPaid = newPaid >= selectedOrder.totalAmount;
-                                    setSelectedOrder({ ...selectedOrder, deposits: deps, paidAmount: newPaid, isPaid: fullyPaid, paymentMethod: deps.length > 0 ? deps[deps.length - 1].method : undefined, paidAt: fullyPaid ? selectedOrder.paidAt : undefined, updatedAt: new Date() });
-                                    if (editPayIdx === i) setEditPayIdx(null);
-                                    if (deps.length === 0) setEditingPayHistory(false);
-                                    showToast('payment removed.', 'info');
-                                  },
-                                },
-                              ]
-                            );
-                          }}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Feather name="trash-2" size={15} color={CALM.textMuted} />
-                        </TouchableOpacity>
-                      </View>
-
-                      {/* Inline edit form */}
-                      {isEditingThis && (
-                        <View style={{ marginTop: SPACING.xs, gap: SPACING.sm }}>
-                          <TextInput
-                            autoFocus
-                            style={styles.payHistoryEditInput}
-                            value={editPayAmount}
-                            onChangeText={setEditPayAmount}
-                            keyboardType="decimal-pad"
-                            placeholder="amount"
-                            placeholderTextColor={CALM.textMuted}
-                            returnKeyType="done"
-                          />
-                          <View style={styles.paymentPickerRow}>
-                            {PAYMENT_METHODS.map((m) => {
-                              const active = editPayMethod === m.value;
-                              return (
-                                <TouchableOpacity
-                                  key={m.value}
-                                  activeOpacity={0.7}
-                                  style={[styles.paymentPill, active && styles.paymentPillActive]}
-                                  onPress={() => { lightTap(); setEditPayMethod(m.value as SellerPaymentMethod); }}
-                                >
-                                  <Feather name={m.icon} size={13} color={active ? BIZ.success : CALM.textSecondary} />
-                                  <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
-                                              </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            style={styles.paymentConfirmBtn}
-                            onPress={() => {
-                              const amt = parseFloat(editPayAmount);
-                              if (!amt || amt <= 0) { showToast('enter a valid amount.', 'error'); return; }
-                              mediumTap();
-                              updateDeposit(selectedOrder.id, i, amt, editPayMethod);
-                              const deps = selectedOrder.deposits!.map((dep, idx) => idx === i ? { ...dep, amount: amt, method: editPayMethod } : dep);
-                              const newPaid = deps.reduce((s, dep) => s + dep.amount, 0);
-                              const fullyPaid = newPaid >= selectedOrder.totalAmount;
-                              setSelectedOrder({ ...selectedOrder, deposits: deps, paidAmount: newPaid, isPaid: fullyPaid, paymentMethod: editPayMethod, paidAt: fullyPaid ? (selectedOrder.paidAt || new Date()) : undefined, updatedAt: new Date() });
-                              setEditPayIdx(null);
-                              showToast('payment updated.', 'info');
-                            }}
-                          >
-                            <Feather name="check" size={16} color="#fff" />
-                            <Text style={styles.paymentConfirmText}>save</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
-
-              </View>
-            </TouchableOpacity>
-          </KeyboardAvoidingView>
-        )}
 
         {/* ─── Add product picker overlay (inside detail modal, flex:1 level) ─── */}
         {showAddProductModal && (
@@ -2782,6 +2657,262 @@ const OrderList: React.FC = () => {
         )}
 
 </View>
+      </Modal>}
+
+      {/* ─── Record deposit modal ─── */}
+      {showDepositInput && selectedOrder && <Modal
+        visible
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setShowDepositInput(false)}
+      >
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
+        <TouchableOpacity
+          style={[styles.sortOverlay, { backgroundColor: 'transparent' }]}
+          activeOpacity={1}
+          onPress={() => setShowDepositInput(false)}
+        >
+          <View style={styles.paymentSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.paymentSheetTitle}>record deposit</Text>
+
+            <View style={styles.paymentContext}>
+              <View style={styles.paymentContextRow}>
+                <Text style={styles.paymentContextName} numberOfLines={1}>
+                  {selectedOrder.customerName || 'walk-in'}
+                </Text>
+                <Text style={styles.paymentContextAmount}>
+                  {currency} {selectedOrder.totalAmount.toFixed(2)}
+                </Text>
+              </View>
+              {(selectedOrder.paidAmount || 0) > 0 && (
+                <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: BIZ.success, marginTop: 2 }}>
+                  paid so far: {currency} {(selectedOrder.paidAmount || 0).toFixed(2)}
+                </Text>
+              )}
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: CALM.border, borderRadius: RADIUS.md, paddingHorizontal: SPACING.md, marginBottom: SPACING.sm }}>
+              <Text style={{ color: CALM.textMuted, fontSize: TYPOGRAPHY.size.sm }}>{currency}</Text>
+              <TextInput
+                style={{ flex: 1, fontSize: TYPOGRAPHY.size.base, color: CALM.textPrimary, paddingVertical: SPACING.md, paddingLeft: SPACING.xs }}
+                value={depositAmount}
+                onChangeText={setDepositAmount}
+                placeholder="amount"
+                placeholderTextColor={CALM.textMuted}
+                keyboardType="decimal-pad"
+                autoFocus
+              />
+            </View>
+
+            <TextInput
+              style={styles.paymentNoteInput}
+              value={depositNote}
+              onChangeText={setDepositNote}
+              placeholder="note (optional)"
+              placeholderTextColor={CALM.textMuted}
+              returnKeyType="done"
+            />
+
+            <View style={styles.paymentPickerRow}>
+              {PAYMENT_METHODS.map((m) => {
+                const active = depositMethod === m.value;
+                return (
+                  <TouchableOpacity
+                    key={m.value}
+                    activeOpacity={0.7}
+                    style={[styles.paymentPill, active && styles.paymentPillActive]}
+                    onPress={() => { selectionChanged(); setDepositMethod(m.value); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Deposit via ${m.label}`}
+                  >
+                    <Feather name={m.icon} size={14} color={active ? BIZ.success : CALM.textSecondary} />
+                    <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.paymentConfirmBtn}
+              onPress={() => {
+                const amt = parseFloat(depositAmount);
+                if (!amt || amt <= 0) {
+                  showToast('enter a valid amount.', 'error');
+                  return;
+                }
+                const remaining = selectedOrder.totalAmount - (selectedOrder.paidAmount || 0);
+                if (amt > remaining) {
+                  showToast(`maximum deposit is ${currency} ${remaining.toFixed(2)}.`, 'error');
+                  return;
+                }
+                mediumTap();
+                recordPayment(selectedOrder.id, amt, depositMethod, depositNote.trim() || undefined);
+                const freshOrder = useSellerStore.getState().orders.find(o => o.id === selectedOrder.id);
+                if (freshOrder) {
+                  setSelectedOrder(freshOrder);
+                } else {
+                  const newPaid = (selectedOrder.paidAmount || 0) + amt;
+                  const fullyPaid = newPaid >= selectedOrder.totalAmount;
+                  setSelectedOrder({
+                    ...selectedOrder,
+                    paidAmount: newPaid,
+                    isPaid: fullyPaid,
+                    paymentMethod: depositMethod,
+                    paidAt: fullyPaid ? new Date() : selectedOrder.paidAt,
+                    updatedAt: new Date(),
+                  });
+                }
+                setShowDepositInput(false);
+                const newPaid = (selectedOrder.paidAmount || 0) + amt;
+                const fullyPaid = newPaid >= selectedOrder.totalAmount;
+                showToast(fullyPaid ? 'fully paid!' : `deposit of ${currency} ${amt.toFixed(2)} recorded.`, 'info');
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Save deposit"
+            >
+              <Feather name="check" size={16} color="#fff" />
+              <Text style={styles.paymentConfirmText}>save deposit</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>}
+
+      {/* ─── Edit payments modal ─── */}
+      {editingPayHistory && selectedOrder && (selectedOrder.deposits && selectedOrder.deposits.length > 0) && <Modal
+        visible
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => { setEditingPayHistory(false); setEditPayIdx(null); }}
+      >
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
+        <TouchableOpacity
+          style={[styles.sortOverlay, { backgroundColor: 'transparent' }]}
+          activeOpacity={1}
+          onPress={() => { setEditingPayHistory(false); setEditPayIdx(null); }}
+        >
+          <View style={styles.paymentSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.paymentSheetTitle}>edit payments</Text>
+
+            {selectedOrder.deposits.map((d, i) => {
+              const d2 = d.date instanceof Date ? d.date : new Date(d.date);
+              const isEditingThis = editPayIdx === i;
+              return (
+                <View key={i} style={[{ paddingVertical: SPACING.sm }, i < selectedOrder.deposits!.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: CALM.border }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                    <Feather name={paymentMethodIcon(d.method)} size={14} color={BIZ.success} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: BIZ.success }}>{paymentMethodLabel(d.method)}</Text>
+                      <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, marginTop: 1 }}>{format(d2, 'dd MMM yyyy, h:mm a')}</Text>
+                      {d.note ? <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textSecondary, marginTop: 2 }}>{d.note}</Text> : null}
+                    </View>
+                    <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.textPrimary }}>{currency} {d.amount.toFixed(2)}</Text>
+                    <TouchableOpacity
+                      onPress={() => { lightTap(); if (isEditingThis) { setEditPayIdx(null); } else { setEditPayIdx(i); setEditPayAmount(d.amount.toFixed(2)); setEditPayMethod(d.method); setEditPayNote(d.note || ''); } }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Feather name={isEditingThis ? 'chevron-up' : 'edit-2'} size={15} color={CALM.bronze} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        lightTap();
+                        Alert.alert(
+                          'remove payment',
+                          `remove ${paymentMethodLabel(d.method)} · ${currency} ${d.amount.toFixed(2)}?`,
+                          [
+                            { text: 'cancel', style: 'cancel' },
+                            {
+                              text: 'remove',
+                              style: 'destructive',
+                              onPress: () => {
+                                mediumTap();
+                                removeDeposit(selectedOrder.id, i);
+                                const deps = selectedOrder.deposits!.filter((_, idx) => idx !== i);
+                                const newPaid = deps.reduce((s, dep) => s + dep.amount, 0);
+                                const fullyPaid = newPaid >= selectedOrder.totalAmount;
+                                setSelectedOrder({ ...selectedOrder, deposits: deps, paidAmount: newPaid, isPaid: fullyPaid, paymentMethod: deps.length > 0 ? deps[deps.length - 1].method : undefined, paidAt: fullyPaid ? selectedOrder.paidAt : undefined, updatedAt: new Date() });
+                                if (editPayIdx === i) setEditPayIdx(null);
+                                if (deps.length === 0) setEditingPayHistory(false);
+                                showToast('payment removed.', 'info');
+                              },
+                            },
+                          ]
+                        );
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Feather name="trash-2" size={15} color={CALM.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {isEditingThis && (
+                    <View style={{ marginTop: SPACING.xs, gap: SPACING.sm }}>
+                      <TextInput
+                        autoFocus
+                        style={styles.payHistoryEditInput}
+                        value={editPayAmount}
+                        onChangeText={setEditPayAmount}
+                        keyboardType="decimal-pad"
+                        placeholder="amount"
+                        placeholderTextColor={CALM.textMuted}
+                        returnKeyType="done"
+                      />
+                      <TextInput
+                        style={styles.payHistoryEditInput}
+                        value={editPayNote}
+                        onChangeText={setEditPayNote}
+                        placeholder="note (optional)"
+                        placeholderTextColor={CALM.textMuted}
+                        returnKeyType="done"
+                      />
+                      <View style={styles.paymentPickerRow}>
+                        {PAYMENT_METHODS.map((m) => {
+                          const active = editPayMethod === m.value;
+                          return (
+                            <TouchableOpacity
+                              key={m.value}
+                              activeOpacity={0.7}
+                              style={[styles.paymentPill, active && styles.paymentPillActive]}
+                              onPress={() => { lightTap(); setEditPayMethod(m.value as SellerPaymentMethod); }}
+                            >
+                              <Feather name={m.icon} size={13} color={active ? BIZ.success : CALM.textSecondary} />
+                              <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={styles.paymentConfirmBtn}
+                        onPress={() => {
+                          const amt = parseFloat(editPayAmount);
+                          if (!amt || amt <= 0) { showToast('enter a valid amount.', 'error'); return; }
+                          mediumTap();
+                          const noteVal = editPayNote.trim() || undefined;
+                          updateDeposit(selectedOrder.id, i, amt, editPayMethod, noteVal);
+                          const deps = selectedOrder.deposits!.map((dep, idx) => idx === i ? { ...dep, amount: amt, method: editPayMethod, note: noteVal } : dep);
+                          const newPaid = deps.reduce((s, dep) => s + dep.amount, 0);
+                          const fullyPaid = newPaid >= selectedOrder.totalAmount;
+                          setSelectedOrder({ ...selectedOrder, deposits: deps, paidAmount: newPaid, isPaid: fullyPaid, paymentMethod: editPayMethod, paidAt: fullyPaid ? (selectedOrder.paidAt || new Date()) : undefined, updatedAt: new Date() });
+                          setEditPayIdx(null);
+                          showToast('payment updated.', 'info');
+                        }}
+                      >
+                        <Feather name="check" size={16} color="#fff" />
+                        <Text style={styles.paymentConfirmText}>save</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+
+          </View>
+        </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>}
 
       {/* ─── Navigation app picker modal (lazy-mounted, renders after detail modal) ─── */}

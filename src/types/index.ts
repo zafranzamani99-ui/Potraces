@@ -96,6 +96,7 @@ export type SellerPaymentMethod = 'cash' | 'bank_transfer' | 'duitnow' | 'tng' |
 export interface SellerProduct {
   id: string;
   name: string;
+  description?: string;
   pricePerUnit: number;
   costPerUnit?: number;
   unit: string; // 'tin', 'bekas', 'balang', 'pack', 'piece'
@@ -112,6 +113,7 @@ export interface DepositEntry {
   amount: number;
   method: SellerPaymentMethod;
   date: Date;
+  note?: string;
 }
 
 export interface SellerOrderItem {
@@ -221,11 +223,11 @@ export interface SellerState {
   updateOrderStatus: (id: string, status: OrderStatus) => void;
   updateOrder: (id: string, updates: Partial<Pick<SellerOrder, 'customerName' | 'note' | 'deliveryDate' | 'customerPhone' | 'customerAddress' | 'isPaid' | 'paymentMethod' | 'paidAt'>>) => void;
   updateOrderItems: (id: string, items: SellerOrderItem[]) => void;
-  recordPayment: (id: string, amount: number, paymentMethod: SellerPaymentMethod) => void;
-  updateDeposit: (id: string, index: number, amount: number, method: SellerPaymentMethod) => void;
+  recordPayment: (id: string, amount: number, paymentMethod: SellerPaymentMethod, note?: string) => void;
+  updateDeposit: (id: string, index: number, amount: number, method: SellerPaymentMethod, note?: string) => void;
   removeDeposit: (id: string, index: number) => void;
-  markOrderPaid: (id: string, paymentMethod: SellerPaymentMethod) => void;
-  markOrdersPaid: (ids: string[], paymentMethod: SellerPaymentMethod) => void;
+  markOrderPaid: (id: string, paymentMethod: SellerPaymentMethod, note?: string) => void;
+  markOrdersPaid: (ids: string[], paymentMethod: SellerPaymentMethod, note?: string) => void;
   updateOrdersStatus: (ids: string[], status: OrderStatus) => void;
   deleteOrder: (id: string) => void;
   deleteOrders: (ids: string[]) => void;
@@ -261,6 +263,9 @@ export interface SellerState {
   markOrdersSeen: (ids: string[]) => void;
   markAllOnlineSeen: () => void;
   markOrderUnseen: (id: string) => void;
+
+  skippedOnboardingSteps: string[];
+  skipOnboardingStep: (step: string) => void;
 
   addSellerCustomer: (customer: Omit<SellerCustomer, 'id' | 'createdAt'>) => void;
   updateSellerCustomer: (id: string, updates: Partial<SellerCustomer>) => void;

@@ -1,6 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, Easing } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
+import { navigationRef } from './navigationRef';
 import { createStackNavigator, CardStyleInterpolators, StackCardStyleInterpolator } from '@react-navigation/stack';
 import { Feather } from '@expo/vector-icons';
 import { useAppStore } from '../store/appStore';
@@ -112,7 +113,7 @@ const RootNavigator: React.FC = () => {
   const hasCompletedOnboarding = useSettingsStore((s) => s.hasCompletedOnboarding);
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
