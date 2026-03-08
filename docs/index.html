@@ -111,12 +111,16 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
 .confirm-header{padding:20px 20px 12px;text-align:center}
 .confirm-title{font-size:17px;font-weight:700;color:var(--olive)}
 .confirm-sub{font-size:13px;color:var(--text2);margin-top:4px}
-.confirm-items{padding:0 16px 12px}
+.confirm-sec{padding:0 16px}
+.confirm-sec-label{font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--bronze);padding:12px 0 6px}
 .confirm-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border2);font-size:14px}
 .confirm-item:last-child{border-bottom:none}
-.confirm-total{display:flex;justify-content:space-between;padding:14px 16px;background:var(--border2);font-weight:700;font-size:15px}
-.confirm-info{padding:12px 16px;font-size:13px;color:var(--text2);border-top:1px solid var(--border2)}
-.confirm-info span{font-weight:600;color:var(--text)}
+.confirm-total{display:flex;justify-content:space-between;padding:14px 16px;background:var(--olive);font-weight:700;font-size:15px;color:#fff}
+.confirm-info{padding:0 16px 8px}
+.confirm-info-row{display:flex;gap:8px;padding:5px 0;font-size:13px}
+.confirm-info-label{color:var(--text3);min-width:64px;flex-shrink:0}
+.confirm-info-value{color:var(--text);font-weight:500;word-break:break-word}
+.confirm-note{margin:0 16px 8px;padding:10px 12px;background:var(--border2);border-radius:var(--rs);font-size:13px;color:var(--text2);font-style:italic;line-height:1.4}
 .confirm-actions{display:flex;gap:8px;padding:16px}
 .confirm-cancel{flex:1;padding:14px;border:1px solid var(--border);border-radius:var(--rs);background:transparent;color:var(--text2);font-size:15px;font-weight:500;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .confirm-cancel:active{background:var(--border2)}
@@ -197,15 +201,22 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
     <div style="padding-top:16px" id="hist-list"></div>
   </div>
 
-  <div class="confirm-overlay" id="confirm-modal">
-    <div class="confirm-card">
+  <div class="confirm-overlay" id="confirm-modal" onclick="hideConfirm()">
+    <div class="confirm-card" onclick="event.stopPropagation()">
       <div class="confirm-header">
         <div class="confirm-title">Sahkan Pesanan</div>
         <div class="confirm-sub">Sila semak sebelum menghantar</div>
       </div>
-      <div class="confirm-items" id="confirm-items"></div>
+      <div class="confirm-sec">
+        <div class="confirm-sec-label">Item Pesanan</div>
+        <div id="confirm-items"></div>
+      </div>
       <div class="confirm-total" id="confirm-total"></div>
+      <div class="confirm-sec">
+        <div class="confirm-sec-label">Maklumat Anda</div>
+      </div>
       <div class="confirm-info" id="confirm-info"></div>
+      <div id="confirm-note"></div>
       <div class="confirm-actions">
         <button class="confirm-cancel" onclick="hideConfirm()">Ubah</button>
         <button class="confirm-go" id="confirm-go" onclick="confirmSubmit()">Hantar Pesanan</button>
@@ -350,10 +361,12 @@ function showConfirm() {
 
   var phone = document.getElementById('cphone').value.trim();
   var addr = document.getElementById('caddr').value.trim();
-  var info = '<span>' + escH(name) + '</span>';
-  if (phone) info += '<br>' + escH(phone);
-  if (addr) info += '<br>' + escH(addr);
+  var note = document.getElementById('cnote').value.trim();
+  var info = '<div class="confirm-info-row"><span class="confirm-info-label">Nama</span><span class="confirm-info-value">' + escH(name) + '</span></div>';
+  if (phone) info += '<div class="confirm-info-row"><span class="confirm-info-label">WhatsApp</span><span class="confirm-info-value">' + escH(phone) + '</span></div>';
+  if (addr) info += '<div class="confirm-info-row"><span class="confirm-info-label">Alamat</span><span class="confirm-info-value">' + escH(addr) + '</span></div>';
   document.getElementById('confirm-info').innerHTML = info;
+  document.getElementById('confirm-note').innerHTML = note ? '<div class="confirm-note">' + escH(note) + '</div>' : '';
 
   document.getElementById('confirm-modal').classList.add('show');
 }
