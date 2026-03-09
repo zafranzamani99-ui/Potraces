@@ -39,7 +39,28 @@ import UnitManager from '../../components/common/UnitManager';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 
-const CURRENCY_OPTIONS = ['RM', 'USD', 'EUR', 'GBP', 'SGD'];
+const CURRENCY_OPTIONS = [
+  // Southeast Asia
+  { code: 'RM', label: 'Malaysian Ringgit' },
+  { code: 'SGD', label: 'Singapore Dollar' },
+  { code: 'IDR', label: 'Indonesian Rupiah' },
+  { code: 'THB', label: 'Thai Baht' },
+  { code: 'PHP', label: 'Philippine Peso' },
+  { code: 'VND', label: 'Vietnamese Dong' },
+  { code: 'BND', label: 'Brunei Dollar' },
+  { code: 'KHR', label: 'Cambodian Riel' },
+  { code: 'LAK', label: 'Lao Kip' },
+  { code: 'MMK', label: 'Myanmar Kyat' },
+  // International
+  { code: 'USD', label: 'US Dollar' },
+  { code: 'EUR', label: 'Euro' },
+  { code: 'GBP', label: 'British Pound' },
+  { code: 'AUD', label: 'Australian Dollar' },
+  { code: 'JPY', label: 'Japanese Yen' },
+  { code: 'INR', label: 'Indian Rupee' },
+  { code: 'CNY', label: 'Chinese Yuan' },
+  { code: 'KRW', label: 'South Korean Won' },
+];
 
 const Settings: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -64,6 +85,7 @@ const Settings: React.FC = () => {
   const [qrLabelModal, setQrLabelModal] = useState<{ visible: boolean; uri?: string; replaceIndex?: number; renameIndex?: number; defaultLabel: string }>({ visible: false, defaultLabel: '' });
   const [qrLabelInput, setQrLabelInput] = useState('');
   const [qrPreviewIndex, setQrPreviewIndex] = useState<number | null>(null);
+  const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const scrollRef = useRef<any>(null);
   const sectionY = useRef<Record<string, number>>({});
 
@@ -118,21 +140,8 @@ const Settings: React.FC = () => {
 
   const handleCurrencyPress = useCallback(() => {
     lightTap();
-    Alert.alert(
-      'Select Currency',
-      'Choose your preferred currency',
-      [
-        ...CURRENCY_OPTIONS.map((curr) => ({
-          text: curr === currency ? `${curr}  \u2713` : curr,
-          onPress: () => {
-            setCurrency(curr);
-            showToast(`Currency set to ${curr}`, 'success');
-          },
-        })),
-        { text: 'Cancel', style: 'cancel' as const },
-      ]
-    );
-  }, [currency, setCurrency, showToast]);
+    setCurrencyModalVisible(true);
+  }, []);
 
   const handleDefaultModePress = useCallback(() => {
     lightTap();
@@ -322,9 +331,14 @@ const Settings: React.FC = () => {
           <View style={styles.divider} />
 
           <View style={styles.settingRow}>
-            <View style={styles.settingLabelRow}>
-              <Feather name="bell" size={18} color={CALM.textSecondary} />
-              <Text style={styles.settingLabel}>Notifications</Text>
+            <View style={{ flex: 1 }}>
+              <View style={styles.settingLabelRow}>
+                <Feather name="bell" size={18} color={CALM.textSecondary} />
+                <Text style={styles.settingLabel}>Notifications</Text>
+              </View>
+              <Text style={styles.settingDescription}>
+                new orders from your web shop link
+              </Text>
             </View>
             <Switch
               value={notificationsEnabled}
@@ -801,6 +815,45 @@ const Settings: React.FC = () => {
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* ─── Currency Picker Modal ─── */}
+      <Modal
+        visible={currencyModalVisible}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setCurrencyModalVisible(false)}
+      >
+        <Pressable style={styles.currencyOverlay} onPress={() => setCurrencyModalVisible(false)}>
+          <View style={styles.currencyCard} onStartShouldSetResponder={() => true}>
+            <Text style={styles.currencyTitle}>select currency</Text>
+            <ScrollView style={styles.currencyList} showsVerticalScrollIndicator={false}>
+              {CURRENCY_OPTIONS.map((opt) => {
+                const selected = opt.code === currency;
+                return (
+                  <TouchableOpacity
+                    key={opt.code}
+                    style={[styles.currencyItem, selected && styles.currencyItemSelected]}
+                    onPress={() => {
+                      lightTap();
+                      setCurrency(opt.code);
+                      setCurrencyModalVisible(false);
+                      showToast(`Currency set to ${opt.code}`, 'success');
+                    }}
+                    activeOpacity={0.6}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.currencyCode, selected && styles.currencyCodeSelected]}>{opt.code}</Text>
+                      <Text style={styles.currencyLabel}>{opt.label}</Text>
+                    </View>
+                    {selected && <Feather name="check" size={18} color={CALM.accent} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+
       {/* ─── QR Fullscreen Preview ─── */}
       <Modal
         visible={qrPreviewIndex !== null}
@@ -1177,6 +1230,57 @@ const styles = StyleSheet.create({
   },
   qrPreviewTabTextActive: {
     color: '#fff',
+  },
+
+  // ── Currency Picker ──
+  currencyOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING['2xl'],
+  },
+  currencyCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    width: '100%',
+    maxWidth: 340,
+    maxHeight: 420,
+  },
+  currencyTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: CALM.textPrimary,
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.xs,
+  },
+  currencyList: {
+    maxHeight: 360,
+  },
+  currencyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    marginBottom: 2,
+  },
+  currencyItemSelected: {
+    backgroundColor: withAlpha(CALM.accent, 0.08),
+  },
+  currencyCode: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: CALM.textPrimary,
+  },
+  currencyCodeSelected: {
+    color: CALM.accent,
+  },
+  currencyLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginTop: 1,
   },
 });
 

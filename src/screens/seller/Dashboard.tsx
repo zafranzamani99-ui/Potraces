@@ -13,6 +13,8 @@ import {
   RefreshControl,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
+  Keyboard,
   Image,
   StatusBar,
   Dimensions,
@@ -1104,12 +1106,13 @@ const SellerDashboard: React.FC = () => {
         animationType="fade"
         onRequestClose={() => setShowShopModal(false)}
       >
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }}>
         <TouchableOpacity
-          style={styles.shopModalOverlay}
+          style={[styles.shopModalOverlay, { backgroundColor: 'transparent' }]}
           activeOpacity={1}
-          onPress={() => setShowShopModal(false)}
+          onPress={() => { Keyboard.dismiss(); setShowShopModal(false); }}
         >
-          <TouchableOpacity activeOpacity={1} style={styles.shopModalCard} onPress={() => {}}>
+          <TouchableOpacity activeOpacity={1} style={styles.shopModalCard} onPress={() => Keyboard.dismiss()}>
             {/* Header */}
             <View style={styles.shopModalHeader}>
               <View style={styles.shopModalIconWrap}>
@@ -1216,6 +1219,7 @@ const SellerDashboard: React.FC = () => {
             </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── All items modal ───────────────────────────────── */}

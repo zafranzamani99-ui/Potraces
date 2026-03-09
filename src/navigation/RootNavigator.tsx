@@ -36,6 +36,7 @@ import PastSeasons from '../screens/seller/PastSeasons';
 import SellerCosts from '../screens/seller/CostManagement';
 import SellerCustomersScreen from '../screens/seller/Customers';
 import SellerOrderList from '../screens/seller/OrderList';
+import SellerTransactions from '../screens/seller/Transactions';
 import StallSessionSetup from '../screens/stall/SessionSetup';
 import StallCloseSession from '../screens/stall/CloseSession';
 import StallSessionSummary from '../screens/stall/SessionSummary';
@@ -718,6 +719,27 @@ const RootNavigator: React.FC = () => {
                     });
                   }
                 }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="SellerTransactions"
+          component={SellerTransactions}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Transactions',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >

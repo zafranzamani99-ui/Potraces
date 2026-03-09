@@ -14,8 +14,13 @@ import * as Notifications from 'expo-notifications';
 import { globalShowToast } from './src/context/ToastContext';
 import { useSellerStore } from './src/store/sellerStore';
 import { useAppStore } from './src/store/appStore';
+import { useSettingsStore } from './src/store/settingsStore';
 import { navigationRef } from './src/navigation/navigationRef';
 import QuickAddExpense, { openQuickAdd } from './src/components/common/QuickAddExpense';
+
+// Debounced auto-sync — pushes to Supabase ~1.5s after any data mutation
+let _autoSyncTimeout: ReturnType<typeof setTimeout> | null = null;
+let _unsubAutoSync: (() => void) | null = null;
 
 export default function App() {
   const [isLoading, setIsLoading] = React.useState(true);
@@ -34,6 +39,13 @@ export default function App() {
     const init = async () => {
       // Wait for both auth and store hydration before syncing
       await Promise.allSettled([ensureAnonSession(), waitForHydration()]);
+
+      // Apply default mode on launch
+      const { defaultMode, businessModeEnabled } = useSettingsStore.getState();
+      if (businessModeEnabled && defaultMode === 'business') {
+        useAppStore.getState().setMode('business');
+      }
+
       if (!cancelled) setIsLoading(false);
 
       // Fire-and-forget sync after UI is ready
@@ -47,14 +59,33 @@ export default function App() {
         // Register push notifications (saves token to Supabase)
         registerPushNotifications().catch(() => {});
 
+        // Auto-sync: push to Supabase ~1.5s after any data mutation
+        _unsubAutoSync?.();
+        _unsubAutoSync = useSellerStore.subscribe((state, prev) => {
+          if (
+            state.orders === prev.orders &&
+            state.products === prev.products &&
+            state.seasons === prev.seasons &&
+            state.sellerCustomers === prev.sellerCustomers
+          ) return;
+          if (_autoSyncTimeout) clearTimeout(_autoSyncTimeout);
+          _autoSyncTimeout = setTimeout(() => {
+            const s = useSellerStore.getState();
+            syncAll(s.products, s.orders, s.seasons, s.sellerCustomers).catch(() => {});
+          }, 1500);
+        });
+
         // Subscribe to new order_link orders in real time (in-app alert when foregrounded)
         const profileId = getCachedProfileId();
         if (profileId && !cancelled) {
           unsubOrderLink = subscribeToOrderLinkOrders(profileId, (row) => {
             useSellerStore.getState().addOrderLinkOrder(row);
-            const name = (row.customer_name as string | null) ?? 'Pelanggan';
-            const amt = row.total_amount != null ? ` · RM ${Number(row.total_amount).toFixed(2)}` : '';
-            globalShowToast(`Pesanan baru dari ${name}${amt}`, 'info');
+            // Only show in-app toast if notifications are enabled
+            if (useSettingsStore.getState().notificationsEnabled) {
+              const name = (row.customer_name as string | null) ?? 'Pelanggan';
+              const amt = row.total_amount != null ? ` · RM ${Number(row.total_amount).toFixed(2)}` : '';
+              globalShowToast(`Pesanan baru dari ${name}${amt}`, 'info');
+            }
           });
         }
       } catch {
@@ -66,6 +97,8 @@ export default function App() {
     return () => {
       cancelled = true;
       unsubOrderLink?.();
+      _unsubAutoSync?.();
+      if (_autoSyncTimeout) clearTimeout(_autoSyncTimeout);
     };
   }, []);
 

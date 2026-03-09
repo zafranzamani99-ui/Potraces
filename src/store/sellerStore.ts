@@ -115,9 +115,10 @@ export const useSellerStore = create<SellerState>()(
         set((state) => ({
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
-            // C1: When undoing payment, also clear deposits and paidAmount
-            const extra = updates.isPaid === false ? { deposits: [] as DepositEntry[], paidAmount: 0 } : {};
-            return { ...o, ...updates, ...extra, updatedAt: new Date() };
+            // Only wipe deposits when explicitly resetting payments (undo paid), not when reverting due to item changes
+            const { _resetPayments, ...rest } = updates as any;
+            const extra = _resetPayments ? { deposits: [] as DepositEntry[], paidAmount: 0 } : {};
+            return { ...o, ...rest, ...extra, updatedAt: new Date() };
           }),
         })),
 
@@ -261,13 +262,10 @@ export const useSellerStore = create<SellerState>()(
         set((state) => ({
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
-            // C2: Cap deposit so paidAmount never exceeds totalAmount
-            const remaining = o.totalAmount - (o.paidAmount || 0);
-            const cappedAmount = Math.min(amount, Math.max(0, remaining));
-            if (cappedAmount <= 0) return o;
-            const newPaidAmount = (o.paidAmount || 0) + cappedAmount;
+            if (amount <= 0) return o;
+            const newPaidAmount = (o.paidAmount || 0) + amount;
             const fullyPaid = newPaidAmount >= o.totalAmount;
-            const entry = { amount: cappedAmount, method: paymentMethod, date: new Date(), ...(note ? { note } : {}) };
+            const entry = { amount, method: paymentMethod, date: new Date(), ...(note ? { note } : {}) };
             return {
               ...o,
               paidAmount: newPaidAmount,

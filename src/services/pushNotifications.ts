@@ -3,16 +3,20 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { supabase } from './supabase';
+import { useSettingsStore } from '../store/settingsStore';
 
 // Configure how notifications appear when app is in foreground
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async () => {
+    const enabled = useSettingsStore.getState().notificationsEnabled;
+    return {
+      shouldShowAlert: enabled,
+      shouldPlaySound: enabled,
+      shouldSetBadge: false,
+      shouldShowBanner: enabled,
+      shouldShowList: enabled,
+    };
+  },
 });
 
 /** Register for push notifications and save token to Supabase. */

@@ -4,16 +4,17 @@ import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
 import { useFadeSlide } from '../../utils/fadeSlide';
 
 // ─── Component ───────────────────────────────────────────────
 const SellerManage: React.FC = () => {
-  const { products, seasons, ingredientCosts } = useSellerStore();
+  const { products, seasons, ingredientCosts, orders } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
 
   const activeSeason = seasons.find((s) => s.isActive) || null;
+  const paidOrders = useMemo(() => orders.filter((o) => o.isPaid), [orders]);
   const totalCostsThisMonth = useMemo(() => ingredientCosts
     .filter((c) => {
       const d = c.date instanceof Date ? c.date : new Date(c.date);
@@ -25,6 +26,7 @@ const SellerManage: React.FC = () => {
   // Staggered animations
   const headerAnim = useFadeSlide(0);
   const productsAnim = useFadeSlide(60);
+  const transactionsAnim = useFadeSlide(90);
   const costsAnim = useFadeSlide(120);
   const seasonsAnim = useFadeSlide(180);
   const settingsAnim = useFadeSlide(240);
@@ -57,6 +59,27 @@ const SellerManage: React.FC = () => {
             <Text style={styles.cardTitle}>Products</Text>
             <Text style={styles.cardSubtitle}>catalog and pricing</Text>
             <Text style={styles.cardBadge}>{products.length} products</Text>
+          </View>
+          <Feather name="chevron-right" size={20} color={CALM.textMuted} />
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* ─── Transactions Card ─────────────────────────────── */}
+      <Animated.View style={transactionsAnim}>
+        <TouchableOpacity
+          style={styles.card}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Transactions. ${paidOrders.length} paid orders. Navigate to transaction list.`}
+          onPress={() => navigation.getParent()?.navigate('SellerTransactions')}
+        >
+          <View style={[styles.iconBox, { backgroundColor: withAlpha(BIZ.success, 0.12) }]}>
+            <Feather name="list" size={24} color={BIZ.success} />
+          </View>
+          <View style={styles.cardContent}>
+            <Text style={styles.cardTitle}>Transactions</Text>
+            <Text style={styles.cardSubtitle}>all payments received</Text>
+            <Text style={styles.cardBadge}>{paidOrders.length} paid orders</Text>
           </View>
           <Feather name="chevron-right" size={20} color={CALM.textMuted} />
         </TouchableOpacity>

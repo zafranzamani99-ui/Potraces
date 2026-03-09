@@ -125,31 +125,49 @@ function toIso(d: Date | string | undefined | null): string | null {
 }
 
 export async function pushProducts(products: SellerProduct[]): Promise<void> {
-  if (products.length === 0) return;
-
   const session = await getSession();
   if (!session) return;
 
-  const rows = products.map((p) => ({
-    user_id: session.user.id,
-    local_id: p.id,
-    name: p.name,
-    description: p.description ?? null,
-    price_per_unit: p.pricePerUnit,
-    cost_per_unit: p.costPerUnit ?? null,
-    unit: p.unit,
-    is_active: p.isActive,
-    total_sold: p.totalSold,
-    track_stock: p.trackStock ?? false,
-    stock_quantity: p.stockQuantity ?? null,
-  }));
+  if (products.length > 0) {
+    const rows = products.map((p) => ({
+      user_id: session.user.id,
+      local_id: p.id,
+      name: p.name,
+      description: p.description ?? null,
+      price_per_unit: p.pricePerUnit,
+      cost_per_unit: p.costPerUnit ?? null,
+      unit: p.unit,
+      is_active: p.isActive,
+      total_sold: p.totalSold,
+      track_stock: p.trackStock ?? false,
+      stock_quantity: p.stockQuantity ?? null,
+    }));
 
-  const { error } = await supabase
+    await supabase
+      .from('seller_products')
+      .upsert(rows, { onConflict: 'user_id,local_id' });
+  }
+
+  // Tombstone: delete remote products removed locally
+  const localIds = new Set(products.map((p) => p.id));
+  const { data: remote } = await supabase
     .from('seller_products')
-    .upsert(rows, { onConflict: 'user_id,local_id' });
+    .select('local_id')
+    .eq('user_id', session.user.id);
 
-  if (error) console.warn('[sellerSync] pushProducts error:', error.message, error.code, error.details);
-  else console.warn('[sellerSync] pushProducts OK:', rows.length, 'products for user', session.user.id);
+  if (remote && remote.length > 0) {
+    const toDelete = remote
+      .map((r) => r.local_id as string)
+      .filter((id) => id && !localIds.has(id));
+
+    if (toDelete.length > 0) {
+      await supabase
+        .from('seller_products')
+        .delete()
+        .eq('user_id', session.user.id)
+        .in('local_id', toDelete);
+    }
+  }
 }
 
 export async function pushOrders(
@@ -159,7 +177,7 @@ export async function pushOrders(
   const session = await getSession();
   if (!session) return;
 
-  // Only push app-originated orders (not order_link orders placed by customers)
+  // ── App-originated orders ──────────────────────────────────
   const appOrders = orders.filter((o) => o.source !== 'order_link');
   const localIds = appOrders.map((o) => o.id);
 
@@ -181,6 +199,7 @@ export async function pushOrders(
       note: o.note ?? null,
       delivery_date: toIso(o.deliveryDate),
       season_local_id: o.seasonId ?? null,
+      deposits: o.deposits ?? [],
       source: 'app',
       seller_id: profileId,
     }));
@@ -190,7 +209,32 @@ export async function pushOrders(
       .upsert(rows, { onConflict: 'user_id,local_id' });
   }
 
-  // Delete remote app orders that no longer exist locally
+  // ── Order_link orders — push local edits back ──────────────
+  const editedLinkOrders = orders.filter(
+    (o) => o.source === 'order_link' && o.supabaseId,
+  );
+
+  for (const o of editedLinkOrders) {
+    await supabase
+      .from('seller_orders')
+      .update({
+        items: o.items,
+        total_amount: o.totalAmount,
+        customer_name: o.customerName ?? null,
+        customer_phone: o.customerPhone ?? null,
+        customer_address: o.customerAddress ?? null,
+        status: o.status,
+        is_paid: o.isPaid,
+        paid_amount: o.paidAmount ?? null,
+        payment_method: o.paymentMethod ?? null,
+        paid_at: toIso(o.paidAt),
+        note: o.note ?? null,
+        deposits: o.deposits ?? [],
+      })
+      .eq('id', o.supabaseId!);
+  }
+
+  // ── Tombstone: delete remote app orders removed locally ────
   const { data: remoteOrders } = await supabase
     .from('seller_orders')
     .select('local_id')
@@ -214,47 +258,89 @@ export async function pushOrders(
 }
 
 export async function pushSeasons(seasons: Season[]): Promise<void> {
-  if (seasons.length === 0) return;
-
   const session = await getSession();
   if (!session) return;
 
-  const rows = seasons.map((s) => ({
-    user_id: session.user.id,
-    local_id: s.id,
-    name: s.name,
-    start_date: toIso(s.startDate)!,
-    end_date: toIso(s.endDate),
-    is_active: s.isActive,
-    note: s.note ?? null,
-    cost_budget: s.costBudget ?? null,
-    revenue_target: s.revenueTarget ?? null,
-  }));
+  if (seasons.length > 0) {
+    const rows = seasons.map((s) => ({
+      user_id: session.user.id,
+      local_id: s.id,
+      name: s.name,
+      start_date: toIso(s.startDate)!,
+      end_date: toIso(s.endDate),
+      is_active: s.isActive,
+      note: s.note ?? null,
+      cost_budget: s.costBudget ?? null,
+      revenue_target: s.revenueTarget ?? null,
+    }));
 
-  await supabase
+    await supabase
+      .from('seller_seasons')
+      .upsert(rows, { onConflict: 'user_id,local_id' });
+  }
+
+  // Tombstone: delete remote seasons removed locally
+  const localIds = new Set(seasons.map((s) => s.id));
+  const { data: remote } = await supabase
     .from('seller_seasons')
-    .upsert(rows, { onConflict: 'user_id,local_id' });
+    .select('local_id')
+    .eq('user_id', session.user.id);
+
+  if (remote && remote.length > 0) {
+    const toDelete = remote
+      .map((r) => r.local_id as string)
+      .filter((id) => id && !localIds.has(id));
+
+    if (toDelete.length > 0) {
+      await supabase
+        .from('seller_seasons')
+        .delete()
+        .eq('user_id', session.user.id)
+        .in('local_id', toDelete);
+    }
+  }
 }
 
 export async function pushCustomers(customers: SellerCustomer[]): Promise<void> {
-  if (customers.length === 0) return;
-
   const session = await getSession();
   if (!session) return;
 
-  const rows = customers.map((c) => ({
-    user_id: session.user.id,
-    local_id: c.id,
-    name: c.name,
-    phone: c.phone ?? null,
-    address: c.address ?? null,
-    note: c.note ?? null,
-    is_vip: c.isVip ?? false,
-  }));
+  if (customers.length > 0) {
+    const rows = customers.map((c) => ({
+      user_id: session.user.id,
+      local_id: c.id,
+      name: c.name,
+      phone: c.phone ?? null,
+      address: c.address ?? null,
+      note: c.note ?? null,
+      is_vip: c.isVip ?? false,
+    }));
 
-  await supabase
+    await supabase
+      .from('seller_customers')
+      .upsert(rows, { onConflict: 'user_id,local_id' });
+  }
+
+  // Tombstone: delete remote customers removed locally
+  const localIds = new Set(customers.map((c) => c.id));
+  const { data: remote } = await supabase
     .from('seller_customers')
-    .upsert(rows, { onConflict: 'user_id,local_id' });
+    .select('local_id')
+    .eq('user_id', session.user.id);
+
+  if (remote && remote.length > 0) {
+    const toDelete = remote
+      .map((r) => r.local_id as string)
+      .filter((id) => id && !localIds.has(id));
+
+    if (toDelete.length > 0) {
+      await supabase
+        .from('seller_customers')
+        .delete()
+        .eq('user_id', session.user.id)
+        .in('local_id', toDelete);
+    }
+  }
 }
 
 // ─── Full sync ────────────────────────────────────────────────────────────────
@@ -282,6 +368,23 @@ export async function syncAll(
   } catch {
     // Sync failures are non-fatal — app works fully offline
   }
+}
+
+// ─── Delete order from Supabase ───────────────────────────────────────────────
+
+/**
+ * Delete an order from Supabase by its supabaseId.
+ * Used when deleting order_link orders locally so they don't reappear on next pull.
+ */
+export async function deleteOrderFromSupabase(supabaseId: string): Promise<void> {
+  const profileId = await ensureProfile();
+  if (!profileId) return;
+
+  await supabase
+    .from('seller_orders')
+    .delete()
+    .eq('id', supabaseId)
+    .eq('seller_id', profileId);
 }
 
 // ─── Pull order_link orders ────────────────────────────────────────────────────
