@@ -34,7 +34,8 @@ import { parseWhatsAppOrder } from '../../utils/parseWhatsAppOrder';
 import { parseWhatsAppOrderAI } from '../../services/aiService';
 import { KeyboardAwareScrollView, KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { lightTap, selectionChanged, successNotification, mediumTap } from '../../services/haptics';
+import { lightTap, selectionChanged, successNotification, mediumTap, warningNotification } from '../../services/haptics';
+import { useToast } from '../../context/ToastContext';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -47,6 +48,7 @@ const WHATSAPP_GREEN = '#25D366'; // WhatsApp brand color — intentional except
 // ─── MAIN COMPONENT ────────────────────────────────────────────
 const NewOrder: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
   const products = useSellerStore((s) => s.products);
   const addOrder = useSellerStore((s) => s.addOrder);
   const orders = useSellerStore((s) => s.orders);
@@ -55,7 +57,7 @@ const NewOrder: React.FC = () => {
   const updateSellerCustomer = useSellerStore((s) => s.updateSellerCustomer);
   const activeSeason = useSellerStore((s) => s.getActiveSeason());
   const currency = useSettingsStore((s) => s.currency);
-  const paymentQrs = useSettingsStore((s) => s.paymentQrs);
+  const paymentQrs = useSettingsStore((s) => s.businessPaymentQrs);
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
 
@@ -396,7 +398,8 @@ const NewOrder: React.FC = () => {
   // Submit
   const handleSubmit = useCallback(() => {
     if (items.length === 0) {
-      Alert.alert('No items', 'Add at least one item to the order.');
+      warningNotification();
+      showToast('add at least one item to the order', 'error');
       return;
     }
 

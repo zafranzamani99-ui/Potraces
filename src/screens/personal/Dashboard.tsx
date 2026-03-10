@@ -43,6 +43,7 @@ import { useToast } from '../../context/ToastContext';
 import { Transaction } from '../../types';
 import { lightTap } from '../../services/haptics';
 import { explainMonth } from '../../utils/explainMonth';
+import QuickAddExpense from '../../components/common/QuickAddExpense';
 
 const getGreeting = (): string => {
   const hour = new Date().getHours();
@@ -955,6 +956,8 @@ const PersonalDashboard: React.FC = () => {
           )}
         </View>
       </Modal>
+
+      <QuickAddExpense />
     </View>
   );
 };

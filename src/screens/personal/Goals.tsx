@@ -24,7 +24,6 @@ import {
   RADIUS,
   withAlpha,
 } from '../../constants';
-import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import ProgressBar from '../../components/common/ProgressBar';
@@ -370,8 +369,6 @@ const Goals: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

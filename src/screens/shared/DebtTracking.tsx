@@ -46,7 +46,6 @@ import {
   DEBT_STATUSES,
   withAlpha,
 } from '../../constants';
-import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
@@ -91,7 +90,9 @@ const DebtTracking: React.FC = () => {
   const mode = useAppStore((state) => state.mode);
   const currency = useSettingsStore((state) => state.currency);
   const userName = useSettingsStore((state) => state.userName);
-  const paymentQrs = useSettingsStore((state) => state.paymentQrs);
+  const personalQrs = useSettingsStore((state) => state.paymentQrs);
+  const businessQrs = useSettingsStore((state) => state.businessPaymentQrs);
+  const paymentQrs = mode === 'business' ? businessQrs : personalQrs;
   const hasPaymentQr = useMemo(() => paymentQrs.length > 0, [paymentQrs]);
 
   const getSelfContact = useCallback((): Contact => ({
@@ -1869,20 +1870,21 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   const sendWhatsAppWithQr = async (qrIndex: number | null) => {
     if (!requestPaymentDebt?.contact.phone) return;
     const phone = cleanPhoneNumber(requestPaymentDebt.contact.phone!);
-    const url = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(requestPaymentMessage)}`;
 
     try {
-      await Linking.openURL(url);
       if (qrIndex !== null && paymentQrs[qrIndex]) {
+        // Copy message to clipboard, then share QR via native share sheet
+        await Clipboard.setStringAsync(requestPaymentMessage);
+        showToast('Message copied — send QR then paste message', 'info');
         const qrUri = paymentQrs[qrIndex].uri;
-        setTimeout(async () => {
-          try {
-            const isAvailable = await Sharing.isAvailableAsync();
-            if (isAvailable) {
-              await Sharing.shareAsync(qrUri, { mimeType: 'image/png', dialogTitle: 'Send QR' });
-            }
-          } catch {}
-        }, 1500);
+        const isAvailable = await Sharing.isAvailableAsync();
+        if (isAvailable) {
+          await Sharing.shareAsync(qrUri, { mimeType: 'image/png', dialogTitle: 'Send QR' });
+        }
+      } else {
+        // No QR — just open WhatsApp with message
+        const url = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(requestPaymentMessage)}`;
+        await Linking.openURL(url);
       }
       setRequestPaymentVisible(false);
       setRequestPaymentDebt(null);
@@ -1911,8 +1913,6 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

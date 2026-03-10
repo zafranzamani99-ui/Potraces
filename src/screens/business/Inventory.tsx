@@ -18,7 +18,6 @@ import { Feather } from '@expo/vector-icons';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
-import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
 import FAB from '../../components/common/FAB';
 import Card from '../../components/common/Card';
@@ -185,7 +184,6 @@ const Inventory: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

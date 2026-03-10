@@ -6,7 +6,6 @@ import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
-import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 
@@ -117,7 +116,6 @@ const PersonalReports: React.FC = () => {
   if (transactions.length === 0) {
     return (
       <View style={styles.container}>
-        <ModeToggle />
         <EmptyState
           icon="bar-chart-2"
           title="No Data Yet"
@@ -129,7 +127,6 @@ const PersonalReports: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

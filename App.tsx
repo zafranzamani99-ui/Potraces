@@ -7,8 +7,9 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import RootNavigator from './src/navigation/RootNavigator';
 import { COLORS, SPACING, TYPOGRAPHY } from './src/constants';
 import { ToastProvider } from './src/context/ToastContext';
-import { ensureAnonSession } from './src/services/supabase';
+import { supabase, getAuthSession } from './src/services/supabase';
 import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId } from './src/services/sellerSync';
+import { useAuthStore } from './src/store/authStore';
 import { registerPushNotifications } from './src/services/pushNotifications';
 import * as Notifications from 'expo-notifications';
 import { globalShowToast } from './src/context/ToastContext';
@@ -16,7 +17,7 @@ import { useSellerStore } from './src/store/sellerStore';
 import { useAppStore } from './src/store/appStore';
 import { useSettingsStore } from './src/store/settingsStore';
 import { navigationRef } from './src/navigation/navigationRef';
-import QuickAddExpense, { openQuickAdd } from './src/components/common/QuickAddExpense';
+import { openQuickAdd } from './src/components/common/QuickAddExpense';
 
 // Debounced auto-sync — pushes to Supabase ~1.5s after any data mutation
 let _autoSyncTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -25,6 +26,7 @@ let _unsubAutoSync: (() => void) | null = null;
 export default function App() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const mode = useAppStore((s) => s.mode);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -37,59 +39,69 @@ export default function App() {
       });
 
     const init = async () => {
-      // Wait for both auth and store hydration before syncing
-      await Promise.allSettled([ensureAnonSession(), waitForHydration()]);
+      // Wait for store hydration
+      await waitForHydration();
 
-      // Apply default mode on launch
+      // Check existing auth session
+      const session = await getAuthSession();
+      const authStore = useAuthStore.getState();
+      if (session) {
+        authStore.setAuthenticated(true);
+        authStore.setUserId(session.user.id);
+      }
+
+      // Apply default mode on launch (only if authenticated for business)
       const { defaultMode, businessModeEnabled } = useSettingsStore.getState();
-      if (businessModeEnabled && defaultMode === 'business') {
+      if (businessModeEnabled && defaultMode === 'business' && session && authStore.isVerified) {
         useAppStore.getState().setMode('business');
       }
 
       if (!cancelled) setIsLoading(false);
 
-      // Fire-and-forget sync after UI is ready
-      try {
-        const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
-        await syncAll(products, orders, seasons, sellerCustomers);
+      // Only sync if authenticated + verified
+      if (session && authStore.isVerified) {
+        try {
+          const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
+          await syncAll(products, orders, seasons, sellerCustomers);
 
-        // Pull any order_link orders placed while app was closed
-        await pullOrderLinkOrders();
+          // Pull any order_link orders placed while app was closed
+          await pullOrderLinkOrders();
 
-        // Register push notifications (saves token to Supabase)
-        registerPushNotifications().catch(() => {});
+          // Register push notifications (saves token to Supabase)
+          registerPushNotifications().catch(() => {});
 
-        // Auto-sync: push to Supabase ~1.5s after any data mutation
-        _unsubAutoSync?.();
-        _unsubAutoSync = useSellerStore.subscribe((state, prev) => {
-          if (
-            state.orders === prev.orders &&
-            state.products === prev.products &&
-            state.seasons === prev.seasons &&
-            state.sellerCustomers === prev.sellerCustomers
-          ) return;
-          if (_autoSyncTimeout) clearTimeout(_autoSyncTimeout);
-          _autoSyncTimeout = setTimeout(() => {
-            const s = useSellerStore.getState();
-            syncAll(s.products, s.orders, s.seasons, s.sellerCustomers).catch(() => {});
-          }, 1500);
-        });
-
-        // Subscribe to new order_link orders in real time (in-app alert when foregrounded)
-        const profileId = getCachedProfileId();
-        if (profileId && !cancelled) {
-          unsubOrderLink = subscribeToOrderLinkOrders(profileId, (row) => {
-            useSellerStore.getState().addOrderLinkOrder(row);
-            // Only show in-app toast if notifications are enabled
-            if (useSettingsStore.getState().notificationsEnabled) {
-              const name = (row.customer_name as string | null) ?? 'Pelanggan';
-              const amt = row.total_amount != null ? ` · RM ${Number(row.total_amount).toFixed(2)}` : '';
-              globalShowToast(`Pesanan baru dari ${name}${amt}`, 'info');
-            }
+          // Auto-sync: push to Supabase ~1.5s after any data mutation
+          _unsubAutoSync?.();
+          _unsubAutoSync = useSellerStore.subscribe((state, prev) => {
+            if (
+              state.orders === prev.orders &&
+              state.products === prev.products &&
+              state.seasons === prev.seasons &&
+              state.sellerCustomers === prev.sellerCustomers
+            ) return;
+            if (_autoSyncTimeout) clearTimeout(_autoSyncTimeout);
+            _autoSyncTimeout = setTimeout(() => {
+              const s = useSellerStore.getState();
+              syncAll(s.products, s.orders, s.seasons, s.sellerCustomers).catch(() => {});
+            }, 1500);
           });
+
+          // Subscribe to new order_link orders in real time (in-app alert when foregrounded)
+          const profileId = getCachedProfileId();
+          if (profileId && !cancelled) {
+            unsubOrderLink = subscribeToOrderLinkOrders(profileId, (row) => {
+              useSellerStore.getState().addOrderLinkOrder(row);
+              // Only show in-app toast if notifications are enabled
+              if (useSettingsStore.getState().notificationsEnabled) {
+                const name = (row.customer_name as string | null) ?? 'Pelanggan';
+                const amt = row.total_amount != null ? ` · RM ${Number(row.total_amount).toFixed(2)}` : '';
+                globalShowToast(`Pesanan baru dari ${name}${amt}`, 'info');
+              }
+            });
+          }
+        } catch {
+          // Sync errors are non-fatal
         }
-      } catch {
-        // Sync errors are non-fatal
       }
     };
 
@@ -102,10 +114,27 @@ export default function App() {
     };
   }, []);
 
-  // Re-sync whenever the app comes back to the foreground
+  // Auth state change listener — sync authStore with Supabase session
+  React.useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const auth = useAuthStore.getState();
+      if (event === 'SIGNED_IN' && session) {
+        auth.setAuthenticated(true);
+        auth.setUserId(session.user.id);
+      } else if (event === 'SIGNED_OUT') {
+        auth.reset();
+        useAppStore.getState().setMode('personal');
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Re-sync whenever the app comes back to the foreground (only if authenticated)
   React.useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
+        const { isAuthenticated, isVerified } = useAuthStore.getState();
+        if (!isAuthenticated || !isVerified) return;
         const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
         syncAll(products, orders, seasons, sellerCustomers).catch(() => {});
       }
@@ -172,7 +201,6 @@ export default function App() {
               <ToastProvider>
                 <StatusBar style="auto" />
                 <RootNavigator />
-                <QuickAddExpense />
               </ToastProvider>
             </View>
           </TouchableWithoutFeedback>

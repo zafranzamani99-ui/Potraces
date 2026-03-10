@@ -1,5 +1,6 @@
 import { AIMessage, Transaction, IncomeType, BusinessTransaction, RiderCost, Client, SellerProduct, FreelancerClient, PartTimeJobDetails, OnTheRoadDetails, MixedModeDetails } from '../types';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants';
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 
 const API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '';
 const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -213,6 +214,140 @@ export async function askBusinessQuestion(
   } catch {
     return null;
   }
+}
+
+/**
+ * Parse a bulk product list into structured products using AI.
+ * Accepts any format — comma-separated, one per line, table, etc.
+ * Returns array of parsed products or null on failure.
+ */
+export interface ParsedProduct {
+  name: string;
+  pricePerUnit: number;
+  costPerUnit?: number;
+  unit: string;
+  description?: string;
+}
+
+const PRODUCT_PARSE_SYSTEM = (units: string[]) =>
+  `You are a product list parser for a Malaysian home-based food seller app.
+Given raw text or an image of a product list, extract all products.
+Available units: ${units.join(', ')}. Pick the best match or use "piece" as default.
+Currency is MYR (RM). Prices may be written as "RM 5", "5.00", "rm5", etc.
+
+IMPORTANT: Return ONLY a valid JSON array. No explanation, no markdown, no text before or after.
+Each item: { "name": string, "pricePerUnit": number, "costPerUnit": number | null, "unit": string, "description": string | null }
+
+Rules:
+- name should be clean and capitalized properly (e.g. "Kuih Lapis" not "kuih lapis")
+- If cost/margin info is given, include costPerUnit
+- If description is given, include it
+- If no price found for an item, set pricePerUnit to 0
+- Return [] if the text/image doesn't contain any products
+- Output MUST start with [ and end with ]`;
+
+function extractJsonArray(raw: string): any[] | null {
+  // Try direct parse first
+  const stripped = stripJsonFences(raw);
+  try {
+    const parsed = JSON.parse(stripped);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {}
+
+  // Fallback: find the first [...] block in the text
+  const match = raw.match(/\[[\s\S]*\]/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+
+  return null;
+}
+
+function parseParsedProducts(raw: string): ParsedProduct[] | null {
+  const parsed = extractJsonArray(raw);
+  if (!parsed) return null;
+  return parsed.map((item: any) => ({
+    name: String(item.name || '').trim(),
+    pricePerUnit: Number(item.pricePerUnit) || 0,
+    costPerUnit: item.costPerUnit ? Number(item.costPerUnit) : undefined,
+    unit: String(item.unit || 'piece'),
+    description: item.description ? String(item.description).trim() : undefined,
+  })).filter((p: ParsedProduct) => p.name.length > 0);
+}
+
+export async function parseProductList(
+  text: string,
+  existingUnits: string[]
+): Promise<ParsedProduct[] | null> {
+  try {
+    const result = await callAnthropic(
+      PRODUCT_PARSE_SYSTEM(existingUnits),
+      [{ role: 'user', content: text }],
+      1024
+    );
+    if (!result) return null;
+    return parseParsedProducts(result);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse products from an image (screenshot/photo) using Gemini vision.
+ * Accepts an image URI (file path).
+ */
+export async function parseProductImage(
+  imageUri: string,
+  existingUnits: string[]
+): Promise<ParsedProduct[] | null> {
+  const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+  const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+  if (!GEMINI_KEY) {
+    console.warn('[parseProductImage] No GEMINI_API_KEY');
+    return null;
+  }
+
+  const base64 = await readAsStringAsync(imageUri, { encoding: EncodingType.Base64 });
+  console.log('[parseProductImage] base64 length:', base64.length);
+
+  const response = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: PRODUCT_PARSE_SYSTEM(existingUnits) },
+            { inlineData: { mimeType: 'image/jpeg', data: base64 } },
+          ],
+        },
+      ],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 4096, responseMimeType: 'application/json' },
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    console.warn('[parseProductImage] Gemini error:', response.status, errText);
+    return null;
+  }
+
+  const data: any = await response.json();
+  const candidate = data?.candidates?.[0];
+  const text = candidate?.content?.parts?.[0]?.text;
+  const finishReason = candidate?.finishReason;
+  console.log('[parseProductImage] Gemini response (' + finishReason + '):', text?.slice(0, 500));
+  if (!text) {
+    console.warn('[parseProductImage] No text in response. Full data:', JSON.stringify(data).slice(0, 300));
+    return null;
+  }
+
+  const products = parseParsedProducts(text);
+  console.log('[parseProductImage] Parsed products:', products?.length ?? 'null');
+  return products;
 }
 
 /**

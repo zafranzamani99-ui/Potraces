@@ -175,11 +175,20 @@ const SellerTransactions: React.FC = () => {
                 </Text>
                 <Text style={styles.txTime}>{format(item.date, 'h:mm a')}</Text>
               </View>
-              {item.note ? (
-                <Text style={styles.txNote} numberOfLines={1}>
-                  {item.note}
-                </Text>
-              ) : null}
+              {item.note ? (() => {
+                const tipMatch = item.note.match(/(tip\s+\S+\s+[\d,.]+)/i);
+                if (tipMatch) {
+                  const idx = item.note.indexOf(tipMatch[1]);
+                  const before = item.note.slice(0, idx).replace(/\s*·\s*$/, '');
+                  return (
+                    <Text style={styles.txNote} numberOfLines={1}>
+                      {before ? <>{before} · </> : null}
+                      <Text style={{ color: CALM.bronze, fontStyle: 'normal', fontWeight: '600' }}>{tipMatch[1]}</Text>
+                    </Text>
+                  );
+                }
+                return <Text style={styles.txNote} numberOfLines={1}>{item.note}</Text>;
+              })() : null}
             </View>
           </View>
         </>

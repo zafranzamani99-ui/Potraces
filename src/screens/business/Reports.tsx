@@ -5,7 +5,6 @@ import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'd
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, COLORS, SPACING, TYPOGRAPHY, RADIUS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
-import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 
@@ -119,7 +118,6 @@ const BusinessReports: React.FC = () => {
   if (sales.length === 0) {
     return (
       <View style={styles.container}>
-        <ModeToggle />
         <EmptyState
           icon="trending-up"
           title="No Sales Data"
@@ -131,7 +129,6 @@ const BusinessReports: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

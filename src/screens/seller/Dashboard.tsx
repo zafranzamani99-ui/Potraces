@@ -39,7 +39,7 @@ const SellerDashboard: React.FC = () => {
   const { orders, products, ingredientCosts, seasons, sellerCustomers, skippedOnboardingSteps, skipOnboardingStep } = useSellerStore();
   const { businessSetupComplete, incomeType } = useBusinessStore();
   const currency = useSettingsStore((s) => s.currency);
-  const paymentQrs = useSettingsStore((s) => s.paymentQrs);
+  const paymentQrs = useSettingsStore((s) => s.businessPaymentQrs) || [];
   const navigation = useNavigation<any>();
 
   const now = new Date();

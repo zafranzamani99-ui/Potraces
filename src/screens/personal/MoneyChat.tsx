@@ -18,7 +18,6 @@ import { useBusinessStore } from '../../store/businessStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { AIMessage } from '../../types';
 import { askMoneyQuestion, askBusinessQuestion } from '../../services/aiService';
-import ModeToggle from '../../components/common/ModeToggle';
 
 const PERSONAL_SUGGESTIONS = [
   'Where does most of my money go?',
@@ -131,7 +130,6 @@ const MoneyChat: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <KeyboardAvoidingView
         style={styles.chatContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}

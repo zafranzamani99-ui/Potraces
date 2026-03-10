@@ -20,7 +20,6 @@ import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, BILLING_CYCLES, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
-import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
@@ -230,7 +229,6 @@ const SubscriptionList: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

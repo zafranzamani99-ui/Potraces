@@ -16,7 +16,6 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAppStore } from '../../store/appStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useCategoryStore } from '../../store/categoryStore';
@@ -62,7 +61,6 @@ const NumpadKey = React.memo(
 
 // ─── Main Component ──────────────────────────────────────────
 const QuickAddExpense: React.FC = () => {
-  const mode = useAppStore((s) => s.mode);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const currency = useSettingsStore((s) => s.currency);
@@ -83,9 +81,7 @@ const QuickAddExpense: React.FC = () => {
   // ── Draggable FAB ──────────────────────────────────────────
   const fabPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const isDragging = useRef(false);
-  const dragDistance = useRef(0);
   const lastPos = useRef({ x: 0, y: 0 });
-  const handleOpenRef = useRef<() => void>(() => {});
   const hintOpacity = useRef(new Animated.Value(0)).current;
   const [showHint, setShowHint] = useState(false);
 
@@ -110,7 +106,8 @@ const QuickAddExpense: React.FC = () => {
 
   // Load saved position on mount
   useEffect(() => {
-    const defaultPos = { x: SCREEN_WIDTH - FAB_SIZE - SNAP_MARGIN, y: SCREEN_HEIGHT - FAB_SIZE - 90 - insets.bottom };
+    // Position above tab bar — account for header (~56), tab bar (~90), safe area
+    const defaultPos = { x: SCREEN_WIDTH - FAB_SIZE - SNAP_MARGIN, y: SCREEN_HEIGHT - FAB_SIZE - 200 - insets.bottom };
 
     AsyncStorage.getItem(FAB_STORAGE_KEY)
       .then((stored) => {
@@ -158,28 +155,22 @@ const QuickAddExpense: React.FC = () => {
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 4 || Math.abs(g.dy) > 4,
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8,
         onPanResponderGrant: () => {
-          isDragging.current = false;
-          dragDistance.current = 0;
+          isDragging.current = true;
           fabPos.setOffset(lastPos.current);
           fabPos.setValue({ x: 0, y: 0 });
         },
         onPanResponderMove: (_, g) => {
-          dragDistance.current = Math.sqrt(g.dx * g.dx + g.dy * g.dy);
-          if (dragDistance.current > 8) isDragging.current = true;
           fabPos.setValue({ x: g.dx, y: g.dy });
         },
         onPanResponderRelease: (_, g) => {
           fabPos.flattenOffset();
-          if (isDragging.current) {
-            const currentX = lastPos.current.x + g.dx;
-            const currentY = lastPos.current.y + g.dy;
-            snapToEdge(currentX, currentY);
-          } else {
-            handleOpenRef.current();
-          }
+          const currentX = lastPos.current.x + g.dx;
+          const currentY = lastPos.current.y + g.dy;
+          snapToEdge(currentX, currentY);
+          isDragging.current = false;
         },
       }),
     [fabPos, snapToEdge],
@@ -210,7 +201,6 @@ const QuickAddExpense: React.FC = () => {
     ]).start();
   }, [slideAnim, cardScale, cardOpacity]);
 
-  handleOpenRef.current = handleOpen;
   _quickAddOpenRef = handleOpen;
 
   // ── Navigation ─────────────────────────────────────────────
@@ -309,8 +299,6 @@ const QuickAddExpense: React.FC = () => {
 
   const handleClose = useCallback(() => setVisible(false), []);
 
-  if (mode !== 'personal') return null;
-
   const parsedAmount = parseFloat(amount) || 0;
   const displayAmount = amount || '0';
   const currentStepIdx = stepIndex(step);
@@ -323,12 +311,18 @@ const QuickAddExpense: React.FC = () => {
           styles.fabWrap,
           { left: fabPos.x, top: fabPos.y },
         ]}
-        {...panResponder.panHandlers}
+        {...(Platform.OS === 'ios' ? panResponder.panHandlers : {})}
       >
-        <View style={styles.fab} accessibilityLabel="Quick add expense" accessibilityRole="button">
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={handleOpen}
+          activeOpacity={0.8}
+          accessibilityLabel="Quick add expense"
+          accessibilityRole="button"
+        >
           <Feather name="plus" size={26} color="#fff" />
-        </View>
-        {showHint && (
+        </TouchableOpacity>
+        {showHint && Platform.OS === 'ios' && (
           <Animated.View style={[styles.hint, { opacity: hintOpacity }]} pointerEvents="none">
             <Text style={styles.hintText}>hold & drag to move</Text>
           </Animated.View>
@@ -347,10 +341,12 @@ const QuickAddExpense: React.FC = () => {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.overlay}
         >
-          <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleClose}>
+            <View style={{ flex: 1 }} />
+          </Pressable>
 
           <Animated.View
-            style={[styles.card, { transform: [{ scale: cardScale }], opacity: cardOpacity }]}
+            style={[styles.card, { transform: [{ scale: cardScale }], opacity: cardOpacity, elevation: 10 }]}
           >
             {/* ── Header row ──────────────────────────── */}
             <View style={styles.hdr}>
@@ -482,7 +478,7 @@ export default React.memo(QuickAddExpense);
 // ─── Styles ──────────────────────────────────────────────────
 const styles = StyleSheet.create({
   /* ── FAB ─────────────────────────────────── */
-  fabWrap: { position: 'absolute', zIndex: 999 },
+  fabWrap: { position: 'absolute', zIndex: 999, elevation: 10 },
   fab: {
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: CALM.accent,

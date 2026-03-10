@@ -23,7 +23,6 @@ import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
-import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 
@@ -309,7 +308,6 @@ const FinancialPulse: React.FC = () => {
   if (transactions.length === 0) {
     return (
       <View style={styles.container}>
-        <ModeToggle />
         <EmptyState
           icon="activity"
           title="No Data Yet"
@@ -322,7 +320,6 @@ const FinancialPulse: React.FC = () => {
   // ─── RENDER ───────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

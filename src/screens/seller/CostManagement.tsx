@@ -767,7 +767,7 @@ const CostManagement: React.FC = () => {
             <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
-                  {editingCostId ? 'edit cost' : 'log ingredient cost'}
+                  {editingCostId ? 'edit cost' : 'log cost'}
                 </Text>
                 <TouchableOpacity
                   onPress={() => {
@@ -775,16 +775,17 @@ const CostManagement: React.FC = () => {
                     setEditingCostId(null);
                     setShowCostModal(false);
                   }}
+                  style={styles.modalCloseBtn}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   accessibilityRole="button"
                   accessibilityLabel="Close"
                 >
-                  <Feather name="x" size={20} color={CALM.textSecondary} />
+                  <Feather name="x" size={18} color={CALM.textMuted} />
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.costDateRow}>
-                <Feather name="calendar" size={12} color={CALM.textMuted} />
+              <View style={styles.costDatePill}>
+                <Feather name="calendar" size={12} color={CALM.textSecondary} />
                 <Text style={styles.costDateText}>
                   {editingCostId
                     ? format(
@@ -797,12 +798,12 @@ const CostManagement: React.FC = () => {
 
               {/* Template suggestions */}
               {!editingCostId && costTemplates.length > 0 && !costDescription.trim() && (
-                <View style={{ marginBottom: 12 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted }}>templates</Text>
-                    <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted }}>{costTemplates.length}</Text>
+                <View style={styles.fieldGroup}>
+                  <View style={styles.templateHeader}>
+                    <Text style={styles.fieldLabel}>templates</Text>
+                    <Text style={styles.templateCount}>{costTemplates.length}</Text>
                   </View>
-                  <ScrollView style={{ maxHeight: 140 }} showsVerticalScrollIndicator={costTemplates.length > 4} nestedScrollEnabled>
+                  <ScrollView style={styles.templateList} showsVerticalScrollIndicator={costTemplates.length > 4} nestedScrollEnabled>
                     {costTemplates.map((t) => (
                       <TouchableOpacity
                         key={t.id}
@@ -828,48 +829,54 @@ const CostManagement: React.FC = () => {
                           ]);
                         }}
                         delayLongPress={400}
-                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, paddingHorizontal: 12, backgroundColor: withAlpha(CALM.bronze, 0.06), borderRadius: RADIUS.md, marginBottom: 4 }}
+                        style={styles.templateItem}
                         accessibilityRole="button"
                         accessibilityLabel={`Use template: ${t.description}`}
                       >
-                        <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.textPrimary }} numberOfLines={1}>{t.description}</Text>
-                        <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.bronze, fontWeight: TYPOGRAPHY.weight.medium as any }}>{currency} {t.amount.toFixed(2)}</Text>
+                        <Text style={styles.templateItemName} numberOfLines={1}>{t.description}</Text>
+                        <Text style={styles.templateItemAmount}>{currency} {t.amount.toFixed(2)}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
-                  <Text style={{ fontSize: 10, color: CALM.textMuted, marginTop: 4 }}>tap to use · hold to edit or delete</Text>
+                  <Text style={styles.templateHint}>tap to use · hold to edit or delete</Text>
                 </View>
               )}
 
-              <Animated.View style={{ transform: [{ translateX: costDescShakeAnim }] }}>
-                <TextInput
-                  style={[styles.modalInput, costDescError && styles.modalInputError]}
-                  value={costDescription}
-                  onChangeText={setCostDescription}
-                  placeholder="e.g. tepung, gula, mentega"
-                  placeholderTextColor={CALM.textMuted}
-                  autoFocus
-                />
-              </Animated.View>
-
-              <Animated.View style={{ transform: [{ translateX: costAmtShakeAnim }] }}>
-                <View
-                  style={[
-                    styles.currencyInputRow,
-                    costAmtError && styles.currencyInputRowError,
-                  ]}
-                >
-                  <Text style={styles.currencyPrefix}>{currency}</Text>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>what did you buy?</Text>
+                <Animated.View style={{ transform: [{ translateX: costDescShakeAnim }] }}>
                   <TextInput
-                    style={styles.currencyInput}
-                    value={costAmount}
-                    onChangeText={setCostAmount}
-                    placeholder="0.00"
+                    style={[styles.modalInput, costDescError && styles.modalInputError]}
+                    value={costDescription}
+                    onChangeText={setCostDescription}
+                    placeholder="e.g. tepung, gula, mentega"
                     placeholderTextColor={CALM.textMuted}
-                    keyboardType="decimal-pad"
+                    autoFocus
                   />
-                </View>
-              </Animated.View>
+                </Animated.View>
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>amount</Text>
+                <Animated.View style={{ transform: [{ translateX: costAmtShakeAnim }] }}>
+                  <View
+                    style={[
+                      styles.currencyInputRow,
+                      costAmtError && styles.currencyInputRowError,
+                    ]}
+                  >
+                    <Text style={styles.currencyPrefix}>{currency}</Text>
+                    <TextInput
+                      style={styles.currencyInput}
+                      value={costAmount}
+                      onChangeText={setCostAmount}
+                      placeholder="0.00"
+                      placeholderTextColor={CALM.textMuted}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                </Animated.View>
+              </View>
 
               {/* Sync to personal toggle — only for new costs */}
               {!editingCostId && (
@@ -1530,10 +1537,12 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: CALM.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
+    borderRadius: 20,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl,
     width: '100%',
-    gap: SPACING.md,
+    gap: SPACING.lg,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1541,19 +1550,38 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   modalTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold as any,
     color: CALM.textPrimary,
+    letterSpacing: -0.3,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: CALM.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fieldGroup: {
+    gap: SPACING.xs,
+  },
+  fieldLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: CALM.textSecondary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.8,
   },
   modalInput: {
     fontSize: TYPOGRAPHY.size.base,
     color: CALM.textPrimary,
     backgroundColor: CALM.background,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md + 2,
-    borderWidth: 1,
-    borderColor: CALM.border,
+    paddingVertical: SPACING.md,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
   modalInputError: {
     borderColor: '#D4775C',
@@ -1561,26 +1589,30 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: SPACING.md,
-    marginTop: SPACING.sm,
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
   },
   modalCancel: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-    minHeight: 44,
+    flex: 1,
+    paddingVertical: SPACING.md,
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.lg,
+    minHeight: 48,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   modalCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
     color: CALM.textSecondary,
   },
   modalConfirm: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
+    flex: 2,
+    paddingVertical: SPACING.md,
     backgroundColor: CALM.deepOlive,
-    borderRadius: RADIUS.xl,
-    minHeight: 44,
+    borderRadius: RADIUS.lg,
+    minHeight: 48,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   modalConfirmText: {
@@ -1588,22 +1620,66 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold as any,
     color: '#fff',
   },
-  costDateRow: {
+  costDatePill: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     gap: SPACING.xs,
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
   },
   costDateText: {
     fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+  },
+  templateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  templateCount: {
+    fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
+  },
+  templateList: {
+    maxHeight: 140,
+  },
+  templateItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.lg,
+    marginBottom: 4,
+  },
+  templateItemName: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    flex: 1,
+  },
+  templateItemAmount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+    marginLeft: SPACING.sm,
+  },
+  templateHint: {
+    fontSize: 10,
+    color: CALM.textMuted,
+    marginTop: 4,
   },
   currencyInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: CALM.background,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: CALM.border,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
     paddingLeft: SPACING.md,
   },
   currencyInputRowError: {

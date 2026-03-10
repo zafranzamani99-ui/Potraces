@@ -17,6 +17,7 @@ import {
   UIManager,
   PanResponder,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -37,6 +38,8 @@ import {
   successNotification,
   warningNotification,
 } from '../../services/haptics';
+import * as ImagePicker from 'expo-image-picker';
+import { parseProductList, parseProductImage, ParsedProduct } from '../../services/aiService';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -188,6 +191,13 @@ const Products: React.FC = () => {
   const [newStockQty, setNewStockQty] = useState('');
   const [reorderMode, setReorderMode] = useState(false);
 
+  // ─── Bulk import state ──────────────────────────────────────
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkText, setBulkText] = useState('');
+  const [bulkParsing, setBulkParsing] = useState(false);
+  const [bulkResults, setBulkResults] = useState<ParsedProduct[] | null>(null);
+  const [bulkSelected, setBulkSelected] = useState<Set<number>>(new Set());
+
   // ─── Focus state ───────────────────────────────────────────
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
@@ -321,6 +331,98 @@ const Products: React.FC = () => {
     resetForm();
     lightTap();
   }, [resetForm]);
+
+  // ─── Bulk import handlers ─────────────────────────────────
+  const handleBulkParse = useCallback(async () => {
+    if (!bulkText.trim()) return;
+    Keyboard.dismiss();
+    setBulkParsing(true);
+    try {
+      const results = await parseProductList(bulkText.trim(), allUnits);
+      if (results && results.length > 0) {
+        setBulkResults(results);
+        setBulkSelected(new Set(results.map((_, i) => i)));
+      } else {
+        showToast('could not find any products in the text', 'error');
+      }
+    } catch {
+      showToast('something went wrong', 'error');
+    } finally {
+      setBulkParsing(false);
+    }
+  }, [bulkText, allUnits, showToast]);
+
+  const handleBulkImage = useCallback(async (source: 'camera' | 'gallery') => {
+    const permission = source === 'camera'
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.status !== 'granted') {
+      showToast(`please grant ${source} permission`, 'error');
+      return;
+    }
+
+    const picker = source === 'camera'
+      ? ImagePicker.launchCameraAsync
+      : ImagePicker.launchImageLibraryAsync;
+
+    const result = await picker({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      allowsEditing: true,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+
+    setBulkParsing(true);
+    try {
+      const uri = result.assets[0].uri;
+      const results = await parseProductImage(uri, allUnits);
+      if (results && results.length > 0) {
+        setBulkResults(results);
+        setBulkSelected(new Set(results.map((_, i) => i)));
+      } else {
+        showToast('could not find any products in the image', 'error');
+      }
+    } catch (err: any) {
+      console.warn('[bulkImage]', err?.message || err);
+      showToast(err?.message || 'something went wrong', 'error');
+    } finally {
+      setBulkParsing(false);
+    }
+  }, [allUnits, showToast]);
+
+  const handleBulkAdd = useCallback(() => {
+    if (!bulkResults) return;
+    const toAdd = bulkResults.filter((_, i) => bulkSelected.has(i));
+    if (toAdd.length === 0) {
+      showToast('select at least one product', 'error');
+      return;
+    }
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    for (const p of toAdd) {
+      addProduct({
+        name: p.name,
+        description: p.description,
+        pricePerUnit: p.pricePerUnit,
+        costPerUnit: p.costPerUnit,
+        unit: p.unit,
+        isActive: true,
+      });
+    }
+    successNotification();
+    showToast(`${toAdd.length} product${toAdd.length > 1 ? 's' : ''} added`, 'success');
+    setShowBulk(false);
+    setBulkText('');
+    setBulkResults(null);
+    setBulkSelected(new Set());
+  }, [bulkResults, bulkSelected, addProduct, showToast]);
+
+  const closeBulkModal = useCallback(() => {
+    setShowBulk(false);
+    setBulkText('');
+    setBulkResults(null);
+    setBulkSelected(new Set());
+  }, []);
 
   // ─── Duplicate detection ───────────────────────────────────
   const duplicateWarning = useMemo(() => {
@@ -757,11 +859,12 @@ const Products: React.FC = () => {
         </Text>
         <TouchableOpacity
           onPress={closeAddModal}
+          style={styles.modalCloseBtn}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityRole="button"
           accessibilityLabel="Close"
         >
-          <Feather name="x" size={20} color={CALM.textSecondary} />
+          <Feather name="x" size={18} color={CALM.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -785,7 +888,7 @@ const Products: React.FC = () => {
       <View style={styles.previewCard}>
         <View style={styles.previewRow}>
           <View style={styles.previewIcon}>
-            <Feather name="package" size={16} color={CALM.bronze} />
+            <Feather name="package" size={18} color={CALM.bronze} />
           </View>
           <View style={styles.previewInfo}>
             <Text
@@ -814,201 +917,185 @@ const Products: React.FC = () => {
         </View>
       </View>
 
-      {/* ── Section: Details ──────────────────────────────── */}
-      <View style={styles.sectionDivider}>
-        <Text style={styles.sectionLabel}>details</Text>
-        <View style={styles.sectionLine} />
+      {/* ── Name ──────────────────────────────────────────── */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>name</Text>
+        <Animated.View style={{ transform: [{ translateX: nameShakeAnim }] }}>
+          <TextInput
+            style={getInputStyle('name', nameError)}
+            value={newName}
+            onChangeText={setNewName}
+            placeholder="e.g. semperit kuning"
+            placeholderTextColor={CALM.textMuted}
+            autoFocus={!editingProduct}
+            onFocus={() => setFocusedField('name')}
+            onBlur={() => setFocusedField(null)}
+          />
+        </Animated.View>
+        {duplicateWarning && (
+          <View style={styles.warningRow}>
+            <Feather name="alert-circle" size={12} color={CALM.bronze} />
+            <Text style={styles.warningText}>
+              "{duplicateWarning}" already exists
+            </Text>
+          </View>
+        )}
       </View>
 
-      {/* Name input */}
-      <Animated.View style={{ transform: [{ translateX: nameShakeAnim }] }}>
+      {/* ── Description (optional) ────────────────────────── */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>description <Text style={styles.fieldLabelOptional}>(optional)</Text></Text>
         <TextInput
-          style={getInputStyle('name', nameError)}
-          value={newName}
-          onChangeText={setNewName}
-          placeholder="e.g. semperit kuning"
+          style={[getInputStyle('desc', false), styles.descInput]}
+          value={newDescription}
+          onChangeText={setNewDescription}
+          placeholder="e.g. 40+ pieces per tin"
           placeholderTextColor={CALM.textMuted}
-          autoFocus={!editingProduct}
-          onFocus={() => setFocusedField('name')}
+          multiline
+          numberOfLines={2}
+          textAlignVertical="top"
+          onFocus={() => setFocusedField('desc')}
           onBlur={() => setFocusedField(null)}
         />
-      </Animated.View>
-
-      {/* Duplicate warning */}
-      {duplicateWarning && (
-        <View style={styles.warningRow}>
-          <Feather name="alert-circle" size={12} color={CALM.bronze} />
-          <Text style={styles.warningText}>
-            a product named "{duplicateWarning}" already exists
-          </Text>
-        </View>
-      )}
-
-      {/* Description input (optional) */}
-      <TextInput
-        style={getInputStyle('desc', false)}
-        value={newDescription}
-        onChangeText={setNewDescription}
-        placeholder="description (optional) e.g. 40+ pieces"
-        placeholderTextColor={CALM.textMuted}
-        onFocus={() => setFocusedField('desc')}
-        onBlur={() => setFocusedField(null)}
-      />
-
-      {/* ── Section: Pricing ──────────────────────────────── */}
-      <View style={styles.sectionDivider}>
-        <Text style={styles.sectionLabel}>pricing</Text>
-        <View style={styles.sectionLine} />
       </View>
 
-      {/* Price & cost row with currency prefix */}
-      <View style={styles.modalRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.modalLabel}>price per unit *</Text>
-          <Animated.View style={{ transform: [{ translateX: priceShakeAnim }] }}>
+      {/* ── Pricing ───────────────────────────────────────── */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>pricing</Text>
+        <View style={styles.modalRow}>
+          <View style={{ flex: 1 }}>
+            <Animated.View style={{ transform: [{ translateX: priceShakeAnim }] }}>
+              <View
+                style={[
+                  styles.currencyInputRow,
+                  focusedField === 'price' && styles.currencyInputRowFocused,
+                  priceError && styles.currencyInputRowError,
+                ]}
+              >
+                <Text style={styles.currencyPrefix}>{currency}</Text>
+                <TextInput
+                  style={styles.currencyInput}
+                  value={newPrice}
+                  onChangeText={setNewPrice}
+                  placeholder="price"
+                  placeholderTextColor={CALM.textMuted}
+                  keyboardType="decimal-pad"
+                  onFocus={() => setFocusedField('price')}
+                  onBlur={() => setFocusedField(null)}
+                />
+              </View>
+            </Animated.View>
+          </View>
+          <View style={{ flex: 1 }}>
             <View
               style={[
                 styles.currencyInputRow,
-                focusedField === 'price' && styles.currencyInputRowFocused,
-                priceError && styles.currencyInputRowError,
+                focusedField === 'cost' && styles.currencyInputRowFocused,
               ]}
             >
               <Text style={styles.currencyPrefix}>{currency}</Text>
               <TextInput
                 style={styles.currencyInput}
-                value={newPrice}
-                onChangeText={setNewPrice}
-                placeholder="0.00"
+                value={newCostPerUnit}
+                onChangeText={setNewCostPerUnit}
+                placeholder="cost"
                 placeholderTextColor={CALM.textMuted}
                 keyboardType="decimal-pad"
-                onFocus={() => setFocusedField('price')}
+                onFocus={() => setFocusedField('cost')}
                 onBlur={() => setFocusedField(null)}
               />
             </View>
-          </Animated.View>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.modalLabel}>cost per unit</Text>
-          <View
-            style={[
-              styles.currencyInputRow,
-              focusedField === 'cost' && styles.currencyInputRowFocused,
-            ]}
-          >
-            <Text style={styles.currencyPrefix}>{currency}</Text>
-            <TextInput
-              style={styles.currencyInput}
-              value={newCostPerUnit}
-              onChangeText={setNewCostPerUnit}
-              placeholder="0.00"
-              placeholderTextColor={CALM.textMuted}
-              keyboardType="decimal-pad"
-              onFocus={() => setFocusedField('cost')}
-              onBlur={() => setFocusedField(null)}
-            />
           </View>
         </View>
-      </View>
-
-      {/* Profit preview with margin % */}
-      {keptPreview && (
-        <View style={styles.profitRow}>
-          <Feather name="trending-up" size={13} color={BIZ.profit} />
-          <Text style={styles.profitText}>
-            kept per unit: {currency} {keptPreview.kept}
-          </Text>
-          <View
-            style={[
-              styles.marginBadge,
-              keptPreview.margin >= 50 && styles.marginBadgeHigh,
-            ]}
-          >
-            <Text
+        {keptPreview && (
+          <View style={styles.profitRow}>
+            <Feather name="trending-up" size={12} color={BIZ.profit} />
+            <Text style={styles.profitText}>
+              kept {currency} {keptPreview.kept}/unit
+            </Text>
+            <View
               style={[
-                styles.marginBadgeText,
-                keptPreview.margin >= 50 && styles.marginBadgeTextHigh,
+                styles.marginBadge,
+                keptPreview.margin >= 50 && styles.marginBadgeHigh,
               ]}
             >
-              {keptPreview.margin}%
-            </Text>
+              <Text
+                style={[
+                  styles.marginBadgeText,
+                  keptPreview.margin >= 50 && styles.marginBadgeTextHigh,
+                ]}
+              >
+                {keptPreview.margin}%
+              </Text>
+            </View>
           </View>
-        </View>
-      )}
-
-      {/* ── Section: Unit ─────────────────────────────────── */}
-      <View style={styles.sectionDivider}>
-        <Text style={styles.sectionLabel}>unit</Text>
-        <View style={styles.sectionLine} />
+        )}
       </View>
 
-      <TouchableOpacity
-        style={styles.unitSelector}
-        activeOpacity={0.7}
-        onPress={() => {
-          Keyboard.dismiss();
-          lightTap();
-          setShowUnitPicker(true);
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={`Selected unit: ${newUnit}. Tap to change.`}
-      >
-        <View style={styles.unitSelectorLeft}>
-          <View style={styles.unitSelectorIcon}>
-            <Feather name="box" size={16} color={CALM.bronze} />
-          </View>
-          <Text style={styles.unitSelectorText}>{newUnit}</Text>
-        </View>
-        <Feather name="chevron-right" size={16} color={CALM.textMuted} />
-      </TouchableOpacity>
-
-      {/* ── Section: Stock ──────────────────────────────── */}
-      <View style={styles.sectionDivider}>
-        <Text style={styles.sectionLabel}>stock</Text>
-        <View style={styles.sectionLine} />
-      </View>
-
-      <TouchableOpacity
-        style={styles.syncToggleRow}
-        activeOpacity={0.7}
-        onPress={() => {
-          lightTap();
-          setNewTrackStock((v) => !v);
-        }}
-      >
-        <View
-          style={[
-            styles.syncToggleBox,
-            newTrackStock && styles.syncToggleBoxActive,
-          ]}
-        >
-          {newTrackStock && <Feather name="check" size={12} color="#fff" />}
-        </View>
-        <Text style={styles.syncToggleText}>track stock</Text>
-      </TouchableOpacity>
-
-      {newTrackStock && (
-        <View style={{ marginTop: 8 }}>
-          <Text style={styles.modalLabel}>current stock</Text>
-          <View
-            style={[
-              styles.currencyInputRow,
-              focusedField === 'stock' && styles.currencyInputRowFocused,
-            ]}
+      {/* ── Unit & Stock (inline row) ─────────────────────── */}
+      <View style={styles.fieldGroup}>
+        <View style={styles.unitStockRow}>
+          <TouchableOpacity
+            style={styles.unitSelector}
+            activeOpacity={0.7}
+            onPress={() => {
+              Keyboard.dismiss();
+              lightTap();
+              setShowUnitPicker(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Selected unit: ${newUnit}. Tap to change.`}
           >
-            <TextInput
-              style={[styles.currencyInput, { paddingLeft: 12 }]}
-              value={newStockQty}
-              onChangeText={setNewStockQty}
-              placeholder="0"
-              placeholderTextColor={CALM.textMuted}
-              keyboardType="decimal-pad"
-              onFocus={() => setFocusedField('stock')}
-              onBlur={() => setFocusedField(null)}
-            />
-            <Text style={styles.currencyPrefix}>{newUnit}</Text>
-          </View>
+            <Text style={styles.unitSelectorLabel}>unit</Text>
+            <View style={styles.unitSelectorValue}>
+              <Text style={styles.unitSelectorText}>{newUnit}</Text>
+              <Feather name="chevron-down" size={14} color={CALM.textMuted} />
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.stockToggle}
+            activeOpacity={0.7}
+            onPress={() => {
+              lightTap();
+              setNewTrackStock((v) => !v);
+            }}
+          >
+            <View
+              style={[
+                styles.syncToggleBox,
+                newTrackStock && styles.syncToggleBoxActive,
+              ]}
+            >
+              {newTrackStock && <Feather name="check" size={11} color="#fff" />}
+            </View>
+            <Text style={styles.stockToggleText}>track stock</Text>
+          </TouchableOpacity>
         </View>
-      )}
+
+        {newTrackStock && (
+          <View style={styles.stockInputWrap}>
+            <View
+              style={[
+                styles.currencyInputRow,
+                focusedField === 'stock' && styles.currencyInputRowFocused,
+              ]}
+            >
+              <TextInput
+                style={[styles.currencyInput, { paddingLeft: 12 }]}
+                value={newStockQty}
+                onChangeText={setNewStockQty}
+                placeholder="current stock"
+                placeholderTextColor={CALM.textMuted}
+                keyboardType="decimal-pad"
+                onFocus={() => setFocusedField('stock')}
+                onBlur={() => setFocusedField(null)}
+              />
+              <Text style={styles.currencyPrefix}>{newUnit}</Text>
+            </View>
+          </View>
+        )}
+      </View>
 
       </>
       )}
@@ -1122,6 +1209,16 @@ const Products: React.FC = () => {
                 <Feather name="plus" size={18} color="#fff" />
                 <Text style={styles.emptyCTAText}>add first product</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.emptyBulkBtn}
+                activeOpacity={0.7}
+                onPress={() => { lightTap(); setShowBulk(true); }}
+                accessibilityRole="button"
+                accessibilityLabel="Bulk add with AI"
+              >
+                <Feather name="zap" size={16} color={CALM.bronze} />
+                <Text style={styles.emptyBulkText}>bulk add with AI</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.noResultsContainer}>
@@ -1144,11 +1241,20 @@ const Products: React.FC = () => {
         removeClippedSubviews
       />
 
-      {/* Bottom-anchored add button */}
+      {/* Bottom-anchored add buttons */}
       {products.length > 0 && (
         <View style={styles.addButtonWrapper}>
           <TouchableOpacity
-            style={styles.addButton}
+            style={styles.bulkAddButton}
+            activeOpacity={0.7}
+            onPress={() => { lightTap(); setShowBulk(true); }}
+            accessibilityRole="button"
+            accessibilityLabel="Bulk add with AI"
+          >
+            <Feather name="zap" size={18} color={CALM.bronze} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.addButton, { flex: 1 }]}
             activeOpacity={0.7}
             onPress={openAddModal}
             accessibilityRole="button"
@@ -1289,19 +1395,20 @@ const Products: React.FC = () => {
           >
             <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{editingCostId ? 'edit cost' : 'log ingredient cost'}</Text>
+                <Text style={styles.modalTitle}>{editingCostId ? 'edit cost' : 'log cost'}</Text>
                 <TouchableOpacity
                   onPress={() => { lightTap(); setEditingCostId(null); setShowCostModal(false); }}
+                  style={styles.modalCloseBtn}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   accessibilityRole="button"
                   accessibilityLabel="Close"
                 >
-                  <Feather name="x" size={20} color={CALM.textSecondary} />
+                  <Feather name="x" size={18} color={CALM.textMuted} />
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.costDateRow}>
-                <Feather name="calendar" size={12} color={CALM.textMuted} />
+              <View style={styles.costDatePill}>
+                <Feather name="calendar" size={12} color={CALM.textSecondary} />
                 <Text style={styles.costDateText}>
                   {editingCostId
                     ? format(ingredientCosts.find(c => c.id === editingCostId)?.date ?? new Date(), 'dd MMM yyyy')
@@ -1309,34 +1416,41 @@ const Products: React.FC = () => {
                 </Text>
               </View>
 
-              <Animated.View style={{ transform: [{ translateX: costDescShakeAnim }] }}>
-                <TextInput
-                  style={[styles.modalInput, costDescError && styles.modalInputError]}
-                  value={costDescription}
-                  onChangeText={setCostDescription}
-                  placeholder="e.g. tepung, gula, mentega"
-                  placeholderTextColor={CALM.textMuted}
-                  autoFocus
-                />
-              </Animated.View>
-              <Animated.View style={{ transform: [{ translateX: costAmtShakeAnim }] }}>
-                <View
-                  style={[
-                    styles.currencyInputRow,
-                    costAmtError && styles.currencyInputRowError,
-                  ]}
-                >
-                  <Text style={styles.currencyPrefix}>{currency}</Text>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>what did you buy?</Text>
+                <Animated.View style={{ transform: [{ translateX: costDescShakeAnim }] }}>
                   <TextInput
-                    style={styles.currencyInput}
-                    value={costAmount}
-                    onChangeText={setCostAmount}
-                    placeholder="0.00"
+                    style={[styles.modalInput, costDescError && styles.modalInputError]}
+                    value={costDescription}
+                    onChangeText={setCostDescription}
+                    placeholder="e.g. tepung, gula, mentega"
                     placeholderTextColor={CALM.textMuted}
-                    keyboardType="decimal-pad"
+                    autoFocus
                   />
-                </View>
-              </Animated.View>
+                </Animated.View>
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>amount</Text>
+                <Animated.View style={{ transform: [{ translateX: costAmtShakeAnim }] }}>
+                  <View
+                    style={[
+                      styles.currencyInputRow,
+                      costAmtError && styles.currencyInputRowError,
+                    ]}
+                  >
+                    <Text style={styles.currencyPrefix}>{currency}</Text>
+                    <TextInput
+                      style={styles.currencyInput}
+                      value={costAmount}
+                      onChangeText={setCostAmount}
+                      placeholder="0.00"
+                      placeholderTextColor={CALM.textMuted}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                </Animated.View>
+              </View>
 
               {/* Sync to personal toggle — only for new costs */}
               {!editingCostId && (
@@ -1372,6 +1486,158 @@ const Products: React.FC = () => {
                   <Text style={styles.modalConfirmText}>{editingCostId ? 'save' : 'log'}</Text>
                 </TouchableOpacity>
               </View>
+            </Pressable>
+          </KeyboardAwareScrollView>
+        </Pressable>
+      </Modal>
+
+      {/* ── Bulk import modal ──────────────────────────────── */}
+      <Modal visible={showBulk} transparent statusBarTranslucent animationType="fade">
+        <Pressable style={styles.modalOverlay} onPress={Keyboard.dismiss}>
+          <KeyboardAwareScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>bulk add</Text>
+                <TouchableOpacity
+                  onPress={closeBulkModal}
+                  style={styles.modalCloseBtn}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Feather name="x" size={18} color={CALM.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {!bulkResults ? (
+                <>
+                  <Text style={styles.bulkHint}>
+                    paste text or snap a photo of your product list
+                  </Text>
+
+                  {/* Image source buttons */}
+                  <View style={styles.bulkImageRow}>
+                    <TouchableOpacity
+                      style={styles.bulkImageBtn}
+                      activeOpacity={0.7}
+                      onPress={() => handleBulkImage('camera')}
+                      disabled={bulkParsing}
+                    >
+                      <Feather name="camera" size={18} color={CALM.bronze} />
+                      <Text style={styles.bulkImageText}>take photo</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.bulkImageBtn}
+                      activeOpacity={0.7}
+                      onPress={() => handleBulkImage('gallery')}
+                      disabled={bulkParsing}
+                    >
+                      <Feather name="image" size={18} color={CALM.bronze} />
+                      <Text style={styles.bulkImageText}>from gallery</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.bulkDivider}>
+                    <View style={styles.bulkDividerLine} />
+                    <Text style={styles.bulkDividerText}>or type it</Text>
+                    <View style={styles.bulkDividerLine} />
+                  </View>
+
+                  <TextInput
+                    style={styles.bulkTextArea}
+                    multiline
+                    placeholder={'e.g.\nKuih Lapis - RM 8/tin\nDodol - RM 12/pack\nRendang - RM 15/bekas'}
+                    placeholderTextColor={CALM.textMuted}
+                    value={bulkText}
+                    onChangeText={setBulkText}
+                    textAlignVertical="top"
+                  />
+
+                  {bulkParsing && (
+                    <View style={styles.bulkLoadingRow}>
+                      <ActivityIndicator size="small" color={CALM.bronze} />
+                      <Text style={styles.bulkLoadingText}>AI is reading your list...</Text>
+                    </View>
+                  )}
+
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      onPress={closeBulkModal}
+                      style={styles.modalCancel}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.modalCancelText}>cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleBulkParse}
+                      style={[styles.modalConfirm, (!bulkText.trim() || bulkParsing) && { opacity: 0.5 }]}
+                      activeOpacity={0.7}
+                      disabled={!bulkText.trim() || bulkParsing}
+                    >
+                      <Text style={styles.modalConfirmText}>parse text</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.bulkHint}>
+                    {bulkResults.length} product{bulkResults.length > 1 ? 's' : ''} found — tap to deselect
+                  </Text>
+                  {bulkResults.map((p, i) => {
+                    const selected = bulkSelected.has(i);
+                    return (
+                      <TouchableOpacity
+                        key={i}
+                        style={[styles.bulkResultRow, !selected && styles.bulkResultDeselected]}
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          selectionChanged();
+                          setBulkSelected((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(i)) next.delete(i);
+                            else next.add(i);
+                            return next;
+                          });
+                        }}
+                      >
+                        <View style={[styles.bulkCheckbox, selected && styles.bulkCheckboxSelected]}>
+                          {selected && <Feather name="check" size={12} color="#fff" />}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.bulkResultName}>{p.name}</Text>
+                          <Text style={styles.bulkResultDetail}>
+                            {currency} {p.pricePerUnit.toFixed(2)}/{p.unit}
+                            {p.costPerUnit ? ` · cost ${currency} ${p.costPerUnit.toFixed(2)}` : ''}
+                            {p.description ? ` · ${p.description}` : ''}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      onPress={() => { setBulkResults(null); setBulkSelected(new Set()); }}
+                      style={styles.modalCancel}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.modalCancelText}>back</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleBulkAdd}
+                      style={[styles.modalConfirm, bulkSelected.size === 0 && { opacity: 0.5 }]}
+                      activeOpacity={0.7}
+                      disabled={bulkSelected.size === 0}
+                    >
+                      <Text style={styles.modalConfirmText}>
+                        add {bulkSelected.size} product{bulkSelected.size !== 1 ? 's' : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
             </Pressable>
           </KeyboardAwareScrollView>
         </Pressable>
@@ -1643,6 +1909,17 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
+  emptyBulkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+  },
+  emptyBulkText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
 
   // Bottom add button
   addButtonWrapper: {
@@ -1650,6 +1927,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    flexDirection: 'row',
+    gap: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.lg,
     paddingTop: SPACING.sm,
@@ -1671,35 +1950,46 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 
-  // Unit selector button (opens modal)
-  unitSelector: {
+  // Unit & Stock row
+  unitStockRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: CALM.background,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: CALM.border,
-    padding: SPACING.md,
-    minHeight: 48,
   },
-  unitSelectorLeft: {
+  unitSelector: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
   },
-  unitSelectorIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+  unitSelectorLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  unitSelectorValue: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
   },
   unitSelectorText: {
-    fontSize: TYPOGRAPHY.size.base,
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.textPrimary,
+  },
+  stockToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  stockToggleText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+  stockInputWrap: {
+    marginTop: SPACING.sm,
   },
 
   // Unit picker modal
@@ -1800,10 +2090,12 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: CALM.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
+    borderRadius: 20,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.xl,
     width: '100%',
-    gap: SPACING.md,
+    gap: SPACING.lg,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1811,9 +2103,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   modalTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: CALM.textPrimary,
+    letterSpacing: -0.3,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: CALM.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fieldGroup: {
+    gap: SPACING.xs,
+  },
+  fieldLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  fieldLabelOptional: {
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: CALM.textMuted,
+    textTransform: 'none',
+    letterSpacing: 0,
   },
   modalLabel: {
     ...TYPE.label,
@@ -1824,18 +2141,23 @@ const styles = StyleSheet.create({
     lineHeight: undefined,
     color: CALM.textPrimary,
     backgroundColor: CALM.background,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md + 2,
-    borderWidth: 1,
-    borderColor: CALM.border,
+    paddingVertical: SPACING.md,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
   modalInputFocused: {
-    borderColor: CALM.bronze,
+    borderColor: withAlpha(CALM.bronze, 0.4),
+    backgroundColor: CALM.surface,
   },
   modalInputError: {
     borderColor: '#D4775C',
     backgroundColor: withAlpha('#D4775C', 0.04),
+  },
+  descInput: {
+    minHeight: 56,
+    maxHeight: 100,
   },
   modalRow: {
     flexDirection: 'row',
@@ -1843,26 +2165,30 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: SPACING.md,
-    marginTop: SPACING.sm,
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
   },
   modalCancel: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-    minHeight: 44,
+    flex: 1,
+    paddingVertical: SPACING.md,
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.lg,
+    minHeight: 48,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   modalCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.textSecondary,
   },
   modalConfirm: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
+    flex: 2,
+    paddingVertical: SPACING.md,
     backgroundColor: CALM.deepOlive,
-    borderRadius: RADIUS.xl,
-    minHeight: 44,
+    borderRadius: RADIUS.lg,
+    minHeight: 48,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   modalConfirmText: {
@@ -1874,42 +2200,40 @@ const styles = StyleSheet.create({
   // Drag handle
   dragHandleArea: {
     alignItems: 'center',
-    paddingBottom: SPACING.sm,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xs,
   },
   dragHandle: {
-    width: 36,
+    width: 32,
     height: 4,
     borderRadius: 2,
-    backgroundColor: CALM.border,
+    backgroundColor: withAlpha(CALM.textMuted, 0.2),
   },
 
   // Live preview card
   previewCard: {
     backgroundColor: CALM.background,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: CALM.border,
-    borderStyle: 'dashed',
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
   },
   previewRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   previewIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     backgroundColor: withAlpha(CALM.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: SPACING.sm,
+    marginRight: SPACING.md,
   },
   previewInfo: {
     flex: 1,
   },
   previewName: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.textPrimary,
   },
@@ -1918,21 +2242,21 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   previewPrice: {
-    fontSize: TYPOGRAPHY.size.xs,
+    fontSize: TYPOGRAPHY.size.sm,
     color: CALM.textSecondary,
     fontVariant: ['tabular-nums'],
-    marginTop: 1,
+    marginTop: 2,
   },
   previewDesc: {
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
-    marginTop: 1,
+    marginTop: 2,
   },
   previewBadge: {
     backgroundColor: withAlpha(BIZ.profit, 0.1),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
+    paddingVertical: 3,
     marginLeft: SPACING.sm,
   },
   previewBadgeText: {
@@ -1942,37 +2266,19 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  // Section dividers
-  sectionDivider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginTop: SPACING.xs,
-  },
-  sectionLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  sectionLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: CALM.border,
-  },
-
   // Currency prefix input
   currencyInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: CALM.background,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: CALM.border,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
     paddingLeft: SPACING.md,
   },
   currencyInputRowFocused: {
-    borderColor: CALM.bronze,
+    borderColor: withAlpha(CALM.bronze, 0.4),
+    backgroundColor: CALM.surface,
   },
   currencyInputRowError: {
     borderColor: '#D4775C',
@@ -1999,10 +2305,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    paddingVertical: SPACING.xs,
+    paddingTop: SPACING.xs,
   },
   profitText: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.xs,
     color: BIZ.profit,
     fontWeight: TYPOGRAPHY.weight.medium,
     fontVariant: ['tabular-nums'],
@@ -2075,20 +2381,18 @@ const styles = StyleSheet.create({
   },
   quickAddActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: SPACING.md,
+    gap: SPACING.sm,
   },
   addAnotherBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-    borderWidth: 1,
-    borderColor: CALM.bronze,
-    borderRadius: RADIUS.md,
-    minHeight: 44,
     justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.md,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    borderRadius: RADIUS.lg,
+    minHeight: 48,
   },
   addAnotherText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -2096,14 +2400,20 @@ const styles = StyleSheet.create({
     color: CALM.bronze,
   },
 
-  costDateRow: {
+  costDatePill: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     gap: SPACING.xs,
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
   },
   costDateText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: CALM.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
   reorderButton: {
     flexDirection: 'row',
@@ -2198,6 +2508,113 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: withAlpha(CALM.accent, 0.6),
+  },
+
+  // Bulk import
+  bulkAddButton: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.xl,
+    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulkHint: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    lineHeight: 20,
+  },
+  bulkImageRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  bulkImageBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.md,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: withAlpha(CALM.bronze, 0.15),
+  },
+  bulkImageText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.bronze,
+  },
+  bulkDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  bulkDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: CALM.border,
+  },
+  bulkDividerText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  bulkLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+  },
+  bulkLoadingText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.bronze,
+    fontStyle: 'italic',
+  },
+  bulkTextArea: {
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    padding: SPACING.md,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  bulkResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+  },
+  bulkResultDeselected: {
+    opacity: 0.4,
+  },
+  bulkCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: CALM.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulkCheckboxSelected: {
+    backgroundColor: CALM.bronze,
+    borderColor: CALM.bronze,
+  },
+  bulkResultName: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+  },
+  bulkResultDetail: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginTop: 2,
   },
 });
 

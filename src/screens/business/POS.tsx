@@ -19,7 +19,6 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useCRMStore } from '../../store/crmStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, PAYMENT_METHODS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
-import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
@@ -255,7 +254,6 @@ const POS: React.FC = () => {
   if (products.length === 0) {
     return (
       <View style={styles.container}>
-        <ModeToggle />
         <EmptyState
           icon="package"
           title="No Products"
@@ -267,7 +265,6 @@ const POS: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <View style={styles.content}>
         {/* ── Products Section ── */}
         <View style={styles.productsSection}>

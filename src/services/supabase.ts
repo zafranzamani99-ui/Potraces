@@ -13,17 +13,85 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
-/**
- * Sign in anonymously on first launch.
- * Returns the session — call once at app startup.
- */
-export async function ensureAnonSession() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) return session;
+// ─── Auth helpers ────────────────────────────────────────────────────────────
 
-  const { data, error } = await supabase.auth.signInAnonymously();
+/** Map phone number to a fake email for Supabase email auth. */
+export function phoneToEmail(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  return `${digits}@potraces.app`;
+}
+
+/** Get existing auth session (no auto-creation). */
+export async function getAuthSession() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session;
+}
+
+/** Sign up with phone + password. */
+export async function signUpWithPhone(phone: string, password: string) {
+  const email = phoneToEmail(phone);
+  const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) throw error;
-  return data.session;
+  return data;
+}
+
+/** Sign in with phone + password. */
+export async function signInWithPhone(phone: string, password: string) {
+  const email = phoneToEmail(phone);
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return data;
+}
+
+/** Sign out. */
+export async function signOut() {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
+}
+
+/** Request OTP code for Telegram verification. */
+export async function requestOtp(phone: string): Promise<{ code: string; expiresAt: string }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/request-otp`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ phone }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** Check if the current user's seller profile is verified. */
+export async function checkVerification(): Promise<boolean> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return false;
+
+  const { data } = await supabase
+    .from('seller_profiles')
+    .select('is_verified')
+    .eq('user_id', session.user.id)
+    .maybeSingle();
+
+  return data?.is_verified ?? false;
+}
+
+/** Delete all business data on server and delete the auth user. */
+export async function clearBusinessDataRemote() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+
+  await fetch(`${SUPABASE_URL}/functions/v1/clear-business-data`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+  });
 }
 
 export type SupabaseSellerProduct = {

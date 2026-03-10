@@ -45,18 +45,22 @@ export const useSellerStore = create<SellerState>()(
 
       // ─── Products ───────────────────────────────────────
       addProduct: (product) =>
-        set((state) => ({
-          products: [
-            {
-              ...product,
-              id: Date.now().toString(),
-              totalSold: 0,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            },
-            ...state.products,
-          ],
-        })),
+        set((state) => {
+          const now = Date.now();
+          const id = `${now}-${Math.random().toString(36).slice(2, 7)}`;
+          return {
+            products: [
+              {
+                ...product,
+                id,
+                totalSold: 0,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              },
+              ...state.products,
+            ],
+          };
+        }),
 
       updateProduct: (id, updates) =>
         set((state) => ({
@@ -721,11 +725,18 @@ export const useSellerStore = create<SellerState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
-          state.products = state.products.map((p: any) => ({
-            ...p,
-            createdAt: new Date(p.createdAt),
-            updatedAt: new Date(p.updatedAt),
-          }));
+          const seenProductIds = new Set<string>();
+          state.products = state.products.map((p: any) => {
+            let id = p.id;
+            if (seenProductIds.has(id)) id = id + '-' + Math.random().toString(36).slice(2, 6);
+            seenProductIds.add(id);
+            return {
+              ...p,
+              id,
+              createdAt: new Date(p.createdAt),
+              updatedAt: new Date(p.updatedAt),
+            };
+          });
           // Deduplicate orders by id (fix for old Date.now() collisions)
           const seenIds = new Set<string>();
           state.orders = state.orders

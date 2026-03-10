@@ -636,7 +636,7 @@ const OrderList: React.FC = () => {
   const seenOnlineOrderIds = useSellerStore((s) => s.seenOnlineOrderIds);
   const currency = useSettingsStore((s) => s.currency);
   const userName = useSettingsStore((s) => s.userName);
-  const paymentQrs = useSettingsStore((s) => s.paymentQrs);
+  const paymentQrs = useSettingsStore((s) => s.businessPaymentQrs);
   const { showToast } = useToast();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -1068,7 +1068,11 @@ const OrderList: React.FC = () => {
   );
 
   const handleConfirmPayment = useCallback(() => {
-    if (!selectedPaymentMethod) return;
+    if (!selectedPaymentMethod) {
+      warningNotification();
+      showToast('select a payment method', 'error');
+      return;
+    }
     mediumTap();
     const note = paymentNote.trim() || undefined;
     if (pendingPayOrder) {
@@ -1309,20 +1313,29 @@ const OrderList: React.FC = () => {
     // Save items if changed
     const itemsChanged = JSON.stringify(editItems.map(i => ({ id: i.productId, q: i.quantity }))) !==
       JSON.stringify(selectedOrder.items.map(i => ({ id: i.productId, q: i.quantity })));
-    if (itemsChanged && editItems.length > 0) {
-      updateOrderItems(selectedOrder.id, editItems);
-    }
 
-    // If items changed and new total > paidAmount, revert to unpaid
     let newTotal = selectedOrder.totalAmount;
     if (itemsChanged) {
       newTotal = editItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
       const paidSoFar = selectedOrder.paidAmount || 0;
+
+      // Overpaid — new total is less than what was already paid
+      if (selectedOrder.isPaid && newTotal < paidSoFar) {
+        warningNotification();
+        showToast('undo payment first — new total is less than paid amount', 'error');
+        return;
+      }
+
+      // Underpaid — new total exceeds paid amount, revert to unpaid
       if (selectedOrder.isPaid && newTotal > paidSoFar) {
         updates.isPaid = false;
         updates.paymentMethod = undefined;
         updates.paidAt = undefined;
       }
+    }
+
+    if (itemsChanged && editItems.length > 0) {
+      updateOrderItems(selectedOrder.id, editItems);
     }
 
     if (Object.keys(updates).length > 0 || itemsChanged) {
@@ -2832,6 +2845,7 @@ const OrderList: React.FC = () => {
                 if (!depositMethod) return;
                 const amt = parseFloat(depositAmount);
                 if (!amt || amt <= 0) {
+                  warningNotification();
                   showToast('enter a valid amount.', 'error');
                   return;
                 }
@@ -3015,7 +3029,7 @@ const OrderList: React.FC = () => {
                         style={styles.paymentConfirmBtn}
                         onPress={() => {
                           const amt = parseFloat(editPayAmount);
-                          if (!amt || amt <= 0) { showToast('enter a valid amount.', 'error'); return; }
+                          if (!amt || amt <= 0) { warningNotification(); showToast('enter a valid amount.', 'error'); return; }
                           mediumTap();
                           const noteVal = editPayNote.trim() || undefined;
                           updateDeposit(selectedOrder.id, i, amt, editPayMethod, noteVal);

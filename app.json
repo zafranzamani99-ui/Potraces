@@ -27,8 +27,12 @@
         "backgroundColor": "#F9F9F7"
       },
       "package": "com.potraces.app",
-      "softwareKeyboardLayoutMode": "adjustResize",
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.READ_CONTACTS",
         "android.permission.WRITE_CONTACTS",
         "android.permission.RECORD_AUDIO",
@@ -57,13 +61,21 @@
         {
           "sounds": []
         }
-      ]
+      ],
+      "expo-font",
+      "expo-asset"
     ],
     "extra": {
       "eas": {
         "projectId": "fbef59ba-65ba-42fd-abbf-74c40f3e2366"
       }
     },
-    "owner": "zafranzamani12"
+    "owner": "zafranzamani12",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/fbef59ba-65ba-42fd-abbf-74c40f3e2366"
+    }
   }
 }

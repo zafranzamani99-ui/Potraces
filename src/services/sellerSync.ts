@@ -1,17 +1,11 @@
-import { supabase, ensureAnonSession } from './supabase';
+import { supabase } from './supabase';
 import { SellerProduct, SellerOrder, Season, SellerCustomer } from '../types';
 import { useSellerStore } from '../store/sellerStore';
 
-/** Get current session, retrying auth if missing. Returns null if offline/auth disabled. */
+/** Get current auth session. Returns null if not authenticated. */
 async function getSession() {
   const { data: { session } } = await supabase.auth.getSession();
-  if (session) return session;
-  try {
-    return await ensureAnonSession();
-  } catch (e) {
-    console.warn('[sellerSync] auth failed:', e);
-    return null;
-  }
+  return session ?? null;
 }
 
 // ─── Profile management ───────────────────────────────────────────────────────
@@ -43,12 +37,7 @@ export async function updateSellerProfile(
   shopNotice?: string,
 ): Promise<string | null> {
   const session = await getSession();
-  if (!session) {
-    // Try to get the raw error for debugging
-    const { error: authErr } = await supabase.auth.signInAnonymously();
-    if (authErr) return `Auth error: ${authErr.message}`;
-    return 'Tiada sambungan internet. Sila cuba lagi.';
-  }
+  if (!session) return 'Not authenticated. Please sign in.';
 
   const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
   if (!cleanSlug) return 'URL kedai tidak sah';

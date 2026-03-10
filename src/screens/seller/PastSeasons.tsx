@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Alert,
   Animated,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -16,6 +15,8 @@ import { format, differenceInDays, differenceInHours } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
+import { useToast } from '../../context/ToastContext';
+import { warningNotification } from '../../services/haptics';
 import { Season } from '../../types';
 
 // -- Format duration between two dates (e.g. "10 days 15 hours") ----
@@ -95,6 +96,7 @@ const PastSeasons: React.FC = () => {
   const { seasons, orders, ingredientCosts, addSeason, useSeasonTemplate } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
+  const { showToast } = useToast();
 
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
@@ -104,13 +106,15 @@ const PastSeasons: React.FC = () => {
   const pastSeasons = seasons.filter((s) => !s.isActive);
 
   const handleStartSeason = useCallback(() => {
-    if (!newName.trim()) return;
+    if (!newName.trim()) {
+      warningNotification();
+      showToast('enter a season name', 'error');
+      return;
+    }
 
     if (activeSeason) {
-      Alert.alert(
-        'Season already active',
-        `"${activeSeason.name}" is still active. End it first before starting a new one.`
-      );
+      warningNotification();
+      showToast(`"${activeSeason.name}" is still active — end it first`, 'error');
       return;
     }
 

@@ -19,6 +19,7 @@ import {
   Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -31,7 +32,6 @@ import { useWalletStore } from '../../store/walletStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { FREE_TIER, PREMIUM_CONFIG } from '../../constants/premium';
 import { RootStackParamList } from '../../types';
-import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import CategoryManager from '../../components/common/CategoryManager';
@@ -101,12 +101,15 @@ const Settings: React.FC = () => {
   const setNotificationsEnabled = useSettingsStore((s) => s.setNotificationsEnabled);
   const setBusinessModeEnabled = useSettingsStore((s) => s.setBusinessModeEnabled);
   const setDefaultMode = useSettingsStore((s) => s.setDefaultMode);
-  const paymentQrs = useSettingsStore((s) => s.paymentQrs);
+  const personalQrs = useSettingsStore((s) => s.paymentQrs) || [];
+  const businessQrs = useSettingsStore((s) => s.businessPaymentQrs) || [];
+  const paymentQrs = mode === 'business' ? businessQrs : personalQrs;
   const addPaymentQr = useSettingsStore((s) => s.addPaymentQr);
   const removePaymentQr = useSettingsStore((s) => s.removePaymentQr);
   const replacePaymentQr = useSettingsStore((s) => s.replacePaymentQr);
   const updatePaymentQrLabel = useSettingsStore((s) => s.updatePaymentQrLabel);
   const clearAllData = useSettingsStore((s) => s.clearAllData);
+  const clearBusinessData = useSettingsStore((s) => s.clearBusinessData);
 
   useEffect(() => {
     if (ready) return;
@@ -183,17 +186,34 @@ const Settings: React.FC = () => {
   const handlePickQrImage = useCallback(async (replaceIndex?: number) => {
     lightTap();
     setQrLoadingIndex(replaceIndex ?? paymentQrs.length);
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.7,
-    });
-    setQrLoadingIndex(null);
-    if (result.canceled || !result.assets?.[0]) return;
-    const uri = result.assets[0].uri;
-    const defaultLabel = replaceIndex !== undefined ? (paymentQrs[replaceIndex]?.label || '') : '';
-    setQrLabelInput(defaultLabel);
-    setQrLabelModal({ visible: true, uri, replaceIndex, defaultLabel });
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.7,
+      });
+      setQrLoadingIndex(null);
+      if (result.canceled || !result.assets?.[0]) return;
+      const srcUri = result.assets[0].uri;
+      let destUri = srcUri;
+      try {
+        const dir = `${FileSystem.documentDirectory}payment-qrs/`;
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
+        const filename = `qr_${Date.now()}.jpg`;
+        destUri = `${dir}${filename}`;
+        await FileSystem.copyAsync({ from: srcUri, to: destUri });
+      } catch {
+        destUri = srcUri;
+      }
+      const defaultLabel = replaceIndex !== undefined ? (paymentQrs[replaceIndex]?.label || '') : '';
+      // Delay modal open — iOS needs time to fully dismiss the native image picker
+      setTimeout(() => {
+        setQrLabelInput(defaultLabel);
+        setQrLabelModal({ visible: true, uri: destUri, replaceIndex, defaultLabel });
+      }, 500);
+    } catch {
+      setQrLoadingIndex(null);
+    }
   }, [paymentQrs]);
 
   const handleQrLongPress = useCallback((index: number) => {
@@ -215,10 +235,10 @@ const Settings: React.FC = () => {
       setQrLabelInput(qr.label);
       setQrLabelModal({ visible: true, renameIndex: index, defaultLabel: qr.label });
     } else if (action === 'delete') {
-      removePaymentQr(index);
+      removePaymentQr(index, mode);
       showToast('QR removed', 'success');
     }
-  }, [qrActionIndex, paymentQrs, updatePaymentQrLabel, removePaymentQr, showToast]);
+  }, [qrActionIndex, paymentQrs, updatePaymentQrLabel, removePaymentQr, showToast, mode]);
 
   const handleClearData = useCallback(() => {
     Alert.alert(
@@ -238,6 +258,24 @@ const Settings: React.FC = () => {
     );
   }, [clearAllData, showToast]);
 
+  const handleClearBusinessData = useCallback(() => {
+    Alert.alert(
+      'Clear Business Data',
+      'This will permanently delete all business data (products, orders, seasons, customers) both locally and from the server, sign you out, and return to personal mode. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear & Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            await clearBusinessData();
+            showToast('Business data cleared & signed out', 'success');
+          },
+        },
+      ]
+    );
+  }, [clearBusinessData, showToast]);
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -248,7 +286,6 @@ const Settings: React.FC = () => {
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}
       >
-        <ModeToggle />
         {/* Profile */}
         <Text style={styles.sectionHeader}>Profile</Text>
         <Card style={styles.card}>
@@ -675,6 +712,16 @@ const Settings: React.FC = () => {
             fullWidth
             style={{ marginBottom: SPACING.md }}
           />
+          {mode === 'business' && (
+            <Button
+              title="Clear Business Data & Sign Out"
+              onPress={handleClearBusinessData}
+              variant="danger"
+              icon="log-out"
+              fullWidth
+              style={{ marginBottom: SPACING.md }}
+            />
+          )}
           <Button
             title="Clear All Data"
             onPress={handleClearData}
@@ -793,14 +840,14 @@ const Settings: React.FC = () => {
                 onPress={() => {
                   const label = qrLabelInput.trim();
                   if (qrLabelModal.renameIndex !== undefined) {
-                    if (label) updatePaymentQrLabel(qrLabelModal.renameIndex, label);
+                    if (label) updatePaymentQrLabel(qrLabelModal.renameIndex, label, mode);
                   } else if (qrLabelModal.uri) {
                     const qrLabel = label || `QR ${qrLabelModal.replaceIndex !== undefined ? qrLabelModal.replaceIndex + 1 : paymentQrs.length + 1}`;
                     if (qrLabelModal.replaceIndex !== undefined) {
-                      replacePaymentQr(qrLabelModal.replaceIndex, qrLabelModal.uri, qrLabel);
+                      replacePaymentQr(qrLabelModal.replaceIndex, qrLabelModal.uri, qrLabel, mode);
                       showToast('QR updated', 'success');
                     } else {
-                      addPaymentQr(qrLabelModal.uri, qrLabel);
+                      addPaymentQr(qrLabelModal.uri, qrLabel, mode);
                       showToast('QR added', 'success');
                     }
                   }

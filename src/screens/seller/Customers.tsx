@@ -13,7 +13,7 @@ import * as Contacts from 'expo-contacts';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
-import { lightTap, mediumTap, selectionChanged } from '../../services/haptics';
+import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
 import { SellerOrder, SellerCustomer } from '../../types';
 
@@ -795,7 +795,8 @@ const SellerCustomers: React.FC = () => {
     const customerPhone = editPhone.trim();
 
     if (!customerName) {
-      Alert.alert('', 'name is required.');
+      warningNotification();
+      showToast('name is required', 'error');
       return;
     }
 
@@ -805,7 +806,8 @@ const SellerCustomers: React.FC = () => {
       (c) => c.name.toLowerCase() === nameKey && c.name.toLowerCase() !== editingCustomer.name.toLowerCase()
     );
     if (duplicateName) {
-      Alert.alert('', `a customer named "${duplicateName.name}" already exists.`);
+      warningNotification();
+      showToast(`"${duplicateName.name}" already exists`, 'error');
       return;
     }
 
@@ -823,7 +825,8 @@ const SellerCustomers: React.FC = () => {
         return normalizedExisting === normalizedInput;
       });
       if (duplicatePhone) {
-        Alert.alert('', `that phone number is already used by ${duplicatePhone.name}.`);
+        warningNotification();
+        showToast(`phone already used by ${duplicatePhone.name}`, 'error');
         return;
       }
     }

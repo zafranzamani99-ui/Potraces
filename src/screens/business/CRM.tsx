@@ -27,7 +27,6 @@ import {
   RADIUS,
   withAlpha,
 } from '../../constants';
-import ModeToggle from '../../components/common/ModeToggle';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
@@ -515,8 +514,6 @@ const CRM: React.FC = () => {
   // ─── MAIN RENDER ────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      <ModeToggle />
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

@@ -52,17 +52,17 @@ const Toast: React.FC<ToastProps> = ({ visible, message, type, onHide, duration 
   return (
     <Animated.View
       style={[styles.wrapper, { transform: [{ translateY }] }]}
-      pointerEvents="box-none"
+      pointerEvents="none"
       accessible
       accessibilityRole="alert"
       accessibilityLiveRegion="assertive"
       accessibilityLabel={`${type} notification: ${message}`}
     >
-      <TouchableOpacity activeOpacity={0.9} onPress={dismiss} style={styles.container}>
+      <View style={styles.container}>
         <View style={[styles.accentBar, { backgroundColor: ACCENT_COLORS[type] }]} />
         <Feather name={ICONS[type]} size={20} color={ACCENT_COLORS[type]} style={styles.icon} />
         <Text style={styles.message} numberOfLines={2}>{message}</Text>
-      </TouchableOpacity>
+      </View>
     </Animated.View>
   );
 };

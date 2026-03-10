@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { TouchableOpacity, Easing } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';
@@ -6,7 +6,11 @@ import { createStackNavigator, CardStyleInterpolators, StackCardStyleInterpolato
 import { Feather } from '@expo/vector-icons';
 import { useAppStore } from '../store/appStore';
 import { useSettingsStore } from '../store/settingsStore';
+import { useAuthStore } from '../store/authStore';
 import { CALM } from '../constants';
+import AuthScreen from '../screens/auth/AuthScreen';
+import OtpVerificationScreen from '../screens/auth/OtpVerificationScreen';
+import { requestOtp, signOut, getAuthSession } from '../services/supabase';
 import PersonalNavigator from './PersonalNavigator';
 import BusinessNavigator from './BusinessNavigator';
 import PersonalReports from '../screens/personal/Reports';
@@ -109,6 +113,87 @@ const modeTransitionSpec = {
   },
 };
 
+/** Wraps business mode with auth gating. */
+const AuthGatedBusiness: React.FC = () => {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isVerified = useAuthStore((s) => s.isVerified);
+  const [otpCode, setOtpCode] = useState<string | null>(null);
+  const [otpPhone, setOtpPhone] = useState('');
+
+  // Validate session on mount — reset stale auth state if no real Supabase session
+  useEffect(() => {
+    if (isAuthenticated && !isVerified) {
+      getAuthSession().then((session) => {
+        if (!session) {
+          // Stale local auth state with no real session — reset
+          useAuthStore.getState().reset();
+        }
+      });
+    }
+  }, []);
+
+  // Auto-request OTP if authenticated but not verified and no code yet
+  useEffect(() => {
+    if (isAuthenticated && !isVerified && !otpCode) {
+      const phone = useAuthStore.getState().phone;
+      if (phone) {
+        requestOtp(phone).then((otp) => {
+          setOtpCode(otp.code);
+          setOtpPhone(phone);
+        }).catch((err) => {
+          console.warn('[OTP request failed]', err?.message || err);
+          // If not authenticated on server, reset local auth state
+          if (err?.message?.includes('Not authenticated')) {
+            useAuthStore.getState().reset();
+          }
+        });
+      }
+    }
+  }, [isAuthenticated, isVerified, otpCode]);
+
+  const handleVerificationNeeded = useCallback((code: string, phone: string) => {
+    setOtpCode(code);
+    setOtpPhone(phone);
+  }, []);
+
+  const handleAuthenticated = useCallback(() => {
+    // Already verified — will re-render as BusinessNavigator
+  }, []);
+
+  const handleVerified = useCallback(() => {
+    setOtpCode(null);
+  }, []);
+
+  const handleOtpBack = useCallback(() => {
+    signOut().catch(() => {});
+    useAuthStore.getState().reset();
+    setOtpCode(null);
+    setOtpPhone('');
+  }, []);
+
+  if (!isAuthenticated) {
+    return (
+      <AuthScreen
+        onVerificationNeeded={handleVerificationNeeded}
+        onAuthenticated={handleAuthenticated}
+      />
+    );
+  }
+
+  if (!isVerified || otpCode) {
+    return (
+      <OtpVerificationScreen
+        code={otpCode || ''}
+        phone={otpPhone}
+        onVerified={handleVerified}
+        onBack={handleOtpBack}
+      />
+    );
+  }
+
+  return <BusinessNavigator />;
+};
+
 const RootNavigator: React.FC = () => {
   const mode = useAppStore((state) => state.mode);
   const hasCompletedOnboarding = useSettingsStore((s) => s.hasCompletedOnboarding);
@@ -144,7 +229,7 @@ const RootNavigator: React.FC = () => {
         ) : (
           <Stack.Screen
             name="BusinessMain"
-            component={BusinessNavigator}
+            component={AuthGatedBusiness}
             options={{
               cardStyleInterpolator: forCrossFade,
               transitionSpec: modeTransitionSpec,

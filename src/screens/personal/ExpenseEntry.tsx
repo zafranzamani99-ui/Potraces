@@ -17,7 +17,6 @@ import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
-import ModeToggle from '../../components/common/ModeToggle';
 import Button from '../../components/common/Button';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
@@ -259,7 +258,6 @@ const ExpenseEntry: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <KeyboardAwareScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
