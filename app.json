@@ -27,6 +27,7 @@
         "backgroundColor": "#F9F9F7"
       },
       "package": "com.potraces.app",
+      "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.READ_CONTACTS",

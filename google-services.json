@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "137349592081",
+    "project_id": "potraces-f4ebd",
+    "storage_bucket": "potraces-f4ebd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:137349592081:android:f57f20a7d659e72926adb0",
+        "android_client_info": {
+          "package_name": "com.potraces.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB8fy6TZTIU96KLr0kKoEeBCtUqj8LbaCA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
