@@ -58,8 +58,8 @@ export default function App() {
 
       if (!cancelled) setIsLoading(false);
 
-      // Only sync if authenticated + verified
-      if (session && authStore.isVerified) {
+      // Sync + push for any authenticated session (anonymous or verified)
+      if (session) {
         try {
           const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
           await syncAll(products, orders, seasons, sellerCustomers);
