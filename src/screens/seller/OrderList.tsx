@@ -1246,11 +1246,11 @@ const OrderList: React.FC = () => {
         return;
       }
       const text =
-        `Hi ${order.customerName || 'customer'},\n\n` +
-        `Pesanan${order.orderNumber ? ` #${order.orderNumber}` : ''}\n` +
-        `*Jumlah: ${currency} ${order.totalAmount.toFixed(2)}*\n\n` +
-        `Sila scan QR untuk bayaran.\n` +
-        `Selepas bayar, mohon hantar resit/screenshot sebagai bukti.\n\nTerima kasih! 🙏`;
+        `Thanks for your order${order.customerName ? `, ${order.customerName}` : ''}!\n\n` +
+        `Order${order.orderNumber ? ` #${order.orderNumber}` : ''}\n` +
+        `*Total: ${currency} ${order.totalAmount.toFixed(2)}*\n\n` +
+        `Please scan the QR to make payment.\n` +
+        `Once paid, kindly send a receipt/screenshot as proof.\n\nThank you! 🙏`;
 
       const phone = order.customerPhone;
       // Queue QR image to auto-share when user returns from WhatsApp

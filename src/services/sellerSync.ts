@@ -332,11 +332,156 @@ export async function pushCustomers(customers: SellerCustomer[]): Promise<void> 
   }
 }
 
+// ─── Pull from Supabase ───────────────────────────────────────────────────────
+
+/**
+ * Pull remote data and merge into local store.
+ * Only adds items that don't already exist locally (by local_id).
+ * Must run BEFORE push to prevent tombstone logic from deleting remote data.
+ */
+export async function pullAll(): Promise<void> {
+  const session = await getSession();
+  if (!session) return;
+  const userId = session.user.id;
+  const store = useSellerStore.getState();
+
+  // Pull products
+  const { data: remoteProducts } = await supabase
+    .from('seller_products')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (remoteProducts && remoteProducts.length > 0) {
+    const localProductIds = new Set(store.products.map((p) => p.id));
+    for (const rp of remoteProducts) {
+      if (rp.local_id && !localProductIds.has(rp.local_id)) {
+        store.addProduct({
+          name: rp.name,
+          pricePerUnit: rp.price_per_unit,
+          costPerUnit: rp.cost_per_unit ?? undefined,
+          unit: rp.unit,
+          isActive: rp.is_active,
+          trackStock: rp.track_stock ?? false,
+          stockQuantity: rp.stock_quantity ?? undefined,
+          description: rp.description ?? undefined,
+        });
+        // Fix the ID to match remote local_id
+        useSellerStore.setState((s) => ({
+          products: s.products.map((p) =>
+            p.name === rp.name && p.id !== rp.local_id
+              ? { ...p, id: rp.local_id, totalSold: rp.total_sold ?? 0 }
+              : p
+          ),
+        }));
+      }
+    }
+  }
+
+  // Pull seasons
+  const { data: remoteSeasons } = await supabase
+    .from('seller_seasons')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (remoteSeasons && remoteSeasons.length > 0) {
+    const localSeasonIds = new Set(store.seasons.map((s) => s.id));
+    for (const rs of remoteSeasons) {
+      if (rs.local_id && !localSeasonIds.has(rs.local_id)) {
+        useSellerStore.setState((s) => ({
+          seasons: [
+            ...s.seasons,
+            {
+              id: rs.local_id,
+              name: rs.name,
+              startDate: new Date(rs.start_date),
+              endDate: rs.end_date ? new Date(rs.end_date) : undefined,
+              isActive: rs.is_active,
+              note: rs.note ?? undefined,
+              costBudget: rs.cost_budget ?? undefined,
+              revenueTarget: rs.revenue_target ?? undefined,
+            },
+          ],
+        }));
+      }
+    }
+  }
+
+  // Pull customers
+  const { data: remoteCustomers } = await supabase
+    .from('seller_customers')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (remoteCustomers && remoteCustomers.length > 0) {
+    const localCustomerIds = new Set(store.sellerCustomers.map((c) => c.id));
+    for (const rc of remoteCustomers) {
+      if (rc.local_id && !localCustomerIds.has(rc.local_id)) {
+        useSellerStore.setState((s) => ({
+          sellerCustomers: [
+            ...s.sellerCustomers,
+            {
+              id: rc.local_id,
+              name: rc.name,
+              phone: rc.phone ?? undefined,
+              address: rc.address ?? undefined,
+              note: rc.note ?? undefined,
+              isVip: rc.is_vip ?? false,
+            },
+          ],
+        }));
+      }
+    }
+  }
+
+  // Pull app orders
+  const { data: remoteOrders } = await supabase
+    .from('seller_orders')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('source', 'app');
+
+  if (remoteOrders && remoteOrders.length > 0) {
+    const localOrderIds = new Set(store.orders.map((o) => o.id));
+    for (const ro of remoteOrders) {
+      if (ro.local_id && !localOrderIds.has(ro.local_id)) {
+        useSellerStore.setState((s) => ({
+          orders: [
+            ...s.orders,
+            {
+              id: ro.local_id,
+              orderNumber: ro.order_number ?? undefined,
+              items: ro.items ?? [],
+              customerName: ro.customer_name ?? undefined,
+              customerPhone: ro.customer_phone ?? undefined,
+              customerAddress: ro.customer_address ?? undefined,
+              totalAmount: ro.total_amount,
+              status: ro.status as any,
+              isPaid: ro.is_paid,
+              paidAmount: ro.paid_amount ?? undefined,
+              paymentMethod: ro.payment_method as any ?? undefined,
+              paidAt: ro.paid_at ? new Date(ro.paid_at) : undefined,
+              note: ro.note ?? undefined,
+              deliveryDate: ro.delivery_date ? new Date(ro.delivery_date) : undefined,
+              seasonId: ro.season_local_id ?? undefined,
+              deposits: ro.deposits ?? [],
+              source: 'app',
+              supabaseId: ro.id,
+              createdAt: new Date(ro.created_at),
+              updatedAt: new Date(ro.updated_at),
+            },
+          ],
+        }));
+      }
+    }
+  }
+}
+
 // ─── Full sync ────────────────────────────────────────────────────────────────
 
 /**
  * Sync all local seller data to Supabase. Fire-and-forget — errors are swallowed.
  * Call on startup and on app foreground.
+ * Pulls remote data first to prevent tombstone deletion on new devices.
  */
 export async function syncAll(
   products: SellerProduct[],
@@ -348,11 +493,17 @@ export async function syncAll(
     const profileId = await ensureProfile();
     if (!profileId) return;
 
+    // Pull first — prevents empty local store from deleting remote data
+    await pullAll();
+
+    // Re-read store after pull (may have new items merged in)
+    const store = useSellerStore.getState();
+
     await Promise.allSettled([
-      pushProducts(products),
-      pushOrders(orders, profileId),
-      pushSeasons(seasons),
-      pushCustomers(customers),
+      pushProducts(store.products),
+      pushOrders(store.orders, profileId),
+      pushSeasons(store.seasons),
+      pushCustomers(store.sellerCustomers),
     ]);
   } catch {
     // Sync failures are non-fatal — app works fully offline

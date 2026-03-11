@@ -19,11 +19,9 @@ import {
   UIManager,
   Linking,
   Image,
-  AppState,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Contacts from 'expo-contacts';
-import * as Sharing from 'expo-sharing';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import CalendarPicker from '../../components/common/CalendarPicker';
@@ -342,30 +340,32 @@ const NewOrder: React.FC = () => {
     }
   }, []);
 
-  // Confirmation text (Malay)
+  // Confirmation text
   const confirmationText = useMemo(() => {
     const name = customerName.trim();
     const lines: string[] = [];
 
     if (name) {
-      lines.push(`Terima kasih ${name}!`);
+      lines.push(`Thanks for your order, ${name}!`);
     } else {
-      lines.push('Pesanan diterima.');
+      lines.push('Thanks for your order!');
     }
     lines.push('');
-    lines.push('Pesanan:');
+    if (savedOrderNumber) {
+      lines.push(`Order #${savedOrderNumber}`);
+    }
     for (const item of items) {
       lines.push(`- ${item.productName} x${item.quantity} ${item.unit}`);
     }
     lines.push('');
-    lines.push(`Jumlah: ${currency} ${total.toFixed(2)}`);
+    lines.push(`Total: ${currency} ${total.toFixed(2)}`);
 
     if (deliveryDate && isValid(deliveryDate)) {
-      lines.push(`Hantar: ${format(deliveryDate, 'dd MMM')}`);
+      lines.push(`Delivery: ${format(deliveryDate, 'dd MMM')}`);
     }
 
     return lines.join('\n');
-  }, [customerName, items, currency, total, deliveryDate]);
+  }, [customerName, items, currency, total, deliveryDate, savedOrderNumber]);
 
   // Persist customer (returns false if duplicate phone detected)
   const persistCustomer = useCallback((): boolean => {
@@ -454,12 +454,9 @@ const NewOrder: React.FC = () => {
 
   const handleCopyToClipboard = useCallback(async () => {
     lightTap();
-    const textToCopy = savedOrderNumber
-      ? `*No. Pesanan: #${savedOrderNumber}*\n\n${confirmationText}`
-      : confirmationText;
-    await Clipboard.setStringAsync(textToCopy);
+    await Clipboard.setStringAsync(confirmationText);
     setCopiedFlag(true);
-  }, [confirmationText, savedOrderNumber]);
+  }, [confirmationText]);
 
   const resetForm = useCallback(() => {
     setCustomerName('');
@@ -506,20 +503,10 @@ const NewOrder: React.FC = () => {
   }, [editingQtyValue, handleUpdateQuantity]);
 
   // ── WhatsApp share handler ────────────────────────────────
-  const pendingQrShare = useRef(false);
-
   const handleShareWhatsApp = useCallback(() => {
     lightTap();
     const phone = customerPhone.trim();
-    const fullText = savedOrderNumber
-      ? `*No. Pesanan: #${savedOrderNumber}*\n\n${confirmationText}`
-      : confirmationText;
-    const encodedText = encodeURIComponent(fullText);
-
-    // If payment QRs exist, auto-share QR when user returns from WhatsApp
-    if (paymentQrs.length > 0) {
-      pendingQrShare.current = true;
-    }
+    const encodedText = encodeURIComponent(confirmationText);
 
     if (phone) {
       let digits = phone.replace(/[^0-9]/g, '');
@@ -528,39 +515,7 @@ const NewOrder: React.FC = () => {
     } else {
       Linking.openURL(`https://wa.me/?text=${encodedText}`);
     }
-  }, [customerPhone, confirmationText, savedOrderNumber, paymentQrs.length]);
-
-  // Auto-share QR when returning from WhatsApp
-  // Must close the Modal first — Android's native modal layer blocks the share sheet
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active' && pendingQrShare.current) {
-        pendingQrShare.current = false;
-        const qr = paymentQrs[activeQrIndex];
-        if (!qr?.uri) return;
-
-        // Close modal first to unblock Android share sheet
-        setShowConfirmModal(false);
-
-        setTimeout(async () => {
-          try {
-            const available = await Sharing.isAvailableAsync();
-            if (!available) return;
-            await Sharing.shareAsync(qr.uri, {
-              mimeType: 'image/jpeg',
-              dialogTitle: qr.label || 'Payment QR',
-            });
-          } catch {
-            // Share cancelled or failed — silent
-          }
-          // Navigate to order list after sharing
-          resetForm();
-          navigation.navigate('SellerOrders');
-        }, 300);
-      }
-    });
-    return () => sub.remove();
-  }, [paymentQrs, activeQrIndex, resetForm, navigation]);
+  }, [customerPhone, confirmationText]);
 
   // ── Import from contacts ──────────────────────────────────
   const handleImportFromContacts = useCallback(async () => {
