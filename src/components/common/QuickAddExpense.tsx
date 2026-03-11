@@ -4,14 +4,13 @@ import {
   Text,
   Modal,
   TouchableOpacity,
-  Pressable,
   StyleSheet,
   Animated,
   Dimensions,
   Platform,
-  KeyboardAvoidingView,
   ScrollView,
   PanResponder,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
@@ -210,7 +209,7 @@ const QuickAddExpense: React.FC = () => {
       Animated.timing(slideAnim, {
         toValue: -idx * CARD_WIDTH,
         duration: 260,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start(() => setStep(target));
     },
     [slideAnim, stepIndex],
@@ -311,7 +310,7 @@ const QuickAddExpense: React.FC = () => {
           styles.fabWrap,
           { left: fabPos.x, top: fabPos.y },
         ]}
-        {...(Platform.OS === 'ios' ? panResponder.panHandlers : {})}
+        {...panResponder.panHandlers}
       >
         <TouchableOpacity
           style={styles.fab}
@@ -322,7 +321,7 @@ const QuickAddExpense: React.FC = () => {
         >
           <Feather name="plus" size={26} color="#fff" />
         </TouchableOpacity>
-        {showHint && Platform.OS === 'ios' && (
+        {showHint && (
           <Animated.View style={[styles.hint, { opacity: hintOpacity }]} pointerEvents="none">
             <Text style={styles.hintText}>hold & drag to move</Text>
           </Animated.View>
@@ -337,16 +336,14 @@ const QuickAddExpense: React.FC = () => {
         animationType="fade"
         onRequestClose={handleClose}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.overlay}
-        >
-          <Pressable style={StyleSheet.absoluteFill} onPress={handleClose}>
-            <View style={{ flex: 1 }} />
-          </Pressable>
-
+        <View style={styles.overlay}>
+          <TouchableWithoutFeedback onPress={handleClose}>
+            <View style={StyleSheet.absoluteFill} />
+          </TouchableWithoutFeedback>
           <Animated.View
-            style={[styles.card, { transform: [{ scale: cardScale }], opacity: cardOpacity, elevation: 10 }]}
+            style={[styles.card, { transform: [{ scale: cardScale }], opacity: cardOpacity, elevation: 24 }]}
+            onStartShouldSetResponder={() => true}
+            onResponderTerminationRequest={() => true}
           >
             {/* ── Header row ──────────────────────────── */}
             <View style={styles.hdr}>
@@ -371,7 +368,7 @@ const QuickAddExpense: React.FC = () => {
 
             {/* ── Sliding steps ───────────────────────── */}
             <View style={styles.clip}>
-              <Animated.View style={[styles.rail, { transform: [{ translateX: slideAnim }] }]}>
+              <Animated.View style={[styles.rail, { marginLeft: slideAnim }]}>
                 {/* ── STEP 1: Amount ──────────────────── */}
                 <View style={[styles.step, { width: CARD_WIDTH }]}>
                   {/* Amount display */}
@@ -467,7 +464,7 @@ const QuickAddExpense: React.FC = () => {
               </Animated.View>
             </View>
           </Animated.View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </>
   );

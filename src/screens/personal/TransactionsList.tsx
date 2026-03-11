@@ -12,6 +12,7 @@ import {
   Alert,
   ScrollView,
   Keyboard,
+  RefreshControl,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
@@ -59,6 +60,11 @@ const TransactionsList: React.FC = () => {
   const [filter, setFilter] = useState<FilterType>('all');
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   // Transaction edit modal state
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -437,6 +443,14 @@ const TransactionsList: React.FC = () => {
           removeClippedSubviews={true}
           windowSize={5}
           maxToRenderPerBatch={8}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={CALM.bronze}
+              colors={[CALM.bronze]}
+            />
+          }
         />
       ) : (
         <View style={styles.emptyContainer}>

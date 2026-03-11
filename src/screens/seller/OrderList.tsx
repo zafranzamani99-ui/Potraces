@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   AppState,
+  RefreshControl,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -28,7 +29,7 @@ import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from
 import { SellerOrder, SellerOrderItem, OrderStatus, SellerPaymentMethod, SellerProduct, DepositEntry } from '../../types';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { deleteOrderFromSupabase } from '../../services/sellerSync';
+import { deleteOrderFromSupabase, syncAll, pullOrderLinkOrders } from '../../services/sellerSync';
 
 // ─── STATUS HELPERS ──────────────────────────────────────────
 function statusColor(status: OrderStatus): string {
@@ -708,6 +709,14 @@ const OrderList: React.FC = () => {
   }, [initialSearch]);
 
   const [selectedOrder, setSelectedOrder] = useState<SellerOrder | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    const { products, orders: o, seasons, sellerCustomers: sc } = useSellerStore.getState();
+    Promise.all([syncAll(products, o, seasons, sc), pullOrderLinkOrders()])
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
+  }, []);
 
   // Auto-open order from push notification tap
   useEffect(() => {
@@ -1042,7 +1051,7 @@ const OrderList: React.FC = () => {
       // Auto-send WhatsApp confirmation when confirming an order
       if (next === 'confirmed' && order.customerPhone) {
         const items = order.items.map((i) => `• ${i.productName} ×${i.quantity}`).join('\n');
-        const orderRef = order.orderNumber ? `No. Pesanan: #${order.orderNumber}\n` : '';
+        const orderRef = order.orderNumber ? `*No. Pesanan: #${order.orderNumber}*\n` : '';
         const msg =
           `Salam ${order.customerName || ''}! ✅\n\n` +
           `Pesanan anda telah disahkan.\n\n` +
@@ -1166,7 +1175,7 @@ const OrderList: React.FC = () => {
         return `${trimmed}${' '.repeat(Math.max(1, space))}${value}`;
       };
       const header = userName ? `${userName}\n` : '';
-      const orderRef = order.orderNumber ? `No: #${order.orderNumber}\n` : '';
+      const orderRef = order.orderNumber ? `*No: #${order.orderNumber}*\n` : '';
       const dateRow = `Tarikh: ${orderDate}\n`;
       const customer = order.customerName ? `Pelanggan: ${order.customerName}\n` : '';
       const address = order.customerAddress ? `Alamat: ${order.customerAddress}\n` : '';
@@ -1783,6 +1792,7 @@ const OrderList: React.FC = () => {
         windowSize={5}
         maxToRenderPerBatch={8}
         initialNumToRender={10}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CALM.bronze} colors={[CALM.bronze]} />}
       />
 
       {/* ─── Bulk select floating bar ─── */}

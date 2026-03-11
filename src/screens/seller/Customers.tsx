@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, FlatList, TouchableOpacity,
-  TextInput, Animated, Linking, Platform, Alert, Modal,
+  TextInput, Animated, Linking, Platform, Alert, Modal, RefreshControl,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Contacts from 'expo-contacts';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { syncAll, pullOrderLinkOrders } from '../../services/sellerSync';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
@@ -506,6 +507,14 @@ const SellerCustomers: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortOption>('recent');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<DerivedCustomer | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    const { products, orders, seasons, sellerCustomers: sc } = useSellerStore.getState();
+    Promise.all([syncAll(products, orders, seasons, sc), pullOrderLinkOrders()])
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
+  }, []);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<DerivedCustomer | null>(null);
   const [editPhone, setEditPhone] = useState('');
@@ -1150,6 +1159,7 @@ const SellerCustomers: React.FC = () => {
         maxToRenderPerBatch={10}
         windowSize={5}
         removeClippedSubviews
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CALM.bronze} colors={[CALM.bronze]} />}
       />
       </>
       )}

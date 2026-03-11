@@ -30,7 +30,7 @@ import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
 import { SellerOrderItem, SellerProduct, SellerOrder } from '../../types';
-import { parseWhatsAppOrder } from '../../utils/parseWhatsAppOrder';
+import { parseWhatsAppOrder, detectWhatsAppSections, WhatsAppSection } from '../../utils/parseWhatsAppOrder';
 import { parseWhatsAppOrderAI } from '../../services/aiService';
 import { KeyboardAwareScrollView, KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -85,6 +85,14 @@ const NewOrder: React.FC = () => {
   const [whatsAppText, setWhatsAppText] = useState('');
   const [isParsing, setIsParsing] = useState(false);
   const [unmatched, setUnmatched] = useState<string[]>([]);
+  const [selectedSectionIdx, setSelectedSectionIdx] = useState(0);
+
+  const detectedSections = useMemo(() => {
+    if (!whatsAppText.trim()) return [];
+    return detectWhatsAppSections(whatsAppText);
+  }, [whatsAppText]);
+
+  const effectiveSectionIdx = selectedSectionIdx < detectedSections.length ? selectedSectionIdx : 0;
   const [editingQtyProductId, setEditingQtyProductId] = useState<string | null>(null);
   const [editingQtyValue, setEditingQtyValue] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -251,13 +259,17 @@ const NewOrder: React.FC = () => {
     setShowDatePicker(false);
   }, []);
 
-  // WhatsApp parsing
+  // WhatsApp parsing — uses selected section content if sections detected
   const handleParseWhatsApp = useCallback(async () => {
-    if (!whatsAppText.trim()) return;
+    const textToParse = detectedSections.length > 0
+      ? detectedSections[effectiveSectionIdx]?.content || whatsAppText
+      : whatsAppText;
+
+    if (!textToParse.trim()) return;
     setIsParsing(true);
 
     let local = { items: [] as any[], unmatched: [] as string[] };
-    try { local = parseWhatsAppOrder(whatsAppText, products); } catch (_) {}
+    try { local = parseWhatsAppOrder(textToParse, products); } catch (_) {}
     if (local.items.length > 0) {
       setItems(local.items);
       setUnmatched(local.unmatched);
@@ -266,7 +278,7 @@ const NewOrder: React.FC = () => {
       return;
     }
 
-    const aiItems = await parseWhatsAppOrderAI(whatsAppText, products);
+    const aiItems = await parseWhatsAppOrderAI(textToParse, products);
     if (aiItems && aiItems.length > 0) {
       const mapped: SellerOrderItem[] = aiItems.map((ai) => {
         const product = products.find(
@@ -285,12 +297,12 @@ const NewOrder: React.FC = () => {
       setItems(validMapped);
       setUnmatched(zeroPriceNames.length > 0 ? zeroPriceNames : []);
     } else {
-      setUnmatched([whatsAppText.trim().slice(0, 120)]);
+      setUnmatched([textToParse.trim().slice(0, 120)]);
     }
 
     setIsParsing(false);
     setShowWhatsAppPaste(false);
-  }, [whatsAppText, products]);
+  }, [whatsAppText, products, detectedSections, effectiveSectionIdx]);
 
   // Product add/remove
   const handleAddProduct = useCallback((product: SellerProduct) => {
@@ -441,7 +453,7 @@ const NewOrder: React.FC = () => {
   const handleCopyToClipboard = useCallback(async () => {
     lightTap();
     const textToCopy = savedOrderNumber
-      ? `No. Pesanan: #${savedOrderNumber}\n\n${confirmationText}`
+      ? `*No. Pesanan: #${savedOrderNumber}*\n\n${confirmationText}`
       : confirmationText;
     await Clipboard.setStringAsync(textToCopy);
     setCopiedFlag(true);
@@ -496,7 +508,7 @@ const NewOrder: React.FC = () => {
     lightTap();
     const phone = customerPhone.trim();
     const fullText = savedOrderNumber
-      ? `No. Pesanan: #${savedOrderNumber}\n\n${confirmationText}`
+      ? `*No. Pesanan: #${savedOrderNumber}*\n\n${confirmationText}`
       : confirmationText;
     const encodedText = encodeURIComponent(fullText);
     if (phone) {
@@ -770,6 +782,27 @@ const NewOrder: React.FC = () => {
                 numberOfLines={2}
                 accessibilityLabel="WhatsApp message"
               />
+              {/* Section picker chips — shown when multiple sections detected */}
+              {detectedSections.length > 1 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sectionChipsRow}>
+                  {detectedSections.map((section, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[styles.sectionChip, effectiveSectionIdx === idx && styles.sectionChipActive]}
+                      onPress={() => { lightTap(); setSelectedSectionIdx(idx); }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.sectionChipText, effectiveSectionIdx === idx && styles.sectionChipTextActive]} numberOfLines={1}>
+                        {section.title}
+                      </Text>
+                      <Text style={[styles.sectionChipCount, effectiveSectionIdx === idx && styles.sectionChipCountActive]}>
+                        {section.itemCount}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+
               <Pressable
                 onPress={handleParseWhatsApp}
                 disabled={!whatsAppText.trim() || isParsing}
@@ -1733,6 +1766,51 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     minHeight: 56,
     textAlignVertical: 'top',
+  },
+  sectionChipsRow: {
+    flexGrow: 0,
+    gap: SPACING.xs,
+  },
+  sectionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    backgroundColor: 'transparent',
+    marginRight: SPACING.xs,
+  },
+  sectionChipActive: {
+    backgroundColor: CALM.accent,
+    borderColor: CALM.accent,
+  },
+  sectionChipText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.textSecondary,
+    maxWidth: 140,
+  },
+  sectionChipTextActive: {
+    color: '#fff',
+  },
+  sectionChipCount: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.textMuted,
+    backgroundColor: withAlpha(CALM.textMuted, 0.12),
+    borderRadius: 8,
+    minWidth: 18,
+    textAlign: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    overflow: 'hidden',
+  },
+  sectionChipCountActive: {
+    color: CALM.accent,
+    backgroundColor: withAlpha('#fff', 0.85),
   },
   whatsAppParseBtn: {
     flexDirection: 'row',

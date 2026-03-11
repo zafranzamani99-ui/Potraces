@@ -18,6 +18,7 @@ import {
   Image,
   LayoutAnimation,
   UIManager,
+  RefreshControl,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
@@ -131,6 +132,11 @@ const DebtTracking: React.FC = () => {
   const incomeCategories = useCategories('income');
 
   const [activeTab, setActiveTab] = useState<TabType>('debts');
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   // Inline category manager (avoids navigating-from-modal blocking bug)
   const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment' | null>(null);
@@ -1917,6 +1923,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={CALM.bronze}
+            colors={[CALM.bronze]}
+          />
+        }
       >
         {/* Balance Summary — Two Mini Cards */}
         <View style={styles.heroGrid}>

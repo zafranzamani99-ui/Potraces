@@ -5,11 +5,10 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
@@ -32,9 +31,11 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
+
 
   const cleanPhone = useCallback((raw: string) => {
     const digits = raw.replace(/\D/g, '');
@@ -121,15 +122,12 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
       <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.7}>
         <Feather name="arrow-left" size={22} color={CALM.textPrimary} />
       </TouchableOpacity>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.flex}
+      <KeyboardAwareScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          bounces={false}
-        >
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.iconCircle}>
@@ -169,7 +167,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
                   <Text style={styles.prefixText}>+60</Text>
                 </View>
                 <TextInput
-                  style={[styles.input, styles.phoneInput]}
+                  style={[styles.input, styles.phoneInput, focusedField === 'phone' && styles.inputFocused]}
                   placeholder="12-345 6789"
                   placeholderTextColor={CALM.textMuted}
                   value={phone}
@@ -178,6 +176,8 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
                   autoComplete="tel"
                   returnKeyType="next"
                   onSubmitEditing={() => passwordRef.current?.focus()}
+                  onFocus={() => setFocusedField('phone')}
+                  onBlur={() => setFocusedField(null)}
                 />
               </View>
             </View>
@@ -188,7 +188,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
               <View style={styles.passwordRow}>
                 <TextInput
                   ref={passwordRef}
-                  style={[styles.input, styles.passwordInput]}
+                  style={[styles.input, styles.passwordInput, focusedField === 'password' && styles.inputFocused]}
                   placeholder="min 6 characters"
                   placeholderTextColor={CALM.textMuted}
                   value={password}
@@ -198,8 +198,10 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
                   returnKeyType={isLogin ? 'done' : 'next'}
                   onSubmitEditing={() => {
                     if (!isLogin) confirmRef.current?.focus();
-                    else handleSubmit();
+                    else { Keyboard.dismiss(); handleSubmit(); }
                   }}
+                  onFocus={() => setFocusedField('password')}
+                  onBlur={() => setFocusedField(null)}
                 />
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
@@ -217,7 +219,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
                 <Text style={styles.label}>confirm password</Text>
                 <TextInput
                   ref={confirmRef}
-                  style={styles.input}
+                  style={[styles.input, focusedField === 'confirm' && styles.inputFocused]}
                   placeholder="re-enter password"
                   placeholderTextColor={CALM.textMuted}
                   value={confirmPassword}
@@ -225,7 +227,9 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
                   secureTextEntry={!showPassword}
                   autoComplete="new-password"
                   returnKeyType="done"
-                  onSubmitEditing={handleSubmit}
+                  onSubmitEditing={() => { Keyboard.dismiss(); handleSubmit(); }}
+                  onFocus={() => setFocusedField('confirm')}
+                  onBlur={() => setFocusedField(null)}
                 />
               </View>
             )}
@@ -252,8 +256,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
               )}
             </TouchableOpacity>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </View>
   );
 };
@@ -262,7 +265,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: CALM.background },
   backBtn: { marginTop: 12, marginLeft: SPACING.lg, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1 },
-  scroll: { flexGrow: 1, paddingHorizontal: SPACING.lg, paddingBottom: 40 },
+  scroll: { flexGrow: 1, paddingHorizontal: SPACING.lg, paddingBottom: 80 },
   header: { alignItems: 'center', marginTop: 16, marginBottom: 32 },
   iconCircle: {
     width: 60,
@@ -325,13 +328,17 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: CALM.surface,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: CALM.inputBorder,
     borderRadius: RADIUS.md,
     paddingHorizontal: 14,
-    paddingVertical: 13,
+    paddingVertical: 14,
     fontSize: 16,
     color: CALM.textPrimary,
+  },
+  inputFocused: {
+    borderColor: CALM.accent,
+    backgroundColor: '#fff',
   },
   phoneRow: { flexDirection: 'row', gap: 8 },
   prefixBox: {
@@ -339,7 +346,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
     paddingHorizontal: 14,
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: CALM.inputBorder,
   },
   prefixText: {
