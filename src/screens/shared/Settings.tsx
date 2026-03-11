@@ -38,6 +38,9 @@ import CategoryManager from '../../components/common/CategoryManager';
 import UnitManager from '../../components/common/UnitManager';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
+import { signOut } from '../../services/supabase';
+import { clearProfileCache } from '../../services/sellerSync';
+import { useAuthStore } from '../../store/authStore';
 
 const CURRENCY_OPTIONS = [
   // Southeast Asia
@@ -275,6 +278,27 @@ const Settings: React.FC = () => {
       ]
     );
   }, [clearBusinessData, showToast]);
+
+  const handleSignOut = useCallback(() => {
+    Alert.alert(
+      'Sign Out',
+      'You will be signed out of your business account. Your data will remain on this device.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          onPress: async () => {
+            // Reset auth while Settings still covers the screen
+            useAuthStore.getState().reset();
+            clearProfileCache();
+            try { await signOut(); } catch {}
+            // Reveal AuthScreen underneath
+            if (navigation.canGoBack()) navigation.goBack();
+          },
+        },
+      ]
+    );
+  }, [showToast]);
 
   return (
     <View style={styles.container}>
@@ -714,10 +738,20 @@ const Settings: React.FC = () => {
           />
           {mode === 'business' && (
             <Button
+              title="Sign Out"
+              onPress={handleSignOut}
+              variant="outline"
+              icon="log-out"
+              fullWidth
+              style={{ marginBottom: SPACING.md }}
+            />
+          )}
+          {mode === 'business' && (
+            <Button
               title="Clear Business Data & Sign Out"
               onPress={handleClearBusinessData}
               variant="danger"
-              icon="log-out"
+              icon="trash-2"
               fullWidth
               style={{ marginBottom: SPACING.md }}
             />

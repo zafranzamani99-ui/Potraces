@@ -676,10 +676,12 @@ const SellerCustomers: React.FC = () => {
 
   // ─── Handlers ──────────────────────────────────────────────
   const handleCallPhone = useCallback((phone: string) => {
+    if (!phone) return;
     Linking.openURL('tel:' + phone);
   }, []);
 
   const handleWhatsApp = useCallback((phone: string) => {
+    if (!phone) return;
     let digits = phone.replace(/[^0-9]/g, '');
     // Malaysian numbers: convert leading 0 to country code 60
     if (digits.startsWith('0')) digits = '60' + digits.slice(1);

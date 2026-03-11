@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { format, differenceInCalendarDays } from 'date-fns';
+import { format, differenceInCalendarDays, isValid } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import {
@@ -468,7 +468,7 @@ const Goals: React.FC = () => {
                       return (
                         <Text style={styles.goalDeadline}>
                           <Feather name="calendar" size={11} color={CALM.neutral} />{' '}
-                          {format(new Date(goal.deadline), 'MMM dd, yyyy')}
+                          {isValid(new Date(goal.deadline)) ? format(new Date(goal.deadline), 'MMM dd, yyyy') : '—'}
                           {'  ·  '}
                           <Text style={isOverdue ? styles.goalOverdue : undefined}>{daysText}</Text>
                         </Text>

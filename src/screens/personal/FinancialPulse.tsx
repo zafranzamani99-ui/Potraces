@@ -17,6 +17,7 @@ import {
   getDaysInMonth,
   startOfDay,
   addDays,
+  isValid,
 } from 'date-fns';
 
 import { usePersonalStore } from '../../store/personalStore';
@@ -137,7 +138,7 @@ const FinancialPulse: React.FC = () => {
 
     // Consistency (20 pts): transactions spread across the month
     const uniqueDays = new Set(
-      thisMonth.map((t) => format(t.date, 'yyyy-MM-dd'))
+      thisMonth.filter((t) => isValid(t.date)).map((t) => format(t.date, 'yyyy-MM-dd'))
     ).size;
     const consistencyRatio = Math.min(uniqueDays / Math.max(dayOfMonth, 1), 1);
     score += Math.round(consistencyRatio * 20);
@@ -216,7 +217,7 @@ const FinancialPulse: React.FC = () => {
     thisMonth
       .filter((t) => t.type === 'expense')
       .forEach((t) => {
-        expenseDaysSet.add(format(t.date, 'yyyy-MM-dd'));
+        if (isValid(t.date)) expenseDaysSet.add(format(t.date, 'yyyy-MM-dd'));
       });
 
     const noSpendDays = daysElapsed - expenseDaysSet.size;

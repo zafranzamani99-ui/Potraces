@@ -14,7 +14,7 @@ import {
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow, isValid } from 'date-fns';
 import { useSavingsStore } from '../../store/savingsStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import {
@@ -799,10 +799,10 @@ const SavingsTracker: React.FC = () => {
                     <View key={snap.id} style={styles.historyItem}>
                       <View style={styles.historyItemLeft}>
                         <Text style={styles.historyItemDate}>
-                          {format(snap.date, 'MMM dd, yyyy')}
+                          {isValid(snap.date) ? format(snap.date, 'MMM dd, yyyy') : '—'}
                         </Text>
                         <Text style={styles.historyItemTime}>
-                          {format(snap.date, 'hh:mm a')}
+                          {isValid(snap.date) ? format(snap.date, 'hh:mm a') : ''}
                           {snap.note ? ` — ${snap.note}` : ''}
                         </Text>
                       </View>

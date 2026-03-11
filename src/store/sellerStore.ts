@@ -461,6 +461,12 @@ export const useSellerStore = create<SellerState>()(
             paymentMethod: (row.payment_method as any) ?? undefined,
             paidAt: row.paid_at ? new Date(row.paid_at as string) : undefined,
             note: (row.note as string | null) ?? undefined,
+            deposits: Array.isArray(row.deposits)
+              ? (row.deposits as any[]).map((d: any) => ({
+                  ...d,
+                  date: d.date ? new Date(d.date) : new Date(),
+                }))
+              : [],
             date: row.created_at ? new Date(row.created_at as string) : new Date(),
             deliveryDate: row.delivery_date ? new Date(row.delivery_date as string) : undefined,
             seasonId: undefined,
@@ -719,12 +725,18 @@ export const useSellerStore = create<SellerState>()(
         hiddenUnits: state.hiddenUnits,
         unitOrder: state.unitOrder,
         costTemplates: state.costTemplates,
+        recurringCosts: state.recurringCosts.map((r) => ({
+          ...r,
+          nextDue: r.nextDue instanceof Date ? r.nextDue.toISOString() : r.nextDue,
+          createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
+        })),
         productOrder: state.productOrder,
         seenOnlineOrderIds: state.seenOnlineOrderIds,
         skippedOnboardingSteps: state.skippedOnboardingSteps,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
+          const sd = (v: any) => { if (!v) return new Date(); const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? new Date() : d; };
           const seenProductIds = new Set<string>();
           state.products = state.products.map((p: any) => {
             let id = p.id;
@@ -733,8 +745,8 @@ export const useSellerStore = create<SellerState>()(
             return {
               ...p,
               id,
-              createdAt: new Date(p.createdAt),
-              updatedAt: new Date(p.updatedAt),
+              createdAt: sd(p.createdAt),
+              updatedAt: sd(p.updatedAt),
             };
           });
           // Deduplicate orders by id (fix for old Date.now() collisions)
@@ -747,32 +759,43 @@ export const useSellerStore = create<SellerState>()(
               return {
                 ...o,
                 id,
-                date: new Date(o.date),
-                deliveryDate: o.deliveryDate ? new Date(o.deliveryDate) : undefined,
-                paidAt: o.paidAt ? new Date(o.paidAt) : undefined,
+                date: sd(o.date),
+                deliveryDate: o.deliveryDate ? sd(o.deliveryDate) : undefined,
+                paidAt: o.paidAt ? sd(o.paidAt) : undefined,
                 status: o.status === 'paid' ? 'delivered' : o.status,
-                createdAt: new Date(o.createdAt),
-                updatedAt: new Date(o.updatedAt),
+                createdAt: sd(o.createdAt),
+                updatedAt: sd(o.updatedAt),
+                deposits: Array.isArray(o.deposits)
+                  ? o.deposits.map((d: any) => ({
+                      ...d,
+                      date: sd(d.date),
+                    }))
+                  : [],
               };
             });
           state.seasons = state.seasons.map((s: any) => ({
             ...s,
-            startDate: new Date(s.startDate),
-            endDate: s.endDate ? new Date(s.endDate) : undefined,
-            createdAt: new Date(s.createdAt),
+            startDate: sd(s.startDate),
+            endDate: s.endDate ? sd(s.endDate) : undefined,
+            createdAt: sd(s.createdAt),
           }));
           state.ingredientCosts = state.ingredientCosts.map((c: any) => ({
             ...c,
-            date: new Date(c.date),
+            date: sd(c.date),
           }));
           state.sellerCustomers = (state.sellerCustomers || []).map((c: any) => ({
             ...c,
-            createdAt: new Date(c.createdAt),
+            createdAt: sd(c.createdAt),
           }));
           state.customUnits = state.customUnits || [];
           state.hiddenUnits = state.hiddenUnits || [];
           state.unitOrder = state.unitOrder || [];
           state.costTemplates = state.costTemplates || [];
+          state.recurringCosts = (state.recurringCosts || []).map((r: any) => ({
+            ...r,
+            nextDue: sd(r.nextDue),
+            createdAt: sd(r.createdAt),
+          }));
           state.productOrder = state.productOrder || [];
           state.seenOnlineOrderIds = state.seenOnlineOrderIds || [];
           state.skippedOnboardingSteps = state.skippedOnboardingSteps || [];

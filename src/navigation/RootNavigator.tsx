@@ -119,6 +119,7 @@ const AuthGatedBusiness: React.FC = () => {
   const isVerified = useAuthStore((s) => s.isVerified);
   const [otpCode, setOtpCode] = useState<string | null>(null);
   const [otpPhone, setOtpPhone] = useState('');
+  const [otpError, setOtpError] = useState<string | null>(null);
 
   // Validate session on mount — reset stale auth state if no real Supabase session
   useEffect(() => {
@@ -137,6 +138,7 @@ const AuthGatedBusiness: React.FC = () => {
     if (isAuthenticated && !isVerified && !otpCode) {
       const phone = useAuthStore.getState().phone;
       if (phone) {
+        setOtpError(null);
         requestOtp(phone).then((otp) => {
           setOtpCode(otp.code);
           setOtpPhone(phone);
@@ -145,6 +147,8 @@ const AuthGatedBusiness: React.FC = () => {
           // If not authenticated on server, reset local auth state
           if (err?.message?.includes('Not authenticated')) {
             useAuthStore.getState().reset();
+          } else {
+            setOtpError(err?.message || 'Failed to request verification code');
           }
         });
       }
@@ -187,6 +191,7 @@ const AuthGatedBusiness: React.FC = () => {
         phone={otpPhone}
         onVerified={handleVerified}
         onBack={handleOtpBack}
+        initialError={otpError}
       />
     );
   }

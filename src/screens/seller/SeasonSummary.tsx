@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import * as Clipboard from 'expo-clipboard';
 import * as XLSX from 'xlsx';
 import { Paths, File as ExpoFile } from 'expo-file-system';
@@ -114,13 +114,25 @@ const SeasonSummary: React.FC = () => {
   const seasonOrders = useMemo(() => {
     if (!season) return [];
     return orders.filter((o) => o.seasonId === season.id)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      .sort((a, b) => {
+        const aD = a.date instanceof Date ? a.date : new Date(a.date);
+        const bD = b.date instanceof Date ? b.date : new Date(b.date);
+        const aTime = isValid(aD) ? aD.getTime() : 0;
+        const bTime = isValid(bD) ? bD.getTime() : 0;
+        return bTime - aTime;
+      });
   }, [season, orders]);
 
   const seasonCosts = useMemo(() => {
     if (!season) return [];
     return ingredientCosts.filter((c) => c.seasonId === season.id)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      .sort((a, b) => {
+        const aD = a.date instanceof Date ? a.date : new Date(a.date);
+        const bD = b.date instanceof Date ? b.date : new Date(b.date);
+        const aTime = isValid(aD) ? aD.getTime() : 0;
+        const bTime = isValid(bD) ? bD.getTime() : 0;
+        return bTime - aTime;
+      });
   }, [season, ingredientCosts]);
 
   const stats = useMemo(() => {
@@ -203,7 +215,13 @@ const SeasonSummary: React.FC = () => {
   const pastSeasons = useMemo(() =>
     seasons
       .filter((s) => !s.isActive && s.id !== season?.id)
-      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
+      .sort((a, b) => {
+        const aD = a.startDate instanceof Date ? a.startDate : new Date(a.startDate);
+        const bD = b.startDate instanceof Date ? b.startDate : new Date(b.startDate);
+        const aTime = isValid(aD) ? aD.getTime() : 0;
+        const bTime = isValid(bD) ? bD.getTime() : 0;
+        return bTime - aTime;
+      }),
     [seasons, season]
   );
 

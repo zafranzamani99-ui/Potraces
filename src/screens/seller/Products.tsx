@@ -110,8 +110,8 @@ const Products: React.FC = () => {
   const [search, setSearch] = useState('');
 
   const allUnits = useMemo(() => {
-    const combined = [...DEFAULT_UNITS, ...customUnits].filter(
-      (u) => !hiddenUnits.includes(u)
+    const combined = [...DEFAULT_UNITS, ...(customUnits || [])].filter(
+      (u) => !(hiddenUnits || []).includes(u)
     );
     if (unitOrder.length === 0) return combined;
     const ordered = unitOrder.filter((u) => combined.includes(u));
@@ -177,7 +177,7 @@ const Products: React.FC = () => {
   const [newName, setNewName] = useState('');
   const [newPrice, setNewPrice] = useState('');
   const [newUnit, setNewUnit] = useState(() => {
-    const combined = [...DEFAULT_UNITS, ...customUnits].filter((u) => !hiddenUnits.includes(u));
+    const combined = [...DEFAULT_UNITS, ...(customUnits || [])].filter((u) => !(hiddenUnits || []).includes(u));
     if (unitOrder.length === 0) return combined[0] || 'tin';
     const ordered = unitOrder.filter((u) => combined.includes(u));
     const remaining = combined.filter((u) => !unitOrder.includes(u));

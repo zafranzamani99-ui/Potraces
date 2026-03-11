@@ -1,7 +1,7 @@
 import React, { useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, ICON_SIZE, withAlpha } from '../../constants';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useWalletStore } from '../../store/walletStore';
@@ -72,12 +72,12 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress 
             )}
           </View>
           <Text style={styles.description} numberOfLines={1}>{transaction.description}</Text>
-          <Text style={styles.date}>{format(transaction.date, 'MMM dd, yyyy • HH:mm')}</Text>
+          <Text style={styles.date}>{isValid(transaction.date) ? format(transaction.date, 'MMM dd, yyyy • HH:mm') : '—'}</Text>
           {lastEdit && (
             <View style={styles.editedBadge}>
               <Feather name="edit-2" size={9} color={CALM.bronze} />
               <Text style={styles.editedBadgeText}>
-                edited {format(new Date(lastEdit.editedAt), 'MMM d, HH:mm')}
+                edited {isValid(new Date(lastEdit.editedAt)) ? format(new Date(lastEdit.editedAt), 'MMM d, HH:mm') : '—'}
                 {editCount > 1 ? ` · ${editCount}×` : ''}
                 {lastEdit.previousType ? ` · was ${lastEdit.previousType}` : ''}
               </Text>

@@ -79,16 +79,17 @@ export const useSavingsStore = create<SavingsState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
+          const sd = (v: any) => { if (!v) return new Date(); const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? new Date() : d; };
           const validTypes = ['tng_plus', 'robo_crypto', 'esa', 'bank', 'other'];
           state.accounts = state.accounts.map((a: any) => ({
             ...a,
             type: validTypes.includes(a.type) ? a.type : 'other',
             description: a.description || '',
-            createdAt: new Date(a.createdAt),
-            updatedAt: new Date(a.updatedAt),
+            createdAt: sd(a.createdAt),
+            updatedAt: sd(a.updatedAt),
             history: (a.history || []).map((h: any) => ({
               ...h,
-              date: new Date(h.date),
+              date: sd(h.date),
             })),
           }));
         }

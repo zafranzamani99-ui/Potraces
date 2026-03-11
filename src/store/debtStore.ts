@@ -258,21 +258,26 @@ export const useDebtStore = create<DebtState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
+          const sd = (v: any) => { if (!v) return new Date(); const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? new Date() : d; };
           state.debts = state.debts.map((d: any) => ({
             ...d,
-            dueDate: d.dueDate ? new Date(d.dueDate) : undefined,
-            createdAt: new Date(d.createdAt),
-            updatedAt: new Date(d.updatedAt),
-            payments: d.payments.map((p: any) => ({
+            dueDate: d.dueDate ? sd(d.dueDate) : undefined,
+            createdAt: sd(d.createdAt),
+            updatedAt: sd(d.updatedAt),
+            payments: (d.payments || []).map((p: any) => ({
               ...p,
-              date: new Date(p.date),
-              createdAt: new Date(p.createdAt),
+              date: sd(p.date),
+              createdAt: sd(p.createdAt),
+              editLog: (p.editLog || []).map((e: any) => ({
+                ...e,
+                editedAt: sd(e.editedAt),
+              })),
             })),
           }));
           state.splits = state.splits.map((s: any) => ({
             ...s,
-            createdAt: new Date(s.createdAt),
-            updatedAt: new Date(s.updatedAt),
+            createdAt: sd(s.createdAt),
+            updatedAt: sd(s.updatedAt),
           }));
         }
       },

@@ -247,45 +247,46 @@ export const usePersonalStore = create<PersonalState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
+          const sd = (v: any) => { if (!v) return new Date(); const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? new Date() : d; };
           state.transactions = state.transactions.map((t: any) => ({
             ...t,
-            date: new Date(t.date),
-            createdAt: new Date(t.createdAt),
-            updatedAt: new Date(t.updatedAt),
+            date: sd(t.date),
+            createdAt: sd(t.createdAt),
+            updatedAt: sd(t.updatedAt),
             editLog: (t.editLog ?? []).map((e: any) => ({
               ...e,
-              editedAt: new Date(e.editedAt),
+              editedAt: sd(e.editedAt),
             })),
           }));
           state.subscriptions = state.subscriptions.map((s: any) => ({
             ...s,
-            startDate: s.startDate ? new Date(s.startDate) : new Date(s.createdAt),
-            nextBillingDate: new Date(s.nextBillingDate),
-            createdAt: new Date(s.createdAt),
-            updatedAt: new Date(s.updatedAt),
+            startDate: s.startDate ? sd(s.startDate) : sd(s.createdAt),
+            nextBillingDate: sd(s.nextBillingDate),
+            createdAt: sd(s.createdAt),
+            updatedAt: sd(s.updatedAt),
             isInstallment: s.isInstallment ?? false,
             completedInstallments: s.completedInstallments ?? 0,
           }));
           state.budgets = state.budgets.map((b: any) => ({
             ...b,
-            startDate: new Date(b.startDate),
-            endDate: new Date(b.endDate),
-            createdAt: new Date(b.createdAt),
-            updatedAt: new Date(b.updatedAt),
+            startDate: sd(b.startDate),
+            endDate: sd(b.endDate),
+            createdAt: sd(b.createdAt),
+            updatedAt: sd(b.updatedAt),
           }));
           state.goals = (state.goals || []).map((g: any) => ({
             ...g,
-            deadline: g.deadline ? new Date(g.deadline) : undefined,
+            deadline: g.deadline ? sd(g.deadline) : undefined,
             contributions: (g.contributions || []).map((c: any) => ({
               ...c,
-              date: new Date(c.date),
+              date: sd(c.date),
             })),
             milestones: (g.milestones || []).map((m: any) => ({
               ...m,
-              reachedAt: m.reachedAt ? new Date(m.reachedAt) : undefined,
+              reachedAt: m.reachedAt ? sd(m.reachedAt) : undefined,
             })),
-            createdAt: new Date(g.createdAt),
-            updatedAt: new Date(g.updatedAt),
+            createdAt: sd(g.createdAt),
+            updatedAt: sd(g.updatedAt),
           }));
         }
       },

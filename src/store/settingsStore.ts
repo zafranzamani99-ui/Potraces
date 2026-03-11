@@ -18,6 +18,7 @@ import { useOnTheRoadStore } from './onTheRoadStore';
 import { useMixedStore } from './mixedStore';
 import { useAuthStore } from './authStore';
 import { clearBusinessDataRemote, signOut } from '../services/supabase';
+import { clearProfileCache } from '../services/sellerSync';
 
 export interface PaymentQr {
   uri: string;
@@ -256,8 +257,9 @@ export const useSettingsStore = create<SettingsState>()(
           // continue even if sign out fails
         }
 
-        // 4. Reset auth store
+        // 4. Reset auth store + clear profile cache
         useAuthStore.getState().reset();
+        clearProfileCache();
 
         // 5. Switch to personal mode
         useAppStore.setState({ mode: 'personal' });

@@ -18,7 +18,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { format, isToday, isYesterday } from 'date-fns';
+import { format, isToday, isYesterday, isValid } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useBusinessStore } from '../../store/businessStore';
@@ -133,7 +133,8 @@ const CostManagement: React.FC = () => {
     const q = costSearch.trim().toLowerCase();
     return seasonCostEntries.filter((c) => {
       if (c.description.toLowerCase().includes(q)) return true;
-      const d = new Date(c.date);
+      const d = c.date instanceof Date ? c.date : new Date(c.date);
+      if (!isValid(d)) return false;
       const dateStr = format(d, 'dd MMM yyyy').toLowerCase();
       if (dateStr.includes(q)) return true;
       if (isToday(d) && 'today'.includes(q)) return true;
@@ -147,9 +148,10 @@ const CostManagement: React.FC = () => {
     const map = new Map<string, IngredientCost[]>();
 
     for (const entry of filteredCostEntries) {
-      const d = new Date(entry.date);
+      const d = entry.date instanceof Date ? entry.date : new Date(entry.date);
       let label: string;
-      if (isToday(d)) label = 'today';
+      if (!isValid(d)) label = 'unknown';
+      else if (isToday(d)) label = 'today';
       else if (isYesterday(d)) label = 'yesterday';
       else label = format(d, 'dd MMM yyyy');
 
@@ -184,10 +186,10 @@ const CostManagement: React.FC = () => {
     return orders.filter((o) => o.isPaid && !o.transferredToPersonal);
   }, [activeSeason, orders]);
 
-  const untransferredAmount = useMemo(
-    () => untransferredOrders.reduce((s, o) => s + o.totalAmount, 0),
-    [untransferredOrders]
-  );
+  const untransferredAmount = useMemo(() => {
+    const calculated = untransferredOrders.reduce((s, o) => s + o.totalAmount, 0);
+    return isNaN(calculated) ? 0 : calculated;
+  }, [untransferredOrders]);
 
   useEffect(() => {
     if (untransferredAmount > 0) {
@@ -347,7 +349,11 @@ const CostManagement: React.FC = () => {
 
   const handleTransferToPersonal = useCallback(() => {
     const amount = parseFloat(transferAmount);
-    if (!amount || amount <= 0) return;
+    if (isNaN(amount) || !amount || amount <= 0) return;
+    if (amount > untransferredAmount) {
+      showToast('cannot transfer more than untransferred amount', 'error');
+      return;
+    }
 
     const label = activeSeason
       ? `seller: ${activeSeason.name} (${untransferredOrders.length} orders)`

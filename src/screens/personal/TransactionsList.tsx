@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { format, isSameDay, parseISO } from 'date-fns';
+import { format, isSameDay, parseISO, isValid } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
@@ -98,7 +98,7 @@ const TransactionsList: React.FC = () => {
       if (sortBy === 'amount') {
         cmp = a.amount - b.amount;
       } else {
-        cmp = a.date.getTime() - b.date.getTime();
+        cmp = (a.date?.getTime?.() || 0) - (b.date?.getTime?.() || 0);
       }
       return sortOrder === 'asc' ? cmp : -cmp;
     });
@@ -110,7 +110,7 @@ const TransactionsList: React.FC = () => {
     const grouped: Record<string, Transaction[]> = {};
 
     filteredTransactions.forEach((t) => {
-      const dateKey = format(t.date, 'yyyy-MM-dd');
+      const dateKey = isValid(t.date) ? format(t.date, 'yyyy-MM-dd') : 'unknown';
       if (!grouped[dateKey]) {
         grouped[dateKey] = [];
       }

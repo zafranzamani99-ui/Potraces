@@ -15,7 +15,7 @@ import {
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { format, addWeeks, addMonths, addYears } from 'date-fns';
+import { format, addWeeks, addMonths, addYears, isValid } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, BILLING_CYCLES, withAlpha } from '../../constants';
@@ -84,7 +84,7 @@ const SubscriptionList: React.FC = () => {
     setCategory(subscription.category);
     setBillingCycle(subscription.billingCycle);
     setReminderDays(subscription.reminderDays.toString());
-    setStartDate(format(subscription.startDate, 'yyyy-MM-dd'));
+    setStartDate(isValid(subscription.startDate) ? format(subscription.startDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'));
     setIsInstallment(subscription.isInstallment || false);
     setTotalInstallments(subscription.totalInstallments?.toString() || '');
     setModalVisible(true);
@@ -360,7 +360,7 @@ const SubscriptionList: React.FC = () => {
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Started</Text>
                     <Text style={styles.detailValue}>
-                      {format(subscription.startDate, 'MMM dd, yyyy')}
+                      {isValid(subscription.startDate) ? format(subscription.startDate, 'MMM dd, yyyy') : '—'}
                     </Text>
                   </View>
                   {subscription.isInstallment && subscription.totalInstallments && (

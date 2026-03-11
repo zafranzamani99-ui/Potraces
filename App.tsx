@@ -8,7 +8,7 @@ import RootNavigator from './src/navigation/RootNavigator';
 import { COLORS, SPACING, TYPOGRAPHY } from './src/constants';
 import { ToastProvider } from './src/context/ToastContext';
 import { supabase, getAuthSession } from './src/services/supabase';
-import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId } from './src/services/sellerSync';
+import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId, clearProfileCache } from './src/services/sellerSync';
 import { useAuthStore } from './src/store/authStore';
 import { registerPushNotifications } from './src/services/pushNotifications';
 import * as Notifications from 'expo-notifications';
@@ -22,6 +22,7 @@ import { openQuickAdd } from './src/components/common/QuickAddExpense';
 // Debounced auto-sync — pushes to Supabase ~1.5s after any data mutation
 let _autoSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let _unsubAutoSync: (() => void) | null = null;
+let _lastForegroundSync = 0;
 
 export default function App() {
   const [isLoading, setIsLoading] = React.useState(true);
@@ -32,15 +33,19 @@ export default function App() {
     let cancelled = false;
     let unsubOrderLink: (() => void) | null = null;
 
-    const waitForHydration = () =>
+    const waitForStore = (store: any) =>
       new Promise<void>((resolve) => {
-        if (useSellerStore.persist.hasHydrated()) { resolve(); return; }
-        const unsub = useSellerStore.persist.onFinishHydration(() => { unsub(); resolve(); });
+        if (store.persist.hasHydrated()) { resolve(); return; }
+        const unsub = store.persist.onFinishHydration(() => { unsub(); resolve(); });
       });
 
     const init = async () => {
       // Wait for store hydration
-      await waitForHydration();
+      await Promise.all([
+        waitForStore(useSellerStore),
+        waitForStore(useSettingsStore),
+        waitForStore(useAuthStore),
+      ]);
 
       // Check existing auth session
       const session = await getAuthSession();
@@ -48,6 +53,9 @@ export default function App() {
       if (session) {
         authStore.setAuthenticated(true);
         authStore.setUserId(session.user.id);
+      } else if (authStore.isAuthenticated) {
+        // Stale local auth — session no longer valid
+        authStore.reset();
       }
 
       // Apply default mode on launch (only if authenticated for business)
@@ -77,7 +85,10 @@ export default function App() {
               state.orders === prev.orders &&
               state.products === prev.products &&
               state.seasons === prev.seasons &&
-              state.sellerCustomers === prev.sellerCustomers
+              state.sellerCustomers === prev.sellerCustomers &&
+              state.ingredientCosts === prev.ingredientCosts &&
+              state.recurringCosts === prev.recurringCosts &&
+              state.costTemplates === prev.costTemplates
             ) return;
             if (_autoSyncTimeout) clearTimeout(_autoSyncTimeout);
             _autoSyncTimeout = setTimeout(() => {
@@ -123,7 +134,7 @@ export default function App() {
         auth.setUserId(session.user.id);
       } else if (event === 'SIGNED_OUT') {
         auth.reset();
-        useAppStore.getState().setMode('personal');
+        clearProfileCache();
       }
     });
     return () => subscription.unsubscribe();
@@ -133,6 +144,9 @@ export default function App() {
   React.useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
+        const now = Date.now();
+        if (now - _lastForegroundSync < 10000) return; // Skip if synced within 10s
+        _lastForegroundSync = now;
         const { isAuthenticated, isVerified } = useAuthStore.getState();
         if (!isAuthenticated || !isVerified) return;
         const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();

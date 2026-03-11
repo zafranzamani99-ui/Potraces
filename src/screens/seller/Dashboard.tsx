@@ -240,7 +240,7 @@ const SellerDashboard: React.FC = () => {
         setShopDisplayName(profile.displayName);
         setShopNotice(profile.shopNotice);
       }
-    }).catch(() => {});
+    }).catch((err) => { console.warn('[Dashboard] Profile fetch failed:', err); });
   }, []);
   const onRefresh = useCallback(() => {
     setRefreshing(true);

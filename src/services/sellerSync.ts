@@ -1,11 +1,25 @@
 import { supabase } from './supabase';
-import { SellerProduct, SellerOrder, Season, SellerCustomer } from '../types';
+import { SellerProduct, SellerOrder, Season, SellerCustomer, IngredientCost, RecurringCost, CostTemplate } from '../types';
 import { useSellerStore } from '../store/sellerStore';
+
+// ─── Safe date parsing ────────────────────────────────────────────────────────
+const sd = (v: any): Date => {
+  if (!v) return new Date();
+  const d = v instanceof Date ? v : new Date(v);
+  return isNaN(d.getTime()) ? new Date() : d;
+};
 
 /** Get current auth session. Returns null if not authenticated. */
 async function getSession() {
   const { data: { session } } = await supabase.auth.getSession();
-  return session ?? null;
+  if (!session) return null;
+  // Check if token needs refresh (within 60s of expiry)
+  const expiresAt = session.expires_at ?? 0;
+  if (expiresAt * 1000 < Date.now() + 60000) {
+    const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+    return refreshed ?? session;
+  }
+  return session;
 }
 
 // ─── Profile management ───────────────────────────────────────────────────────
@@ -106,6 +120,11 @@ export function getCachedProfileId(): string | null {
   return _cachedProfileId;
 }
 
+/** Clears the cached profile ID (call on sign-out). */
+export function clearProfileCache(): void {
+  _cachedProfileId = null;
+}
+
 // ─── Push helpers ─────────────────────────────────────────────────────────────
 
 function toIso(d: Date | string | undefined | null): string | null {
@@ -116,6 +135,7 @@ function toIso(d: Date | string | undefined | null): string | null {
 export async function pushProducts(products: SellerProduct[]): Promise<void> {
   const session = await getSession();
   if (!session) return;
+  const syncStart = new Date().toISOString();
 
   if (products.length > 0) {
     const rows = products.map((p) => ({
@@ -137,17 +157,17 @@ export async function pushProducts(products: SellerProduct[]): Promise<void> {
       .upsert(rows, { onConflict: 'user_id,local_id' });
   }
 
-  // Tombstone: delete remote products removed locally
+  // Tombstone: delete remote products removed locally, only if older than sync start
   const localIds = new Set(products.map((p) => p.id));
   const { data: remote } = await supabase
     .from('seller_products')
-    .select('local_id')
+    .select('local_id, updated_at')
     .eq('user_id', session.user.id);
 
   if (remote && remote.length > 0) {
     const toDelete = remote
-      .map((r) => r.local_id as string)
-      .filter((id) => id && !localIds.has(id));
+      .filter((r) => r.local_id && !localIds.has(r.local_id) && r.updated_at < syncStart)
+      .map((r) => r.local_id as string);
 
     if (toDelete.length > 0) {
       await supabase
@@ -165,6 +185,7 @@ export async function pushOrders(
 ): Promise<void> {
   const session = await getSession();
   if (!session) return;
+  const syncStart = new Date().toISOString();
 
   // ── App-originated orders ──────────────────────────────────
   const appOrders = orders.filter((o) => o.source !== 'order_link');
@@ -219,21 +240,24 @@ export async function pushOrders(
         paid_at: toIso(o.paidAt),
         note: o.note ?? null,
         deposits: o.deposits ?? [],
+        delivery_date: toIso(o.deliveryDate),
+        order_number: o.orderNumber ?? null,
       })
       .eq('id', o.supabaseId!);
   }
 
-  // ── Tombstone: delete remote app orders removed locally ────
+  // ── Tombstone: delete remote app orders removed locally, only if older than sync start ────
   const { data: remoteOrders } = await supabase
     .from('seller_orders')
-    .select('local_id')
+    .select('local_id, updated_at')
     .eq('user_id', session.user.id)
     .eq('source', 'app');
 
   if (remoteOrders && remoteOrders.length > 0) {
+    const localIdSet = new Set(localIds);
     const toDelete = remoteOrders
-      .map((r) => r.local_id as string)
-      .filter((id) => id && !localIds.includes(id));
+      .filter((r) => r.local_id && !localIdSet.has(r.local_id) && r.updated_at < syncStart)
+      .map((r) => r.local_id as string);
 
     if (toDelete.length > 0) {
       await supabase
@@ -249,6 +273,7 @@ export async function pushOrders(
 export async function pushSeasons(seasons: Season[]): Promise<void> {
   const session = await getSession();
   if (!session) return;
+  const syncStart = new Date().toISOString();
 
   if (seasons.length > 0) {
     const rows = seasons.map((s) => ({
@@ -268,17 +293,17 @@ export async function pushSeasons(seasons: Season[]): Promise<void> {
       .upsert(rows, { onConflict: 'user_id,local_id' });
   }
 
-  // Tombstone: delete remote seasons removed locally
+  // Tombstone: delete remote seasons removed locally, only if older than sync start
   const localIds = new Set(seasons.map((s) => s.id));
   const { data: remote } = await supabase
     .from('seller_seasons')
-    .select('local_id')
+    .select('local_id, updated_at')
     .eq('user_id', session.user.id);
 
   if (remote && remote.length > 0) {
     const toDelete = remote
-      .map((r) => r.local_id as string)
-      .filter((id) => id && !localIds.has(id));
+      .filter((r) => r.local_id && !localIds.has(r.local_id) && r.updated_at < syncStart)
+      .map((r) => r.local_id as string);
 
     if (toDelete.length > 0) {
       await supabase
@@ -293,6 +318,7 @@ export async function pushSeasons(seasons: Season[]): Promise<void> {
 export async function pushCustomers(customers: SellerCustomer[]): Promise<void> {
   const session = await getSession();
   if (!session) return;
+  const syncStart = new Date().toISOString();
 
   if (customers.length > 0) {
     const rows = customers.map((c) => ({
@@ -310,17 +336,17 @@ export async function pushCustomers(customers: SellerCustomer[]): Promise<void> 
       .upsert(rows, { onConflict: 'user_id,local_id' });
   }
 
-  // Tombstone: delete remote customers removed locally
+  // Tombstone: delete remote customers removed locally, only if older than sync start
   const localIds = new Set(customers.map((c) => c.id));
   const { data: remote } = await supabase
     .from('seller_customers')
-    .select('local_id')
+    .select('local_id, updated_at')
     .eq('user_id', session.user.id);
 
   if (remote && remote.length > 0) {
     const toDelete = remote
-      .map((r) => r.local_id as string)
-      .filter((id) => id && !localIds.has(id));
+      .filter((r) => r.local_id && !localIds.has(r.local_id) && r.updated_at < syncStart)
+      .map((r) => r.local_id as string);
 
     if (toDelete.length > 0) {
       await supabase
@@ -332,11 +358,141 @@ export async function pushCustomers(customers: SellerCustomer[]): Promise<void> 
   }
 }
 
+export async function pushIngredientCosts(ingredientCosts: IngredientCost[]): Promise<void> {
+  const session = await getSession();
+  if (!session) return;
+  const syncStart = new Date().toISOString();
+
+  if (ingredientCosts.length > 0) {
+    const rows = ingredientCosts.map((c) => ({
+      user_id: session.user.id,
+      local_id: c.id,
+      description: c.description,
+      amount: c.amount,
+      date: toIso(c.date) ?? new Date().toISOString(),
+      season_local_id: c.seasonId ?? null,
+      product_id: c.productId ?? null,
+      synced_to_personal: c.syncedToPersonal ?? false,
+      personal_transaction_id: c.personalTransactionId ?? null,
+    }));
+
+    await supabase
+      .from('seller_ingredient_costs')
+      .upsert(rows, { onConflict: 'user_id,local_id' });
+  }
+
+  // Tombstone: delete remote ingredient costs removed locally, only if older than sync start
+  const localIds = new Set(ingredientCosts.map((c) => c.id));
+  const { data: remote } = await supabase
+    .from('seller_ingredient_costs')
+    .select('local_id, updated_at')
+    .eq('user_id', session.user.id);
+
+  if (remote && remote.length > 0) {
+    const toDelete = remote
+      .filter((r) => r.local_id && !localIds.has(r.local_id) && r.updated_at < syncStart)
+      .map((r) => r.local_id as string);
+
+    if (toDelete.length > 0) {
+      await supabase
+        .from('seller_ingredient_costs')
+        .delete()
+        .eq('user_id', session.user.id)
+        .in('local_id', toDelete);
+    }
+  }
+}
+
+export async function pushRecurringCosts(recurringCosts: RecurringCost[]): Promise<void> {
+  const session = await getSession();
+  if (!session) return;
+  const syncStart = new Date().toISOString();
+
+  if (recurringCosts.length > 0) {
+    const rows = recurringCosts.map((r) => ({
+      user_id: session.user.id,
+      local_id: r.id,
+      description: r.description,
+      amount: r.amount,
+      frequency: r.frequency,
+      next_due: toIso(r.nextDue) ?? new Date().toISOString(),
+      season_local_id: r.seasonId ?? null,
+      is_active: r.isActive,
+    }));
+
+    await supabase
+      .from('seller_recurring_costs')
+      .upsert(rows, { onConflict: 'user_id,local_id' });
+  }
+
+  // Tombstone: delete remote recurring costs removed locally, only if older than sync start
+  const localIds = new Set(recurringCosts.map((r) => r.id));
+  const { data: remote } = await supabase
+    .from('seller_recurring_costs')
+    .select('local_id, updated_at')
+    .eq('user_id', session.user.id);
+
+  if (remote && remote.length > 0) {
+    const toDelete = remote
+      .filter((r) => r.local_id && !localIds.has(r.local_id) && r.updated_at < syncStart)
+      .map((r) => r.local_id as string);
+
+    if (toDelete.length > 0) {
+      await supabase
+        .from('seller_recurring_costs')
+        .delete()
+        .eq('user_id', session.user.id)
+        .in('local_id', toDelete);
+    }
+  }
+}
+
+export async function pushCostTemplates(costTemplates: CostTemplate[]): Promise<void> {
+  const session = await getSession();
+  if (!session) return;
+  const syncStart = new Date().toISOString();
+
+  if (costTemplates.length > 0) {
+    const rows = costTemplates.map((t) => ({
+      user_id: session.user.id,
+      local_id: t.id,
+      description: t.description,
+      amount: t.amount,
+    }));
+
+    await supabase
+      .from('seller_cost_templates')
+      .upsert(rows, { onConflict: 'user_id,local_id' });
+  }
+
+  // Tombstone: delete remote cost templates removed locally, only if older than sync start
+  const localIds = new Set(costTemplates.map((t) => t.id));
+  const { data: remote } = await supabase
+    .from('seller_cost_templates')
+    .select('local_id, updated_at')
+    .eq('user_id', session.user.id);
+
+  if (remote && remote.length > 0) {
+    const toDelete = remote
+      .filter((r) => r.local_id && !localIds.has(r.local_id) && r.updated_at < syncStart)
+      .map((r) => r.local_id as string);
+
+    if (toDelete.length > 0) {
+      await supabase
+        .from('seller_cost_templates')
+        .delete()
+        .eq('user_id', session.user.id)
+        .in('local_id', toDelete);
+    }
+  }
+}
+
 // ─── Pull from Supabase ───────────────────────────────────────────────────────
 
 /**
  * Pull remote data and merge into local store.
- * Only adds items that don't already exist locally (by local_id).
+ * Adds items that don't exist locally (by local_id) and updates existing items
+ * if the remote updated_at is newer than the local updatedAt.
  * Must run BEFORE push to prevent tombstone logic from deleting remote data.
  */
 export async function pullAll(): Promise<void> {
@@ -352,28 +508,42 @@ export async function pullAll(): Promise<void> {
     .eq('user_id', userId);
 
   if (remoteProducts && remoteProducts.length > 0) {
-    const localProductIds = new Set(store.products.map((p) => p.id));
+    const localProductMap = new Map(store.products.map((p) => [p.id, p]));
+    let productsChanged = false;
+    let updatedProducts = [...store.products];
+
     for (const rp of remoteProducts) {
-      if (rp.local_id && !localProductIds.has(rp.local_id)) {
-        store.addProduct({
-          name: rp.name,
-          pricePerUnit: rp.price_per_unit,
-          costPerUnit: rp.cost_per_unit ?? undefined,
-          unit: rp.unit,
-          isActive: rp.is_active,
-          trackStock: rp.track_stock ?? false,
-          stockQuantity: rp.stock_quantity ?? undefined,
-          description: rp.description ?? undefined,
-        });
-        // Fix the ID to match remote local_id
-        useSellerStore.setState((s) => ({
-          products: s.products.map((p) =>
-            p.name === rp.name && p.id !== rp.local_id
-              ? { ...p, id: rp.local_id, totalSold: rp.total_sold ?? 0 }
-              : p
-          ),
-        }));
+      if (!rp.local_id) continue;
+      const local = localProductMap.get(rp.local_id);
+
+      const remoteItem: SellerProduct = {
+        id: rp.local_id,
+        name: rp.name,
+        description: rp.description ?? undefined,
+        pricePerUnit: rp.price_per_unit,
+        costPerUnit: rp.cost_per_unit ?? undefined,
+        unit: rp.unit,
+        isActive: rp.is_active,
+        totalSold: rp.total_sold ?? 0,
+        trackStock: rp.track_stock ?? false,
+        stockQuantity: rp.stock_quantity ?? undefined,
+        createdAt: sd(rp.created_at),
+        updatedAt: sd(rp.updated_at),
+      };
+
+      if (!local) {
+        updatedProducts.push(remoteItem);
+        productsChanged = true;
+      } else if (rp.updated_at && sd(rp.updated_at).getTime() > sd(local.updatedAt).getTime()) {
+        updatedProducts = updatedProducts.map((p) =>
+          p.id === rp.local_id ? remoteItem : p
+        );
+        productsChanged = true;
       }
+    }
+
+    if (productsChanged) {
+      useSellerStore.setState({ products: updatedProducts });
     }
   }
 
@@ -384,25 +554,40 @@ export async function pullAll(): Promise<void> {
     .eq('user_id', userId);
 
   if (remoteSeasons && remoteSeasons.length > 0) {
-    const localSeasonIds = new Set(store.seasons.map((s) => s.id));
+    const localSeasonMap = new Map(store.seasons.map((s) => [s.id, s]));
+    let seasonsChanged = false;
+    let updatedSeasons = [...store.seasons];
+
     for (const rs of remoteSeasons) {
-      if (rs.local_id && !localSeasonIds.has(rs.local_id)) {
-        useSellerStore.setState((s) => ({
-          seasons: [
-            ...s.seasons,
-            {
-              id: rs.local_id,
-              name: rs.name,
-              startDate: new Date(rs.start_date),
-              endDate: rs.end_date ? new Date(rs.end_date) : undefined,
-              isActive: rs.is_active,
-              note: rs.note ?? undefined,
-              costBudget: rs.cost_budget ?? undefined,
-              revenueTarget: rs.revenue_target ?? undefined,
-            },
-          ],
-        }));
+      if (!rs.local_id) continue;
+      const local = localSeasonMap.get(rs.local_id);
+
+      const remoteItem: Season = {
+        id: rs.local_id,
+        name: rs.name,
+        startDate: sd(rs.start_date),
+        endDate: rs.end_date ? sd(rs.end_date) : undefined,
+        isActive: rs.is_active,
+        note: rs.note ?? undefined,
+        costBudget: rs.cost_budget ?? undefined,
+        revenueTarget: rs.revenue_target ?? undefined,
+        createdAt: sd(rs.created_at),
+      };
+
+      if (!local) {
+        updatedSeasons.push(remoteItem);
+        seasonsChanged = true;
+      } else if (rs.updated_at && sd(rs.updated_at).getTime() > sd(local.createdAt).getTime()) {
+        // Seasons don't have updatedAt locally — compare remote updated_at with local createdAt as best approximation
+        updatedSeasons = updatedSeasons.map((s) =>
+          s.id === rs.local_id ? remoteItem : s
+        );
+        seasonsChanged = true;
       }
+    }
+
+    if (seasonsChanged) {
+      useSellerStore.setState({ seasons: updatedSeasons });
     }
   }
 
@@ -413,23 +598,38 @@ export async function pullAll(): Promise<void> {
     .eq('user_id', userId);
 
   if (remoteCustomers && remoteCustomers.length > 0) {
-    const localCustomerIds = new Set(store.sellerCustomers.map((c) => c.id));
+    const localCustomerMap = new Map(store.sellerCustomers.map((c) => [c.id, c]));
+    let customersChanged = false;
+    let updatedCustomers = [...store.sellerCustomers];
+
     for (const rc of remoteCustomers) {
-      if (rc.local_id && !localCustomerIds.has(rc.local_id)) {
-        useSellerStore.setState((s) => ({
-          sellerCustomers: [
-            ...s.sellerCustomers,
-            {
-              id: rc.local_id,
-              name: rc.name,
-              phone: rc.phone ?? undefined,
-              address: rc.address ?? undefined,
-              note: rc.note ?? undefined,
-              isVip: rc.is_vip ?? false,
-            },
-          ],
-        }));
+      if (!rc.local_id) continue;
+      const local = localCustomerMap.get(rc.local_id);
+
+      const remoteItem: SellerCustomer = {
+        id: rc.local_id,
+        name: rc.name,
+        phone: rc.phone ?? undefined,
+        address: rc.address ?? undefined,
+        note: rc.note ?? undefined,
+        isVip: rc.is_vip ?? false,
+        createdAt: sd(rc.created_at),
+      };
+
+      if (!local) {
+        updatedCustomers.push(remoteItem);
+        customersChanged = true;
+      } else if (rc.updated_at && sd(rc.updated_at).getTime() > sd(local.createdAt).getTime()) {
+        // Customers don't have updatedAt locally — compare remote updated_at with local createdAt
+        updatedCustomers = updatedCustomers.map((c) =>
+          c.id === rc.local_id ? remoteItem : c
+        );
+        customersChanged = true;
       }
+    }
+
+    if (customersChanged) {
+      useSellerStore.setState({ sellerCustomers: updatedCustomers });
     }
   }
 
@@ -441,37 +641,174 @@ export async function pullAll(): Promise<void> {
     .eq('source', 'app');
 
   if (remoteOrders && remoteOrders.length > 0) {
-    const localOrderIds = new Set(store.orders.map((o) => o.id));
+    const localOrderMap = new Map(store.orders.map((o) => [o.id, o]));
+    let ordersChanged = false;
+    let updatedOrders = [...store.orders];
+
     for (const ro of remoteOrders) {
-      if (ro.local_id && !localOrderIds.has(ro.local_id)) {
-        useSellerStore.setState((s) => ({
-          orders: [
-            ...s.orders,
-            {
-              id: ro.local_id,
-              orderNumber: ro.order_number ?? undefined,
-              items: ro.items ?? [],
-              customerName: ro.customer_name ?? undefined,
-              customerPhone: ro.customer_phone ?? undefined,
-              customerAddress: ro.customer_address ?? undefined,
-              totalAmount: ro.total_amount,
-              status: ro.status as any,
-              isPaid: ro.is_paid,
-              paidAmount: ro.paid_amount ?? undefined,
-              paymentMethod: ro.payment_method as any ?? undefined,
-              paidAt: ro.paid_at ? new Date(ro.paid_at) : undefined,
-              note: ro.note ?? undefined,
-              deliveryDate: ro.delivery_date ? new Date(ro.delivery_date) : undefined,
-              seasonId: ro.season_local_id ?? undefined,
-              deposits: ro.deposits ?? [],
-              source: 'app',
-              supabaseId: ro.id,
-              createdAt: new Date(ro.created_at),
-              updatedAt: new Date(ro.updated_at),
-            },
-          ],
-        }));
+      if (!ro.local_id) continue;
+      const local = localOrderMap.get(ro.local_id);
+
+      const remoteItem: SellerOrder = {
+        id: ro.local_id,
+        orderNumber: ro.order_number ?? undefined,
+        items: ro.items ?? [],
+        customerName: ro.customer_name ?? undefined,
+        customerPhone: ro.customer_phone ?? undefined,
+        customerAddress: ro.customer_address ?? undefined,
+        totalAmount: ro.total_amount,
+        date: sd(ro.created_at),
+        status: ro.status as any,
+        isPaid: ro.is_paid,
+        paidAmount: ro.paid_amount ?? undefined,
+        paymentMethod: (ro.payment_method as any) ?? undefined,
+        paidAt: ro.paid_at ? sd(ro.paid_at) : undefined,
+        note: ro.note ?? undefined,
+        deliveryDate: ro.delivery_date ? sd(ro.delivery_date) : undefined,
+        seasonId: ro.season_local_id ?? undefined,
+        deposits: Array.isArray(ro.deposits)
+          ? ro.deposits.map((d: any) => ({
+              ...d,
+              date: d.date ? sd(d.date) : new Date(),
+            }))
+          : [],
+        source: 'app',
+        supabaseId: ro.id,
+        createdAt: sd(ro.created_at),
+        updatedAt: sd(ro.updated_at),
+      };
+
+      if (!local) {
+        updatedOrders.push(remoteItem);
+        ordersChanged = true;
+      } else if (ro.updated_at && sd(ro.updated_at).getTime() > sd(local.updatedAt).getTime()) {
+        updatedOrders = updatedOrders.map((o) =>
+          o.id === ro.local_id ? remoteItem : o
+        );
+        ordersChanged = true;
       }
+    }
+
+    if (ordersChanged) {
+      useSellerStore.setState({ orders: updatedOrders });
+    }
+  }
+
+  // Pull ingredient costs
+  const { data: remoteIngredientCosts } = await supabase
+    .from('seller_ingredient_costs')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (remoteIngredientCosts && remoteIngredientCosts.length > 0) {
+    const localCostMap = new Map(store.ingredientCosts.map((c) => [c.id, c]));
+    let costsChanged = false;
+    let updatedCosts = [...store.ingredientCosts];
+
+    for (const rc of remoteIngredientCosts) {
+      if (!rc.local_id) continue;
+      const local = localCostMap.get(rc.local_id);
+
+      const remoteItem: IngredientCost = {
+        id: rc.local_id,
+        description: rc.description,
+        amount: rc.amount,
+        date: sd(rc.date),
+        seasonId: rc.season_local_id ?? undefined,
+        productId: rc.product_id ?? undefined,
+        syncedToPersonal: rc.synced_to_personal ?? false,
+        personalTransactionId: rc.personal_transaction_id ?? undefined,
+      };
+
+      if (!local) {
+        updatedCosts.push(remoteItem);
+        costsChanged = true;
+      } else if (rc.updated_at && sd(rc.updated_at).getTime() > sd(local.date).getTime()) {
+        // IngredientCost doesn't have updatedAt — use date as approximation
+        updatedCosts = updatedCosts.map((c) =>
+          c.id === rc.local_id ? remoteItem : c
+        );
+        costsChanged = true;
+      }
+    }
+
+    if (costsChanged) {
+      useSellerStore.setState({ ingredientCosts: updatedCosts });
+    }
+  }
+
+  // Pull recurring costs
+  const { data: remoteRecurringCosts } = await supabase
+    .from('seller_recurring_costs')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (remoteRecurringCosts && remoteRecurringCosts.length > 0) {
+    const localRcMap = new Map(store.recurringCosts.map((r) => [r.id, r]));
+    let rcsChanged = false;
+    let updatedRcs = [...store.recurringCosts];
+
+    for (const rr of remoteRecurringCosts) {
+      if (!rr.local_id) continue;
+      const local = localRcMap.get(rr.local_id);
+
+      const remoteItem: RecurringCost = {
+        id: rr.local_id,
+        description: rr.description,
+        amount: rr.amount,
+        frequency: rr.frequency as any,
+        nextDue: sd(rr.next_due),
+        seasonId: rr.season_local_id ?? undefined,
+        isActive: rr.is_active,
+        createdAt: sd(rr.created_at),
+      };
+
+      if (!local) {
+        updatedRcs.push(remoteItem);
+        rcsChanged = true;
+      } else if (rr.updated_at && sd(rr.updated_at).getTime() > sd(local.createdAt).getTime()) {
+        updatedRcs = updatedRcs.map((r) =>
+          r.id === rr.local_id ? remoteItem : r
+        );
+        rcsChanged = true;
+      }
+    }
+
+    if (rcsChanged) {
+      useSellerStore.setState({ recurringCosts: updatedRcs });
+    }
+  }
+
+  // Pull cost templates
+  const { data: remoteCostTemplates } = await supabase
+    .from('seller_cost_templates')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (remoteCostTemplates && remoteCostTemplates.length > 0) {
+    const localTplMap = new Map(store.costTemplates.map((t) => [t.id, t]));
+    let tplsChanged = false;
+    let updatedTpls = [...store.costTemplates];
+
+    for (const rt of remoteCostTemplates) {
+      if (!rt.local_id) continue;
+      const local = localTplMap.get(rt.local_id);
+
+      const remoteItem: CostTemplate = {
+        id: rt.local_id,
+        description: rt.description,
+        amount: rt.amount,
+      };
+
+      if (!local) {
+        updatedTpls.push(remoteItem);
+        tplsChanged = true;
+      }
+      // CostTemplate has no timestamps locally for comparison, so only add new ones
+    }
+
+    if (tplsChanged) {
+      useSellerStore.setState({ costTemplates: updatedTpls });
     }
   }
 }
@@ -479,7 +816,7 @@ export async function pullAll(): Promise<void> {
 // ─── Full sync ────────────────────────────────────────────────────────────────
 
 /**
- * Sync all local seller data to Supabase. Fire-and-forget — errors are swallowed.
+ * Sync all local seller data to Supabase. Fire-and-forget — errors are logged.
  * Call on startup and on app foreground.
  * Pulls remote data first to prevent tombstone deletion on new devices.
  */
@@ -499,14 +836,24 @@ export async function syncAll(
     // Re-read store after pull (may have new items merged in)
     const store = useSellerStore.getState();
 
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       pushProducts(store.products),
       pushOrders(store.orders, profileId),
       pushSeasons(store.seasons),
       pushCustomers(store.sellerCustomers),
+      pushIngredientCosts(store.ingredientCosts),
+      pushRecurringCosts(store.recurringCosts),
+      pushCostTemplates(store.costTemplates),
     ]);
-  } catch {
-    // Sync failures are non-fatal — app works fully offline
+
+    const pushNames = ['products', 'orders', 'seasons', 'customers', 'ingredientCosts', 'recurringCosts', 'costTemplates'];
+    results.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        console.warn(`[sellerSync] push ${pushNames[i]} failed:`, result.reason instanceof Error ? result.reason.message : result.reason);
+      }
+    });
+  } catch (err) {
+    console.warn('[sellerSync] syncAll failed:', err instanceof Error ? err.message : err);
   }
 }
 

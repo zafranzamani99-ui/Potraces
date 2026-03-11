@@ -21,6 +21,7 @@ interface OtpVerificationScreenProps {
   phone: string;
   onVerified: () => void;
   onBack?: () => void;
+  initialError?: string | null;
 }
 
 const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
@@ -28,15 +29,22 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   phone,
   onVerified,
   onBack,
+  initialError,
 }) => {
   const insets = useSafeAreaInsets();
   const [code, setCode] = useState(initialCode);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(initialError || null);
 
   // Sync code when parent provides it after async request
   useEffect(() => {
     if (initialCode) setCode(initialCode);
   }, [initialCode]);
+
+  // Sync initialError from parent
+  useEffect(() => {
+    if (initialError) setError(initialError);
+  }, [initialError]);
   const [requesting, setRequesting] = useState(false);
   const [checking, setChecking] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -114,11 +122,12 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
 
   const handleRequestNew = useCallback(async () => {
     setRequesting(true);
+    setError(null);
     try {
       const otp = await requestOtp(phone);
       setCode(otp.code);
-    } catch {
-      // silently fail
+    } catch (err: any) {
+      setError(err?.message || 'Failed to get new code. Try again.');
     } finally {
       setRequesting(false);
     }
@@ -219,6 +228,11 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Error feedback */}
+        {error ? (
+          <Text style={styles.errorText}>{error}</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -333,6 +347,13 @@ const styles = StyleSheet.create({
     fontWeight: '500' as const,
   },
   dot: { color: CALM.textMuted, fontSize: 13 },
+  errorText: {
+    fontSize: 12,
+    color: CALM.textSecondary,
+    textAlign: 'center',
+    marginTop: 10,
+    fontStyle: 'italic',
+  },
 });
 
 export default OtpVerificationScreen;

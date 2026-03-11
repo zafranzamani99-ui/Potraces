@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { format, isToday, isYesterday, isPast, startOfDay, isThisWeek, isThisMonth } from 'date-fns';
+import { format, isToday, isYesterday, isPast, startOfDay, isThisWeek, isThisMonth, isValid } from 'date-fns';
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
 import { useSellerStore } from '../../store/sellerStore';
@@ -140,6 +140,7 @@ function paymentMethodLabel(method?: SellerPaymentMethod): string {
 // ─── SMART DATE LABEL ────────────────────────────────────────
 function smartDateLabel(date: Date | string): string {
   const d = date instanceof Date ? date : new Date(date);
+  if (!isValid(d)) return '—';
   const time = format(d, 'h:mm a').toLowerCase();
   if (isToday(d)) return `today, ${time}`;
   if (isYesterday(d)) return `yesterday, ${time}`;

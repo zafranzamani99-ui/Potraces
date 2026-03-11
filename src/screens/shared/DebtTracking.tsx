@@ -23,7 +23,7 @@ import {
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
-import { format, differenceInDays } from 'date-fns';
+import { format, differenceInDays, isValid } from 'date-fns';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import * as Contacts from 'expo-contacts';
@@ -2163,7 +2163,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           <Text style={styles.debtDesc} numberOfLines={1}>{debt.description}</Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                             <Text style={styles.debtTimestamp}>
-                              {format(debt.createdAt, 'MMM dd, yyyy')}{(() => { if (!debt.dueDate) return ''; const d = new Date(debt.dueDate); return isNaN(d.getTime()) ? ` · Due ${debt.dueDate}` : ` · Due ${format(d, 'MMM dd')}`; })()}
+                              {isValid(debt.createdAt) ? format(debt.createdAt, 'MMM dd, yyyy') : '—'}{(() => { if (!debt.dueDate) return ''; const d = new Date(debt.dueDate); return isNaN(d.getTime()) ? ` · Due ${debt.dueDate}` : ` · Due ${format(d, 'MMM dd')}`; })()}
                             </Text>
                             {debt.status !== 'settled' && (() => {
                               // Due date badge takes priority
@@ -2387,7 +2387,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           <Text style={styles.splitTitle}>{split.description}</Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                             <Text style={styles.splitSubtext}>
-                              {split.paidBy ? `Paid by ${split.paidBy.name} · ` : ''}{format(split.createdAt, 'MMMM dd, yyyy')}{(() => { if (!(split as any).dueDate) return ''; const d = new Date((split as any).dueDate); return isNaN(d.getTime()) ? ` · Due ${(split as any).dueDate}` : ` · Due ${format(d, 'MMM dd')}`; })()}
+                              {split.paidBy ? `Paid by ${split.paidBy.name} · ` : ''}{isValid(split.createdAt) ? format(split.createdAt, 'MMMM dd, yyyy') : '—'}{(() => { if (!(split as any).dueDate) return ''; const d = new Date((split as any).dueDate); return isNaN(d.getTime()) ? ` · Due ${(split as any).dueDate}` : ` · Due ${format(d, 'MMM dd')}`; })()}
                             </Text>
                             {!isSettled && (() => {
                               if ((split as any).dueDate) {
@@ -3243,7 +3243,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                 <View style={{ flex: 1 }}>
                                   <View style={styles.payHistoryTopRow}>
                                     <Text style={styles.payHistoryAmount}>{currency} {payment.amount.toFixed(2)}</Text>
-                                    <Text style={styles.payHistoryDate}>{format(payment.date, 'MMM dd, HH:mm')}</Text>
+                                    <Text style={styles.payHistoryDate}>{isValid(payment.date) ? format(payment.date, 'MMM dd, HH:mm') : '—'}</Text>
                                   </View>
                                   {payment.tipAmount ? (
                                     <Text style={styles.payHistoryTip}>incl. tip {currency} {payment.tipAmount.toFixed(2)}</Text>
@@ -3253,7 +3253,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                     <View style={styles.payEditedBadge}>
                                       <Feather name="edit-2" size={10} color={CALM.bronze} />
                                       <Text style={styles.payEditedBadgeText}>
-                                        edited {format(new Date(payment.editLog[payment.editLog.length - 1].editedAt), 'MMM d, HH:mm')}
+                                        edited {(() => { const d = new Date(payment.editLog[payment.editLog.length - 1].editedAt); return isValid(d) ? format(d, 'MMM d, HH:mm') : '—'; })()}
                                       </Text>
                                     </View>
                                   )}
@@ -3347,7 +3347,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     </View>
                     <View style={styles.wizardSummaryRow}>
                       <Text style={styles.wizardSummaryLabel}>Date</Text>
-                      <Text style={styles.wizardSummaryValue}>{format(selectedSplit.createdAt, 'MMM dd, yyyy')}</Text>
+                      <Text style={styles.wizardSummaryValue}>{isValid(selectedSplit.createdAt) ? format(selectedSplit.createdAt, 'MMM dd, yyyy') : '—'}</Text>
                     </View>
                   </View>
 

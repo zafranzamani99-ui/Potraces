@@ -417,11 +417,19 @@ const NewOrder: React.FC = () => {
       return;
     }
 
+    // Filter out items with empty productId
+    const validItems = items.filter(i => i.productId && i.productId.trim() !== '');
+    if (validItems.length === 0) {
+      warningNotification();
+      showToast('no valid products in order', 'error');
+      return;
+    }
+
     // Validate customer phone before creating order
     if (!persistCustomer()) return;
 
     addOrder({
-      items,
+      items: validItems,
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
       customerAddress: customerAddress.trim() || undefined,
