@@ -342,8 +342,6 @@ const QuickAddExpense: React.FC = () => {
           </TouchableWithoutFeedback>
           <Animated.View
             style={[styles.card, { transform: [{ scale: cardScale }], opacity: cardOpacity, elevation: 24 }]}
-            onStartShouldSetResponder={() => true}
-            onResponderTerminationRequest={() => true}
           >
             {/* ── Header row ──────────────────────────── */}
             <View style={styles.hdr}>

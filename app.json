@@ -33,10 +33,6 @@
         "android.permission.READ_CONTACTS",
         "android.permission.WRITE_CONTACTS",
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.READ_CONTACTS",
-        "android.permission.WRITE_CONTACTS",
-        "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
@@ -66,17 +62,17 @@
       "expo-font",
       "expo-asset"
     ],
-    "extra": {
-      "eas": {
-        "projectId": "fbef59ba-65ba-42fd-abbf-74c40f3e2366"
-      }
-    },
-    "owner": "zafranzamani12",
+    "owner": "zafranzamani",
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/fbef59ba-65ba-42fd-abbf-74c40f3e2366"
+      "url": "https://u.expo.dev/48e7d14d-4320-467b-a02a-72d41a4d33d9"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "48e7d14d-4320-467b-a02a-72d41a4d33d9"
+      }
     }
   }
 }

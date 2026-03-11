@@ -51,6 +51,10 @@ web-build/
 .env.local
 .env.production
 
+# Firebase service account keys (private)
+*firebase-adminsdk*
+potraces-f4ebd-*.json
+
 # Temporary files
 *.swp
 *.swo

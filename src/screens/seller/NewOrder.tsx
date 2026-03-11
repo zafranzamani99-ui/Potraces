@@ -19,9 +19,11 @@ import {
   UIManager,
   Linking,
   Image,
+  AppState,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Contacts from 'expo-contacts';
+import * as Sharing from 'expo-sharing';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import CalendarPicker from '../../components/common/CalendarPicker';
@@ -504,6 +506,8 @@ const NewOrder: React.FC = () => {
   }, [editingQtyValue, handleUpdateQuantity]);
 
   // ── WhatsApp share handler ────────────────────────────────
+  const pendingQrShare = useRef(false);
+
   const handleShareWhatsApp = useCallback(() => {
     lightTap();
     const phone = customerPhone.trim();
@@ -511,6 +515,12 @@ const NewOrder: React.FC = () => {
       ? `*No. Pesanan: #${savedOrderNumber}*\n\n${confirmationText}`
       : confirmationText;
     const encodedText = encodeURIComponent(fullText);
+
+    // If payment QRs exist, auto-share QR when user returns from WhatsApp
+    if (paymentQrs.length > 0) {
+      pendingQrShare.current = true;
+    }
+
     if (phone) {
       let digits = phone.replace(/[^0-9]/g, '');
       if (digits.startsWith('0')) digits = '60' + digits.slice(1);
@@ -518,7 +528,39 @@ const NewOrder: React.FC = () => {
     } else {
       Linking.openURL(`https://wa.me/?text=${encodedText}`);
     }
-  }, [customerPhone, confirmationText, savedOrderNumber]);
+  }, [customerPhone, confirmationText, savedOrderNumber, paymentQrs.length]);
+
+  // Auto-share QR when returning from WhatsApp
+  // Must close the Modal first — Android's native modal layer blocks the share sheet
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && pendingQrShare.current) {
+        pendingQrShare.current = false;
+        const qr = paymentQrs[activeQrIndex];
+        if (!qr?.uri) return;
+
+        // Close modal first to unblock Android share sheet
+        setShowConfirmModal(false);
+
+        setTimeout(async () => {
+          try {
+            const available = await Sharing.isAvailableAsync();
+            if (!available) return;
+            await Sharing.shareAsync(qr.uri, {
+              mimeType: 'image/jpeg',
+              dialogTitle: qr.label || 'Payment QR',
+            });
+          } catch {
+            // Share cancelled or failed — silent
+          }
+          // Navigate to order list after sharing
+          resetForm();
+          navigation.navigate('SellerOrders');
+        }, 300);
+      }
+    });
+    return () => sub.remove();
+  }, [paymentQrs, activeQrIndex, resetForm, navigation]);
 
   // ── Import from contacts ──────────────────────────────────
   const handleImportFromContacts = useCallback(async () => {
@@ -1508,8 +1550,6 @@ const NewOrder: React.FC = () => {
               <Text style={styles.modalPreviewText}>{confirmationText}</Text>
             </View>
 
-            {/* ── Inline QR panel ─── TODO: add later ─────────── */}
-
             <View style={styles.modalActions}>
               <TouchableOpacity
                 activeOpacity={0.7}
@@ -1538,8 +1578,6 @@ const NewOrder: React.FC = () => {
                 <Feather name="message-circle" size={16} color="#fff" />
                 <Text style={styles.modalWhatsAppText}>send via WhatsApp</Text>
               </TouchableOpacity>
-
-              {/* QR button — TODO: add later */}
 
               <TouchableOpacity
                 activeOpacity={0.7}
