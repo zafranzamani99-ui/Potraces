@@ -109,6 +109,9 @@ export const useBusinessStore = create<BusinessState>()(
       completeSetup: () =>
         set({ businessSetupComplete: true }),
 
+      resetSetup: () =>
+        set({ businessSetupComplete: false, incomeType: null }),
+
       addBusinessTransaction: (tx) => {
         const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
         set((state) => ({

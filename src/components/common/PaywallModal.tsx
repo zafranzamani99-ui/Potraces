@@ -12,7 +12,7 @@ import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { FREE_TIER, PREMIUM_CONFIG } from '../../constants/premium';
 import { usePremiumStore } from '../../store/premiumStore';
 
-type PaywallFeature = 'wallet' | 'budget' | 'scan';
+type PaywallFeature = 'wallet' | 'budget' | 'scan' | 'ai';
 
 interface PaywallModalProps {
   visible: boolean;
@@ -39,6 +39,12 @@ const FEATURE_CONFIG: Record<PaywallFeature, { title: string; icon: keyof typeof
     icon: 'camera',
     freeLimit: FREE_TIER.maxScansPerMonth,
     unit: 'scans/month',
+  },
+  ai: {
+    title: 'AI Limit Reached',
+    icon: 'cpu',
+    freeLimit: FREE_TIER.maxAiCallsPerMonth,
+    unit: 'ai calls/month',
   },
 };
 
@@ -89,6 +95,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
                   <TierRow icon="credit-card" text={`${FREE_TIER.maxWallets} wallets`} />
                   <TierRow icon="pie-chart" text={`${FREE_TIER.maxBudgets} budgets`} />
                   <TierRow icon="camera" text={`${FREE_TIER.maxScansPerMonth} scans/mo`} />
+                  <TierRow icon="cpu" text={`${FREE_TIER.maxAiCallsPerMonth} ai calls/mo`} />
                   <TierRow icon="download" text="Export data" check />
                   <TierRow icon="file-text" text="Google Docs sync" cross />
                 </View>
@@ -103,6 +110,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
                   <TierRow icon="credit-card" text="Unlimited wallets" check />
                   <TierRow icon="pie-chart" text="Unlimited budgets" check />
                   <TierRow icon="camera" text="Unlimited scans" check />
+                  <TierRow icon="cpu" text="Unlimited ai calls" check />
                   <TierRow icon="download" text="Export data" check />
                   <TierRow icon="file-text" text="Google Docs sync" check soon />
                 </View>

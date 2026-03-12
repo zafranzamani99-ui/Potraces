@@ -443,14 +443,8 @@ const SellerDashboard: React.FC = () => {
     Linking.openURL('https://wa.me/' + digits);
   }, []);
 
-  // Redirect to setup if not complete
+  // AuthGatedBusiness handles the setup redirect — this is just a safety guard
   const needsSetup = !businessSetupComplete || incomeType !== 'seller';
-  useEffect(() => {
-    if (needsSetup) {
-      navigation.getParent()?.navigate('BusinessSetup');
-    }
-  }, [needsSetup]);
-
   if (needsSetup) {
     return (
       <View style={styles.container}>
@@ -1080,7 +1074,7 @@ const SellerDashboard: React.FC = () => {
 
         {/* ── Change setup link ────────────────────────── */}
         <TouchableOpacity
-          onPress={() => { lightTap(); navigation.getParent()?.navigate('BusinessSetup'); }}
+          onPress={() => { lightTap(); useBusinessStore.getState().resetSetup(); }}
           style={styles.changeSetup}
           activeOpacity={0.7}
           accessibilityRole="button"

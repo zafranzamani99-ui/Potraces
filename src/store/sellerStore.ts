@@ -42,6 +42,10 @@ export const useSellerStore = create<SellerState>()(
       productOrder: [],
       seenOnlineOrderIds: [],
       skippedOnboardingSteps: [],
+      _deletedProductIds: [],
+      _deletedOrderIds: [],
+      _deletedSeasonIds: [],
+      _deletedCustomerIds: [],
 
       // ─── Products ───────────────────────────────────────
       addProduct: (product) =>
@@ -72,6 +76,7 @@ export const useSellerStore = create<SellerState>()(
       deleteProduct: (id) =>
         set((state) => ({
           products: state.products.filter((p) => p.id !== id),
+          _deletedProductIds: [...state._deletedProductIds, id],
         })),
 
       // ─── Orders ─────────────────────────────────────────
@@ -197,6 +202,7 @@ export const useSellerStore = create<SellerState>()(
           return {
             orders: state.orders.filter((o) => o.id !== id),
             products: updatedProducts,
+            _deletedOrderIds: [...state._deletedOrderIds, id],
           };
         }),
 
@@ -226,6 +232,7 @@ export const useSellerStore = create<SellerState>()(
           return {
             orders: state.orders.filter((o) => !ids.includes(o.id)),
             products: updatedProducts,
+            _deletedOrderIds: [...state._deletedOrderIds, ...ids],
           };
         }),
 
@@ -321,11 +328,16 @@ export const useSellerStore = create<SellerState>()(
         })),
 
       deleteSeason: (id) =>
-        set((state) => ({
-          seasons: state.seasons.filter((s) => s.id !== id),
-          orders: state.orders.filter((o) => o.seasonId !== id),
-          ingredientCosts: state.ingredientCosts.filter((c) => c.seasonId !== id),
-        })),
+        set((state) => {
+          const deletedOrderIds = state.orders.filter((o) => o.seasonId === id).map((o) => o.id);
+          return {
+            seasons: state.seasons.filter((s) => s.id !== id),
+            orders: state.orders.filter((o) => o.seasonId !== id),
+            ingredientCosts: state.ingredientCosts.filter((c) => c.seasonId !== id),
+            _deletedSeasonIds: [...state._deletedSeasonIds, id],
+            _deletedOrderIds: [...state._deletedOrderIds, ...deletedOrderIds],
+          };
+        }),
 
       getActiveSeason: () => {
         const state = get();
@@ -529,6 +541,7 @@ export const useSellerStore = create<SellerState>()(
       deleteSellerCustomer: (id) =>
         set((state) => ({
           sellerCustomers: state.sellerCustomers.filter((c) => c.id !== id),
+          _deletedCustomerIds: [...state._deletedCustomerIds, id],
         })),
 
       // ─── Custom Units ─────────────────────────────────
@@ -733,6 +746,10 @@ export const useSellerStore = create<SellerState>()(
         productOrder: state.productOrder,
         seenOnlineOrderIds: state.seenOnlineOrderIds,
         skippedOnboardingSteps: state.skippedOnboardingSteps,
+        _deletedProductIds: state._deletedProductIds,
+        _deletedOrderIds: state._deletedOrderIds,
+        _deletedSeasonIds: state._deletedSeasonIds,
+        _deletedCustomerIds: state._deletedCustomerIds,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -799,6 +816,10 @@ export const useSellerStore = create<SellerState>()(
           state.productOrder = state.productOrder || [];
           state.seenOnlineOrderIds = state.seenOnlineOrderIds || [];
           state.skippedOnboardingSteps = state.skippedOnboardingSteps || [];
+          state._deletedProductIds = state._deletedProductIds || [];
+          state._deletedOrderIds = state._deletedOrderIds || [];
+          state._deletedSeasonIds = state._deletedSeasonIds || [];
+          state._deletedCustomerIds = state._deletedCustomerIds || [];
           // Backfill paidAmount for existing orders
           state.orders = state.orders.map((o: any) => ({
             ...o,

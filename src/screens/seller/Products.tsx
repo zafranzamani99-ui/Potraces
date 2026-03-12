@@ -190,6 +190,8 @@ const Products: React.FC = () => {
   const [newTrackStock, setNewTrackStock] = useState(false);
   const [newStockQty, setNewStockQty] = useState('');
   const [reorderMode, setReorderMode] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // ─── Bulk import state ──────────────────────────────────────
   const [showBulk, setShowBulk] = useState(false);
@@ -621,6 +623,42 @@ const Products: React.FC = () => {
     setShowCostModal(false);
   }, [costDescription, costAmount, editingCostId, syncToPersonal, addIngredientCost, updateIngredientCost, addTransaction, updateTransaction, markCostSynced, activeSeason, ingredientCosts, showToast]);
 
+  const toggleSelectProduct = useCallback((id: string) => {
+    selectionChanged();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    warningNotification();
+    Alert.alert(
+      `Remove ${selectedIds.size} product${selectedIds.size > 1 ? 's' : ''}?`,
+      'Existing orders won\'t be affected.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            for (const id of selectedIds) {
+              deleteProduct(id);
+            }
+            successNotification();
+            showToast(`${selectedIds.size} product${selectedIds.size > 1 ? 's' : ''} removed`, 'success');
+            setSelectedIds(new Set());
+            setSelectMode(false);
+          },
+        },
+      ]
+    );
+  }, [selectedIds, deleteProduct, showToast]);
+
   const handleToggleActive = useCallback((product: SellerProduct) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     lightTap();
@@ -689,25 +727,46 @@ const Products: React.FC = () => {
       if (marginPct !== null) sub.push(`${marginPct}% margin`);
       if (item.trackStock && item.stockQuantity != null) sub.push(`${item.stockQuantity} in stock`);
 
+      const isSelected = selectMode && selectedIds.has(item.id);
+
       return (
         <ScaleDecorator>
           <AnimatedProductCard index={getIndex() ?? 0}>
             <TouchableOpacity
               style={[
                 styles.productRow,
-                !item.isActive && styles.productRowInactive,
+                !item.isActive && !selectMode && styles.productRowInactive,
                 isDragging && styles.productRowDragging,
+                isSelected && styles.productRowSelected,
               ]}
               activeOpacity={reorderMode ? 0.8 : 0.65}
-              onPress={reorderMode ? undefined : () => openEditModal(item)}
-              onLongPress={reorderMode ? drag : () => handleDelete(item)}
+              onPress={
+                selectMode
+                  ? () => toggleSelectProduct(item.id)
+                  : reorderMode
+                  ? undefined
+                  : () => openEditModal(item)
+              }
+              onLongPress={
+                selectMode
+                  ? undefined
+                  : reorderMode
+                  ? drag
+                  : () => handleDelete(item)
+              }
               delayLongPress={reorderMode ? 150 : 500}
               accessibilityRole="button"
               accessibilityLabel={`${item.name}. Tap to edit, hold to delete.`}
             >
-              <View style={[styles.rowAvatar, !item.isActive && styles.rowAvatarInactive]}>
-                <Text style={styles.rowAvatarText}>{initial}</Text>
-              </View>
+              {selectMode ? (
+                <View style={[styles.selectCheckbox, isSelected && styles.selectCheckboxActive]}>
+                  {isSelected && <Feather name="check" size={14} color="#fff" />}
+                </View>
+              ) : (
+                <View style={[styles.rowAvatar, !item.isActive && styles.rowAvatarInactive]}>
+                  <Text style={styles.rowAvatarText}>{initial}</Text>
+                </View>
+              )}
               <View style={styles.rowContent}>
                 <View style={styles.rowTop}>
                   <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
@@ -724,7 +783,7 @@ const Products: React.FC = () => {
               </View>
               {reorderMode ? (
                 <Feather name="menu" size={18} color={isDragging ? CALM.accent : CALM.neutral} />
-              ) : (
+              ) : !selectMode ? (
                 <Switch
                   value={item.isActive}
                   onValueChange={() => handleToggleActive(item)}
@@ -734,13 +793,13 @@ const Products: React.FC = () => {
                   accessibilityRole="switch"
                   accessibilityLabel={`Toggle ${item.name} active`}
                 />
-              )}
+              ) : null}
             </TouchableOpacity>
           </AnimatedProductCard>
         </ScaleDecorator>
       );
     },
-    [currency, openEditModal, handleToggleActive, handleDelete, reorderMode]
+    [currency, openEditModal, handleToggleActive, handleDelete, reorderMode, selectMode, selectedIds, toggleSelectProduct]
   );
 
   // ─── FlatList render helpers ────────────────────────────────
@@ -753,33 +812,88 @@ const Products: React.FC = () => {
       <View style={styles.listHeader}>
         <View style={{ flex: 1 }} />
         <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-          {products.length > 1 && (
-            <TouchableOpacity
-              style={[styles.reorderButton, reorderMode && styles.reorderButtonActive]}
-              activeOpacity={0.7}
-              onPress={() => {
-                lightTap();
-                setReorderMode((v) => !v);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={reorderMode ? 'Done reordering' : 'Reorder products'}
-            >
-              <Feather name="list" size={14} color={reorderMode ? '#fff' : CALM.bronze} />
-              <Text style={[styles.reorderText, reorderMode && styles.reorderTextActive]}>
-                {reorderMode ? 'done' : 'reorder'}
-              </Text>
-            </TouchableOpacity>
+          {selectMode ? (
+            <>
+              <TouchableOpacity
+                style={styles.reorderButton}
+                activeOpacity={0.7}
+                onPress={() => {
+                  lightTap();
+                  if (selectedIds.size === filteredProducts.length) {
+                    setSelectedIds(new Set());
+                  } else {
+                    setSelectedIds(new Set(filteredProducts.map((p) => p.id)));
+                  }
+                }}
+              >
+                <Feather
+                  name={selectedIds.size === filteredProducts.length ? 'check-square' : 'square'}
+                  size={14}
+                  color={CALM.bronze}
+                />
+                <Text style={styles.reorderText}>
+                  {selectedIds.size === filteredProducts.length ? 'deselect all' : 'select all'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reorderButton, styles.reorderButtonActive]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  lightTap();
+                  setSelectMode(false);
+                  setSelectedIds(new Set());
+                }}
+              >
+                <Text style={styles.reorderTextActive}>done</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              {products.length > 1 && (
+                <>
+                  <TouchableOpacity
+                    style={styles.reorderButton}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      lightTap();
+                      setSelectMode(true);
+                      setSelectedIds(new Set());
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Select products to delete"
+                  >
+                    <Feather name="check-square" size={14} color={CALM.bronze} />
+                    <Text style={styles.reorderText}>select</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.reorderButton, reorderMode && styles.reorderButtonActive]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      lightTap();
+                      setReorderMode((v) => !v);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={reorderMode ? 'Done reordering' : 'Reorder products'}
+                  >
+                    <Feather name="list" size={14} color={reorderMode ? '#fff' : CALM.bronze} />
+                    <Text style={[styles.reorderText, reorderMode && styles.reorderTextActive]}>
+                      {reorderMode ? 'done' : 'reorder'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+              <TouchableOpacity
+                style={styles.logCostHeaderButton}
+                activeOpacity={0.7}
+                onPress={() => handleOpenCostModal()}
+                accessibilityRole="button"
+                accessibilityLabel="Log ingredient cost"
+              >
+                <Feather name="plus-circle" size={14} color={CALM.bronze} />
+                <Text style={styles.logCostHeaderText}>log cost</Text>
+              </TouchableOpacity>
+            </>
           )}
-          <TouchableOpacity
-            style={styles.logCostHeaderButton}
-            activeOpacity={0.7}
-            onPress={() => handleOpenCostModal()}
-            accessibilityRole="button"
-            accessibilityLabel="Log ingredient cost"
-          >
-            <Feather name="plus-circle" size={14} color={CALM.bronze} />
-            <Text style={styles.logCostHeaderText}>log cost</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -837,7 +951,7 @@ const Products: React.FC = () => {
         </View>
       )}
     </View>
-  ), [products.length, handleOpenCostModal, search, filteredProducts.length, topProducts, topMax, currency]);
+  ), [products.length, handleOpenCostModal, search, filteredProducts, topProducts, topMax, currency, selectMode, selectedIds, reorderMode]);
 
   // ─── Live preview values ───────────────────────────────────
   const previewName = newName.trim() || 'product name';
@@ -1241,29 +1355,50 @@ const Products: React.FC = () => {
         removeClippedSubviews
       />
 
-      {/* Bottom-anchored add buttons */}
+      {/* Bottom-anchored add buttons / select mode bar */}
       {products.length > 0 && (
-        <View style={styles.addButtonWrapper}>
-          <TouchableOpacity
-            style={styles.bulkAddButton}
-            activeOpacity={0.7}
-            onPress={() => { lightTap(); setShowBulk(true); }}
-            accessibilityRole="button"
-            accessibilityLabel="Bulk add with AI"
-          >
-            <Feather name="zap" size={18} color={CALM.bronze} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.addButton, { flex: 1 }]}
-            activeOpacity={0.7}
-            onPress={openAddModal}
-            accessibilityRole="button"
-            accessibilityLabel="Add product"
-          >
-            <Feather name="plus" size={20} color="#fff" />
-            <Text style={styles.addButtonText}>add product</Text>
-          </TouchableOpacity>
-        </View>
+        selectMode ? (
+          <View style={styles.addButtonWrapper}>
+            <TouchableOpacity
+              style={[
+                styles.addButton,
+                { flex: 1, backgroundColor: selectedIds.size > 0 ? '#C1694F' : withAlpha(CALM.textMuted, 0.12) },
+              ]}
+              activeOpacity={0.7}
+              onPress={handleBulkDelete}
+              disabled={selectedIds.size === 0}
+            >
+              <Feather name="trash-2" size={18} color={selectedIds.size > 0 ? '#fff' : CALM.textMuted} />
+              <Text style={[styles.addButtonText, selectedIds.size === 0 && { color: CALM.textMuted }]}>
+                {selectedIds.size > 0
+                  ? `remove ${selectedIds.size} product${selectedIds.size > 1 ? 's' : ''}`
+                  : 'select products to remove'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.addButtonWrapper}>
+            <TouchableOpacity
+              style={styles.bulkAddButton}
+              activeOpacity={0.7}
+              onPress={() => { lightTap(); setShowBulk(true); }}
+              accessibilityRole="button"
+              accessibilityLabel="Bulk add with AI"
+            >
+              <Feather name="zap" size={18} color={CALM.bronze} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.addButton, { flex: 1 }]}
+              activeOpacity={0.7}
+              onPress={openAddModal}
+              accessibilityRole="button"
+              accessibilityLabel="Add product"
+            >
+              <Feather name="plus" size={20} color="#fff" />
+              <Text style={styles.addButtonText}>add product</Text>
+            </TouchableOpacity>
+          </View>
+        )
       )}
 
       {/* ── Add / Edit product modal ────────────────────────── */}
@@ -1714,9 +1849,26 @@ const styles = StyleSheet.create({
   productRowInactive: {
     opacity: 0.45,
   },
+  productRowSelected: {
+    borderColor: withAlpha('#C1694F', 0.35),
+    backgroundColor: withAlpha('#C1694F', 0.04),
+  },
   productRowDragging: {
     backgroundColor: withAlpha(CALM.accent, 0.06),
     borderColor: withAlpha(CALM.accent, 0.2),
+  },
+  selectCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: CALM.border,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  selectCheckboxActive: {
+    backgroundColor: '#C1694F',
+    borderColor: '#C1694F',
   },
   rowAvatar: {
     width: 40,

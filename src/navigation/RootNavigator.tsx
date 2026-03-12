@@ -27,6 +27,7 @@ import SavingsTracker from '../screens/personal/SavingsTracker';
 import MoneyChat from '../screens/personal/MoneyChat';
 import Goals from '../screens/personal/Goals';
 import FinancialPulse from '../screens/personal/FinancialPulse';
+import { useBusinessStore } from '../store/businessStore';
 import BusinessSetup from '../screens/business/Setup';
 import Settings from '../screens/shared/Settings';
 import LogIncome from '../screens/business/LogIncome';
@@ -69,6 +70,7 @@ import MixedAddIncome from '../screens/business/mixed/AddIncome';
 import MixedAddCost from '../screens/business/mixed/AddCost';
 import MixedStreamHistory from '../screens/business/mixed/StreamHistory';
 import MixedReports from '../screens/business/mixed/MixedReports';
+import NoteEditor from '../screens/notes/NoteEditor';
 
 const Stack = createStackNavigator();
 
@@ -113,10 +115,12 @@ const modeTransitionSpec = {
   },
 };
 
-/** Wraps business mode with auth gating. */
+/** Wraps business mode with auth gating + setup gating. */
 const AuthGatedBusiness: React.FC = () => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isVerified = useAuthStore((s) => s.isVerified);
+  const businessSetupComplete = useBusinessStore((s) => s.businessSetupComplete);
+  const incomeType = useBusinessStore((s) => s.incomeType);
   const [otpCode, setOtpCode] = useState<string | null>(null);
   const [otpPhone, setOtpPhone] = useState('');
   const [otpError, setOtpError] = useState<string | null>(null);
@@ -194,6 +198,11 @@ const AuthGatedBusiness: React.FC = () => {
         initialError={otpError}
       />
     );
+  }
+
+  // Show setup screen if business setup not complete
+  if (!businessSetupComplete || !incomeType) {
+    return <BusinessSetup />;
   }
 
   return <BusinessNavigator />;
@@ -633,11 +642,6 @@ const RootNavigator: React.FC = () => {
           })}
         />
         <Stack.Screen
-          name="BusinessSetup"
-          component={BusinessSetup}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
           name="LogIncome"
           component={LogIncome}
           options={({ navigation }) => ({
@@ -655,7 +659,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -685,7 +689,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -715,7 +719,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -745,7 +749,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -775,7 +779,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -805,7 +809,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -856,7 +860,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -886,7 +890,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -916,7 +920,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -946,7 +950,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -997,7 +1001,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1027,7 +1031,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1057,7 +1061,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1087,7 +1091,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1117,7 +1121,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1147,7 +1151,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1177,7 +1181,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1207,7 +1211,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1237,7 +1241,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1267,7 +1271,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1297,7 +1301,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1327,7 +1331,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1357,7 +1361,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1387,7 +1391,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1417,7 +1421,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1447,7 +1451,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1477,7 +1481,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1507,7 +1511,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1537,7 +1541,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1567,7 +1571,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1597,7 +1601,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1627,7 +1631,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1657,7 +1661,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1687,7 +1691,7 @@ const RootNavigator: React.FC = () => {
                   } else {
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'BusinessMain' }],
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
                     });
                   }
                 }}
@@ -1698,6 +1702,11 @@ const RootNavigator: React.FC = () => {
               </TouchableOpacity>
             ),
           })}
+        />
+        <Stack.Screen
+          name="NoteEditor"
+          component={NoteEditor}
+          options={{ headerShown: false, presentation: 'card' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

@@ -76,6 +76,9 @@ const Settings: React.FC = () => {
   const subscribe = usePremiumStore((s) => s.subscribe);
   const unsubscribe = usePremiumStore((s) => s.unsubscribe);
   const getRemainingScans = usePremiumStore((s) => s.getRemainingScans);
+  const getRemainingAiCalls = usePremiumStore((s) => s.getRemainingAiCalls);
+  const scanCount = usePremiumStore((s) => s.scanCount);
+  const aiCallsCount = usePremiumStore((s) => s.aiCallsCount);
   const walletCount = useWalletStore((s) => s.wallets.length);
   const budgetCount = usePersonalStore((s) => s.budgets.length);
 
@@ -458,7 +461,7 @@ const Settings: React.FC = () => {
                 style={styles.settingRow}
                 onPress={() => {
                   lightTap();
-                  navigation.navigate('BusinessSetup');
+                  useBusinessStore.getState().resetSetup();
                 }}
                 activeOpacity={0.6}
               >
@@ -625,7 +628,14 @@ const Settings: React.FC = () => {
                     <Feather name="camera" size={16} color={CALM.textSecondary} />
                     <Text style={styles.usageLabel}>Scans this month</Text>
                   </View>
-                  <Text style={styles.usageValue}>{getRemainingScans()} left</Text>
+                  <Text style={styles.usageValue}>{scanCount}/{FREE_TIER.maxScansPerMonth}</Text>
+                </View>
+                <View style={styles.usageRow}>
+                  <View style={styles.settingLabelRow}>
+                    <Feather name="cpu" size={16} color={CALM.textSecondary} />
+                    <Text style={styles.usageLabel}>AI calls this month</Text>
+                  </View>
+                  <Text style={styles.usageValue}>{aiCallsCount}/{FREE_TIER.maxAiCallsPerMonth}</Text>
                 </View>
               </View>
               <TouchableOpacity

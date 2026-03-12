@@ -207,7 +207,7 @@ const FreelancerDashboard: React.FC = () => {
 
         {/* Change setup */}
         <TouchableOpacity
-          onPress={() => navigation.getParent()?.navigate('BusinessSetup')}
+          onPress={() => useBusinessStore.getState().resetSetup()}
           style={styles.changeSetup}
         >
           <Text style={styles.changeSetupText}>

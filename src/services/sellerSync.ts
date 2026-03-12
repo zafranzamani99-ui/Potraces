@@ -500,6 +500,10 @@ export async function pullAll(): Promise<void> {
   if (!session) return;
   const userId = session.user.id;
   const store = useSellerStore.getState();
+  const deletedProductIds = new Set(store._deletedProductIds);
+  const deletedOrderIds = new Set(store._deletedOrderIds);
+  const deletedSeasonIds = new Set(store._deletedSeasonIds);
+  const deletedCustomerIds = new Set(store._deletedCustomerIds);
 
   // Pull products
   const { data: remoteProducts } = await supabase
@@ -514,6 +518,7 @@ export async function pullAll(): Promise<void> {
 
     for (const rp of remoteProducts) {
       if (!rp.local_id) continue;
+      if (deletedProductIds.has(rp.local_id)) continue; // Skip locally deleted
       const local = localProductMap.get(rp.local_id);
 
       const remoteItem: SellerProduct = {
@@ -560,6 +565,7 @@ export async function pullAll(): Promise<void> {
 
     for (const rs of remoteSeasons) {
       if (!rs.local_id) continue;
+      if (deletedSeasonIds.has(rs.local_id)) continue; // Skip locally deleted
       const local = localSeasonMap.get(rs.local_id);
 
       const remoteItem: Season = {
@@ -604,6 +610,7 @@ export async function pullAll(): Promise<void> {
 
     for (const rc of remoteCustomers) {
       if (!rc.local_id) continue;
+      if (deletedCustomerIds.has(rc.local_id)) continue; // Skip locally deleted
       const local = localCustomerMap.get(rc.local_id);
 
       const remoteItem: SellerCustomer = {
@@ -647,6 +654,7 @@ export async function pullAll(): Promise<void> {
 
     for (const ro of remoteOrders) {
       if (!ro.local_id) continue;
+      if (deletedOrderIds.has(ro.local_id)) continue; // Skip locally deleted
       const local = localOrderMap.get(ro.local_id);
 
       const remoteItem: SellerOrder = {
@@ -852,6 +860,16 @@ export async function syncAll(
         console.warn(`[sellerSync] push ${pushNames[i]} failed:`, result.reason instanceof Error ? result.reason.message : result.reason);
       }
     });
+
+    // Clear pending-deletion IDs for entity types that pushed successfully
+    const cleared: Record<string, string[]> = {};
+    if (results[0].status === 'fulfilled') cleared._deletedProductIds = [];
+    if (results[1].status === 'fulfilled') cleared._deletedOrderIds = [];
+    if (results[2].status === 'fulfilled') cleared._deletedSeasonIds = [];
+    if (results[3].status === 'fulfilled') cleared._deletedCustomerIds = [];
+    if (Object.keys(cleared).length > 0) {
+      useSellerStore.setState(cleared as any);
+    }
   } catch (err) {
     console.warn('[sellerSync] syncAll failed:', err instanceof Error ? err.message : err);
   }

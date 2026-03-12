@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { startOfMonth } from 'date-fns';
+import { startOfMonth, differenceInDays } from 'date-fns';
 import { PremiumState } from '../types';
-import { FREE_TIER } from '../constants/premium';
+import { FREE_TIER, TRIAL_DAYS } from '../constants/premium';
 
 export const usePremiumStore = create<PremiumState>()(
   persist(
@@ -12,6 +12,9 @@ export const usePremiumStore = create<PremiumState>()(
       subscribedAt: null,
       scanCount: 0,
       scanResetDate: startOfMonth(new Date()),
+      aiCallsCount: 0,
+      aiCallsResetDate: startOfMonth(new Date()),
+      trialStartDate: null,
 
       subscribe: () =>
         set({
@@ -41,6 +44,24 @@ export const usePremiumStore = create<PremiumState>()(
         }
       },
 
+      incrementAiCalls: () => {
+        const state = get();
+        state.resetAiCallsIfNeeded();
+        state.startTrialIfNeeded();
+        set((s) => ({ aiCallsCount: s.aiCallsCount + 1 }));
+      },
+
+      resetAiCallsIfNeeded: () => {
+        const state = get();
+        const currentMonthStart = startOfMonth(new Date());
+        if (state.aiCallsResetDate < currentMonthStart) {
+          set({
+            aiCallsCount: 0,
+            aiCallsResetDate: currentMonthStart,
+          });
+        }
+      },
+
       canCreateWallet: (currentCount: number) => {
         const state = get();
         if (state.tier === 'premium') return true;
@@ -66,6 +87,37 @@ export const usePremiumStore = create<PremiumState>()(
         if (state.tier === 'premium') return Infinity;
         return Math.max(0, FREE_TIER.maxScansPerMonth - get().scanCount);
       },
+
+      canUseAI: () => {
+        const state = get();
+        if (state.tier === 'premium') return true;
+        if (state.isInTrial()) return true;
+        state.resetAiCallsIfNeeded();
+        return get().aiCallsCount < FREE_TIER.maxAiCallsPerMonth;
+      },
+
+      getRemainingAiCalls: () => {
+        const state = get();
+        if (state.tier === 'premium') return Infinity;
+        if (state.isInTrial()) return Infinity;
+        state.resetAiCallsIfNeeded();
+        return Math.max(0, FREE_TIER.maxAiCallsPerMonth - get().aiCallsCount);
+      },
+
+      isInTrial: () => {
+        const state = get();
+        if (state.tier === 'premium') return false;
+        if (!state.trialStartDate) return false;
+        const daysSinceStart = differenceInDays(new Date(), state.trialStartDate);
+        return daysSinceStart < TRIAL_DAYS;
+      },
+
+      startTrialIfNeeded: () => {
+        const state = get();
+        if (state.tier === 'premium') return;
+        if (state.trialStartDate) return;
+        set({ trialStartDate: new Date() });
+      },
     }),
     {
       name: 'premium-storage',
@@ -75,12 +127,21 @@ export const usePremiumStore = create<PremiumState>()(
         subscribedAt: state.subscribedAt instanceof Date ? state.subscribedAt.toISOString() : state.subscribedAt,
         scanCount: state.scanCount,
         scanResetDate: state.scanResetDate instanceof Date ? state.scanResetDate.toISOString() : state.scanResetDate,
+        aiCallsCount: state.aiCallsCount,
+        aiCallsResetDate: state.aiCallsResetDate instanceof Date ? state.aiCallsResetDate.toISOString() : state.aiCallsResetDate,
+        trialStartDate: state.trialStartDate instanceof Date ? state.trialStartDate.toISOString() : state.trialStartDate,
       }),
       onRehydrateStorage: () => (state) => {
-        if (state) {
-          state.subscribedAt = state.subscribedAt ? new Date(state.subscribedAt as any) : null;
-          state.scanResetDate = new Date(state.scanResetDate as any);
-        }
+        if (!state) return;
+        const sd = (v: any) => {
+          if (!v) return null;
+          const d = v instanceof Date ? v : new Date(v);
+          return isNaN(d.getTime()) ? null : d;
+        };
+        state.subscribedAt = sd(state.subscribedAt);
+        state.scanResetDate = sd(state.scanResetDate) ?? startOfMonth(new Date());
+        state.aiCallsResetDate = sd(state.aiCallsResetDate) ?? startOfMonth(new Date());
+        state.trialStartDate = sd(state.trialStartDate);
       },
     }
   )

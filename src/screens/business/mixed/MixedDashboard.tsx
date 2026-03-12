@@ -327,7 +327,7 @@ const MixedDashboard: React.FC = () => {
 
         {/* Bottom links */}
         <TouchableOpacity
-          onPress={() => navigation.getParent()?.navigate('BusinessSetup')}
+          onPress={() => useBusinessStore.getState().resetSetup()}
           style={styles.bottomLink}
         >
           <Text style={styles.bottomLinkText}>not the right setup? change it.</Text>

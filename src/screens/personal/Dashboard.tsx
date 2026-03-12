@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -44,6 +44,12 @@ import { Transaction } from '../../types';
 import { lightTap } from '../../services/haptics';
 import { explainMonth } from '../../utils/explainMonth';
 import QuickAddExpense from '../../components/common/QuickAddExpense';
+import { useBNPLTotal } from '../../hooks/useBNPLTotal';
+import { useKeptNumber } from '../../hooks/useKeptNumber';
+import { useAIInsightsStore } from '../../store/aiInsightsStore';
+import { generateSpendingMirror } from '../../services/spendingMirror';
+import BreathingRoom from '../../components/common/BreathingRoom';
+import FreshStart from '../../components/common/FreshStart';
 
 const getGreeting = (): string => {
   const hour = new Date().getHours();
@@ -102,6 +108,17 @@ const PersonalDashboard: React.FC = () => {
   const [qrViewIndex, setQrViewIndex] = useState(0);
 
   const greeting = useMemo(() => getGreeting(), []);
+  const bnpl = useBNPLTotal();
+  const kept = useKeptNumber();
+
+  // Spending Mirror
+  const mirrorText = useAIInsightsStore((s) => s.spendingMirrorText);
+  const mirrorGenerating = useAIInsightsStore((s) => s.isGenerating);
+
+  useEffect(() => {
+    // Generate spending mirror on mount (cached, won't re-call if recent)
+    generateSpendingMirror();
+  }, []);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -477,8 +494,13 @@ const PersonalDashboard: React.FC = () => {
         {/* Zone 3 — Week Timeline */}
         <WeekBar transactions={transactions} />
 
-        {/* Zone 4 — Insight */}
-        <Text style={styles.insight}>{insight}</Text>
+        {/* Fresh Start — 1st of month ritual */}
+        <FreshStart />
+
+        {/* Zone 4 — Spending Mirror */}
+        <Text style={styles.insight}>
+          {mirrorText || insight}
+        </Text>
 
         {/* Zone 5 — Insight Strip */}
         <ScrollView
@@ -524,6 +546,41 @@ const PersonalDashboard: React.FC = () => {
             </Text>
             <Text style={styles.insightLabel}>of usual spending</Text>
           </TouchableOpacity>
+
+          {/* Kept Number */}
+          <View
+            style={[styles.insightCard, { borderLeftColor: kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral }]}
+            accessibilityLabel={`Kept ${currency} ${kept.keptThisMonth.toFixed(2)} this month`}
+          >
+            <View style={[styles.insightIconBg, { backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral, 0.12) }]}>
+              <Feather name="pocket" size={14} color={kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral} />
+            </View>
+            <Text style={[styles.insightValue, { color: kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral }]}>
+              {kept.keptThisMonth >= 0 ? '+' : ''}{currency} {kept.keptThisMonth.toFixed(0)}
+            </Text>
+            <Text style={styles.insightLabel}>kept</Text>
+          </View>
+
+          {/* BNPL / Credit Used */}
+          {bnpl.walletCount > 0 && bnpl.totalUsed > 0 && (
+            <TouchableOpacity
+              style={[styles.insightCard, { borderLeftColor: CALM.bronze }]}
+              activeOpacity={0.7}
+              onPress={() => {
+                lightTap();
+                navigation.getParent()?.navigate('WalletManagement');
+              }}
+              accessibilityLabel={`Future you owes ${currency} ${bnpl.totalUsed.toFixed(2)}`}
+            >
+              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(CALM.bronze, 0.12) }]}>
+                <Feather name="credit-card" size={14} color={CALM.bronze} />
+              </View>
+              <Text style={[styles.insightValue, { color: CALM.bronze }]}>
+                {currency} {bnpl.totalUsed.toFixed(0)}
+              </Text>
+              <Text style={styles.insightLabel}>future you owes</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Upcoming Bills */}
           <TouchableOpacity
@@ -658,39 +715,13 @@ const PersonalDashboard: React.FC = () => {
             </View>
           )}
 
-          {/* Budget Overview */}
-          {stats.budgetProgress > 0 && (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                lightTap();
-                navigation.navigate('BudgetPlanning');
-              }}
-            >
-              <Card style={styles.detailCard}>
-                <View style={styles.budgetHeader}>
-                  <Text style={styles.budgetTitle}>Budget Overview</Text>
-                  <View style={styles.budgetHeaderRight}>
-                    <Text style={styles.budgetPercentage}>
-                      {stats.budgetProgress.toFixed(0)}%
-                    </Text>
-                    <Feather name="chevron-right" size={16} color={CALM.textSecondary} />
-                  </View>
-                </View>
-                <View style={styles.budgetBar}>
-                  <View
-                    style={[
-                      styles.budgetFill,
-                      {
-                        width: `${Math.min(stats.budgetProgress, 100)}%`,
-                        backgroundColor: CALM.accent,
-                      },
-                    ]}
-                  />
-                </View>
-              </Card>
-            </TouchableOpacity>
-          )}
+          {/* Breathing Room (replaces Budget Overview) */}
+          <BreathingRoom
+            onPress={() => {
+              lightTap();
+              navigation.navigate('BudgetPlanning');
+            }}
+          />
 
           {/* Recent Transactions */}
           <View style={styles.section}>

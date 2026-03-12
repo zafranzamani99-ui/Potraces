@@ -199,7 +199,7 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       clearBusinessData: async () => {
-        // 1. Clear local business stores
+        // 1. Clear local business stores (in-memory)
         useBusinessStore.setState({
           incomeType: null,
           businessSetupComplete: false,
@@ -242,6 +242,19 @@ export const useSettingsStore = create<SettingsState>()(
           lastUsedStream: null,
         });
         useCRMStore.setState({ customers: [], orders: [] });
+
+        // 1b. Force-remove AsyncStorage keys so rehydration can't restore old data
+        await Promise.all([
+          AsyncStorage.removeItem('business-storage'),
+          AsyncStorage.removeItem('seller-storage'),
+          AsyncStorage.removeItem('stall-storage'),
+          AsyncStorage.removeItem('freelancer-storage'),
+          AsyncStorage.removeItem('parttime-storage'),
+          AsyncStorage.removeItem('ontheroad-storage'),
+          AsyncStorage.removeItem('mixed-storage'),
+          AsyncStorage.removeItem('crm-storage'),
+          AsyncStorage.removeItem('auth-storage'),
+        ]);
 
         // 2. Delete remote data + auth user
         try {

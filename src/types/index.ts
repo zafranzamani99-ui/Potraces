@@ -214,6 +214,12 @@ export interface SellerState {
   recurringCosts: RecurringCost[];
   productOrder: string[];
 
+  // Pending deletion tracking — prevents pullAll from re-adding deleted items
+  _deletedProductIds: string[];
+  _deletedOrderIds: string[];
+  _deletedSeasonIds: string[];
+  _deletedCustomerIds: string[];
+
   addProduct: (product: Omit<SellerProduct, 'id' | 'totalSold' | 'createdAt' | 'updatedAt'>) => void;
   updateProduct: (id: string, updates: Partial<SellerProduct>) => void;
   deleteProduct: (id: string) => void;
@@ -524,10 +530,19 @@ export interface Transaction {
   editLog?: TransactionEdit[];
 }
 
+export interface AIMessageAction {
+  type: string;
+  description: string;
+  amount: number;
+  success: boolean;
+  message: string;
+}
+
 export interface AIMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  actions?: AIMessageAction[];
 }
 
 export interface Subscription {
@@ -827,6 +842,7 @@ export interface BusinessState {
   deleteSupplier: (id: string) => void;
   setIncomeType: (type: IncomeType) => void;
   completeSetup: () => void;
+  resetSetup: () => void;
   addBusinessTransaction: (tx: Omit<BusinessTransaction, 'id'>) => string;
   deleteBusinessTransaction: (id: string) => void;
   addClient: (client: Omit<Client, 'id' | 'totalPaid' | 'paymentHistory'>) => void;
@@ -955,12 +971,63 @@ export interface PremiumState {
   subscribedAt: Date | null;
   scanCount: number;
   scanResetDate: Date;
+  aiCallsCount: number;
+  aiCallsResetDate: Date;
+  trialStartDate: Date | null;
   subscribe: () => void;
   unsubscribe: () => void;
   incrementScanCount: () => void;
   resetScanCountIfNeeded: () => void;
+  incrementAiCalls: () => void;
+  resetAiCallsIfNeeded: () => void;
   canCreateWallet: (currentCount: number) => boolean;
   canCreateBudget: (currentCount: number) => boolean;
   canScanReceipt: () => boolean;
   getRemainingScans: () => number;
+  canUseAI: () => boolean;
+  getRemainingAiCalls: () => number;
+  isInTrial: () => boolean;
+  startTrialIfNeeded: () => void;
+}
+
+// ─── NOTES TYPES ──────────────────────────────────────────
+
+export type ExtractionIntent =
+  | 'expense' | 'income' | 'debt' | 'debt_update' | 'bnpl'
+  | 'seller_order' | 'seller_cost' | 'query' | 'savings_goal' | 'plain';
+
+export interface AIExtraction {
+  id: string;
+  type: ExtractionIntent;
+  rawText: string;
+  extractedData: Record<string, any>;
+  status: 'pending' | 'confirmed' | 'edited' | 'skipped';
+  linkedId?: string;
+  confirmedAt?: string;
+}
+
+export interface NotePage {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+  extractions: AIExtraction[];
+  mode: AppMode;
+}
+
+export interface NotesState {
+  pages: NotePage[];
+  activePageId: string | null;
+  isFirstWrite: boolean;
+
+  createPage: (mode: AppMode) => string;
+  updatePageContent: (id: string, content: string) => void;
+  deletePage: (id: string) => void;
+  deletePages: (ids: string[]) => void;
+  setActivePageId: (id: string | null) => void;
+  addExtraction: (pageId: string, extraction: AIExtraction) => void;
+  updateExtractionStatus: (pageId: string, extractionId: string, status: AIExtraction['status'], linkedId?: string) => void;
+  updateExtraction: (pageId: string, extractionId: string, updates: { type?: ExtractionIntent; extractedData?: Record<string, any> }) => void;
+  markFirstWriteComplete: () => void;
 }

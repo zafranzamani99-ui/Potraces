@@ -23,6 +23,9 @@ import SellScreen from '../screens/stall/SellScreen';
 import SessionHistory from '../screens/stall/SessionHistory';
 import RegularCustomers from '../screens/stall/RegularCustomers';
 
+// Notes
+import NotesHome from '../screens/notes/NotesHome';
+
 // Legacy screens (still used as fallback)
 import POS from '../screens/business/POS';
 import CRM from '../screens/business/CRM';
@@ -70,6 +73,7 @@ const ICON_MAP: Record<string, keyof typeof Feather.glyphMap> = {
   LogIncome: 'plus-circle',
   Costs: 'tool',
   Streams: 'layers',
+  Notes: 'edit-3',
   Reports: 'bar-chart-2',
   Settings: 'settings',
   // Legacy
@@ -115,6 +119,7 @@ const BusinessNavigator: React.FC = () => {
           <>
             <Tab.Screen name="FreelancerHome" component={FreelancerDashboard} options={{ title: 'Home' }} />
             <Tab.Screen name="FreelancerClients" component={FreelancerClientList} options={{ title: 'Clients' }} />
+            <Tab.Screen name="Notes" component={NotesHome} options={{ title: 'Notes' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
           </>
         );
@@ -123,6 +128,7 @@ const BusinessNavigator: React.FC = () => {
         return (
           <>
             <Tab.Screen name="OnTheRoadHome" component={OnTheRoadDashboard} options={{ title: 'Home' }} />
+            <Tab.Screen name="Notes" component={NotesHome} options={{ title: 'Notes' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
           </>
         );
@@ -131,6 +137,7 @@ const BusinessNavigator: React.FC = () => {
         return (
           <>
             <Tab.Screen name="PartTimeHome" component={PartTimeDashboard} options={{ title: 'Home' }} />
+            <Tab.Screen name="Notes" component={NotesHome} options={{ title: 'Notes' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
           </>
         );
@@ -139,6 +146,7 @@ const BusinessNavigator: React.FC = () => {
         return (
           <>
             <Tab.Screen name="MixedHome" component={MixedDashboard} options={{ title: 'Home' }} />
+            <Tab.Screen name="Notes" component={NotesHome} options={{ title: 'Notes' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
           </>
         );

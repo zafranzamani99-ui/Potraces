@@ -6,6 +6,7 @@ import CustomTabBar from '../components/navigation/CustomTabBar';
 
 import PersonalDashboard from '../screens/personal/Dashboard';
 import ExpenseEntry from '../screens/personal/ExpenseEntry';
+import NotesHome from '../screens/notes/NotesHome';
 import MoneyChat from '../screens/personal/MoneyChat';
 import BudgetPlanning from '../screens/personal/BudgetPlanning';
 import Settings from '../screens/shared/Settings';
@@ -32,8 +33,8 @@ const PersonalNavigator: React.FC = () => {
             case 'BudgetPlanning':
               iconName = 'pie-chart';
               break;
-            case 'ExpenseEntry':
-              iconName = 'plus-circle';
+            case 'Notes':
+              iconName = 'edit-3';
               break;
             case 'MoneyChat':
               iconName = 'message-circle';
@@ -69,9 +70,9 @@ const PersonalNavigator: React.FC = () => {
         options={{ title: 'Budget' }}
       />
       <Tab.Screen
-        name="ExpenseEntry"
-        component={ExpenseEntry}
-        options={{ title: 'Add' }}
+        name="Notes"
+        component={NotesHome}
+        options={{ title: 'Notes' }}
       />
       <Tab.Screen
         name="MoneyChat"

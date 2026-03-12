@@ -6,6 +6,7 @@ export const FREE_TIER = {
   maxWalletsPerType: 1,
   maxBudgets: 5,
   maxScansPerMonth: 15,
+  maxAiCallsPerMonth: Infinity,
   exportData: true,
   googleDocsSync: false,
 };
@@ -14,9 +15,12 @@ export const PREMIUM_TIER = {
   maxWallets: Infinity,
   maxBudgets: Infinity,
   maxScansPerMonth: Infinity,
+  maxAiCallsPerMonth: Infinity,
   exportData: true,
   googleDocsSync: true,
 };
+
+export const TRIAL_DAYS = 7;
 
 export const PREMIUM_CONFIG = {
   price: 10,

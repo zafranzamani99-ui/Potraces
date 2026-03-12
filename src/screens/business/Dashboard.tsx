@@ -114,13 +114,7 @@ const BusinessDashboard: React.FC = () => {
     return months > 0 ? total / months : 0;
   }, [businessTransactions]);
 
-  // Redirect to setup if not complete
-  useEffect(() => {
-    if (!businessSetupComplete || !incomeType) {
-      navigation.getParent()?.navigate('BusinessSetup');
-    }
-  }, [businessSetupComplete, incomeType]);
-
+  // AuthGatedBusiness handles the setup redirect — this is just a safety guard
   if (!businessSetupComplete || !incomeType) {
     return (
       <View style={styles.container}>
@@ -318,7 +312,7 @@ const BusinessDashboard: React.FC = () => {
 
         {/* Change setup link */}
         <TouchableOpacity
-          onPress={() => navigation.getParent()?.navigate('BusinessSetup')}
+          onPress={() => useBusinessStore.getState().resetSetup()}
           style={styles.changeSetup}
         >
           <Text style={styles.changeSetupText}>not the right setup? change it.</Text>
