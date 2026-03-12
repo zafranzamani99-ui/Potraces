@@ -232,7 +232,7 @@ export interface ParsedProduct {
 const PRODUCT_PARSE_SYSTEM = (units: string[]) =>
   `You are a product list parser for a Malaysian home-based food seller app.
 Given raw text or an image of a product list, extract all products.
-Available units: ${units.join(', ')}. Pick the best match or use "piece" as default.
+Available units: ${units.join(', ')}. Pick the best match or use "balang" as default.
 Currency is MYR (RM). Prices may be written as "RM 5", "5.00", "rm5", etc.
 
 IMPORTANT: Return ONLY a valid JSON array. No explanation, no markdown, no text before or after.
@@ -273,7 +273,7 @@ function parseParsedProducts(raw: string): ParsedProduct[] | null {
     name: String(item.name || '').trim(),
     pricePerUnit: Number(item.pricePerUnit) || 0,
     costPerUnit: item.costPerUnit ? Number(item.costPerUnit) : undefined,
-    unit: String(item.unit || 'piece'),
+    unit: String(item.unit || 'balang'),
     description: item.description ? String(item.description).trim() : undefined,
   })).filter((p: ParsedProduct) => p.name.length > 0);
 }
@@ -385,7 +385,7 @@ export async function parseWhatsAppOrderAI(
     return parsed.map((item: any) => ({
       productName: String(item.productName || ''),
       quantity: Number(item.quantity) || 1,
-      unit: String(item.unit || 'piece'),
+      unit: String(item.unit || 'balang'),
     }));
   } catch {
     return null;

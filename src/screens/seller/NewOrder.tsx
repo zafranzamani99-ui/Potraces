@@ -19,6 +19,7 @@ import {
   UIManager,
   Linking,
   Image,
+  Dimensions,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Contacts from 'expo-contacts';
@@ -45,6 +46,55 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const SEARCH_THRESHOLD = 8;
 const WHATSAPP_GREEN = '#25D366'; // WhatsApp brand color — intentional exception to CALM palette
 
+// ─── Memoized row to avoid re-rendering all items on single qty change ───
+const SelectedItemRow = React.memo(({ item, index, currency, qty, isEditing, editingValue, onQtyChange, onEditStart, onEditChange, onEditSubmit }: {
+  item: SellerOrderItem; index: number; currency: string; qty: number;
+  isEditing: boolean; editingValue: string;
+  onQtyChange: (id: string, qty: number) => void;
+  onEditStart: (id: string, qty: number) => void;
+  onEditChange: (v: string) => void;
+  onEditSubmit: (id: string) => void;
+}) => (
+  <View style={[styles.selectedItemRow, index > 0 && styles.selectedItemRowBorder]}>
+    <View style={styles.selectedItemLeft}>
+      <Text style={styles.selectedItemName} numberOfLines={1}>{item.productName}</Text>
+      <Text style={styles.selectedItemPrice}>{currency} {item.unitPrice.toFixed(0)}/{item.unit}</Text>
+    </View>
+    <View style={styles.qtyControls}>
+      <TouchableOpacity
+        style={styles.qtyBtn} activeOpacity={0.6}
+        onPress={() => onQtyChange(item.productId, qty - 1)}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button" accessibilityLabel={`Decrease ${item.productName}`}
+      >
+        <Feather name="minus" size={13} color={CALM.textSecondary} />
+      </TouchableOpacity>
+      {isEditing ? (
+        <TextInput
+          style={[styles.qtyText, styles.qtyInput]}
+          value={editingValue} onChangeText={onEditChange}
+          onSubmitEditing={() => onEditSubmit(item.productId)}
+          onBlur={() => onEditSubmit(item.productId)}
+          keyboardType="decimal-pad" selectTextOnFocus autoFocus maxLength={6}
+        />
+      ) : (
+        <TouchableOpacity onPress={() => onEditStart(item.productId, item.quantity)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={styles.qtyText}>{item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)}</Text>
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity
+        style={[styles.qtyBtn, styles.qtyBtnPlus]} activeOpacity={0.6}
+        onPress={() => onQtyChange(item.productId, qty + 1)}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button" accessibilityLabel={`Increase ${item.productName}`}
+      >
+        <Feather name="plus" size={13} color={CALM.bronze} />
+      </TouchableOpacity>
+    </View>
+    <Text style={styles.selectedItemTotal}>{currency} {(item.unitPrice * item.quantity).toFixed(0)}</Text>
+  </View>
+));
+
 // ─── MAIN COMPONENT ────────────────────────────────────────────
 const NewOrder: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -55,7 +105,7 @@ const NewOrder: React.FC = () => {
   const sellerCustomers = useSellerStore((s) => s.sellerCustomers);
   const addSellerCustomer = useSellerStore((s) => s.addSellerCustomer);
   const updateSellerCustomer = useSellerStore((s) => s.updateSellerCustomer);
-  const activeSeason = useSellerStore((s) => s.getActiveSeason());
+  const activeSeason = useSellerStore(useCallback((s) => s.getActiveSeason(), []));
   const currency = useSettingsStore((s) => s.currency);
   const paymentQrs = useSettingsStore((s) => s.businessPaymentQrs);
   const navigation = useNavigation<any>();
@@ -289,7 +339,7 @@ const NewOrder: React.FC = () => {
           productName: ai.productName,
           quantity: ai.quantity,
           unitPrice: product?.pricePerUnit ?? 0,
-          unit: ai.unit || product?.unit || 'piece',
+          unit: ai.unit || product?.unit || 'balang',
         };
       });
       const validMapped = mapped.filter((i) => i.unitPrice > 0 || i.productId !== '');
@@ -307,7 +357,6 @@ const NewOrder: React.FC = () => {
   // Product add/remove
   const handleAddProduct = useCallback((product: SellerProduct) => {
     selectionChanged();
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setItems((prev) => {
       const existing = prev.find((i) => i.productId === product.id);
       if (existing) {
@@ -330,7 +379,6 @@ const NewOrder: React.FC = () => {
 
   const handleUpdateQuantity = useCallback((productId: string, qty: number) => {
     selectionChanged();
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     if (qty <= 0) {
       setItems((prev) => prev.filter((i) => i.productId !== productId));
     } else {
@@ -582,179 +630,157 @@ const NewOrder: React.FC = () => {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         bottomOffset={80}
+        keyboardDismissMode="on-drag"
       >
-        {/* ── Customer card ─────────────────────────────────── */}
-        <View style={styles.customerCard}>
-          {/* Main row: avatar + name input + clear */}
-          <View style={styles.customerMainRow}>
-            <View
-              style={[styles.avatarCircle, customerName.trim() ? styles.avatarCircleFilled : null]}
-              accessibilityLabel={customerName.trim() ? customerName.trim() : undefined}
-            >
-              {customerName.trim() ? (
-                <Text style={styles.avatarText}>{customerName.trim()?.[0]?.toUpperCase() ?? ''}</Text>
-              ) : (
-                <Feather name="user" size={14} color={CALM.textMuted} />
+        {/* ── Section: Customer ─────────────────────────────── */}
+        <View style={styles.sectionWrap}>
+          <Text style={styles.sectionLabel}>customer</Text>
+          <View style={styles.customerCard}>
+            <View style={styles.customerMainRow}>
+              <View
+                style={[styles.avatarCircle, customerName.trim() ? styles.avatarCircleFilled : null]}
+                accessibilityLabel={customerName.trim() ? customerName.trim() : undefined}
+              >
+                {customerName.trim() ? (
+                  <Text style={styles.avatarText}>{customerName.trim()?.[0]?.toUpperCase() ?? ''}</Text>
+                ) : (
+                  <Feather name="user" size={14} color={CALM.textMuted} />
+                )}
+              </View>
+              <TextInput
+                style={styles.customerNameInput}
+                value={customerName}
+                onChangeText={setCustomerName}
+                placeholder="who's this for?"
+                placeholderTextColor={CALM.textMuted}
+                accessibilityLabel="Customer name"
+              />
+              {!customerName.trim() && (
+                <TouchableOpacity
+                  style={styles.contactsPill}
+                  onPress={handleImportFromContacts}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Import from contacts"
+                >
+                  <Feather name="book" size={12} color={CALM.bronze} />
+                  <Text style={styles.contactsPillText}>contacts</Text>
+                </TouchableOpacity>
+              )}
+              {customerName.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => { setCustomerName(''); setCustomerPhone(''); setCustomerAddress(''); }}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={styles.customerClearBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear customer"
+                >
+                  <Feather name="x" size={14} color={CALM.textMuted} />
+                </TouchableOpacity>
               )}
             </View>
-            <TextInput
-              style={styles.customerNameInput}
-              value={customerName}
-              onChangeText={setCustomerName}
-              placeholder="who's this for?"
-              placeholderTextColor={CALM.textMuted}
-              accessibilityLabel="Customer name"
-            />
-            <TouchableOpacity
-              onPress={handleImportFromContacts}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Import from contacts"
-            >
-              <Feather name="book" size={16} color={CALM.bronze} />
-            </TouchableOpacity>
-            {customerName.length > 0 && (
-              <TouchableOpacity
-                onPress={() => {
-                  setCustomerName('');
-                  setCustomerPhone('');
-                  setCustomerAddress('');
-                }}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                accessibilityRole="button"
-                accessibilityLabel="Clear customer"
-              >
-                <Feather name="x" size={16} color={CALM.textMuted} />
-              </TouchableOpacity>
+
+            {customerName.trim().length > 0 && (
+              <>
+                <View style={styles.customerFieldDivider} />
+                <View style={styles.customerFieldRow}>
+                  <Feather name="phone" size={12} color={CALM.textMuted} />
+                  <TextInput
+                    style={styles.customerFieldInput}
+                    value={customerPhone}
+                    onChangeText={setCustomerPhone}
+                    placeholder="phone number"
+                    placeholderTextColor={withAlpha(CALM.textMuted, 0.6)}
+                    keyboardType="phone-pad"
+                    accessibilityLabel="Phone"
+                  />
+                </View>
+                <View style={styles.customerFieldDivider} />
+                <View style={styles.customerFieldRow}>
+                  <Feather name="map-pin" size={12} color={CALM.textMuted} />
+                  <TextInput
+                    style={styles.customerFieldInput}
+                    value={customerAddress}
+                    onChangeText={setCustomerAddress}
+                    placeholder="delivery address"
+                    placeholderTextColor={withAlpha(CALM.textMuted, 0.6)}
+                    accessibilityLabel="Address"
+                  />
+                </View>
+              </>
             )}
           </View>
 
-          {/* Sub row: phone + dot + address (shown only when name entered) */}
-          {customerName.trim().length > 0 && (
-            <View style={styles.customerSubRow}>
-              <Feather name="phone" size={11} color={CALM.textMuted} />
-              <TextInput
-                style={styles.customerSubInput}
-                value={customerPhone}
-                onChangeText={setCustomerPhone}
-                placeholder="phone"
-                placeholderTextColor={CALM.textMuted}
-                keyboardType="phone-pad"
-                accessibilityLabel="Phone"
-              />
-              <View style={styles.customerSubDot} />
-              <Feather name="map-pin" size={11} color={CALM.textMuted} />
-              <TextInput
-                style={styles.customerSubInput}
-                value={customerAddress}
-                onChangeText={setCustomerAddress}
-                placeholder="address"
-                placeholderTextColor={CALM.textMuted}
-                accessibilityLabel="Address"
-              />
-            </View>
+          {/* Recent customers */}
+          {recentCustomers.length > 0 && !customerName.trim() && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recentScroll}
+              keyboardShouldPersistTaps="handled"
+            >
+              {recentCustomers.map((c, i) => (
+                <Pressable
+                  key={i}
+                  onPress={() => handleSelectCustomer(c)}
+                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select ${c.name}`}
+                  style={({ pressed }) => [styles.recentPill, pressed && styles.recentPillPressed]}
+                >
+                  {({ pressed }) => (
+                    <>
+                      <View style={[styles.recentPillAvatar, pressed && styles.recentPillAvatarPressed]}>
+                        <Text style={[styles.recentPillAvatarText, pressed && styles.recentPillAvatarTextPressed]}>{c.name?.[0]?.toUpperCase() ?? '?'}</Text>
+                      </View>
+                      <Text style={[styles.recentName, pressed && styles.recentNamePressed]} numberOfLines={1}>{c.name}</Text>
+                    </>
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Autocomplete suggestions */}
+          {filteredSuggestions.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.suggestionsRow}
+              contentContainerStyle={styles.suggestionsContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              {filteredSuggestions.map((c, i) => (
+                <Pressable
+                  key={i}
+                  onPress={() => handleSelectCustomer(c)}
+                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select ${c.name}`}
+                  style={({ pressed }) => [styles.suggestionPill, pressed && styles.suggestionPillPressed]}
+                >
+                  {({ pressed }) => (
+                    <Text style={[styles.suggestionText, pressed && styles.suggestionTextPressed]} numberOfLines={1}>{c.name}</Text>
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
           )}
         </View>
 
-        {/* ── Recent customers (pills with avatar) ──────────── */}
-        {recentCustomers.length > 0 && !customerName.trim() && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.recentScroll}
-            keyboardShouldPersistTaps="handled"
-          >
-            {recentCustomers.map((c, i) => (
-              <Pressable
-                key={i}
-                onPress={() => handleSelectCustomer(c)}
-                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                accessibilityRole="button"
-                accessibilityLabel={`Select ${c.name}`}
-                style={({ pressed }) => [styles.recentPill, pressed && styles.recentPillPressed]}
-              >
-                {({ pressed }) => (
-                  <>
-                    <View style={[styles.recentPillAvatar, pressed && styles.recentPillAvatarPressed]}>
-                      <Text style={[styles.recentPillAvatarText, pressed && styles.recentPillAvatarTextPressed]}>{c.name?.[0]?.toUpperCase() ?? '?'}</Text>
-                    </View>
-                    <Text style={[styles.recentName, pressed && styles.recentNamePressed]} numberOfLines={1}>{c.name}</Text>
-                  </>
-                )}
-              </Pressable>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* Autocomplete suggestions */}
-        {filteredSuggestions.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.suggestionsRow}
-            contentContainerStyle={styles.suggestionsContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            {filteredSuggestions.map((c, i) => (
-              <Pressable
-                key={i}
-                onPress={() => handleSelectCustomer(c)}
-                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                accessibilityRole="button"
-                accessibilityLabel={`Select ${c.name}`}
-                style={({ pressed }) => [styles.suggestionPill, pressed && styles.suggestionPillPressed]}
-              >
-                {({ pressed }) => (
-                  <Text style={[styles.suggestionText, pressed && styles.suggestionTextPressed]} numberOfLines={1}>{c.name}</Text>
-                )}
-              </Pressable>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* ── Reorder pills (known customer) ────────────────── */}
-        {recentOrders.length > 0 && items.length === 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.reorderScroll}
-            keyboardShouldPersistTaps="handled"
-          >
-            {recentOrders.map((order) => (
-              <Pressable
-                key={order.id}
-                onPress={() => handleReorder(order)}
-                accessibilityRole="button"
-                accessibilityLabel={`Reorder: ${order.items.map((i) => `${i.productName} x${i.quantity}`).join(', ')}`}
-                style={({ pressed }) => [styles.reorderPill, pressed && styles.reorderPillPressed]}
-              >
-                {({ pressed }) => (
-                  <>
-                    <Feather name="rotate-ccw" size={16} color={pressed ? '#fff' : CALM.bronze} />
-                    <Text style={[styles.reorderPillText, pressed && styles.reorderPillTextPressed]} numberOfLines={1}>
-                      {format(
-                        order.date instanceof Date ? order.date : new Date(order.date),
-                        'dd MMM'
-                      )} · {currency} {order.totalAmount.toFixed(0)}
-                    </Text>
-                  </>
-                )}
-              </Pressable>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* ── Items card ─────────────────────────────────────── */}
-        <View style={styles.menuCard}>
-          <View style={styles.menuHeader}>
-            <View style={styles.menuHeaderLeft}>
-              <Feather name="package" size={20} color={CALM.textMuted} />
-              <Text style={styles.menuHeaderText}>items</Text>
-            </View>
-            <View style={styles.menuHeaderRight}>
-              {/* WhatsApp import icon button */}
+        {/* ── Section: Items ──────────────────────────────────── */}
+        <View style={styles.sectionWrap}>
+          <View style={styles.sectionLabelRow}>
+            <Text style={styles.sectionLabel}>items</Text>
+            {items.length > 0 && (
+              <Text style={styles.sectionLabelMeta}>{itemCount} {itemCount === 1 ? 'item' : 'items'}</Text>
+            )}
+          </View>
+          <View style={styles.menuCard}>
+            {/* Paste order + reorder row */}
+            <View style={styles.menuActionBar}>
               <TouchableOpacity
-                style={[styles.waIconBtn, showWhatsAppPaste && styles.waIconBtnActive]}
+                style={[styles.waPasteBtn, showWhatsAppPaste && styles.waPasteBtnActive]}
                 onPress={() => {
                   lightTap();
                   if (showWhatsAppPaste) {
@@ -765,278 +791,259 @@ const NewOrder: React.FC = () => {
                     setShowWhatsAppPaste(true);
                   }
                 }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={showWhatsAppPaste ? 'Close WhatsApp import' : 'Import from WhatsApp'}
               >
-                <Feather name="message-circle" size={15} color={showWhatsAppPaste ? '#fff' : CALM.textMuted} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* WhatsApp paste — inline */}
-          {showWhatsAppPaste && (
-            <View style={styles.whatsAppInline}>
-              <TextInput
-                style={styles.whatsAppInput}
-                value={whatsAppText}
-                onChangeText={setWhatsAppText}
-                placeholder="paste WhatsApp message..."
-                placeholderTextColor={CALM.textMuted}
-                multiline
-                numberOfLines={2}
-                accessibilityLabel="WhatsApp message"
-              />
-              {/* Section picker chips — shown when multiple sections detected */}
-              {detectedSections.length > 1 && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sectionChipsRow}>
-                  {detectedSections.map((section, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={[styles.sectionChip, effectiveSectionIdx === idx && styles.sectionChipActive]}
-                      onPress={() => { lightTap(); setSelectedSectionIdx(idx); }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.sectionChipText, effectiveSectionIdx === idx && styles.sectionChipTextActive]} numberOfLines={1}>
-                        {section.title}
-                      </Text>
-                      <Text style={[styles.sectionChipCount, effectiveSectionIdx === idx && styles.sectionChipCountActive]}>
-                        {section.itemCount}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
-
-              <Pressable
-                onPress={handleParseWhatsApp}
-                disabled={!whatsAppText.trim() || isParsing}
-                accessibilityRole="button"
-                accessibilityLabel="Extract items from message"
-                style={({ pressed }) => [
-                  styles.whatsAppParseBtn,
-                  !whatsAppText.trim() && styles.whatsAppParseBtnDisabled,
-                  whatsAppText.trim() && pressed && styles.whatsAppParseBtnPressed,
-                ]}
-              >
-                {({ pressed }) => (
-                  isParsing ? (
-                    <ActivityIndicator size="small" color={whatsAppText.trim() ? (pressed ? '#fff' : CALM.textPrimary) : CALM.textMuted} />
-                  ) : (
-                    <>
-                      <Feather
-                        name="zap"
-                        size={16}
-                        color={!whatsAppText.trim() ? CALM.textMuted : pressed ? '#fff' : CALM.textPrimary}
-                      />
-                      <Text style={[
-                        styles.whatsAppParseBtnText,
-                        !whatsAppText.trim() && styles.whatsAppParseBtnTextDisabled,
-                        whatsAppText.trim() && pressed && styles.whatsAppParseBtnTextPressed,
-                      ]}>
-                        extract
-                      </Text>
-                    </>
-                  )
-                )}
-              </Pressable>
-              {unmatched.length > 0 && (
-                <View style={styles.unmatchedBox}>
-                  <Text style={styles.unmatchedLabel}>unrecognised:</Text>
-                  {unmatched.map((u, i) => (
-                    <Text key={i} style={styles.unmatchedItem} numberOfLines={2}>{u}</Text>
-                  ))}
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* Selected items list or empty CTA */}
-          {items.length === 0 ? (
-            <Pressable
-              onPress={() => { lightTap(); setShowProductPicker(true); }}
-              accessibilityRole="button"
-              accessibilityLabel="Add items"
-              style={({ pressed }) => [styles.emptyItemsBtn, pressed && styles.emptyItemsBtnPressed]}
-            >
-              {({ pressed }) => (
-                <>
-                  <Feather name="package" size={16} color={pressed ? '#fff' : CALM.bronze} />
-                  <Text style={[styles.emptyItemsText, pressed && styles.emptyItemsTextPressed]}>add items</Text>
-                </>
-              )}
-            </Pressable>
-          ) : (
-            items.map((item, index) => (
-              <View
-                key={item.productId || item.productName || String(index)}
-                style={[styles.selectedItemRow, index === 0 && styles.selectedItemRowFirst]}
-              >
-                <View style={styles.selectedItemLeft}>
-                  <Text style={styles.selectedItemName} numberOfLines={1}>{item.productName}</Text>
-                  <Text style={styles.selectedItemPrice}>
-                    {currency} {item.unitPrice.toFixed(0)}/{item.unit}
-                  </Text>
-                </View>
-                <View style={styles.qtyControls}>
-                  <TouchableOpacity
-                    style={styles.qtyBtn}
-                    activeOpacity={0.7}
-                    onPress={() => handleUpdateQuantity(item.productId, (itemQtyMap[item.productId] || 0) - 1)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Decrease ${item.productName}`}
-                  >
-                    <Feather name="minus" size={14} color={CALM.textSecondary} />
-                  </TouchableOpacity>
-                  {editingQtyProductId === item.productId ? (
-                    <TextInput
-                      style={[styles.qtyText, styles.qtyInput]}
-                      value={editingQtyValue}
-                      onChangeText={setEditingQtyValue}
-                      onSubmitEditing={() => handleQtyInputSubmit(item.productId)}
-                      onBlur={() => handleQtyInputSubmit(item.productId)}
-                      keyboardType="decimal-pad"
-                      selectTextOnFocus
-                      autoFocus
-                      maxLength={6}
-                    />
-                  ) : (
-                    <TouchableOpacity
-                      onPress={() => handleQtyTap(item.productId, item.quantity)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Text style={styles.qtyText}>{item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)}</Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={styles.qtyBtn}
-                    activeOpacity={0.7}
-                    onPress={() => handleUpdateQuantity(item.productId, (itemQtyMap[item.productId] || 0) + 1)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Increase ${item.productName}`}
-                  >
-                    <Feather name="plus" size={14} color={CALM.deepOlive} />
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.selectedItemTotal}>
-                  {currency} {(item.unitPrice * item.quantity).toFixed(0)}
+                <Feather name="clipboard" size={13} color={showWhatsAppPaste ? '#fff' : CALM.bronze} />
+                <Text style={[styles.waPasteBtnText, showWhatsAppPaste && styles.waPasteBtnTextActive]}>
+                  paste order
                 </Text>
-              </View>
-            ))
-          )}
-
-          {/* Add more items pill (shown when items exist) */}
-          {items.length > 0 && (
-            <View style={styles.addMoreRow}>
+              </TouchableOpacity>
               <Pressable
                 onPress={() => { lightTap(); setShowProductPicker(true); }}
                 accessibilityRole="button"
-                accessibilityLabel="Add more items"
-                style={({ pressed }) => [styles.addMorePill, pressed && styles.addMorePillPressed]}
+                accessibilityLabel="Add items"
+                style={({ pressed }) => [styles.addItemsPill, pressed && styles.addItemsPillPressed]}
               >
                 {({ pressed }) => (
                   <>
-                    <Feather name="plus" size={16} color={pressed ? '#fff' : CALM.bronze} />
-                    <Text style={[styles.addMoreText, pressed && styles.addMoreTextPressed]}>add more</Text>
+                    <Feather name="plus" size={13} color="#fff" />
+                    <Text style={[styles.addItemsPillText, pressed && styles.addItemsPillTextPressed]}>
+                      {items.length > 0 ? 'add more' : 'add items'}
+                    </Text>
                   </>
                 )}
               </Pressable>
             </View>
-          )}
-        </View>
 
-        {/* ── Details card: delivery + note ─────────────────── */}
-        <View style={styles.detailsCard}>
-          {/* Delivery row */}
-          <View style={styles.detailsRow}>
-            <Feather name="truck" size={20} color={CALM.textMuted} />
-            <Text style={styles.deliveryLabel}>delivery</Text>
-            <View style={styles.deliveryPills}>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={[styles.dPill, deliveryMode === 'today' && styles.dPillActive]}
-                onPress={handleDeliveryToday}
-                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-                accessibilityRole="button"
-                accessibilityLabel="Deliver today"
-              >
-                <Text style={[styles.dPillText, deliveryMode === 'today' && styles.dPillTextActive]}>
-                  today
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={[styles.dPill, deliveryMode === 'tomorrow' && styles.dPillActive]}
-                onPress={handleDeliveryTomorrow}
-                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-                accessibilityRole="button"
-                accessibilityLabel="Deliver tomorrow"
-              >
-                <Text style={[styles.dPillText, deliveryMode === 'tomorrow' && styles.dPillTextActive]}>
-                  tomorrow
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={[styles.dPill, deliveryMode === 'pick' && styles.dPillActive]}
-                onPress={handleDeliveryPick}
-                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-                accessibilityRole="button"
-                accessibilityLabel="Pick a date"
-              >
-                <Feather
-                  name="calendar"
-                  size={16}
-                  color={deliveryMode === 'pick' ? '#fff' : CALM.bronze}
+            {/* WhatsApp paste — inline */}
+            {showWhatsAppPaste && (
+              <View style={styles.whatsAppInline}>
+                <TextInput
+                  style={styles.whatsAppInput}
+                  value={whatsAppText}
+                  onChangeText={setWhatsAppText}
+                  placeholder="paste WhatsApp message..."
+                  placeholderTextColor={CALM.textMuted}
+                  multiline
+                  numberOfLines={2}
+                  accessibilityLabel="WhatsApp message"
                 />
-              </TouchableOpacity>
-            </View>
-            {deliveryDate && isValid(deliveryDate) && (
-              <TouchableOpacity
-                onPress={handleClearDelivery}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Clear delivery date"
+                {detectedSections.length > 1 && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sectionChipsRow}>
+                    {detectedSections.map((section, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[styles.sectionChip, effectiveSectionIdx === idx && styles.sectionChipActive]}
+                        onPress={() => { lightTap(); setSelectedSectionIdx(idx); }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.sectionChipText, effectiveSectionIdx === idx && styles.sectionChipTextActive]} numberOfLines={1}>
+                          {section.title}
+                        </Text>
+                        <Text style={[styles.sectionChipCount, effectiveSectionIdx === idx && styles.sectionChipCountActive]}>
+                          {section.itemCount}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+                <Pressable
+                  onPress={handleParseWhatsApp}
+                  disabled={!whatsAppText.trim() || isParsing}
+                  accessibilityRole="button"
+                  accessibilityLabel="Extract items from message"
+                  style={({ pressed }) => [
+                    styles.whatsAppParseBtn,
+                    !whatsAppText.trim() && styles.whatsAppParseBtnDisabled,
+                    whatsAppText.trim() && pressed && styles.whatsAppParseBtnPressed,
+                  ]}
+                >
+                  {({ pressed }) => (
+                    isParsing ? (
+                      <ActivityIndicator size="small" color={whatsAppText.trim() ? (pressed ? '#fff' : CALM.textPrimary) : CALM.textMuted} />
+                    ) : (
+                      <>
+                        <Feather name="zap" size={15} color={!whatsAppText.trim() ? CALM.textMuted : pressed ? '#fff' : CALM.textPrimary} />
+                        <Text style={[styles.whatsAppParseBtnText, !whatsAppText.trim() && styles.whatsAppParseBtnTextDisabled, whatsAppText.trim() && pressed && styles.whatsAppParseBtnTextPressed]}>
+                          extract
+                        </Text>
+                      </>
+                    )
+                  )}
+                </Pressable>
+                {unmatched.length > 0 && (
+                  <View style={styles.unmatchedBox}>
+                    <Text style={styles.unmatchedLabel}>unrecognised:</Text>
+                    {unmatched.map((u, i) => (
+                      <Text key={i} style={styles.unmatchedItem} numberOfLines={2}>{u}</Text>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Reorder pills (known customer, no items yet) */}
+            {recentOrders.length > 0 && items.length === 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.reorderScroll}
+                keyboardShouldPersistTaps="handled"
               >
-                <Feather name="x" size={14} color={CALM.textMuted} />
-              </TouchableOpacity>
+                {recentOrders.map((order) => (
+                  <Pressable
+                    key={order.id}
+                    onPress={() => handleReorder(order)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Reorder: ${order.items.map((i) => `${i.productName} x${i.quantity}`).join(', ')}`}
+                    style={({ pressed }) => [styles.reorderPill, pressed && styles.reorderPillPressed]}
+                  >
+                    {({ pressed }) => (
+                      <>
+                        <Feather name="rotate-ccw" size={14} color={pressed ? '#fff' : CALM.bronze} />
+                        <Text style={[styles.reorderPillText, pressed && styles.reorderPillTextPressed]} numberOfLines={1}>
+                          {format(
+                            order.date instanceof Date ? order.date : new Date(order.date),
+                            'dd MMM'
+                          )} · {currency} {order.totalAmount.toFixed(0)}
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
+
+            {/* Empty state */}
+            {items.length === 0 && !showWhatsAppPaste && recentOrders.length === 0 && (
+              <Pressable
+                style={styles.emptyItemsWrap}
+                onPress={() => { lightTap(); setShowProductPicker(true); }}
+                accessibilityRole="button"
+                accessibilityLabel="Add items"
+              >
+                <Feather name="shopping-bag" size={20} color={CALM.textMuted} />
+                <Text style={styles.emptyItemsHint}>tap to add items</Text>
+              </Pressable>
+            )}
+
+            {/* Selected items */}
+            {items.length > 0 && (
+              <View style={styles.selectedItemsWrap}>
+                {items.map((item, index) => (
+                  <SelectedItemRow
+                    key={item.productId || item.productName || String(index)}
+                    item={item}
+                    index={index}
+                    currency={currency}
+                    qty={itemQtyMap[item.productId] || 0}
+                    isEditing={editingQtyProductId === item.productId}
+                    editingValue={editingQtyValue}
+                    onQtyChange={handleUpdateQuantity}
+                    onEditStart={handleQtyTap}
+                    onEditChange={setEditingQtyValue}
+                    onEditSubmit={handleQtyInputSubmit}
+                  />
+                ))}
+                {/* Subtotal row */}
+                <View style={styles.subtotalRow}>
+                  <Text style={styles.subtotalLabel}>subtotal</Text>
+                  <Text style={styles.subtotalAmount}>{currency} {total.toFixed(2)}</Text>
+                </View>
+              </View>
             )}
           </View>
+        </View>
 
-          {deliveryDate && isValid(deliveryDate) && (
-            <View style={styles.deliveryBadge}>
-              <Feather name="truck" size={13} color={CALM.textPrimary} />
-              <Text style={styles.deliveryBadgeText}>
-                {format(deliveryDate, 'EEEE, dd MMM')}
-              </Text>
+        {/* ── Section: Details ────────────────────────────────── */}
+        <View style={styles.sectionWrap}>
+          <Text style={styles.sectionLabel}>details</Text>
+          <View style={styles.detailsCard}>
+            {/* Delivery */}
+            <View style={styles.detailsFieldRow}>
+              <View style={styles.deliveryRow}>
+                <Feather name="truck" size={14} color={CALM.textMuted} />
+                <Text style={styles.deliveryLabel}>delivery</Text>
+                <View style={styles.deliveryPills}>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={[styles.dPill, deliveryMode === 'today' && styles.dPillActive]}
+                    onPress={handleDeliveryToday}
+                    hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Deliver today"
+                  >
+                    <Text style={[styles.dPillText, deliveryMode === 'today' && styles.dPillTextActive]}>today</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={[styles.dPill, deliveryMode === 'tomorrow' && styles.dPillActive]}
+                    onPress={handleDeliveryTomorrow}
+                    hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Deliver tomorrow"
+                  >
+                    <Text style={[styles.dPillText, deliveryMode === 'tomorrow' && styles.dPillTextActive]}>tomorrow</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={[styles.dPill, deliveryMode === 'pick' && styles.dPillActive]}
+                    onPress={handleDeliveryPick}
+                    hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Pick a date"
+                  >
+                    <Feather name="calendar" size={14} color={deliveryMode === 'pick' ? '#fff' : CALM.bronze} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              {deliveryDate && isValid(deliveryDate) && (
+                <View style={styles.deliveryBadge}>
+                  <Feather name="calendar" size={12} color={CALM.bronze} />
+                  <Text style={styles.deliveryBadgeText}>
+                    {format(deliveryDate, 'EEEE, dd MMM')}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={handleClearDelivery}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={styles.deliveryClearBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear delivery date"
+                  >
+                    <Feather name="x" size={12} color={CALM.textMuted} />
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
-          )}
 
-          {/* Hairline divider */}
-          <View style={styles.detailsDivider} />
+            <View style={styles.detailsDivider} />
 
-          {/* Note row */}
-          <View style={styles.noteRow}>
-            <Feather name="file-text" size={20} color={CALM.textMuted} style={{ marginTop: 2 }} />
-            <TextInput
-              style={styles.noteInput}
-              value={note}
-              onChangeText={setNote}
-              placeholder="add a note..."
-              placeholderTextColor={CALM.textMuted}
-              accessibilityLabel="Order note"
-              multiline
-              scrollEnabled={false}
-            />
+            {/* Note */}
+            <View style={styles.detailsFieldRow}>
+              <View style={styles.detailsFieldHeader}>
+                <Feather name="edit-3" size={14} color={CALM.textMuted} />
+                <Text style={styles.detailsFieldLabel}>note</Text>
+              </View>
+              <TextInput
+                style={styles.noteInput}
+                value={note}
+                onChangeText={setNote}
+                placeholder="add a note for this order..."
+                placeholderTextColor={withAlpha(CALM.textMuted, 0.6)}
+                accessibilityLabel="Order note"
+                multiline
+                scrollEnabled={false}
+              />
+            </View>
           </View>
         </View>
       </KeyboardAwareScrollView>
 
       {/* ── Delivery date picker overlay ─────────────────── */}
-      <Modal
-        visible={showDatePicker}
+      {showDatePicker && <Modal
+        visible
         transparent
         statusBarTranslucent
         animationType="fade"
@@ -1062,48 +1069,35 @@ const NewOrder: React.FC = () => {
             </View>
           </Pressable>
         </Pressable>
-      </Modal>
+      </Modal>}
 
       {/* ── Bottom bar ────────────────────────────────────── */}
-      <View style={styles.bottomBar}>
-        <Pressable
-          onPress={() => { lightTap(); setShowReviewModal(true); }}
-          disabled={isDisabled}
-          accessibilityRole="button"
-          accessibilityLabel={
-            isDisabled
-              ? 'Add items to save order'
-              : `Save order, ${itemCount} items, total ${currency} ${total.toFixed(2)}`
-          }
-          style={({ pressed }) => [
-            styles.saveButton,
-            isDisabled && styles.saveButtonDisabled,
-            !isDisabled && pressed && styles.saveButtonPressed,
-          ]}
-        >
-          {({ pressed }) => (
-            isDisabled ? (
-              <Text style={styles.saveButtonTextDisabled}>select items to continue</Text>
-            ) : (
-              <View style={styles.saveButtonInner}>
-                <View>
-                  <Text style={[styles.saveButtonLabel, pressed && styles.saveButtonLabelPressed]}>review order</Text>
-                  <Text style={[styles.saveButtonMeta, pressed && styles.saveButtonMetaPressed]}>
-                    {itemCount} {itemCount === 1 ? 'item' : 'items'}
-                  </Text>
-                </View>
-                <View style={[styles.saveButtonTotalChip, pressed && styles.saveButtonTotalChipPressed]}>
-                  <Text style={[styles.saveButtonTotal, pressed && styles.saveButtonTotalPressed]}>{currency} {total.toFixed(2)}</Text>
-                </View>
-              </View>
-            )
-          )}
-        </Pressable>
-      </View>
+      {!isDisabled && (
+        <View style={styles.saveButtonWrap} pointerEvents="box-none">
+          <Pressable
+            onPress={() => { lightTap(); setShowReviewModal(true); }}
+            accessibilityRole="button"
+            accessibilityLabel={`Save order, ${itemCount} items, total ${currency} ${total.toFixed(2)}`}
+            style={({ pressed }) => [
+              styles.saveButton,
+              pressed && styles.saveButtonPressed,
+            ]}
+          >
+            <View style={styles.saveButtonLeft}>
+              <Text style={styles.saveButtonLabel}>review order</Text>
+              <Text style={styles.saveButtonMeta}>{itemCount} {itemCount === 1 ? 'item' : 'items'}</Text>
+            </View>
+            <View style={styles.saveButtonTotalWrap}>
+              <Text style={styles.saveButtonTotal}>{currency} {total.toFixed(2)}</Text>
+              <Feather name="chevron-right" size={18} color="#fff" />
+            </View>
+          </Pressable>
+        </View>
+      )}
 
       {/* ── Review order modal ───────────────────────────────── */}
-      <Modal
-        visible={showReviewModal}
+      {showReviewModal && <Modal
+        visible
         transparent
         statusBarTranslucent
         animationType="fade"
@@ -1113,12 +1107,18 @@ const NewOrder: React.FC = () => {
           <View style={styles.reviewSheet}>
             {/* Header */}
             <View style={styles.reviewHeader}>
-              <Text style={styles.reviewTitle}>review order</Text>
+              <View style={styles.reviewHeaderLeft}>
+                <View style={styles.reviewIconWrap}>
+                  <Feather name="file-text" size={16} color={CALM.bronze} />
+                </View>
+                <Text style={styles.reviewTitle}>review order</Text>
+              </View>
               <TouchableOpacity
                 onPress={() => setShowReviewModal(false)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={styles.reviewCloseBtn}
               >
-                <Feather name="x" size={18} color={CALM.textMuted} />
+                <Feather name="x" size={16} color={CALM.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -1190,7 +1190,7 @@ const NewOrder: React.FC = () => {
               ]}
             >
               {() => (
-                <View style={styles.saveButtonInner}>
+                <View style={styles.confirmBtnInner}>
                   <Text style={styles.confirmBtnLabel}>confirm order</Text>
                   <View style={styles.confirmBtnChip}>
                     <Text style={styles.confirmBtnTotal}>{currency} {total.toFixed(2)}</Text>
@@ -1209,11 +1209,11 @@ const NewOrder: React.FC = () => {
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
       {/* ── Product picker modal ─────────────────────────────── */}
-      <Modal
-        visible={showProductPicker}
+      {showProductPicker && <Modal
+        visible
         transparent
         statusBarTranslucent
         animationType="fade"
@@ -1228,176 +1228,191 @@ const NewOrder: React.FC = () => {
             activeOpacity={1}
             onPress={() => { Keyboard.dismiss(); setShowProductPicker(false); }}
           />
-          <TouchableOpacity activeOpacity={1} style={styles.pickerCard}>
+          <View style={styles.pickerCard}>
             {/* Header */}
             <View style={styles.pickerHeader}>
-              <Text style={styles.pickerTitle}>add items</Text>
+              <View style={styles.pickerHeaderLeft}>
+                <View style={styles.pickerIconWrap}>
+                  <Feather name="shopping-bag" size={17} color={CALM.bronze} />
+                </View>
+                <Text style={styles.pickerTitle}>add items</Text>
+              </View>
               <TouchableOpacity
                 onPress={() => setShowProductPicker(false)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={styles.pickerCloseBtn}
                 accessibilityRole="button"
                 accessibilityLabel="Close"
               >
-                <Feather name="x" size={18} color={CALM.textMuted} />
+                <Feather name="x" size={16} color={CALM.textMuted} />
               </TouchableOpacity>
             </View>
 
             {/* Search */}
             <View style={styles.pickerSearchRow}>
-              <Feather name="search" size={14} color={CALM.textMuted} />
+              <Feather name="search" size={15} color={withAlpha(CALM.textMuted, 0.6)} />
               <TextInput
                 style={styles.pickerSearchInput}
                 value={productSearch}
                 onChangeText={setProductSearch}
                 placeholder="search products..."
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={withAlpha(CALM.textMuted, 0.6)}
                 accessibilityLabel="Search products"
               />
               {productSearch.length > 0 && (
                 <TouchableOpacity
                   onPress={() => setProductSearch('')}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={styles.pickerSearchClear}
                 >
-                  <Feather name="x" size={14} color={CALM.textMuted} />
+                  <Feather name="x" size={12} color={CALM.textMuted} />
                 </TouchableOpacity>
               )}
             </View>
 
+            {/* Section header */}
+            <View style={styles.pickerSectionHeader}>
+              <Text style={styles.pickerSectionLabel}>{activeProducts.length} products</Text>
+            </View>
+
             {/* Product list */}
-            <ScrollView
-              style={styles.pickerList}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              showsVerticalScrollIndicator={false}
-            >
-              {activeProducts.length === 0 ? (
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  style={styles.noProductsLink}
-                  onPress={() => {
-                    setShowProductPicker(false);
-                    navigation.getParent()?.navigate('SellerProducts');
-                  }}
-                  accessibilityRole="link"
-                  accessibilityLabel="Add products to get started"
-                >
-                  <Feather name="plus-circle" size={16} color={CALM.textSecondary} />
-                  <Text style={styles.noProductsText}>add products to get started</Text>
-                </TouchableOpacity>
-              ) : (
-                filteredSortedProducts.map((product, index) => {
-                  const qty = itemQtyMap[product.id] || 0;
-                  const hasQty = qty > 0;
-                  return (
-                    <View
-                      key={product.id}
-                      style={[
-                        styles.productRow,
-                        hasQty && styles.productRowActive,
-                        index === filteredSortedProducts.length - 1 && styles.productRowLast,
-                      ]}
-                    >
+            <View style={styles.pickerGroupCard}>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                showsVerticalScrollIndicator={false}
+              >
+                {activeProducts.length === 0 ? (
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.noProductsLink}
+                    onPress={() => {
+                      setShowProductPicker(false);
+                      navigation.getParent()?.navigate('SellerProducts');
+                    }}
+                    accessibilityRole="link"
+                    accessibilityLabel="Add products to get started"
+                  >
+                    <View style={styles.noProductsIconWrap}>
+                      <Feather name="plus" size={18} color={CALM.bronze} />
+                    </View>
+                    <Text style={styles.noProductsText}>add products to get started</Text>
+                    <Text style={styles.noProductsHint}>tap to go to products</Text>
+                  </TouchableOpacity>
+                ) : (
+                  filteredSortedProducts.map((product, index) => {
+                    const qty = itemQtyMap[product.id] || 0;
+                    const hasQty = qty > 0;
+                    return (
                       <TouchableOpacity
-                        style={styles.productRowContent}
-                        activeOpacity={0.7}
-                        onPress={() => handleAddProduct(product)}
+                        key={product.id}
+                        style={[
+                          styles.productRow,
+                          index > 0 && styles.productRowBorder,
+                          hasQty && styles.productRowActive,
+                        ]}
+                        activeOpacity={0.6}
+                        onPress={() => !hasQty && handleAddProduct(product)}
+                        disabled={hasQty}
                         accessibilityRole="button"
-                        accessibilityLabel={`Add ${product.name}, ${currency} ${product.pricePerUnit.toFixed(0)} per ${product.unit}`}
+                        accessibilityLabel={`${hasQty ? `${qty} ` : 'Add '}${product.name}, ${currency} ${product.pricePerUnit.toFixed(0)} per ${product.unit}`}
                       >
                         <View style={styles.productRowLeft}>
                           <Text style={[styles.productName, hasQty && styles.productNameActive]} numberOfLines={1}>
                             {product.name}
                           </Text>
-                          <Text style={[styles.productPrice, hasQty && styles.productPriceActive]}>
+                          <Text style={styles.productPrice}>
                             {currency} {product.pricePerUnit.toFixed(0)}/{product.unit}
                           </Text>
                         </View>
-                      </TouchableOpacity>
-                      {hasQty ? (
-                        <View style={styles.qtyControls}>
-                          <TouchableOpacity
-                            style={styles.qtyBtn}
-                            activeOpacity={0.7}
-                            onPress={() => handleUpdateQuantity(product.id, qty - 1)}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Decrease ${product.name}`}
-                          >
-                            <Feather name="minus" size={14} color={CALM.textSecondary} />
-                          </TouchableOpacity>
-                          {editingQtyProductId === product.id ? (
-                            <TextInput
-                              style={[styles.qtyText, styles.qtyInput]}
-                              value={editingQtyValue}
-                              onChangeText={setEditingQtyValue}
-                              onSubmitEditing={() => handleQtyInputSubmit(product.id)}
-                              onBlur={() => handleQtyInputSubmit(product.id)}
-                              keyboardType="decimal-pad"
-                              selectTextOnFocus
-                              autoFocus
-                              maxLength={6}
-                            />
-                          ) : (
+                        {hasQty ? (
+                          <View style={styles.qtyControls}>
                             <TouchableOpacity
-                              onPress={() => handleQtyTap(product.id, qty)}
+                              style={styles.qtyBtn}
+                              activeOpacity={0.6}
+                              onPress={() => handleUpdateQuantity(product.id, qty - 1)}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Decrease ${product.name}`}
                             >
-                              <Text style={styles.qtyText}>{qty % 1 === 0 ? qty : qty.toFixed(1)}</Text>
+                              <Feather name="minus" size={13} color={CALM.textSecondary} />
                             </TouchableOpacity>
-                          )}
-                          <TouchableOpacity
-                            style={styles.qtyBtn}
-                            activeOpacity={0.7}
-                            onPress={() => handleAddProduct(product)}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Increase ${product.name}`}
-                          >
+                            {editingQtyProductId === product.id ? (
+                              <TextInput
+                                style={styles.qtyInput}
+                                value={editingQtyValue}
+                                onChangeText={setEditingQtyValue}
+                                onSubmitEditing={() => handleQtyInputSubmit(product.id)}
+                                onBlur={() => handleQtyInputSubmit(product.id)}
+                                keyboardType="decimal-pad"
+                                selectTextOnFocus
+                                autoFocus
+                                maxLength={6}
+                              />
+                            ) : (
+                              <TouchableOpacity
+                                onPress={() => handleQtyTap(product.id, qty)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Text style={styles.qtyText}>{qty % 1 === 0 ? qty : qty.toFixed(1)}</Text>
+                              </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                              style={[styles.qtyBtn, styles.qtyBtnPlus]}
+                              activeOpacity={0.6}
+                              onPress={() => handleAddProduct(product)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Increase ${product.name}`}
+                            >
+                              <Feather name="plus" size={13} color={CALM.bronze} />
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <View style={styles.addBtn}>
                             <Feather name="plus" size={14} color={CALM.bronze} />
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.addBtn}
-                          activeOpacity={0.7}
-                          onPress={() => handleAddProduct(product)}
-                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Add ${product.name}`}
-                        >
-                          <Feather name="plus" size={15} color={CALM.bronze} />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  );
-                })
-              )}
-            </ScrollView>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </View>
 
-            {/* Done button */}
-            <Pressable
-              onPress={() => { lightTap(); setShowProductPicker(false); }}
-              accessibilityRole="button"
-              accessibilityLabel={items.length > 0 ? `Done, ${itemCount} items` : 'Close'}
-              style={({ pressed }) => [
-                styles.pickerDoneBtn,
-                items.length === 0 && styles.pickerDoneBtnEmpty,
-                items.length > 0 && pressed && styles.pickerDoneBtnPressed,
-              ]}
-            >
-              {({ pressed }) => (
-                <Text style={[styles.pickerDoneBtnText, items.length === 0 && styles.pickerDoneBtnTextEmpty, items.length > 0 && pressed && styles.pickerDoneBtnTextPressed]}>
-                  {items.length > 0 ? `done · ${itemCount} ${itemCount === 1 ? 'item' : 'items'}` : 'close'}
-                </Text>
-              )}
-            </Pressable>
-          </TouchableOpacity>
+            {/* Bottom bar */}
+            <View style={[styles.pickerBottomBar, items.length > 0 && styles.pickerBottomBarActive]}>
+              <Text style={[styles.pickerBottomCount, items.length === 0 && styles.pickerBottomCountEmpty]}>
+                {items.length > 0 ? `${itemCount} ${itemCount === 1 ? 'item' : 'items'} selected` : 'no items yet'}
+              </Text>
+              <Pressable
+                onPress={() => { lightTap(); setShowProductPicker(false); }}
+                accessibilityRole="button"
+                accessibilityLabel={items.length > 0 ? `Done, ${itemCount} items` : 'Close'}
+                style={({ pressed }) => [
+                  styles.pickerDoneBtn,
+                  items.length > 0 && styles.pickerDoneBtnHasItems,
+                  pressed && items.length > 0 && styles.pickerDoneBtnPressed,
+                ]}
+              >
+                {({ pressed }) => (
+                  <Text style={[
+                    styles.pickerDoneBtnText,
+                    items.length > 0 && styles.pickerDoneBtnTextHasItems,
+                    pressed && items.length > 0 && styles.pickerDoneBtnTextPressed,
+                  ]}>
+                    {items.length > 0 ? 'done' : 'close'}
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </Modal>}
 
       {/* ── Contact picker modal ─────────────────────────────── */}
-      <Modal
-        visible={showContactPicker}
+      {showContactPicker && <Modal
+        visible
         animationType="fade"
         transparent
         statusBarTranslucent
@@ -1477,11 +1492,11 @@ const NewOrder: React.FC = () => {
             />
           </View>
         </KAView>
-      </Modal>
+      </Modal>}
 
       {/* ── Confirmation modal ───────────────────────────────── */}
-      <Modal
-        visible={showConfirmModal}
+      {showConfirmModal && <Modal
+        visible
         transparent
         statusBarTranslucent
         animationType="fade"
@@ -1554,7 +1569,7 @@ const NewOrder: React.FC = () => {
             </View>
           </View>
         </View>
-      </Modal>
+      </Modal>}
     </View>
   );
 };
@@ -1571,8 +1586,31 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: SPACING['2xl'],
     paddingTop: SPACING.md,
-    paddingBottom: SPACING['5xl'],
+    paddingBottom: 80,
+    gap: SPACING.lg,
+  },
+
+  // ── Section structure ───────────────────────────────────────
+  sectionWrap: {
     gap: SPACING.sm,
+  },
+  sectionLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.textSecondary,
+    letterSpacing: 0.3,
+    paddingHorizontal: SPACING.xs,
+  },
+  sectionLabelRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: SPACING.xs,
+  },
+  sectionLabelMeta: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
   // ── Avatar ────────────────────────────────────────────────
@@ -1598,8 +1636,10 @@ const styles = StyleSheet.create({
 
   // ── Customer card ─────────────────────────────────────────
   customerCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: '#fff',
     borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
     overflow: 'hidden',
   },
   customerMainRow: {
@@ -1615,27 +1655,45 @@ const styles = StyleSheet.create({
     color: CALM.textPrimary,
     paddingVertical: SPACING.sm,
   },
-  customerSubRow: {
+  customerClearBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  customerFieldDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: CALM.border,
+    marginHorizontal: SPACING.lg,
+  },
+  customerFieldRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+    minHeight: 44,
+  },
+  customerFieldInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    paddingVertical: SPACING.xs,
+  },
+  contactsPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.sm,
-    paddingTop: SPACING.sm,
-    gap: SPACING.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    gap: 4,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
   },
-  customerSubInput: {
-    fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
-    flex: 1,
-    paddingVertical: 2,
-  },
-  customerSubDot: {
-    width: 1,
-    height: 12,
-    backgroundColor: CALM.border,
-    marginHorizontal: SPACING.xs,
+  contactsPillText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.bronze,
   },
 
   // ── Recent customers ──────────────────────────────────────
@@ -1648,17 +1706,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.25),
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
-    minHeight: 44,
+    paddingVertical: 6,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
   },
   recentPillPressed: {
     backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
   },
   recentPillAvatar: {
     width: 20,
@@ -1702,17 +1756,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.25),
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
-    minHeight: 44,
+    paddingVertical: 6,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
   },
   suggestionPillPressed: {
     backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
   },
   suggestionText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1726,23 +1776,21 @@ const styles = StyleSheet.create({
   // ── Reorder pills ─────────────────────────────────────────
   reorderScroll: {
     gap: SPACING.xs,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
   },
   reorderPill: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.25),
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
-    minHeight: 44,
+    paddingVertical: 6,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
   },
   reorderPillPressed: {
     backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
   },
   reorderPillText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1815,24 +1863,19 @@ const styles = StyleSheet.create({
   },
   whatsAppParseBtn: {
     flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: withAlpha(CALM.textPrimary, 0.25),
-    backgroundColor: withAlpha(CALM.textPrimary, 0.05),
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
+    backgroundColor: withAlpha(CALM.textPrimary, 0.06),
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    minHeight: 44,
   },
   whatsAppParseBtnPressed: {
     backgroundColor: CALM.textPrimary,
-    borderColor: CALM.textPrimary,
   },
   whatsAppParseBtnDisabled: {
-    borderColor: CALM.border,
-    backgroundColor: 'transparent',
+    backgroundColor: withAlpha(CALM.textMuted, 0.04),
   },
   whatsAppParseBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1846,9 +1889,9 @@ const styles = StyleSheet.create({
     color: CALM.textMuted,
   },
   unmatchedBox: {
-    borderLeftWidth: 3,
-    borderLeftColor: BIZ.warning,
-    paddingLeft: SPACING.md,
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
     gap: SPACING.xs,
   },
   unmatchedLabel: {
@@ -1861,42 +1904,56 @@ const styles = StyleSheet.create({
 
   // ── Product menu ──────────────────────────────────────────
   menuCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: '#fff',
     borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
     overflow: 'hidden',
   },
-  menuHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.sm,
-  },
-  menuHeaderText: {
-    fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textMuted,
-    letterSpacing: 0.5,
-  },
-  menuHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  menuHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  menuActionBar: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     gap: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
   },
-  waIconBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  addItemsPill: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 5,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    backgroundColor: CALM.bronze,
+  },
+  addItemsPillPressed: {
+    opacity: 0.8,
+  },
+  addItemsPillText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: '#fff',
+  },
+  addItemsPillTextPressed: {},
+  waPasteBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
   },
-  waIconBtnActive: {
+  waPasteBtnActive: {
     backgroundColor: CALM.textPrimary,
+  },
+  waPasteBtnText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.bronze,
+  },
+  waPasteBtnTextActive: {
+    color: '#fff',
   },
   itemCountBadge: {
     backgroundColor: CALM.deepOlive,
@@ -1912,17 +1969,29 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   noProductsLink: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: SPACING['3xl'],
+    paddingHorizontal: SPACING.lg,
     gap: SPACING.sm,
-    paddingVertical: SPACING['2xl'],
-    minHeight: 44,
+  },
+  noProductsIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.xs,
   },
   noProductsText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.textPrimary,
+  },
+  noProductsHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
   },
 
   // Product search
@@ -1944,24 +2013,21 @@ const styles = StyleSheet.create({
   productRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: SPACING.lg,
+    paddingVertical: 12,
+    paddingHorizontal: SPACING.md,
+    minHeight: 56,
+  },
+  productRowBorder: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
-    minHeight: 48,
+    borderTopColor: withAlpha(CALM.border, 0.7),
   },
   productRowActive: {
     backgroundColor: withAlpha(CALM.bronze, 0.04),
-    borderLeftWidth: 3,
-    borderLeftColor: CALM.bronze,
-  },
-  productRowLast: {},
-  productRowContent: {
-    flex: 1,
-    paddingRight: SPACING.sm,
   },
   productRowLeft: {
-    gap: 2,
+    flex: 1,
+    gap: 3,
+    paddingRight: SPACING.md,
   },
   productName: {
     fontSize: TYPOGRAPHY.size.base,
@@ -1969,23 +2035,25 @@ const styles = StyleSheet.create({
     color: CALM.textPrimary,
   },
   productNameActive: {
-    color: CALM.textPrimary,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.bronze,
   },
   productPrice: {
-    fontSize: TYPOGRAPHY.size.base,
+    fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
-  },
-  productPriceActive: {
-    color: CALM.textSecondary,
+    letterSpacing: 0.2,
   },
 
   // Quantity controls
   qtyControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+    gap: 2,
   },
   qtyBtn: {
     width: 28,
@@ -1993,31 +2061,36 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+  },
+  qtyBtnPlus: {
+    backgroundColor: withAlpha(CALM.bronze, 0.1),
   },
   qtyText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold as '700',
     color: CALM.textPrimary,
-    minWidth: 20,
+    minWidth: 24,
     textAlign: 'center',
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   qtyInput: {
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    color: CALM.textPrimary,
+    backgroundColor: '#fff',
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.xs,
     paddingVertical: 2,
-    minWidth: 28,
+    minWidth: 32,
+    textAlign: 'center',
   },
   addBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: CALM.bronze,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
   },
   addProductBtn: {
     width: 28,
@@ -2028,78 +2101,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  // ── Empty state ──────────────────────────────────────────
+  emptyItemsWrap: {
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: SPACING['2xl'],
+    gap: SPACING.sm,
+  },
+  emptyItemsHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+
   // ── Selected items in card ────────────────────────────────
-  emptyItemsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginHorizontal: SPACING.lg,
-    marginVertical: SPACING.xl,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.25),
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
-    minHeight: 44,
-    alignSelf: 'center',
-  },
-  emptyItemsBtnPressed: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
-  },
-  emptyItemsText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
-  },
-  emptyItemsTextPressed: {
-    color: '#fff',
-  },
-  addMoreRow: {
-    alignItems: 'flex-start',
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.md,
-    paddingTop: SPACING.xs,
-  },
-  addMorePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.25),
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
-    minHeight: 44,
-    alignSelf: 'flex-start',
-  },
-  addMorePillPressed: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
-  },
-  addMoreText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
-  },
-  addMoreTextPressed: {
-    color: '#fff',
-  },
-  selectedItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: SPACING.lg,
+  selectedItemsWrap: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: CALM.border,
+  },
+  selectedItemRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: 8,
+    paddingHorizontal: SPACING.lg,
     minHeight: 56,
     gap: SPACING.sm,
   },
-  selectedItemRowFirst: {
+  selectedItemRowBorder: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: CALM.border,
   },
@@ -2113,9 +2140,10 @@ const styles = StyleSheet.create({
     color: CALM.textPrimary,
   },
   selectedItemPrice: {
-    fontSize: TYPOGRAPHY.size.base,
+    fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+    letterSpacing: 0.2,
   },
   selectedItemTotal: {
     fontSize: TYPOGRAPHY.size.base,
@@ -2124,6 +2152,28 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     minWidth: 48,
     textAlign: 'right',
+  },
+  subtotalRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: CALM.border,
+    backgroundColor: withAlpha(CALM.textMuted, 0.02),
+  },
+  subtotalLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.textMuted,
+    letterSpacing: 0.3,
+  },
+  subtotalAmount: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
   // ── Contact picker ────────────────────────────────────────
@@ -2226,85 +2276,156 @@ const styles = StyleSheet.create({
   // ── Product picker modal ──────────────────────────────────
   pickerOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(CALM.textPrimary, 0.45),
+    backgroundColor: withAlpha(CALM.textPrimary, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: SPACING['2xl'],
+    paddingHorizontal: SPACING.lg,
   },
   pickerCard: {
     width: '100%',
-    backgroundColor: CALM.surface,
-    borderRadius: RADIUS.lg,
+    backgroundColor: '#fff',
+    borderRadius: RADIUS.xl,
+    maxHeight: '80%',
     overflow: 'hidden',
-    maxHeight: '82%',
-    ...SHADOWS.lg,
   },
   pickerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.md,
+  },
+  pickerHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  pickerIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pickerTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold as '700',
     color: CALM.textPrimary,
+    letterSpacing: -0.3,
+  },
+  pickerCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pickerSearchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: SPACING.lg,
-    marginVertical: SPACING.md,
+    marginBottom: SPACING.md,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingVertical: Platform.OS === 'ios' ? SPACING.sm : 2,
     gap: SPACING.sm,
-    borderWidth: 1,
-    borderColor: CALM.border,
     borderRadius: RADIUS.lg,
-    backgroundColor: CALM.background,
+    backgroundColor: withAlpha(CALM.textMuted, 0.06),
   },
   pickerSearchInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
+    fontSize: TYPOGRAPHY.size.sm,
     color: CALM.textPrimary,
     paddingVertical: SPACING.xs,
   },
-  pickerList: {
-    flexGrow: 0,
-  },
-  pickerDoneBtn: {
-    margin: SPACING.lg,
-    flexDirection: 'row',
+  pickerSearchClear: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: withAlpha(CALM.textMuted, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.25),
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+  },
+  pickerSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.sm,
+  },
+  pickerSectionLabel: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.textSecondary,
+    letterSpacing: 0.2,
+  },
+  pickerSectionBadge: {
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  pickerSectionCount: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
+  pickerGroupCard: {
+    maxHeight: Dimensions.get('window').height * 0.42,
+    marginHorizontal: SPACING.md,
+    backgroundColor: withAlpha(CALM.textMuted, 0.03),
     borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    minHeight: 44,
+    overflow: 'hidden',
+  },
+  pickerBottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.lg,
+  },
+  pickerBottomBarActive: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(CALM.border, 0.5),
+  },
+  pickerBottomCount: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+  },
+  pickerBottomCountEmpty: {
+    color: CALM.textMuted,
+  },
+  pickerDoneBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xl,
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+  },
+  pickerDoneBtnHasItems: {
+    backgroundColor: CALM.bronze,
   },
   pickerDoneBtnPressed: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
-  },
-  pickerDoneBtnEmpty: {
-    borderColor: CALM.border,
-    backgroundColor: 'transparent',
+    backgroundColor: withAlpha(CALM.bronze, 0.8),
   },
   pickerDoneBtnText: {
-    fontSize: TYPOGRAPHY.size.xs,
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: CALM.textMuted,
   },
-  pickerDoneBtnTextPressed: {
+  pickerDoneBtnTextHasItems: {
     color: '#fff',
   },
-  pickerDoneBtnTextEmpty: {
-    color: CALM.textMuted,
+  pickerDoneBtnTextPressed: {
+    color: withAlpha('#fff', 0.9),
   },
 
   // ── Order slip ────────────────────────────────────────────
@@ -2376,13 +2497,13 @@ const styles = StyleSheet.create({
   // ── Review modal ─────────────────────────────────────────
   reviewOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: withAlpha(CALM.textPrimary, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
   },
   reviewSheet: {
-    backgroundColor: CALM.background,
+    backgroundColor: '#fff',
     borderRadius: RADIUS.xl,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
@@ -2396,10 +2517,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.md,
   },
+  reviewHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  reviewIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   reviewTitle: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.bold as '700',
     color: CALM.textPrimary,
+    letterSpacing: -0.3,
+  },
+  reviewCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   reviewSection: {
     marginBottom: SPACING.sm,
@@ -2415,8 +2558,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   reviewSlip: {
-    backgroundColor: CALM.surface,
+    backgroundColor: withAlpha(CALM.textMuted, 0.03),
     borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.md,
     marginBottom: SPACING.sm,
@@ -2433,14 +2578,21 @@ const styles = StyleSheet.create({
     color: CALM.textSecondary,
   },
   confirmBtn: {
-    backgroundColor: BIZ.success,
+    backgroundColor: CALM.bronze,
     borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     alignItems: 'center',
-    minHeight: 44,
+    minHeight: 48,
     justifyContent: 'center',
     marginTop: SPACING.md,
+  },
+  confirmBtnInner: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    width: '100%' as const,
+    paddingHorizontal: SPACING.sm,
   },
   confirmBtnLabel: {
     fontSize: TYPOGRAPHY.size.base,
@@ -2448,7 +2600,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   confirmBtnChip: {
-    paddingHorizontal: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
   },
   confirmBtnTotal: {
     fontSize: TYPOGRAPHY.size.xl,
@@ -2480,7 +2632,7 @@ const styles = StyleSheet.create({
     ...SHADOWS.lg,
   },
   datePickerCardInner: {
-    backgroundColor: CALM.surface,
+    backgroundColor: '#fff',
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
   },
@@ -2506,48 +2658,71 @@ const styles = StyleSheet.create({
 
   // ── Details card (delivery + note) ───────────────────────
   detailsCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: '#fff',
     borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
     overflow: 'hidden',
     paddingHorizontal: SPACING.lg,
   },
-  detailsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
+  detailsFieldRow: {
     paddingVertical: SPACING.md,
+    gap: SPACING.sm,
   },
-  deliveryLabel: {
-    fontSize: TYPOGRAPHY.size.base,
+  detailsFieldHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.xs,
+  },
+  detailsFieldLabel: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
     color: CALM.textMuted,
-    letterSpacing: 0.5,
-    marginRight: SPACING.xs,
+    letterSpacing: 0.3,
   },
   detailsDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: CALM.border,
   },
-  deliveryPills: {
-    flexDirection: 'row',
+  deliveryRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     gap: SPACING.xs,
-    flex: 1,
+  },
+  deliveryLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    color: CALM.textMuted,
+    letterSpacing: 0.3,
+    marginRight: SPACING.xs,
+  },
+  deliveryPills: {
+    flexDirection: 'row' as const,
+    gap: SPACING.xs,
+  },
+  deliveryClearBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginLeft: SPACING.xs,
   },
   dPill: {
     paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     minHeight: 30,
-    borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.25),
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
   },
   dPillActive: {
     backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
   },
   dPillText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -2570,84 +2745,58 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium as '500',
     color: CALM.textPrimary,
   },
-  noteRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-  },
   noteInput: {
-    flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     color: CALM.textPrimary,
     paddingVertical: 2,
   },
 
-  // ── Bottom bar ────────────────────────────────────────────
-  bottomBar: {
-    paddingHorizontal: SPACING['2xl'],
-    paddingVertical: SPACING.md,
-    paddingBottom: SPACING.lg,
-    backgroundColor: CALM.background,
+  // ── Floating review button ───────────────────────────────
+  saveButtonWrap: {
+    position: 'absolute' as const,
+    bottom: SPACING.lg,
+    left: SPACING.xl,
+    right: SPACING.xl,
   },
   saveButton: {
-    borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.25),
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    alignItems: 'center',
-    minHeight: 44,
-    justifyContent: 'center',
+    backgroundColor: CALM.bronze,
+    borderRadius: RADIUS.xl,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingVertical: SPACING.sm,
+    paddingLeft: SPACING.lg,
+    paddingRight: SPACING.md,
+    minHeight: 48,
+    ...SHADOWS.lg,
   },
   saveButtonPressed: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    transform: [{ scale: 0.97 }],
   },
-  saveButtonDisabled: {
-    borderColor: CALM.border,
-    backgroundColor: withAlpha(CALM.border, 0.3),
-  },
-  saveButtonInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    paddingHorizontal: SPACING.sm,
+  saveButtonLeft: {
+    gap: 2,
   },
   saveButtonLabel: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
-  },
-  saveButtonLabelPressed: {
+    fontWeight: TYPOGRAPHY.weight.bold as '700',
     color: '#fff',
+    letterSpacing: -0.2,
   },
   saveButtonMeta: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: withAlpha(CALM.bronze, 0.6),
-    marginTop: 1,
+    color: withAlpha('#fff', 0.65),
   },
-  saveButtonMetaPressed: {
-    color: withAlpha('#fff', 0.75),
+  saveButtonTotalWrap: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.xs,
   },
-  saveButtonTotalChip: {
-    paddingHorizontal: SPACING.sm,
-  },
-  saveButtonTotalChipPressed: {},
   saveButtonTotal: {
-    fontSize: TYPOGRAPHY.size.xl,
+    fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.bronze,
-    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
-  },
-  saveButtonTotalPressed: {
     color: '#fff',
-  },
-  saveButtonTextDisabled: {
-    fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+    letterSpacing: -0.3,
   },
 
   // ── Confirmation modal ────────────────────────────────────

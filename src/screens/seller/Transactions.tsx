@@ -9,6 +9,7 @@ import {
   Modal,
   ScrollView,
   Animated,
+  Pressable,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -540,12 +541,11 @@ const SellerTransactions: React.FC = () => {
         animationType="fade"
         onRequestClose={() => setShowFilterModal(false)}
       >
-        <TouchableOpacity
+        <Pressable
           style={styles.sortOverlay}
-          activeOpacity={1}
           onPress={() => setShowFilterModal(false)}
         >
-          <TouchableOpacity activeOpacity={1} style={styles.filterSortSheet}>
+          <Pressable style={styles.filterSortSheet} onPress={(e) => e.stopPropagation()}>
             {(showFromCalendar || showToCalendar) ? (
               <>
                 {/* Calendar view */}
@@ -728,8 +728,8 @@ const SellerTransactions: React.FC = () => {
                 </TouchableOpacity>
               </>
             )}
-          </TouchableOpacity>
-        </TouchableOpacity>
+          </Pressable>
+        </Pressable>
       </Modal>
 
     </View>

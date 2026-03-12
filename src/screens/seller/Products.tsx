@@ -46,7 +46,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const DEFAULT_UNITS = ['tin', 'bekas', 'balang', 'pack', 'piece', 'kotak', 'biji', 'keping'];
+const DEFAULT_UNITS = ['balang', 'tin', 'bekas', 'pack', 'piece', 'kotak', 'biji', 'keping'];
 const SWIPE_THRESHOLD = 80;
 
 // ─── Animated product row wrapper ──────────────────────────────

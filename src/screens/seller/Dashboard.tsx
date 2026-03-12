@@ -228,6 +228,7 @@ const SellerDashboard: React.FC = () => {
   const [shopSaving, setShopSaving] = useState(false);
   const [shopError, setShopError] = useState<string | null>(null);
   const [shopLinkCopied, setShopLinkCopied] = useState(false);
+  const [showSlugConfirm, setShowSlugConfirm] = useState(false);
 
   // QR modal
   const [qrModalVisible, setQrModalVisible] = useState(false);
@@ -394,15 +395,8 @@ const SellerDashboard: React.FC = () => {
       doSaveShopLink();
       return;
     }
-    Alert.alert(
-      'confirm shop link',
-      `your shop url will be:\n\n${ORDER_PAGE_BASE}/?slug=${shopModalSlug}\n\nthis cannot be changed later. are you sure?`,
-      [
-        { text: 'go back', style: 'cancel' },
-        { text: 'confirm', onPress: doSaveShopLink },
-      ],
-    );
-  }, [shopSlug, shopModalSlug, doSaveShopLink]);
+    setShowSlugConfirm(true);
+  }, [shopSlug, doSaveShopLink]);
 
   const handleOpenMaps = useCallback((address: string) => {
     lightTap();
@@ -1120,52 +1114,22 @@ const SellerDashboard: React.FC = () => {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.shopModalTitle}>my shop link</Text>
-                <Text style={styles.shopModalSubtitle}>customers use this to place orders</Text>
+                <Text style={styles.shopModalSubtitle}>set up your online order page</Text>
               </View>
               <TouchableOpacity onPress={() => setShowShopModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Feather name="x" size={18} color={CALM.textMuted} />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.shopModalDivider} />
-
-            <View style={styles.shopModalField}>
-              <Text style={styles.shopModalFieldLabel}>shop name</Text>
-              <TextInput
-                style={styles.shopModalInput}
-                value={shopModalName}
-                onChangeText={setShopModalName}
-                placeholder="e.g. Kuih Raya Mak Cik Ton"
-                placeholderTextColor={CALM.textMuted}
-                autoCapitalize="words"
-              />
-            </View>
-
-            <View style={styles.shopModalField}>
-              <Text style={styles.shopModalFieldLabel}>
-                shop url{' '}
-                {!shopSlug && <Text style={styles.shopModalFieldHint}>(lowercase, numbers, -)</Text>}
-              </Text>
-              <TextInput
-                style={[styles.shopModalInput, !!shopSlug && { color: CALM.textMuted, backgroundColor: CALM.border }]}
-                value={shopModalSlug}
-                onChangeText={(t) => setShopModalSlug(t.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                placeholder="e.g. kuih-raya-ton"
-                placeholderTextColor={CALM.textMuted}
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!shopSlug}
-              />
-              <Text style={[styles.shopModalFieldHint, { marginTop: 4, color: shopSlug ? CALM.textMuted : CALM.bronze }]}>
-                {shopSlug ? 'link cannot be changed' : 'choose carefully — this is permanent'}
-              </Text>
-            </View>
-
+            {/* ── Section: Your Link (summary card) ── */}
             {shopModalSlug.length > 0 && shopSlug && (
-              <View style={styles.shopModalPreview}>
-                <Text style={styles.shopModalPreviewLabel}>your link</Text>
+              <>
+                <View style={styles.slmSectionHeader}>
+                  <Feather name="globe" size={14} color={CALM.textMuted} />
+                  <Text style={styles.slmSectionLabel}>your link</Text>
+                </View>
                 <TouchableOpacity
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                  style={styles.slmLinkCard}
                   onPress={async () => {
                     const url = `${ORDER_PAGE_BASE}/?slug=${shopSlug}`;
                     await Clipboard.setStringAsync(url);
@@ -1174,32 +1138,81 @@ const SellerDashboard: React.FC = () => {
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.shopModalPreviewUrl, { flex: 1 }]} numberOfLines={1}>
-                    {ORDER_PAGE_BASE}/?slug={shopModalSlug}
-                  </Text>
-                  <Feather
-                    name={shopLinkCopied ? 'check' : 'copy'}
-                    size={18}
-                    color={shopLinkCopied ? CALM.textMuted : BIZ.success}
-                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.slmLinkUrl} numberOfLines={1}>
+                      {ORDER_PAGE_BASE}/?slug={shopModalSlug}
+                    </Text>
+                  </View>
+                  <View style={styles.slmCopyPill}>
+                    <Feather name={shopLinkCopied ? 'check' : 'copy'} size={13} color={shopLinkCopied ? CALM.textMuted : BIZ.success} />
+                    <Text style={[styles.slmCopyPillText, shopLinkCopied && { color: CALM.textMuted }]}>
+                      {shopLinkCopied ? 'copied' : 'copy'}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
-              </View>
+              </>
             )}
 
-            <View style={styles.shopModalField}>
-              <Text style={styles.shopModalFieldLabel}>shop notice <Text style={styles.shopModalFieldHint}>(optional)</Text></Text>
-              <TextInput
-                style={[styles.shopModalInput, { minHeight: 60, textAlignVertical: 'top' }]}
-                value={shopModalNotice}
-                onChangeText={setShopModalNotice}
-                placeholder="e.g. COD Ipoh only. Luar kawasan sila WhatsApp kami"
-                placeholderTextColor={CALM.textMuted}
-                multiline
-                maxLength={200}
-              />
-              <Text style={[styles.shopModalFieldHint, { marginTop: 4 }]}>
-                shown on your order page for customers
-              </Text>
+            {/* ── Section: Shop Details ── */}
+            <View style={styles.slmSectionHeader}>
+              <Feather name="settings" size={14} color={CALM.textMuted} />
+              <Text style={styles.slmSectionLabel}>shop details</Text>
+            </View>
+            <View style={styles.slmGroupCard}>
+              <View style={styles.slmGroupField}>
+                <Text style={styles.slmGroupFieldLabel}>shop name</Text>
+                <TextInput
+                  style={styles.slmGroupInput}
+                  value={shopModalName}
+                  onChangeText={setShopModalName}
+                  placeholder="e.g. Kuih Raya Mak Cik Ton"
+                  placeholderTextColor={CALM.textMuted}
+                  autoCapitalize="words"
+                />
+              </View>
+              <View style={styles.slmGroupDivider} />
+              <View style={styles.slmGroupField}>
+                <Text style={styles.slmGroupFieldLabel}>
+                  shop url{' '}
+                  {!shopSlug && <Text style={styles.shopModalFieldHint}>(lowercase, numbers, -)</Text>}
+                </Text>
+                <TextInput
+                  style={[styles.slmGroupInput, !!shopSlug && { color: CALM.textMuted }]}
+                  value={shopModalSlug}
+                  onChangeText={(t) => setShopModalSlug(t.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  placeholder="e.g. kuih-raya-ton"
+                  placeholderTextColor={CALM.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!shopSlug}
+                />
+                <Text style={[styles.shopModalFieldHint, { marginTop: 3, color: shopSlug ? CALM.textMuted : CALM.bronze }]}>
+                  {shopSlug ? 'link cannot be changed' : 'choose carefully — this is permanent'}
+                </Text>
+              </View>
+            </View>
+
+            {/* ── Section: Customer Notice ── */}
+            <View style={styles.slmSectionHeader}>
+              <Feather name="message-circle" size={14} color={CALM.textMuted} />
+              <Text style={styles.slmSectionLabel}>customer notice</Text>
+              <Text style={[styles.shopModalFieldHint, { marginLeft: 4 }]}>optional</Text>
+            </View>
+            <View style={styles.slmGroupCard}>
+              <View style={styles.slmGroupField}>
+                <TextInput
+                  style={[styles.slmGroupInput, { minHeight: 56, textAlignVertical: 'top' }]}
+                  value={shopModalNotice}
+                  onChangeText={setShopModalNotice}
+                  placeholder="e.g. COD Ipoh only. Luar kawasan sila WhatsApp kami"
+                  placeholderTextColor={CALM.textMuted}
+                  multiline
+                  maxLength={200}
+                />
+                <Text style={[styles.shopModalFieldHint, { marginTop: 3 }]}>
+                  shown on your order page for customers
+                </Text>
+              </View>
             </View>
 
             {shopError && (
@@ -1220,6 +1233,56 @@ const SellerDashboard: React.FC = () => {
           </TouchableOpacity>
         </TouchableOpacity>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Slug confirm modal ────────────────────────────── */}
+      <Modal
+        visible={showSlugConfirm}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setShowSlugConfirm(false)}
+      >
+        <View style={styles.slmConfirmOverlay}>
+          <View style={styles.slmConfirmCard}>
+            <View style={{ alignItems: 'center', marginBottom: SPACING.md }}>
+              <View style={[styles.shopModalIconWrap, { width: 44, height: 44, borderRadius: 22, marginBottom: SPACING.sm }]}>
+                <Feather name="link-2" size={20} color={BIZ.success} />
+              </View>
+              <Text style={[styles.shopModalTitle, { fontSize: TYPOGRAPHY.size.base }]}>confirm shop link</Text>
+            </View>
+
+            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, textAlign: 'center', marginBottom: SPACING.sm }}>
+              your shop url will be
+            </Text>
+            <View style={[styles.slmLinkCard, { marginBottom: SPACING.md }]}>
+              <Text style={styles.slmLinkUrl} numberOfLines={2}>
+                {ORDER_PAGE_BASE}/?slug={shopModalSlug}
+              </Text>
+            </View>
+            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.bronze, textAlign: 'center', marginBottom: SPACING.lg, fontWeight: TYPOGRAPHY.weight.medium as any }}>
+              this cannot be changed later
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+              <TouchableOpacity
+                style={styles.slmConfirmCancelBtn}
+                onPress={() => setShowSlugConfirm(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.slmConfirmCancelText}>go back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.slmConfirmBtn}
+                onPress={() => { setShowSlugConfirm(false); doSaveShopLink(); }}
+                activeOpacity={0.8}
+              >
+                <Feather name="check" size={15} color="#fff" />
+                <Text style={styles.shopModalSaveBtnText}>confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* ── All items modal ───────────────────────────────── */}
@@ -2345,17 +2408,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   shopModalCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: CALM.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     width: '100%',
-    ...SHADOWS.lg,
   },
   shopModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.lg,
   },
   shopModalIconWrap: {
     width: 38,
@@ -2376,59 +2438,12 @@ const styles = StyleSheet.create({
     color: CALM.textMuted,
     marginTop: 1,
   },
-  shopModalDivider: {
-    height: 1,
-    backgroundColor: CALM.border,
-    marginBottom: SPACING.md,
-  },
-  shopModalField: {
-    marginBottom: SPACING.sm,
-  },
-  shopModalFieldLabel: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase' as const,
-    color: CALM.textMuted,
-    marginBottom: 5,
-  },
   shopModalFieldHint: {
     fontSize: 10,
     fontWeight: '400' as any,
     textTransform: 'none' as const,
     letterSpacing: 0,
     color: CALM.textMuted,
-  },
-  shopModalInput: {
-    backgroundColor: CALM.background,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: CALM.border,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
-  },
-  shopModalPreview: {
-    backgroundColor: withAlpha(BIZ.success, 0.07),
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: withAlpha(BIZ.success, 0.2),
-    padding: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  shopModalPreviewLabel: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: BIZ.success,
-    marginBottom: 3,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
-  },
-  shopModalPreviewUrl: {
-    fontSize: 11,
-    color: BIZ.success,
-    lineHeight: 16,
   },
   shopModalError: {
     fontSize: 12,
@@ -2443,12 +2458,126 @@ const styles = StyleSheet.create({
     backgroundColor: BIZ.success,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm + 2,
-    marginTop: SPACING.sm,
+    marginTop: SPACING.md,
   },
   shopModalSaveBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
     color: '#fff',
+  },
+
+  // ── Shop link modal — grouped sections ──
+  slmSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 6,
+    marginTop: SPACING.sm,
+    paddingHorizontal: 2,
+  },
+  slmSectionLabel: {
+    fontSize: 11,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: CALM.textMuted,
+    letterSpacing: 0.3,
+  },
+  slmGroupCard: {
+    backgroundColor: '#fff',
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    overflow: 'hidden',
+  },
+  slmGroupField: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+  },
+  slmGroupFieldLabel: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase' as const,
+    color: CALM.textMuted,
+    marginBottom: 4,
+  },
+  slmGroupInput: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+  },
+  slmGroupDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: CALM.border,
+    marginHorizontal: SPACING.md,
+  },
+  slmLinkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(BIZ.success, 0.3),
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+  },
+  slmLinkUrl: {
+    fontSize: 12,
+    color: BIZ.success,
+    lineHeight: 17,
+  },
+  slmCopyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: withAlpha(BIZ.success, 0.08),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: 5,
+  },
+  slmCopyPillText: {
+    fontSize: 11,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: BIZ.success,
+  },
+  slmConfirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING['2xl'],
+  },
+  slmConfirmCard: {
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    width: '100%',
+    maxWidth: 340,
+  },
+  slmConfirmCancelBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
+  },
+  slmConfirmCancelText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+    color: CALM.textSecondary,
+  },
+  slmConfirmBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    backgroundColor: BIZ.success,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.sm + 2,
   },
   changeSetupText: {
     ...TYPE.muted, // fontSize 12, color #A0A0A0
