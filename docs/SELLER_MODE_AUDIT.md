@@ -40,28 +40,22 @@
 
 ### Critical Bugs (Must Fix)
 
-#### 1. CRASH: CustomerDetailModal violates Rules of Hooks
-**File:** `src/screens/seller/Customers.tsx` line 213-215
-**Issue:** Early `return null` before `useMemo` call. If `customer` is null then becomes non-null, React sees a different hook count and crashes.
-```tsx
-if (!customer) return null;  // <--- Early return before hooks
-const recentOrders = useMemo(() => { ... }, [customer.orders]);
-```
-**Fix:** Move the null check after all hooks, or return empty JSX instead of null.
+#### 1. ~~CRASH: CustomerDetailModal violates Rules of Hooks~~ ✅ FIXED
+**File:** `src/screens/seller/Customers.tsx`
+**Fix:** `useMemo` now called before the early return — hooks order is correct.
 
-#### 2. DATA CORRUPTION: UnitManager hides default unit before replacement check
-**File:** `src/components/common/UnitManager.tsx` lines 111-114
-**Issue:** When renaming a default unit, `hideUnit` runs before the duplicate check. If the new name already exists, the old unit is hidden but no replacement is added -- the user loses a unit.
-**Fix:** Check for duplicates before hiding the original unit.
+#### 2. ~~DATA CORRUPTION: UnitManager hides default unit before replacement check~~ ✅ FIXED
+**File:** `src/components/common/UnitManager.tsx`
+**Fix:** Duplicate check now runs before `hideUnit`.
 
-#### 3. DATA CORRUPTION: WhatsApp AI parsing creates items with empty productId
-**File:** `src/screens/seller/NewOrder.tsx` lines 248-249
-**Issue:** Unmatched AI-parsed items get `productId: ''` and `unitPrice: 0`, corrupting order data and totalSold tracking.
-**Fix:** Filter out items with empty productId or flag them for manual matching.
+#### 3. DATA CORRUPTION: WhatsApp AI parsing creates items with empty productId ⚠️ PARTIAL
+**File:** `src/screens/seller/NewOrder.tsx`
+**Issue:** Unmatched AI-parsed items get `productId: ''`. Items with `unitPrice === 0 && productId === ''` are filtered out, but items with non-zero AI-guessed price and empty productId can still slip through.
+**Fix needed:** Filter out all items with empty productId, or flag them for manual product matching.
 
-#### 4. DESIGN VIOLATION: Hard-coded red (#E53935) in SeasonSummary
-**File:** `src/screens/seller/SeasonSummary.tsx` lines 662-667, 786-788, 1677-1683
-**Issue:** Uses `#E53935` for destructive buttons, violating the core CALM mandate "no red anywhere". Use `BIZ.error` (#A0714A) or `CALM.neutral` instead.
+#### 4. ~~DESIGN VIOLATION: Hard-coded red (#E53935) in SeasonSummary~~ ✅ FIXED
+**File:** `src/screens/seller/SeasonSummary.tsx`
+**Fix:** Now uses `BIZ.error` instead of hard-coded red.
 
 ---
 

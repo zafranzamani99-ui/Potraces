@@ -395,7 +395,9 @@ const SellerDashboard: React.FC = () => {
       doSaveShopLink();
       return;
     }
-    setShowSlugConfirm(true);
+    // iOS: must close parent modal before opening sub-modal
+    setShowShopModal(false);
+    setTimeout(() => setShowSlugConfirm(true), 50);
   }, [shopSlug, doSaveShopLink]);
 
   const handleOpenMaps = useCallback((address: string) => {
@@ -1091,7 +1093,7 @@ const SellerDashboard: React.FC = () => {
         visible={showShopModal}
         transparent
         statusBarTranslucent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setShowShopModal(false)}
       >
         <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }}>
@@ -1261,7 +1263,7 @@ const SellerDashboard: React.FC = () => {
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
               <TouchableOpacity
                 style={styles.slmConfirmCancelBtn}
-                onPress={() => setShowSlugConfirm(false)}
+                onPress={() => { setShowSlugConfirm(false); setTimeout(() => setShowShopModal(true), 50); }}
                 activeOpacity={0.7}
               >
                 <Text style={styles.slmConfirmCancelText}>go back</Text>

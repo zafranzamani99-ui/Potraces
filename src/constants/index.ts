@@ -331,6 +331,7 @@ export const PRODUCT_CATEGORIES: CategoryOption[] = [
 export const BILLING_CYCLES = [
   { label: 'Weekly', value: 'weekly' },
   { label: 'Monthly', value: 'monthly' },
+  { label: 'Quarterly', value: 'quarterly' },
   { label: 'Yearly', value: 'yearly' },
 ];
 

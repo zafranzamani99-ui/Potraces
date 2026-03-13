@@ -1,11 +1,31 @@
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { callGeminiAPI, isGeminiAvailable, getCooldownSecondsLeft } from './geminiClient';
 import { ExtractedReceipt } from '../types';
 
-const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
-const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-
-async function imageToBase64(uri: string): Promise<string> {
-  return readAsStringAsync(uri, { encoding: EncodingType.Base64 });
+/**
+ * Resize + compress the image so Gemini processes it faster and more accurately.
+ * Uses base64 output directly from manipulator to avoid file-system URI issues.
+ * Falls back to raw image if manipulation fails.
+ */
+async function prepareImage(uri: string): Promise<string> {
+  try {
+    const result = await manipulateAsync(
+      uri,
+      [{ resize: { width: 1600 } }],
+      { compress: 0.9, format: SaveFormat.JPEG, base64: true }
+    );
+    if (result.base64) {
+      console.log('[Receipt] Image prepped via manipulator, base64 length:', result.base64.length);
+      return result.base64;
+    }
+    // base64 option didn't return data — read from file
+    console.warn('[Receipt] manipulateAsync returned no base64, reading URI');
+    return readAsStringAsync(result.uri, { encoding: EncodingType.Base64 });
+  } catch (e) {
+    console.warn('[Receipt] Image prep failed, using original:', e);
+    return readAsStringAsync(uri, { encoding: EncodingType.Base64 });
+  }
 }
 
 function stripJsonFences(text: string): string {
@@ -15,92 +35,105 @@ function stripJsonFences(text: string): string {
   return trimmed;
 }
 
-async function callGemini(base64: string, retries = 2): Promise<Response> {
-  const body = JSON.stringify({
-    contents: [
-      {
-        parts: [
-          {
-            text: `You are a receipt parser for a Malaysian user. Analyze this receipt image and extract structured data.
+const RECEIPT_PROMPT = `You are a receipt parser for Malaysian receipts. Extract ALL purchased items accurately.
 
-Return JSON only with this exact shape:
+Focus ONLY on the receipt paper — ignore background objects (table, hands, wallet).
+
+CRITICAL — Malaysian thermal receipt layout:
+- Items often span TWO lines: product name on line 1, then qty / unit price / total on line 2
+- Example layout:
+  NASI LEMAK AYAM (A/P)
+               1    9.00    8.49
+  This is ONE item: "NASI LEMAK AYAM (A/P)" with amount 8.49
+- The RIGHTMOST number column is the line total — always use that, NOT the unit price
+- Count every single item row. If the receipt says "Total Items = 16", you must return exactly 16 items
+- Do NOT skip any items, even if names look similar (e.g. two separate "AIS KOSONG CUP" are two items)
+
+Return JSON only:
 {
   "vendor": "store name or null",
-  "items": [{ "name": "item name", "amount": 12.50 }],
-  "subtotal": 25.00 or null,
-  "tax": 1.50 or null,
-  "total": 26.50,
+  "items": [{ "name": "item name", "amount": 8.49 }],
+  "subtotal": 61.41 or null,
+  "tax": 3.69 or null,
+  "total": 65.10,
   "date": "date string or null"
 }
 
 Rules:
 - amounts must be numbers, not strings
-- items should only be purchased products/food, NOT subtotal/total/tax/discount/change/payment lines
-- if you see RM prefix, strip it from amounts
-- total is the final amount paid (grand total / amount due / jumlah)
-- if no total line found, sum the items
-- tax includes SST, GST, service tax, service charge
-- date in whatever format is on the receipt
-- vendor is the store/restaurant name, usually at the top
-- if something is unclear, make your best guess rather than omitting it`,
-          },
-          {
-            inlineData: {
-              mimeType: 'image/jpeg',
-              data: base64,
-            },
-          },
-        ],
-      },
-    ],
-    generationConfig: {
-      temperature: 0.1,
-      maxOutputTokens: 4096,
-    },
-  });
-
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const response = await fetch(`${API_URL}?key=${API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    });
-
-    if (response.status === 429 && attempt < retries) {
-      // Wait 3s then retry
-      await new Promise((r) => setTimeout(r, 3000));
-      continue;
-    }
-
-    return response;
-  }
-
-  // Should never reach here, but satisfy TS
-  throw new Error('Rate limited by Gemini. Please wait a moment and try again.');
-}
+- items = only purchased products/food — NOT subtotal/total/tax/discount/change/rounding/payment lines
+- strip RM prefix from amounts
+- "amount" = the RIGHTMOST number on each item's line (line total after discount), NOT unit price
+- "total" = final amount paid (grand total / total incl SST / jumlah / amount due)
+- "tax" = SST, GST, service tax, or service charge amount
+- if no total line, sum the items + tax
+- vendor = store/restaurant name, usually at the top of receipt
+- date in whatever format shown on receipt
+- if unclear, guess rather than omit
+- if truly unreadable, return {"vendor": null, "items": [], "total": 0}`;
 
 export async function scanReceipt(imageUri: string): Promise<ExtractedReceipt> {
-  if (!API_KEY) {
-    throw new Error('Receipt scanning is not configured. Please set EXPO_PUBLIC_GEMINI_API_KEY.');
-  }
-
-  const base64 = await imageToBase64(imageUri);
-  const response = await callGemini(base64);
-
-  if (!response.ok) {
-    if (response.status === 429) {
-      throw new Error('Rate limited — please wait a few seconds and try again.');
+  if (!isGeminiAvailable()) {
+    const secs = getCooldownSecondsLeft();
+    if (secs > 0) {
+      throw new Error(`AI is cooling down — try again in ${secs}s`);
     }
-    const errorText = await response.text();
-    throw new Error(`Gemini API error (${response.status}): ${errorText}`);
+    throw new Error('AI is not available. Check your API key.');
   }
 
-  const data: any = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const base64 = await prepareImage(imageUri);
+
+  const data = await callGeminiAPI(
+    {
+      contents: [
+        {
+          parts: [
+            { text: RECEIPT_PROMPT },
+            {
+              inlineData: {
+                mimeType: 'image/jpeg',
+                data: base64,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 16384,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    },
+    30_000, // 30s timeout — images take longer
+    true    // noFallback — vision shares same quota, fallback just wastes a call
+  );
+
+  if (!data) {
+    const secs = getCooldownSecondsLeft();
+    if (secs > 0) {
+      throw new Error(`AI is busy — try again in ${secs}s`);
+    }
+    throw new Error('Could not reach AI. Please try again.');
+  }
+
+  // Debug: log raw response structure to diagnose empty results
+  const candidate = data?.candidates?.[0];
+  if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+    console.warn('[Receipt] Gemini finishReason:', candidate.finishReason);
+  }
+  if (data?.promptFeedback?.blockReason) {
+    console.warn('[Receipt] Gemini BLOCKED:', data.promptFeedback.blockReason);
+    throw new Error('AI could not process this image. Try a different photo.');
+  }
+
+  const text = candidate?.content?.parts?.[0]?.text;
 
   if (!text) {
+    console.warn('[Receipt] No text in response. Full data:', JSON.stringify(data).slice(0, 500));
     throw new Error('No response from AI. Please try a clearer photo.');
   }
+
+  console.log('[Receipt] Gemini raw response:', text.slice(0, 300));
 
   try {
     const parsed = JSON.parse(stripJsonFences(text));

@@ -30,6 +30,7 @@ import * as Contacts from 'expo-contacts';
 import * as Sharing from 'expo-sharing';
 import * as Clipboard from 'expo-clipboard';
 import { scanReceipt } from '../../services/receiptScanner';
+import { usePremiumStore } from '../../store/premiumStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -211,6 +212,14 @@ const DebtTracking: React.FC = () => {
   const [wizardWalletId, setWizardWalletId] = useState<string | null>(
     wallets.find((w) => w.isDefault)?.id || null
   );
+
+  // Draft tracking
+  const wizardDraftId = useRef<string | null>(null);
+
+  // Item editing state (step 4)
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const [editItemName, setEditItemName] = useState('');
+  const [editItemAmount, setEditItemAmount] = useState('');
 
   // Item assignment state
   const [assigningItemIndex, setAssigningItemIndex] = useState<number | null>(null);
@@ -1255,25 +1264,34 @@ const DebtTracking: React.FC = () => {
   };
 
   const handleDeleteSplit = useCallback((id: string) => {
-    Alert.alert('Delete Split', 'Are you sure you want to delete this split? Linked debts, transactions, and wallet changes will also be reversed.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          const split = splits.find((s) => s.id === id);
-          if (split) cleanupSplitTransaction(split);
-          const linkedDebts = debts.filter((d) => d.splitId === id);
-          linkedDebts.forEach((debt) => {
-            cleanupDebtPayments(debt);
-            deleteDebt(debt.id);
-          });
-          deleteSplit(id);
-          setSplitDetailVisible(false);
-          showToast('Split deleted', 'success');
+    const split = splits.find((s) => s.id === id);
+    const isDraft = split?.status === 'draft';
+    Alert.alert(
+      isDraft ? 'Delete Draft' : 'Delete Split',
+      isDraft
+        ? 'Delete this draft? No debts or transactions have been created.'
+        : 'Are you sure you want to delete this split? Linked debts, transactions, and wallet changes will also be reversed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            if (split && !isDraft) cleanupSplitTransaction(split);
+            if (!isDraft) {
+              const linkedDebts = debts.filter((d) => d.splitId === id);
+              linkedDebts.forEach((debt) => {
+                cleanupDebtPayments(debt);
+                deleteDebt(debt.id);
+              });
+            }
+            deleteSplit(id);
+            setSplitDetailVisible(false);
+            showToast(isDraft ? 'Draft deleted' : 'Split deleted', 'success');
+          },
         },
-      },
-    ]);
+      ]
+    );
   }, [splits, debts, deleteDebt, deleteSplit, showToast]);
 
   // ── Selection Mode Handlers ──────────────────────────────────
@@ -1390,6 +1408,12 @@ const DebtTracking: React.FC = () => {
 
   // ── Receipt Scan for Item-based Split ─────────────────────
   const handleScanReceipt = async () => {
+    const premium = usePremiumStore.getState();
+    if (!premium.canScanReceipt()) {
+      showToast('Scan limit reached this month', 'error');
+      return;
+    }
+
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       showToast('Camera permission is required', 'error');
@@ -1406,6 +1430,7 @@ const DebtTracking: React.FC = () => {
     setScanningReceipt(true);
     try {
       const receipt = await scanReceipt(result.assets[0].uri);
+      premium.incrementScanCount();
       if (receipt.items.length > 0) {
         setSplitItems((prev) => [
           ...prev,
@@ -1445,12 +1470,21 @@ const DebtTracking: React.FC = () => {
     setWizardPaidBy(null);
     setWizardWalletId(wallets.find((w) => w.isDefault)?.id || null);
     setAssigningItemIndex(null);
+    setEditingItemIndex(null);
+    wizardDraftId.current = null;
   }, [wallets]);
 
   const processReceiptImage = async (uri: string) => {
+    const premium = usePremiumStore.getState();
+    if (!premium.canScanReceipt()) {
+      showToast('Scan limit reached this month', 'error');
+      return;
+    }
+
     setScanningReceipt(true);
     try {
       const receipt = await scanReceipt(uri);
+      premium.incrementScanCount();
       if (receipt.items.length === 0 && receipt.total === 0) {
         showToast('Could not read receipt', 'error');
         return;
@@ -1603,17 +1637,26 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
   const handleWizardSave = () => {
     if (!wizardResult || !wizardPaidBy) return;
-    const splitId = addSplit({
+    const splitData = {
       description: wizardDescription.trim(),
       totalAmount: wizardResult.effectiveTotal,
-      splitMethod: 'item_based',
+      splitMethod: 'item_based' as const,
       participants: wizardResult.participants,
       items: wizardItems,
       paidBy: wizardPaidBy,
       taxAmount: wizardTaxAmount > 0 ? wizardTaxAmount : undefined,
       taxHandling: wizardTaxAmount > 0 ? wizardTaxHandling : undefined,
+      status: 'final' as const,
+      draftReceipt: undefined,
       mode,
-    });
+    };
+    let splitId: string;
+    if (wizardDraftId.current) {
+      splitId = wizardDraftId.current;
+      updateSplit(splitId, splitData);
+    } else {
+      splitId = addSplit(splitData);
+    }
 
     // Auto-create debts + expense
     const selfId = '__self__';
@@ -1694,6 +1737,50 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
     showToast('Split created!', 'success');
   };
 
+  const handleSaveAsDraft = useCallback(() => {
+    if (!wizardDescription.trim()) {
+      showToast('add a description first', 'error');
+      return;
+    }
+    const assignedCount = wizardItems.filter((item) => item.assignedTo.length > 0).length;
+    const draftData = {
+      description: wizardDescription.trim(),
+      totalAmount: parseFloat(wizardTotal) || 0,
+      splitMethod: 'item_based' as const,
+      participants: wizardParticipants.map((c) => ({ contact: c, amount: 0, isPaid: false })),
+      items: wizardItems,
+      taxAmount: wizardTaxAmount > 0 ? wizardTaxAmount : undefined,
+      taxHandling: wizardTaxAmount > 0 ? wizardTaxHandling : undefined,
+      draftReceipt: wizardReceipt || undefined,
+      status: 'draft' as const,
+      mode,
+    };
+    if (wizardDraftId.current) {
+      updateSplit(wizardDraftId.current, draftData);
+      showToast('draft updated', 'success');
+    } else {
+      addSplit(draftData);
+      showToast(`draft saved · ${assignedCount}/${wizardItems.length} assigned`, 'success');
+    }
+    setWizardVisible(false);
+    resetWizardForm();
+  }, [wizardDescription, wizardTotal, wizardItems, wizardParticipants, wizardTaxAmount,
+      wizardTaxHandling, wizardReceipt, mode, addSplit, updateSplit, showToast, resetWizardForm]);
+
+  const openDraftInWizard = useCallback((draft: SplitExpense) => {
+    wizardDraftId.current = draft.id;
+    setWizardDescription(draft.description);
+    setWizardTotal(draft.totalAmount.toFixed(2));
+    setWizardItems(draft.items);
+    setWizardParticipants(draft.participants.map((p) => p.contact));
+    setWizardTaxHandling(draft.taxHandling || 'divide');
+    setWizardReceipt(draft.draftReceipt || null);
+    setWizardPaidBy(null);
+    setWizardWalletId(wallets.find((w) => w.isDefault)?.id || null);
+    setWizardStep(4);
+    setWizardVisible(true);
+  }, [wallets]);
+
   const handleToggleWizardItemAssignment = useCallback((itemIndex: number, contact: Contact) => {
     setWizardItems(wizardItems.map((item, i) => {
       if (i !== itemIndex) return item;
@@ -1714,6 +1801,37 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       assignedTo: [...wizardParticipants],
     })));
   }, [wizardParticipants, wizardItems]);
+
+  const handleStartEditItem = useCallback((index: number) => {
+    const item = wizardItems[index];
+    if (!item) return;
+    setEditingItemIndex(index);
+    setEditItemName(item.name);
+    setEditItemAmount(item.amount.toFixed(2));
+  }, [wizardItems]);
+
+  const handleSaveEditItem = useCallback(() => {
+    if (editingItemIndex === null) return;
+    const name = editItemName.trim();
+    const amount = parseFloat(editItemAmount);
+    if (!name || isNaN(amount) || amount <= 0) return;
+    setWizardItems((prev) =>
+      prev.map((item, i) => i === editingItemIndex ? { ...item, name, amount } : item)
+    );
+    setEditingItemIndex(null);
+  }, [editingItemIndex, editItemName, editItemAmount]);
+
+  const handleDeleteItem = useCallback((index: number) => {
+    setWizardItems((prev) => prev.filter((_, i) => i !== index));
+    if (editingItemIndex === index) setEditingItemIndex(null);
+  }, [editingItemIndex]);
+
+  const handleAddWizardItem = useCallback(() => {
+    setWizardItems((prev) => [...prev, { name: 'New item', amount: 0, assignedTo: [] }]);
+    setEditingItemIndex(wizardItems.length);
+    setEditItemName('New item');
+    setEditItemAmount('0.00');
+  }, [wizardItems.length]);
 
   const handleOpenItemAssign = useCallback((index: number) => {
     setAssigningItemIndex(index);
@@ -2361,10 +2479,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             )}
             {filteredSplits.length > 0 ? (
               filteredSplits.map((split, idx) => {
+                const isDraft = split.status === 'draft';
                 const methodConfig = SPLIT_METHODS.find((m) => m.value === split.splitMethod);
                 const paidCount = split.participants.filter((p) => p.isPaid).length;
-                const isSettled = paidCount === split.participants.length;
-                const borderColor = isSettled ? '#6BA3BE' : (methodConfig?.color || CALM.accent);
+                const isSettled = !isDraft && paidCount === split.participants.length;
+                const borderColor = isDraft ? CALM.bronze : isSettled ? '#6BA3BE' : (methodConfig?.color || CALM.accent);
+                const draftAssigned = isDraft ? split.items.filter((item) => item.assignedTo.length > 0).length : 0;
 
                 const isSelected = selectionMode === 'split' && selectedIds.has(split.id);
                 const inSplitSelection = selectionMode === 'split';
@@ -2373,7 +2493,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <Card key={`${split.id}-${idx}`} style={{ ...styles.splitCard, overflow: 'hidden' as const, borderLeftWidth: 3, borderLeftColor: borderColor, ...(isSelected ? { borderColor: CALM.accent, borderWidth: 1.5, borderLeftWidth: 3, borderLeftColor: borderColor } : {}) }}>
                     <TouchableOpacity
                       activeOpacity={0.7}
-                      onPress={() => inSplitSelection ? toggleSelection(split.id) : (() => { setSelectedSplit(split); setSplitDetailVisible(true); })()}
+                      onPress={() => {
+                        if (inSplitSelection) { toggleSelection(split.id); return; }
+                        if (isDraft) { openDraftInWizard(split); return; }
+                        setSelectedSplit(split); setSplitDetailVisible(true);
+                      }}
                       onLongPress={() => !inSplitSelection && enterSelectionMode('split', split.id)}
                       delayLongPress={400}
                     >
@@ -2416,12 +2540,21 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           <Feather name={methodConfig?.icon as any || 'users'} size={14} color={methodConfig?.color || CALM.accent} />
                           <Text style={[styles.methodPillText, { color: methodConfig?.color || CALM.accent }]}>{methodConfig?.label}</Text>
                         </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: withAlpha('#6BA3BE', 0.1), paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full }}>
-                          <Feather name="check-circle" size={13} color="#6BA3BE" />
-                          <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: '#6BA3BE' }}>
-                            {paidCount}/{split.participants.length}
-                          </Text>
-                        </View>
+                        {isDraft ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: withAlpha(CALM.bronze, 0.1), paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full }}>
+                            <Feather name="bookmark" size={13} color={CALM.bronze} />
+                            <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.bronze }}>
+                              draft · {draftAssigned}/{split.items.length}
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: withAlpha('#6BA3BE', 0.1), paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full }}>
+                            <Feather name="check-circle" size={13} color="#6BA3BE" />
+                            <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: '#6BA3BE' }}>
+                              {paidCount}/{split.participants.length}
+                            </Text>
+                          </View>
+                        )}
                       </View>
 
                       <View style={styles.splitParticipants}>
@@ -3432,7 +3565,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setWizardVisible(false); resetWizardForm(); }} />
-          <View style={[styles.wizardContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+          <View style={styles.wizardContent}>
             {/* Step Indicator */}
             <View style={styles.wizardStepRow}>
               {[1, 2, ...(wizardHasTax ? [3] : []), 4, 5, 6].map((step, idx) => {
@@ -3612,36 +3745,86 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   )}
 
                   {wizardItems.map((item, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.itemCard}
-                      activeOpacity={0.7}
-                      onPress={() => handleOpenItemAssign(index)}
-                    >
-                      <View style={styles.itemHeader}>
-                        <Text style={styles.itemName}>{item.name}</Text>
-                        <Text style={styles.itemAmount}>{currency} {item.amount.toFixed(2)}</Text>
-                      </View>
-                      <View style={styles.itemAssignRow}>
-                        {item.assignedTo.length > 0 ? (
-                          <View style={styles.assignChips}>
-                            {item.assignedTo.map((c) => (
-                              <View key={c.id} style={[styles.assignChip, styles.assignChipActive]}>
-                                <Text style={[styles.assignChipText, styles.assignChipTextActive]} numberOfLines={1}>
-                                  {c.name.split(' ')[0]}
-                                </Text>
-                              </View>
-                            ))}
-                          </View>
-                        ) : (
-                          <Text style={styles.itemUnassignedText}>not assigned</Text>
-                        )}
-                        <View style={styles.itemAddBtn}>
-                          <Feather name="plus" size={14} color={CALM.accent} />
+                    editingItemIndex === index ? (
+                      <View key={index} style={[styles.itemCard, { borderColor: CALM.accent, borderWidth: 1 }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                          <TextInput
+                            style={[styles.itemName, { flex: 1, borderBottomWidth: 1, borderBottomColor: CALM.border, paddingVertical: 4 }]}
+                            value={editItemName}
+                            onChangeText={setEditItemName}
+                            placeholder="Item name"
+                            autoFocus
+                          />
+                          <TextInput
+                            style={[styles.itemAmount, { width: 80, borderBottomWidth: 1, borderBottomColor: CALM.border, paddingVertical: 4, textAlign: 'right' }]}
+                            value={editItemAmount}
+                            onChangeText={setEditItemAmount}
+                            keyboardType="decimal-pad"
+                            placeholder="0.00"
+                          />
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: SPACING.sm, marginTop: SPACING.sm }}>
+                          <TouchableOpacity onPress={() => handleDeleteItem(index)} style={{ padding: 6 }}>
+                            <Feather name="trash-2" size={16} color={CALM.neutral} />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => setEditingItemIndex(null)} style={{ padding: 6 }}>
+                            <Feather name="x" size={16} color={CALM.neutral} />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={handleSaveEditItem} style={{ padding: 6 }}>
+                            <Feather name="check" size={16} color={CALM.accent} />
+                          </TouchableOpacity>
                         </View>
                       </View>
-                    </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.itemCard}
+                        activeOpacity={0.7}
+                        onPress={() => handleOpenItemAssign(index)}
+                      >
+                        <View style={styles.itemHeader}>
+                          <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
+                            <Text style={styles.itemAmount}>{currency} {item.amount.toFixed(2)}</Text>
+                            <TouchableOpacity
+                              onPress={() => handleStartEditItem(index)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Feather name="edit-2" size={13} color={CALM.textSecondary} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                        <View style={styles.itemAssignRow}>
+                          {item.assignedTo.length > 0 ? (
+                            <View style={styles.assignChips}>
+                              {item.assignedTo.map((c) => (
+                                <View key={c.id} style={[styles.assignChip, styles.assignChipActive]}>
+                                  <Text style={[styles.assignChipText, styles.assignChipTextActive]} numberOfLines={1}>
+                                    {c.name.split(' ')[0]}
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : (
+                            <Text style={styles.itemUnassignedText}>not assigned</Text>
+                          )}
+                          <View style={styles.itemAddBtn}>
+                            <Feather name="plus" size={14} color={CALM.accent} />
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    )
                   ))}
+
+                  {/* Add item button */}
+                  <TouchableOpacity
+                    style={[styles.wizardAssignAllBtn, { marginTop: SPACING.sm }]}
+                    onPress={handleAddWizardItem}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="plus" size={14} color={CALM.accent} />
+                    <Text style={styles.wizardAssignAllText}>add item</Text>
+                  </TouchableOpacity>
                 </View>
               )}
 
@@ -3847,7 +4030,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               )}
 
               {/* Navigation Buttons */}
-              <View style={styles.modalActions}>
+              <View style={[styles.modalActions, { marginTop: SPACING.md, marginBottom: SPACING.md }]}>
                 <Button
                   title={wizardStep === 1 ? 'Cancel' : 'Back'}
                   onPress={handleWizardBack}
@@ -3855,6 +4038,16 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   icon={wizardStep === 1 ? undefined : 'arrow-left'}
                   style={{ flex: 1 }}
                 />
+                {wizardStep === 4 && (
+                  <Button
+                    title="draft"
+                    onPress={handleSaveAsDraft}
+                    variant="outline"
+                    icon="bookmark"
+                    style={{ borderColor: CALM.bronze, paddingHorizontal: 12 }}
+                    textStyle={{ color: CALM.bronze }}
+                  />
+                )}
                 {wizardStep === 6 ? (
                   <Button
                     title="Save"
@@ -5292,7 +5485,9 @@ const styles = StyleSheet.create({
     backgroundColor: CALM.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
-    padding: SPACING['2xl'],
+    paddingTop: SPACING['2xl'],
+    paddingHorizontal: SPACING['2xl'],
+    paddingBottom: 0,
     maxHeight: '92%',
   },
   wizardStepRow: {

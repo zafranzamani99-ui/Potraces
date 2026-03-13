@@ -543,13 +543,14 @@ export interface AIMessage {
   content: string;
   timestamp: string;
   actions?: AIMessageAction[];
+  imageUri?: string;
 }
 
 export interface Subscription {
   id: string;
   name: string;
   amount: number;
-  billingCycle: 'monthly' | 'yearly' | 'weekly';
+  billingCycle: 'monthly' | 'yearly' | 'weekly' | 'quarterly';
   startDate: Date;
   nextBillingDate: Date;
   category: string;
@@ -731,6 +732,8 @@ export interface SplitExpense {
   mode: AppMode;
   createdAt: Date;
   updatedAt: Date;
+  status?: 'draft' | 'final';
+  draftReceipt?: ExtractedReceipt;
 }
 
 // Receipt Scanner Types
@@ -994,7 +997,7 @@ export interface PremiumState {
 
 export type ExtractionIntent =
   | 'expense' | 'income' | 'debt' | 'debt_update' | 'bnpl'
-  | 'seller_order' | 'seller_cost' | 'query' | 'savings_goal' | 'plain';
+  | 'seller_order' | 'seller_cost' | 'query' | 'savings_goal' | 'subscription' | 'plain';
 
 export interface AIExtraction {
   id: string;

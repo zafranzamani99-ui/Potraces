@@ -55,23 +55,34 @@ export async function updateSellerProfile(
 
   const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
   if (!cleanSlug) return 'URL kedai tidak sah';
+  if (cleanSlug.length < 2) return 'URL terlalu pendek — minimum 2 aksara';
 
   // Ensure profile row exists first
-  await ensureProfile();
+  const profileId = await ensureProfile();
+  if (!profileId) return 'Could not create seller profile. Please sign out and sign in again.';
 
-  const { error } = await supabase
+  const updatePayload = {
+    display_name: displayName.trim() || null,
+    slug: cleanSlug,
+    shop_notice: shopNotice?.trim() || null,
+  };
+  console.log('[ShopLink] Saving profile:', { profileId, userId: session.user.id, ...updatePayload });
+
+  const { error, count } = await supabase
     .from('seller_profiles')
-    .update({
-      display_name: displayName.trim() || null,
-      slug: cleanSlug,
-      shop_notice: shopNotice?.trim() || null,
-    })
+    .update(updatePayload, { count: 'exact' })
     .eq('user_id', session.user.id);
 
   if (error) {
+    console.warn('[ShopLink] Update error:', error);
     if (error.code === '23505') return 'This link is already taken. Try a different one.';
     return error.message;
   }
+  if (count === 0) {
+    console.warn('[ShopLink] Update matched 0 rows — profile may not exist for this user');
+    return 'Profile not found. Please sign out and sign in again.';
+  }
+  console.log('[ShopLink] Saved successfully, rows updated:', count);
   return null;
 }
 
@@ -101,11 +112,28 @@ export async function ensureProfile(): Promise<string | null> {
   }
 
   // Create profile
-  const { data: created } = await supabase
+  const { data: created, error: insertErr } = await supabase
     .from('seller_profiles')
     .insert({ user_id: userId, currency: 'RM' })
     .select('id')
     .single();
+
+  if (insertErr) {
+    console.warn('[ensureProfile] Insert failed:', insertErr.message, insertErr.code);
+    // If unique violation, profile was created between our select and insert — retry select
+    if (insertErr.code === '23505') {
+      const { data: retry } = await supabase
+        .from('seller_profiles')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (retry) {
+        _cachedProfileId = retry.id;
+        return retry.id;
+      }
+    }
+    return null;
+  }
 
   if (created) {
     _cachedProfileId = created.id;
