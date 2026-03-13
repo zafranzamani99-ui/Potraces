@@ -28,6 +28,7 @@ export interface SellerProfileData {
   displayName: string | null;
   slug: string | null;
   shopNotice: string | null;
+  logoUrl: string | null;
 }
 
 export async function getSellerProfile(): Promise<SellerProfileData | null> {
@@ -36,19 +37,20 @@ export async function getSellerProfile(): Promise<SellerProfileData | null> {
 
   const { data } = await supabase
     .from('seller_profiles')
-    .select('display_name, slug, shop_notice')
+    .select('display_name, slug, shop_notice, logo_url')
     .eq('user_id', session.user.id)
     .maybeSingle();
 
-  if (!data) return { displayName: null, slug: null, shopNotice: null };
-  return { displayName: data.display_name, slug: data.slug, shopNotice: data.shop_notice };
+  if (!data) return { displayName: null, slug: null, shopNotice: null, logoUrl: null };
+  return { displayName: data.display_name, slug: data.slug, shopNotice: data.shop_notice, logoUrl: data.logo_url ?? null };
 }
 
-/** Create or update display_name + slug + shop_notice. Returns error string or null. */
+/** Create or update display_name + slug + shop_notice + logo_url. Returns error string or null. */
 export async function updateSellerProfile(
   displayName: string,
   slug: string,
   shopNotice?: string,
+  logoUrl?: string | null,
 ): Promise<string | null> {
   const session = await getSession();
   if (!session) return 'Not authenticated. Please sign in.';
@@ -61,11 +63,12 @@ export async function updateSellerProfile(
   const profileId = await ensureProfile();
   if (!profileId) return 'Could not create seller profile. Please sign out and sign in again.';
 
-  const updatePayload = {
+  const updatePayload: Record<string, any> = {
     display_name: displayName.trim() || null,
     slug: cleanSlug,
     shop_notice: shopNotice?.trim() || null,
   };
+  if (logoUrl !== undefined) updatePayload.logo_url = logoUrl;
   console.log('[ShopLink] Saving profile:', { profileId, userId: session.user.id, ...updatePayload });
 
   const { error, count } = await supabase
@@ -84,6 +87,37 @@ export async function updateSellerProfile(
   }
   console.log('[ShopLink] Saved successfully, rows updated:', count);
   return null;
+}
+
+/** Upload shop logo image. Returns public URL or null on error. */
+export async function uploadShopLogo(imageUri: string): Promise<string | null> {
+  const session = await getSession();
+  if (!session) return null;
+
+  try {
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
+    const path = `${session.user.id}/logo.jpg`;
+
+    const { error } = await supabase.storage
+      .from('shop-logos')
+      .upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+
+    if (error) {
+      console.warn('[ShopLogo] Upload error:', error.message);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('shop-logos')
+      .getPublicUrl(path);
+
+    // Append timestamp to bust cache after re-upload
+    return urlData.publicUrl + '?t=' + Date.now();
+  } catch (e: any) {
+    console.warn('[ShopLogo] Upload failed:', e.message);
+    return null;
+  }
 }
 
 // ─── Profile ──────────────────────────────────────────────────────────────────

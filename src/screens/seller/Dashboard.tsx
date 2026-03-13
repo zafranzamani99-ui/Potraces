@@ -29,8 +29,9 @@ import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from
 import { explainSellerMonth } from '../../utils/explainSellerMonth';
 import { lightTap, mediumTap } from '../../services/haptics';
 import ModeToggle from '../../components/common/ModeToggle';
-import { getSellerProfile, updateSellerProfile } from '../../services/sellerSync';
+import { getSellerProfile, updateSellerProfile, uploadShopLogo } from '../../services/sellerSync';
 import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
 
 import { useFadeSlide } from '../../utils/fadeSlide';
 
@@ -229,6 +230,8 @@ const SellerDashboard: React.FC = () => {
   const [shopError, setShopError] = useState<string | null>(null);
   const [shopLinkCopied, setShopLinkCopied] = useState(false);
   const [showSlugConfirm, setShowSlugConfirm] = useState(false);
+  const [shopLogoUrl, setShopLogoUrl] = useState<string | null>(null);
+  const [shopLogoUploading, setShopLogoUploading] = useState(false);
 
   // QR modal
   const [qrModalVisible, setQrModalVisible] = useState(false);
@@ -240,6 +243,7 @@ const SellerDashboard: React.FC = () => {
         setShopSlug(profile.slug);
         setShopDisplayName(profile.displayName);
         setShopNotice(profile.shopNotice);
+        setShopLogoUrl(profile.logoUrl);
       }
     }).catch((err) => { console.warn('[Dashboard] Profile fetch failed:', err); });
   }, []);
@@ -375,10 +379,33 @@ const SellerDashboard: React.FC = () => {
   const ORDER_PAGE_BASE = 'https://potraces.vercel.app';
   const shopLinkUrl = shopSlug ? `${ORDER_PAGE_BASE}/?slug=${shopSlug}` : null;
 
+  const handlePickLogo = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('', 'Gallery permission is needed to pick a logo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+      mediaTypes: ['images'],
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    setShopLogoUploading(true);
+    const url = await uploadShopLogo(result.assets[0].uri);
+    setShopLogoUploading(false);
+    if (url) {
+      setShopLogoUrl(url);
+    } else {
+      Alert.alert('', 'Failed to upload logo. Please try again.');
+    }
+  }, []);
+
   const doSaveShopLink = useCallback(async () => {
     setShopError(null);
     setShopSaving(true);
-    const err = await updateSellerProfile(shopModalName, shopModalSlug, shopModalNotice);
+    const err = await updateSellerProfile(shopModalName, shopModalSlug, shopModalNotice, shopLogoUrl);
     setShopSaving(false);
     if (err) {
       setShopError(err);
@@ -388,7 +415,7 @@ const SellerDashboard: React.FC = () => {
     setShopDisplayName(shopModalName.trim() || null);
     setShopNotice(shopModalNotice.trim() || null);
     setShowShopModal(false);
-  }, [shopModalName, shopModalSlug, shopModalNotice]);
+  }, [shopModalName, shopModalSlug, shopModalNotice, shopLogoUrl]);
 
   const handleSaveShopLink = useCallback(() => {
     if (shopSlug) {
@@ -1148,6 +1175,30 @@ const SellerDashboard: React.FC = () => {
                 </TouchableOpacity>
               </>
             )}
+
+            {/* ── Shop Logo ── */}
+            <TouchableOpacity
+              style={styles.logoPickerWrap}
+              onPress={handlePickLogo}
+              disabled={shopLogoUploading}
+              activeOpacity={0.7}
+            >
+              <View style={styles.logoCircle}>
+                {shopLogoUploading ? (
+                  <Feather name="loader" size={20} color={CALM.textMuted} />
+                ) : shopLogoUrl ? (
+                  <Image source={{ uri: shopLogoUrl }} style={styles.logoImage} />
+                ) : (
+                  <Feather name="shopping-bag" size={22} color={CALM.textMuted} />
+                )}
+                <View style={styles.logoBadge}>
+                  <Feather name="camera" size={10} color="#fff" />
+                </View>
+              </View>
+              <Text style={styles.logoLabel}>
+                {shopLogoUploading ? 'uploading...' : shopLogoUrl ? 'change logo' : 'add shop logo'}
+              </Text>
+            </TouchableOpacity>
 
             {/* ── Section: Shop Details ── */}
             <View style={styles.slmSectionHeader}>
@@ -2460,6 +2511,47 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
     color: '#fff',
+  },
+
+  // ── Shop logo picker ──
+  logoPickerWrap: {
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    gap: 6,
+  },
+  logoCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: withAlpha(CALM.olive, 0.06),
+    borderWidth: 1.5,
+    borderColor: CALM.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  logoImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+  },
+  logoBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: CALM.olive,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  logoLabel: {
+    fontSize: 11,
+    color: CALM.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
   },
 
   // ── Shop link modal — grouped sections ──

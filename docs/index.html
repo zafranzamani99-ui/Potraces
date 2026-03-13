@@ -618,7 +618,7 @@ function sbFetch(path,opts){
 
 async function loadShop(slug){
   try{
-    var r1=await sbFetch('/rest/v1/seller_profiles?select=id,user_id,display_name,currency,shop_notice,phone&slug=eq.'+encodeURIComponent(slug)+'&order=updated_at.desc&limit=1');
+    var r1=await sbFetch('/rest/v1/seller_profiles?select=id,user_id,display_name,currency,shop_notice,phone,logo_url&slug=eq.'+encodeURIComponent(slug)+'&order=updated_at.desc&limit=1');
     var profiles=await r1.json();
     if(!profiles||!profiles.length){
       document.getElementById('loading').innerHTML='<div class="skel-err"><div class="skel-err-icon">🔍</div><div class="skel-err-title">Store not found</div><div class="skel-err-sub">Please check your link</div></div>';
@@ -630,7 +630,13 @@ async function loadShop(slug){
     SELLER_PHONE=profile.phone||null;
     var shopName=profile.display_name||slug;
     document.getElementById('shop-name').textContent=shopName;
-    document.getElementById('hdr-avatar').textContent=getInitials(shopName);
+    // Avatar: logo image or store icon fallback
+    var avatarEl=document.getElementById('hdr-avatar');
+    if(profile.logo_url){
+      avatarEl.innerHTML='<img src="'+escA(profile.logo_url)+'" alt="'+escA(shopName)+'">';
+    }else{
+      avatarEl.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>';
+    }
     document.getElementById('hist-avatar').textContent=getInitials(shopName);
     document.title=shopName+' — Order Online';
     document.querySelector('meta[property="og:title"]').content=shopName+' — Order Online';
