@@ -104,6 +104,7 @@ export interface SellerProduct {
   totalSold: number;
   trackStock?: boolean;
   stockQuantity?: number;
+  imageUrl?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -555,6 +556,7 @@ export interface Subscription {
   nextBillingDate: Date;
   category: string;
   isActive: boolean;
+  isPaused?: boolean;
   reminderDays: number;
   isInstallment: boolean;
   totalInstallments?: number;
@@ -569,6 +571,8 @@ export interface Budget {
   allocatedAmount: number;
   spentAmount: number;
   period: 'monthly' | 'weekly' | 'yearly';
+  rollover?: boolean;
+  rolloverAmount?: number;
   startDate: Date;
   endDate: Date;
   createdAt: Date;
@@ -818,6 +822,8 @@ export interface PersonalState {
   updateBudget: (id: string, updates: Partial<Budget>) => void;
   deleteSubscription: (id: string) => void;
   deleteBudget: (id: string) => void;
+  incrementInstallment: (id: string) => void;
+  toggleSubscriptionPause: (id: string) => void;
   addTransferIncome: (transfer: Transfer) => void;
   addGoal: (goal: Omit<Goal, 'id' | 'currentAmount' | 'contributions' | 'milestones' | 'createdAt' | 'updatedAt'>) => void;
   updateGoal: (id: string, updates: Partial<Goal>) => void;

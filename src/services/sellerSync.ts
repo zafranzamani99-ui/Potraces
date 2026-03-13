@@ -95,13 +95,18 @@ export async function uploadShopLogo(imageUri: string): Promise<string | null> {
   if (!session) return null;
 
   try {
-    const response = await fetch(imageUri);
-    const blob = await response.blob();
     const path = `${session.user.id}/logo.jpg`;
+
+    const formData = new FormData();
+    formData.append('', {
+      uri: imageUri,
+      name: 'logo.jpg',
+      type: 'image/jpeg',
+    } as any);
 
     const { error } = await supabase.storage
       .from('shop-logos')
-      .upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+      .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
 
     if (error) {
       console.warn('[ShopLogo] Upload error:', error.message);
@@ -116,6 +121,41 @@ export async function uploadShopLogo(imageUri: string): Promise<string | null> {
     return urlData.publicUrl + '?t=' + Date.now();
   } catch (e: any) {
     console.warn('[ShopLogo] Upload failed:', e.message);
+    return null;
+  }
+}
+
+/** Upload product image. Returns public URL or null on error. */
+export async function uploadProductImage(imageUri: string, productId: string): Promise<string | null> {
+  const session = await getSession();
+  if (!session) return null;
+
+  try {
+    const path = `${session.user.id}/${productId}.jpg`;
+
+    const formData = new FormData();
+    formData.append('', {
+      uri: imageUri,
+      name: 'product.jpg',
+      type: 'image/jpeg',
+    } as any);
+
+    const { error } = await supabase.storage
+      .from('product-images')
+      .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
+
+    if (error) {
+      console.warn('[ProductImage] Upload error:', error.message);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('product-images')
+      .getPublicUrl(path);
+
+    return urlData.publicUrl + '?t=' + Date.now();
+  } catch (e: any) {
+    console.warn('[ProductImage] Upload failed:', e.message);
     return null;
   }
 }
@@ -212,6 +252,7 @@ export async function pushProducts(products: SellerProduct[]): Promise<void> {
       total_sold: p.totalSold,
       track_stock: p.trackStock ?? false,
       stock_quantity: p.stockQuantity ?? null,
+      image_url: p.imageUrl ?? null,
     }));
 
     await supabase
@@ -594,6 +635,7 @@ export async function pullAll(): Promise<void> {
         totalSold: rp.total_sold ?? 0,
         trackStock: rp.track_stock ?? false,
         stockQuantity: rp.stock_quantity ?? undefined,
+        imageUrl: rp.image_url ?? undefined,
         createdAt: sd(rp.created_at),
         updatedAt: sd(rp.updated_at),
       };

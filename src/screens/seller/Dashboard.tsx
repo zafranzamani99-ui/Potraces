@@ -232,6 +232,7 @@ const SellerDashboard: React.FC = () => {
   const [showSlugConfirm, setShowSlugConfirm] = useState(false);
   const [shopLogoUrl, setShopLogoUrl] = useState<string | null>(null);
   const [shopLogoUploading, setShopLogoUploading] = useState(false);
+  const [previewLogoVisible, setPreviewLogoVisible] = useState(false);
 
   // QR modal
   const [qrModalVisible, setQrModalVisible] = useState(false);
@@ -1177,28 +1178,37 @@ const SellerDashboard: React.FC = () => {
             )}
 
             {/* ── Shop Logo ── */}
-            <TouchableOpacity
-              style={styles.logoPickerWrap}
-              onPress={handlePickLogo}
-              disabled={shopLogoUploading}
-              activeOpacity={0.7}
-            >
-              <View style={styles.logoCircle}>
-                {shopLogoUploading ? (
-                  <Feather name="loader" size={20} color={CALM.textMuted} />
-                ) : shopLogoUrl ? (
-                  <Image source={{ uri: shopLogoUrl }} style={styles.logoImage} />
-                ) : (
-                  <Feather name="shopping-bag" size={22} color={CALM.textMuted} />
-                )}
-                <View style={styles.logoBadge}>
+            <View style={styles.logoPickerWrap}>
+              <View style={styles.logoCircleWrap}>
+                <TouchableOpacity
+                  style={styles.logoCircle}
+                  onPress={shopLogoUrl ? () => setPreviewLogoVisible(true) : handlePickLogo}
+                  disabled={shopLogoUploading}
+                  activeOpacity={0.7}
+                >
+                  {shopLogoUploading ? (
+                    <Feather name="loader" size={20} color={CALM.textMuted} />
+                  ) : shopLogoUrl ? (
+                    <Image source={{ uri: shopLogoUrl }} style={styles.logoImage} />
+                  ) : (
+                    <Feather name="shopping-bag" size={22} color={CALM.textMuted} />
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.logoBadge}
+                  onPress={handlePickLogo}
+                  disabled={shopLogoUploading}
+                  activeOpacity={0.7}
+                >
                   <Feather name="camera" size={10} color="#fff" />
-                </View>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.logoLabel}>
-                {shopLogoUploading ? 'uploading...' : shopLogoUrl ? 'change logo' : 'add shop logo'}
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity onPress={handlePickLogo} disabled={shopLogoUploading} activeOpacity={0.7}>
+                <Text style={styles.logoLabel}>
+                  {shopLogoUploading ? 'uploading...' : shopLogoUrl ? 'change logo' : 'add shop logo'}
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {/* ── Section: Shop Details ── */}
             <View style={styles.slmSectionHeader}>
@@ -1279,6 +1289,15 @@ const SellerDashboard: React.FC = () => {
             </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
+        {previewLogoVisible && shopLogoUrl && (
+          <TouchableOpacity
+            style={styles.logoPreviewOverlay}
+            activeOpacity={1}
+            onPress={() => setPreviewLogoVisible(false)}
+          >
+            <Image source={{ uri: shopLogoUrl }} style={styles.logoPreviewImage} resizeMode="contain" />
+          </TouchableOpacity>
+        )}
         </KeyboardAvoidingView>
       </Modal>
 
@@ -2519,11 +2538,16 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     gap: 6,
   },
+  logoCircleWrap: {
+    width: 72,
+    height: 72,
+    position: 'relative',
+  },
   logoCircle: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: withAlpha(CALM.olive, 0.06),
+    backgroundColor: withAlpha(CALM.accent, 0.06),
     borderWidth: 1.5,
     borderColor: CALM.border,
     alignItems: 'center',
@@ -2542,7 +2566,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: CALM.olive,
+    backgroundColor: CALM.accent,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -2552,6 +2576,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: CALM.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium as any,
+  },
+  logoPreviewOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+  },
+  logoPreviewImage: {
+    width: '75%',
+    aspectRatio: 1,
+    borderRadius: 16,
   },
 
   // ── Shop link modal — grouped sections ──

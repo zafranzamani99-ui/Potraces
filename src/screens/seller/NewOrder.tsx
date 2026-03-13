@@ -1318,12 +1318,17 @@ const NewOrder: React.FC = () => {
                         accessibilityLabel={`${hasQty ? `${qty} ` : 'Add '}${product.name}, ${currency} ${product.pricePerUnit.toFixed(0)} per ${product.unit}`}
                       >
                         <View style={styles.productRowLeft}>
-                          <Text style={[styles.productName, hasQty && styles.productNameActive]} numberOfLines={1}>
-                            {product.name}
-                          </Text>
-                          <Text style={styles.productPrice}>
-                            {currency} {product.pricePerUnit.toFixed(0)}/{product.unit}
-                          </Text>
+                          {product.imageUrl ? (
+                            <Image source={{ uri: product.imageUrl }} style={styles.productThumb} />
+                          ) : null}
+                          <View style={styles.productTextWrap}>
+                            <Text style={[styles.productName, hasQty && styles.productNameActive]} numberOfLines={1}>
+                              {product.name}
+                            </Text>
+                            <Text style={styles.productPrice}>
+                              {currency} {product.pricePerUnit.toFixed(0)}/{product.unit}
+                            </Text>
+                          </View>
                         </View>
                         {hasQty ? (
                           <View style={styles.qtyControls}>
@@ -2026,8 +2031,19 @@ const styles = StyleSheet.create({
   },
   productRowLeft: {
     flex: 1,
-    gap: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
     paddingRight: SPACING.md,
+  },
+  productThumb: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+  },
+  productTextWrap: {
+    flex: 1,
+    gap: 3,
   },
   productName: {
     fontSize: TYPOGRAPHY.size.base,

@@ -18,6 +18,7 @@ import {
   PanResponder,
   Dimensions,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -40,6 +41,7 @@ import {
 } from '../../services/haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { parseProductList, parseProductImage, ParsedProduct } from '../../services/aiService';
+import { uploadProductImage } from '../../services/sellerSync';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -189,6 +191,8 @@ const Products: React.FC = () => {
   const [newDescription, setNewDescription] = useState('');
   const [newTrackStock, setNewTrackStock] = useState(false);
   const [newStockQty, setNewStockQty] = useState('');
+  const [newImageUrl, setNewImageUrl] = useState<string | undefined>(undefined);
+  const [imageUploading, setImageUploading] = useState(false);
   const [reorderMode, setReorderMode] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -297,6 +301,7 @@ const Products: React.FC = () => {
     setFocusedField(null);
     setNewTrackStock(false);
     setNewStockQty('');
+    setNewImageUrl(undefined);
   }, []);
 
   const openAddModal = useCallback(() => {
@@ -317,6 +322,7 @@ const Products: React.FC = () => {
     setNewUnit(product.unit);
     setNewTrackStock(product.trackStock || false);
     setNewStockQty(product.stockQuantity != null ? product.stockQuantity.toString() : '');
+    setNewImageUrl(product.imageUrl);
     setNameError(false);
     setPriceError(false);
     setJustAdded(false);
@@ -333,6 +339,20 @@ const Products: React.FC = () => {
     resetForm();
     lightTap();
   }, [resetForm]);
+
+  const handlePickProductImage = useCallback(async (productId?: string) => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('', 'Gallery permission is needed.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true, aspect: [1, 1], quality: 0.7, mediaTypes: ['images'],
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const targetId = productId || `tmp-${Date.now()}`;
+    setImageUploading(true);
+    const url = await uploadProductImage(result.assets[0].uri, targetId);
+    setImageUploading(false);
+    if (url) { setNewImageUrl(url); } else { Alert.alert('', 'Failed to upload image.'); }
+  }, []);
 
   // ─── Bulk import handlers ─────────────────────────────────
   const handleBulkParse = useCallback(async () => {
@@ -486,6 +506,7 @@ const Products: React.FC = () => {
       isActive: true,
       trackStock: newTrackStock || undefined,
       stockQuantity: newTrackStock && newStockQty ? parseFloat(newStockQty) : undefined,
+      imageUrl: newImageUrl,
     });
     successNotification();
 
@@ -546,11 +567,12 @@ const Products: React.FC = () => {
       unit: newUnit,
       trackStock: newTrackStock || undefined,
       stockQuantity: newTrackStock && newStockQty ? parseFloat(newStockQty) : undefined,
+      imageUrl: newImageUrl,
     });
     successNotification();
     showToast('product updated', 'success');
     closeAddModal();
-  }, [editingProduct, newName, newDescription, newPrice, newCostPerUnit, newUnit, newTrackStock, newStockQty, updateProduct, showToast, closeAddModal]);
+  }, [editingProduct, newName, newDescription, newPrice, newCostPerUnit, newUnit, newTrackStock, newStockQty, newImageUrl, updateProduct, showToast, closeAddModal]);
 
   const handleAddCost = useCallback(() => {
     const hasDescErr = !costDescription.trim();
@@ -1001,9 +1023,20 @@ const Products: React.FC = () => {
       {/* ── Live preview card ─────────────────────────────── */}
       <View style={styles.previewCard}>
         <View style={styles.previewRow}>
-          <View style={styles.previewIcon}>
-            <Feather name="package" size={18} color={CALM.bronze} />
-          </View>
+          <TouchableOpacity
+            style={styles.previewIcon}
+            onPress={() => handlePickProductImage(editingProduct?.id)}
+            disabled={imageUploading}
+            activeOpacity={0.7}
+          >
+            {imageUploading ? (
+              <ActivityIndicator size="small" color={CALM.bronze} />
+            ) : newImageUrl ? (
+              <Image source={{ uri: newImageUrl }} style={styles.prodThumb} />
+            ) : (
+              <Feather name="camera" size={16} color={CALM.textMuted} />
+            )}
+          </TouchableOpacity>
           <View style={styles.previewInfo}>
             <Text
               style={[
@@ -2380,6 +2413,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
+    overflow: 'hidden',
+  },
+  prodThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
   },
   previewInfo: {
     flex: 1,
