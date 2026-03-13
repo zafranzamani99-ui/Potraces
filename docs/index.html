@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ms">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
@@ -7,9 +7,9 @@
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#3D3E04">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Pesanan Online">
-<meta property="og:description" content="Pesan terus dari penjual — pantas, mudah, dan selamat.">
-<title>Kedai Dalam Talian</title>
+<meta property="og:title" content="Order Online">
+<meta property="og:description" content="Order directly from the seller — fast, easy, and secure.">
+<title>Online Store</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -280,7 +280,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div class="trust-bar" id="trust-bar">
       <div class="trust-item" style="color:var(--olive)">
         <svg class="trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        <span>Penjual Disahkan</span>
+        <span>Verified Seller</span>
       </div>
       <div class="trust-dot"></div>
       <div class="trust-item" id="trust-orders" style="display:none;color:var(--bronze)">
@@ -289,17 +289,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <div class="trust-dot" id="trust-dot2" style="display:none"></div>
       <div class="trust-item" id="trust-response" style="display:none;color:var(--text3)">
         <svg class="trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <span>Balas dalam beberapa jam</span>
+        <span>Replies within hours</span>
       </div>
     </div>
 
     <!-- Progress steps -->
     <div class="steps" id="steps">
-      <div class="step active" id="step-1"><div class="step-num">1</div><span>Pilih</span></div>
+      <div class="step active" id="step-1"><div class="step-num">1</div><span>Pick</span></div>
       <div class="step-line" id="line-1"></div>
-      <div class="step" id="step-2"><div class="step-num">2</div><span>Isi</span></div>
+      <div class="step" id="step-2"><div class="step-num">2</div><span>Details</span></div>
       <div class="step-line" id="line-2"></div>
-      <div class="step" id="step-3"><div class="step-num">3</div><span>Hantar</span></div>
+      <div class="step" id="step-3"><div class="step-num">3</div><span>Order</span></div>
     </div>
 
     <div class="wrap">
@@ -307,7 +307,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <div class="info-card" id="info-card" style="margin-top:16px">
         <div class="info-row">
           <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-          <div class="info-label">Pickup / COD / Penghantaran</div>
+          <div class="info-label">Pickup / COD / Delivery</div>
         </div>
         <div class="pay-pills" id="pay-pills">
           <span class="pay-pill">💵 Cash / COD</span>
@@ -328,29 +328,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
       <div class="sec" id="form-sec">
         <div class="sec-head">
-          <div class="sec-title">Maklumat Anda</div>
+          <div class="sec-title">Your Details</div>
         </div>
         <div class="field">
-          <div class="field-label">Nama <span class="req">*</span></div>
-          <input id="cname" type="text" placeholder="Nama penuh anda" autocomplete="name" maxlength="100" oninput="updBtn();updSteps()">
+          <div class="field-label">Name <span class="req">*</span></div>
+          <input id="cname" type="text" placeholder="Your full name" autocomplete="name" maxlength="100" oninput="updBtn();updSteps()">
         </div>
         <div class="field">
-          <div class="field-label">No. WhatsApp <span class="opt">(pilihan)</span></div>
+          <div class="field-label">WhatsApp No. <span class="opt">(optional)</span></div>
           <input id="cphone" type="tel" placeholder="01X-XXXXXXX" autocomplete="tel" maxlength="20">
-          <div class="field-hint">Untuk terima pengesahan pesanan</div>
+          <div class="field-hint">To receive order confirmation</div>
         </div>
         <button class="opt-toggle" id="opt-toggle" onclick="toggleOptFields()">
-          <span>Tambah alamat & nota</span>
+          <span>Add address & notes</span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="opt-fields" id="opt-fields">
           <div class="field">
-            <div class="field-label">Alamat Penghantaran</div>
-            <textarea id="caddr" rows="2" placeholder="Alamat penuh..." autocomplete="street-address" maxlength="300"></textarea>
+            <div class="field-label">Delivery Address</div>
+            <textarea id="caddr" rows="2" placeholder="Full address..." autocomplete="street-address" maxlength="300"></textarea>
           </div>
           <div class="field">
-            <div class="field-label">Nota Khas</div>
-            <textarea id="cnote" rows="2" placeholder="Permintaan khas, alergi, dll..." maxlength="500"></textarea>
+            <div class="field-label">Special Notes</div>
+            <textarea id="cnote" rows="2" placeholder="Special requests, allergies, etc..." maxlength="500"></textarea>
           </div>
         </div>
         <div class="hp-field" aria-hidden="true"><label>Jangan isi<input id="hp-email" type="email" tabindex="-1" autocomplete="off"></label></div>
@@ -360,7 +360,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
       <div class="sec">
         <div class="sec-head">
-          <div class="sec-title">Ringkasan</div>
+          <div class="sec-title">Summary</div>
         </div>
       </div>
       <div class="cart-sec"><div class="cart" id="cart"></div></div>
@@ -384,24 +384,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
           <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
         </div>
       </div>
-      <div class="s-title">Pesanan Berjaya!</div>
-      <div class="s-text" id="s-text">Terima kasih! Penjual akan menghubungi anda untuk pengesahan.</div>
+      <div class="s-title">Order Placed!</div>
+      <div class="s-text" id="s-text">Thank you! The seller will contact you to confirm your order.</div>
       <div class="s-eta">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <span>Biasanya dibalas dalam beberapa jam</span>
+        <span>Usually replies within a few hours</span>
       </div>
     </div>
     <div id="order-summary" style="width:100%;max-width:380px;margin-top:24px"></div>
     <div class="s-actions">
       <a class="s-btn s-btn-wa" id="s-wa-btn" href="#" style="display:none">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-        WhatsApp Penjual
+        WhatsApp Seller
       </a>
       <button class="s-btn s-btn-primary" onclick="orderAgain()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-        Pesan Lagi
+        Order Again
       </button>
-      <button class="s-btn s-btn-outline" onclick="showHistory()">Lihat Sejarah Pesanan</button>
+      <button class="s-btn s-btn-outline" onclick="showHistory()">View Order History</button>
     </div>
   </div>
 
@@ -415,7 +415,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       </div>
       <div class="hdr-avatar" id="hist-avatar"></div>
       <div class="hdr-name" id="hist-shop-name">...</div>
-      <div class="hdr-sub">Sejarah pesanan anda</div>
+      <div class="hdr-sub">Your order history</div>
     </div>
     <div style="padding-top:16px" id="hist-list"></div>
   </div>
@@ -425,28 +425,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div class="confirm-card" onclick="event.stopPropagation()">
       <div class="confirm-handle"></div>
       <div class="confirm-header">
-        <div class="confirm-title">Sahkan Pesanan</div>
-        <div class="confirm-sub">Semak sebelum menghantar</div>
+        <div class="confirm-title">Confirm Order</div>
+        <div class="confirm-sub">Review before submitting</div>
       </div>
       <div class="confirm-sec">
-        <div class="confirm-sec-label">Item Pesanan</div>
+        <div class="confirm-sec-label">Order Items</div>
         <div id="confirm-items"></div>
       </div>
       <div class="confirm-total" id="confirm-total"></div>
       <div class="confirm-sec">
-        <div class="confirm-sec-label">Maklumat Pemesan</div>
+        <div class="confirm-sec-label">Customer Info</div>
       </div>
       <div class="confirm-info" id="confirm-info"></div>
       <div id="confirm-note"></div>
       <div class="confirm-trust">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-        <span>Pesanan terus ke penjual — tiada orang tengah</span>
+        <span>Order goes directly to the seller — no middleman</span>
       </div>
       <div class="confirm-actions">
-        <button class="confirm-cancel" onclick="hideConfirm()">Ubah</button>
+        <button class="confirm-cancel" onclick="hideConfirm()">Edit</button>
         <button class="confirm-go" id="confirm-go" onclick="confirmSubmit()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          Hantar Pesanan
+          Submit Order
         </button>
       </div>
     </div>
@@ -460,11 +460,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     </div>
     <button class="submit-btn" id="sbtn" disabled onclick="showConfirm()">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-      Hantar Pesanan
+      Submit Order
     </button>
     <div class="bar-secure">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-      <span>Pesanan selamat & terus ke penjual</span>
+      <span>Secure & direct to seller</span>
     </div>
   </div>
 </div>
@@ -547,7 +547,7 @@ function setQty(id,d){
 function renderProds(){
   var el=document.getElementById('prod-list');
   var cnt=document.getElementById('prod-count');
-  if(!PRODS.length){el.innerHTML='<div class="empty-prods"><div class="empty-prods-icon">📦</div>Tiada produk tersedia buat masa ini.</div>';cnt.textContent='';return}
+  if(!PRODS.length){el.innerHTML='<div class="empty-prods"><div class="empty-prods-icon">📦</div>No products available at the moment.</div>';cnt.textContent='';return}
   cnt.textContent=PRODS.length+' item';
   el.innerHTML=PRODS.map(function(p){
     var sid=escA(p.id);var q=cart[p.id]||0;
@@ -574,7 +574,7 @@ function renderProds(){
 function renderCart(){
   var items=cartItems(),t=total(),el=document.getElementById('cart');
   if(!items.length){
-    el.innerHTML='<div class="cart-empty"><div class="cart-empty-icon">🛒</div>Pilih item dari menu di atas</div>';
+    el.innerHTML='<div class="cart-empty"><div class="cart-empty-icon">🛒</div>Pick items from the menu above</div>';
     return;
   }
   el.innerHTML=items.map(function(x){
@@ -584,7 +584,7 @@ function renderCart(){
       '<div class="ci-price">'+fmt(x.sub)+'</div>'+
     '</div>'
   }).join('')+
-  '<div class="cart-total"><div class="total-label">Jumlah</div><div class="total-amt">'+fmt(t)+'</div></div>'
+  '<div class="cart-total"><div class="total-label">Total</div><div class="total-amt">'+fmt(t)+'</div></div>'
 }
 
 function updBtn(){
@@ -605,7 +605,7 @@ function updBarInfo(){
   var info=document.getElementById('bar-info');
   if(c>0){
     info.style.display='flex';
-    document.getElementById('bar-count').textContent=c+' item dipilih';
+    document.getElementById('bar-count').textContent=c+' item'+(c>1?'s':'')+' selected';
     document.getElementById('bar-total').textContent=fmt(t);
   }else{
     info.style.display='none';
@@ -643,7 +643,7 @@ async function loadShop(slug){
     var r1=await sbFetch('/rest/v1/seller_profiles?select=id,user_id,display_name,currency,shop_notice,phone&slug=eq.'+encodeURIComponent(slug)+'&order=updated_at.desc&limit=1');
     var profiles=await r1.json();
     if(!profiles||!profiles.length){
-      document.getElementById('loading').innerHTML='<div class="skel-err"><div class="skel-err-icon">🔍</div><div class="skel-err-title">Kedai tidak dijumpai</div><div class="skel-err-sub">Semak semula pautan anda</div></div>';
+      document.getElementById('loading').innerHTML='<div class="skel-err"><div class="skel-err-icon">🔍</div><div class="skel-err-title">Store not found</div><div class="skel-err-sub">Please check your link</div></div>';
       return
     }
     var profile=profiles[0];
@@ -654,8 +654,8 @@ async function loadShop(slug){
     document.getElementById('shop-name').textContent=shopName;
     document.getElementById('hdr-avatar').textContent=getInitials(shopName);
     document.getElementById('hist-avatar').textContent=getInitials(shopName);
-    document.title=shopName+' — Pesanan Online';
-    document.querySelector('meta[property="og:title"]').content=shopName+' — Pesanan Online';
+    document.title=shopName+' — Order Online';
+    document.querySelector('meta[property="og:title"]').content=shopName+' — Order Online';
     if(profile.shop_notice){
       var ne=document.getElementById('shop-notice');
       ne.textContent=profile.shop_notice;
@@ -685,7 +685,7 @@ async function loadShop(slug){
     if(getHistory().length>0)document.getElementById('hdr-actions').style.display='flex';
     renderProds();renderCart();updBadge();updBarInfo()
   }catch(e){
-    document.getElementById('loading').innerHTML='<div class="skel-err"><div class="skel-err-icon">⚠️</div><div class="skel-err-title">Ralat memuatkan</div><div class="skel-err-sub">Sila muat semula halaman ini</div></div>'
+    document.getElementById('loading').innerHTML='<div class="skel-err"><div class="skel-err-icon">⚠️</div><div class="skel-err-title">Failed to load</div><div class="skel-err-sub">Please reload the page</div></div>'
   }
 }
 
@@ -699,7 +699,7 @@ async function loadOrderCount(sellerId){
       if(count>0){
         ORDER_COUNT=count;
         var display=count>=100?Math.floor(count/10)*10+'+':count;
-        document.getElementById('order-count-text').textContent=display+' pesanan';
+        document.getElementById('order-count-text').textContent=display+' orders';
         document.getElementById('trust-orders').style.display='flex'
       }
     }
@@ -732,20 +732,20 @@ function showConfirm(){
   if(!name||!items.length)return;
   if(document.getElementById('hp-email').value)return;
   var now=Date.now();
-  if(now-_lastSubmitTime<COOLDOWN_MS){showErr('Sila tunggu sebentar sebelum menghantar lagi.');return}
-  if(_submitCount>=RATE_LIMIT_MAX&&now-_lastSubmitTime<RATE_LIMIT_WINDOW){showErr('Terlalu banyak pesanan. Cuba selepas beberapa minit.');return}
+  if(now-_lastSubmitTime<COOLDOWN_MS){showErr('Please wait a moment before submitting again.');return}
+  if(_submitCount>=RATE_LIMIT_MAX&&now-_lastSubmitTime<RATE_LIMIT_WINDOW){showErr('Too many orders. Please try again in a few minutes.');return}
 
   document.getElementById('confirm-items').innerHTML=items.map(function(x){
     return '<div class="confirm-item"><span>'+x.q+' '+escH(x.p.unit)+' '+escH(x.p.name)+'</span><span style="font-weight:700">'+fmt(x.sub)+'</span></div>'
   }).join('');
-  document.getElementById('confirm-total').innerHTML='<span>Jumlah</span><span>'+fmt(t)+'</span>';
+  document.getElementById('confirm-total').innerHTML='<span>Total</span><span>'+fmt(t)+'</span>';
 
   var phone=document.getElementById('cphone').value.trim();
   var addr=document.getElementById('caddr').value.trim();
   var note=document.getElementById('cnote').value.trim();
-  var info='<div class="confirm-info-row"><span class="confirm-info-label">Nama</span><span class="confirm-info-value">'+escH(name)+'</span></div>';
+  var info='<div class="confirm-info-row"><span class="confirm-info-label">Name</span><span class="confirm-info-value">'+escH(name)+'</span></div>';
   if(phone)info+='<div class="confirm-info-row"><span class="confirm-info-label">WhatsApp</span><span class="confirm-info-value">'+escH(phone)+'</span></div>';
-  if(addr)info+='<div class="confirm-info-row"><span class="confirm-info-label">Alamat</span><span class="confirm-info-value">'+escH(addr)+'</span></div>';
+  if(addr)info+='<div class="confirm-info-row"><span class="confirm-info-label">Address</span><span class="confirm-info-value">'+escH(addr)+'</span></div>';
   document.getElementById('confirm-info').innerHTML=info;
   document.getElementById('confirm-note').innerHTML=note?'<div class="confirm-note">'+escH(note)+'</div>':'';
   document.getElementById('confirm-modal').classList.add('show')
@@ -774,7 +774,7 @@ async function confirmSubmit(){
   _submitting=true;
   var goBtn=document.getElementById('confirm-go');
   goBtn.disabled=true;
-  goBtn.innerHTML='<span class="spin"></span>Menghantar...';
+  goBtn.innerHTML='<span class="spin"></span>Submitting...';
   document.getElementById('err').classList.remove('show');
 
   try{
@@ -788,22 +788,22 @@ async function confirmSubmit(){
         total_amount:t,status:'pending',is_paid:false
       })
     });
-    if(!res.ok)throw new Error('Gagal menghantar');
+    if(!res.ok)throw new Error('Failed to submit');
     _lastSubmitTime=Date.now();_submitCount++;
     hideConfirm();showSuccess(items,t,name,phone)
   }catch(err){
     hideConfirm();
-    showErr('Ralat: '+(err.message||'Sila cuba lagi'));
+    showErr('Error: '+(err.message||'Please try again'));
     document.getElementById('sbtn').disabled=false;
     resetSubmitBtn()
   }
   goBtn.disabled=false;
-  goBtn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Hantar Pesanan';
+  goBtn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Submit Order';
   _submitting=false
 }
 
 function resetSubmitBtn(){
-  document.getElementById('sbtn').innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Hantar Pesanan'
+  document.getElementById('sbtn').innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Submit Order'
 }
 
 function getHistory(){try{return JSON.parse(localStorage.getItem('potraces_history')||'[]')}catch(e){return[]}}
@@ -826,22 +826,22 @@ function showSuccess(items,t,name,phone){
     var waBtn=document.getElementById('s-wa-btn');
     var digits=SELLER_PHONE.replace(/[^0-9]/g,'');
     if(digits.startsWith('0'))digits='60'+digits.slice(1);
-    var msg='Hai, saya '+name+' baru hantar pesanan melalui link kedai anda.\n\nPesanan:\n';
+    var msg='Hi, I\'m '+name+'. I just placed an order through your store link.\n\nOrder:\n';
     for(var i=0;i<items.length;i++){var x=items[i];msg+='- '+x.p.name+' x'+x.q+' '+x.p.unit+'\n'}
-    msg+='\nJumlah: '+fmt(t)+'\n\nTerima kasih!';
+    msg+='\nTotal: '+fmt(t)+'\n\nThank you!';
     waBtn.href='https://wa.me/'+digits+'?text='+encodeURIComponent(msg);
     waBtn.style.display='flex';
   }
 
   // Personalized text
-  document.getElementById('s-text').textContent='Terima kasih '+name.split(' ')[0]+'! Penjual akan menghubungi anda untuk pengesahan.';
+  document.getElementById('s-text').textContent='Thank you '+name.split(' ')[0]+'! The seller will contact you to confirm your order.';
 
   var html='<div class="cart" style="box-shadow:var(--shadow-lg)">';
-  html+='<div style="padding:14px 16px 8px;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze)">Pesanan Anda</div>';
+  html+='<div style="padding:14px 16px 8px;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze)">Your Order</div>';
   for(var i=0;i<items.length;i++){var x=items[i];
     html+='<div class="cart-row"><span>'+x.q+' '+escH(x.p.unit)+' '+escH(x.p.name)+'</span><span style="font-weight:700;color:var(--olive)">'+fmt(x.sub)+'</span></div>'
   }
-  html+='<div class="cart-total"><span>Jumlah</span><span>'+fmt(t)+'</span></div></div>';
+  html+='<div class="cart-total"><span>Total</span><span>'+fmt(t)+'</span></div></div>';
   document.getElementById('order-summary').innerHTML=html;
   document.getElementById('success').classList.add('show');
   window.scrollTo({top:0})
@@ -865,7 +865,7 @@ function orderAgain(){
 function fmtTime(iso){
   var d=new Date(iso);var h=d.getHours(),m=d.getMinutes();
   var ap=h>=12?'PM':'AM';h=h%12||12;
-  var day=d.getDate();var mon=['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogo','Sep','Okt','Nov','Dis'][d.getMonth()];
+  var day=d.getDate();var mon=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
   return day+' '+mon+', '+h+':'+(m<10?'0':'')+m+' '+ap
 }
 
@@ -879,7 +879,7 @@ function showHistory(){
   document.getElementById('hist-avatar').textContent=document.getElementById('hdr-avatar').textContent;
   var el=document.getElementById('hist-list');
   if(!hist.length){
-    el.innerHTML='<div class="hist-empty"><div class="hist-empty-icon">📋</div>Belum ada pesanan lagi</div>'
+    el.innerHTML='<div class="hist-empty"><div class="hist-empty-icon">📋</div>No orders yet</div>'
   }else{
     el.innerHTML=hist.map(function(o){
       var h='<div class="hist-card">';
@@ -887,7 +887,7 @@ function showHistory(){
       for(var i=0;i<o.items.length;i++){var it=o.items[i];
         h+='<div class="hist-item"><span>'+it.qty+' '+escH(it.unit)+' '+escH(it.name)+'</span><span>'+CUR+' '+(it.qty*it.price).toFixed(2)+'</span></div>'
       }
-      h+='<div class="hist-total"><span>Jumlah</span><span>'+CUR+' '+o.total.toFixed(2)+'</span></div></div>';
+      h+='<div class="hist-total"><span>Total</span><span>'+CUR+' '+o.total.toFixed(2)+'</span></div></div>';
       return h
     }).join('')
   }
@@ -905,7 +905,7 @@ function hideHistory(){
 
 var slug=params();
 if(slug&&/^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$/.test(slug)){loadShop(slug)}
-else{document.getElementById('loading').innerHTML='<div class="skel-err"><div class="skel-err-icon">🔗</div><div class="skel-err-title">'+(slug?'Pautan tidak sah':'Tiada pautan kedai')+'</div><div class="skel-err-sub">Minta penjual hantar semula pautan</div></div>'}
+else{document.getElementById('loading').innerHTML='<div class="skel-err"><div class="skel-err-icon">🔗</div><div class="skel-err-title">'+(slug?'Invalid link':'No store link')+'</div><div class="skel-err-sub">Ask the seller to resend the link</div></div>'}
 </script>
 </body>
 </html>
