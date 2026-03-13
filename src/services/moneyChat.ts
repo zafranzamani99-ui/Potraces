@@ -7,7 +7,7 @@
  */
 
 import { format, startOfMonth, endOfMonth, subMonths, isWithinInterval, getDaysInMonth } from 'date-fns';
-import { callGeminiAPI, isGeminiAvailable, getCooldownSecondsLeft, isDailyQuotaExhausted } from './geminiClient';
+import { callGeminiAPI, isGeminiAvailable, getCooldownSecondsLeft, isDailyQuotaExhausted, resetDailyQuota } from './geminiClient';
 import { usePremiumStore } from '../store/premiumStore';
 import { usePersonalStore } from '../store/personalStore';
 import { useWalletStore } from '../store/walletStore';
@@ -39,13 +39,18 @@ ABSOLUTE RULES (NEVER BREAK THESE):
 HOW TO THINK (step by step):
 - Be CURIOUS. Ask questions like a real friend would — one thing at a time.
 - NEVER try to do everything in one message. Have a CONVERSATION.
-- If info is missing, ASK — don't guess, don't skip, don't assume.
 - For shared expenses, think through the FULL picture and ask about each piece:
   1. Who paid first? (that person gets the subscription/expense)
   2. How much does each person owe? (do the math clearly)
   3. Who are the people? (ask for names if not given — you need names to create debt records!)
 - Only create ACTION blocks when you have ALL the info needed. If you're still asking questions, DON'T create actions yet.
 - When the user gives you names, THEN create all the actions at once (subscription + debts for each person).
+
+SMART DEFAULTS (use these — don't ask the user for info you can figure out):
+- CATEGORY: Pick the best category based on the item description. Use existing categories from the user's data when possible. Common sense: "kasut nike" → shopping/clothing, "minyak hitam" → transport, "grab" → transport, "mamak/nasi" → food, "uniqlo" → shopping, "netflix" → entertainment, "tayar/brake" → transport. Just pick what fits — the user can always change it in the confirmation chip.
+- WALLET: Use the first wallet listed in the user's data (that's their primary). Don't ask which wallet unless the user has multiple and it's genuinely ambiguous.
+- BULK ITEMS: When the user gives you a LIST of items (photo of a list, multiple items in one message), create ALL the ACTION blocks at once. Don't go one by one asking about each. Auto-categorize each item and let the user review them all in the confirmation chips.
+- DATE: Default to today unless the user says otherwise.
 
 CONVERSATION STYLE:
 - Ask ONE follow-up question at a time — don't dump 5 questions at once
@@ -77,7 +82,43 @@ Bad: "I've recorded the subscription." (incomplete — forgot the debts)
 
 User: "i lent ali rm200"
 Good: [adds debt action for Ali RM 200, type they_owe] "Tracked — Ali owes you RM 200.00. What was it for?"
-Bad: "I've noted the RM 200 transaction." (vague, no debt record, not curious)`;
+Bad: "I've noted the RM 200 transaction." (vague, no debt record, not curious)
+
+User: [sends photo of a list: "230-uniqlo jacket, 270-kasut nike, 120-servis minyak hitam, 100-rantai, 230-tayar+fork+brake"]
+Good: [creates 5 expense actions with auto categories] "Got all 5 — RM 950 total. Tap each one to review before confirming."
+  (uniqlo jacket → shopping, kasut nike → shopping, servis minyak → transport, rantai → transport, tayar+fork+brake → transport)
+Bad: "What category for uniqlo jacket? Which wallet?" (asking unnecessary questions — just auto-pick and let them edit)
+
+SCENARIO HANDLING:
+
+Budget stress — when user says "i'm over budget" or "habis duit":
+- Show the numbers calmly: which categories still have breathing room, which don't
+- Mention where money went, not what to cut
+- Never say "cut back", "reduce", "spend less". Just observe.
+- If some categories are fine, mention them: "food's at RM 480/500 but entertainment still has RM 150 left"
+
+Goal coaching — when user asks "how's my savings?" or mentions a goal:
+- Show percentage, current amount, target, deadline, pace
+- Celebrate milestones: "you just crossed 50%!" or "almost there!"
+- If behind pace, state it calmly: "you'd need about RM 46/day to hit it by June"
+- Never say "save more" or "you need to save"
+
+Debt awareness — when user asks "who owes me?" or "siapa hutang aku?":
+- List each person, their remaining amount, and due date if set
+- If someone is overdue, mention it without pressure: "Ali's RM 200 was due 5 days ago"
+- Never suggest how to collect or pressure people
+
+Post-action observation — after recording any transaction:
+- Add ONE short context line showing the impact
+- Expense: "That puts food at RM 480/500 this month" or "food is past breathing room now"
+- Debt payment: "Ali's down to RM 150 left" or "Ali's all settled!"
+- Goal: "Japan Trip is at 52% now"
+- Don't over-explain — one line is enough
+
+Emotional support — when user sounds stressed about money:
+- Acknowledge the feeling first, then show numbers
+- Frame positively where possible: "you've kept RM 580 this month — that's real"
+- Never minimize their feelings or give generic advice`;
 
 function buildFinancialContext(): string {
   const mode = useAppStore.getState().mode;
@@ -116,6 +157,17 @@ function buildFinancialContext(): string {
     lastMonthTxns.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0) -
     lastMonthTxns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
 
+  // Last month category breakdown
+  const lastMonthByCategory: Record<string, number> = {};
+  for (const t of lastMonthTxns.filter((x) => x.type === 'expense')) {
+    lastMonthByCategory[t.category] = (lastMonthByCategory[t.category] || 0) + t.amount;
+  }
+  const lastCatLines = Object.entries(lastMonthByCategory)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([cat, amt]) => `  ${cat}: RM ${amt.toFixed(2)}`)
+    .join('\n');
+
   // Category breakdown
   const byCategory: Record<string, number> = {};
   for (const t of thisMonthTxns.filter((x) => x.type === 'expense')) {
@@ -134,7 +186,7 @@ function buildFinancialContext(): string {
       const db = b.date instanceof Date ? b.date : new Date(b.date);
       return db.getTime() - da.getTime();
     })
-    .slice(0, 10)
+    .slice(0, 20)
     .map((t) => {
       const d = t.date instanceof Date ? t.date : new Date(t.date);
       return `  ${format(d, 'dd MMM')} | ${t.type === 'income' ? '+' : '-'}RM ${t.amount.toFixed(2)} | ${t.category} | ${t.description}`;
@@ -151,14 +203,34 @@ function buildFinancialContext(): string {
     .filter((w) => w.type === 'credit')
     .reduce((s, w) => s + (w.usedCredit || 0), 0);
 
-  // Debts
+  // Debts — per-person breakdown
   const activeDebts = debts.filter((d) => d.status !== 'settled');
-  const iOwe = activeDebts
+  const iOweTotal = activeDebts
     .filter((d) => d.type === 'i_owe')
     .reduce((s, d) => s + (d.totalAmount - d.paidAmount), 0);
-  const theyOwe = activeDebts
+  const theyOweTotal = activeDebts
     .filter((d) => d.type === 'they_owe')
     .reduce((s, d) => s + (d.totalAmount - d.paidAmount), 0);
+
+  const iOweLines = activeDebts
+    .filter((d) => d.type === 'i_owe')
+    .slice(0, 15)
+    .map((d) => {
+      const remaining = d.totalAmount - d.paidAmount;
+      const due = d.dueDate ? ` (due ${format(d.dueDate instanceof Date ? d.dueDate : new Date(d.dueDate), 'dd MMM')})` : '';
+      return `  ${d.contact.name}: RM ${remaining.toFixed(2)}${due}`;
+    })
+    .join('\n');
+
+  const theyOweLines = activeDebts
+    .filter((d) => d.type === 'they_owe')
+    .slice(0, 15)
+    .map((d) => {
+      const remaining = d.totalAmount - d.paidAmount;
+      const due = d.dueDate ? ` (due ${format(d.dueDate instanceof Date ? d.dueDate : new Date(d.dueDate), 'dd MMM')})` : '';
+      return `  ${d.contact.name}: RM ${remaining.toFixed(2)}${due}`;
+    })
+    .join('\n');
 
   // Budgets
   const budgetLines = budgets
@@ -168,37 +240,106 @@ function buildFinancialContext(): string {
     )
     .join('\n');
 
-  // Goals
+  // Goals with deadlines + pace
   const goalLines = goals
-    .map((g) => `  ${g.name}: RM ${g.currentAmount.toFixed(2)} / RM ${g.targetAmount.toFixed(2)}`)
+    .map((g) => {
+      const pct = g.targetAmount > 0 ? Math.round((g.currentAmount / g.targetAmount) * 100) : 0;
+      let info = `  ${g.name}: RM ${g.currentAmount.toFixed(2)} / RM ${g.targetAmount.toFixed(2)} (${pct}%)`;
+      if (g.deadline) {
+        const dl = g.deadline instanceof Date ? g.deadline : new Date(g.deadline);
+        if (!isNaN(dl.getTime())) {
+          const daysToDeadline = Math.max(0, Math.ceil((dl.getTime() - now.getTime()) / 86400000));
+          const remaining = g.targetAmount - g.currentAmount;
+          info += ` — deadline ${format(dl, 'dd MMM yyyy')}`;
+          if (daysToDeadline > 0 && remaining > 0) {
+            info += `, ${daysToDeadline}d left, ~RM ${Math.ceil(remaining / daysToDeadline)}/day needed`;
+          }
+        }
+      }
+      return info;
+    })
     .join('\n');
 
-  // Subscriptions
+  // Subscriptions with billing dates
   const activeSubs = subscriptions.filter((s) => s.isActive);
   const subLines = activeSubs
-    .map((s) => `  ${s.name}: RM ${s.amount.toFixed(2)} (${s.billingCycle})`)
+    .map((s) => {
+      const next = s.nextBillingDate instanceof Date ? s.nextBillingDate : new Date(s.nextBillingDate);
+      const nextLabel = !isNaN(next.getTime()) ? ` — next ${format(next, 'dd MMM')}` : '';
+      return `  ${s.name}: RM ${s.amount.toFixed(2)} (${s.billingCycle})${nextLabel}`;
+    })
+    .join('\n');
+
+  // Spending velocity
+  const daysPassed = now.getDate();
+  const spendPerDay = daysPassed > 0 ? totalExpenses / daysPassed : 0;
+  const projectedMonthEnd = spendPerDay * getDaysInMonth(now);
+
+  // Net worth: wallets - debts owed - BNPL
+  const totalWalletBalance = wallets.reduce((s, w) => s + (w.balance || 0), 0);
+  const netWorth = totalWalletBalance - iOweTotal - bnplTotal;
+
+  // Top merchants / descriptions this month (#98)
+  const merchantCount: Record<string, { count: number; total: number }> = {};
+  for (const t of thisMonthTxns.filter((x) => x.type === 'expense' && x.description)) {
+    const key = t.description.toLowerCase().trim();
+    if (!merchantCount[key]) merchantCount[key] = { count: 0, total: 0 };
+    merchantCount[key].count++;
+    merchantCount[key].total += t.amount;
+  }
+  const merchantLines = Object.entries(merchantCount)
+    .filter(([, v]) => v.count >= 2)
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, 5)
+    .map(([name, v]) => `  ${name}: ${v.count}x, RM ${v.total.toFixed(2)}`)
+    .join('\n');
+
+  // Recent goal contributions (#85)
+  const contribLines = goals
+    .filter((g) => g.contributions && g.contributions.length > 0)
+    .map((g) => {
+      const recent = g.contributions
+        .slice(-3)
+        .map((c) => {
+          const d = c.date instanceof Date ? c.date : new Date(c.date);
+          return `RM ${c.amount.toFixed(0)} (${!isNaN(d.getTime()) ? format(d, 'dd MMM') : '?'})`;
+        })
+        .join(', ');
+      return `  ${g.name}: ${recent}`;
+    })
+    .join('\n');
+
+  // Credit wallet details
+  const creditLines = wallets
+    .filter((w) => w.type === 'credit' && (w.creditLimit || 0) > 0)
+    .map((w) => `  ${w.name}: RM ${(w.usedCredit || 0).toFixed(2)} used / RM ${(w.creditLimit || 0).toFixed(2)} limit (RM ${((w.creditLimit || 0) - (w.usedCredit || 0)).toFixed(2)} available)`)
     .join('\n');
 
   let ctx = `Month: ${monthLabel} (${daysLeft} days left)
 Came in: RM ${totalIncome.toFixed(2)}
 Went out: RM ${totalExpenses.toFixed(2)}
 Kept: RM ${kept.toFixed(2)} (last month: RM ${keptLastMonth.toFixed(2)})
+Pace: RM ${spendPerDay.toFixed(0)}/day — projected RM ${projectedMonthEnd.toFixed(0)} by month end
 
-Category breakdown:
+Category breakdown (this month):
 ${catLines || '  (none yet)'}
+
+Last month top categories:
+${lastCatLines || '  (none)'}
 
 Recent transactions:
 ${recentTxns || '  (none yet)'}
 
 Wallets:
 ${walletLines || '  (none)'}
+${creditLines ? `\nCredit/BNPL:\n${creditLines}` : `\nFuture You Owes (BNPL): RM ${bnplTotal.toFixed(2)}`}
 
-Future You Owes (BNPL): RM ${bnplTotal.toFixed(2)}
+Net position: RM ${netWorth.toFixed(2)} (wallets RM ${totalWalletBalance.toFixed(2)} − debts RM ${iOweTotal.toFixed(2)} − BNPL RM ${bnplTotal.toFixed(2)})
 
-Debts:
-  You owe: RM ${iOwe.toFixed(2)}
-  Owed to you: RM ${theyOwe.toFixed(2)}
-  Active: ${activeDebts.length}
+Debts — you owe (total RM ${iOweTotal.toFixed(2)}):
+${iOweLines || '  (none)'}
+Debts — owed to you (total RM ${theyOweTotal.toFixed(2)}):
+${theyOweLines || '  (none)'}
 
 Breathing room:
 ${budgetLines || '  (none set)'}
@@ -207,7 +348,9 @@ Savings goals:
 ${goalLines || '  (none)'}
 
 Subscriptions:
-${subLines || '  (none)'}`;
+${subLines || '  (none)'}
+${merchantLines ? `\nFrequent spending (2+ times this month):\n${merchantLines}` : ''}
+${contribLines ? `\nRecent goal contributions:\n${contribLines}` : ''}`;
 
   // Business context
   if (mode === 'business') {
@@ -272,16 +415,30 @@ export type ChatResult =
 
 export async function sendChatMessage(
   message: string,
-  history: AIMessage[]
+  history: AIMessage[],
+  imageBase64?: string,
 ): Promise<ChatResult> {
   if (!isGeminiAvailable()) {
     const key = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
     if (!key) return { ok: false, error: 'Gemini API key is missing. Add it in .env' };
     const secs = getCooldownSecondsLeft();
     if (secs > 0) {
-      return { ok: false, error: `AI is busy — try again in ${secs}s` };
+      if (secs <= 120) {
+        return { ok: false, error: `AI is cooling down — wait ${secs}s` };
+      }
+      // Long block — try resetting in case it's stale
+      resetDailyQuota();
+      if (!isGeminiAvailable()) {
+        return { ok: false, error: `AI is busy — try again in a few minutes.` };
+      }
+      // Reset worked — fall through to make the call
+    } else {
+      // No cooldown but still unavailable — reset stale state
+      resetDailyQuota();
+      if (!isGeminiAvailable()) {
+        return { ok: false, error: 'AI is temporarily unavailable — try again shortly.' };
+      }
     }
-    return { ok: false, error: 'AI is temporarily unavailable — try again shortly.' };
   }
 
   const premium = usePremiumStore.getState();
@@ -300,30 +457,40 @@ export async function sendChatMessage(
       parts: [{ text: msg.content }],
     }));
 
-    // Add current message
+    // Add current message (with optional image)
+    const userParts: any[] = [{ text: message || 'What do you see in this image?' }];
+    if (imageBase64) {
+      userParts.push({
+        inlineData: { mimeType: 'image/jpeg', data: imageBase64 },
+      });
+    }
     contents.push({
       role: 'user' as const,
-      parts: [{ text: message }],
+      parts: userParts,
     });
 
+    const hasImage = !!imageBase64;
     const data = await callGeminiAPI(
       {
         system_instruction: { parts: [{ text: fullSystem }] },
         contents,
         generationConfig: {
           temperature: 0.5,
-          maxOutputTokens: 512,
+          maxOutputTokens: 4096,
         },
       },
-      30_000 // 30s timeout for chat (more context than other calls)
+      hasImage ? 45_000 : 30_000,
+      hasImage, // noFallback for image — both models share quota
     );
 
     if (!data) {
-      if (isDailyQuotaExhausted()) {
-        return { ok: false, error: 'AI daily limit reached — resets tomorrow. Sorry!' };
-      }
       const secs = getCooldownSecondsLeft();
-      if (secs > 0) return { ok: false, error: `AI is busy — try again in ${secs}s` };
+      if (secs > 0) {
+        return { ok: false, error: `AI is cooling down — wait ${secs}s` };
+      }
+      if (isDailyQuotaExhausted()) {
+        return { ok: false, error: 'AI rate limited — try again in a minute.' };
+      }
       return { ok: false, error: 'Couldn\'t reach AI. Check your internet.' };
     }
 

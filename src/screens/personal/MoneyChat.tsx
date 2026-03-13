@@ -8,18 +8,27 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Modal,
   ScrollView,
+  Animated,
+  Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { useAppStore } from '../../store/appStore';
 import { useAIInsightsStore } from '../../store/aiInsightsStore';
+import { useWalletStore } from '../../store/walletStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { AIMessage, AIMessageAction } from '../../types';
+import { useCategories } from '../../hooks/useCategories';
+import CategoryPicker from '../../components/common/CategoryPicker';
+import WalletPicker from '../../components/common/WalletPicker';
 import { sendChatMessage } from '../../services/moneyChat';
 import { parseActions, executeAction, ChatAction } from '../../services/chatActions';
+import { lightTap, successNotification } from '../../services/haptics';
+import { useVoiceInput } from '../../hooks/useVoiceInput';
 
 const PERSONAL_SUGGESTIONS = [
   'Where does most of my money go?',
@@ -39,6 +48,14 @@ const ACTION_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   add_debt: 'repeat',
   add_subscription: 'calendar',
   split_bill: 'users',
+  debt_update: 'check-circle',
+  transfer: 'arrow-right',
+  add_goal_contribution: 'target',
+  cancel_subscription: 'x-circle',
+  forgive_debt: 'heart',
+  update_subscription: 'edit-2',
+  add_bnpl: 'credit-card',
+  repay_credit: 'dollar-sign',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -47,7 +64,79 @@ const ACTION_LABELS: Record<string, string> = {
   add_debt: 'Debt',
   add_subscription: 'Subscription',
   split_bill: 'Split',
+  debt_update: 'Payment',
+  transfer: 'Transfer',
+  add_goal_contribution: 'Goal',
+  cancel_subscription: 'Cancel',
+  forgive_debt: 'Forgive',
+  update_subscription: 'Update',
+  add_bnpl: 'BNPL',
+  repay_credit: 'Repay',
 };
+
+// Typing indicator — 3 olive dots with staggered animation
+const TypingDots = memo(() => {
+  const dots = useRef([new Animated.Value(0.3), new Animated.Value(0.3), new Animated.Value(0.3)]).current;
+
+  useEffect(() => {
+    const animations = dots.map((dot, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 150),
+          Animated.timing(dot, { toValue: 1, duration: 300, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0.3, duration: 300, useNativeDriver: true }),
+        ])
+      )
+    );
+    animations.forEach((a) => a.start());
+    return () => animations.forEach((a) => a.stop());
+  }, [dots]);
+
+  return (
+    <View style={[styles.messageBubble, styles.assistantBubble, styles.typingBubble]}>
+      <View style={styles.typingRow}>
+        {dots.map((dot, i) => (
+          <Animated.View key={i} style={[styles.typingDot, { opacity: dot }]} />
+        ))}
+      </View>
+    </View>
+  );
+});
+
+// Animated entrance wrapper — fade-in + slide-up
+const AnimatedBubble = memo(({ children }: { children: React.ReactNode }) => {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(8)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start();
+  }, [opacity, translateY]);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      {children}
+    </Animated.View>
+  );
+});
+
+// Highlight RM amounts in assistant text
+const HighlightedText = memo(({ text, style }: { text: string; style: any }) => {
+  const parts = text.split(/(RM\s?[\d,]+\.?\d*)/gi);
+  return (
+    <Text style={style} selectable>
+      {parts.map((part, i) =>
+        /^RM\s?[\d,]+\.?\d*$/i.test(part) ? (
+          <Text key={i} style={{ fontWeight: '700', color: CALM.deepOlive }}>{part}</Text>
+        ) : (
+          <Text key={i}>{part}</Text>
+        )
+      )}
+    </Text>
+  );
+});
 
 // Confirmed/failed action card (shown in chat history)
 const ActionCard = memo(({ action }: { action: AIMessageAction }) => {
@@ -99,128 +188,231 @@ const PendingChip = ({
   );
 };
 
+// Common action types the user can switch between
+const SWITCHABLE_TYPES = [
+  { key: 'add_expense', label: 'Expense' },
+  { key: 'add_income', label: 'Income' },
+  { key: 'add_debt', label: 'Debt' },
+  { key: 'add_subscription', label: 'Sub' },
+];
+
 // Floating modal for editing + confirming a pending action
 const ActionEditModal = ({
   visible,
   action,
   onConfirm,
-  onDismiss,
   onClose,
 }: {
   visible: boolean;
   action: ChatAction | null;
   onConfirm: (edited: ChatAction) => void;
-  onDismiss: () => void;
   onClose: () => void;
 }) => {
   const [desc, setDesc] = useState('');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('');
+  const [actionType, setActionType] = useState('add_expense');
+  const [categoryId, setCategoryId] = useState('');
+  const [walletId, setWalletId] = useState('');
   const [person, setPerson] = useState('');
+  const [debtType, setDebtType] = useState<'i_owe' | 'they_owe'>('they_owe');
+  const [modalAnim, setModalAnim] = useState<'fade' | 'none'>('fade');
+
+  const navigation = useNavigation<any>();
+  const expenseCategories = useCategories('expense');
+  const incomeCategories = useCategories('income');
+  const wallets = useWalletStore((s) => s.wallets);
+
+  // Close modal instantly then navigate to Settings
+  const handleNavigateToSettings = useCallback(() => {
+    setModalAnim('none');
+    onClose();
+    setTimeout(() => {
+      navigation.navigate('Settings', { scrollTo: 'categories' });
+      setModalAnim('fade');
+    }, 50);
+  }, [onClose, navigation]);
+
+  const isIncome = actionType === 'add_income';
+  const categories = isIncome ? incomeCategories : expenseCategories;
+  const showCategory = ['add_expense', 'add_income', 'add_subscription', 'update_subscription'].includes(actionType);
+  const showWallet = ['add_expense', 'add_income', 'add_bnpl', 'repay_credit'].includes(actionType);
+  const showPerson = ['add_debt', 'split_bill', 'debt_update', 'forgive_debt'].includes(actionType);
 
   useEffect(() => {
     if (action) {
       setDesc(action.description);
       setAmount(action.amount.toString());
-      setCategory(action.category || '');
+      setActionType(action.type);
       setPerson(action.person || '');
+      setDebtType(action.debtType || 'they_owe');
+
+      // Match category by ID or name
+      const catStr = (action.category || '').toLowerCase().replace(/[\s&]+/g, '_');
+      const catMatch = categories.find((c) => c.id === catStr)
+        || categories.find((c) => c.name.toLowerCase().replace(/[\s&]+/g, '_') === catStr)
+        || categories[0];
+      setCategoryId(catMatch?.id || 'other');
+
+      // Match wallet by name
+      const walletStr = (action.wallet || '').toLowerCase();
+      const walletMatch = wallets.find((w) => w.name.toLowerCase() === walletStr)
+        || wallets.find((w) => w.isDefault)
+        || wallets[0];
+      setWalletId(walletMatch?.id || '');
     }
-  }, [action]);
+  }, [action]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!action) return null;
 
-  const typeLabel = ACTION_LABELS[action.type] || action.type;
-  const icon = ACTION_ICONS[action.type] || 'plus';
-
   const handleConfirm = () => {
+    const selectedCat = categories.find((c) => c.id === categoryId);
+    const selectedWallet = wallets.find((w) => w.id === walletId);
     onConfirm({
       ...action,
+      type: actionType,
       description: desc.trim() || action.description,
       amount: parseFloat(amount) || action.amount,
-      category: category.trim() || action.category,
+      category: selectedCat?.id || action.category,
+      wallet: selectedWallet?.name || action.wallet,
       person: person.trim() || action.person,
+      debtType: showPerson ? debtType : action.debtType,
     });
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType={modalAnim} onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.modalOverlayKav}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
-          <TouchableOpacity style={styles.modalCard} activeOpacity={1} onPress={() => {}}>
-            <View style={styles.pendingCardHeader}>
-              <View style={styles.pendingCardIconWrap}>
-                <Feather name={icon} size={14} color={CALM.bronze} />
-              </View>
-              <Text style={styles.pendingCardType}>{typeLabel}</Text>
-              <TouchableOpacity
-                onPress={onClose}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{ marginLeft: 'auto' }}
-              >
-                <Feather name="x" size={16} color={CALM.textMuted} />
-              </TouchableOpacity>
-            </View>
+          <View style={styles.modalCard}>
+            {/* Close — top right */}
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.modalClose}
+            >
+              <Feather name="x" size={18} color={CALM.textMuted} />
+            </TouchableOpacity>
 
-            <View style={styles.editField}>
-              <Text style={styles.editLabel}>description</Text>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              {/* Type selector pills */}
+              <View style={styles.typeRow}>
+                {SWITCHABLE_TYPES.map((t) => {
+                  const active = actionType === t.key;
+                  return (
+                    <TouchableOpacity
+                      key={t.key}
+                      style={[styles.typePill, active && styles.typePillActive]}
+                      onPress={() => setActionType(t.key)}
+                      activeOpacity={0.7}
+                    >
+                      <Feather
+                        name={ACTION_ICONS[t.key] || 'plus'}
+                        size={11}
+                        color={active ? CALM.bronze : CALM.textMuted}
+                      />
+                      <Text style={[styles.typePillText, active && styles.typePillTextActive]}>
+                        {t.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Amount — large and clean */}
+              <View style={styles.amountSection}>
+                <Text style={styles.amountPrefix}>RM</Text>
+                <TextInput
+                  style={styles.amountInput}
+                  value={amount}
+                  onChangeText={setAmount}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={CALM.border}
+                />
+              </View>
+
+              {/* Description — underline style */}
               <TextInput
-                style={styles.editInput}
+                style={styles.descInput}
                 value={desc}
                 onChangeText={setDesc}
                 placeholder="description"
                 placeholderTextColor={CALM.textMuted}
               />
-            </View>
 
-            <View style={styles.editField}>
-              <Text style={styles.editLabel}>amount (RM)</Text>
-              <TextInput
-                style={styles.editInput}
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={CALM.textMuted}
-              />
-            </View>
-
-            <View style={styles.editField}>
-              <Text style={styles.editLabel}>category</Text>
-              <TextInput
-                style={styles.editInput}
-                value={category}
-                onChangeText={setCategory}
-                placeholder="e.g. food, bills, transport"
-                placeholderTextColor={CALM.textMuted}
-              />
-            </View>
-
-            {(action.type === 'add_debt' || action.type === 'split_bill') && (
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>person</Text>
-                <TextInput
-                  style={styles.editInput}
-                  value={person}
-                  onChangeText={setPerson}
-                  placeholder="name"
-                  placeholderTextColor={CALM.textMuted}
+              {/* Category dropdown */}
+              {showCategory && (
+                <CategoryPicker
+                  categories={categories}
+                  selectedId={categoryId}
+                  onSelect={setCategoryId}
+                  label="category"
+                  layout="dropdown"
+                  onNavigateToSettings={handleNavigateToSettings}
                 />
-              </View>
-            )}
+              )}
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.pendingSkipBtn} onPress={onDismiss} activeOpacity={0.7}>
-                <Text style={styles.pendingSkipText}>dismiss</Text>
+              {/* Wallet dropdown */}
+              {showWallet && wallets.length > 0 && (
+                <WalletPicker
+                  wallets={wallets}
+                  selectedId={walletId}
+                  onSelect={setWalletId}
+                  label="wallet"
+                />
+              )}
+
+              {/* Person + debt direction */}
+              {showPerson && (
+                <>
+                  <View style={styles.editField}>
+                    <Text style={styles.editLabel}>person</Text>
+                    <TextInput
+                      style={styles.descInput}
+                      value={person}
+                      onChangeText={setPerson}
+                      placeholder="name"
+                      placeholderTextColor={CALM.textMuted}
+                    />
+                  </View>
+                  <View style={styles.debtToggleRow}>
+                    <TouchableOpacity
+                      style={[styles.debtToggle, debtType === 'they_owe' && styles.debtToggleTheyOwe]}
+                      onPress={() => setDebtType('they_owe')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.debtToggleText, debtType === 'they_owe' && styles.debtToggleTextTheyOwe]}>
+                        they owe me
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.debtToggle, debtType === 'i_owe' && styles.debtToggleIOwe]}
+                      onPress={() => setDebtType('i_owe')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.debtToggleText, debtType === 'i_owe' && styles.debtToggleTextIOwe]}>
+                        I owe them
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+
+              {/* Confirm */}
+              <TouchableOpacity style={styles.confirmBtnFull} onPress={handleConfirm} activeOpacity={0.7}>
+                <Feather name="check" size={15} color="#fff" />
+                <Text style={styles.confirmBtnText}>confirm</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.pendingConfirmBtn} onPress={handleConfirm} activeOpacity={0.7}>
-                <Feather name="check" size={14} color="#fff" />
-                <Text style={styles.pendingConfirmText}>confirm</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
+            </ScrollView>
+          </View>
         </TouchableOpacity>
       </KeyboardAvoidingView>
     </Modal>
@@ -230,25 +422,40 @@ const ActionEditModal = ({
 const ChatBubble = memo(({ item }: { item: AIMessage }) => {
   const isUser = item.role === 'user';
   const hasText = item.content.trim().length > 0;
+  const hasImage = isUser && !!item.imageUri;
+  const showBubble = hasText || hasImage;
+
   return (
-    <View>
-      {hasText && (
-        <View
-          style={[styles.messageBubble, isUser ? styles.userBubble : styles.assistantBubble]}
-          onStartShouldSetResponder={() => false}
-        >
-          <Text
-            style={[styles.messageText, isUser && styles.userMessageText]}
-            selectable
+    <AnimatedBubble>
+      <View>
+        {showBubble && (
+          <View
+            style={[styles.messageBubble, isUser ? styles.userBubble : styles.assistantBubble]}
+            onStartShouldSetResponder={() => false}
           >
-            {item.content}
-          </Text>
-        </View>
-      )}
-      {item.actions?.map((action, i) => (
-        <ActionCard key={i} action={action} />
-      ))}
-    </View>
+            {hasImage && (
+              <Image
+                source={{ uri: item.imageUri }}
+                style={styles.chatImage}
+                resizeMode="cover"
+              />
+            )}
+            {isUser ? (
+              hasText ? (
+                <Text style={[styles.messageText, styles.userMessageText]} selectable>
+                  {item.content}
+                </Text>
+              ) : null
+            ) : (
+              <HighlightedText text={item.content} style={styles.messageText} />
+            )}
+          </View>
+        )}
+        {item.actions?.map((action, i) => (
+          <ActionCard key={i} action={action} />
+        ))}
+      </View>
+    </AnimatedBubble>
   );
 });
 
@@ -268,10 +475,15 @@ const MoneyChat: React.FC = () => {
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [pendingActions, setPendingActions] = useState<ChatAction[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [imageUri, setImageUri] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const didAutoSendRef = useRef(false);
   const prevCountRef = useRef(chatMessages.length);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Voice input
+  const { isRecording, isTranscribing, error: voiceError, startRecording, stopAndTranscribe } = useVoiceInput();
+  const recordingAnim = useRef(new Animated.Value(1)).current;
 
   const isBusinessMode = mode === 'business';
   const suggestions = isBusinessMode ? BUSINESS_SUGGESTIONS : PERSONAL_SUGGESTIONS;
@@ -282,6 +494,58 @@ const MoneyChat: React.FC = () => {
     if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
     errorTimerRef.current = setTimeout(() => setErrorNotice(null), 4000);
   }, []);
+
+  // Recording pulse animation
+  useEffect(() => {
+    if (isRecording) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(recordingAnim, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+          Animated.timing(recordingAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    } else {
+      recordingAnim.setValue(1);
+    }
+  }, [isRecording, recordingAnim]);
+
+  // Show voice errors
+  useEffect(() => {
+    if (voiceError) showError(voiceError);
+  }, [voiceError, showError]);
+
+  // Photo — direct launch with permission request
+  const handlePickImage = useCallback(async (source: 'camera' | 'gallery') => {
+    try {
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') { showError('camera permission needed'); return; }
+        const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
+        if (!result.canceled && result.assets[0]) setImageUri(result.assets[0].uri);
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') { showError('photo library permission needed'); return; }
+        const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+        if (!result.canceled && result.assets[0]) setImageUri(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.warn('[MoneyChat] Image picker error:', err);
+      showError('could not open image picker');
+    }
+  }, [showError]);
+
+  // Mic — toggle recording
+  const handleMicPress = useCallback(async () => {
+    if (isRecording) {
+      const text = await stopAndTranscribe();
+      if (text) setInput(text);
+    } else {
+      lightTap();
+      await startRecording();
+    }
+  }, [isRecording, startRecording, stopAndTranscribe]);
 
   // Header clear button — only when messages exist
   useLayoutEffect(() => {
@@ -329,6 +593,8 @@ const MoneyChat: React.FC = () => {
     setEditingIndex(null);
 
     const result = executeAction(action);
+    if (result.success) successNotification();
+    else lightTap();
 
     // Show result as a clear text message
     const prefix = result.success ? 'Recorded \u2705' : 'Failed \u274C';
@@ -341,12 +607,6 @@ const MoneyChat: React.FC = () => {
     // Remove from pending
     setPendingActions((prev) => prev.filter((_, i) => i !== index));
   }, [addChatMessage]);
-
-  // Dismiss a pending action
-  const handleSkipAction = useCallback((index: number) => {
-    setEditingIndex(null);
-    setPendingActions((prev) => prev.filter((_, i) => i !== index));
-  }, []);
 
   // Auto-send note context if passed from NoteEditor
   useEffect(() => {
@@ -377,15 +637,37 @@ const MoneyChat: React.FC = () => {
 
   const handleSend = useCallback(async () => {
     const question = input.trim();
-    if (!question || isLoading) return;
+    const hasImage = !!imageUri;
+    if ((!question && !hasImage) || isLoading) return;
 
+    lightTap();
+    const sendText = question;
+    const sendImageUri = imageUri;
     setInput('');
+    setImageUri(null);
     setErrorNotice(null);
     setPendingActions([]); // clear any unconfirmed actions
-    addChatMessage({ role: 'user', content: question, timestamp: new Date().toISOString() });
+    addChatMessage({
+      role: 'user',
+      content: sendText,
+      timestamp: new Date().toISOString(),
+      imageUri: sendImageUri || undefined,
+    });
     setIsLoading(true);
 
-    const result = await sendChatMessage(question, chatMessages);
+    // Convert image to base64 if attached
+    let base64: string | undefined;
+    if (sendImageUri) {
+      try {
+        base64 = await readAsStringAsync(sendImageUri, { encoding: EncodingType.Base64 });
+      } catch {
+        showError('could not read image');
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    const result = await sendChatMessage(sendText, chatMessages, base64);
 
     if (result.ok) {
       processResponse(result.text);
@@ -394,7 +676,7 @@ const MoneyChat: React.FC = () => {
     }
 
     setIsLoading(false);
-  }, [input, isLoading, chatMessages, addChatMessage, showError, processResponse]);
+  }, [input, imageUri, isLoading, chatMessages, addChatMessage, showError, processResponse]);
 
   const renderMessage = useCallback(({ item }: { item: AIMessage }) => (
     <ChatBubble item={item} />
@@ -423,7 +705,7 @@ const MoneyChat: React.FC = () => {
                 <TouchableOpacity
                   key={suggestion}
                   style={styles.suggestionChip}
-                  onPress={() => setInput(suggestion)}
+                  onPress={() => { lightTap(); setInput(suggestion); }}
                 >
                   <Text style={styles.suggestionText}>{suggestion}</Text>
                 </TouchableOpacity>
@@ -470,16 +752,10 @@ const MoneyChat: React.FC = () => {
           visible={editingIndex !== null}
           action={editingIndex !== null ? pendingActions[editingIndex] : null}
           onConfirm={(edited) => editingIndex !== null && handleConfirmAction(editingIndex, edited)}
-          onDismiss={() => editingIndex !== null && handleSkipAction(editingIndex)}
           onClose={() => setEditingIndex(null)}
         />
 
-        {isLoading && (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color={CALM.accent} />
-            <Text style={styles.loadingText}>Thinking...</Text>
-          </View>
-        )}
+        {isLoading && <TypingDots />}
 
         {/* Transient error notice — not saved to chat */}
         {errorNotice && !isLoading && (
@@ -495,25 +771,102 @@ const MoneyChat: React.FC = () => {
           </View>
         )}
 
+        {/* Image preview strip */}
+        {imageUri && (
+          <View style={styles.imagePreviewBar}>
+            <Image source={{ uri: imageUri }} style={styles.previewThumb} />
+            <TouchableOpacity
+              style={styles.removePreview}
+              onPress={() => setImageUri(null)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <View style={styles.removePreviewBg}>
+                <Feather name="x" size={12} color="#fff" />
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Recording indicator */}
+        {isRecording && (
+          <View style={styles.recordingBar}>
+            <Animated.View style={[styles.recordingDot, { opacity: recordingAnim }]} />
+            <Text style={styles.recordingText}>recording...</Text>
+          </View>
+        )}
+
+        {/* Transcribing indicator */}
+        {isTranscribing && (
+          <View style={styles.recordingBar}>
+            <Text style={styles.recordingText}>transcribing...</Text>
+          </View>
+        )}
+
         <View style={styles.inputBar}>
+          {/* Camera + Gallery buttons */}
+          <TouchableOpacity
+            style={styles.inputIconButton}
+            onPress={() => handlePickImage('camera')}
+            disabled={isLoading || isRecording}
+          >
+            <Feather
+              name="camera"
+              size={18}
+              color={isLoading || isRecording ? CALM.border : CALM.textSecondary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.inputIconButton}
+            onPress={() => handlePickImage('gallery')}
+            disabled={isLoading || isRecording}
+          >
+            <Feather
+              name="image"
+              size={18}
+              color={isLoading || isRecording ? CALM.border : CALM.textSecondary}
+            />
+          </TouchableOpacity>
+
           <TextInput
             style={styles.textInput}
             value={input}
             onChangeText={setInput}
-            placeholder="Ask about your money..."
+            placeholder={isRecording ? '' : 'Ask about your money...'}
             placeholderTextColor={CALM.textSecondary}
             multiline
-            editable={!isLoading}
+            editable={!isLoading && !isRecording}
           />
-          <TouchableOpacity
-            style={[styles.sendButton, (!input.trim() || isLoading) && styles.sendButtonDisabled]}
-            onPress={handleSend}
-            disabled={!input.trim() || isLoading}
-          >
-            <Feather name="send" size={20} color={input.trim() && !isLoading ? '#fff' : CALM.textSecondary} />
-          </TouchableOpacity>
+
+          {/* Mic / Send toggle */}
+          {input.trim() || imageUri ? (
+            <TouchableOpacity
+              style={[styles.sendButton, isLoading && styles.sendButtonDisabled]}
+              onPress={handleSend}
+              disabled={isLoading}
+            >
+              <Feather name="send" size={20} color={!isLoading ? '#fff' : CALM.textSecondary} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                isRecording ? styles.micButtonActive : styles.micButton,
+                (isLoading || isTranscribing) && styles.sendButtonDisabled,
+              ]}
+              onPress={handleMicPress}
+              disabled={isLoading || isTranscribing}
+            >
+              <Feather
+                name={isRecording ? 'square' : 'mic'}
+                size={isRecording ? 16 : 20}
+                color={isRecording ? '#fff' : (isLoading || isTranscribing ? CALM.textSecondary : CALM.accent)}
+              />
+            </TouchableOpacity>
+          )}
         </View>
+
       </KeyboardAvoidingView>
+
     </View>
   );
 };
@@ -672,23 +1025,14 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'] as any,
   },
 
-  // Edit fields (inside modal)
+  // Edit fields (inside modal — person field)
   editField: {
-    gap: 2,
+    gap: 4,
   },
   editLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
-  },
-  editInput: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: CALM.border,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 8,
+    marginBottom: 2,
   },
 
   // Floating edit modal
@@ -702,11 +1046,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalCard: {
-    width: '85%',
+    width: '88%',
+    maxHeight: '80%',
     backgroundColor: CALM.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    gap: SPACING.sm,
+    paddingTop: SPACING.xl,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -719,52 +1064,110 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  pendingCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 2,
+  modalClose: {
+    position: 'absolute',
+    top: SPACING.md,
+    right: SPACING.md,
+    zIndex: 1,
   },
-  pendingCardIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pendingCardType: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
+  modalScrollContent: {
     gap: SPACING.sm,
-    marginTop: SPACING.sm,
   },
-  pendingSkipBtn: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 6,
+  typeRow: {
+    flexDirection: 'row',
+    gap: 6,
   },
-  pendingSkipText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
-  },
-  pendingConfirmBtn: {
+  typePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: CALM.deepOlive,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADIUS.full,
+    backgroundColor: CALM.background,
   },
-  pendingConfirmText: {
+  typePillActive: {
+    backgroundColor: withAlpha(CALM.bronze, 0.1),
+  },
+  typePillText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  typePillTextActive: {
+    color: CALM.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  amountSection: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    paddingVertical: SPACING.xs,
+  },
+  amountPrefix: {
+    fontSize: 18,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textMuted,
+  },
+  amountInput: {
+    flex: 1,
+    fontSize: 28,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.textPrimary,
+    padding: 0,
+  },
+  descInput: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: CALM.textPrimary,
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+    paddingVertical: SPACING.sm,
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: CALM.border,
+  },
+  debtToggleRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  debtToggle: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: RADIUS.md,
+    backgroundColor: CALM.background,
+  },
+  debtToggleTheyOwe: {
+    backgroundColor: withAlpha(CALM.deepOlive, 0.12),
+  },
+  debtToggleIOwe: {
+    backgroundColor: withAlpha('#C1694F', 0.12),
+  },
+  debtToggleText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  debtToggleTextTheyOwe: {
+    color: CALM.deepOlive,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  debtToggleTextIOwe: {
+    color: '#C1694F',
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  confirmBtnFull: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.xs,
+  },
+  confirmBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
@@ -788,17 +1191,23 @@ const styles = StyleSheet.create({
     color: CALM.bronze,
   },
 
-  // Loading
-  loadingRow: {
+  // Typing dots
+  typingBubble: {
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+    paddingVertical: 14,
+    paddingHorizontal: SPACING.lg,
+  },
+  typingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
+    gap: 6,
   },
-  loadingText: {
-    ...TYPE.muted,
-    color: CALM.accent,
+  typingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: CALM.accent,
   },
 
   // Input bar
@@ -806,10 +1215,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    padding: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
     backgroundColor: CALM.surface,
     borderTopWidth: 1,
     borderTopColor: CALM.border,
+  },
+  inputIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   textInput: {
     flex: 1,
@@ -832,6 +1249,71 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     backgroundColor: CALM.border,
   },
+  micButton: {
+    backgroundColor: CALM.background,
+    borderWidth: 1,
+    borderColor: CALM.border,
+  },
+  micButtonActive: {
+    backgroundColor: '#C1694F',
+  },
+
+  // Image preview
+  imagePreviewBar: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: CALM.border,
+    backgroundColor: CALM.surface,
+  },
+  previewThumb: {
+    width: 60,
+    height: 60,
+    borderRadius: RADIUS.md,
+  },
+  removePreview: {
+    position: 'absolute',
+    top: SPACING.sm - 6,
+    left: SPACING.lg + 48,
+  },
+  removePreviewBg: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Chat image in bubble
+  chatImage: {
+    width: 160,
+    height: 120,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.xs,
+  },
+
+  // Recording indicator
+  recordingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: 6,
+    backgroundColor: CALM.surface,
+  },
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#C1694F',
+  },
+  recordingText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: '#C1694F',
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
 });
 
 export default MoneyChat;

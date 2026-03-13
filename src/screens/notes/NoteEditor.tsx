@@ -19,23 +19,27 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNotesStore } from '../../store/notesStore';
+import { useWalletStore } from '../../store/walletStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { lightTap, mediumTap, warningNotification } from '../../services/haptics';
 import { useIntentEngine } from '../../hooks/useIntentEngine';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useCategories } from '../../hooks/useCategories';
 import { usePremiumStore } from '../../store/premiumStore';
 import { AIExtraction, ExtractionIntent } from '../../types';
 import { useLearningStore } from '../../store/learningStore';
+import CategoryPicker from '../../components/common/CategoryPicker';
+import WalletPicker from '../../components/common/WalletPicker';
 import ConfirmationCard from './ConfirmationCard';
 import QueryResultCard from './QueryResultCard';
 import PaywallModal from '../../components/common/PaywallModal';
 
-const EDIT_TYPES: { key: ExtractionIntent; label: string }[] = [
-  { key: 'expense', label: 'expense' },
-  { key: 'income', label: 'income' },
-  { key: 'debt', label: 'debt' },
-  { key: 'debt_update', label: 'payment' },
-  { key: 'seller_cost', label: 'cost' },
+const EDIT_TYPES: { key: ExtractionIntent; label: string; icon: keyof typeof Feather.glyphMap }[] = [
+  { key: 'expense', label: 'Expense', icon: 'arrow-up-right' },
+  { key: 'income', label: 'Income', icon: 'arrow-down-left' },
+  { key: 'debt', label: 'Debt', icon: 'repeat' },
+  { key: 'debt_update', label: 'Payment', icon: 'check-circle' },
+  { key: 'seller_cost', label: 'Cost', icon: 'shopping-bag' },
 ];
 
 const AUTO_SAVE_DELAY = 600; // ms
@@ -108,6 +112,30 @@ const NoteEditor: React.FC = () => {
   const [editAmount, setEditAmount] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editPerson, setEditPerson] = useState('');
+  const [editCategoryId, setEditCategoryId] = useState('');
+  const [editWalletId, setEditWalletId] = useState('');
+  const [editDebtType, setEditDebtType] = useState<'i_owe' | 'they_owe'>('they_owe');
+  const [editModalAnim, setEditModalAnim] = useState<'fade' | 'none'>('fade');
+  const [showTypePicker, setShowTypePicker] = useState(false);
+
+  const expenseCategories = useCategories('expense');
+  const incomeCategories = useCategories('income');
+  const wallets = useWalletStore((s) => s.wallets);
+
+  const editCategories = editType === 'income' ? incomeCategories : expenseCategories;
+  const showEditCategory = ['expense', 'income', 'subscription'].includes(editType);
+  const showEditWallet = ['expense', 'income'].includes(editType);
+  const showEditPerson = ['debt', 'debt_update'].includes(editType);
+  const showEditDebtDirection = editType === 'debt';
+
+  const handleEditNavToSettings = useCallback(() => {
+    setEditModalAnim('none');
+    setEditingExtraction(null);
+    setTimeout(() => {
+      navigation.navigate('Settings', { scrollTo: 'categories' });
+      setEditModalAnim('fade');
+    }, 50);
+  }, [navigation]);
 
   // Auto-open modal when new extractions appear (not on initial mount)
   useEffect(() => {
@@ -236,13 +264,33 @@ const NoteEditor: React.FC = () => {
     const ext = pendingExtractions.find((e) => e.id === id);
     if (!ext) return;
     lightTap();
+    setShowTypePicker(false);
     setEditingExtraction(ext);
     setEditType(ext.type);
     setEditAmount(ext.extractedData.amount?.toString() || '');
     setEditDescription(ext.extractedData.description || '');
     setEditPerson(ext.extractedData.person || '');
+
+    // Match category
+    const cats = ext.type === 'income' ? incomeCategories : expenseCategories;
+    const catStr = (ext.extractedData.category || '').toLowerCase().replace(/[\s&]+/g, '_');
+    const catMatch = cats.find((c) => c.id === catStr)
+      || cats.find((c) => c.name.toLowerCase().replace(/[\s&]+/g, '_') === catStr)
+      || cats[0];
+    setEditCategoryId(catMatch?.id || 'other');
+
+    // Match wallet
+    const walletStr = (ext.extractedData.wallet || '').toLowerCase();
+    const walletMatch = wallets.find((w) => w.name.toLowerCase() === walletStr)
+      || wallets.find((w) => w.isDefault)
+      || wallets[0];
+    setEditWalletId(walletMatch?.id || '');
+
+    // Debt direction
+    setEditDebtType(ext.extractedData.transactionType === 'income' ? 'they_owe' : 'i_owe');
+
     setShowExtractModal(false);
-  }, [pendingExtractions]);
+  }, [pendingExtractions, expenseCategories, incomeCategories, wallets]);
 
   const handleEditSave = useCallback(() => {
     if (!editingExtraction) return;
@@ -260,19 +308,30 @@ const NoteEditor: React.FC = () => {
       learn.learnPersonAlias(orig.extractedData.person || desc, editPerson);
     }
 
+    // Resolve category and wallet
+    const selectedCat = editCategories.find((c) => c.id === editCategoryId);
+    const selectedWallet = wallets.find((w) => w.id === editWalletId);
+
+    // For debt, derive transactionType from debt direction
+    const txnType = editType === 'debt'
+      ? (editDebtType === 'they_owe' ? 'income' : 'expense')
+      : (editType === 'income' ? 'income' : 'expense');
+
     updateExtraction(pageId, orig.id, {
       type: editType,
       extractedData: {
         amount,
         description: editDescription,
         person: editPerson || null,
-        transactionType: editType === 'income' ? 'income' : 'expense',
+        category: selectedCat?.id || orig.extractedData.category,
+        wallet: selectedWallet?.name || orig.extractedData.wallet,
+        transactionType: txnType,
       },
     });
     const id = orig.id;
     setEditingExtraction(null);
     confirmExtraction(id);
-  }, [editingExtraction, editType, editAmount, editDescription, editPerson, pageId, updateExtraction, confirmExtraction]);
+  }, [editingExtraction, editType, editAmount, editDescription, editPerson, editCategoryId, editWalletId, editDebtType, editCategories, wallets, pageId, updateExtraction, confirmExtraction]);
 
   const handleEditCancel = useCallback(() => {
     setEditingExtraction(null);
@@ -520,29 +579,34 @@ const NoteEditor: React.FC = () => {
           onPress={() => setShowExtractModal(false)}
         >
           <View
-            style={styles.modalCard}
+            style={styles.extractCard}
             onStartShouldSetResponder={() => true}
           >
-            {/* Modal header */}
-            <View style={styles.modalHeader}>
-              <View style={styles.modalTitleRow}>
-                <Feather name="zap" size={16} color={CALM.bronze} />
-                <Text style={styles.modalTitle}>extracted</Text>
+            {/* Close — top right */}
+            <TouchableOpacity
+              onPress={() => setShowExtractModal(false)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.extractClose}
+            >
+              <Feather name="x" size={18} color={CALM.textMuted} />
+            </TouchableOpacity>
+
+            {/* Header */}
+            <View style={styles.extractHeader}>
+              <Feather name="zap" size={25} color={CALM.bronze} />
+              <View>
+                <Text style={styles.extractTitle}>
+                  {pendingExtractions.length} item{pendingExtractions.length > 1 ? 's' : ''} found
+                </Text>
+                <Text style={styles.extractHint}>tap to edit</Text>
               </View>
-              <TouchableOpacity
-                onPress={() => setShowExtractModal(false)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Feather name="x" size={18} color={CALM.textMuted} />
-              </TouchableOpacity>
             </View>
 
             {/* Extraction cards */}
             <ScrollView
-              style={styles.modalScroll}
               showsVerticalScrollIndicator={false}
               bounces
-              scrollEventThrottle={16}
+              style={styles.extractScroll}
             >
               {pendingExtractions.map((ext) => (
                 <ConfirmationCard
@@ -558,111 +622,193 @@ const NoteEditor: React.FC = () => {
         </Pressable>
       </Modal>
 
-      {/* Edit extraction modal */}
+      {/* Edit extraction modal — matches MoneyChat ActionEditModal */}
       <Modal
         visible={!!editingExtraction}
         transparent
-        animationType="fade"
+        animationType={editModalAnim}
         onRequestClose={handleEditCancel}
       >
-        <Pressable style={styles.modalOverlay} onPress={handleEditCancel}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-          >
-            <Pressable style={styles.editCard} onPress={() => {}}>
-              {/* Header */}
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>edit</Text>
-                <TouchableOpacity
-                  onPress={handleEditCancel}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Feather name="x" size={18} color={CALM.textMuted} />
-                </TouchableOpacity>
-              </View>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable style={styles.modalOverlay} onPress={handleEditCancel}>
+            <View style={styles.editCard}>
+              {/* Close — top right */}
+              <TouchableOpacity
+                onPress={handleEditCancel}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.editClose}
+              >
+                <Feather name="x" size={18} color={CALM.textMuted} />
+              </TouchableOpacity>
 
-              {/* Type pills */}
-              <View style={styles.editTypePills}>
-                {EDIT_TYPES.map((t) => (
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+                contentContainerStyle={styles.editScrollContent}
+              >
+                {/* Type selector — tap opens floating picker */}
+                <View style={styles.editField}>
+                  <Text style={styles.editLabel}>type</Text>
                   <TouchableOpacity
-                    key={t.key}
-                    style={[
-                      styles.editTypePill,
-                      editType === t.key && styles.editTypePillActive,
-                    ]}
-                    onPress={() => setEditType(t.key)}
+                    style={styles.editTypeSelect}
+                    onPress={() => {
+                      lightTap();
+                      setShowTypePicker(true);
+                    }}
+                    activeOpacity={0.7}
                   >
-                    <Text
-                      style={[
-                        styles.editTypePillText,
-                        editType === t.key && styles.editTypePillTextActive,
-                      ]}
-                    >
-                      {t.label}
+                    <Feather
+                      name={EDIT_TYPES.find((t) => t.key === editType)?.icon || 'circle'}
+                      size={14}
+                      color={CALM.bronze}
+                    />
+                    <Text style={styles.editTypeSelectText}>
+                      {EDIT_TYPES.find((t) => t.key === editType)?.label || editType}
                     </Text>
+                    <Feather name="chevron-down" size={14} color={CALM.textMuted} />
                   </TouchableOpacity>
-                ))}
-              </View>
+                </View>
 
-              {/* Amount */}
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>amount</Text>
-                <View style={styles.editAmountRow}>
+                {/* Amount — large and clean */}
+                <View style={styles.editAmountSection}>
                   <Text style={styles.editAmountPrefix}>RM</Text>
                   <TextInput
                     style={styles.editAmountInput}
                     value={editAmount}
                     onChangeText={setEditAmount}
                     keyboardType="decimal-pad"
-                    placeholder="0"
-                    placeholderTextColor={CALM.textMuted}
+                    placeholder="0.00"
+                    placeholderTextColor={CALM.border}
                   />
                 </View>
-              </View>
 
-              {/* Description */}
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>description</Text>
+                {/* Description — underline style */}
                 <TextInput
-                  style={styles.editInput}
+                  style={styles.editDescInput}
                   value={editDescription}
                   onChangeText={setEditDescription}
-                  placeholder="what is this for?"
+                  placeholder="description"
                   placeholderTextColor={CALM.textMuted}
                 />
-              </View>
 
-              {/* Person */}
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>person</Text>
-                <TextInput
-                  style={styles.editInput}
-                  value={editPerson}
-                  onChangeText={setEditPerson}
-                  placeholder="who?"
-                  placeholderTextColor={CALM.textMuted}
-                />
-              </View>
+                {/* Category dropdown */}
+                {showEditCategory && (
+                  <CategoryPicker
+                    categories={editCategories}
+                    selectedId={editCategoryId}
+                    onSelect={setEditCategoryId}
+                    label="category"
+                    layout="dropdown"
+                    onNavigateToSettings={handleEditNavToSettings}
+                  />
+                )}
 
-              {/* Action buttons */}
-              <View style={styles.editActions}>
-                <TouchableOpacity style={styles.editCancelBtn} onPress={handleEditCancel}>
-                  <Text style={styles.editCancelText}>cancel</Text>
-                </TouchableOpacity>
+                {/* Wallet dropdown */}
+                {showEditWallet && wallets.length > 0 && (
+                  <WalletPicker
+                    wallets={wallets}
+                    selectedId={editWalletId}
+                    onSelect={setEditWalletId}
+                    label="wallet"
+                  />
+                )}
+
+                {/* Person + debt direction */}
+                {showEditPerson && (
+                  <>
+                    <View style={styles.editField}>
+                      <Text style={styles.editLabel}>person</Text>
+                      <TextInput
+                        style={styles.editDescInput}
+                        value={editPerson}
+                        onChangeText={setEditPerson}
+                        placeholder="name"
+                        placeholderTextColor={CALM.textMuted}
+                      />
+                    </View>
+                    {showEditDebtDirection && (
+                      <View style={styles.editDebtRow}>
+                        <TouchableOpacity
+                          style={[styles.editDebtToggle, editDebtType === 'they_owe' && styles.editDebtTheyOwe]}
+                          onPress={() => setEditDebtType('they_owe')}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.editDebtText, editDebtType === 'they_owe' && styles.editDebtTextTheyOwe]}>
+                            they owe me
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.editDebtToggle, editDebtType === 'i_owe' && styles.editDebtIOwe]}
+                          onPress={() => setEditDebtType('i_owe')}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.editDebtText, editDebtType === 'i_owe' && styles.editDebtTextIOwe]}>
+                            I owe them
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
+                )}
+
+                {/* Confirm */}
                 <TouchableOpacity
-                  style={[styles.editSaveBtn, !editAmount && styles.editSaveBtnDisabled]}
+                  style={[styles.editConfirmBtn, !editAmount && styles.editConfirmBtnDisabled]}
                   onPress={handleEditSave}
                   disabled={!editAmount}
                   activeOpacity={0.7}
                 >
-                  <Feather name="check" size={14} color="#fff" />
-                  <Text style={styles.editSaveText}>save</Text>
+                  <Feather name="check" size={15} color="#fff" />
+                  <Text style={styles.editConfirmText}>confirm</Text>
                 </TouchableOpacity>
-              </View>
-            </Pressable>
-          </KeyboardAvoidingView>
-        </Pressable>
+              </ScrollView>
+            </View>
+          </Pressable>
+        </KeyboardAvoidingView>
+
+        {/* Type picker — inside edit modal */}
+        <Modal
+          visible={showTypePicker}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowTypePicker(false)}
+        >
+          <TouchableOpacity
+            style={styles.typePickerOverlay}
+            activeOpacity={1}
+            onPress={() => setShowTypePicker(false)}
+          >
+            <View style={styles.typePickerCard} onStartShouldSetResponder={() => true}>
+              <Text style={styles.typePickerTitle}>select type</Text>
+              {EDIT_TYPES.map((t) => {
+                const active = editType === t.key;
+                return (
+                  <TouchableOpacity
+                    key={t.key}
+                    style={[styles.typePickerOption, active && styles.typePickerOptionActive]}
+                    onPress={() => {
+                      setEditType(t.key);
+                      setShowTypePicker(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.typePickerIcon, active && styles.typePickerIconActive]}>
+                      <Feather name={t.icon} size={18} color={active ? CALM.bronze : CALM.textMuted} />
+                    </View>
+                    <Text style={[styles.typePickerText, active && styles.typePickerTextActive]}>
+                      {t.label}
+                    </Text>
+                    {active && <Feather name="check" size={18} color={CALM.bronze} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </TouchableOpacity>
+        </Modal>
       </Modal>
 
       <PaywallModal
@@ -802,32 +948,49 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: SPACING.lg,
   },
-  modalCard: {
-    backgroundColor: '#fff',
+  extractCard: {
+    width: '88%',
+    maxHeight: '75%',
+    backgroundColor: CALM.surface,
     borderRadius: RADIUS.xl,
-    width: '100%',
-    maxHeight: '70%',
     padding: SPACING.lg,
-    gap: SPACING.sm,
+    paddingTop: SPACING.xl,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 24,
+      },
+      android: {
+        elevation: 12,
+      },
+    }),
   },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  extractClose: {
+    position: 'absolute',
+    top: SPACING.md,
+    right: SPACING.md,
+    zIndex: 1,
   },
-  modalTitleRow: {
+  extractHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  modalTitle: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+  extractHint: {
+    fontSize: TYPOGRAPHY.size.xxs || 10,
+    color: CALM.bronze,
+    fontStyle: 'italic',
+    marginBottom: SPACING.xs,
   },
-  modalScroll: {
+  extractTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
+  },
+  extractScroll: {
     flexShrink: 1,
   },
   classifyingRow: {
@@ -879,107 +1042,189 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: SPACING['3xl'],
   },
-  // Edit modal
+  // Edit modal — matches MoneyChat ActionEditModal
   editCard: {
+    width: '88%',
+    maxHeight: '80%',
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    paddingTop: SPACING.xl,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 24,
+      },
+      android: {
+        elevation: 12,
+      },
+    }),
+  },
+  editClose: {
+    position: 'absolute',
+    top: SPACING.md,
+    right: SPACING.md,
+    zIndex: 1,
+  },
+  editScrollContent: {
+    gap: SPACING.sm,
+  },
+  editTypeSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: SPACING.sm,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    borderRadius: RADIUS.md,
+  },
+  editTypeSelectText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  typePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  typePickerCard: {
+    width: '75%',
     backgroundColor: '#fff',
     borderRadius: RADIUS.xl,
-    width: '100%',
     padding: SPACING.lg,
-    gap: SPACING.md,
+    gap: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 12,
+      },
+    }),
   },
-  editTypePills: {
+  typePickerTitle: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginBottom: SPACING.sm,
+  },
+  typePickerOption: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.xs,
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: 10,
+    paddingHorizontal: SPACING.xs,
+    borderRadius: RADIUS.md,
   },
-  editTypePill: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+  typePickerOptionActive: {
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
   },
-  editTypePillActive: {
-    backgroundColor: CALM.bronze,
+  typePickerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  editTypePillText: {
-    fontSize: 11,
+  typePickerIconActive: {
+    backgroundColor: withAlpha(CALM.bronze, 0.12),
+  },
+  typePickerText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+  },
+  typePickerTextActive: {
+    color: CALM.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  editAmountSection: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    paddingVertical: SPACING.xs,
+  },
+  editAmountPrefix: {
+    fontSize: 18,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.textMuted,
   },
-  editTypePillTextActive: {
-    color: '#fff',
+  editAmountInput: {
+    flex: 1,
+    fontSize: 28,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.textPrimary,
+    padding: 0,
+  },
+  editDescInput: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: CALM.textPrimary,
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+    paddingVertical: SPACING.sm,
   },
   editField: {
     gap: 4,
   },
   editLabel: {
-    fontSize: 11,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
-    textTransform: 'lowercase' as any,
+    marginBottom: 2,
   },
-  editAmountRow: {
+  editDebtRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: withAlpha(CALM.textMuted, 0.04),
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: CALM.border,
-    paddingHorizontal: SPACING.md,
-  },
-  editAmountPrefix: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textSecondary,
-    marginRight: 4,
-  },
-  editAmountInput: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  editInput: {
-    backgroundColor: withAlpha(CALM.textMuted, 0.04),
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: CALM.border,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
-  },
-  editActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
     gap: SPACING.sm,
+  },
+  editDebtToggle: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: RADIUS.md,
+    backgroundColor: CALM.background,
+  },
+  editDebtTheyOwe: {
+    backgroundColor: withAlpha(CALM.deepOlive, 0.12),
+  },
+  editDebtIOwe: {
+    backgroundColor: withAlpha('#C1694F', 0.12),
+  },
+  editDebtText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  editDebtTextTheyOwe: {
+    color: CALM.deepOlive,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  editDebtTextIOwe: {
+    color: '#C1694F',
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  editConfirmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: CALM.deepOlive,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.md,
     marginTop: SPACING.xs,
   },
-  editCancelBtn: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: 8,
-  },
-  editCancelText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
-  },
-  editSaveBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: CALM.deepOlive,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: 8,
-    borderRadius: RADIUS.full,
-  },
-  editSaveBtnDisabled: {
+  editConfirmBtnDisabled: {
     opacity: 0.4,
   },
-  editSaveText: {
-    fontSize: TYPOGRAPHY.size.xs,
+  editConfirmText: {
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },

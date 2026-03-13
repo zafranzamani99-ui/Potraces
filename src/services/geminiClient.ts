@@ -16,18 +16,25 @@ const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 const modelBlocked: Record<string, number> = {}; // model → unblock timestamp
 let allModelsExhausted = false;
 
+const MAX_BLOCK_MS = 120_000; // Cap blocks at 2 minutes — free tier resets fast
+
 export function isGeminiAvailable(): boolean {
   if (!GEMINI_KEY) return false;
+  const now = Date.now();
+  // Auto-clear stale blocks (cap at MAX_BLOCK_MS)
+  for (const m of MODELS) {
+    if (modelBlocked[m] && modelBlocked[m] - now > MAX_BLOCK_MS) {
+      modelBlocked[m] = now + MAX_BLOCK_MS;
+    }
+  }
   if (allModelsExhausted) {
-    // Auto-reset if any model's block has expired
-    const now = Date.now();
     if (MODELS.some((m) => !modelBlocked[m] || now >= modelBlocked[m])) {
       allModelsExhausted = false;
     } else {
       return false;
     }
   }
-  return MODELS.some((m) => !modelBlocked[m] || Date.now() >= modelBlocked[m]);
+  return MODELS.some((m) => !modelBlocked[m] || now >= modelBlocked[m]);
 }
 
 export function isDailyQuotaExhausted(): boolean {
@@ -122,20 +129,31 @@ function blockModel(model: string, durationMs: number) {
   }
 }
 
+/**
+ * @param body       Gemini request body
+ * @param timeoutMs  Request timeout (default 15s)
+ * @param noFallback If true, only try the primary model — skip fallback.
+ *                   Use for vision/image requests where both models share
+ *                   the same rate limit quota, so fallback just wastes a call.
+ */
 export async function callGeminiAPI(
   body: GeminiRequestBody,
-  timeoutMs = 15_000
+  timeoutMs = 15_000,
+  noFallback = false
 ): Promise<any | null> {
   if (!isGeminiAvailable()) return null;
 
   const available = getAvailableModels();
   if (available.length === 0) return null;
 
+  // For noFallback (vision), only try the first available model
+  const modelsToTry = noFallback ? [available[0]] : available;
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    for (const model of available) {
+    for (const model of modelsToTry) {
       const response = await doFetch(model, body, controller.signal);
 
       // On 429 → block this model for Google's specified time, try next immediately

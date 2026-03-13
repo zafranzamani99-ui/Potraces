@@ -47,6 +47,9 @@ export function useIntentEngine({
   const updateExtractionStatus = useNotesStore((s) => s.updateExtractionStatus);
   const wallets = useWalletStore((s) => s.wallets);
   const addTransaction = usePersonalStore((s) => s.addTransaction);
+  const addSubscription = usePersonalStore((s) => s.addSubscription);
+  const goals = usePersonalStore((s) => s.goals);
+  const contributeToGoal = usePersonalStore((s) => s.contributeToGoal);
   const mode = useAppStore((s) => s.mode);
 
   // Debt store
@@ -240,17 +243,59 @@ export function useIntentEngine({
         return;
       }
 
+      // ── Subscription → personalStore ──
+      if (extraction.type === 'subscription' && amount > 0) {
+        const cycle = (extraction.extractedData as any).billingCycle || 'monthly';
+        const now = new Date();
+        const nextBilling = new Date(now);
+        if (cycle === 'monthly') nextBilling.setMonth(nextBilling.getMonth() + 1);
+        else if (cycle === 'quarterly') nextBilling.setMonth(nextBilling.getMonth() + 3);
+        else if (cycle === 'yearly') nextBilling.setFullYear(nextBilling.getFullYear() + 1);
+        else nextBilling.setDate(nextBilling.getDate() + 7);
+
+        addSubscription({
+          name: description || 'subscription',
+          amount,
+          billingCycle: cycle,
+          startDate: now,
+          nextBillingDate: nextBilling,
+          category: category || 'subscription',
+          isActive: true,
+          reminderDays: 3,
+          isInstallment: false,
+        });
+        updateExtractionStatus(pageId, extractionId, 'confirmed');
+        return;
+      }
+
+      // ── Savings Goal Contribution → personalStore ──
+      if (extraction.type === 'savings_goal' && amount > 0) {
+        const goalName = description || '';
+        const goal = goals.find(
+          (g) => g.name.toLowerCase().includes(goalName.toLowerCase()) ||
+                 goalName.toLowerCase().includes(g.name.toLowerCase())
+        );
+        if (goal) {
+          contributeToGoal(goal.id, amount, description || 'contribution from note');
+          updateExtractionStatus(pageId, extractionId, 'confirmed', goal.id);
+        } else {
+          // No matching goal — just mark confirmed
+          updateExtractionStatus(pageId, extractionId, 'confirmed');
+        }
+        return;
+      }
+
       // ── Seller Order → sellerStore (simplified — no product matching) ──
       // Orders are complex (need items array). Mark confirmed and let user
       // create the full order through NewOrder screen.
-      // Future: match product names → build items array automatically.
 
       // ── Fallback: mark confirmed ──
       updateExtractionStatus(pageId, extractionId, 'confirmed');
     },
     [
       pageId, wallets, mode,
-      addTransaction, updateExtractionStatus,
+      addTransaction, addSubscription, goals, contributeToGoal,
+      updateExtractionStatus,
       contacts, debts, addDebt, addPayment, addContact,
       addIngredientCost, getActiveSeason,
     ]

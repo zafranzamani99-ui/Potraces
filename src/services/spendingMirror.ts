@@ -146,7 +146,7 @@ export async function generateSpendingMirror(): Promise<string | null> {
     store.spendingMirrorGeneratedAt
   ) {
     const ageMs = Date.now() - new Date(store.spendingMirrorGeneratedAt).getTime();
-    if (ageMs < 6 * 60 * 60 * 1000) {
+    if (ageMs < 24 * 60 * 60 * 1000) {
       return store.spendingMirrorText;
     }
   }

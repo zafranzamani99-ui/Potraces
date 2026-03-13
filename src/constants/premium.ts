@@ -6,7 +6,7 @@ export const FREE_TIER = {
   maxWalletsPerType: 1,
   maxBudgets: 5,
   maxScansPerMonth: 15,
-  maxAiCallsPerMonth: Infinity,
+  maxAiCallsPerMonth: 100,
   exportData: true,
   googleDocsSync: false,
 };

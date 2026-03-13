@@ -19,19 +19,6 @@ interface ConfirmationCardProps {
   onEdit?: (id: string) => void;
 }
 
-const INTENT_LABELS: Record<string, string> = {
-  expense: 'expense',
-  income: 'income',
-  debt: 'debt',
-  debt_update: 'debt update',
-  bnpl: 'pay later',
-  seller_order: 'order',
-  seller_cost: 'cost',
-  query: 'question',
-  savings_goal: 'savings',
-  plain: 'note',
-};
-
 const INTENT_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   expense: 'arrow-up-right',
   income: 'arrow-down-left',
@@ -43,6 +30,19 @@ const INTENT_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   query: 'help-circle',
   savings_goal: 'target',
   plain: 'file-text',
+};
+
+const INTENT_LABELS: Record<string, string> = {
+  expense: 'Expense',
+  income: 'Income',
+  debt: 'Debt',
+  debt_update: 'Payment',
+  bnpl: 'Pay Later',
+  seller_order: 'Order',
+  seller_cost: 'Cost',
+  query: 'Question',
+  savings_goal: 'Savings',
+  plain: 'Note',
 };
 
 const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
@@ -69,13 +69,20 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
     onSkip(extraction.id);
   }, [extraction.id, onSkip]);
 
+  const handleEdit = useCallback(() => {
+    if (onEdit) {
+      lightTap();
+      onEdit(extraction.id);
+    }
+  }, [extraction.id, onEdit]);
+
   if (isDone) {
     return (
       <View style={[styles.card, styles.cardDone]}>
         <View style={styles.doneRow}>
           <Feather
             name={isConfirmed ? 'check' : 'x'}
-            size={14}
+            size={13}
             color={isConfirmed ? CALM.deepOlive : CALM.textMuted}
           />
           <Text style={[styles.doneText, isSkipped && styles.doneTextSkipped]}>
@@ -87,63 +94,37 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
     );
   }
 
-  const handleEdit = useCallback(() => {
-    if (onEdit) {
-      lightTap();
-      onEdit(extraction.id);
-    }
-  }, [extraction.id, onEdit]);
+  const sub = [category, wallet, person].filter(Boolean).join(' · ');
 
   return (
     <Animated.View style={[styles.card, { opacity: fadeSlide.opacity, transform: fadeSlide.transform }]}>
-      <TouchableOpacity activeOpacity={0.7} onPress={handleEdit}>
-        {/* Intent badge + description */}
-        <View style={styles.header}>
-          <View style={styles.intentBadge}>
-            <Feather
-              name={INTENT_ICONS[type] || 'circle'}
-              size={12}
-              color={CALM.bronze}
-            />
-            <Text style={styles.intentLabel}>
-              {INTENT_LABELS[type] || type}
-            </Text>
-          </View>
-          {amount > 0 && (
-            <Text style={styles.amount}>RM {amount.toFixed(2)}</Text>
-          )}
+      <TouchableOpacity style={styles.row} activeOpacity={0.7} onPress={handleEdit}>
+        {/* Icon circle */}
+        <View style={styles.iconWrap}>
+          <Feather
+            name={INTENT_ICONS[type] || 'circle'}
+            size={16}
+            color={CALM.bronze}
+          />
         </View>
 
-        {/* Details */}
-        {description ? (
-          <Text style={styles.description} numberOfLines={2}>
-            {description}
+        {/* Center: name + subtitle */}
+        <View style={styles.center}>
+          <Text style={styles.name} numberOfLines={1}>
+            {description || INTENT_LABELS[type] || type}
           </Text>
-        ) : null}
-
-        <View style={styles.metaRow}>
-          {category && (
-            <View style={styles.metaPill}>
-              <Feather name="tag" size={10} color={CALM.textMuted} />
-              <Text style={styles.metaText}>{category}</Text>
-            </View>
-          )}
-          {wallet && (
-            <View style={styles.metaPill}>
-              <Feather name="credit-card" size={10} color={CALM.textMuted} />
-              <Text style={styles.metaText}>{wallet}</Text>
-            </View>
-          )}
-          {person && (
-            <View style={styles.metaPill}>
-              <Feather name="user" size={10} color={CALM.textMuted} />
-              <Text style={styles.metaText}>{person}</Text>
-            </View>
-          )}
+          {sub ? (
+            <Text style={styles.sub} numberOfLines={1}>{sub}</Text>
+          ) : null}
         </View>
+
+        {/* Right: amount */}
+        {amount > 0 && (
+          <Text style={styles.amount}>RM {amount.toFixed(2)}</Text>
+        )}
       </TouchableOpacity>
 
-      {/* Action buttons */}
+      {/* Actions */}
       <View style={styles.actions}>
         <TouchableOpacity
           style={styles.skipBtn}
@@ -157,7 +138,7 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
           onPress={handleConfirm}
           activeOpacity={0.7}
         >
-          <Feather name="check" size={14} color="#fff" />
+          <Feather name="check" size={13} color="#fff" />
           <Text style={styles.confirmText}>save</Text>
         </TouchableOpacity>
       </View>
@@ -169,72 +150,52 @@ export default React.memo(ConfirmationCard);
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: CALM.border,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-    gap: SPACING.xs,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+    gap: 8,
   },
   cardDone: {
-    opacity: 0.6,
+    opacity: 0.5,
     paddingVertical: SPACING.sm,
   },
-  header: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: SPACING.sm,
   },
-  intentBadge: {
-    flexDirection: 'row',
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
   },
-  intentLabel: {
-    fontSize: 11,
+  center: {
+    flex: 1,
+    gap: 2,
+  },
+  name: {
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: CALM.textPrimary,
+  },
+  sub: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
   },
   amount: {
-    fontSize: TYPOGRAPHY.size.lg,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: CALM.textPrimary,
     fontVariant: ['tabular-nums'] as any,
-  },
-  description: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
-    lineHeight: 20,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.xs,
-  },
-  metaPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: RADIUS.full,
-  },
-  metaText: {
-    fontSize: 10,
-    color: CALM.textMuted,
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: SPACING.sm,
-    marginTop: SPACING.xs,
   },
   skipBtn: {
     paddingHorizontal: SPACING.md,

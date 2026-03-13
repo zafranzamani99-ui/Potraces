@@ -53,7 +53,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .hdr-avatar img{width:100%;height:100%;object-fit:cover}
 .hdr-name{font-size:28px;font-weight:800;color:#fff;letter-spacing:-.5px;position:relative;z-index:1;line-height:1.2}
 .hdr-sub{font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;position:relative;z-index:1}
-.shop-notice{background:rgba(255,255,255,.08);border-radius:var(--rs);padding:10px 16px;margin:14px 8px 0;font-size:13px;color:rgba(255,255,255,.7);line-height:1.5;text-align:center;position:relative;z-index:1;backdrop-filter:blur(4px)}
+.shop-notice{margin:14px 16px 0;padding:0;font-size:13px;color:rgba(255,255,255,.55);line-height:1.5;text-align:center;position:relative;z-index:1;font-style:italic}
 
 /* ═══ TRUST BAR ═══ */
 .trust-bar{display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border2);font-size:11px;color:var(--text2);flex-wrap:wrap}
@@ -77,15 +77,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .sec-title{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze)}
 .sec-count{font-size:11px;color:var(--text3);background:var(--border2);padding:2px 10px;border-radius:20px;font-weight:500}
-
-/* ═══ INFO CARD ═══ */
-.info-card{background:var(--surface);border-radius:var(--r);padding:14px 16px;margin:0 16px 4px;box-shadow:var(--shadow)}
-.info-row{display:flex;align-items:flex-start;gap:10px;padding:4px 0}
-.info-row+.info-row{margin-top:6px}
-.info-icon{flex-shrink:0;width:16px;height:16px;color:var(--text3);margin-top:1px}
-.info-label{font-size:13px;color:var(--text2);line-height:1.4}
-.pay-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.pay-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--border2);border-radius:var(--rr);font-size:11px;font-weight:600;color:var(--text2)}
 
 /* ═══ PRODUCTS ═══ */
 .prod-list{display:flex;flex-direction:column;gap:6px}
@@ -266,7 +257,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   <div id="main">
     <div class="header">
       <div class="hdr-actions" id="hdr-actions" style="display:none">
-        <button class="hdr-btn" onclick="showHistory()" title="Sejarah pesanan">
+        <button class="hdr-btn" onclick="showHistory()" title="Order history">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </button>
       </div>
@@ -303,19 +294,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     </div>
 
     <div class="wrap">
-      <!-- Delivery & payment info -->
-      <div class="info-card" id="info-card" style="margin-top:16px">
-        <div class="info-row">
-          <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-          <div class="info-label">Pickup / COD / Delivery</div>
-        </div>
-        <div class="pay-pills" id="pay-pills">
-          <span class="pay-pill">💵 Cash / COD</span>
-          <span class="pay-pill">🏦 Bank Transfer</span>
-          <span class="pay-pill">📱 DuitNow</span>
-        </div>
-      </div>
-
       <div class="sec">
         <div class="sec-head">
           <div class="sec-title">Menu</div>
@@ -353,7 +331,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
             <textarea id="cnote" rows="2" placeholder="Special requests, allergies, etc..." maxlength="500"></textarea>
           </div>
         </div>
-        <div class="hp-field" aria-hidden="true"><label>Jangan isi<input id="hp-email" type="email" tabindex="-1" autocomplete="off"></label></div>
+        <div class="hp-field" aria-hidden="true"><label>Do not fill<input id="hp-email" type="email" tabindex="-1" autocomplete="off"></label></div>
       </div>
 
       <div class="div"></div>
@@ -556,15 +534,15 @@ function renderProds(){
     return '<div class="prod-card'+(q>0?' in-cart':'')+'" id="pc-'+sid+'">'+
       '<div class="prod-img">'+imgHtml+'</div>'+
       '<div class="prod-info">'+
-        '<div class="prod-name">'+escH(p.name)+(isPopular?'<span class="popular-badge">🔥 Terlaris</span>':'')+'</div>'+
+        '<div class="prod-name">'+escH(p.name)+(isPopular?'<span class="popular-badge">🔥 Popular</span>':'')+'</div>'+
         '<div class="prod-unit">per '+escH(p.unit)+'</div>'+
         '<div class="prod-price">'+fmt(p.price_per_unit)+'</div>'+
       '</div>'+
       '<div class="qty-wrap">'+
         '<div class="qty-ctrl'+(q>0?' active':'')+'" id="qc-'+sid+'">'+
-          '<button class="qty-btn" onclick="setQty(\''+sid+'\',-1)" aria-label="Kurang">&#8722;</button>'+
+          '<button class="qty-btn" onclick="setQty(\''+sid+'\',-1)" aria-label="Decrease">&#8722;</button>'+
           '<span class="qty-val" id="qv-'+sid+'">'+q+'</span>'+
-          '<button class="qty-btn" onclick="setQty(\''+sid+'\',1)" aria-label="Tambah">+</button>'+
+          '<button class="qty-btn" onclick="setQty(\''+sid+'\',1)" aria-label="Increase">+</button>'+
         '</div>'+
       '</div>'+
     '</div>'

@@ -36,7 +36,10 @@ export const usePremiumStore = create<PremiumState>()(
       resetScanCountIfNeeded: () => {
         const state = get();
         const currentMonthStart = startOfMonth(new Date());
-        if (state.scanResetDate < currentMonthStart) {
+        const resetDate = state.scanResetDate instanceof Date
+          ? state.scanResetDate
+          : new Date(state.scanResetDate);
+        if (isNaN(resetDate.getTime()) || resetDate < currentMonthStart) {
           set({
             scanCount: 0,
             scanResetDate: currentMonthStart,
@@ -54,7 +57,10 @@ export const usePremiumStore = create<PremiumState>()(
       resetAiCallsIfNeeded: () => {
         const state = get();
         const currentMonthStart = startOfMonth(new Date());
-        if (state.aiCallsResetDate < currentMonthStart) {
+        const resetDate = state.aiCallsResetDate instanceof Date
+          ? state.aiCallsResetDate
+          : new Date(state.aiCallsResetDate);
+        if (isNaN(resetDate.getTime()) || resetDate < currentMonthStart) {
           set({
             aiCallsCount: 0,
             aiCallsResetDate: currentMonthStart,

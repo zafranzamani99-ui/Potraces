@@ -39,7 +39,7 @@ const SubscriptionList: React.FC = () => {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState(expenseCategories[0]?.id || 'food');
-  const [billingCycle, setBillingCycle] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
+  const [billingCycle, setBillingCycle] = useState<'weekly' | 'monthly' | 'yearly' | 'quarterly'>('monthly');
   const [reminderDays, setReminderDays] = useState('3');
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [isInstallment, setIsInstallment] = useState(false);
@@ -472,7 +472,7 @@ const SubscriptionList: React.FC = () => {
                       styles.cycleButton,
                       billingCycle === cycle.value && styles.cycleButtonActive,
                     ]}
-                    onPress={() => setBillingCycle(cycle.value as 'weekly' | 'monthly' | 'yearly')}
+                    onPress={() => setBillingCycle(cycle.value as 'weekly' | 'monthly' | 'yearly' | 'quarterly')}
                   >
                     <Text
                       style={[
