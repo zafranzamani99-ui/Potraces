@@ -55,14 +55,14 @@ const Tab = createBottomTabNavigator();
 const ICON_MAP: Record<string, keyof typeof Feather.glyphMap> = {
   Dashboard: 'home',
   SellerHome: 'home',
-  SellerOrders: 'clipboard',
+  SellerOrders: 'file-text',
   SellerNewOrder: 'plus-circle',
   SellerCustomers: 'users',
-  SellerManage: 'grid',
+  SellerManage: 'sliders',
   // Stall
   StallDashboard: 'home',
   StallSell: 'shopping-bag',
-  StallHistory: 'clock',
+  StallHistory: 'calendar',
   StallRegulars: 'heart',
   Clients: 'users',
   FreelancerHome: 'home',
@@ -95,7 +95,7 @@ const BusinessNavigator: React.FC = () => {
       case 'seller':
         return (
           <>
-            <Tab.Screen name="SellerHome" component={SellerDashboard} options={{ title: 'Home' }} />
+            <Tab.Screen name="SellerHome" component={SellerDashboard} options={{ title: 'Home', headerShown: false }} />
             <Tab.Screen name="SellerOrders" component={OrderList} options={{ title: 'Orders' }} />
             <Tab.Screen name="SellerNewOrder" component={NewOrder} options={{ title: 'New Order' }} />
             <Tab.Screen name="SellerCustomers" component={SellerCustomers} options={{ title: 'Customers' }} />
@@ -106,7 +106,7 @@ const BusinessNavigator: React.FC = () => {
       case 'stall':
         return (
           <>
-            <Tab.Screen name="StallDashboard" component={StallDashboard} options={{ title: 'Home' }} />
+            <Tab.Screen name="StallDashboard" component={StallDashboard} options={{ title: 'Home', headerShown: false }} />
             <Tab.Screen name="StallHistory" component={SessionHistory} options={{ title: 'History' }} />
             <Tab.Screen name="StallSell" component={SellScreen} options={{ title: 'Sell' }} />
             <Tab.Screen name="StallRegulars" component={RegularCustomers} options={{ title: 'Regulars' }} />
@@ -117,7 +117,7 @@ const BusinessNavigator: React.FC = () => {
       case 'freelance':
         return (
           <>
-            <Tab.Screen name="FreelancerHome" component={FreelancerDashboard} options={{ title: 'Home' }} />
+            <Tab.Screen name="FreelancerHome" component={FreelancerDashboard} options={{ title: 'Home', headerShown: false }} />
             <Tab.Screen name="FreelancerClients" component={FreelancerClientList} options={{ title: 'Clients' }} />
             <Tab.Screen name="Notes" component={NotesHome} options={{ title: 'Notes' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
@@ -127,7 +127,7 @@ const BusinessNavigator: React.FC = () => {
       case 'rider':
         return (
           <>
-            <Tab.Screen name="OnTheRoadHome" component={OnTheRoadDashboard} options={{ title: 'Home' }} />
+            <Tab.Screen name="OnTheRoadHome" component={OnTheRoadDashboard} options={{ title: 'Home', headerShown: false }} />
             <Tab.Screen name="Notes" component={NotesHome} options={{ title: 'Notes' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
           </>
@@ -136,7 +136,7 @@ const BusinessNavigator: React.FC = () => {
       case 'parttime':
         return (
           <>
-            <Tab.Screen name="PartTimeHome" component={PartTimeDashboard} options={{ title: 'Home' }} />
+            <Tab.Screen name="PartTimeHome" component={PartTimeDashboard} options={{ title: 'Home', headerShown: false }} />
             <Tab.Screen name="Notes" component={NotesHome} options={{ title: 'Notes' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
           </>
@@ -145,7 +145,7 @@ const BusinessNavigator: React.FC = () => {
       case 'mixed':
         return (
           <>
-            <Tab.Screen name="MixedHome" component={MixedDashboard} options={{ title: 'Home' }} />
+            <Tab.Screen name="MixedHome" component={MixedDashboard} options={{ title: 'Home', headerShown: false }} />
             <Tab.Screen name="Notes" component={NotesHome} options={{ title: 'Notes' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
           </>
@@ -155,7 +155,7 @@ const BusinessNavigator: React.FC = () => {
         // Fallback — legacy tabs for users who haven't set up yet
         return (
           <>
-            <Tab.Screen name="Dashboard" component={BusinessDashboard} options={{ title: 'Home' }} />
+            <Tab.Screen name="Dashboard" component={BusinessDashboard} options={{ title: 'Home', headerShown: false }} />
             <Tab.Screen name="Inventory" component={Inventory} options={{ title: 'Inventory' }} />
             <Tab.Screen name="POS" component={POS} options={{ title: 'POS' }} />
             <Tab.Screen name="CRM" component={CRM} options={{ title: 'CRM' }} />

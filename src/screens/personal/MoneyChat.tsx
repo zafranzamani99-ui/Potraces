@@ -15,8 +15,11 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { useHeaderHeight } from '@react-navigation/elements';
 import * as ImagePicker from 'expo-image-picker';
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
+import { format } from 'date-fns';
+import * as Clipboard from 'expo-clipboard';
 import { useAppStore } from '../../store/appStore';
 import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import { useWalletStore } from '../../store/walletStore';
@@ -126,7 +129,7 @@ const AnimatedBubble = memo(({ children }: { children: React.ReactNode }) => {
 const HighlightedText = memo(({ text, style }: { text: string; style: any }) => {
   const parts = text.split(/(RM\s?[\d,]+\.?\d*)/gi);
   return (
-    <Text style={style} selectable>
+    <Text style={style}>
       {parts.map((part, i) =>
         /^RM\s?[\d,]+\.?\d*$/i.test(part) ? (
           <Text key={i} style={{ fontWeight: '700', color: CALM.deepOlive }}>{part}</Text>
@@ -164,7 +167,7 @@ const ActionCard = memo(({ action }: { action: AIMessageAction }) => {
 });
 
 // Compact pending action chip — tap to open edit modal
-const PendingChip = ({
+const PendingChip = memo(({
   action,
   onPress,
 }: {
@@ -186,14 +189,14 @@ const PendingChip = ({
       <Text style={styles.pendingChipAmount}>RM {action.amount.toFixed(2)}</Text>
     </TouchableOpacity>
   );
-};
+});
 
 // Common action types the user can switch between
-const SWITCHABLE_TYPES = [
-  { key: 'add_expense', label: 'Expense' },
-  { key: 'add_income', label: 'Income' },
-  { key: 'add_debt', label: 'Debt' },
-  { key: 'add_subscription', label: 'Sub' },
+const SWITCHABLE_TYPES: { key: string; label: string; icon: keyof typeof Feather.glyphMap }[] = [
+  { key: 'add_expense', label: 'Expense', icon: 'arrow-up-right' },
+  { key: 'add_income', label: 'Income', icon: 'arrow-down-left' },
+  { key: 'add_debt', label: 'Debt', icon: 'repeat' },
+  { key: 'add_subscription', label: 'Sub', icon: 'credit-card' },
 ];
 
 // Floating modal for editing + confirming a pending action
@@ -216,6 +219,7 @@ const ActionEditModal = ({
   const [person, setPerson] = useState('');
   const [debtType, setDebtType] = useState<'i_owe' | 'they_owe'>('they_owe');
   const [modalAnim, setModalAnim] = useState<'fade' | 'none'>('fade');
+  const [showTypePicker, setShowTypePicker] = useState(false);
 
   const navigation = useNavigation<any>();
   const expenseCategories = useCategories('expense');
@@ -302,28 +306,27 @@ const ActionEditModal = ({
               bounces={false}
               contentContainerStyle={styles.modalScrollContent}
             >
-              {/* Type selector pills */}
-              <View style={styles.typeRow}>
-                {SWITCHABLE_TYPES.map((t) => {
-                  const active = actionType === t.key;
-                  return (
-                    <TouchableOpacity
-                      key={t.key}
-                      style={[styles.typePill, active && styles.typePillActive]}
-                      onPress={() => setActionType(t.key)}
-                      activeOpacity={0.7}
-                    >
-                      <Feather
-                        name={ACTION_ICONS[t.key] || 'plus'}
-                        size={11}
-                        color={active ? CALM.bronze : CALM.textMuted}
-                      />
-                      <Text style={[styles.typePillText, active && styles.typePillTextActive]}>
-                        {t.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+              {/* Type selector — tap to open picker */}
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>type</Text>
+                <TouchableOpacity
+                  style={styles.typeSelect}
+                  onPress={() => {
+                    lightTap();
+                    setShowTypePicker(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Feather
+                    name={SWITCHABLE_TYPES.find((t) => t.key === actionType)?.icon || 'circle'}
+                    size={14}
+                    color={CALM.bronze}
+                  />
+                  <Text style={styles.typeSelectText}>
+                    {SWITCHABLE_TYPES.find((t) => t.key === actionType)?.label || actionType}
+                  </Text>
+                  <Feather name="chevron-down" size={14} color={CALM.textMuted} />
+                </TouchableOpacity>
               </View>
 
               {/* Amount — large and clean */}
@@ -415,23 +418,71 @@ const ActionEditModal = ({
           </View>
         </TouchableOpacity>
       </KeyboardAvoidingView>
+
+      {/* Type picker — floating centered card */}
+      <Modal
+        visible={showTypePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTypePicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.typePickerOverlay}
+          activeOpacity={1}
+          onPress={() => setShowTypePicker(false)}
+        >
+          <View style={styles.typePickerCard} onStartShouldSetResponder={() => true}>
+            <Text style={styles.typePickerTitle}>select type</Text>
+            {SWITCHABLE_TYPES.map((t) => {
+              const active = actionType === t.key;
+              return (
+                <TouchableOpacity
+                  key={t.key}
+                  style={[styles.typePickerOption, active && styles.typePickerOptionActive]}
+                  onPress={() => {
+                    setActionType(t.key);
+                    setShowTypePicker(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.typePickerIcon, active && styles.typePickerIconActive]}>
+                    <Feather name={t.icon} size={18} color={active ? CALM.bronze : CALM.textMuted} />
+                  </View>
+                  <Text style={[styles.typePickerText, active && styles.typePickerTextActive]}>
+                    {t.label}
+                  </Text>
+                  {active && <Feather name="check" size={18} color={CALM.bronze} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </Modal>
   );
 };
 
-const ChatBubble = memo(({ item }: { item: AIMessage }) => {
+const ChatBubble = memo(({ item, onSelectText }: { item: AIMessage; onSelectText: (text: string) => void }) => {
   const isUser = item.role === 'user';
   const hasText = item.content.trim().length > 0;
   const hasImage = isUser && !!item.imageUri;
   const showBubble = hasText || hasImage;
 
+  const handleLongPress = useCallback(() => {
+    if (!hasText) return;
+    lightTap();
+    onSelectText(item.content);
+  }, [item.content, hasText, onSelectText]);
+
   return (
     <AnimatedBubble>
       <View>
         {showBubble && (
-          <View
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onLongPress={handleLongPress}
+            delayLongPress={400}
             style={[styles.messageBubble, isUser ? styles.userBubble : styles.assistantBubble]}
-            onStartShouldSetResponder={() => false}
           >
             {hasImage && (
               <Image
@@ -442,14 +493,14 @@ const ChatBubble = memo(({ item }: { item: AIMessage }) => {
             )}
             {isUser ? (
               hasText ? (
-                <Text style={[styles.messageText, styles.userMessageText]} selectable>
+                <Text style={[styles.messageText, styles.userMessageText]}>
                   {item.content}
                 </Text>
               ) : null
             ) : (
               <HighlightedText text={item.content} style={styles.messageText} />
             )}
-          </View>
+          </TouchableOpacity>
         )}
         {item.actions?.map((action, i) => (
           <ActionCard key={i} action={action} />
@@ -462,6 +513,7 @@ const ChatBubble = memo(({ item }: { item: AIMessage }) => {
 const MoneyChat: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation();
+  const headerHeight = useHeaderHeight();
   const initialContext = route.params?.noteContext as string | undefined;
   const extractionContext = route.params?.extractionContext as string | undefined;
   const mode = useAppStore((s) => s.mode);
@@ -469,6 +521,11 @@ const MoneyChat: React.FC = () => {
   const chatMessages = useAIInsightsStore((s) => s.chatMessages);
   const addChatMessage = useAIInsightsStore((s) => s.addChatMessage);
   const clearChat = useAIInsightsStore((s) => s.clearChat);
+  const archiveChat = useAIInsightsStore((s) => s.archiveChat);
+  const hasConversations = useAIInsightsStore((s) => s.conversations.length > 0);
+  const conversations = useAIInsightsStore((s) => s.conversations);
+  const loadConversation = useAIInsightsStore((s) => s.loadConversation);
+  const deleteConversation = useAIInsightsStore((s) => s.deleteConversation);
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -476,10 +533,16 @@ const MoneyChat: React.FC = () => {
   const [pendingActions, setPendingActions] = useState<ChatAction[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [selectTextContent, setSelectTextContent] = useState<string | null>(null);
+  const [lastFailedSend, setLastFailedSend] = useState<{ text: string; base64?: string } | null>(null);
+  const [showScrollDown, setShowScrollDown] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const didAutoSendRef = useRef(false);
+  const didArchiveRef = useRef(false);
   const prevCountRef = useRef(chatMessages.length);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
   // Voice input
   const { isRecording, isTranscribing, error: voiceError, startRecording, stopAndTranscribe } = useVoiceInput();
@@ -487,6 +550,21 @@ const MoneyChat: React.FC = () => {
 
   const isBusinessMode = mode === 'business';
   const suggestions = isBusinessMode ? BUSINESS_SUGGESTIONS : PERSONAL_SUGGESTIONS;
+
+  // Auto-archive previous chat on mount → start fresh each time
+  useEffect(() => {
+    if (!didArchiveRef.current && chatMessages.length > 0) {
+      didArchiveRef.current = true;
+      archiveChat();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    };
+  }, []);
 
   // Show transient error — auto-clears after 4s
   const showError = useCallback((msg: string) => {
@@ -536,6 +614,9 @@ const MoneyChat: React.FC = () => {
     }
   }, [showError]);
 
+  const handlePickCamera = useCallback(() => handlePickImage('camera'), [handlePickImage]);
+  const handlePickGallery = useCallback(() => handlePickImage('gallery'), [handlePickImage]);
+
   // Mic — toggle recording
   const handleMicPress = useCallback(async () => {
     if (isRecording) {
@@ -547,32 +628,59 @@ const MoneyChat: React.FC = () => {
     }
   }, [isRecording, startRecording, stopAndTranscribe]);
 
-  // Header clear button — only when messages exist
+  // Header buttons — history + new chat
   useLayoutEffect(() => {
-    if (chatMessages.length > 0) {
-      navigation.setOptions({
-        headerRight: () => (
-          <TouchableOpacity
-            onPress={() => { clearChat(); setPendingActions([]); }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={{ paddingHorizontal: SPACING.md }}
-          >
-            <Feather name="trash-2" size={18} color={CALM.textMuted} />
-          </TouchableOpacity>
-        ),
-      });
-    } else {
-      navigation.setOptions({ headerRight: undefined });
-    }
-  }, [chatMessages.length, clearChat, navigation]);
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginRight: SPACING.sm }}>
+          {hasConversations && (
+            <TouchableOpacity
+              onPress={() => setShowHistory(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Feather name="clock" size={22} color={CALM.textMuted} />
+            </TouchableOpacity>
+          )}
+          {chatMessages.length > 0 && (
+            <TouchableOpacity
+              onPress={() => { archiveChat(); setPendingActions([]); }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Feather name="plus" size={24} color={CALM.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+      ),
+    });
+  }, [chatMessages.length, hasConversations, archiveChat, navigation]);
 
-  // Scroll to bottom when new messages arrive or pending actions appear
+  // Scroll to bottom when new messages arrive
+  const shouldScrollRef = useRef(false);
   useEffect(() => {
-    if (chatMessages.length > prevCountRef.current || pendingActions.length > 0) {
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    if (chatMessages.length > prevCountRef.current && !showScrollDown) {
+      shouldScrollRef.current = true;
     }
     prevCountRef.current = chatMessages.length;
-  }, [chatMessages.length, pendingActions.length]);
+  }, [chatMessages.length, showScrollDown]);
+
+  const handleContentSizeChange = useCallback(() => {
+    if (shouldScrollRef.current) {
+      shouldScrollRef.current = false;
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }
+  }, []);
+
+  const contentHeightRef = useRef(0);
+  const handleScroll = useCallback((e: any) => {
+    const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+    contentHeightRef.current = contentSize.height;
+    const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+    setShowScrollDown(distanceFromBottom > 150);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    flatListRef.current?.scrollToEnd({ animated: true });
+  }, []);
 
   // Process AI response — parse actions but DON'T execute
   const processResponse = useCallback((rawResponse: string) => {
@@ -623,8 +731,10 @@ const MoneyChat: React.FC = () => {
       setInput('');
       addChatMessage({ role: 'user', content: question, timestamp: new Date().toISOString() });
       setIsLoading(true);
+      const thisRequestId = ++requestIdRef.current;
       (async () => {
         const result = await sendChatMessage(question, chatMessages);
+        if (requestIdRef.current !== thisRequestId) return;
         if (result.ok) {
           processResponse(result.text);
         } else {
@@ -655,6 +765,8 @@ const MoneyChat: React.FC = () => {
     });
     setIsLoading(true);
 
+    const thisRequestId = ++requestIdRef.current;
+
     // Convert image to base64 if attached
     let base64: string | undefined;
     if (sendImageUri) {
@@ -669,18 +781,43 @@ const MoneyChat: React.FC = () => {
 
     const result = await sendChatMessage(sendText, chatMessages, base64);
 
+    // Discard stale response if a newer request was fired
+    if (requestIdRef.current !== thisRequestId) return;
+
     if (result.ok) {
+      setLastFailedSend(null);
       processResponse(result.text);
     } else {
+      setLastFailedSend({ text: sendText, base64 });
       showError(result.error);
     }
 
     setIsLoading(false);
   }, [input, imageUri, isLoading, chatMessages, addChatMessage, showError, processResponse]);
 
+  const handleRetry = useCallback(async () => {
+    if (!lastFailedSend || isLoading) return;
+    setErrorNotice(null);
+    setIsLoading(true);
+    const thisRequestId = ++requestIdRef.current;
+    const result = await sendChatMessage(lastFailedSend.text, chatMessages, lastFailedSend.base64);
+    if (requestIdRef.current !== thisRequestId) return;
+    if (result.ok) {
+      setLastFailedSend(null);
+      processResponse(result.text);
+    } else {
+      showError(result.error);
+    }
+    setIsLoading(false);
+  }, [lastFailedSend, isLoading, chatMessages, processResponse, showError]);
+
+  const handleSelectText = useCallback((text: string) => {
+    setSelectTextContent(text);
+  }, []);
+
   const renderMessage = useCallback(({ item }: { item: AIMessage }) => (
-    <ChatBubble item={item} />
-  ), []);
+    <ChatBubble item={item} onSelectText={handleSelectText} />
+  ), [handleSelectText]);
 
   const keyExtractor = useCallback((_: AIMessage, index: number) => index.toString(), []);
 
@@ -689,9 +826,9 @@ const MoneyChat: React.FC = () => {
       <KeyboardAvoidingView
         style={styles.chatContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={100}
+        keyboardVerticalOffset={headerHeight}
       >
-        {chatMessages.length === 0 ? (
+        {chatMessages.length === 0 && !isLoading ? (
           <View style={styles.emptyState}>
             <Feather name="message-circle" size={48} color={CALM.border} />
             <Text style={styles.emptyTitle}>Money Chat</Text>
@@ -721,8 +858,21 @@ const MoneyChat: React.FC = () => {
             keyExtractor={keyExtractor}
             contentContainerStyle={styles.messageList}
             keyboardShouldPersistTaps="handled"
-            scrollEventThrottle={16}
+            removeClippedSubviews
+            maxToRenderPerBatch={8}
+            windowSize={7}
+            onContentSizeChange={handleContentSizeChange}
+            onScroll={handleScroll}
+            scrollEventThrottle={100}
+            ListFooterComponent={isLoading ? <TypingDots /> : null}
           />
+        )}
+
+        {/* Scroll to bottom button */}
+        {showScrollDown && chatMessages.length > 0 && (
+          <TouchableOpacity style={styles.scrollDownButton} onPress={scrollToBottom} activeOpacity={0.8}>
+            <Feather name="chevron-down" size={18} color={CALM.textMuted} />
+          </TouchableOpacity>
         )}
 
         {/* Pending actions — scrollable chips, tap to open edit modal */}
@@ -755,15 +905,23 @@ const MoneyChat: React.FC = () => {
           onClose={() => setEditingIndex(null)}
         />
 
-        {isLoading && <TypingDots />}
-
         {/* Transient error notice — not saved to chat */}
         {errorNotice && !isLoading && (
           <View style={styles.errorNotice}>
             <Feather name="alert-circle" size={14} color={CALM.bronze} />
             <Text style={styles.errorNoticeText}>{errorNotice}</Text>
+            {lastFailedSend && (
+              <TouchableOpacity
+                onPress={handleRetry}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.retryButton}
+              >
+                <Feather name="refresh-cw" size={12} color={CALM.bronze} />
+                <Text style={styles.retryText}>retry</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
-              onPress={() => setErrorNotice(null)}
+              onPress={() => { setErrorNotice(null); setLastFailedSend(null); }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Feather name="x" size={14} color={CALM.textMuted} />
@@ -806,7 +964,7 @@ const MoneyChat: React.FC = () => {
           {/* Camera + Gallery buttons */}
           <TouchableOpacity
             style={styles.inputIconButton}
-            onPress={() => handlePickImage('camera')}
+            onPress={handlePickCamera}
             disabled={isLoading || isRecording}
           >
             <Feather
@@ -817,7 +975,7 @@ const MoneyChat: React.FC = () => {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.inputIconButton}
-            onPress={() => handlePickImage('gallery')}
+            onPress={handlePickGallery}
             disabled={isLoading || isRecording}
           >
             <Feather
@@ -866,6 +1024,115 @@ const MoneyChat: React.FC = () => {
         </View>
 
       </KeyboardAvoidingView>
+
+      {/* Conversation history modal */}
+      <Modal
+        visible={showHistory}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowHistory(false)}
+      >
+        <TouchableOpacity
+          style={styles.historyOverlay}
+          activeOpacity={1}
+          onPress={() => setShowHistory(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.historyCard}>
+            <View style={styles.historyHeader}>
+              <Text style={styles.historyTitle}>past chats</Text>
+              <TouchableOpacity
+                onPress={() => setShowHistory(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Feather name="x" size={18} color={CALM.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false}>
+              {conversations.length === 0 ? (
+                <Text style={styles.historyEmpty}>no past conversations</Text>
+              ) : (
+                conversations.map((convo) => (
+                  <TouchableOpacity
+                    key={convo.id}
+                    style={styles.historyItem}
+                    onPress={() => {
+                      loadConversation(convo.id);
+                      setShowHistory(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.historyItemContent}>
+                      <Text style={styles.historyItemTitle} numberOfLines={1}>{convo.title}</Text>
+                      <Text style={styles.historyItemMeta}>
+                        {convo.messages.length} messages · {(() => {
+                          try {
+                            const d = new Date(convo.lastMessageAt);
+                            return isNaN(d.getTime()) ? '' : format(d, 'MMM d, HH:mm');
+                          } catch { return ''; }
+                        })()}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => deleteConversation(convo.id)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ padding: 4 }}
+                    >
+                      <Feather name="trash-2" size={14} color={CALM.textMuted} />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Select text modal — long-press opens this so user can select specific words */}
+      <Modal
+        visible={!!selectTextContent}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setSelectTextContent(null)}
+      >
+        <TouchableOpacity
+          style={styles.selectTextOverlay}
+          activeOpacity={1}
+          onPress={() => setSelectTextContent(null)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.selectTextCard}>
+            <View style={styles.selectTextHeader}>
+              <Text style={styles.selectTextTitle}>select text</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (selectTextContent) {
+                      await Clipboard.setStringAsync(selectTextContent);
+                      setSelectTextContent(null);
+                    }
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Feather name="copy" size={16} color={CALM.textMuted} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setSelectTextContent(null)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Feather name="x" size={18} color={CALM.textMuted} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <TextInput
+              style={styles.selectTextBody}
+              value={selectTextContent || ''}
+              editable={false}
+              multiline
+              scrollEnabled
+              selectTextOnFocus={false}
+            />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
     </View>
   );
@@ -979,6 +1246,25 @@ const styles = StyleSheet.create({
     color: CALM.textMuted,
   },
 
+  // Scroll to bottom
+  scrollDownButton: {
+    position: 'absolute',
+    right: SPACING.lg,
+    bottom: 120,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: CALM.surface,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+      android: { elevation: 4 },
+    }),
+  },
+
   // Pending actions — scrollable chips
   pendingSection: {
     paddingVertical: SPACING.sm,
@@ -1025,16 +1311,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'] as any,
   },
 
-  // Edit fields (inside modal — person field)
-  editField: {
-    gap: 4,
-  },
-  editLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
-    marginBottom: 2,
-  },
-
   // Floating edit modal
   modalOverlayKav: {
     flex: 1,
@@ -1073,28 +1349,84 @@ const styles = StyleSheet.create({
   modalScrollContent: {
     gap: SPACING.sm,
   },
-  typeRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  typePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  editField: {
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: RADIUS.full,
-    backgroundColor: CALM.background,
   },
-  typePillActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
-  },
-  typePillText: {
+  editLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textMuted,
+  },
+  typeSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: SPACING.sm,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    borderRadius: RADIUS.md,
+  },
+  typeSelectText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
-  typePillTextActive: {
+  typePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  typePickerCard: {
+    width: '75%',
+    backgroundColor: '#fff',
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    gap: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+      },
+      android: { elevation: 12 },
+    }),
+  },
+  typePickerTitle: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginBottom: SPACING.sm,
+  },
+  typePickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: 10,
+    paddingHorizontal: SPACING.xs,
+    borderRadius: RADIUS.md,
+  },
+  typePickerOptionActive: {
+    backgroundColor: withAlpha(CALM.bronze, 0.08),
+  },
+  typePickerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  typePickerIconActive: {
+    backgroundColor: withAlpha(CALM.bronze, 0.12),
+  },
+  typePickerText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+  },
+  typePickerTextActive: {
     color: CALM.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
@@ -1190,11 +1522,24 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.bronze,
   },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(CALM.bronze, 0.12),
+  },
+  retryText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.bronze,
+  },
 
   // Typing dots
   typingBubble: {
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.sm,
+    marginTop: SPACING.sm,
     paddingVertical: 14,
     paddingHorizontal: SPACING.lg,
   },
@@ -1222,9 +1567,9 @@ const styles = StyleSheet.create({
     borderTopColor: CALM.border,
   },
   inputIconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1312,6 +1657,112 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     color: '#C1694F',
     fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
+  // Conversation history modal
+  historyOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  historyCard: {
+    width: '88%',
+    maxHeight: '70%',
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 24,
+      },
+      android: { elevation: 12 },
+    }),
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  historyTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+  },
+  historyList: {
+    maxHeight: 400,
+  },
+  historyEmpty: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+    textAlign: 'center',
+    paddingVertical: SPACING.xl,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: CALM.border,
+  },
+  historyItemContent: {
+    flex: 1,
+    gap: 2,
+  },
+  historyItemTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
+  },
+  historyItemMeta: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+
+  // Select text modal
+  selectTextOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectTextCard: {
+    width: '88%',
+    maxHeight: '70%',
+    backgroundColor: '#F5F4F0',
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 24,
+      },
+      android: { elevation: 12 },
+    }),
+  },
+  selectTextHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  selectTextTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textMuted,
+  },
+  selectTextBody: {
+    fontSize: TYPE.insight.fontSize,
+    lineHeight: (TYPE.insight.lineHeight || 22) + 4,
+    color: CALM.textPrimary,
+    maxHeight: 400,
+    padding: 0,
   },
 
 });

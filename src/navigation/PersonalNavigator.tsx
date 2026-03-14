@@ -31,13 +31,13 @@ const PersonalNavigator: React.FC = () => {
               iconName = 'home';
               break;
             case 'BudgetPlanning':
-              iconName = 'pie-chart';
+              iconName = 'sliders';
               break;
             case 'Notes':
               iconName = 'edit-3';
               break;
             case 'MoneyChat':
-              iconName = 'message-circle';
+              iconName = 'zap';
               break;
             case 'Settings':
               iconName = 'settings';
@@ -62,7 +62,7 @@ const PersonalNavigator: React.FC = () => {
       <Tab.Screen
         name="Dashboard"
         component={PersonalDashboard}
-        options={{ title: 'Home' }}
+        options={{ title: 'Home', headerShown: false }}
       />
       <Tab.Screen
         name="BudgetPlanning"

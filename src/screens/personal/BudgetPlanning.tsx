@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,26 +10,72 @@ import {
   TouchableOpacity,
   Pressable,
   Keyboard,
+  Platform,
+  Switch,
+  KeyboardAvoidingView,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import {
+  startOfMonth, endOfMonth,
+  startOfWeek, endOfWeek,
+  startOfYear, endOfYear,
+  isWithinInterval,
+  differenceInDays,
+  getDaysInMonth,
+  getDate,
+} from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, SHADOWS, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
 import { FREE_TIER } from '../../constants/premium';
-import Button from '../../components/common/Button';
-import Card from '../../components/common/Card';
-import EmptyState from '../../components/common/EmptyState';
-import ProgressBar from '../../components/common/ProgressBar';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import PaywallModal from '../../components/common/PaywallModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
-import { Budget } from '../../types';
+import { Budget, CategoryOption } from '../../types';
+import { lightTap, mediumTap } from '../../services/haptics';
 
+// ─── Pace helpers ──────────────────────────────────────────
+const getPaceColor = (paceRatio: number) => {
+  if (paceRatio <= 1.1) return CALM.accent; // olive — on track / ahead
+  if (paceRatio <= 1.3) return CALM.bronze; // bronze — moving a bit fast
+  return '#DEAB22'; // gold — needs attention
+};
+
+const getPaceLabel = (paceRatio: number) => {
+  if (paceRatio < 0.9) return 'ahead';
+  if (paceRatio <= 1.1) return 'on track';
+  if (paceRatio <= 1.3) return 'moving a bit fast';
+  return 'needs attention';
+};
+
+const getPeriodInterval = (period: 'weekly' | 'monthly' | 'yearly', now: Date) => {
+  switch (period) {
+    case 'weekly':
+      return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
+    case 'yearly':
+      return { start: startOfYear(now), end: endOfYear(now) };
+    case 'monthly':
+    default:
+      return { start: startOfMonth(now), end: endOfMonth(now) };
+  }
+};
+
+const getPeriodDates = (period: 'weekly' | 'monthly' | 'yearly', now: Date) => {
+  switch (period) {
+    case 'weekly':
+      return { startDate: startOfWeek(now, { weekStartsOn: 1 }), endDate: endOfWeek(now, { weekStartsOn: 1 }) };
+    case 'yearly':
+      return { startDate: startOfYear(now), endDate: endOfYear(now) };
+    case 'monthly':
+    default:
+      return { startDate: startOfMonth(now), endDate: endOfMonth(now) };
+  }
+};
+
+// ─── Component ─────────────────────────────────────────────
 const BudgetPlanning: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
@@ -37,96 +83,163 @@ const BudgetPlanning: React.FC = () => {
   const currency = useSettingsStore(state => state.currency);
   const canCreateBudget = usePremiumStore((s) => s.canCreateBudget);
   const tier = usePremiumStore((s) => s.tier);
+  const expenseCategories = useCategories('expense');
+
   const [modalVisible, setModalVisible] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
-  const expenseCategories = useCategories('expense');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Form state
   const [category, setCategory] = useState(expenseCategories[0]?.id || 'food');
   const [amount, setAmount] = useState('');
-  const [period, setPeriod] = useState<'monthly' | 'weekly' | 'yearly'>('monthly');
+  const [period, setPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
+  const [rollover, setRollover] = useState(false);
 
-  useEffect(() => {
-    const now = new Date();
+  const now = useMemo(() => new Date(), []);
+
+  // ─── Compute spent per budget from transactions (no stale useEffect) ───
+  const budgetsWithSpent = useMemo(() => {
+    return budgets.map((budget) => {
+      const { start, end } = getPeriodInterval(budget.period, now);
+      const spent = transactions
+        .filter(
+          (t) =>
+            t.type === 'expense' &&
+            t.category === budget.category &&
+            isWithinInterval(t.date, { start, end })
+        )
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      return { ...budget, spentAmount: spent };
+    });
+  }, [budgets, transactions, now]);
+
+  // ─── Breathing room hero calculations ────────────────────
+  const heroData = useMemo(() => {
     const monthStart = startOfMonth(now);
     const monthEnd = endOfMonth(now);
 
-    budgets.forEach((budget) => {
-      const relevantTransactions = transactions.filter(
+    const totalIncome = transactions
+      .filter(
+        (t) =>
+          t.type === 'income' &&
+          isWithinInterval(t.date, { start: monthStart, end: monthEnd })
+      )
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const totalExpenses = transactions
+      .filter(
         (t) =>
           t.type === 'expense' &&
-          t.category === budget.category &&
           isWithinInterval(t.date, { start: monthStart, end: monthEnd })
-      );
+      )
+      .reduce((sum, t) => sum + t.amount, 0);
 
-      const spent = relevantTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const totalAllocated = budgetsWithSpent
+      .filter((b) => b.period === 'monthly')
+      .reduce((sum, b) => sum + b.allocatedAmount, 0);
 
-      if (spent !== budget.spentAmount) {
-        updateBudget(budget.id, { spentAmount: spent });
-      }
-    });
-  }, [transactions]);
+    const totalSpent = totalExpenses;
+    const freeToSpend = totalIncome - totalExpenses;
 
+    const daysInMonth = getDaysInMonth(now);
+    const dayOfMonth = getDate(now);
+    const daysRemaining = Math.max(daysInMonth - dayOfMonth + 1, 1);
+    const dailyAllowance = freeToSpend > 0 ? freeToSpend / daysRemaining : 0;
+
+    const percentElapsed = dayOfMonth / daysInMonth;
+    const percentSpent = totalIncome > 0 ? totalSpent / totalIncome : 0;
+    const paceRatio = percentElapsed > 0 ? percentSpent / percentElapsed : 0;
+
+    return {
+      freeToSpend,
+      dailyAllowance,
+      daysRemaining,
+      daysInMonth,
+      percentSpent,
+      totalIncome,
+      totalSpent,
+      totalAllocated,
+      paceRatio,
+      paceColor: getPaceColor(paceRatio),
+    };
+  }, [transactions, budgetsWithSpent, now]);
+
+  // ─── Handlers ────────────────────────────────────────────
   const handleAdd = useCallback(() => {
     if (!amount || parseFloat(amount) <= 0) {
-      showToast('Please enter a valid amount', 'error');
+      showToast('enter a valid amount', 'error');
       return;
     }
+
+    const parsedAmount = parseFloat(amount);
+    const dates = getPeriodDates(period, new Date());
 
     if (editingBudget) {
       const conflicting = budgets.find(
         (b) => b.category === category && b.id !== editingBudget.id
       );
       if (conflicting) {
-        showToast('A budget for this category already exists', 'error');
+        showToast('a budget for this category already exists', 'error');
         return;
       }
+      mediumTap();
       updateBudget(editingBudget.id, {
         category,
-        allocatedAmount: parseFloat(amount),
+        allocatedAmount: parsedAmount,
         period,
+        rollover,
+        startDate: dates.startDate,
+        endDate: dates.endDate,
       });
       closeModal();
       showToast('budget updated.', 'success');
     } else {
-      const existingBudget = budgets.find((b) => b.category === category);
-      if (existingBudget) {
-        showToast('A budget for this category already exists', 'error');
+      const existing = budgets.find((b) => b.category === category);
+      if (existing) {
+        showToast('a budget for this category already exists', 'error');
         return;
       }
 
-      const now = new Date();
+      mediumTap();
       addBudget({
         category,
-        allocatedAmount: parseFloat(amount),
+        allocatedAmount: parsedAmount,
         period,
-        startDate: startOfMonth(now),
-        endDate: endOfMonth(now),
+        rollover,
+        startDate: dates.startDate,
+        endDate: dates.endDate,
       });
       closeModal();
       showToast('budget created.', 'success');
     }
-  }, [amount, category, period, editingBudget, budgets, addBudget, updateBudget, showToast]);
+  }, [amount, category, period, rollover, editingBudget, budgets, addBudget, updateBudget, showToast]);
 
   const handleEdit = useCallback((budget: Budget) => {
+    lightTap();
     setEditingBudget(budget);
     setCategory(budget.category);
     setAmount(budget.allocatedAmount.toString());
     setPeriod(budget.period);
+    setRollover(budget.rollover ?? false);
     setModalVisible(true);
   }, []);
 
   const handleDelete = useCallback((budget: Budget) => {
     Alert.alert(
-      'Delete Budget',
-      `Are you sure you want to delete this budget?`,
+      'delete budget',
+      'are you sure you want to remove this budget?',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'delete',
           style: 'destructive',
           onPress: () => {
+            mediumTap();
             deleteBudget(budget.id);
-            showToast('Budget deleted', 'success');
+            setExpandedId(null);
+            showToast('budget deleted', 'success');
           },
         },
       ]
@@ -135,8 +248,9 @@ const BudgetPlanning: React.FC = () => {
 
   const resetForm = useCallback(() => {
     setAmount('');
-    setCategory(expenseCategories[0].id);
+    setCategory(expenseCategories[0]?.id || 'food');
     setPeriod('monthly');
+    setRollover(false);
     setEditingBudget(null);
   }, [expenseCategories]);
 
@@ -145,158 +259,256 @@ const BudgetPlanning: React.FC = () => {
     resetForm();
   }, [resetForm]);
 
-  const totalAllocated = useMemo(() => budgets.reduce((sum, b) => sum + b.allocatedAmount, 0), [budgets]);
-  const totalSpent = useMemo(() => budgets.reduce((sum, b) => sum + b.spentAmount, 0), [budgets]);
+  const openAddModal = useCallback(() => {
+    if (!canCreateBudget(budgets.length)) {
+      setPaywallVisible(true);
+      return;
+    }
+    lightTap();
+    setModalVisible(true);
+  }, [canCreateBudget, budgets.length]);
+
+  const toggleExpand = useCallback((id: string) => {
+    lightTap();
+    setExpandedId((prev) => (prev === id ? null : id));
+  }, []);
+
+  // ─── Budget row helper ───────────────────────────────────
+  const getBudgetMeta = useCallback((budget: Budget & { spentAmount: number }) => {
+    const { start, end } = getPeriodInterval(budget.period, now);
+    const totalDays = Math.max(differenceInDays(end, start) + 1, 1);
+    const elapsed = Math.max(differenceInDays(now, start) + 1, 1);
+    const remaining = Math.max(totalDays - elapsed + 1, 1);
+
+    const percentSpent = budget.allocatedAmount > 0 ? budget.spentAmount / budget.allocatedAmount : 0;
+    const percentElapsed = elapsed / totalDays;
+    const paceRatio = percentElapsed > 0 ? percentSpent / percentElapsed : 0;
+
+    const leftAmount = Math.max(budget.allocatedAmount - budget.spentAmount, 0);
+    const dailyBudget = remaining > 0 ? leftAmount / remaining : 0;
+
+    const cat = expenseCategories.find((c) => c.id === budget.category);
+
+    return {
+      totalDays,
+      elapsed,
+      remaining,
+      percentSpent,
+      percentElapsed,
+      paceRatio,
+      paceColor: getPaceColor(paceRatio),
+      paceLabel: getPaceLabel(paceRatio),
+      leftAmount,
+      dailyBudget,
+      cat,
+    };
+  }, [now, expenseCategories]);
+
+  // ─── Render ──────────────────────────────────────────────
+  const hasBudgets = budgetsWithSpent.length > 0;
 
   return (
     <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {budgets.length > 0 && (
-          <Card style={styles.summaryCard}>
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>Total Budget</Text>
-                <Text style={styles.summaryAmount}>{currency} {totalAllocated.toFixed(2)}</Text>
-              </View>
-              <View style={styles.summaryDivider} />
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>Total Spent</Text>
-                <Text
-                  style={[
-                    styles.summaryAmount,
-                    { color: totalSpent > totalAllocated ? CALM.neutral : CALM.positive },
-                  ]}
-                >
-                  {currency} {totalSpent.toFixed(2)}
-                </Text>
-              </View>
+        {/* ── Hero: Breathing Room ── */}
+        {hasBudgets && (
+          <View style={styles.heroCard}>
+            <Text style={styles.heroLabel}>breathing room</Text>
+            <Text style={styles.heroAmount}>
+              {currency} {heroData.freeToSpend.toFixed(0)}{' '}
+              <Text style={styles.heroAmountSub}>left this month</Text>
+            </Text>
+            <Text style={styles.heroDailyText}>
+              {currency} {heroData.dailyAllowance.toFixed(0)}/day for {heroData.daysRemaining} days
+            </Text>
+
+            {/* Progress bar */}
+            <View style={styles.heroBarTrack}>
+              <View
+                style={[
+                  styles.heroBarFill,
+                  {
+                    width: `${Math.min(heroData.percentSpent * 100, 100)}%`,
+                    backgroundColor: heroData.paceColor,
+                  },
+                ]}
+              />
             </View>
-            <ProgressBar
-              current={totalSpent}
-              total={totalAllocated}
-              showPercentage={false}
-              height={12}
-            />
-          </Card>
+            <Text style={[styles.heroPercentText, { color: heroData.paceColor }]}>
+              {(heroData.percentSpent * 100).toFixed(0)}%
+            </Text>
+          </View>
         )}
 
+        {/* ── Over-limit banner ── */}
         {tier === 'free' && budgets.length > FREE_TIER.maxBudgets && (
-          <Card style={styles.overLimitBanner}>
-            <View style={styles.bannerContent}>
-              <Feather name="info" size={18} color={CALM.accent} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.bannerText}>
-                  You have {budgets.length} budgets (free limit: {FREE_TIER.maxBudgets}).{' '}
-                  <Text
-                    style={styles.bannerLink}
-                    onPress={() => setPaywallVisible(true)}
-                  >
-                    Upgrade to add more.
-                  </Text>
-                </Text>
-              </View>
-            </View>
-          </Card>
+          <View style={styles.bannerCard}>
+            <Feather name="info" size={16} color={CALM.bronze} />
+            <Text style={styles.bannerText}>
+              you have {budgets.length} budgets (free limit: {FREE_TIER.maxBudgets}).{' '}
+              <Text
+                style={styles.bannerLink}
+                onPress={() => setPaywallVisible(true)}
+              >
+                upgrade to add more.
+              </Text>
+            </Text>
+          </View>
         )}
 
-        {budgets.length > 0 ? (
-          budgets.map((budget) => {
-            const category = expenseCategories.find((cat) => cat.id === budget.category);
-            const percentage =
-              budget.allocatedAmount > 0
-                ? (budget.spentAmount / budget.allocatedAmount) * 100
-                : 0;
+        {/* ── Budget Cards (wallet-style grouped) ── */}
+        {hasBudgets ? (
+          <View style={styles.groupCard}>
+            {budgetsWithSpent.map((budget, index) => {
+              const meta = getBudgetMeta(budget);
+              const isLast = index === budgetsWithSpent.length - 1;
+              const isExpanded = expandedId === budget.id;
+              const percentage = meta.percentSpent * 100;
 
-            return (
-              <Card key={budget.id} style={styles.budgetCard}>
-                <View style={styles.budgetHeader}>
-                  <View style={[styles.iconContainer, { backgroundColor: category?.color ? withAlpha(category.color, 0.12) : CALM.background }]}>
-                    <Feather name={(category?.icon as keyof typeof Feather.glyphMap) || 'pie-chart'} size={20} color={category?.color} />
-                  </View>
-                  <View style={styles.budgetInfo}>
-                    <Text style={styles.budgetName}>{category?.name || budget.category}</Text>
-                    <Text style={styles.budgetPeriod}>
-                      {budget.period.charAt(0).toUpperCase() + budget.period.slice(1)} Budget
-                    </Text>
-                  </View>
-                  <TouchableOpacity onPress={() => handleEdit(budget)} style={styles.cardAction}>
-                    <Feather name="edit-2" size={18} color={CALM.accent} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(budget)} style={styles.cardAction}>
-                    <Feather name="trash-2" size={18} color={CALM.neutral} />
-                  </TouchableOpacity>
-                  <View style={styles.percentageContainer}>
-                    <Text
+              return (
+                <View key={budget.id}>
+                  <Pressable
+                    onPress={() => toggleExpand(budget.id)}
+                    style={({ pressed }) => [styles.budgetRow, pressed && { opacity: 0.7 }]}
+                  >
+                    {/* Icon */}
+                    <View
                       style={[
-                        styles.percentage,
-                        percentage > 100 && styles.percentageOver,
+                        styles.iconCircle,
+                        {
+                          backgroundColor: meta.cat?.color
+                            ? withAlpha(meta.cat.color, 0.08)
+                            : withAlpha(CALM.accent, 0.08),
+                        },
                       ]}
                     >
-                      {percentage.toFixed(0)}%
-                    </Text>
-                  </View>
+                      <Feather
+                        name={(meta.cat?.icon as keyof typeof Feather.glyphMap) || 'pie-chart'}
+                        size={18}
+                        color={meta.cat?.color || CALM.accent}
+                      />
+                    </View>
+
+                    {/* Content */}
+                    <View style={styles.budgetContent}>
+                      {/* Name row */}
+                      <View style={styles.budgetNameRow}>
+                        <Text style={styles.budgetName} numberOfLines={1}>
+                          {meta.cat?.name || budget.category}
+                        </Text>
+                        <Text style={styles.budgetAmounts}>
+                          <Text style={{ fontWeight: TYPOGRAPHY.weight.semibold }}>
+                            {currency} {budget.spentAmount.toFixed(0)}
+                          </Text>
+                          {' / '}
+                          {budget.allocatedAmount.toFixed(0)}
+                        </Text>
+                      </View>
+
+                      {/* Progress bar */}
+                      <View style={styles.barTrack}>
+                        <View
+                          style={[
+                            styles.barFill,
+                            {
+                              width: `${Math.min(percentage, 100)}%`,
+                              backgroundColor: meta.paceColor,
+                            },
+                          ]}
+                        />
+                      </View>
+
+                      {/* Pace row */}
+                      <View style={styles.paceRow}>
+                        <Text style={styles.paceText}>
+                          {currency} {meta.dailyBudget.toFixed(0)}/day
+                          {'  ·  '}
+                          {meta.remaining} days left
+                          {'  ·  '}
+                          <Text style={{ color: meta.paceColor }}>{meta.paceLabel}</Text>
+                        </Text>
+                        <Text style={[styles.percentLabel, { color: meta.paceColor }]}>
+                          {percentage.toFixed(0)}%
+                        </Text>
+                      </View>
+
+                      {/* Rollover info */}
+                      {budget.rollover && budget.rolloverAmount != null && budget.rolloverAmount !== 0 && (
+                        <Text style={styles.rolloverText}>
+                          {budget.rolloverAmount > 0
+                            ? `+${currency} ${budget.rolloverAmount.toFixed(0)} from last month`
+                            : `-${currency} ${Math.abs(budget.rolloverAmount).toFixed(0)} to make up`}
+                        </Text>
+                      )}
+                    </View>
+                  </Pressable>
+
+                  {/* Expanded actions */}
+                  {isExpanded && (
+                    <View style={styles.expandedActions}>
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => handleEdit(budget)}
+                        activeOpacity={0.7}
+                      >
+                        <Feather name="edit-2" size={16} color={CALM.accent} />
+                        <Text style={[styles.actionText, { color: CALM.accent }]}>edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => handleDelete(budget)}
+                        activeOpacity={0.7}
+                      >
+                        <Feather name="trash-2" size={16} color={CALM.neutral} />
+                        <Text style={[styles.actionText, { color: CALM.neutral }]}>delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {!isLast && <View style={styles.divider} />}
                 </View>
-
-                <ProgressBar
-                  current={budget.spentAmount}
-                  total={budget.allocatedAmount}
-                  color={category?.color || CALM.accent}
-                />
-
-                {percentage > 90 && (
-                  <View style={styles.warningContainer}>
-                    <Text
-                      style={[
-                        styles.warningText,
-                        { color: CALM.neutral },
-                      ]}
-                    >
-                      {percentage > 100
-                        ? `${currency} ${(budget.spentAmount - budget.allocatedAmount).toFixed(2)} over this period`
-                        : `Getting close`}
-                    </Text>
-                  </View>
-                )}
-              </Card>
-            );
-          })
+              );
+            })}
+          </View>
         ) : (
-          <EmptyState
-            icon="pie-chart"
-            title="No Budgets Set"
-            message="Create budgets for your expense categories to track spending"
-            actionLabel="Create Budget"
-            onAction={() => {
-              if (!canCreateBudget(budgets.length)) {
-                setPaywallVisible(true);
-                return;
-              }
-              setModalVisible(true);
-            }}
-          />
+          /* ── Empty state ── */
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconCircle}>
+              <Feather name="pie-chart" size={48} color={CALM.textMuted} />
+            </View>
+            <Text style={styles.emptyTitle}>set your spending targets</Text>
+            <Text style={styles.emptyMessage}>
+              track how much you want to spend per category
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyButton}
+              onPress={openAddModal}
+              activeOpacity={0.8}
+            >
+              <Feather name="plus" size={18} color="#fff" />
+              <Text style={styles.emptyButtonText}>add budget</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </ScrollView>
 
-      {!(tier === 'free' && budgets.length >= FREE_TIER.maxBudgets) && (
-        <Button
-          title={tier === 'free' ? `Create Budget (${budgets.length}/${FREE_TIER.maxBudgets})` : 'Create Budget'}
-          onPress={() => {
-            if (!canCreateBudget(budgets.length)) {
-              setPaywallVisible(true);
-              return;
-            }
-            setModalVisible(true);
-          }}
-          icon="plus"
-          size="large"
-          style={styles.addButton}
-        />
+      {/* ── FAB ── */}
+      {hasBudgets && !modalVisible && (
+        <TouchableOpacity
+          style={[styles.fab, { bottom: Math.max(insets.bottom, SPACING.lg) + SPACING.md }]}
+          onPress={openAddModal}
+          activeOpacity={0.85}
+        >
+          <Feather name="plus" size={24} color="#fff" />
+        </TouchableOpacity>
       )}
 
+      {/* ── Add / Edit Modal ── */}
       <Modal
         visible={modalVisible}
         animationType="fade"
@@ -304,76 +516,105 @@ const BudgetPlanning: React.FC = () => {
         statusBarTranslucent
         onRequestClose={closeModal}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => { closeModal(); }}>
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingBudget ? 'Edit Budget' : 'Create Budget'}</Text>
-              <TouchableOpacity onPress={closeModal}>
-                <Feather name="x" size={24} color={CALM.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
-              <CategoryPicker
-                categories={expenseCategories}
-                selectedId={category}
-                onSelect={setCategory}
-                label="Category"
-                layout="dropdown"
-              />
-
-              <Text style={styles.label}>Budget Amount</Text>
-              <TextInput
-                style={styles.input}
-                value={amount}
-                onChangeText={setAmount}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                placeholderTextColor={CALM.textSecondary}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              <Text style={styles.label}>Period</Text>
-              <View style={styles.periodContainer}>
-                {BUDGET_PERIODS.map((p) => (
-                  <TouchableOpacity
-                    key={p.value}
-                    style={[
-                      styles.periodButton,
-                      period === p.value && styles.periodButtonActive,
-                    ]}
-                    onPress={() => setPeriod(p.value as 'weekly' | 'monthly' | 'yearly')}
-                  >
-                    <Text
-                      style={[
-                        styles.periodText,
-                        period === p.value && styles.periodTextActive,
-                      ]}
-                    >
-                      {p.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={styles.modalActions}>
-                <Button
-                  title="Cancel"
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeModal}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.modalKAV}
+          >
+            <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
+              {/* Header */}
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  {editingBudget ? 'edit budget' : 'add budget'}
+                </Text>
+                <TouchableOpacity
                   onPress={closeModal}
-                  variant="outline"
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  title={editingBudget ? 'Update' : 'Create'}
-                  onPress={handleAdd}
-                  icon="check"
-                  style={{ flex: 1 }}
-                />
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Feather name="x" size={22} color={CALM.textPrimary} />
+                </TouchableOpacity>
               </View>
-            </KeyboardAwareScrollView>
-          </View>
-        </Pressable>
+
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: SPACING.md }}
+              >
+                {/* Category */}
+                <CategoryPicker
+                  categories={expenseCategories}
+                  selectedId={category}
+                  onSelect={setCategory}
+                  label="category"
+                  layout="dropdown"
+                />
+
+                {/* Amount */}
+                <Text style={styles.label}>amount</Text>
+                <View style={styles.amountRow}>
+                  <Text style={styles.currencyPrefix}>{currency}</Text>
+                  <TextInput
+                    style={styles.amountInput}
+                    value={amount}
+                    onChangeText={setAmount}
+                    placeholder="0.00"
+                    keyboardType="decimal-pad"
+                    placeholderTextColor={CALM.textMuted}
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                  />
+                </View>
+
+                {/* Period — inline picker */}
+                <Text style={styles.label}>period</Text>
+                <View style={styles.periodRow}>
+                  {BUDGET_PERIODS.map((p) => {
+                    const isActive = period === p.value;
+                    return (
+                      <TouchableOpacity
+                        key={p.value}
+                        style={[styles.periodChip, isActive && styles.periodChipActive]}
+                        onPress={() => { lightTap(); setPeriod(p.value as typeof period); }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.periodChipText, isActive && styles.periodChipTextActive]}>
+                          {p.label.toLowerCase()}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Rollover toggle */}
+                <View style={styles.rolloverRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rolloverLabel}>roll over unused amount</Text>
+                    <Text style={styles.rolloverHint}>
+                      carry leftover to next period
+                    </Text>
+                  </View>
+                  <Switch
+                    value={rollover}
+                    onValueChange={setRollover}
+                    trackColor={{ false: CALM.border, true: withAlpha(CALM.accent, 0.3) }}
+                    thumbColor={rollover ? CALM.accent : CALM.textMuted}
+                  />
+                </View>
+
+                {/* Confirm */}
+                <TouchableOpacity
+                  style={styles.confirmButton}
+                  onPress={handleAdd}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.confirmButtonText}>
+                    {editingBudget ? 'update' : 'add budget'}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </TouchableOpacity>
+          </KeyboardAvoidingView>
+        </TouchableOpacity>
       </Modal>
 
       <PaywallModal
@@ -386,6 +627,7 @@ const BudgetPlanning: React.FC = () => {
   );
 };
 
+// ─── Styles ────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -395,204 +637,362 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING['2xl'],
-    paddingBottom: 80,
+    padding: SPACING.xl,
   },
 
-  // Summary
-  summaryCard: {
+  // Hero
+  heroCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
     marginBottom: SPACING.lg,
+    ...SHADOWS.sm,
   },
-  summaryRow: {
-    flexDirection: 'row',
-    marginBottom: SPACING.lg,
-  },
-  summaryItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  summaryDivider: {
-    width: 1,
-    backgroundColor: CALM.border,
-    marginHorizontal: SPACING.lg,
-  },
-  summaryLabel: {
+  heroLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     color: CALM.textSecondary,
     marginBottom: SPACING.xs,
+    textTransform: 'lowercase',
   },
-  summaryAmount: {
+  heroAmount: {
     fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: '300',
-    color: CALM.textPrimary,
-  },
-
-  // Budget cards
-  budgetCard: {
-    marginBottom: SPACING.md,
-  },
-  budgetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
-  },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.md,
-  },
-  budgetInfo: {
-    flex: 1,
-  },
-  budgetName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontWeight: TYPOGRAPHY.weight.light,
     color: CALM.textPrimary,
     marginBottom: 2,
+    fontVariant: ['tabular-nums'] as any,
   },
-  budgetPeriod: {
-    fontSize: TYPOGRAPHY.size.sm,
+  heroAmountSub: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.regular,
     color: CALM.textSecondary,
   },
-  percentageContainer: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 6,
-    backgroundColor: CALM.background,
-    borderRadius: RADIUS.md,
+  heroDailyText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    marginBottom: SPACING.md,
+    fontVariant: ['tabular-nums'] as any,
   },
-  percentage: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+  heroBarTrack: {
+    height: 6,
+    backgroundColor: withAlpha(CALM.accent, 0.1),
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+    marginBottom: SPACING.xs,
   },
-  percentageOver: {
-    color: CALM.neutral,
+  heroBarFill: {
+    height: '100%',
+    borderRadius: RADIUS.full,
   },
-  warningContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: SPACING.md,
-    padding: SPACING.md,
-    backgroundColor: CALM.background,
-    borderRadius: RADIUS.md,
-    gap: SPACING.sm,
-  },
-  warningText: {
+  heroPercentText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  cardAction: {
-    padding: SPACING.md,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    textAlign: 'right',
   },
 
-  // Over-limit banner
-  overLimitBanner: {
-    marginBottom: SPACING.md,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
-    borderWidth: 1,
-    borderColor: withAlpha(CALM.accent, 0.2),
-  },
-  bannerContent: {
+  // Banner
+  bannerCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
   },
   bannerText: {
+    flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     color: CALM.textPrimary,
     lineHeight: 20,
   },
   bannerLink: {
-    color: CALM.accent,
+    color: CALM.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
+  // Grouped card
+  groupCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+    ...SHADOWS.xs,
+  },
+
+  // Budget row
+  budgetRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: SPACING.md,
+    paddingVertical: SPACING.md,
+  },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+    marginTop: 2,
+  },
+  budgetContent: {
+    flex: 1,
+  },
+  budgetNameRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  budgetName: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
+    flex: 1,
+    marginRight: SPACING.sm,
+  },
+  budgetAmounts: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+
+  // Progress bar (thin)
+  barTrack: {
+    height: 3,
+    backgroundColor: withAlpha(CALM.accent, 0.1),
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+    marginBottom: SPACING.xs,
+  },
+  barFill: {
+    height: '100%',
+    borderRadius: RADIUS.full,
+  },
+
+  // Pace
+  paceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  paceText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+    flex: 1,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  percentLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    marginLeft: SPACING.sm,
+    fontVariant: ['tabular-nums'] as any,
+  },
+
+  // Rollover hint on card
+  rolloverText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.bronze,
+    marginTop: 2,
+  },
+
+  // Divider
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: CALM.border,
+    marginLeft: 36 + SPACING.md + SPACING.md, // icon width + margins
+  },
+
+  // Expanded actions
+  expandedActions: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.md,
+    paddingLeft: 36 + SPACING.md + SPACING.md,
+    gap: SPACING.lg,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: CALM.background,
+  },
+  actionText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
+  // Empty state
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: SPACING['5xl'],
+    paddingHorizontal: SPACING.xl,
+  },
+  emptyIconCircle: {
+    marginBottom: SPACING.lg,
+  },
+  emptyTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+    marginBottom: SPACING.xs,
+  },
+  emptyMessage: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    textAlign: 'center',
+    marginBottom: SPACING.xl,
+    lineHeight: 20,
+  },
+  emptyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: CALM.accent,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
+  },
+  emptyButtonText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: '#fff',
+  },
+
   // FAB
-  addButton: {
+  fab: {
     position: 'absolute',
-    bottom: SPACING.lg,
-    left: SPACING.lg,
-    right: SPACING.lg,
+    right: SPACING.xl,
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.full,
+    backgroundColor: CALM.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.md,
   },
 
   // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  modalContent: {
+  modalKAV: {
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCard: {
     backgroundColor: CALM.surface,
-    borderTopLeftRadius: RADIUS['2xl'],
-    borderTopRightRadius: RADIUS['2xl'],
-    padding: SPACING['2xl'],
-    maxHeight: '90%',
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    width: '88%',
+    maxHeight: '85%',
+    ...SHADOWS.lg,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING['2xl'],
+    marginBottom: SPACING.lg,
   },
   modalTitle: {
-    fontSize: TYPOGRAPHY.size['2xl'],
+    fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: CALM.textPrimary,
   },
   label: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
-    marginBottom: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textSecondary,
+    marginBottom: SPACING.xs,
     marginTop: SPACING.lg,
   },
-  input: {
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: CALM.background,
     borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: CALM.inputBorder,
+    paddingHorizontal: SPACING.md,
   },
-  periodContainer: {
+  currencyPrefix: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textSecondary,
+    marginRight: SPACING.sm,
+  },
+  amountInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.light,
+    color: CALM.textPrimary,
+    paddingVertical: SPACING.md,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // Period chips (inline)
+  periodRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
   },
-  periodButton: {
+  periodChip: {
     flex: 1,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: RADIUS.md,
-    borderWidth: 2,
-    borderColor: CALM.border,
-    backgroundColor: CALM.background,
+    paddingVertical: SPACING.sm,
     alignItems: 'center',
+    borderRadius: RADIUS.md,
+    backgroundColor: CALM.background,
+    borderWidth: 1,
+    borderColor: CALM.border,
   },
-  periodButtonActive: {
+  periodChipActive: {
+    backgroundColor: withAlpha(CALM.accent, 0.08),
     borderColor: CALM.accent,
-    backgroundColor: CALM.accent,
   },
-  periodText: {
+  periodChipText: {
     fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+  periodChipTextActive: {
     fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.accent,
+  },
+
+  // Rollover
+  rolloverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+    paddingVertical: SPACING.sm,
+  },
+  rolloverLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.textPrimary,
   },
-  periodTextActive: {
-    color: '#fff',
+  rolloverHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginTop: 2,
   },
-  modalActions: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING['2xl'],
+
+  // Confirm button
+  confirmButton: {
+    backgroundColor: CALM.accent,
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.xl,
+  },
+  confirmButtonText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: '#fff',
   },
 });
 

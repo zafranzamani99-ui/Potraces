@@ -16,6 +16,7 @@ import BusinessNavigator from './BusinessNavigator';
 import PersonalReports from '../screens/personal/Reports';
 import BusinessReports from '../screens/business/Reports';
 import SubscriptionList from '../screens/personal/SubscriptionList';
+import BudgetPlanning from '../screens/personal/BudgetPlanning';
 import SupplierList from '../screens/business/SupplierList';
 import TransactionsList from '../screens/personal/TransactionsList';
 import DebtTracking from '../screens/shared/DebtTracking';
@@ -347,6 +348,36 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Commitments',
+            headerStyle: { backgroundColor: CALM.background },
+            headerTintColor: CALM.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+            presentation: 'card',
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
+                    });
+                  }
+                }}
+                style={{ marginLeft: 16 }}
+                accessibilityLabel="Go back"
+              >
+                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        <Stack.Screen
+          name="BudgetPlanning"
+          component={BudgetPlanning}
+          options={({ navigation }) => ({
+            headerShown: true,
+            headerTitle: 'Budgets',
             headerStyle: { backgroundColor: CALM.background },
             headerTintColor: CALM.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },

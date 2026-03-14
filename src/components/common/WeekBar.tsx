@@ -1,84 +1,86 @@
 import React, { useMemo, useState } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { startOfWeek, addDays, isSameDay } from 'date-fns';
 import { Transaction } from '../../types';
-import { CALM, TYPE, SPACING, RADIUS } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useSettingsStore } from '../../store/settingsStore';
+import { lightTap } from '../../services/haptics';
 
 interface WeekBarProps {
   transactions: Transaction[];
 }
 
-interface WeekData {
-  weekLabel: string;
-  total: number;
-}
-
-function getISOWeek(date: Date): number {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-  const week1 = new Date(d.getFullYear(), 0, 4);
-  return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
-}
+const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const BAR_MAX_HEIGHT = 72;
 
 function WeekBar({ transactions }: WeekBarProps) {
   const currency = useSettingsStore((s) => s.currency);
-  const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
-  const { weeks, maxTotal } = useMemo(() => {
+  const { days, maxTotal } = useMemo(() => {
     const now = new Date();
-    const result: WeekData[] = [];
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
+    const result: { date: Date; total: number; isToday: boolean }[] = [];
 
-    for (let i = 3; i >= 0; i--) {
-      const weekStart = new Date(now);
-      weekStart.setDate(weekStart.getDate() - i * 7);
-      const weekNum = getISOWeek(weekStart);
+    for (let i = 0; i < 7; i++) {
+      const day = addDays(weekStart, i);
+      const isToday = isSameDay(day, now);
 
-      const weekTxns = transactions.filter((t) => {
-        const d = t.date instanceof Date ? t.date : new Date(t.date);
-        return getISOWeek(d) === weekNum && d.getFullYear() === weekStart.getFullYear();
-      });
-
-      const total = weekTxns
-        .filter((t) => t.type === 'expense')
+      const total = transactions
+        .filter((t) => {
+          if (t.type !== 'expense') return false;
+          const d = t.date instanceof Date ? t.date : new Date(t.date);
+          return isSameDay(d, day);
+        })
         .reduce((sum, t) => sum + t.amount, 0);
 
-      result.push({ weekLabel: `W${weekNum}`, total });
+      result.push({ date: day, total, isToday });
     }
 
-    return { weeks: result, maxTotal: Math.max(...result.map((w) => w.total), 1) };
+    return { days: result, maxTotal: Math.max(...result.map((d) => d.total), 1) };
   }, [transactions]);
-  const BAR_MAX_HEIGHT = 80;
 
   return (
     <View style={styles.container}>
       <View style={styles.barsRow}>
-        {weeks.map((week, index) => {
-          const height = (week.total / maxTotal) * BAR_MAX_HEIGHT;
-          const isSelected = selectedWeek === index;
+        {days.map((day, index) => {
+          const height = (day.total / maxTotal) * BAR_MAX_HEIGHT;
+          const isSelected = selectedDay === index;
+          const isActive = day.isToday || isSelected;
 
           return (
             <TouchableOpacity
-              key={week.weekLabel}
+              key={index}
               style={styles.barCol}
-              onPress={() => setSelectedWeek(isSelected ? null : index)}
+              onPress={() => {
+                lightTap();
+                setSelectedDay(isSelected ? null : index);
+              }}
               activeOpacity={0.7}
             >
+              {isSelected && day.total > 0 && (
+                <Text style={styles.amountLabel}>
+                  {day.total.toFixed(0)}
+                </Text>
+              )}
               <View style={styles.barTrack}>
                 <View
                   style={[
                     styles.barFill,
                     {
                       height: Math.max(height, 4),
-                      backgroundColor: isSelected ? CALM.accent : CALM.border,
+                      backgroundColor: isActive ? CALM.accent : withAlpha(CALM.textPrimary, 0.08),
                     },
                   ]}
                 />
               </View>
-              <Text style={styles.weekLabel}>{week.weekLabel}</Text>
-              {isSelected && (
-                <Text style={styles.totalText}>{currency} {week.total.toFixed(0)}</Text>
-              )}
+              <Text style={[
+                styles.dayLabel,
+                isActive && styles.dayLabelActive,
+              ]}>
+                {DAY_LABELS[index]}
+              </Text>
+              {day.isToday && <View style={styles.todayDot} />}
             </TouchableOpacity>
           );
         })}
@@ -93,33 +95,46 @@ const styles = StyleSheet.create({
   },
   barsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     alignItems: 'flex-end',
+    paddingHorizontal: SPACING.sm,
   },
   barCol: {
     alignItems: 'center',
     flex: 1,
   },
   barTrack: {
-    width: 24,
-    height: 80,
+    width: 26,
+    height: BAR_MAX_HEIGHT,
     justifyContent: 'flex-end',
-    borderRadius: RADIUS.sm,
-    overflow: 'hidden',
   },
   barFill: {
     width: '100%',
-    borderRadius: RADIUS.sm,
+    borderRadius: 13,
   },
-  weekLabel: {
-    ...TYPE.muted,
-    marginTop: SPACING.xs,
+  dayLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textMuted,
+    marginTop: 6,
   },
-  totalText: {
-    ...TYPE.muted,
+  dayLabelActive: {
     color: CALM.accent,
-    marginTop: 2,
-    fontWeight: '500',
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  todayDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: CALM.accent,
+    marginTop: 3,
+  },
+  amountLabel: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.accent,
+    marginBottom: 4,
+    fontVariant: ['tabular-nums'] as any,
   },
 });
 

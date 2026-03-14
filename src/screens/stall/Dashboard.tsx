@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -52,6 +53,7 @@ const StallDashboard: React.FC = () => {
   } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const activeSession = getActiveSession();
   const hasActiveSession = !!activeSession;
@@ -112,12 +114,12 @@ const StallDashboard: React.FC = () => {
   if (hasActiveSession && activeSession) {
     return (
       <View style={styles.container}>
-        <ModeToggle />
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
           showsVerticalScrollIndicator={false}
         >
+          <ModeToggle />
           {/* Selling now indicator */}
           <View style={styles.sellingNowRow}>
             <Animated.View
@@ -206,12 +208,12 @@ const StallDashboard: React.FC = () => {
   // ─── State A: No active session ────────────────────────────
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
       >
+        <ModeToggle />
         {/* Heading */}
         <Animated.View style={headingAnim}>
           <Text style={styles.heading}>stall</Text>

@@ -547,6 +547,14 @@ export interface AIMessage {
   imageUri?: string;
 }
 
+export interface ChatConversation {
+  id: string;
+  title: string;
+  messages: AIMessage[];
+  createdAt: string;
+  lastMessageAt: string;
+}
+
 export interface Subscription {
   id: string;
   name: string;

@@ -104,8 +104,7 @@ function resolveDate(dateStr?: string): Date {
 // ─── Budget impact helper ────────────────────────────────
 
 function getBudgetImpact(category: string): string {
-  const { budgets } = usePersonalStore.getState();
-  const { transactions } = usePersonalStore.getState();
+  const { budgets, transactions } = usePersonalStore.getState();
   const budget = budgets.find((b) => b.category.toLowerCase() === category.toLowerCase());
   if (!budget) return '';
 
@@ -123,6 +122,12 @@ function getBudgetImpact(category: string): string {
     return ` (${category}: RM ${spent.toFixed(0)}/${budget.allocatedAmount.toFixed(0)}, RM ${left.toFixed(0)} breathing room left)`;
   }
   return ` (${category}: RM ${spent.toFixed(0)}/${budget.allocatedAmount.toFixed(0)} — past breathing room)`;
+}
+
+// ─── ID generator ───────────────────────────────────────
+let _idCounter = 0;
+function uniqueId(suffix?: string): string {
+  return `${Date.now()}-${++_idCounter}${suffix ? `-${suffix}` : ''}`;
 }
 
 // ─── Executor ────────────────────────────────────────────
@@ -176,7 +181,7 @@ export function executeAction(action: ChatAction): ActionResult {
         const debtType = action.debtType || 'i_owe';
         useDebtStore.getState().addDebt({
           contact: {
-            id: Date.now().toString(),
+            id: uniqueId(),
             name: action.person || 'someone',
             isFromPhone: false,
           },
@@ -246,7 +251,7 @@ export function executeAction(action: ChatAction): ActionResult {
           totalAmount: action.amount,
           splitMethod: 'equal',
           participants: people.map((name) => ({
-            contact: { id: Date.now().toString() + name, name, isFromPhone: false },
+            contact: { id: uniqueId(name), name, isFromPhone: false },
             amount: perPerson,
             isPaid: false,
           })),
@@ -257,7 +262,7 @@ export function executeAction(action: ChatAction): ActionResult {
         // Create individual debts for each person
         for (const name of people) {
           useDebtStore.getState().addDebt({
-            contact: { id: Date.now().toString() + name, name, isFromPhone: false },
+            contact: { id: uniqueId(name), name, isFromPhone: false },
             type: 'they_owe',
             totalAmount: perPerson,
             description: action.description,

@@ -12,6 +12,7 @@ import { startOfMonth, endOfMonth, subMonths, isWithinInterval, formatDistanceTo
 import { useBusinessStore } from '../../../store/businessStore';
 import { useMixedStore } from '../../../store/mixedStore';
 import { useSettingsStore } from '../../../store/settingsStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
 import { explainMixedMonth } from '../../../utils/explainMixedMonth';
 import WeekBar from '../../../components/common/WeekBar';
@@ -43,6 +44,7 @@ const MixedDashboard: React.FC = () => {
   } = useMixedStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const [showCostPercentage, setShowCostPercentage] = useState(false);
 
@@ -177,12 +179,12 @@ const MixedDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
       >
+        <ModeToggle />
         {/* Zone 1 — Hero: Total Income */}
         <Text style={styles.heroAmount}>
           {currency} {Math.round(mixedDetails.hasRoadCosts ? net : total).toLocaleString()}

@@ -6,6 +6,7 @@ import { startOfMonth, endOfMonth, subMonths, isWithinInterval, differenceInDays
 import { useBusinessStore } from '../../../store/businessStore';
 import { useFreelancerStore } from '../../../store/freelancerStore';
 import { useSettingsStore } from '../../../store/settingsStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { explainFreelancerMonth } from '../../../utils/explainFreelancerMonth';
 import WeekBar from '../../../components/common/WeekBar';
@@ -26,6 +27,7 @@ const FreelancerDashboard: React.FC = () => {
   } = useFreelancerStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   // ─── TIME BOUNDARIES (stable across renders) ──────────────
   const dateBounds = useMemo(() => {
@@ -124,12 +126,12 @@ const FreelancerDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
       >
+        <ModeToggle />
         {/* Zone 1 — Hero Number */}
         <Text style={styles.heroAmount}>
           {currency} {Math.round(sixMonthAvg).toLocaleString()}

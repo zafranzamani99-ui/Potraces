@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AIMessage } from '../types';
+import { AIMessage, ChatConversation } from '../types';
 
 interface BreathingRoom {
   category: string;
@@ -21,6 +21,7 @@ interface AIInsightsState {
 
   // Money Chat history
   chatMessages: AIMessage[];
+  conversations: ChatConversation[];
 
   // Actions
   setSpendingMirror: (text: string, monthKey: string) => void;
@@ -31,6 +32,9 @@ interface AIInsightsState {
   dismissFreshStart: (monthKey: string) => void;
   addChatMessage: (msg: AIMessage) => void;
   clearChat: () => void;
+  archiveChat: () => void;
+  loadConversation: (id: string) => void;
+  deleteConversation: (id: string) => void;
 }
 
 export const useAIInsightsStore = create<AIInsightsState>()(
@@ -43,6 +47,7 @@ export const useAIInsightsStore = create<AIInsightsState>()(
       breathingRooms: [],
       freshStartDismissedMonth: null,
       chatMessages: [],
+      conversations: [],
 
       setSpendingMirror: (text, monthKey) =>
         set({
@@ -85,6 +90,56 @@ export const useAIInsightsStore = create<AIInsightsState>()(
         })),
 
       clearChat: () => set({ chatMessages: [] }),
+
+      archiveChat: () =>
+        set((state) => {
+          if (state.chatMessages.length < 2) return { chatMessages: [] };
+          const firstMsg = state.chatMessages[0];
+          const lastMsg = state.chatMessages[state.chatMessages.length - 1];
+          // Title from first user message, truncated
+          const firstUserMsg = state.chatMessages.find((m) => m.role === 'user');
+          const title = firstUserMsg
+            ? firstUserMsg.content.slice(0, 50) + (firstUserMsg.content.length > 50 ? '...' : '')
+            : 'Chat';
+          const conversation: ChatConversation = {
+            id: Date.now().toString(),
+            title,
+            messages: state.chatMessages,
+            createdAt: firstMsg.timestamp,
+            lastMessageAt: lastMsg.timestamp,
+          };
+          return {
+            chatMessages: [],
+            conversations: [conversation, ...state.conversations].slice(0, 20), // keep last 20
+          };
+        }),
+
+      loadConversation: (id) =>
+        set((state) => {
+          const convo = state.conversations.find((c) => c.id === id);
+          if (!convo) return {};
+          // Archive current if needed, then load
+          const toArchive = state.chatMessages.length >= 2;
+          let convos = state.conversations;
+          if (toArchive) {
+            const firstMsg = state.chatMessages[0];
+            const lastMsg = state.chatMessages[state.chatMessages.length - 1];
+            const firstUserMsg = state.chatMessages.find((m) => m.role === 'user');
+            const title = firstUserMsg
+              ? firstUserMsg.content.slice(0, 50) + (firstUserMsg.content.length > 50 ? '...' : '')
+              : 'Chat';
+            convos = [{ id: Date.now().toString(), title, messages: state.chatMessages, createdAt: firstMsg.timestamp, lastMessageAt: lastMsg.timestamp }, ...convos].slice(0, 20);
+          }
+          return {
+            chatMessages: convo.messages,
+            conversations: convos.filter((c) => c.id !== id),
+          };
+        }),
+
+      deleteConversation: (id) =>
+        set((state) => ({
+          conversations: state.conversations.filter((c) => c.id !== id),
+        })),
     }),
     {
       name: 'ai-insights-storage',
@@ -96,6 +151,7 @@ export const useAIInsightsStore = create<AIInsightsState>()(
         breathingRooms: state.breathingRooms,
         freshStartDismissedMonth: state.freshStartDismissedMonth,
         chatMessages: state.chatMessages,
+        conversations: state.conversations,
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;

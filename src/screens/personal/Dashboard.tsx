@@ -40,7 +40,8 @@ import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToast } from '../../context/ToastContext';
-import { Transaction } from '../../types';
+import { Transaction, CategoryOption } from '../../types';
+import { LinearGradient } from 'expo-linear-gradient';
 import { lightTap } from '../../services/haptics';
 import { explainMonth } from '../../utils/explainMonth';
 import QuickAddExpense from '../../components/common/QuickAddExpense';
@@ -59,15 +60,16 @@ const getGreeting = (): string => {
 };
 
 const QUICK_ACTIONS = [
-  { key: 'wallets', label: 'Wallets', icon: 'credit-card' as const, screen: 'WalletManagement', color: CALM.accent },
-  { key: 'savings', label: 'Savings', icon: 'trending-up' as const, screen: 'SavingsTracker', color: '#A06CD5' },
-  { key: 'debts', label: 'Debts & Splits', icon: 'users' as const, screen: 'DebtTracking', color: CALM.neutral },
-  { key: 'subscriptions', label: 'Commitments', icon: 'repeat' as const, screen: 'SubscriptionList', color: CALM.accent },
-  { key: 'reports', label: 'Reports', icon: 'bar-chart-2' as const, screen: 'PersonalReports', color: CALM.accent },
-  { key: 'scan', label: 'Scan Receipt', icon: 'camera' as const, screen: 'ReceiptScanner', color: CALM.positive },
-  { key: 'chat', label: 'Money Chat', icon: 'message-circle' as const, screen: 'MoneyChat', color: CALM.accent },
-  { key: 'goals', label: 'My Goals', icon: 'target' as const, screen: 'Goals', color: '#E67E22' },
-  { key: 'pulse', label: 'Financial Pulse', icon: 'activity' as const, screen: 'FinancialPulse', color: '#9B59B6' },
+  { key: 'wallets', label: 'Wallets', icon: 'credit-card' as const, screen: 'WalletManagement', color: '#6BA3BE' },
+  { key: 'savings', label: 'Savings', icon: 'archive' as const, screen: 'SavingsTracker', color: '#A688B8' },
+  { key: 'debts', label: 'Splits', icon: 'git-branch' as const, screen: 'DebtTracking', color: '#C1694F' },
+  { key: 'subscriptions', label: 'Bills', icon: 'refresh-cw' as const, screen: 'SubscriptionList', color: CALM.accent },
+  { key: 'budgets', label: 'Budgets', icon: 'sliders' as const, screen: 'BudgetPlanning', color: CALM.bronze },
+  { key: 'reports', label: 'Reports', icon: 'trending-up' as const, screen: 'PersonalReports', color: '#8B7355' },
+  { key: 'goals', label: 'Goals', icon: 'flag' as const, screen: 'Goals', color: '#D4884A' },
+  { key: 'scan', label: 'Scan', icon: 'aperture' as const, screen: 'ReceiptScanner', color: '#B87333' },
+  { key: 'chat', label: 'Chat', icon: 'zap' as const, screen: 'MoneyChat', color: CALM.gold },
+  { key: 'pulse', label: 'Pulse', icon: 'activity' as const, screen: 'FinancialPulse', color: '#7B8D6E' },
 ];
 
 const PersonalDashboard: React.FC = () => {
@@ -90,8 +92,20 @@ const PersonalDashboard: React.FC = () => {
   const deductFromWallet = useWalletStore((s) => s.deductFromWallet);
   const addToWallet = useWalletStore((s) => s.addToWallet);
   const [refreshing, setRefreshing] = React.useState(false);
-  const [showAllQuickActions, setShowAllQuickActions] = useState(false);
   const navigation = useNavigation<any>();
+
+  const categoryMap = useMemo(() => {
+    const map = new Map<string, CategoryOption>();
+    for (const c of expenseCategories) map.set(c.id, c);
+    for (const c of incomeCategories) map.set(c.id, c);
+    return map;
+  }, [expenseCategories, incomeCategories]);
+
+  const walletMap = useMemo(() => {
+    const map = new Map<string, typeof wallets[0]>();
+    for (const w of wallets) map.set(w.id, w);
+    return map;
+  }, [wallets]);
 
   // Transaction edit modal state
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -107,7 +121,11 @@ const PersonalDashboard: React.FC = () => {
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [qrViewIndex, setQrViewIndex] = useState(0);
 
-  const greeting = useMemo(() => getGreeting(), []);
+  const userName = useSettingsStore((s) => s.userName);
+  const greeting = useMemo(() => {
+    const base = getGreeting();
+    return userName ? `${base}, ${userName}` : base;
+  }, [userName]);
   const bnpl = useBNPLTotal();
   const kept = useKeptNumber();
 
@@ -141,7 +159,7 @@ const PersonalDashboard: React.FC = () => {
 
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const upcomingBills = subscriptions.filter(
-      (sub) => sub.isActive && isWithinInterval(sub.nextBillingDate, {
+      (sub) => sub.isActive && !sub.isPaused && isWithinInterval(sub.nextBillingDate, {
         start: today,
         end: addDays(today, 8),
       })
@@ -260,6 +278,7 @@ const PersonalDashboard: React.FC = () => {
     const upcomingWeek = subscriptions.filter(
       (sub) =>
         sub.isActive &&
+        !sub.isPaused &&
         isWithinInterval(sub.nextBillingDate, { start: today, end: weekLater })
     );
     const upcomingTotal = upcomingWeek.reduce((sum, sub) => sum + sub.amount, 0);
@@ -296,6 +315,11 @@ const PersonalDashboard: React.FC = () => {
     setEditWalletId(transaction.walletId || null);
     setEditModalVisible(true);
   }, []);
+
+  const handleItemPress = useCallback((id: string) => {
+    const txn = transactions.find((t) => t.id === id);
+    if (txn) handleEditTransaction(txn);
+  }, [transactions, handleEditTransaction]);
 
   const handleUpdateTransaction = useCallback(() => {
     if (!editingTransaction) return;
@@ -446,15 +470,15 @@ const PersonalDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        <ModeToggle />
         {/* Zone 1 — Greeting (small) */}
         <View style={styles.greetingRow}>
           <Text style={styles.greeting}>{greeting}</Text>
@@ -498,149 +522,167 @@ const PersonalDashboard: React.FC = () => {
         <FreshStart />
 
         {/* Zone 4 — Spending Mirror */}
-        <Text style={styles.insight}>
-          {mirrorText || insight}
-        </Text>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => { lightTap(); navigation.navigate('MoneyChat'); }}
+          style={styles.insightWrap}
+        >
+          <Text style={styles.insight}>
+            {mirrorText && mirrorText.length > 10 ? mirrorText : insight}
+          </Text>
+        </TouchableOpacity>
 
         {/* Zone 5 — Insight Strip */}
+        <View style={styles.insightStripWrap}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.insightStripRow}
           style={styles.insightStripScroll}
         >
-          {/* All Transactions */}
+          {/* Transactions */}
           <TouchableOpacity
-            style={[styles.insightCard, { borderLeftColor: CALM.accent }]}
+            style={[styles.insightCard, { backgroundColor: withAlpha(CALM.accent, 0.05) }]}
             activeOpacity={0.7}
-            onPress={() => {
-              lightTap();
-              navigation.getParent()?.navigate('TransactionsList');
-            }}
+            onPress={() => { lightTap(); navigation.getParent()?.navigate('TransactionsList'); }}
             accessibilityLabel={`${stats.transactionCount} transactions this month`}
           >
-            <View style={[styles.insightIconBg, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
-              <Feather name="list" size={14} color={CALM.accent} />
+            <View style={styles.insightCardHeader}>
+              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(CALM.accent, 0.10) }]}>
+                <Feather name="layers" size={16} color={CALM.accent} />
+              </View>
+              <Text style={styles.insightCardLabel}>this month</Text>
             </View>
-            <Text style={[styles.insightValue, { color: CALM.accent }]}>
-              {stats.transactionCount} txns
+            <Text style={[styles.insightValue, { color: CALM.textPrimary }]}>
+              {stats.transactionCount}
             </Text>
-            <Text style={styles.insightLabel}>view all</Text>
+            <Text style={styles.insightContext}>transactions</Text>
           </TouchableOpacity>
 
-          {/* Spending Velocity */}
+          {/* Spending Pace */}
           <TouchableOpacity
-            style={[styles.insightCard, { borderLeftColor: insightStrip.velocityColor }]}
+            style={[styles.insightCard, { backgroundColor: withAlpha(insightStrip.velocityColor, 0.05) }]}
             activeOpacity={0.7}
-            onPress={() => {
-              lightTap();
-              navigation.getParent()?.navigate('FinancialPulse');
-            }}
+            onPress={() => { lightTap(); navigation.getParent()?.navigate('FinancialPulse'); }}
             accessibilityLabel={`Spending velocity: ${insightStrip.velocityPercent} percent of usual pace`}
           >
-            <View style={[styles.insightIconBg, { backgroundColor: withAlpha(insightStrip.velocityColor, 0.12) }]}>
-              <Feather name="zap" size={14} color={insightStrip.velocityColor} />
+            <View style={styles.insightCardHeader}>
+              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(insightStrip.velocityColor, 0.10) }]}>
+                <Feather name="trending-up" size={16} color={insightStrip.velocityColor} />
+              </View>
+              <Text style={styles.insightCardLabel}>pace</Text>
             </View>
-            <Text style={[styles.insightValue, { color: insightStrip.velocityColor }]}>
-              {insightStrip.velocityPercent}% pace
+            <Text style={[styles.insightValue, { color: CALM.textPrimary }]}>
+              {insightStrip.velocityPercent}%
             </Text>
-            <Text style={styles.insightLabel}>of usual spending</Text>
+            <Text style={styles.insightContext}>of usual spending</Text>
           </TouchableOpacity>
 
-          {/* Kept Number */}
-          <View
-            style={[styles.insightCard, { borderLeftColor: kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral }]}
+          {/* Kept */}
+          <TouchableOpacity
+            style={[styles.insightCard, { backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral, 0.08) }]}
+            activeOpacity={0.7}
+            onPress={() => { lightTap(); navigation.getParent()?.navigate('TransactionsList'); }}
             accessibilityLabel={`Kept ${currency} ${kept.keptThisMonth.toFixed(2)} this month`}
           >
-            <View style={[styles.insightIconBg, { backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral, 0.12) }]}>
-              <Feather name="pocket" size={14} color={kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral} />
+            <View style={styles.insightCardHeader}>
+              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral, 0.10) }]}>
+                <Feather name="pocket" size={16} color={kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral} />
+              </View>
+              <Text style={styles.insightCardLabel}>kept</Text>
             </View>
-            <Text style={[styles.insightValue, { color: kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral }]}>
+            <Text style={[styles.insightValue, { color: CALM.textPrimary }]}>
               {kept.keptThisMonth >= 0 ? '+' : ''}{currency} {kept.keptThisMonth.toFixed(0)}
             </Text>
-            <Text style={styles.insightLabel}>kept</Text>
-          </View>
+            <Text style={styles.insightContext}>net this month</Text>
+          </TouchableOpacity>
 
-          {/* BNPL / Credit Used */}
+          {/* BNPL / Credit */}
           {bnpl.walletCount > 0 && bnpl.totalUsed > 0 && (
             <TouchableOpacity
-              style={[styles.insightCard, { borderLeftColor: CALM.bronze }]}
+              style={[styles.insightCard, { backgroundColor: withAlpha(CALM.bronze, 0.05) }]}
               activeOpacity={0.7}
-              onPress={() => {
-                lightTap();
-                navigation.getParent()?.navigate('WalletManagement');
-              }}
+              onPress={() => { lightTap(); navigation.getParent()?.navigate('WalletManagement'); }}
               accessibilityLabel={`Future you owes ${currency} ${bnpl.totalUsed.toFixed(2)}`}
             >
-              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(CALM.bronze, 0.12) }]}>
-                <Feather name="credit-card" size={14} color={CALM.bronze} />
+              <View style={styles.insightCardHeader}>
+                <View style={[styles.insightIconBg, { backgroundColor: withAlpha(CALM.bronze, 0.10) }]}>
+                  <Feather name="clock" size={16} color={CALM.bronze} />
+                </View>
+                <Text style={styles.insightCardLabel}>owed later</Text>
               </View>
-              <Text style={[styles.insightValue, { color: CALM.bronze }]}>
+              <Text style={[styles.insightValue, { color: CALM.textPrimary }]}>
                 {currency} {bnpl.totalUsed.toFixed(0)}
               </Text>
-              <Text style={styles.insightLabel}>future you owes</Text>
+              <Text style={styles.insightContext}>buy now pay later</Text>
             </TouchableOpacity>
           )}
 
           {/* Upcoming Bills */}
           <TouchableOpacity
-            style={[styles.insightCard, { borderLeftColor: CALM.accent }]}
+            style={[styles.insightCard, { backgroundColor: withAlpha(CALM.gold, 0.05) }]}
             activeOpacity={0.7}
-            onPress={() => {
-              lightTap();
-              navigation.getParent()?.navigate('SubscriptionList');
-            }}
-            accessibilityLabel={`${insightStrip.upcomingCount} bills totalling ${currency} ${insightStrip.upcomingTotal.toFixed(2)} due this week`}
+            onPress={() => { lightTap(); navigation.getParent()?.navigate('SubscriptionList'); }}
+            accessibilityLabel={`${insightStrip.upcomingCount} bills due this week`}
           >
-            <View style={[styles.insightIconBg, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
-              <Feather name="calendar" size={14} color={CALM.accent} />
+            <View style={styles.insightCardHeader}>
+              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(CALM.gold, 0.10) }]}>
+                <Feather name="bell" size={16} color={CALM.gold} />
+              </View>
+              <Text style={styles.insightCardLabel}>coming up</Text>
             </View>
-            <Text style={[styles.insightValue, { color: CALM.accent }]}>
+            <Text style={[styles.insightValue, { color: CALM.textPrimary }]}>
               {insightStrip.upcomingCount} {insightStrip.upcomingCount === 1 ? 'bill' : 'bills'}
             </Text>
-            <Text style={styles.insightLabel}>
-              {currency} {insightStrip.upcomingTotal.toFixed(2)}
-            </Text>
+            <Text style={styles.insightContext}>{currency} {insightStrip.upcomingTotal.toFixed(0)} this week</Text>
           </TouchableOpacity>
         </ScrollView>
+        <LinearGradient
+          colors={['rgba(249,249,247,0)', 'rgba(249,249,247,1)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.insightStripFade}
+          pointerEvents="none"
+        />
+        </View>
 
-        {/* Quick Actions - horizontal scroll with "See All" modal */}
+        {/* Quick Actions — pill grid */}
+        {/* Quick Actions — 2-row horizontal scroll */}
         <View style={styles.quickActionsSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.detailSectionTitle}>Quick Actions</Text>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                lightTap();
-                setShowAllQuickActions(true);
-              }}
-            >
-              <Text style={styles.seeAll}>See All</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.quickActionsRow}
-          >
-            {QUICK_ACTIONS.map((action) => (
-              <TouchableOpacity
-                key={action.key}
-                style={styles.quickActionButton}
-                onPress={() => handleQuickAction(action.screen)}
-                activeOpacity={0.7}
+          <Text style={styles.detailSectionTitle}>Quick Actions</Text>
+          {[0, 1].map((rowIdx) => (
+            <View key={rowIdx} style={styles.quickActionsRowWrap}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.quickActionsRow}
+                style={styles.quickActionsScroll}
               >
-                <View
-                  style={[styles.quickActionIconBg, { backgroundColor: withAlpha(action.color, 0.12) }]}
-                >
-                  <Feather name={action.icon} size={18} color={action.color} />
-                </View>
-                <Text style={styles.quickActionLabel} numberOfLines={2}>
-                  {action.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+                {QUICK_ACTIONS.slice(rowIdx * 5, rowIdx * 5 + 5).map((action) => (
+                  <TouchableOpacity
+                    key={action.key}
+                    style={styles.quickActionBtn}
+                    onPress={() => handleQuickAction(action.screen)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.quickActionIcon, { backgroundColor: withAlpha(action.color, 0.08) }]}>
+                      <Feather name={action.icon} size={22} color={action.color} />
+                    </View>
+                    <Text style={styles.quickActionLabel} numberOfLines={1}>
+                      {action.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <LinearGradient
+                colors={['rgba(249,249,247,0)', 'rgba(249,249,247,1)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.quickActionsFade}
+                pointerEvents="none"
+              />
+            </View>
+          ))}
         </View>
 
         {/* Details section */}
@@ -745,7 +787,10 @@ const PersonalDashboard: React.FC = () => {
                 <TransactionItem
                   key={transaction.id}
                   transaction={transaction}
-                  onPress={() => handleEditTransaction(transaction)}
+                  currency={currency}
+                  category={categoryMap.get(transaction.category)}
+                  wallet={transaction.walletId ? walletMap.get(transaction.walletId) : undefined}
+                  onPress={handleItemPress}
                 />
               ))
             ) : (
@@ -758,53 +803,6 @@ const PersonalDashboard: React.FC = () => {
           </View>
         </CollapsibleSection>
       </ScrollView>
-
-      {/* Quick Actions Modal */}
-      <Modal
-        visible={showAllQuickActions}
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={() => setShowAllQuickActions(false)}
-      >
-        <TouchableOpacity
-          style={styles.qaModalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowAllQuickActions(false)}
-        >
-          <View style={styles.qaModalSheet} onStartShouldSetResponder={() => true}>
-            <View style={styles.qaModalHeader}>
-              <Text style={styles.qaModalTitle}>Quick Actions</Text>
-              <TouchableOpacity
-                onPress={() => setShowAllQuickActions(false)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Feather name="x" size={22} color={CALM.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.qaModalGrid}>
-              {QUICK_ACTIONS.map((action) => (
-                <TouchableOpacity
-                  key={action.key}
-                  style={styles.qaModalItem}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setShowAllQuickActions(false);
-                    handleQuickAction(action.screen);
-                  }}
-                >
-                  <View style={[styles.qaModalIconBg, { backgroundColor: withAlpha(action.color, 0.12) }]}>
-                    <Feather name={action.icon} size={20} color={action.color} />
-                  </View>
-                  <Text style={styles.qaModalLabel} numberOfLines={2}>
-                    {action.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
 
       {/* Transaction Edit Modal */}
       <Modal
@@ -969,6 +967,9 @@ const PersonalDashboard: React.FC = () => {
             />
           )}
 
+          {/* Watermark below QR */}
+          <Text style={styles.qrWatermark}>potraces</Text>
+
           {/* QR tabs at bottom */}
           {paymentQrs.length > 1 && (
             <View style={styles.qrTabs}>
@@ -1015,7 +1016,11 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
   },
   greeting: {
-    ...TYPE.muted,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 1.5,
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
   qrButton: {
     width: 44,
@@ -1028,59 +1033,85 @@ const styles = StyleSheet.create({
 
   // Zone 2 — Balance
   balanceAmount: {
-    fontSize: TYPE.amount.fontSize,
-    fontWeight: TYPE.amount.fontWeight,
+    fontSize: 40,
+    fontWeight: TYPOGRAPHY.weight.light,
+    letterSpacing: -1,
     color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
     marginBottom: SPACING.xs,
   },
   netMonth: {
-    ...TYPE.muted,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
     marginBottom: SPACING.lg,
   },
 
-  // Zone 4 — Insight
-  insight: {
-    fontSize: TYPE.insight.fontSize,
-    lineHeight: TYPE.insight.lineHeight,
-    color: CALM.textSecondary,
+  // Zone 4 — Spending Mirror
+  insightWrap: {
     marginBottom: SPACING.lg,
+  },
+  insight: {
+    fontSize: TYPOGRAPHY.size.base,
+    lineHeight: 24,
+    color: '#7B7568',
+    fontStyle: 'italic',
   },
 
   // Zone 5 — Insight Strip
-  insightStripScroll: {
+  insightStripWrap: {
+    position: 'relative',
     marginBottom: SPACING.lg,
+  },
+  insightStripScroll: {
     marginHorizontal: -SPACING['2xl'],
+  },
+  insightStripFade: {
+    position: 'absolute',
+    right: -SPACING['2xl'],
+    top: 0,
+    bottom: 0,
+    width: 40,
   },
   insightStripRow: {
     paddingHorizontal: SPACING['2xl'],
     gap: SPACING.sm,
   },
   insightCard: {
-    width: 140,
+    width: 150,
     padding: SPACING.md,
-    backgroundColor: CALM.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: CALM.border,
-    borderLeftWidth: 3,
+    borderRadius: RADIUS.xl,
+    gap: 2,
   },
-  insightIconBg: {
-    width: 28,
-    height: 28,
-    borderRadius: RADIUS.sm,
+  insightCardHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: SPACING.sm,
     marginBottom: SPACING.sm,
   },
+  insightIconBg: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  insightCardLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textMuted,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
   insightValue: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    marginBottom: 2,
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.light,
     fontVariant: ['tabular-nums'] as any,
   },
-  insightLabel: {
+  insightContext: {
     fontSize: TYPOGRAPHY.size.xs,
     color: CALM.textSecondary,
+    marginTop: 2,
   },
 
   // Detail sections
@@ -1196,37 +1227,45 @@ const styles = StyleSheet.create({
 
   // Quick Actions
   quickActionsSection: {
-    marginBottom: SPACING.md,
     marginTop: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  quickActionsRowWrap: {
+    position: 'relative',
+    marginRight: -SPACING['2xl'],
+  },
+  quickActionsScroll: {
+    overflow: 'visible',
   },
   quickActionsRow: {
     flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
+    gap: SPACING.md,
+    paddingRight: SPACING['2xl'],
   },
-  quickActionButton: {
-    width: 80,
-    backgroundColor: CALM.surface,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xs,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-  },
-  quickActionIconBg: {
+  quickActionsFade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
     width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
+  },
+  quickActionBtn: {
+    alignItems: 'center',
+    gap: 6,
+    width: 76,
+  },
+  quickActionIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   quickActionLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontSize: 11,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.textPrimary,
     textAlign: 'center',
-    lineHeight: 14,
   },
 
   // Section
@@ -1321,58 +1360,6 @@ const styles = StyleSheet.create({
     borderColor: CALM.neutral,
   },
 
-  // Quick Actions Modal
-  qaModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  qaModalSheet: {
-    backgroundColor: CALM.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING['2xl'],
-    width: '88%',
-    maxWidth: 360,
-  },
-  qaModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-  },
-  qaModalTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
-  },
-  qaModalGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.md,
-    justifyContent: 'flex-start',
-  },
-  qaModalItem: {
-    width: '28%',
-    alignItems: 'center',
-    paddingVertical: SPACING.md,
-    gap: SPACING.sm,
-  },
-  qaModalIconBg: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qaModalLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
-    textAlign: 'center',
-    lineHeight: 14,
-  },
-
   // QR Fullscreen Modal
   qrModalOverlay: {
     flex: 1,
@@ -1435,6 +1422,14 @@ const styles = StyleSheet.create({
     height: SCREEN_WIDTH - SPACING['2xl'] * 2,
     borderRadius: RADIUS.lg,
     backgroundColor: '#fff',
+  },
+  qrWatermark: {
+    marginTop: SPACING.lg,
+    fontSize: 16,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: 'rgba(255, 255, 255, 0.5)',
+    letterSpacing: 8,
+    textTransform: 'lowercase',
   },
 });
 

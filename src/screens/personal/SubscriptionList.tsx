@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,121 +11,198 @@ import {
   Pressable,
   Switch,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Animated,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { format, addWeeks, addMonths, addYears, isValid } from 'date-fns';
+import { format, differenceInDays, addWeeks, addMonths, addQuarters, addYears, isValid } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, BILLING_CYCLES, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, BILLING_CYCLES, withAlpha } from '../../constants';
 import { useCategories } from '../../hooks/useCategories';
-import Button from '../../components/common/Button';
-import Card from '../../components/common/Card';
-import EmptyState from '../../components/common/EmptyState';
-import ProgressBar from '../../components/common/ProgressBar';
 import CategoryPicker from '../../components/common/CategoryPicker';
+import CalendarPicker from '../../components/common/CalendarPicker';
 import { useToast } from '../../context/ToastContext';
-import { lightTap } from '../../services/haptics';
+import { lightTap, mediumTap } from '../../services/haptics';
+
+type FilterStatus = 'all' | 'active' | 'paused' | 'installments';
 
 const SubscriptionList: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
-  const { subscriptions, addSubscription, updateSubscription, deleteSubscription } = usePersonalStore();
+  const {
+    subscriptions,
+    addSubscription,
+    updateSubscription,
+    deleteSubscription,
+    incrementInstallment,
+    toggleSubscriptionPause,
+  } = usePersonalStore();
   const currency = useSettingsStore(state => state.currency);
+  const expenseCategories = useCategories('expense');
+
+  // Modal state
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const expenseCategories = useCategories('expense');
+  const [calendarVisible, setCalendarVisible] = useState(false);
+  const [cyclePickerVisible, setCyclePickerVisible] = useState(false);
+
+  // Form state
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState(expenseCategories[0]?.id || 'food');
   const [billingCycle, setBillingCycle] = useState<'weekly' | 'monthly' | 'yearly' | 'quarterly'>('monthly');
   const [reminderDays, setReminderDays] = useState('3');
-  const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [startDate, setStartDate] = useState(new Date());
   const [isInstallment, setIsInstallment] = useState(false);
   const [totalInstallments, setTotalInstallments] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
-  const [sortBy, setSortBy] = useState<'name' | 'amount' | 'date'>('date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [isPaused, setIsPaused] = useState(false);
 
-  const filteredSortedSubs = useMemo(() => {
+  // List state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  const [showAnnual, setShowAnnual] = useState(false);
+
+  // FAB animation
+  const fabScale = useRef(new Animated.Value(1)).current;
+
+  // ─── Computed ──────────────────────────────────────────────
+  const totalMonthly = useMemo(() =>
+    subscriptions
+      .filter(sub => sub.isActive && !sub.isPaused)
+      .reduce((sum, sub) => {
+        switch (sub.billingCycle) {
+          case 'weekly': return sum + sub.amount * 4;
+          case 'quarterly': return sum + sub.amount / 3;
+          case 'yearly': return sum + sub.amount / 12;
+          default: return sum + sub.amount;
+        }
+      }, 0),
+    [subscriptions],
+  );
+
+  const totalAnnual = totalMonthly * 12;
+
+  const activeSubs = useMemo(
+    () => subscriptions.filter(s => s.isActive && !s.isPaused),
+    [subscriptions],
+  );
+
+  const dueSoonSubs = useMemo(() =>
+    activeSubs.filter(s => {
+      const days = differenceInDays(s.nextBillingDate, new Date());
+      return days >= 0 && days <= 7;
+    }).sort((a, b) =>
+      differenceInDays(a.nextBillingDate, new Date()) - differenceInDays(b.nextBillingDate, new Date()),
+    ),
+    [activeSubs],
+  );
+
+  const filteredSubs = useMemo(() => {
     let result = [...subscriptions];
 
-    if (filterStatus === 'active') result = result.filter((s) => s.isActive);
-    if (filterStatus === 'inactive') result = result.filter((s) => !s.isActive);
+    // Filter
+    switch (filterStatus) {
+      case 'active':
+        result = result.filter(s => s.isActive && !s.isPaused);
+        break;
+      case 'paused':
+        result = result.filter(s => s.isPaused);
+        break;
+      case 'installments':
+        result = result.filter(s => s.isInstallment);
+        break;
+    }
 
+    // Search
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      result = result.filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) ||
-          s.category.toLowerCase().includes(q)
+      result = result.filter(s =>
+        s.name.toLowerCase().includes(q) ||
+        s.category.toLowerCase().includes(q),
       );
     }
 
-    result.sort((a, b) => {
-      let cmp = 0;
-      if (sortBy === 'amount') cmp = a.amount - b.amount;
-      else if (sortBy === 'name') cmp = a.name.localeCompare(b.name);
-      else cmp = a.nextBillingDate.getTime() - b.nextBillingDate.getTime();
-      return sortOrder === 'asc' ? cmp : -cmp;
-    });
+    // Sort by next billing date
+    result.sort((a, b) => a.nextBillingDate.getTime() - b.nextBillingDate.getTime());
 
     return result;
-  }, [subscriptions, filterStatus, searchQuery, sortBy, sortOrder]);
+  }, [subscriptions, filterStatus, searchQuery]);
+
+  // ─── Helpers ───────────────────────────────────────────────
+  const getDaysUntil = useCallback((date: Date) => {
+    return differenceInDays(date, new Date());
+  }, []);
+
+  const getNextBillingDate = useCallback((start: Date, cycle: string): Date => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (start >= today) return start;
+
+    let next = start;
+    while (next < now) {
+      switch (cycle) {
+        case 'weekly': next = addWeeks(next, 1); break;
+        case 'quarterly': next = addQuarters(next, 1); break;
+        case 'yearly': next = addYears(next, 1); break;
+        default: next = addMonths(next, 1); break;
+      }
+    }
+    return next;
+  }, []);
+
+  // ─── Form Actions ─────────────────────────────────────────
+  const resetForm = useCallback(() => {
+    setEditingId(null);
+    setName('');
+    setAmount('');
+    setCategory(expenseCategories[0]?.id || 'food');
+    setBillingCycle('monthly');
+    setReminderDays('3');
+    setStartDate(new Date());
+    setIsInstallment(false);
+    setTotalInstallments('');
+    setIsPaused(false);
+  }, [expenseCategories]);
 
   const handleEdit = useCallback((id: string) => {
-    const subscription = subscriptions.find((s) => s.id === id);
-    if (!subscription) return;
+    const sub = subscriptions.find(s => s.id === id);
+    if (!sub) return;
+    lightTap();
     setEditingId(id);
-    setName(subscription.name);
-    setAmount(subscription.amount.toString());
-    setCategory(subscription.category);
-    setBillingCycle(subscription.billingCycle);
-    setReminderDays(subscription.reminderDays.toString());
-    setStartDate(isValid(subscription.startDate) ? format(subscription.startDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'));
-    setIsInstallment(subscription.isInstallment || false);
-    setTotalInstallments(subscription.totalInstallments?.toString() || '');
+    setName(sub.name);
+    setAmount(sub.amount.toString());
+    setCategory(sub.category);
+    setBillingCycle(sub.billingCycle);
+    setReminderDays(sub.reminderDays.toString());
+    setStartDate(isValid(sub.startDate) ? sub.startDate : new Date());
+    setIsInstallment(sub.isInstallment || false);
+    setTotalInstallments(sub.totalInstallments?.toString() || '');
+    setIsPaused(sub.isPaused || false);
     setModalVisible(true);
   }, [subscriptions]);
 
-  const handleAdd = useCallback(() => {
+  const handleSave = useCallback(() => {
     if (!name.trim()) {
-      showToast('Please enter subscription name', 'error');
+      showToast('please enter a name', 'error');
       return;
     }
-
     if (!amount || parseFloat(amount) <= 0) {
-      showToast('Please enter a valid amount', 'error');
+      showToast('please enter a valid amount', 'error');
       return;
     }
 
-    const parsedStartDate = new Date(startDate);
-    const validStartDate = isNaN(parsedStartDate.getTime()) ? new Date() : parsedStartDate;
+    const validStartDate = isValid(startDate) ? startDate : new Date();
+    const nextBilling = getNextBillingDate(validStartDate, billingCycle);
 
     if (editingId) {
-      const existing = subscriptions.find((s) => s.id === editingId);
-      // Recalculate nextBillingDate if start date or billing cycle changed
-      const startDateChanged = existing && validStartDate.getTime() !== existing.startDate.getTime();
+      const existing = subscriptions.find(s => s.id === editingId);
+      const startChanged = existing && validStartDate.getTime() !== existing.startDate.getTime();
       const cycleChanged = existing && billingCycle !== existing.billingCycle;
-      let nextBillingDate = existing?.nextBillingDate || new Date();
-      if (startDateChanged || cycleChanged) {
-        const now = new Date();
-        if (validStartDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
-          nextBillingDate = validStartDate;
-        } else {
-          let next = validStartDate;
-          while (next < now) {
-            switch (billingCycle) {
-              case 'weekly': next = addWeeks(next, 1); break;
-              case 'yearly': next = addYears(next, 1); break;
-              default: next = addMonths(next, 1); break;
-            }
-          }
-          nextBillingDate = next;
-        }
-      }
+      const nextBillingDate = (startChanged || cycleChanged) ? nextBilling : (existing?.nextBillingDate || nextBilling);
+
       updateSubscription(editingId, {
         name: name.trim(),
         amount: parseFloat(amount),
@@ -134,34 +211,14 @@ const SubscriptionList: React.FC = () => {
         reminderDays: parseInt(reminderDays) || 3,
         startDate: validStartDate,
         isInstallment,
+        isPaused,
         ...(isInstallment && {
           totalInstallments: parseInt(totalInstallments) || 1,
         }),
-        ...(!isInstallment && {
-          totalInstallments: undefined,
-          completedInstallments: undefined,
-        }),
         nextBillingDate,
       });
-      showToast('subscription updated.', 'success');
+      showToast('commitment updated.', 'success');
     } else {
-      const nextBilling = (() => {
-        const now = new Date();
-        // If start date is today or in the future, first billing is on start date
-        if (validStartDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
-          return validStartDate;
-        }
-        // If start date is in the past, roll forward until next billing is in the future
-        let next = validStartDate;
-        while (next < now) {
-          switch (billingCycle) {
-            case 'weekly': next = addWeeks(next, 1); break;
-            case 'yearly': next = addYears(next, 1); break;
-            default: next = addMonths(next, 1); break;
-          }
-        }
-        return next;
-      })();
       addSubscription({
         name: name.trim(),
         amount: parseFloat(amount),
@@ -170,6 +227,7 @@ const SubscriptionList: React.FC = () => {
         startDate: validStartDate,
         nextBillingDate: nextBilling,
         isActive: true,
+        isPaused: false,
         reminderDays: parseInt(reminderDays) || 3,
         isInstallment,
         ...(isInstallment && {
@@ -177,245 +235,334 @@ const SubscriptionList: React.FC = () => {
           completedInstallments: 0,
         }),
       });
-      showToast('subscription added.', 'success');
+      showToast('commitment added.', 'success');
     }
 
+    mediumTap();
     setModalVisible(false);
     resetForm();
-  }, [name, amount, category, billingCycle, reminderDays, startDate, isInstallment, totalInstallments, editingId, subscriptions, addSubscription, updateSubscription, showToast]);
+  }, [name, amount, category, billingCycle, reminderDays, startDate, isInstallment, totalInstallments, isPaused, editingId, subscriptions, addSubscription, updateSubscription, showToast, resetForm, getNextBillingDate]);
 
-  const resetForm = useCallback(() => {
-    setEditingId(null);
-    setName('');
-    setAmount('');
-    setCategory(expenseCategories[0].id);
-    setBillingCycle('monthly');
-    setReminderDays('3');
-    setStartDate(format(new Date(), 'yyyy-MM-dd'));
-    setIsInstallment(false);
-    setTotalInstallments('');
-  }, [expenseCategories]);
-
-  const handleDelete = useCallback((id: string, name: string) => {
+  const handleDelete = useCallback((id: string, subName: string) => {
     Alert.alert(
-      'Delete Subscription',
-      `Are you sure you want to delete "${name}"?`,
+      'delete commitment',
+      `remove "${subName}"?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'delete',
           style: 'destructive',
-          onPress: () => deleteSubscription(id),
+          onPress: () => {
+            deleteSubscription(id);
+            showToast('commitment removed.', 'success');
+          },
         },
-      ]
+      ],
     );
-  }, [deleteSubscription]);
+  }, [deleteSubscription, showToast]);
 
-  const totalMonthly = useMemo(() => subscriptions
-    .filter((sub) => sub.isActive)
-    .reduce((sum, sub) => {
-      const monthlyAmount = (() => {
-        switch (sub.billingCycle) {
-          case 'weekly':
-            return sub.amount * 4;
-          case 'yearly':
-            return sub.amount / 12;
-          default:
-            return sub.amount;
-        }
-      })();
-      return sum + monthlyAmount;
-    }, 0), [subscriptions]);
+  const handleMarkPayment = useCallback((id: string) => {
+    lightTap();
+    incrementInstallment(id);
+    showToast('payment marked.', 'success');
+  }, [incrementInstallment, showToast]);
 
-  return (
-    <View style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {subscriptions.length > 0 && (
-          <Card style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Monthly Total</Text>
-            <Text style={styles.summaryAmount}>{currency} {totalMonthly.toFixed(2)}</Text>
-            <Text style={styles.summarySubtext}>
-              {subscriptions.filter((s) => s.isActive).length} active commitments
-            </Text>
-          </Card>
+  const getCycleLabel = (cycle: string) => {
+    const found = BILLING_CYCLES.find(c => c.value === cycle);
+    return found ? found.label.toLowerCase() : cycle;
+  };
+
+  // ─── Render Helpers ────────────────────────────────────────
+  const renderSummaryHero = () => {
+    if (subscriptions.length === 0) return null;
+
+    const displayAmount = showAnnual ? totalAnnual : totalMonthly;
+    const periodLabel = showAnnual ? 'year' : 'month';
+
+    return (
+      <View style={styles.heroCard}>
+        <Text style={styles.heroLabel}>commitments</Text>
+        <View style={styles.heroRow}>
+          <Text style={styles.heroAmount}>
+            {currency} {displayAmount.toFixed(2)}
+            <Text style={styles.heroPeriod}> / {periodLabel}</Text>
+          </Text>
+          <TouchableOpacity
+            style={styles.periodToggle}
+            onPress={() => { lightTap(); setShowAnnual(!showAnnual); }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.periodToggleText, !showAnnual && styles.periodToggleActive]}>mo</Text>
+            <Text style={styles.periodToggleDivider}>/</Text>
+            <Text style={[styles.periodToggleText, showAnnual && styles.periodToggleActive]}>yr</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.heroSubtext}>
+          {activeSubs.length} active{dueSoonSubs.length > 0 ? ` \u00B7 ${dueSoonSubs.length} due soon` : ''}
+        </Text>
+      </View>
+    );
+  };
+
+  const renderDueSoon = () => {
+    if (dueSoonSubs.length === 0) return null;
+
+    return (
+      <View style={styles.dueSoonSection}>
+        <Text style={styles.sectionLabel}>due soon</Text>
+        <View style={styles.dueSoonCard}>
+          {dueSoonSubs.map((sub, index) => {
+            const cat = expenseCategories.find(c => c.id === sub.category);
+            const days = getDaysUntil(sub.nextBillingDate);
+            return (
+              <Pressable
+                key={sub.id}
+                style={({ pressed }) => [
+                  styles.dueSoonRow,
+                  index < dueSoonSubs.length - 1 && styles.dueSoonRowBorder,
+                  pressed && { opacity: 0.6 },
+                ]}
+                onPress={() => handleEdit(sub.id)}
+              >
+                <View style={[styles.dueSoonIcon, { backgroundColor: withAlpha(cat?.color || CALM.accent, 0.08) }]}>
+                  <Feather
+                    name={(cat?.icon as keyof typeof Feather.glyphMap) || 'repeat'}
+                    size={16}
+                    color={cat?.color || CALM.accent}
+                  />
+                </View>
+                <Text style={styles.dueSoonName} numberOfLines={1}>{sub.name}</Text>
+                <Text style={styles.dueSoonAmount}>{currency} {sub.amount.toFixed(2)}</Text>
+                <Text style={styles.dueSoonDays}>{days}d</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
+  const renderSearchBar = () => {
+    if (subscriptions.length === 0) return null;
+
+    return (
+      <View style={styles.searchContainer}>
+        <Feather name="search" size={16} color={CALM.textMuted} style={{ marginRight: SPACING.sm }} />
+        <TextInput
+          style={styles.searchInput}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="search commitments..."
+          placeholderTextColor={CALM.textMuted}
+          returnKeyType="search"
+          onSubmitEditing={Keyboard.dismiss}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Feather name="x" size={16} color={CALM.textMuted} />
+          </TouchableOpacity>
         )}
+      </View>
+    );
+  };
 
-        {/* Search bar */}
-        {subscriptions.length > 0 && (
-          <View style={styles.searchContainer}>
-            <Feather name="search" size={18} color={CALM.textSecondary} />
-            <TextInput
-              style={styles.searchInput}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search commitments..."
-              placeholderTextColor={CALM.textSecondary}
-              returnKeyType="search"
-              onSubmitEditing={Keyboard.dismiss}
+  const renderFilterChips = () => {
+    if (subscriptions.length === 0) return null;
+
+    const filters: { key: FilterStatus; label: string }[] = [
+      { key: 'all', label: 'all' },
+      { key: 'active', label: 'active' },
+      { key: 'paused', label: 'paused' },
+      { key: 'installments', label: 'installments' },
+    ];
+
+    return (
+      <View style={styles.filterRow}>
+        {filters.map(f => {
+          const isActive = filterStatus === f.key;
+          return (
+            <TouchableOpacity
+              key={f.key}
+              style={[styles.filterChip, isActive && styles.filterChipActive]}
+              onPress={() => { lightTap(); setFilterStatus(f.key); }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const renderSubscriptionCard = (sub: typeof subscriptions[0]) => {
+    const cat = expenseCategories.find(c => c.id === sub.category);
+    const days = getDaysUntil(sub.nextBillingDate);
+    const isPausedSub = sub.isPaused;
+    const isInstallmentSub = sub.isInstallment && sub.totalInstallments;
+    const completed = sub.completedInstallments || 0;
+    const total = sub.totalInstallments || 1;
+    const progress = isInstallmentSub && total > 0 ? completed / total : 0;
+    const renewText = days < 0 ? 'pending renewal' : `renews ${days}d`;
+    const renewColor = days >= 0 && days <= 7 ? CALM.bronze : CALM.textMuted;
+
+    return (
+      <Pressable
+        key={sub.id}
+        style={({ pressed }) => [styles.subCard, isPausedSub && { opacity: 0.5 }, pressed && { opacity: isPausedSub ? 0.3 : 0.6 }]}
+        onPress={() => handleEdit(sub.id)}
+      >
+        <View style={styles.subCardRow}>
+          {/* Icon */}
+          <View style={[styles.subIconWrap, { backgroundColor: withAlpha(cat?.color || CALM.accent, 0.08) }]}>
+            <Feather
+              name={(cat?.icon as keyof typeof Feather.glyphMap) || 'repeat'}
+              size={18}
+              color={cat?.color || CALM.accent}
             />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Feather name="x" size={18} color={CALM.textSecondary} />
-              </TouchableOpacity>
+          </View>
+
+          {/* Center content */}
+          <View style={styles.subInfo}>
+            <View style={styles.subNameRow}>
+              <Text style={styles.subName} numberOfLines={1}>{sub.name}</Text>
+              {isPausedSub && (
+                <View style={styles.pausedBadge}>
+                  <Text style={styles.pausedBadgeText}>paused</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.subMeta}>
+              <Text style={styles.subCategory} numberOfLines={1}>
+                {cat?.name?.toLowerCase() || sub.category}
+              </Text>
+              {!isPausedSub && (
+                <>
+                  <Text style={styles.subMetaDot}> {'\u00B7'} </Text>
+                  <Text style={[styles.subRenew, { color: renewColor }]}>{renewText}</Text>
+                </>
+              )}
+            </View>
+            {isInstallmentSub && (
+              <View style={styles.progressBarContainer}>
+                <View style={[styles.progressBarFill, { width: `${Math.min(progress * 100, 100)}%` }]} />
+              </View>
             )}
           </View>
-        )}
 
-        {/* Filter + Sort */}
-        {subscriptions.length > 0 && (
-          <View style={styles.filterSortRow}>
-            <View style={styles.filterRow}>
-              {(['all', 'active', 'inactive'] as const).map((f) => (
-                <TouchableOpacity
-                  key={f}
-                  style={[styles.filterChip, filterStatus === f && styles.filterChipActive]}
-                  onPress={() => setFilterStatus(f)}
-                >
-                  <Text style={[styles.filterChipText, filterStatus === f && styles.filterChipTextActive]}>
-                    {f.charAt(0).toUpperCase() + f.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <View style={styles.sortRow}>
-              {(['date', 'amount', 'name'] as const).map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={[styles.sortChip, sortBy === s && styles.sortChipActive]}
-                  onPress={() => {
-                    if (sortBy === s) {
-                      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-                    } else {
-                      setSortBy(s);
-                      setSortOrder('asc');
-                    }
-                  }}
-                >
-                  <Text style={[styles.sortChipText, sortBy === s && styles.sortChipTextActive]}>
-                    {s === 'date' ? 'Date' : s === 'amount' ? 'Amount' : 'Name'}
-                  </Text>
-                  {sortBy === s && (
-                    <Feather name={sortOrder === 'asc' ? 'arrow-up' : 'arrow-down'} size={10} color="#fff" />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
+          {/* Right side - amount */}
+          <View style={styles.subAmountWrap}>
+            {isInstallmentSub && (
+              <Text style={styles.installmentCount}>{completed}/{total}</Text>
+            )}
+            <Text style={styles.subAmount}>{currency} {sub.amount.toFixed(2)}</Text>
           </View>
-        )}
+        </View>
+      </Pressable>
+    );
+  };
 
-        {filteredSortedSubs.length > 0 ? (
-          filteredSortedSubs.map((subscription) => {
-            const category = expenseCategories.find((cat) => cat.id === subscription.category);
-            const daysUntil = Math.ceil(
-              (subscription.nextBillingDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-            );
+  const renderEmptyState = () => (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyIconWrap}>
+        <Feather name="calendar" size={48} color={CALM.textMuted} />
+      </View>
+      <Text style={styles.emptyTitle}>no commitments yet</Text>
+      <Text style={styles.emptyText}>
+        track recurring expenses like subscriptions, bills, and installments
+      </Text>
+      <TouchableOpacity
+        style={styles.emptyButton}
+        onPress={() => { lightTap(); setModalVisible(true); }}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.emptyButtonText}>add commitment</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
+  const renderNoResults = () => (
+    <View style={styles.noResults}>
+      <Feather name="search" size={36} color={CALM.textMuted} />
+      <Text style={styles.noResultsTitle}>no results found</Text>
+      <Text style={styles.noResultsText}>try a different search or filter</Text>
+    </View>
+  );
+
+  // ─── Cycle Picker Modal ───────────────────────────────────
+  const renderCyclePickerModal = () => (
+    <Modal
+      visible={cyclePickerVisible}
+      animationType="fade"
+      transparent
+      statusBarTranslucent
+      onRequestClose={() => setCyclePickerVisible(false)}
+    >
+      <TouchableOpacity style={styles.overlayCenter} activeOpacity={1} onPress={() => setCyclePickerVisible(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.pickerCard}>
+          <Text style={styles.pickerTitle}>billing cycle</Text>
+          {BILLING_CYCLES.map(cycle => {
+            const isSelected = billingCycle === cycle.value;
             return (
-              <Card key={subscription.id} style={styles.subscriptionCard}>
-                <View style={styles.subscriptionHeader}>
-                  <View style={[styles.iconContainer, { backgroundColor: category?.color ? withAlpha(category.color, 0.12) : CALM.background }]}>
-                    <Feather name={(category?.icon as keyof typeof Feather.glyphMap) || 'repeat'} size={20} color={category?.color} />
-                  </View>
-                  <View style={styles.subscriptionInfo}>
-                    <Text style={styles.subscriptionName}>{subscription.name}</Text>
-                    <Text style={styles.subscriptionCategory}>{category?.name}</Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => handleEdit(subscription.id)}
-                    style={styles.editButton}
-                  >
-                    <Feather name="edit-2" size={18} color={CALM.accent} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => handleDelete(subscription.id, subscription.name)}
-                    style={styles.deleteButton}
-                  >
-                    <Feather name="trash-2" size={18} color={CALM.neutral} />
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.subscriptionDetails}>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Amount</Text>
-                    <Text style={styles.detailValue}>{currency} {subscription.amount.toFixed(2)}</Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Billing Cycle</Text>
-                    <Text style={styles.detailValue}>
-                      {subscription.billingCycle.charAt(0).toUpperCase() + subscription.billingCycle.slice(1)}
-                    </Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Next Renewal</Text>
-                    <Text style={[styles.detailValue, daysUntil <= 3 && styles.duesSoon]}>
-                      {daysUntil < 0
-                        ? 'Pending renewal'
-                        : `Renews in ${daysUntil}d`}
-                    </Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Started</Text>
-                    <Text style={styles.detailValue}>
-                      {isValid(subscription.startDate) ? format(subscription.startDate, 'MMM dd, yyyy') : '—'}
-                    </Text>
-                  </View>
-                  {subscription.isInstallment && subscription.totalInstallments && (
-                    <>
-                      <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>Installment</Text>
-                        <Text style={styles.detailValue}>
-                          {subscription.completedInstallments || 0}/{subscription.totalInstallments} payments
-                        </Text>
-                      </View>
-                      <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>Remaining</Text>
-                        <Text style={styles.detailValue}>
-                          {currency} {(
-                            subscription.amount *
-                            (subscription.totalInstallments - (subscription.completedInstallments || 0))
-                          ).toFixed(2)}
-                        </Text>
-                      </View>
-                      <ProgressBar
-                        current={subscription.completedInstallments || 0}
-                        total={subscription.totalInstallments}
-                        color={CALM.accent}
-                      />
-                    </>
-                  )}
-                </View>
-              </Card>
+              <TouchableOpacity
+                key={cycle.value}
+                style={[styles.pickerOption, isSelected && styles.pickerOptionActive]}
+                onPress={() => {
+                  lightTap();
+                  setBillingCycle(cycle.value as typeof billingCycle);
+                  setCyclePickerVisible(false);
+                }}
+                activeOpacity={0.6}
+              >
+                <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextActive]}>
+                  {cycle.label.toLowerCase()}
+                </Text>
+                {isSelected && <Feather name="check" size={18} color={CALM.accent} />}
+              </TouchableOpacity>
             );
-          })
-        ) : subscriptions.length > 0 ? (
-          <View style={styles.noResults}>
-            <Feather name="search" size={40} color={CALM.textSecondary} />
-            <Text style={styles.noResultsTitle}>No results found</Text>
-            <Text style={styles.noResultsText}>Try a different search or filter</Text>
+          })}
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  );
+
+  // ─── Calendar Modal ────────────────────────────────────────
+  const renderCalendarModal = () => (
+    <Modal
+      visible={calendarVisible}
+      animationType="fade"
+      transparent
+      statusBarTranslucent
+      onRequestClose={() => setCalendarVisible(false)}
+    >
+      <TouchableOpacity style={styles.overlayCenter} activeOpacity={1} onPress={() => setCalendarVisible(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.calendarCard}>
+          <View style={styles.calendarHeader}>
+            <Text style={styles.pickerTitle}>start date</Text>
+            <TouchableOpacity onPress={() => setCalendarVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Feather name="x" size={20} color={CALM.textPrimary} />
+            </TouchableOpacity>
           </View>
-        ) : (
-          <EmptyState
-            icon="repeat"
-            title="No Commitments"
-            message="Track your recurring expenses by adding your commitments"
-            actionLabel="Add Commitment"
-            onAction={() => setModalVisible(true)}
+          <CalendarPicker
+            value={startDate}
+            onChange={(date) => {
+              setStartDate(date);
+              setCalendarVisible(false);
+            }}
           />
-        )}
-      </ScrollView>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  );
 
-      <Button
-        title="Add Commitment"
-        onPress={() => setModalVisible(true)}
-        icon="plus"
-        size="large"
-        style={{ ...styles.addButton, bottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }}
-      />
+  // ─── Add/Edit Modal ────────────────────────────────────────
+  const renderModal = () => {
+    const editingSub = editingId ? subscriptions.find(s => s.id === editingId) : null;
+    const showMarkPayment = editingSub?.isInstallment && editingSub?.totalInstallments;
 
+    return (
       <Modal
         visible={modalVisible}
         animationType="fade"
@@ -423,143 +570,255 @@ const SubscriptionList: React.FC = () => {
         statusBarTranslucent
         onRequestClose={() => { setModalVisible(false); resetForm(); }}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => { setModalVisible(false); resetForm(); }}>
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingId ? 'Edit Commitment' : 'Add Commitment'}</Text>
-              <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }}>
-                <Feather name="x" size={24} color={CALM.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
-              <Text style={styles.label}>Name</Text>
-              <TextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder="Netflix, Spotify, etc."
-                placeholderTextColor={CALM.textSecondary}
-                returnKeyType="next"
-              />
-
-              <Text style={styles.label}>Amount</Text>
-              <TextInput
-                style={styles.input}
-                value={amount}
-                onChangeText={setAmount}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                placeholderTextColor={CALM.textSecondary}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              <CategoryPicker
-                categories={expenseCategories}
-                selectedId={category}
-                onSelect={setCategory}
-                label="Category"
-                layout="dropdown"
-              />
-
-              <Text style={styles.label}>Billing Cycle</Text>
-              <View style={styles.cycleContainer}>
-                {BILLING_CYCLES.map((cycle) => (
-                  <TouchableOpacity
-                    key={cycle.value}
-                    style={[
-                      styles.cycleButton,
-                      billingCycle === cycle.value && styles.cycleButtonActive,
-                    ]}
-                    onPress={() => setBillingCycle(cycle.value as 'weekly' | 'monthly' | 'yearly' | 'quarterly')}
-                  >
-                    <Text
-                      style={[
-                        styles.cycleText,
-                        billingCycle === cycle.value && styles.cycleTextActive,
-                      ]}
-                    >
-                      {cycle.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+        <TouchableOpacity style={styles.overlayCenter} activeOpacity={1} onPress={() => { setModalVisible(false); resetForm(); }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.kavWrapper}
+          >
+            <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
+              {/* Header */}
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{editingId ? 'edit commitment' : 'add commitment'}</Text>
+                <TouchableOpacity
+                  onPress={() => { setModalVisible(false); resetForm(); }}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Feather name="x" size={22} color={CALM.textPrimary} />
+                </TouchableOpacity>
               </View>
 
-              <Text style={styles.label}>Start Date</Text>
-              <TextInput
-                style={styles.input}
-                value={startDate}
-                onChangeText={setStartDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={CALM.textSecondary}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              <Text style={styles.label}>Reminder (days before)</Text>
-              <TextInput
-                style={styles.input}
-                value={reminderDays}
-                onChangeText={setReminderDays}
-                placeholder="3"
-                keyboardType="number-pad"
-                placeholderTextColor={CALM.textSecondary}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              <View style={styles.installmentToggleRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.installmentLabel}>Installment</Text>
-                  <Text style={styles.installmentHint}>Toggle on for fixed-payment plans</Text>
-                </View>
-                <Switch
-                  value={isInstallment}
-                  onValueChange={(val) => { lightTap(); setIsInstallment(val); }}
-                  trackColor={{ false: CALM.border, true: CALM.positive }}
-                  thumbColor="#FFFFFF"
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: SPACING.lg }}
+              >
+                {/* Name */}
+                <Text style={styles.fieldLabel}>name</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Netflix, Spotify, etc."
+                  placeholderTextColor={CALM.textMuted}
+                  returnKeyType="next"
                 />
-              </View>
 
-              {isInstallment && (
-                <>
-                  <Text style={styles.label}>Total Installments</Text>
+                {/* Amount */}
+                <Text style={styles.fieldLabel}>amount</Text>
+                <View style={styles.amountRow}>
+                  <Text style={styles.amountPrefix}>{currency}</Text>
                   <TextInput
-                    style={styles.input}
-                    value={totalInstallments}
-                    onChangeText={setTotalInstallments}
-                    placeholder="e.g. 24"
-                    keyboardType="number-pad"
-                    placeholderTextColor={CALM.textSecondary}
+                    style={[styles.fieldInput, { flex: 1 }]}
+                    value={amount}
+                    onChangeText={setAmount}
+                    placeholder="0.00"
+                    keyboardType="decimal-pad"
+                    placeholderTextColor={CALM.textMuted}
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
                   />
-                </>
-              )}
+                </View>
 
-              <View style={styles.modalActions}>
-                <Button
-                  title="Cancel"
-                  onPress={() => { setModalVisible(false); resetForm(); }}
-                  variant="outline"
-                  style={{ flex: 1 }}
+                {/* Category */}
+                <CategoryPicker
+                  categories={expenseCategories}
+                  selectedId={category}
+                  onSelect={setCategory}
+                  label="category"
+                  layout="dropdown"
                 />
-                <Button
-                  title={editingId ? 'Update' : 'Add'}
-                  onPress={handleAdd}
-                  icon="check"
-                  style={{ flex: 1 }}
-                />
-              </View>
-            </KeyboardAwareScrollView>
-          </View>
-        </Pressable>
+
+                {/* Billing Cycle */}
+                <Text style={styles.fieldLabel}>billing cycle</Text>
+                <TouchableOpacity
+                  style={styles.fieldTouchable}
+                  onPress={() => setCyclePickerVisible(true)}
+                  activeOpacity={0.6}
+                >
+                  <Text style={styles.fieldTouchableText}>{getCycleLabel(billingCycle)}</Text>
+                  <Feather name="chevron-down" size={16} color={CALM.textMuted} />
+                </TouchableOpacity>
+
+                {/* Start Date */}
+                <Text style={styles.fieldLabel}>start date</Text>
+                <TouchableOpacity
+                  style={styles.fieldTouchable}
+                  onPress={() => setCalendarVisible(true)}
+                  activeOpacity={0.6}
+                >
+                  <Text style={styles.fieldTouchableText}>
+                    {isValid(startDate) ? format(startDate, 'MMM dd, yyyy') : 'select date'}
+                  </Text>
+                  <Feather name="calendar" size={16} color={CALM.textMuted} />
+                </TouchableOpacity>
+
+                {/* Reminder */}
+                <Text style={styles.fieldLabel}>reminder</Text>
+                <View style={styles.reminderRow}>
+                  <TextInput
+                    style={[styles.fieldInput, { width: 60, textAlign: 'center' }]}
+                    value={reminderDays}
+                    onChangeText={setReminderDays}
+                    placeholder="3"
+                    keyboardType="number-pad"
+                    placeholderTextColor={CALM.textMuted}
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                  />
+                  <Text style={styles.reminderSuffix}>days before</Text>
+                </View>
+
+                {/* Installment toggle */}
+                <View style={styles.toggleRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.toggleLabel}>installment</Text>
+                    <Text style={styles.toggleHint}>for fixed-payment plans</Text>
+                  </View>
+                  <Switch
+                    value={isInstallment}
+                    onValueChange={val => { lightTap(); setIsInstallment(val); }}
+                    trackColor={{ false: CALM.border, true: withAlpha(CALM.accent, 0.4) }}
+                    thumbColor={isInstallment ? CALM.accent : '#FFFFFF'}
+                  />
+                </View>
+
+                {isInstallment && (
+                  <>
+                    <Text style={styles.fieldLabel}>total installments</Text>
+                    <TextInput
+                      style={styles.fieldInput}
+                      value={totalInstallments}
+                      onChangeText={setTotalInstallments}
+                      placeholder="e.g. 24"
+                      keyboardType="number-pad"
+                      placeholderTextColor={CALM.textMuted}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </>
+                )}
+
+                {/* Paused toggle */}
+                <View style={styles.toggleRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.toggleLabel}>pause this commitment</Text>
+                    <Text style={styles.toggleHint}>temporarily stop tracking</Text>
+                  </View>
+                  <Switch
+                    value={isPaused}
+                    onValueChange={val => { lightTap(); setIsPaused(val); }}
+                    trackColor={{ false: CALM.border, true: withAlpha(CALM.bronze, 0.4) }}
+                    thumbColor={isPaused ? CALM.bronze : '#FFFFFF'}
+                  />
+                </View>
+
+                {/* Mark Payment (editing installment only) */}
+                {showMarkPayment && (
+                  <TouchableOpacity
+                    style={styles.markPaymentBtn}
+                    onPress={() => {
+                      handleMarkPayment(editingId!);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="check-circle" size={18} color={CALM.accent} />
+                    <Text style={styles.markPaymentText}>
+                      mark payment ({editingSub!.completedInstallments || 0}/{editingSub!.totalInstallments})
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Delete (editing only) */}
+                {editingId && (
+                  <TouchableOpacity
+                    style={styles.deleteBtn}
+                    onPress={() => {
+                      setModalVisible(false);
+                      resetForm();
+                      handleDelete(editingId, name);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="trash-2" size={16} color={CALM.neutral} />
+                    <Text style={styles.deleteBtnText}>delete commitment</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Confirm */}
+                <TouchableOpacity
+                  style={styles.confirmBtn}
+                  onPress={handleSave}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.confirmBtnText}>{editingId ? 'save changes' : 'add commitment'}</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </TouchableOpacity>
+          </KeyboardAvoidingView>
+        </TouchableOpacity>
       </Modal>
+    );
+  };
+
+  // ─── Main Render ───────────────────────────────────────────
+  return (
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {subscriptions.length > 0 ? (
+          <>
+            {renderSummaryHero()}
+            {renderDueSoon()}
+            {renderSearchBar()}
+            {renderFilterChips()}
+
+            {filteredSubs.length > 0 ? (
+              <View style={styles.groupCard}>
+                {filteredSubs.map((sub, index) => (
+                  <React.Fragment key={sub.id}>
+                    {renderSubscriptionCard(sub)}
+                    {index < filteredSubs.length - 1 && <View style={styles.cardDivider} />}
+                  </React.Fragment>
+                ))}
+              </View>
+            ) : (
+              renderNoResults()
+            )}
+          </>
+        ) : (
+          renderEmptyState()
+        )}
+      </ScrollView>
+
+      {/* FAB */}
+      {subscriptions.length > 0 && (
+        <Animated.View style={[styles.fab, { bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), transform: [{ scale: fabScale }] }]}>
+          <TouchableOpacity
+            style={styles.fabInner}
+            onPress={() => {
+              mediumTap();
+              resetForm();
+              setModalVisible(true);
+            }}
+            activeOpacity={0.8}
+          >
+            <Feather name="plus" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {renderModal()}
+      {renderCyclePickerModal()}
+      {renderCalendarModal()}
     </View>
   );
 };
 
+// ─── Styles ────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -569,175 +828,306 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING['2xl'],
-    paddingBottom: 80,
+    padding: SPACING.xl,
   },
 
-  // Search
+  // ── Hero ─────────────────────────────────────────────
+  heroCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    marginBottom: SPACING.lg,
+  },
+  heroLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: SPACING.sm,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xs,
+  },
+  heroAmount: {
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.light,
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  heroPeriod: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: CALM.textMuted,
+  },
+  periodToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 2,
+  },
+  periodToggleText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textMuted,
+  },
+  periodToggleDivider: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+    marginHorizontal: 4,
+  },
+  periodToggleActive: {
+    color: CALM.deepOlive,
+    fontWeight: TYPOGRAPHY.weight.bold,
+  },
+  heroSubtext: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+
+  // ── Due Soon ─────────────────────────────────────────
+  dueSoonSection: {
+    marginBottom: SPACING.lg,
+  },
+  sectionLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: SPACING.sm,
+    marginLeft: SPACING.xs,
+  },
+  dueSoonCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+  },
+  dueSoonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+  },
+  dueSoonRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: CALM.border,
+  },
+  dueSoonIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.sm,
+  },
+  dueSoonName: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
+  },
+  dueSoonAmount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+    marginRight: SPACING.sm,
+    fontVariant: ['tabular-nums'],
+  },
+  dueSoonDays: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
+    minWidth: 24,
+    textAlign: 'right',
+  },
+
+  // ── Search ───────────────────────────────────────────
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
+    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
     marginBottom: SPACING.md,
-    gap: SPACING.sm,
-    borderWidth: 1,
-    borderColor: CALM.border,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
     fontSize: TYPOGRAPHY.size.base,
     color: CALM.textPrimary,
   },
 
-  // Filter + Sort
-  filterSortRow: {
-    marginBottom: SPACING.lg,
-    gap: SPACING.sm,
-  },
+  // ── Filter Chips ─────────────────────────────────────
   filterRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
+    marginBottom: SPACING.lg,
   },
   filterChip: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 2,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.surface,
-    borderWidth: 1,
-    borderColor: CALM.border,
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
   },
   filterChipActive: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: CALM.deepOlive,
   },
   filterChipText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textMuted,
   },
   filterChipTextActive: {
     color: '#FFFFFF',
   },
-  sortRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  sortChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
+
+  // ── Subscription Cards ───────────────────────────────
+  groupCard: {
     backgroundColor: CALM.surface,
-    borderWidth: 1,
-    borderColor: CALM.border,
-    minHeight: 44,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+    ...SHADOWS.xs,
   },
-  sortChipActive: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+  subCard: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
   },
-  sortChipText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+  cardDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: CALM.border,
+    marginLeft: 36 + SPACING.md + SPACING.md,
   },
-  sortChipTextActive: {
-    color: '#FFFFFF',
-  },
-
-  // Summary
-  summaryCard: {
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
-  },
-  summaryLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
-    marginBottom: SPACING.xs,
-  },
-  summaryAmount: {
-    fontSize: TYPOGRAPHY.size['4xl'],
-    fontWeight: '300',
-    color: CALM.textPrimary,
-    marginBottom: SPACING.xs,
-  },
-  summarySubtext: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
-  },
-
-  // Subscription cards
-  subscriptionCard: {
-    marginBottom: SPACING.md,
-  },
-  subscriptionHeader: {
+  subCardRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SPACING.md,
   },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.xl,
+  subIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
   },
-  subscriptionInfo: {
+  subInfo: {
     flex: 1,
+    marginRight: SPACING.sm,
   },
-  subscriptionName: {
+  subNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  subName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.textPrimary,
+    flexShrink: 1,
+  },
+  pausedBadge: {
+    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.xs + 2,
+    paddingVertical: 1,
+  },
+  pausedBadgeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.bronze,
+  },
+  subMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  subCategory: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+    flexShrink: 1,
+  },
+  subMetaDot: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+  },
+  subRenew: {
+    fontSize: TYPOGRAPHY.size.sm,
+  },
+  subAmountWrap: {
+    alignItems: 'flex-end',
+  },
+  installmentCount: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.bronze,
     marginBottom: 2,
   },
-  subscriptionCategory: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
-  },
-  editButton: {
-    padding: SPACING.sm,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteButton: {
-    padding: SPACING.sm,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  subscriptionDetails: {
-    gap: SPACING.sm,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  detailLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
-  },
-  detailValue: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+  subAmount: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'],
   },
-  duesSoon: {
-    color: CALM.neutral,
+  progressBarContainer: {
+    height: 3,
+    backgroundColor: withAlpha(CALM.textMuted, 0.1),
+    borderRadius: RADIUS.full,
+    marginTop: SPACING.xs,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: CALM.accent,
+    borderRadius: RADIUS.full,
   },
 
-  // No results
+  // ── Empty State ──────────────────────────────────────
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING['5xl'],
+    paddingHorizontal: SPACING.xl,
+  },
+  emptyIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.xl,
+  },
+  emptyTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+    marginBottom: SPACING.sm,
+  },
+  emptyText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+    textAlign: 'center',
+    lineHeight: TYPOGRAPHY.size.sm * 1.6,
+    marginBottom: SPACING.xl,
+  },
+  emptyButton: {
+    backgroundColor: CALM.accent,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+  },
+  emptyButtonText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: '#FFFFFF',
+  },
+
+  // ── No Results ───────────────────────────────────────
   noResults: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -745,111 +1135,222 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   noResultsTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: CALM.textPrimary,
     marginTop: SPACING.sm,
   },
   noResultsText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: CALM.textMuted,
   },
 
-  // FAB
-  addButton: {
+  // ── FAB ──────────────────────────────────────────────
+  fab: {
     position: 'absolute',
-    bottom: SPACING.lg,
-    left: SPACING.lg,
-    right: SPACING.lg,
+    right: SPACING.xl,
+  },
+  fabInner: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: CALM.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.md,
   },
 
-  // Modal
-  modalOverlay: {
+  // ── Modal Overlay (centered) ─────────────────────────
+  overlayCenter: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  modalContent: {
-    backgroundColor: CALM.surface,
-    borderTopLeftRadius: RADIUS['2xl'],
-    borderTopRightRadius: RADIUS['2xl'],
-    padding: SPACING['2xl'],
-    maxHeight: '90%',
+  kavWrapper: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCard: {
+    width: '90%',
+    maxHeight: '85%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    ...SHADOWS.lg,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING['2xl'],
+    marginBottom: SPACING.xl,
   },
   modalTitle: {
-    fontSize: TYPOGRAPHY.size['2xl'],
+    fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: CALM.textPrimary,
   },
-  label: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
-    marginBottom: SPACING.sm,
+
+  // ── Modal Fields ─────────────────────────────────────
+  fieldLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textSecondary,
+    marginBottom: SPACING.xs,
     marginTop: SPACING.lg,
   },
-  input: {
-    backgroundColor: CALM.background,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+  fieldInput: {
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+    paddingVertical: SPACING.sm,
     fontSize: TYPOGRAPHY.size.base,
     color: CALM.textPrimary,
-    borderWidth: 1,
-    borderColor: CALM.border,
   },
-  cycleContainer: {
+  amountRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.sm,
   },
-  cycleButton: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: RADIUS.md,
-    borderWidth: 2,
-    borderColor: CALM.border,
-    backgroundColor: CALM.background,
-    alignItems: 'center',
+  amountPrefix: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textSecondary,
   },
-  cycleButtonActive: {
-    borderColor: CALM.accent,
-    backgroundColor: CALM.accent,
-  },
-  cycleText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
-  },
-  cycleTextActive: {
-    color: '#fff',
-  },
-  installmentToggleRow: {
+  fieldTouchable: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: CALM.border,
+    paddingVertical: SPACING.sm + 2,
+  },
+  fieldTouchableText: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: CALM.textPrimary,
+  },
+  reminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  reminderSuffix: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textMuted,
+  },
+
+  // ── Toggles ──────────────────────────────────────────
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.xl,
+    paddingVertical: SPACING.xs,
+  },
+  toggleLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
+  },
+  toggleHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginTop: 2,
+  },
+
+  // ── Mark Payment ─────────────────────────────────────
+  markPaymentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.xl,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: withAlpha(CALM.accent, 0.08),
+    borderRadius: RADIUS.md,
+  },
+  markPaymentText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.accent,
+  },
+
+  // ── Delete Button ────────────────────────────────────
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
     marginTop: SPACING.lg,
     paddingVertical: SPACING.sm,
   },
-  installmentLabel: {
+  deleteBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.neutral,
+  },
+
+  // ── Confirm Button ───────────────────────────────────
+  confirmBtn: {
+    backgroundColor: CALM.accent,
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.xl,
+  },
+  confirmBtnText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
+    color: '#FFFFFF',
+  },
+
+  // ── Cycle Picker ─────────────────────────────────────
+  pickerCard: {
+    width: '80%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    ...SHADOWS.lg,
+  },
+  pickerTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.textPrimary,
+    marginBottom: SPACING.md,
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.xs,
+  },
+  pickerOptionActive: {
+    backgroundColor: withAlpha(CALM.accent, 0.08),
+  },
+  pickerOptionText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.textPrimary,
   },
-  installmentHint: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
-    marginTop: 2,
+  pickerOptionTextActive: {
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.accent,
   },
-  modalActions: {
+
+  // ── Calendar Modal ───────────────────────────────────
+  calendarCard: {
+    width: '90%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    ...SHADOWS.lg,
+  },
+  calendarHeader: {
     flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING['2xl'],
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
   },
 });
 

@@ -4,7 +4,7 @@
  * Dismissable, won't show again that month.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,8 +17,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { useAIInsightsStore } from '../../store/aiInsightsStore';
+import { usePersonalStore } from '../../store/personalStore';
 import { useCategories } from '../../hooks/useCategories';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { lightTap, mediumTap } from '../../services/haptics';
@@ -37,6 +38,24 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
   const setBreathingRoom = useAIInsightsStore((s) => s.setBreathingRoom);
   const dismissFreshStart = useAIInsightsStore((s) => s.dismissFreshStart);
   const expenseCategories = useCategories('expense', 'personal');
+  const transactions = usePersonalStore((s) => s.transactions);
+
+  // Last month's spending per category for reference
+  const lastMonthSpent = useMemo(() => {
+    const lastMonth = subMonths(now, 1);
+    const start = startOfMonth(lastMonth);
+    const end = endOfMonth(lastMonth);
+    const map: Record<string, number> = {};
+    for (const t of transactions) {
+      if (t.type === 'expense') {
+        const d = t.date instanceof Date ? t.date : new Date(t.date);
+        if (d >= start && d <= end && t.category) {
+          map[t.category] = (map[t.category] || 0) + t.amount;
+        }
+      }
+    }
+    return map;
+  }, [transactions]);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>(() => {
@@ -92,7 +111,7 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
           </View>
           <View style={styles.bannerText}>
             <Text style={styles.bannerTitle}>fresh start — {monthLabel}</Text>
-            <Text style={styles.bannerSubtitle}>set your breathing room for the month</Text>
+            <Text style={styles.bannerSubtitle}>what feels right this month?</Text>
           </View>
           <TouchableOpacity
             onPress={handleDismiss}
@@ -137,22 +156,30 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              {topCategories.map((cat) => (
-                <View key={cat.id} style={styles.categoryRow}>
-                  <Text style={styles.categoryLabel}>{cat.name}</Text>
-                  <View style={styles.inputWrap}>
-                    <Text style={styles.rmPrefix}>RM</Text>
-                    <TextInput
-                      style={styles.amountInput}
-                      value={drafts[cat.id] || ''}
-                      onChangeText={(val) => handleDraftChange(cat.id, val)}
-                      keyboardType="numeric"
-                      placeholder="—"
-                      placeholderTextColor={CALM.textMuted}
-                    />
+              {topCategories.map((cat) => {
+                const lastSpent = lastMonthSpent[cat.id];
+                return (
+                  <View key={cat.id} style={styles.categoryRow}>
+                    <View style={styles.categoryInfo}>
+                      <Text style={styles.categoryLabel}>{cat.name}</Text>
+                      {lastSpent ? (
+                        <Text style={styles.categoryHint}>RM {lastSpent.toFixed(0)} last month</Text>
+                      ) : null}
+                    </View>
+                    <View style={styles.inputWrap}>
+                      <Text style={styles.rmPrefix}>RM</Text>
+                      <TextInput
+                        style={styles.amountInput}
+                        value={drafts[cat.id] || ''}
+                        onChangeText={(val) => handleDraftChange(cat.id, val)}
+                        keyboardType="numeric"
+                        placeholder={lastSpent ? lastSpent.toFixed(0) : '—'}
+                        placeholderTextColor={CALM.textMuted}
+                      />
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </ScrollView>
 
             <View style={styles.modalActions}>
@@ -160,7 +187,7 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
                 style={styles.skipBtn}
                 onPress={handleDismiss}
               >
-                <Text style={styles.skipText}>skip</Text>
+                <Text style={styles.skipText}>not now</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.saveBtn}
@@ -275,10 +302,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: CALM.border,
   },
+  categoryInfo: {
+    flex: 1,
+    gap: 2,
+  },
   categoryLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     color: CALM.textPrimary,
-    flex: 1,
+  },
+  categoryHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    fontVariant: ['tabular-nums'] as any,
   },
   inputWrap: {
     flexDirection: 'row',

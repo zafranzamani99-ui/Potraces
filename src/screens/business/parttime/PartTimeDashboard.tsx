@@ -12,6 +12,7 @@ import { startOfMonth, endOfMonth, subMonths, isWithinInterval, formatDistanceTo
 import { useBusinessStore } from '../../../store/businessStore';
 import { usePartTimeStore } from '../../../store/partTimeStore';
 import { useSettingsStore } from '../../../store/settingsStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
 import { explainPartTimeMonth } from '../../../utils/explainPartTimeMonth';
 import WeekBar from '../../../components/common/WeekBar';
@@ -36,6 +37,7 @@ const PartTimeDashboard: React.FC = () => {
   } = usePartTimeStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const [showPercentage, setShowPercentage] = useState(false);
 
@@ -155,12 +157,12 @@ const PartTimeDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
       >
+        <ModeToggle />
         {/* Zone 1 — Hero Number */}
         <Text style={styles.heroAmount}>
           {currency} {Math.round(totalIncome).toLocaleString()}

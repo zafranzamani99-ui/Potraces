@@ -120,7 +120,14 @@ Emotional support — when user sounds stressed about money:
 - Frame positively where possible: "you've kept RM 580 this month — that's real"
 - Never minimize their feelings or give generic advice`;
 
+let _cachedContext: string | null = null;
+let _cachedAt = 0;
+const CONTEXT_CACHE_MS = 2000; // reuse for 2s
+
 function buildFinancialContext(): string {
+  const ts = Date.now();
+  if (_cachedContext && ts - _cachedAt < CONTEXT_CACHE_MS) return _cachedContext;
+
   const mode = useAppStore.getState().mode;
   const { transactions, subscriptions, budgets, goals } = usePersonalStore.getState();
   const wallets = useWalletStore.getState().wallets;
@@ -402,6 +409,8 @@ Kept: RM ${(bizIncome - bizCosts).toFixed(2)}`;
     }
   }
 
+  _cachedContext = ctx;
+  _cachedAt = Date.now();
   return ctx;
 }
 

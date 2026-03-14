@@ -3,17 +3,22 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CALM, SPACING, RADIUS, TYPOGRAPHY } from '../../constants';
+import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../constants';
+import { selectionChanged } from '../../services/haptics';
+
+// CIMB-style: full-width bar matching app bg, labels always visible,
+// big colored circle popping out with a border ring
+
+const BAR_BG = CALM.surface;
+const INACTIVE_COLOR = CALM.textMuted;
+const ACTIVE_COLOR = CALM.textPrimary;
 
 interface CustomTabBarProps extends BottomTabBarProps {
   accentColor: string;
-  centerButtonGradient?: [string, string]; // kept for API compat, ignored
+  centerButtonGradient?: [string, string];
 }
 
-// ─── Memoized tab item components ────────────────────────────
 interface TabItemProps {
-  routeKey: string;
-  routeName: string;
   label: string;
   isFocused: boolean;
   iconName: React.ComponentProps<typeof Feather>['name'];
@@ -27,7 +32,6 @@ const TabItem = React.memo<TabItemProps>(({
   label,
   isFocused,
   iconName,
-  accentColor,
   accessibilityLabel,
   onPress,
   onLongPress,
@@ -44,16 +48,17 @@ const TabItem = React.memo<TabItemProps>(({
     <Feather
       name={iconName}
       size={24}
-      color={isFocused ? accentColor : CALM.textMuted}
+      color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR}
     />
-    {isFocused && (
-      <Text
-        style={[styles.tabLabel, { color: accentColor }]}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-    )}
+    <Text
+      style={[
+        styles.tabLabel,
+        { color: isFocused ? ACTIVE_COLOR : INACTIVE_COLOR },
+      ]}
+      numberOfLines={1}
+    >
+      {label}
+    </Text>
   </TouchableOpacity>
 ));
 
@@ -74,10 +79,12 @@ const CenterTabItem = React.memo<TabItemProps>(({
       onPress={onPress}
       onLongPress={onLongPress}
       style={styles.centerButtonTouchable}
-      activeOpacity={0.7}
+      activeOpacity={0.8}
     >
-      <View style={[styles.centerButton, { backgroundColor: accentColor }]}>
-        <Feather name={iconName} size={26} color="#FFFFFF" />
+      <View style={styles.centerRing}>
+        <View style={[styles.centerButton, { backgroundColor: accentColor }]}>
+          <Feather name={iconName} size={28} color="#FFFFFF" />
+        </View>
       </View>
       <Text style={styles.centerLabel}>{label}</Text>
     </TouchableOpacity>
@@ -100,6 +107,7 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
       canPreventDefault: true,
     });
     if (!isFocused && !event.defaultPrevented) {
+      selectionChanged();
       navigation.navigate(routeName);
     }
   }, [navigation]);
@@ -116,17 +124,12 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
       style={[
         styles.container,
         {
-          marginHorizontal: SPACING.lg,
-          marginBottom: SPACING.sm,
-          height: 80 + Math.max(insets.bottom, SPACING.sm),
           paddingBottom: Math.max(insets.bottom, SPACING.sm),
         },
       ]}
     >
-      {/* Tab Bar Background */}
       <View style={styles.background} />
 
-      {/* Tab Items */}
       {state.routes.map((route, index) => {
         const { options } = descriptors[route.key];
         const label = typeof options.tabBarLabel === 'string'
@@ -135,7 +138,6 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
         const isFocused = state.index === index;
         const isCenterButton = index === centerIndex;
 
-        // Get icon
         const iconName: React.ComponentProps<typeof Feather>['name'] = options.tabBarIcon
           ? ((options.tabBarIcon as any)({ focused: isFocused, color: '', size: 24 }) as any)
               .props.name
@@ -146,8 +148,6 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
         return (
           <Component
             key={route.key}
-            routeKey={route.key}
-            routeName={route.name}
             label={label}
             isFocused={isFocused}
             iconName={iconName}
@@ -167,8 +167,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-around',
-    borderRadius: RADIUS.xl,
     overflow: 'visible',
+    backgroundColor: BAR_BG,
   },
   background: {
     position: 'absolute',
@@ -176,51 +176,62 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: CALM.surface,
-    borderRadius: RADIUS.xl,
+    backgroundColor: BAR_BG,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderWidth: 1,
+    borderBottomWidth: 0,
     borderColor: CALM.border,
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING.sm,
-    minHeight: 44, // minimum touch target
-    gap: 2,
+    paddingTop: 12,
+    paddingBottom: 8,
+    minHeight: 56,
+    gap: 4,
   },
   tabLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.medium,
     textAlign: 'center',
+    letterSpacing: 0.2,
   },
   centerButtonContainer: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 8,
   },
   centerButtonTouchable: {
     alignItems: 'center',
-    marginTop: -20,
+    marginTop: -34,
+  },
+  centerRing: {
+    width: 74,
+    height: 74,
+    borderRadius: RADIUS.full,
+    backgroundColor: BAR_BG,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: CALM.border,
   },
   centerButton: {
-    width: 56,
-    height: 56,
+    width: 64,
+    height: 64,
     borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 4,
   },
   centerLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: CALM.textPrimary,
-    marginTop: 2,
+    marginTop: 4,
     textAlign: 'center',
+    letterSpacing: 0.2,
   },
 });
 

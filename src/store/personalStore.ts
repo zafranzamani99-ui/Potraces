@@ -115,6 +115,31 @@ export const usePersonalStore = create<PersonalState>()(
           budgets: state.budgets.filter((b) => b.id !== id),
         })),
 
+      incrementInstallment: (id) =>
+        set((state) => ({
+          subscriptions: state.subscriptions.map((sub) =>
+            sub.id === id && sub.isInstallment && sub.totalInstallments
+              ? {
+                  ...sub,
+                  completedInstallments: Math.min(
+                    (sub.completedInstallments || 0) + 1,
+                    sub.totalInstallments
+                  ),
+                  updatedAt: new Date(),
+                }
+              : sub
+          ),
+        })),
+
+      toggleSubscriptionPause: (id) =>
+        set((state) => ({
+          subscriptions: state.subscriptions.map((sub) =>
+            sub.id === id
+              ? { ...sub, isPaused: !sub.isPaused, updatedAt: new Date() }
+              : sub
+          ),
+        })),
+
       addTransferIncome: (transfer) => {
         const walletId = (transfer as any).walletId as string | undefined;
         set((state) => ({

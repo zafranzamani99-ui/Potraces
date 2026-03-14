@@ -3,7 +3,7 @@
  * transcribes via Gemini 2.0 Flash, returns text.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   useAudioRecorder,
   RecordingPresets,
@@ -29,6 +29,18 @@ export function useVoiceInput(): UseVoiceInputReturn {
   const permissionGrantedRef = useRef(false);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  // Cleanup on unmount — stop recorder and reset audio mode
+  useEffect(() => {
+    return () => {
+      try {
+        recorder.stop();
+        setAudioModeAsync({ allowsRecording: false });
+      } catch {
+        // Already stopped or not started
+      }
+    };
+  }, [recorder]);
 
   const startRecording = useCallback(async () => {
     setError(null);

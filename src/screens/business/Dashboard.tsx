@@ -5,6 +5,7 @@ import { startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns'
 import { Feather } from '@expo/vector-icons';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import type { BusinessTransaction, RiderCost } from '../../types';
 import { explainBusinessMonth } from '../../utils/explainBusinessMonth';
@@ -23,6 +24,7 @@ const BusinessDashboard: React.FC = () => {
   } = useBusinessStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const now = new Date();
   const monthStart = startOfMonth(now);
@@ -117,7 +119,7 @@ const BusinessDashboard: React.FC = () => {
   // AuthGatedBusiness handles the setup redirect — this is just a safety guard
   if (!businessSetupComplete || !incomeType) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + SPACING.md }]}>
         <ModeToggle />
       </View>
     );
@@ -231,12 +233,12 @@ const BusinessDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
       >
+        <ModeToggle />
         {/* Zone 1 — Net */}
         <Text style={styles.netLabel}>{netLabel}</Text>
         <Text style={styles.netAmount}>

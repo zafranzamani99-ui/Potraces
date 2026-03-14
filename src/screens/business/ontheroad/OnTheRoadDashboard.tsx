@@ -12,6 +12,7 @@ import { startOfMonth, endOfMonth, subMonths, isWithinInterval, formatDistanceTo
 import { useBusinessStore } from '../../../store/businessStore';
 import { useOnTheRoadStore } from '../../../store/onTheRoadStore';
 import { useSettingsStore } from '../../../store/settingsStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
 import { explainOnTheRoadMonth } from '../../../utils/explainOnTheRoadMonth';
 import WeekBar from '../../../components/common/WeekBar';
@@ -45,6 +46,7 @@ const OnTheRoadDashboard: React.FC = () => {
   } = useOnTheRoadStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const [showCostPercentage, setShowCostPercentage] = useState(false);
 
@@ -158,12 +160,12 @@ const OnTheRoadDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
       >
+        <ModeToggle />
         {/* Zone 1 — Hero: Net Earnings */}
         <Text style={styles.heroAmount}>{formatNet(net)}</Text>
         <Text style={styles.heroLabel}>kept this month</Text>
