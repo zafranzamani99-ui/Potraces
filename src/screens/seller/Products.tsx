@@ -193,6 +193,7 @@ const Products: React.FC = () => {
   const [newStockQty, setNewStockQty] = useState('');
   const [newImageUrl, setNewImageUrl] = useState<string | undefined>(undefined);
   const [imageUploading, setImageUploading] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -784,6 +785,10 @@ const Products: React.FC = () => {
                 <View style={[styles.selectCheckbox, isSelected && styles.selectCheckboxActive]}>
                   {isSelected && <Feather name="check" size={14} color="#fff" />}
                 </View>
+              ) : item.imageUrl ? (
+                <TouchableOpacity onPress={() => setPreviewImageUrl(item.imageUrl!)} activeOpacity={0.8}>
+                  <Image source={{ uri: item.imageUrl }} style={[styles.rowAvatar, { borderRadius: 12 }, !item.isActive && { opacity: 0.4 }]} />
+                </TouchableOpacity>
               ) : (
                 <View style={[styles.rowAvatar, !item.isActive && styles.rowAvatarInactive]}>
                   <Text style={styles.rowAvatarText}>{initial}</Text>
@@ -1025,7 +1030,7 @@ const Products: React.FC = () => {
         <View style={styles.previewRow}>
           <TouchableOpacity
             style={styles.previewIcon}
-            onPress={() => handlePickProductImage(editingProduct?.id)}
+            onPress={newImageUrl && !imageUploading ? () => setPreviewImageUrl(newImageUrl) : () => handlePickProductImage(editingProduct?.id)}
             disabled={imageUploading}
             activeOpacity={0.7}
           >
@@ -1062,6 +1067,12 @@ const Products: React.FC = () => {
             </View>
           )}
         </View>
+        {newImageUrl && (
+          <TouchableOpacity onPress={() => handlePickProductImage(editingProduct?.id)} activeOpacity={0.7} style={styles.changePhotoBtn}>
+            <Feather name="camera" size={11} color={CALM.textMuted} />
+            <Text style={styles.changePhotoText}>change photo</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* ── Name ──────────────────────────────────────────── */}
@@ -1550,7 +1561,21 @@ const Products: React.FC = () => {
             </TouchableOpacity>
           )}
         </View>
+        {previewImageUrl && (
+          <TouchableOpacity style={styles.imgPreviewOverlay} activeOpacity={1} onPress={() => setPreviewImageUrl(null)}>
+            <Image source={{ uri: previewImageUrl }} style={styles.imgPreviewImage} resizeMode="contain" />
+          </TouchableOpacity>
+        )}
       </Modal>
+
+      {/* ── Image preview (from product list) ─────────────── */}
+      {previewImageUrl && !showAdd && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setPreviewImageUrl(null)}>
+          <TouchableOpacity style={styles.imgPreviewOverlay} activeOpacity={1} onPress={() => setPreviewImageUrl(null)}>
+            <Image source={{ uri: previewImageUrl }} style={styles.imgPreviewImage} resizeMode="contain" />
+          </TouchableOpacity>
+        </Modal>
+      )}
 
       {/* ── Log cost modal ──────────────────────────────────── */}
       <Modal visible={showCostModal} transparent statusBarTranslucent animationType="fade">
@@ -2419,6 +2444,34 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
+  },
+  changePhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    paddingTop: 6,
+    paddingLeft: 2,
+  },
+  changePhotoText: {
+    fontSize: 11,
+    color: CALM.textMuted,
+  },
+  imgPreviewOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+  },
+  imgPreviewImage: {
+    width: '80%',
+    aspectRatio: 1,
+    borderRadius: 16,
   },
   previewInfo: {
     flex: 1,

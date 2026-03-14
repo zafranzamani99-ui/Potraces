@@ -29,6 +29,7 @@ import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from
 import { explainSellerMonth } from '../../utils/explainSellerMonth';
 import { lightTap, mediumTap } from '../../services/haptics';
 import ModeToggle from '../../components/common/ModeToggle';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSellerProfile, updateSellerProfile, uploadShopLogo } from '../../services/sellerSync';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
@@ -37,6 +38,7 @@ import { useFadeSlide } from '../../utils/fadeSlide';
 
 // ─── Component ───────────────────────────────────────────────
 const SellerDashboard: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { orders, products, ingredientCosts, seasons, sellerCustomers, skippedOnboardingSteps, skipOnboardingStep } = useSellerStore();
   const { businessSetupComplete, incomeType } = useBusinessStore();
   const currency = useSettingsStore((s) => s.currency);
@@ -477,7 +479,7 @@ const SellerDashboard: React.FC = () => {
   const needsSetup = !businessSetupComplete || incomeType !== 'seller';
   if (needsSetup) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + SPACING.md }]}>
         <ModeToggle />
       </View>
     );
@@ -485,10 +487,9 @@ const SellerDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ModeToggle />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}
@@ -496,6 +497,7 @@ const SellerDashboard: React.FC = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CALM.bronze} colors={[CALM.bronze]} />
         }
       >
+        <ModeToggle />
         {/* ── Season context ─────────────────────────────── */}
         <Animated.View style={seasonAnim}>
           {activeSeason ? (
@@ -1440,6 +1442,9 @@ const SellerDashboard: React.FC = () => {
               resizeMode="contain"
             />
           )}
+
+          {/* Watermark below QR */}
+          <Text style={styles.qrWatermark}>potraces</Text>
 
           {paymentQrs.length > 1 && (
             <View style={styles.qrTabs}>
@@ -2841,6 +2846,7 @@ const styles = StyleSheet.create({
   qrTabActive: { backgroundColor: 'rgba(255,255,255,0.25)' },
   qrTabText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: 'rgba(255,255,255,0.5)' },
   qrTabTextActive: { color: '#fff' },
+  qrWatermark: { marginTop: SPACING.lg, fontSize: 16, fontWeight: TYPOGRAPHY.weight.medium, color: 'rgba(255, 255, 255, 0.5)', letterSpacing: 8, textTransform: 'lowercase' },
 });
 
 export default SellerDashboard;
