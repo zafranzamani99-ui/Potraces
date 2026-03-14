@@ -180,7 +180,7 @@ export default function App() {
         // Small delay to let mode switch + navigator mount
         setTimeout(() => {
           if (navigationRef.isReady()) {
-            navigationRef.navigate('SellerOrderList' as never, { orderId: data.orderId } as never);
+            (navigationRef as any).navigate('SellerOrderList', { orderId: data.orderId });
           }
         }, 300);
       }

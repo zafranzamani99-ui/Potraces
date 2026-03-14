@@ -15,6 +15,7 @@ import { useDebtStore } from '../store/debtStore';
 import { useBusinessStore } from '../store/businessStore';
 import { useSellerStore } from '../store/sellerStore';
 import { useAppStore } from '../store/appStore';
+import { useSavingsStore } from '../store/savingsStore';
 import { AIMessage } from '../types';
 import { ACTION_PROMPT } from './chatActions';
 
@@ -97,11 +98,16 @@ Budget stress — when user says "i'm over budget" or "habis duit":
 - Never say "cut back", "reduce", "spend less". Just observe.
 - If some categories are fine, mention them: "food's at RM 480/500 but entertainment still has RM 150 left"
 
-Goal coaching — when user asks "how's my savings?" or mentions a goal:
-- Show percentage, current amount, target, deadline, pace
-- Celebrate milestones: "you just crossed 50%!" or "almost there!"
-- If behind pace, state it calmly: "you'd need about RM 46/day to hit it by June"
-- Never say "save more" or "you need to save"
+Goal coaching — when user asks "how's my goals?" or mentions saving for something:
+- Show each goal: name, current/target, percentage, deadline pace
+- Mention contribution momentum: "You've added RM 800 to goals this month"
+- If behind pace, state calmly: "You'd need about RM 46/day to hit Japan Trip by June"
+- If ahead of pace, observe it: "At this rate, you could hit it 2 weeks early"
+- Celebrate milestones quietly: "Emergency Fund just crossed 50%"
+- If user hasn't contributed in a while: "Japan Trip hasn't had a contribution in 18 days"
+- If user asks "should I save for X?": Help them create a goal — ask for target amount and optional deadline
+- If user asks projection: Calculate "At RM 200/month, you'd reach RM 10,000 by March 2027"
+- Never say "save more" or "you need to save" — just show the math
 
 Debt awareness — when user asks "who owes me?" or "siapa hutang aku?":
 - List each person, their remaining amount, and due date if set
@@ -114,6 +120,18 @@ Post-action observation — after recording any transaction:
 - Debt payment: "Ali's down to RM 150 left" or "Ali's all settled!"
 - Goal: "Japan Trip is at 52% now"
 - Don't over-explain — one line is enough
+
+Savings & Investment coaching — when user asks "how's my investment?" or "macam mana savings aku?":
+- Show total portfolio value, total invested, overall return percentage
+- Break down by account: which ones grew, which ones dipped
+- Mention how long since each was last updated (gently nudge if stale)
+- For Malaysian-specific accounts, add context:
+  - ASB: typical dividend rate ~4-5% for comparison
+  - Tabung Haji: for Hajj savings, typical hibah rate ~3-4%
+  - TNG GO+: money market fund with daily returns
+- Celebrate milestones: "Your ASB just crossed RM 50,000!"
+- Never say "invest more" or "you should save" — just observe
+- If they ask "which one is doing best?" — show the numbers, let them decide
 
 Emotional support — when user sounds stressed about money:
 - Acknowledge the feeling first, then show numbers
@@ -247,11 +265,13 @@ function buildFinancialContext(): string {
     )
     .join('\n');
 
-  // Goals with deadlines + pace
+  // Goals with deadlines + pace + contribution momentum
   const goalLines = goals
     .map((g) => {
       const pct = g.targetAmount > 0 ? Math.round((g.currentAmount / g.targetAmount) * 100) : 0;
       let info = `  ${g.name}: RM ${g.currentAmount.toFixed(2)} / RM ${g.targetAmount.toFixed(2)} (${pct}%)`;
+      if (g.isPaused) info += ' [PAUSED]';
+      if (g.isArchived) info += ' [ARCHIVED]';
       if (g.deadline) {
         const dl = g.deadline instanceof Date ? g.deadline : new Date(g.deadline);
         if (!isNaN(dl.getTime())) {
@@ -262,6 +282,22 @@ function buildFinancialContext(): string {
             info += `, ${daysToDeadline}d left, ~RM ${Math.ceil(remaining / daysToDeadline)}/day needed`;
           }
         }
+      }
+      if (g.contributions && g.contributions.length > 0) {
+        const last = g.contributions[g.contributions.length - 1];
+        const lastDate = last.date instanceof Date ? last.date : new Date(last.date);
+        if (!isNaN(lastDate.getTime())) {
+          const daysAgo = Math.floor((now.getTime() - lastDate.getTime()) / 86400000);
+          info += `, last contributed ${daysAgo === 0 ? 'today' : `${daysAgo}d ago`}`;
+        }
+      }
+      const monthContribs = (g.contributions || []).filter((c) => {
+        const d = c.date instanceof Date ? c.date : new Date(c.date);
+        return c.amount > 0 && isWithinInterval(d, { start: monthStart, end: monthEnd });
+      });
+      if (monthContribs.length > 0) {
+        const monthTotal = monthContribs.reduce((s, c) => s + c.amount, 0);
+        info += `, +RM ${monthTotal.toFixed(0)} this month`;
       }
       return info;
     })
@@ -358,6 +394,36 @@ Subscriptions:
 ${subLines || '  (none)'}
 ${merchantLines ? `\nFrequent spending (2+ times this month):\n${merchantLines}` : ''}
 ${contribLines ? `\nRecent goal contributions:\n${contribLines}` : ''}`;
+
+  // Savings / Investment accounts
+  const savingsAccounts = useSavingsStore.getState().accounts;
+  if (savingsAccounts.length > 0) {
+    const totalPortfolio = savingsAccounts.reduce((s, a) => s + a.currentValue, 0);
+    const totalInvested = savingsAccounts.reduce((s, a) => s + a.initialInvestment, 0);
+    const portfolioGain = totalPortfolio - totalInvested;
+    const portfolioReturn = totalInvested > 0 ? (portfolioGain / totalInvested) * 100 : 0;
+
+    const savingsLines = savingsAccounts
+      .map((a) => {
+        const gain = a.currentValue - a.initialInvestment;
+        const ret = a.initialInvestment > 0 ? (gain / a.initialInvestment) * 100 : 0;
+        const lastUpdate = a.history.length > 0
+          ? format(
+              a.history[a.history.length - 1].date instanceof Date
+                ? a.history[a.history.length - 1].date
+                : new Date(a.history[a.history.length - 1].date as any),
+              'dd MMM'
+            )
+          : 'never';
+        const target = a.target ? ` / target RM ${a.target.toFixed(2)}` : '';
+        return `  ${a.name} (${a.type}): RM ${a.currentValue.toFixed(2)} invested RM ${a.initialInvestment.toFixed(2)} (${ret >= 0 ? '+' : ''}${ret.toFixed(1)}%) last updated ${lastUpdate}${target}`;
+      })
+      .join('\n');
+
+    ctx += `\n\nSavings & Investments (${savingsAccounts.length} accounts):
+Portfolio: RM ${totalPortfolio.toFixed(2)} (invested RM ${totalInvested.toFixed(2)}, ${portfolioReturn >= 0 ? '+' : ''}${portfolioReturn.toFixed(1)}%)
+${savingsLines}`;
+  }
 
   // Business context
   if (mode === 'business') {

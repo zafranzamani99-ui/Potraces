@@ -257,7 +257,7 @@ const NoteEditor: React.FC = () => {
       updatePageContent(pageId, fullText);
       hasUnsavedRef.current = false;
     }
-    classify(fullText);
+    classify();
   }, [classify, title, body, pageId, updatePageContent]);
 
   const handleEdit = useCallback((id: string) => {
@@ -980,7 +980,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   extractHint: {
-    fontSize: TYPOGRAPHY.size.xxs || 10,
+    fontSize: 10,
     color: CALM.bronze,
     fontStyle: 'italic',
     marginBottom: SPACING.xs,

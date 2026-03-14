@@ -5,9 +5,11 @@
  * We parse them out, execute via stores, and return confirmations.
  */
 
+import { format } from 'date-fns';
 import { usePersonalStore } from '../store/personalStore';
 import { useDebtStore } from '../store/debtStore';
 import { useWalletStore } from '../store/walletStore';
+import { useSavingsStore } from '../store/savingsStore';
 import { useAppStore } from '../store/appStore';
 import { AppMode } from '../types';
 
@@ -26,7 +28,11 @@ export type ChatActionType =
   | 'forgive_debt'
   | 'update_subscription'
   | 'add_bnpl'
-  | 'repay_credit';
+  | 'repay_credit'
+  | 'update_savings'
+  | 'add_savings_account'
+  | 'create_goal'
+  | 'withdraw_goal';
 
 export interface ChatAction {
   type: ChatActionType;
@@ -44,6 +50,13 @@ export interface ChatAction {
   goalName?: string;      // for add_goal_contribution
   newAmount?: number;      // for update_subscription
   creditWallet?: string;   // for add_bnpl / repay_credit
+  accountName?: string;    // for update_savings / add_savings_account
+  accountType?: string;    // for add_savings_account
+  initialInvestment?: number; // for add_savings_account
+  goalTarget?: number;     // for create_goal
+  goalDeadline?: string;   // ISO date for create_goal
+  goalIcon?: string;       // for create_goal
+  goalColor?: string;      // for create_goal
 }
 
 export interface ActionResult {
@@ -469,6 +482,103 @@ export function executeAction(action: ChatAction): ActionResult {
         };
       }
 
+      case 'update_savings': {
+        const savingsStore = useSavingsStore.getState();
+        const accounts = savingsStore.accounts;
+        const name = action.accountName || action.description;
+        const account = accounts.find(
+          (a) => a.name.toLowerCase().includes(name.toLowerCase()) ||
+                 name.toLowerCase().includes(a.name.toLowerCase())
+        );
+        if (!account) {
+          const available = accounts.map(a => a.name).join(', ');
+          return {
+            success: false,
+            message: `No savings account matching "${name}". You have: ${available || 'none'}`,
+            action,
+          };
+        }
+        savingsStore.addSnapshot(account.id, action.amount, action.description || 'updated via chat', 'manual');
+        const gain = action.amount - account.initialInvestment;
+        const ret = account.initialInvestment > 0 ? (gain / account.initialInvestment) * 100 : 0;
+        return {
+          success: true,
+          message: `Updated ${account.name} to RM ${action.amount.toFixed(2)} (${ret >= 0 ? '+' : ''}${ret.toFixed(1)}% overall)`,
+          action,
+        };
+      }
+
+      case 'add_savings_account': {
+        const savingsStore = useSavingsStore.getState();
+        if (savingsStore.accounts.length >= 5) {
+          return { success: false, message: 'Maximum 5 savings accounts — remove one first.', action };
+        }
+        savingsStore.addAccount({
+          name: action.description || action.accountName || 'New Account',
+          type: action.accountType || 'other',
+          initialInvestment: action.initialInvestment ?? action.amount,
+          currentValue: action.amount,
+        });
+        return {
+          success: true,
+          message: `Added savings account "${action.description || action.accountName}" with RM ${action.amount.toFixed(2)}`,
+          action,
+        };
+      }
+
+      case 'create_goal': {
+        const goals = usePersonalStore.getState().goals;
+        if (goals.length >= 10) {
+          return { success: false, message: 'Maximum 10 goals — remove one first.', action };
+        }
+        const target = action.goalTarget || action.amount;
+        if (!target || target <= 0) {
+          return { success: false, message: 'Please specify a target amount.', action };
+        }
+        let deadline: Date | undefined;
+        if (action.goalDeadline) {
+          const d = new Date(action.goalDeadline);
+          if (!isNaN(d.getTime())) deadline = d;
+        }
+        usePersonalStore.getState().addGoal({
+          name: action.description || action.goalName || 'New Goal',
+          targetAmount: target,
+          deadline,
+          category: 'general',
+          icon: action.goalIcon || 'target',
+          color: action.goalColor || '#4F5104',
+        });
+        return {
+          success: true,
+          message: `Created goal "${action.description || action.goalName}" — target RM ${target.toFixed(2)}${deadline ? ` by ${format(deadline, 'dd MMM yyyy')}` : ''}`,
+          action,
+        };
+      }
+
+      case 'withdraw_goal': {
+        const goals = usePersonalStore.getState().goals;
+        const name = action.goalName || action.description;
+        const goal = goals.find(
+          (g) => g.name.toLowerCase().includes(name.toLowerCase()) ||
+                 name.toLowerCase().includes(g.name.toLowerCase())
+        );
+        if (!goal) {
+          const available = goals.map(g => g.name).join(', ');
+          return { success: false, message: `No goal matching "${name}". You have: ${available || 'none'}`, action };
+        }
+        if (action.amount > goal.currentAmount) {
+          return { success: false, message: `Can't withdraw RM ${action.amount.toFixed(2)} — goal only has RM ${goal.currentAmount.toFixed(2)}.`, action };
+        }
+        usePersonalStore.getState().withdrawFromGoal(goal.id, action.amount, action.description || 'withdrawn via chat');
+        const newAmount = goal.currentAmount - action.amount;
+        const pct = goal.targetAmount > 0 ? Math.round((newAmount / goal.targetAmount) * 100) : 0;
+        return {
+          success: true,
+          message: `Withdrew RM ${action.amount.toFixed(2)} from "${goal.name}" — now at RM ${newAmount.toFixed(2)} (${pct}%)`,
+          action,
+        };
+      }
+
       default:
         return { success: false, message: `Unknown action: ${action.type}`, action };
     }
@@ -534,6 +644,25 @@ AVAILABLE ACTIONS:
 13. repay_credit — Pay off credit/BNPL balance
    {"type":"repay_credit","amount":NUMBER,"description":"TEXT","creditWallet":"CREDIT_WALLET_NAME","fromWallet":"BANK_WALLET_NAME"}
    Repays credit wallet balance. fromWallet is optional — if specified, deducts from that bank wallet.
+
+14. update_savings — Update the current value of a savings/investment account
+   {"type":"update_savings","amount":NUMBER,"description":"ACCOUNT_NAME","accountName":"ACCOUNT_NAME"}
+   Fuzzy matches accountName against user's savings accounts (TNG+, ASB, Tabung Haji, etc).
+   Use when user says "TNG+ now RM 5200", "update ASB", "my ASB is at RM 50000 now".
+
+15. add_savings_account — Add a new savings/investment account
+   {"type":"add_savings_account","amount":NUMBER,"description":"ACCOUNT_NAME","accountType":"TYPE","initialInvestment":NUMBER}
+   Types: tng_plus, robo_crypto, esa, bank, asb, tabung_haji, stocks, gold, other
+   Use when user says "add my ASB account", "I opened TNG+ with RM 1000".
+
+16. create_goal — Create a new savings goal
+   {"type":"create_goal","amount":NUMBER,"description":"GOAL_NAME","goalTarget":NUMBER,"goalDeadline":"YYYY-MM-DD"}
+   amount and goalTarget should be the same (target amount). goalDeadline is optional.
+   Use when user says "I want to save for X", "create goal for Y", "nak simpan untuk Z".
+
+17. withdraw_goal — Withdraw/remove money from a goal
+   {"type":"withdraw_goal","amount":NUMBER,"description":"GOAL_NAME","goalName":"GOAL_NAME"}
+   Use when user says "take RM 500 from japan fund", "keluarkan duit dari goal", "withdraw from emergency fund".
 
 DATE OVERRIDE:
 Any action can include "date":"YYYY-MM-DD" to record for a past/future date.
@@ -609,4 +738,24 @@ Response: Recording your SPayLater purchase.
 Credit repayment:
 User: "bayar spaylater rm500 from maybank"
 Response: Paying off RM 500 on SPayLater.
-[ACTION]{"type":"repay_credit","amount":500,"description":"monthly payment","creditWallet":"SPayLater","fromWallet":"Maybank"}[/ACTION]`;
+[ACTION]{"type":"repay_credit","amount":500,"description":"monthly payment","creditWallet":"SPayLater","fromWallet":"Maybank"}[/ACTION]
+
+Update savings:
+User: "TNG+ sekarang RM 5200"
+Response: Updated your TNG GO+ balance.
+[ACTION]{"type":"update_savings","amount":5200,"description":"TNG+","accountName":"TNG+"}[/ACTION]
+
+Add savings account:
+User: "aku baru open ASB, letak RM 5000"
+Response: Nice — added your ASB account!
+[ACTION]{"type":"add_savings_account","amount":5000,"description":"ASB","accountType":"asb","initialInvestment":5000}[/ACTION]
+
+Create goal:
+User: "aku nak simpan untuk laptop baru, target RM 5000 by december"
+Response: Created your laptop savings goal!
+[ACTION]{"type":"create_goal","amount":5000,"description":"Laptop Baru","goalTarget":5000,"goalDeadline":"2026-12-31"}[/ACTION]
+
+Withdraw from goal:
+User: "ambil RM 500 dari emergency fund"
+Response: Withdrawing from your Emergency Fund.
+[ACTION]{"type":"withdraw_goal","amount":500,"description":"Emergency Fund","goalName":"Emergency Fund"}[/ACTION]`;

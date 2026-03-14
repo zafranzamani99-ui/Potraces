@@ -46,8 +46,7 @@ const SubscriptionList: React.FC = () => {
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [calendarVisible, setCalendarVisible] = useState(false);
-  const [cyclePickerVisible, setCyclePickerVisible] = useState(false);
+  const [modalView, setModalView] = useState<'form' | 'cyclePicker' | 'calendar'>('form');
 
   // Form state
   const [name, setName] = useState('');
@@ -165,6 +164,7 @@ const SubscriptionList: React.FC = () => {
     setIsInstallment(false);
     setTotalInstallments('');
     setIsPaused(false);
+    setModalView('form');
   }, [expenseCategories]);
 
   const handleEdit = useCallback((id: string) => {
@@ -267,10 +267,10 @@ const SubscriptionList: React.FC = () => {
     showToast('payment marked.', 'success');
   }, [incrementInstallment, showToast]);
 
-  const getCycleLabel = (cycle: string) => {
+  const getCycleLabel = useCallback((cycle: string) => {
     const found = BILLING_CYCLES.find(c => c.value === cycle);
     return found ? found.label.toLowerCase() : cycle;
-  };
+  }, []);
 
   // ─── Render Helpers ────────────────────────────────────────
   const renderSummaryHero = () => {
@@ -491,268 +491,289 @@ const SubscriptionList: React.FC = () => {
     </View>
   );
 
-  // ─── Cycle Picker Modal ───────────────────────────────────
-  const renderCyclePickerModal = () => (
-    <Modal
-      visible={cyclePickerVisible}
-      animationType="fade"
-      transparent
-      statusBarTranslucent
-      onRequestClose={() => setCyclePickerVisible(false)}
-    >
-      <TouchableOpacity style={styles.overlayCenter} activeOpacity={1} onPress={() => setCyclePickerVisible(false)}>
-        <TouchableOpacity activeOpacity={1} style={styles.pickerCard}>
-          <Text style={styles.pickerTitle}>billing cycle</Text>
-          {BILLING_CYCLES.map(cycle => {
-            const isSelected = billingCycle === cycle.value;
-            return (
-              <TouchableOpacity
-                key={cycle.value}
-                style={[styles.pickerOption, isSelected && styles.pickerOptionActive]}
-                onPress={() => {
-                  lightTap();
-                  setBillingCycle(cycle.value as typeof billingCycle);
-                  setCyclePickerVisible(false);
-                }}
-                activeOpacity={0.6}
-              >
-                <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextActive]}>
-                  {cycle.label.toLowerCase()}
-                </Text>
-                {isSelected && <Feather name="check" size={18} color={CALM.accent} />}
-              </TouchableOpacity>
-            );
-          })}
-        </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
-  );
-
-  // ─── Calendar Modal ────────────────────────────────────────
-  const renderCalendarModal = () => (
-    <Modal
-      visible={calendarVisible}
-      animationType="fade"
-      transparent
-      statusBarTranslucent
-      onRequestClose={() => setCalendarVisible(false)}
-    >
-      <TouchableOpacity style={styles.overlayCenter} activeOpacity={1} onPress={() => setCalendarVisible(false)}>
-        <TouchableOpacity activeOpacity={1} style={styles.calendarCard}>
-          <View style={styles.calendarHeader}>
-            <Text style={styles.pickerTitle}>start date</Text>
-            <TouchableOpacity onPress={() => setCalendarVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <Feather name="x" size={20} color={CALM.textPrimary} />
-            </TouchableOpacity>
-          </View>
-          <CalendarPicker
-            value={startDate}
-            onChange={(date) => {
-              setStartDate(date);
-              setCalendarVisible(false);
-            }}
-          />
-        </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
-  );
-
   // ─── Add/Edit Modal ────────────────────────────────────────
   const renderModal = () => {
     const editingSub = editingId ? subscriptions.find(s => s.id === editingId) : null;
     const showMarkPayment = editingSub?.isInstallment && editingSub?.totalInstallments;
 
+    const renderFormView = () => (
+      <>
+        {/* Header */}
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>{editingId ? 'edit commitment' : 'add commitment'}</Text>
+          <TouchableOpacity
+            onPress={() => { setModalVisible(false); resetForm(); }}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Feather name="x" size={22} color={CALM.textPrimary} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: SPACING.lg }}
+        >
+          {/* Name */}
+          <Text style={styles.fieldLabel}>name</Text>
+          <TextInput
+            style={styles.fieldInput}
+            value={name}
+            onChangeText={setName}
+            placeholder="Netflix, Spotify, etc."
+            placeholderTextColor={CALM.textMuted}
+            returnKeyType="next"
+          />
+
+          {/* Amount */}
+          <Text style={styles.fieldLabel}>amount</Text>
+          <View style={styles.amountRow}>
+            <Text style={styles.amountPrefix}>{currency}</Text>
+            <TextInput
+              style={[styles.fieldInput, { flex: 1 }]}
+              value={amount}
+              onChangeText={setAmount}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+              placeholderTextColor={CALM.textMuted}
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
+            />
+          </View>
+
+          {/* Category */}
+          <CategoryPicker
+            categories={expenseCategories}
+            selectedId={category}
+            onSelect={setCategory}
+            label="category"
+            layout="dropdown"
+          />
+
+          {/* Billing Cycle */}
+          <Text style={styles.fieldLabel}>billing cycle</Text>
+          <TouchableOpacity
+            style={styles.fieldTouchable}
+            onPress={() => { lightTap(); setModalView('cyclePicker'); }}
+            activeOpacity={0.6}
+          >
+            <Text style={styles.fieldTouchableText}>{getCycleLabel(billingCycle)}</Text>
+            <Feather name="chevron-down" size={16} color={CALM.textMuted} />
+          </TouchableOpacity>
+
+          {/* Start Date */}
+          <Text style={styles.fieldLabel}>start date</Text>
+          <TouchableOpacity
+            style={styles.fieldTouchable}
+            onPress={() => { lightTap(); setModalView('calendar'); }}
+            activeOpacity={0.6}
+          >
+            <Text style={styles.fieldTouchableText}>
+              {isValid(startDate) ? format(startDate, 'MMM dd, yyyy') : 'select date'}
+            </Text>
+            <Feather name="calendar" size={16} color={CALM.textMuted} />
+          </TouchableOpacity>
+
+          {/* Reminder */}
+          <Text style={styles.fieldLabel}>reminder</Text>
+          <View style={styles.reminderRow}>
+            <TextInput
+              style={[styles.fieldInput, { width: 60, textAlign: 'center' }]}
+              value={reminderDays}
+              onChangeText={setReminderDays}
+              placeholder="3"
+              keyboardType="number-pad"
+              placeholderTextColor={CALM.textMuted}
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
+            />
+            <Text style={styles.reminderSuffix}>days before</Text>
+          </View>
+
+          {/* Installment toggle */}
+          <TouchableOpacity
+            style={[styles.toggleCard, isInstallment && styles.toggleCardActive]}
+            onPress={() => { lightTap(); setIsInstallment(!isInstallment); }}
+            activeOpacity={0.7}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleLabel}>installment</Text>
+              <Text style={styles.toggleHint}>for fixed-payment plans</Text>
+            </View>
+            <Switch
+              value={isInstallment}
+              onValueChange={val => { lightTap(); setIsInstallment(val); }}
+              trackColor={{ false: CALM.border, true: withAlpha(CALM.accent, 0.4) }}
+              thumbColor={isInstallment ? CALM.accent : '#FFFFFF'}
+              pointerEvents="none"
+            />
+          </TouchableOpacity>
+
+          {isInstallment && (
+            <>
+              <Text style={styles.fieldLabel}>total installments</Text>
+              <TextInput
+                style={styles.fieldInput}
+                value={totalInstallments}
+                onChangeText={setTotalInstallments}
+                placeholder="e.g. 24"
+                keyboardType="number-pad"
+                placeholderTextColor={CALM.textMuted}
+                returnKeyType="done"
+                onSubmitEditing={Keyboard.dismiss}
+              />
+            </>
+          )}
+
+          {/* Paused toggle */}
+          <TouchableOpacity
+            style={[styles.toggleCard, isPaused && { backgroundColor: withAlpha(CALM.bronze, 0.06) }]}
+            onPress={() => { lightTap(); setIsPaused(!isPaused); }}
+            activeOpacity={0.7}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleLabel}>pause this commitment</Text>
+              <Text style={styles.toggleHint}>temporarily stop tracking</Text>
+            </View>
+            <Switch
+              value={isPaused}
+              onValueChange={val => { lightTap(); setIsPaused(val); }}
+              trackColor={{ false: CALM.border, true: withAlpha(CALM.bronze, 0.4) }}
+              thumbColor={isPaused ? CALM.bronze : '#FFFFFF'}
+              pointerEvents="none"
+            />
+          </TouchableOpacity>
+
+          {/* Mark Payment (editing installment only) */}
+          {showMarkPayment && (
+            <TouchableOpacity
+              style={styles.markPaymentBtn}
+              onPress={() => {
+                handleMarkPayment(editingId!);
+              }}
+              activeOpacity={0.7}
+            >
+              <Feather name="check-circle" size={18} color={CALM.accent} />
+              <Text style={styles.markPaymentText}>
+                mark payment ({editingSub!.completedInstallments || 0}/{editingSub!.totalInstallments})
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Delete (editing only) */}
+          {editingId && (
+            <TouchableOpacity
+              style={styles.deleteBtn}
+              onPress={() => {
+                setModalVisible(false);
+                resetForm();
+                handleDelete(editingId, name);
+              }}
+              activeOpacity={0.7}
+            >
+              <Feather name="trash-2" size={16} color={CALM.neutral} />
+              <Text style={styles.deleteBtnText}>delete commitment</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Confirm */}
+          <TouchableOpacity
+            style={styles.confirmBtn}
+            onPress={handleSave}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.confirmBtnText}>{editingId ? 'save changes' : 'add commitment'}</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </>
+    );
+
+    const renderCyclePickerView = () => (
+      <>
+        <View style={styles.modalHeader}>
+          <TouchableOpacity
+            onPress={() => setModalView('form')}
+            style={styles.backBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Feather name="arrow-left" size={20} color={CALM.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.modalTitle}>billing cycle</Text>
+          <View style={{ width: 20 }} />
+        </View>
+        {BILLING_CYCLES.map(cycle => {
+          const isSelected = billingCycle === cycle.value;
+          return (
+            <TouchableOpacity
+              key={cycle.value}
+              style={[styles.pickerOption, isSelected && styles.pickerOptionActive]}
+              onPress={() => {
+                lightTap();
+                setBillingCycle(cycle.value as typeof billingCycle);
+                setModalView('form');
+              }}
+              activeOpacity={0.6}
+            >
+              <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextActive]}>
+                {cycle.label.toLowerCase()}
+              </Text>
+              {isSelected && <Feather name="check" size={18} color={CALM.accent} />}
+            </TouchableOpacity>
+          );
+        })}
+      </>
+    );
+
+    const renderCalendarView = () => (
+      <>
+        <View style={styles.modalHeader}>
+          <TouchableOpacity
+            onPress={() => setModalView('form')}
+            style={styles.backBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Feather name="arrow-left" size={20} color={CALM.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.modalTitle}>start date</Text>
+          <View style={{ width: 20 }} />
+        </View>
+        <CalendarPicker
+          value={startDate}
+          onChange={(date) => {
+            setStartDate(date);
+            setModalView('form');
+          }}
+        />
+      </>
+    );
+
     return (
       <Modal
-        visible={modalVisible}
+        visible
         animationType="fade"
         transparent
         statusBarTranslucent
-        onRequestClose={() => { setModalVisible(false); resetForm(); }}
+        onRequestClose={() => {
+          if (modalView !== 'form') { setModalView('form'); return; }
+          setModalVisible(false); resetForm();
+        }}
       >
-        <TouchableOpacity style={styles.overlayCenter} activeOpacity={1} onPress={() => { setModalVisible(false); resetForm(); }}>
+        <TouchableOpacity
+          style={styles.overlayCenter}
+          activeOpacity={1}
+          onPress={() => {
+            if (modalView !== 'form') { setModalView('form'); return; }
+            setModalVisible(false); resetForm();
+          }}
+        >
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.kavWrapper}
           >
-            <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
-              {/* Header */}
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{editingId ? 'edit commitment' : 'add commitment'}</Text>
-                <TouchableOpacity
-                  onPress={() => { setModalVisible(false); resetForm(); }}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Feather name="x" size={22} color={CALM.textPrimary} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ paddingBottom: SPACING.lg }}
-              >
-                {/* Name */}
-                <Text style={styles.fieldLabel}>name</Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Netflix, Spotify, etc."
-                  placeholderTextColor={CALM.textMuted}
-                  returnKeyType="next"
-                />
-
-                {/* Amount */}
-                <Text style={styles.fieldLabel}>amount</Text>
-                <View style={styles.amountRow}>
-                  <Text style={styles.amountPrefix}>{currency}</Text>
-                  <TextInput
-                    style={[styles.fieldInput, { flex: 1 }]}
-                    value={amount}
-                    onChangeText={setAmount}
-                    placeholder="0.00"
-                    keyboardType="decimal-pad"
-                    placeholderTextColor={CALM.textMuted}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                </View>
-
-                {/* Category */}
-                <CategoryPicker
-                  categories={expenseCategories}
-                  selectedId={category}
-                  onSelect={setCategory}
-                  label="category"
-                  layout="dropdown"
-                />
-
-                {/* Billing Cycle */}
-                <Text style={styles.fieldLabel}>billing cycle</Text>
-                <TouchableOpacity
-                  style={styles.fieldTouchable}
-                  onPress={() => setCyclePickerVisible(true)}
-                  activeOpacity={0.6}
-                >
-                  <Text style={styles.fieldTouchableText}>{getCycleLabel(billingCycle)}</Text>
-                  <Feather name="chevron-down" size={16} color={CALM.textMuted} />
-                </TouchableOpacity>
-
-                {/* Start Date */}
-                <Text style={styles.fieldLabel}>start date</Text>
-                <TouchableOpacity
-                  style={styles.fieldTouchable}
-                  onPress={() => setCalendarVisible(true)}
-                  activeOpacity={0.6}
-                >
-                  <Text style={styles.fieldTouchableText}>
-                    {isValid(startDate) ? format(startDate, 'MMM dd, yyyy') : 'select date'}
-                  </Text>
-                  <Feather name="calendar" size={16} color={CALM.textMuted} />
-                </TouchableOpacity>
-
-                {/* Reminder */}
-                <Text style={styles.fieldLabel}>reminder</Text>
-                <View style={styles.reminderRow}>
-                  <TextInput
-                    style={[styles.fieldInput, { width: 60, textAlign: 'center' }]}
-                    value={reminderDays}
-                    onChangeText={setReminderDays}
-                    placeholder="3"
-                    keyboardType="number-pad"
-                    placeholderTextColor={CALM.textMuted}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                  <Text style={styles.reminderSuffix}>days before</Text>
-                </View>
-
-                {/* Installment toggle */}
-                <View style={styles.toggleRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.toggleLabel}>installment</Text>
-                    <Text style={styles.toggleHint}>for fixed-payment plans</Text>
-                  </View>
-                  <Switch
-                    value={isInstallment}
-                    onValueChange={val => { lightTap(); setIsInstallment(val); }}
-                    trackColor={{ false: CALM.border, true: withAlpha(CALM.accent, 0.4) }}
-                    thumbColor={isInstallment ? CALM.accent : '#FFFFFF'}
-                  />
-                </View>
-
-                {isInstallment && (
-                  <>
-                    <Text style={styles.fieldLabel}>total installments</Text>
-                    <TextInput
-                      style={styles.fieldInput}
-                      value={totalInstallments}
-                      onChangeText={setTotalInstallments}
-                      placeholder="e.g. 24"
-                      keyboardType="number-pad"
-                      placeholderTextColor={CALM.textMuted}
-                      returnKeyType="done"
-                      onSubmitEditing={Keyboard.dismiss}
-                    />
-                  </>
-                )}
-
-                {/* Paused toggle */}
-                <View style={styles.toggleRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.toggleLabel}>pause this commitment</Text>
-                    <Text style={styles.toggleHint}>temporarily stop tracking</Text>
-                  </View>
-                  <Switch
-                    value={isPaused}
-                    onValueChange={val => { lightTap(); setIsPaused(val); }}
-                    trackColor={{ false: CALM.border, true: withAlpha(CALM.bronze, 0.4) }}
-                    thumbColor={isPaused ? CALM.bronze : '#FFFFFF'}
-                  />
-                </View>
-
-                {/* Mark Payment (editing installment only) */}
-                {showMarkPayment && (
-                  <TouchableOpacity
-                    style={styles.markPaymentBtn}
-                    onPress={() => {
-                      handleMarkPayment(editingId!);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name="check-circle" size={18} color={CALM.accent} />
-                    <Text style={styles.markPaymentText}>
-                      mark payment ({editingSub!.completedInstallments || 0}/{editingSub!.totalInstallments})
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* Delete (editing only) */}
-                {editingId && (
-                  <TouchableOpacity
-                    style={styles.deleteBtn}
-                    onPress={() => {
-                      setModalVisible(false);
-                      resetForm();
-                      handleDelete(editingId, name);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name="trash-2" size={16} color={CALM.neutral} />
-                    <Text style={styles.deleteBtnText}>delete commitment</Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* Confirm */}
-                <TouchableOpacity
-                  style={styles.confirmBtn}
-                  onPress={handleSave}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.confirmBtnText}>{editingId ? 'save changes' : 'add commitment'}</Text>
-                </TouchableOpacity>
-              </ScrollView>
+            <TouchableOpacity activeOpacity={1} style={[styles.modalCard, modalView !== 'form' && { maxHeight: undefined }]}>
+              {modalView === 'form' && renderFormView()}
+              {modalView === 'cyclePicker' && renderCyclePickerView()}
+              {modalView === 'calendar' && renderCalendarView()}
             </TouchableOpacity>
           </KeyboardAvoidingView>
         </TouchableOpacity>
@@ -811,9 +832,7 @@ const SubscriptionList: React.FC = () => {
         </Animated.View>
       )}
 
-      {renderModal()}
-      {renderCyclePickerModal()}
-      {renderCalendarModal()}
+      {modalVisible && renderModal()}
     </View>
   );
 };
@@ -1240,11 +1259,17 @@ const styles = StyleSheet.create({
   },
 
   // ── Toggles ──────────────────────────────────────────
-  toggleRow: {
+  toggleCard: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: SPACING.xl,
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: withAlpha(CALM.textMuted, 0.04),
+    borderRadius: RADIUS.lg,
+  },
+  toggleCardActive: {
+    backgroundColor: withAlpha(CALM.accent, 0.06),
   },
   toggleLabel: {
     fontSize: TYPOGRAPHY.size.base,
@@ -1302,20 +1327,17 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  // ── Cycle Picker ─────────────────────────────────────
-  pickerCard: {
-    width: '80%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    ...SHADOWS.lg,
+  // ── Back button (inline views) ──────────────────────
+  backBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  pickerTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
-    marginBottom: SPACING.md,
-  },
+
+  // ── Picker Options ─────────────────────────────────
   pickerOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1338,20 +1360,6 @@ const styles = StyleSheet.create({
     color: CALM.accent,
   },
 
-  // ── Calendar Modal ───────────────────────────────────
-  calendarCard: {
-    width: '90%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    ...SHADOWS.lg,
-  },
-  calendarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
 });
 
 export default SubscriptionList;

@@ -612,6 +612,9 @@ export interface Goal {
   color: string;
   contributions: GoalContribution[];
   milestones: GoalMilestone[];
+  isPaused?: boolean;
+  isArchived?: boolean;
+  walletId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -837,6 +840,12 @@ export interface PersonalState {
   updateGoal: (id: string, updates: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
   contributeToGoal: (goalId: string, amount: number, note?: string) => void;
+  withdrawFromGoal: (goalId: string, amount: number, note?: string) => void;
+  removeContribution: (goalId: string, contributionId: string) => void;
+  archiveGoal: (goalId: string) => void;
+  unarchiveGoal: (goalId: string) => void;
+  pauseGoal: (goalId: string) => void;
+  resumeGoal: (goalId: string) => void;
 }
 
 export interface BusinessState {
@@ -911,11 +920,14 @@ export interface ChartData {
 // Savings / Investment Types (string to support custom investment categories)
 export type SavingsAccountType = string;
 
+export type SnapshotType = 'manual' | 'dividend' | 'withdrawal';
+
 export interface SavingsSnapshot {
   id: string;
   value: number;
   note?: string;
   date: Date;
+  snapshotType?: SnapshotType;
 }
 
 export interface SavingsAccount {
@@ -925,17 +937,29 @@ export interface SavingsAccount {
   description?: string;
   initialInvestment: number;
   currentValue: number;
+  target?: number;
+  goalName?: string;
+  annualRate?: number;
   history: SavingsSnapshot[];
   createdAt: Date;
   updatedAt: Date;
 }
 
+export type SavingsSortBy = 'manual' | 'value' | 'return' | 'updated';
+
 export interface SavingsState {
   accounts: SavingsAccount[];
+  sortBy: SavingsSortBy;
+  accountOrder: string[];
+  lastOpenedValue: number | null;
   addAccount: (account: Omit<SavingsAccount, 'id' | 'history' | 'createdAt' | 'updatedAt'>) => void;
   updateAccount: (id: string, updates: Partial<SavingsAccount>) => void;
   deleteAccount: (id: string) => void;
-  addSnapshot: (accountId: string, value: number, note?: string) => void;
+  addSnapshot: (accountId: string, value: number, note?: string, snapshotType?: SnapshotType) => void;
+  setSortBy: (sort: SavingsSortBy) => void;
+  reorderAccounts: (orderedIds: string[]) => void;
+  setTarget: (accountId: string, target: number | null) => void;
+  recordOpen: () => void;
 }
 
 // Wallet Types

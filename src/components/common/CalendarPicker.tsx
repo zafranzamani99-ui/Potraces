@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, Keyboard } from 'react-native';
 import {
   startOfMonth,
@@ -26,8 +26,13 @@ interface CalendarPickerProps {
 const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const CELL_SIZE = 40;
+const MONTH_ROWS = [0, 4, 8] as const;
+const DAY_LABEL_STYLE = { marginTop: SPACING.sm, marginBottom: SPACING.xs };
+const MONTH_GRID_STYLE = { marginTop: SPACING.md };
+const EDIT_ICON_STYLE = { marginLeft: 5 };
+const CHEVRON_STYLE = { marginLeft: 5 };
 
-export default function CalendarPicker({ value, minimumDate, onChange }: CalendarPickerProps) {
+const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, onChange }: CalendarPickerProps) {
   const [viewMonth, setViewMonth] = useState(startOfMonth(value));
   const [showPicker, setShowPicker] = useState(false);
   const [pickerYear, setPickerYear] = useState(getYear(value));
@@ -35,21 +40,77 @@ export default function CalendarPicker({ value, minimumDate, onChange }: Calenda
   const [yearInputText, setYearInputText] = useState('');
   const yearInputRef = useRef<TextInput>(null);
 
-  const today = startOfDay(new Date());
-  const minDate = minimumDate ? startOfDay(minimumDate) : undefined;
+  const today = useMemo(() => startOfDay(new Date()), []);
+  const minDate = useMemo(
+    () => (minimumDate ? startOfDay(minimumDate) : undefined),
+    [minimumDate],
+  );
 
-  const isDisabled = (d: Date) => !!(minDate && isBefore(startOfDay(d), minDate));
-  const isSelected = (d: Date) => isSameDay(d, value);
-  const isToday = (d: Date) => isSameDay(d, today);
+  // ── Memoized grid computation ──
+  const rows = useMemo(() => {
+    const monthStart = startOfMonth(viewMonth);
+    const days = eachDayOfInterval({ start: monthStart, end: endOfMonth(viewMonth) });
+    const leadingBlanks = getDay(monthStart);
+    const cells: (Date | null)[] = [...Array(leadingBlanks).fill(null), ...days];
+    while (cells.length % 7 !== 0) cells.push(null);
+    const r: (Date | null)[][] = [];
+    for (let i = 0; i < cells.length; i += 7) r.push(cells.slice(i, i + 7));
+    return r;
+  }, [viewMonth]);
 
-  // ── Month/year picker panel ──────────────────────────────
+  // ── Stable nav handlers ──
+  const goToPrevMonth = useCallback(() => {
+    setViewMonth((vm) => startOfMonth(new Date(getYear(vm), getMonth(vm) - 1)));
+  }, []);
+
+  const goToNextMonth = useCallback(() => {
+    setViewMonth((vm) => startOfMonth(new Date(getYear(vm), getMonth(vm) + 1)));
+  }, []);
+
+  const openPicker = useCallback(() => {
+    setPickerYear(getYear(viewMonth));
+    setShowPicker(true);
+  }, [viewMonth]);
+
+  const decrementYear = useCallback(() => setPickerYear((y) => y - 1), []);
+  const incrementYear = useCallback(() => setPickerYear((y) => y + 1), []);
+
+  const startEditYear = useCallback(() => {
+    setYearInputText(String(pickerYear));
+    setEditingYear(true);
+  }, [pickerYear]);
+
+  const commitYear = useCallback(() => {
+    const y = parseInt(yearInputText, 10);
+    if (y >= 1900 && y <= 2100) setPickerYear(y);
+    setEditingYear(false);
+    Keyboard.dismiss();
+  }, [yearInputText]);
+
+  const onYearBlur = useCallback(() => {
+    const y = parseInt(yearInputText, 10);
+    if (y >= 1900 && y <= 2100) setPickerYear(y);
+    setEditingYear(false);
+  }, [yearInputText]);
+
+  const selectMonth = useCallback(
+    (idx: number) => {
+      setViewMonth((vm) => startOfMonth(setMonth(setYear(vm, pickerYear), idx)));
+      setShowPicker(false);
+    },
+    [pickerYear],
+  );
+
+  // ── Month/year picker panel ──
   if (showPicker) {
+    const currentViewYear = getYear(viewMonth);
+    const currentViewMonth = getMonth(viewMonth);
+
     return (
       <View style={styles.container}>
-        {/* Year navigation */}
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={() => setPickerYear((y) => y - 1)}
+            onPress={decrementYear}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={styles.navBtn}
           >
@@ -65,32 +126,23 @@ export default function CalendarPicker({ value, minimumDate, onChange }: Calenda
               keyboardType="number-pad"
               maxLength={4}
               returnKeyType="done"
-              onSubmitEditing={() => {
-                const y = parseInt(yearInputText, 10);
-                if (y >= 1900 && y <= 2100) setPickerYear(y);
-                setEditingYear(false);
-                Keyboard.dismiss();
-              }}
-              onBlur={() => {
-                const y = parseInt(yearInputText, 10);
-                if (y >= 1900 && y <= 2100) setPickerYear(y);
-                setEditingYear(false);
-              }}
+              onSubmitEditing={commitYear}
+              onBlur={onYearBlur}
               autoFocus
             />
           ) : (
             <TouchableOpacity
-              onPress={() => { setYearInputText(String(pickerYear)); setEditingYear(true); }}
+              onPress={startEditYear}
               hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
               style={styles.yearPill}
             >
               <Text style={styles.yearPillText}>{pickerYear}</Text>
-              <Feather name="edit-2" size={11} color={CALM.accent} style={{ marginLeft: 5 }} />
+              <Feather name="edit-2" size={11} color={CALM.accent} style={EDIT_ICON_STYLE} />
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
-            onPress={() => setPickerYear((y) => y + 1)}
+            onPress={incrementYear}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={styles.navBtn}
           >
@@ -100,22 +152,17 @@ export default function CalendarPicker({ value, minimumDate, onChange }: Calenda
 
         <View style={styles.divider} />
 
-        {/* Month grid — 3 rows of 4 */}
-        <View style={{ marginTop: SPACING.md }}>
-          {[0, 4, 8].map((start) => (
+        <View style={MONTH_GRID_STYLE}>
+          {MONTH_ROWS.map((start) => (
             <View key={start} style={styles.monthRow}>
               {MONTH_NAMES.slice(start, start + 4).map((name, offset) => {
                 const idx = start + offset;
-                const isCurrentView = getYear(viewMonth) === pickerYear && getMonth(viewMonth) === idx;
+                const isCurrentView = currentViewYear === pickerYear && currentViewMonth === idx;
                 return (
                   <TouchableOpacity
                     key={name}
                     style={[styles.monthCell, isCurrentView && styles.monthCellSelected]}
-                    onPress={() => {
-                      const next = setMonth(setYear(viewMonth, pickerYear), idx);
-                      setViewMonth(startOfMonth(next));
-                      setShowPicker(false);
-                    }}
+                    onPress={() => selectMonth(idx)}
                     activeOpacity={0.65}
                   >
                     <Text style={[styles.monthCellText, isCurrentView && styles.monthCellTextSelected]}>
@@ -131,23 +178,12 @@ export default function CalendarPicker({ value, minimumDate, onChange }: Calenda
     );
   }
 
-  // ── Calendar grid ────────────────────────────────────────
-  const monthStart = startOfMonth(viewMonth);
-  const days = eachDayOfInterval({ start: monthStart, end: endOfMonth(viewMonth) });
-  const leadingBlanks = getDay(monthStart);
-
-  const cells: (Date | null)[] = [...Array(leadingBlanks).fill(null), ...days];
-  while (cells.length % 7 !== 0) cells.push(null);
-
-  const rows: (Date | null)[][] = [];
-  for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
-
+  // ── Calendar grid ──
   return (
     <View style={styles.container}>
-      {/* Header: < [MMM YYYY ▾] > */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => setViewMonth(startOfMonth(new Date(getYear(viewMonth), getMonth(viewMonth) - 1)))}
+          onPress={goToPrevMonth}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           style={styles.navBtn}
         >
@@ -156,15 +192,15 @@ export default function CalendarPicker({ value, minimumDate, onChange }: Calenda
 
         <TouchableOpacity
           style={styles.monthLabelBtn}
-          onPress={() => { setPickerYear(getYear(viewMonth)); setShowPicker(true); }}
+          onPress={openPicker}
           activeOpacity={0.7}
         >
           <Text style={styles.monthLabel}>{format(viewMonth, 'MMMM yyyy')}</Text>
-          <Feather name="chevron-down" size={14} color={CALM.accent} style={{ marginLeft: 5 }} />
+          <Feather name="chevron-down" size={14} color={CALM.accent} style={CHEVRON_STYLE} />
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => setViewMonth(startOfMonth(new Date(getYear(viewMonth), getMonth(viewMonth) + 1)))}
+          onPress={goToNextMonth}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           style={styles.navBtn}
         >
@@ -174,8 +210,7 @@ export default function CalendarPicker({ value, minimumDate, onChange }: Calenda
 
       <View style={styles.divider} />
 
-      {/* Day labels */}
-      <View style={[styles.row, { marginTop: SPACING.sm, marginBottom: SPACING.xs }]}>
+      <View style={[styles.row, DAY_LABEL_STYLE]}>
         {DAY_LABELS.map((d) => (
           <View key={d} style={styles.cell}>
             <Text style={styles.dayLabel}>{d}</Text>
@@ -183,14 +218,13 @@ export default function CalendarPicker({ value, minimumDate, onChange }: Calenda
         ))}
       </View>
 
-      {/* Date rows */}
       {rows.map((row, ri) => (
         <View key={ri} style={styles.row}>
           {row.map((day, di) => {
             if (!day) return <View key={di} style={styles.cell} />;
-            const disabled = isDisabled(day);
-            const selected = isSelected(day);
-            const todayCell = isToday(day);
+            const disabled = !!(minDate && isBefore(startOfDay(day), minDate));
+            const selected = isSameDay(day, value);
+            const todayCell = isSameDay(day, today);
             return (
               <TouchableOpacity
                 key={di}
@@ -219,7 +253,7 @@ export default function CalendarPicker({ value, minimumDate, onChange }: Calenda
       ))}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -332,19 +366,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 2,
   },
-  yearTappable: {
-    textDecorationLine: 'underline',
-    textDecorationStyle: 'dotted',
-    color: CALM.accent,
-  },
   // Month/year picker grid
   monthRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-evenly',
     marginBottom: SPACING.sm,
   },
   monthCell: {
-    width: 80,
+    width: 68,
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.lg,
     alignItems: 'center',
@@ -364,3 +393,5 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.bold,
   },
 });
+
+export default CalendarPicker;

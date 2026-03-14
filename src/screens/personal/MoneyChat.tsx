@@ -29,7 +29,7 @@ import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import { sendChatMessage } from '../../services/moneyChat';
-import { parseActions, executeAction, ChatAction } from '../../services/chatActions';
+import { parseActions, executeAction, ChatAction, ChatActionType } from '../../services/chatActions';
 import { lightTap, successNotification } from '../../services/haptics';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 
@@ -59,6 +59,10 @@ const ACTION_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   update_subscription: 'edit-2',
   add_bnpl: 'credit-card',
   repay_credit: 'dollar-sign',
+  update_savings: 'trending-up',
+  add_savings_account: 'plus-circle',
+  create_goal: 'flag',
+  withdraw_goal: 'minus-circle',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -75,6 +79,10 @@ const ACTION_LABELS: Record<string, string> = {
   update_subscription: 'Update',
   add_bnpl: 'BNPL',
   repay_credit: 'Repay',
+  update_savings: 'Update Savings',
+  add_savings_account: 'New Account',
+  create_goal: 'New Goal',
+  withdraw_goal: 'Withdraw',
 };
 
 // Typing indicator — 3 olive dots with staggered animation
@@ -192,7 +200,7 @@ const PendingChip = memo(({
 });
 
 // Common action types the user can switch between
-const SWITCHABLE_TYPES: { key: string; label: string; icon: keyof typeof Feather.glyphMap }[] = [
+const SWITCHABLE_TYPES: { key: ChatActionType; label: string; icon: keyof typeof Feather.glyphMap }[] = [
   { key: 'add_expense', label: 'Expense', icon: 'arrow-up-right' },
   { key: 'add_income', label: 'Income', icon: 'arrow-down-left' },
   { key: 'add_debt', label: 'Debt', icon: 'repeat' },
@@ -213,7 +221,7 @@ const ActionEditModal = ({
 }) => {
   const [desc, setDesc] = useState('');
   const [amount, setAmount] = useState('');
-  const [actionType, setActionType] = useState('add_expense');
+  const [actionType, setActionType] = useState<ChatActionType>('add_expense');
   const [categoryId, setCategoryId] = useState('');
   const [walletId, setWalletId] = useState('');
   const [person, setPerson] = useState('');
