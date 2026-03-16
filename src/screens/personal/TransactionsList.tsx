@@ -227,12 +227,11 @@ const TransactionsList: React.FC = () => {
 
   // ── Totals ───────────────────────────────────────────────────
   const totals = useMemo(() => {
-    const income = filteredTransactions
-      .filter((t) => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-    const expenses = filteredTransactions
-      .filter((t) => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
+    let income = 0, expenses = 0;
+    for (const t of filteredTransactions) {
+      if (t.type === 'income') income += t.amount;
+      else if (t.type === 'expense') expenses += t.amount;
+    }
     return { income, expenses, net: income - expenses };
   }, [filteredTransactions]);
 
@@ -757,8 +756,9 @@ const TransactionsList: React.FC = () => {
       )}
 
       {/* ── Filter Modal ────────────────────────────────────────── */}
+      {filterModalVisible && (
       <Modal
-        visible={filterModalVisible}
+        visible
         animationType="fade"
         transparent
         statusBarTranslucent
@@ -888,10 +888,12 @@ const TransactionsList: React.FC = () => {
           </View>
         </Pressable>
       </Modal>
+      )}
 
       {/* ── Edit Modal (centered floating card) ─────────────────── */}
+      {editModalVisible && (
       <Modal
-        visible={editModalVisible}
+        visible
         animationType="fade"
         transparent
         statusBarTranslucent
@@ -1035,6 +1037,7 @@ const TransactionsList: React.FC = () => {
           </View>
         </Pressable>
       </Modal>
+      )}
     </View>
   );
 };

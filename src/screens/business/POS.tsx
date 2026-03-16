@@ -106,19 +106,20 @@ const POS: React.FC = () => {
   }, [products]);
 
   // ── Filtered products ──
-  const filteredProducts = products.filter((p) => {
+  const filteredProducts = useMemo(() => products.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.category.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === null || p.category === selectedCategory;
     return matchesSearch && matchesCategory;
-  });
+  }), [products, selectedCategory, searchQuery]);
 
   // ── Cart helpers ──
-  const getCartQuantity = (productId: string): number => {
-    const item = cart.find((i) => i.productId === productId);
-    return item ? item.quantity : 0;
-  };
+  const cartQuantityMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of cart) map[item.productId] = item.quantity;
+    return map;
+  }, [cart]);
 
   const addToCart = (productId: string) => {
     const product = products.find((p) => p.id === productId);
@@ -184,19 +185,18 @@ const POS: React.FC = () => {
   };
 
   // ── Totals with discount ──
-  const getSubtotal = () => cart.reduce((sum, item) => sum + item.totalPrice, 0);
+  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice, 0), [cart]);
 
-  const getDiscountAmount = (): number => {
-    const subtotal = getSubtotal();
+  const discountAmount = useMemo((): number => {
     const val = parseFloat(discountValue) || 0;
     if (val <= 0) return 0;
     if (discountType === 'percentage') {
       return Math.min(subtotal, (val / 100) * subtotal);
     }
     return Math.min(subtotal, val);
-  };
+  }, [subtotal, discountValue, discountType]);
 
-  const getTotalAmount = () => Math.max(0, getSubtotal() - getDiscountAmount());
+  const totalAmount = useMemo(() => Math.max(0, subtotal - discountAmount), [subtotal, discountAmount]);
 
   // ── Checkout ──
   const selectedCustomer = selectedCustomerId
@@ -209,15 +209,11 @@ const POS: React.FC = () => {
       return;
     }
 
-    const subtotal = getSubtotal();
-    const discountAmt = getDiscountAmount();
-    const total = getTotalAmount();
-
     addSale({
       items: cart,
-      totalAmount: total,
-      discount: discountAmt > 0 ? discountAmt : undefined,
-      subtotalBeforeDiscount: discountAmt > 0 ? subtotal : undefined,
+      totalAmount,
+      discount: discountAmount > 0 ? discountAmount : undefined,
+      subtotalBeforeDiscount: discountAmount > 0 ? subtotal : undefined,
       paymentMethod,
       customerName: selectedCustomer?.name || undefined,
       date: new Date(),
@@ -233,7 +229,7 @@ const POS: React.FC = () => {
           unitPrice: item.unitPrice,
           totalPrice: item.totalPrice,
         })),
-        totalAmount: total,
+        totalAmount,
         status: 'completed',
         date: new Date(),
       });
@@ -351,7 +347,7 @@ const POS: React.FC = () => {
             showsVerticalScrollIndicator={false}
           >
             {filteredProducts.map((product) => {
-              const inCartQty = getCartQuantity(product.id);
+              const inCartQty = cartQuantityMap[product.id] || 0;
               return (
                 <View key={product.id} style={styles.productCardWrapper}>
                   <TouchableOpacity
@@ -585,33 +581,33 @@ const POS: React.FC = () => {
 
             {/* Totals */}
             <View style={styles.totalsBreakdown}>
-              {(cartExpanded || getDiscountAmount() > 0) && cart.length > 0 && (
+              {(cartExpanded || discountAmount > 0) && cart.length > 0 && (
                 <View style={styles.totalRow}>
                   <Text style={styles.totalRowLabel}>Subtotal</Text>
                   <Text style={styles.totalRowValue}>
-                    {currency} {getSubtotal().toFixed(2)}
+                    {currency} {subtotal.toFixed(2)}
                   </Text>
                 </View>
               )}
-              {getDiscountAmount() > 0 && (
+              {discountAmount > 0 && (
                 <View style={styles.totalRow}>
                   <Text style={[styles.totalRowLabel, { color: CALM.positive }]}>
                     Discount{discountType === 'percentage' ? ` (${discountValue}%)` : ''}
                   </Text>
                   <Text style={[styles.totalRowValue, { color: CALM.positive }]}>
-                    -{currency} {getDiscountAmount().toFixed(2)}
+                    -{currency} {discountAmount.toFixed(2)}
                   </Text>
                 </View>
               )}
               <View
                 style={[
                   styles.totalRow,
-                  (cartExpanded || getDiscountAmount() > 0) && cart.length > 0 && styles.totalRowFinal,
+                  (cartExpanded || discountAmount > 0) && cart.length > 0 && styles.totalRowFinal,
                 ]}
               >
                 <Text style={styles.totalLabel}>Total</Text>
                 <Text style={styles.totalAmount}>
-                  {currency} {getTotalAmount().toFixed(2)}
+                  {currency} {totalAmount.toFixed(2)}
                 </Text>
               </View>
             </View>
@@ -628,6 +624,7 @@ const POS: React.FC = () => {
       </View>
 
       {/* ── Checkout Modal ── */}
+      {paymentModalVisible && (
       <Modal
         visible={paymentModalVisible}
         animationType="fade"
@@ -783,21 +780,21 @@ const POS: React.FC = () => {
                   <View style={styles.totalRow}>
                     <Text style={styles.totalRowLabel}>Subtotal</Text>
                     <Text style={styles.totalRowValue}>
-                      {currency} {getSubtotal().toFixed(2)}
+                      {currency} {subtotal.toFixed(2)}
                     </Text>
                   </View>
-                  {getDiscountAmount() > 0 && (
+                  {discountAmount > 0 && (
                     <View style={styles.totalRow}>
                       <Text style={[styles.totalRowLabel, { color: CALM.positive }]}>Discount</Text>
                       <Text style={[styles.totalRowValue, { color: CALM.positive }]}>
-                        -{currency} {getDiscountAmount().toFixed(2)}
+                        -{currency} {discountAmount.toFixed(2)}
                       </Text>
                     </View>
                   )}
                   <View style={[styles.totalRow, styles.totalRowFinal]}>
                     <Text style={styles.modalTotalLabel}>Total</Text>
                     <Text style={styles.modalAmount}>
-                      {currency} {getTotalAmount().toFixed(2)}
+                      {currency} {totalAmount.toFixed(2)}
                     </Text>
                   </View>
                 </View>
@@ -840,6 +837,7 @@ const POS: React.FC = () => {
           </View>
         </BlurView>
       </Modal>
+      )}
     </View>
   );
 };

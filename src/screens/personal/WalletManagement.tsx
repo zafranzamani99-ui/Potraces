@@ -637,8 +637,9 @@ const WalletManagement: React.FC = () => {
       ) : null}
 
       {/* ─── Add/Edit Modal ─────────────────────────────────── */}
+      {modalVisible && (
       <Modal
-        visible={modalVisible}
+        visible
         transparent
         animationType="fade"
         statusBarTranslucent
@@ -837,10 +838,12 @@ const WalletManagement: React.FC = () => {
           </View>
         </Pressable>
       </Modal>
+      )}
 
       {/* ─── Transfer Modal ─────────────────────────────────── */}
+      {transferVisible && (
       <Modal
-        visible={transferVisible}
+        visible
         transparent
         animationType="fade"
         statusBarTranslucent
@@ -914,10 +917,12 @@ const WalletManagement: React.FC = () => {
           </View>
         </Pressable>
       </Modal>
+      )}
 
       {/* ─── Repay Credit Modal ─────────────────────────────── */}
+      {repayVisible && (
       <Modal
-        visible={repayVisible}
+        visible
         transparent
         animationType="fade"
         statusBarTranslucent
@@ -987,6 +992,7 @@ const WalletManagement: React.FC = () => {
           </View>
         </Pressable>
       </Modal>
+      )}
 
       {/* Paywall */}
       <PaywallModal

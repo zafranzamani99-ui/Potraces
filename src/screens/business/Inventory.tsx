@@ -392,185 +392,189 @@ const Inventory: React.FC = () => {
         style={{ right: undefined, left: SPACING['2xl'] }}
       />
 
-      <Modal
-        visible={modalVisible}
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {editingId ? 'Edit Product' : 'Add Product'}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setModalVisible(false);
-                  resetForm();
-                }}
-              >
-                <Feather name="x" size={24} color={CALM.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text style={styles.label}>
-                Product Name <Text style={styles.required}>*</Text>
-              </Text>
-              <TextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder="Coca Cola 500ml"
-                placeholderTextColor={CALM.textSecondary}
-                returnKeyType="next"
-              />
-
-              <CategoryPicker
-                categories={PRODUCT_CATEGORIES}
-                selectedId={category}
-                onSelect={setCategory}
-                label="Category"
-                layout="dropdown"
-              />
-
-              <View style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>
-                    Selling Price <Text style={styles.required}>*</Text>
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    value={price}
-                    onChangeText={setPrice}
-                    placeholder="0.00"
-                    keyboardType="decimal-pad"
-                    placeholderTextColor={CALM.textSecondary}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                </View>
-                <View style={{ width: SPACING.lg }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Cost</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={cost}
-                    onChangeText={setCost}
-                    placeholder="0.00"
-                    keyboardType="decimal-pad"
-                    placeholderTextColor={CALM.textSecondary}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>
-                    Initial Stock <Text style={styles.required}>*</Text>
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    value={stock}
-                    onChangeText={setStock}
-                    placeholder="0"
-                    keyboardType="number-pad"
-                    placeholderTextColor={CALM.textSecondary}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                </View>
-                <View style={{ width: SPACING.lg }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Low Stock Alert</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={lowStockThreshold}
-                    onChangeText={setLowStockThreshold}
-                    placeholder="10"
-                    keyboardType="number-pad"
-                    placeholderTextColor={CALM.textSecondary}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.modalActions}>
-                <Button
-                  title="Cancel"
+      {modalVisible && (
+        <Modal
+          visible
+          animationType="fade"
+          transparent
+          statusBarTranslucent
+          onRequestClose={() => setModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  {editingId ? 'Edit Product' : 'Add Product'}
+                </Text>
+                <TouchableOpacity
                   onPress={() => {
                     setModalVisible(false);
                     resetForm();
                   }}
+                >
+                  <Feather name="x" size={24} color={CALM.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={styles.label}>
+                  Product Name <Text style={styles.required}>*</Text>
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Coca Cola 500ml"
+                  placeholderTextColor={CALM.textSecondary}
+                  returnKeyType="next"
+                />
+
+                <CategoryPicker
+                  categories={PRODUCT_CATEGORIES}
+                  selectedId={category}
+                  onSelect={setCategory}
+                  label="Category"
+                  layout="dropdown"
+                />
+
+                <View style={styles.row}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>
+                      Selling Price <Text style={styles.required}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={styles.input}
+                      value={price}
+                      onChangeText={setPrice}
+                      placeholder="0.00"
+                      keyboardType="decimal-pad"
+                      placeholderTextColor={CALM.textSecondary}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
+                  <View style={{ width: SPACING.lg }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Cost</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={cost}
+                      onChangeText={setCost}
+                      placeholder="0.00"
+                      keyboardType="decimal-pad"
+                      placeholderTextColor={CALM.textSecondary}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.row}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>
+                      Initial Stock <Text style={styles.required}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={styles.input}
+                      value={stock}
+                      onChangeText={setStock}
+                      placeholder="0"
+                      keyboardType="number-pad"
+                      placeholderTextColor={CALM.textSecondary}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
+                  <View style={{ width: SPACING.lg }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Low Stock Alert</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={lowStockThreshold}
+                      onChangeText={setLowStockThreshold}
+                      placeholder="10"
+                      keyboardType="number-pad"
+                      placeholderTextColor={CALM.textSecondary}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.modalActions}>
+                  <Button
+                    title="Cancel"
+                    onPress={() => {
+                      setModalVisible(false);
+                      resetForm();
+                    }}
+                    variant="secondary"
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    title={editingId ? 'Update' : 'Add'}
+                    onPress={handleAdd}
+                    icon="check"
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </KeyboardAwareScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {stockModalVisible && (
+        <Modal
+          visible
+          animationType="fade"
+          transparent
+          statusBarTranslucent
+          onRequestClose={() => setStockModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { maxHeight: 300, paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Add Stock</Text>
+                <TouchableOpacity onPress={() => setStockModalVisible(false)}>
+                  <Feather name="x" size={24} color={CALM.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.label}>
+                Quantity to Add <Text style={styles.required}>*</Text>
+              </Text>
+              <TextInput
+                style={styles.input}
+                value={stockQuantity}
+                onChangeText={setStockQuantity}
+                placeholder="Enter quantity"
+                keyboardType="number-pad"
+                placeholderTextColor={CALM.textSecondary}
+                autoFocus
+                returnKeyType="done"
+                onSubmitEditing={Keyboard.dismiss}
+              />
+
+              <View style={styles.modalActions}>
+                <Button
+                  title="Cancel"
+                  onPress={() => setStockModalVisible(false)}
                   variant="secondary"
                   style={{ flex: 1 }}
                 />
                 <Button
-                  title={editingId ? 'Update' : 'Add'}
-                  onPress={handleAdd}
-                  icon="check"
+                  title="Add Stock"
+                  onPress={confirmAddStock}
+                  icon="plus"
+                  variant="success"
                   style={{ flex: 1 }}
                 />
               </View>
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={stockModalVisible}
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={() => setStockModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: 300, paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Stock</Text>
-              <TouchableOpacity onPress={() => setStockModalVisible(false)}>
-                <Feather name="x" size={24} color={CALM.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.label}>
-              Quantity to Add <Text style={styles.required}>*</Text>
-            </Text>
-            <TextInput
-              style={styles.input}
-              value={stockQuantity}
-              onChangeText={setStockQuantity}
-              placeholder="Enter quantity"
-              keyboardType="number-pad"
-              placeholderTextColor={CALM.textSecondary}
-              autoFocus
-              returnKeyType="done"
-              onSubmitEditing={Keyboard.dismiss}
-            />
-
-            <View style={styles.modalActions}>
-              <Button
-                title="Cancel"
-                onPress={() => setStockModalVisible(false)}
-                variant="secondary"
-                style={{ flex: 1 }}
-              />
-              <Button
-                title="Add Stock"
-                onPress={confirmAddStock}
-                icon="plus"
-                variant="success"
-                style={{ flex: 1 }}
-              />
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </View>
   );
 };

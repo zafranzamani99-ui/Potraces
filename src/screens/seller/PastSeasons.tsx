@@ -341,72 +341,74 @@ const PastSeasons: React.FC = () => {
         </View>
       )}
 
-      <Modal visible={showAdd} transparent statusBarTranslucent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>new season</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={newName}
-              onChangeText={setNewName}
-              placeholder="e.g. Raya 2025, CNY 2025"
-              placeholderTextColor={CALM.textSecondary}
-              autoFocus
-            />
-            {pastSeasons.length > 0 && (
-              <View style={styles.templateSection}>
-                <Text style={styles.templateLabel}>copy from previous season</Text>
-                <View style={styles.templatePills}>
-                  <TouchableOpacity
-                    style={[styles.templatePill, templateSeasonId === null && styles.templatePillActive]}
-                    onPress={() => setTemplateSeasonId(null)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.templatePillText, templateSeasonId === null && styles.templatePillTextActive]}>
-                      none
-                    </Text>
-                  </TouchableOpacity>
-                  {pastSeasons.slice(0, 3).map((s) => (
+      {showAdd && (
+        <Modal visible transparent statusBarTranslucent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>new season</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={newName}
+                onChangeText={setNewName}
+                placeholder="e.g. Raya 2025, CNY 2025"
+                placeholderTextColor={CALM.textSecondary}
+                autoFocus
+              />
+              {pastSeasons.length > 0 && (
+                <View style={styles.templateSection}>
+                  <Text style={styles.templateLabel}>copy from previous season</Text>
+                  <View style={styles.templatePills}>
                     <TouchableOpacity
-                      key={s.id}
-                      style={[styles.templatePill, templateSeasonId === s.id && styles.templatePillActive]}
-                      onPress={() => setTemplateSeasonId(s.id)}
+                      style={[styles.templatePill, templateSeasonId === null && styles.templatePillActive]}
+                      onPress={() => setTemplateSeasonId(null)}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.templatePillText, templateSeasonId === s.id && styles.templatePillTextActive]} numberOfLines={1}>
-                        {s.name}
+                      <Text style={[styles.templatePillText, templateSeasonId === null && styles.templatePillTextActive]}>
+                        none
                       </Text>
                     </TouchableOpacity>
-                  ))}
+                    {pastSeasons.slice(0, 3).map((s) => (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={[styles.templatePill, templateSeasonId === s.id && styles.templatePillActive]}
+                        onPress={() => setTemplateSeasonId(s.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.templatePillText, templateSeasonId === s.id && styles.templatePillTextActive]} numberOfLines={1}>
+                          {s.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {templateSeasonId && (
+                    <Text style={styles.templateHint}>copies costs, budget & product prices</Text>
+                  )}
                 </View>
-                {templateSeasonId && (
-                  <Text style={styles.templateHint}>copies costs, budget & product prices</Text>
-                )}
+              )}
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  onPress={() => { setShowAdd(false); setTemplateSeasonId(null); }}
+                  style={styles.modalCancel}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                >
+                  <Text style={styles.modalCancelText}>cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleStartSeason}
+                  style={styles.modalConfirm}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Start season"
+                >
+                  <Text style={styles.modalConfirmText}>start</Text>
+                </TouchableOpacity>
               </View>
-            )}
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => { setShowAdd(false); setTemplateSeasonId(null); }}
-                style={styles.modalCancel}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-              >
-                <Text style={styles.modalCancelText}>cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleStartSeason}
-                style={styles.modalConfirm}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Start season"
-              >
-                <Text style={styles.modalConfirmText}>start</Text>
-              </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </View>
   );
 };

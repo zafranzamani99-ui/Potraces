@@ -249,109 +249,111 @@ const SupplierList: React.FC = () => {
         style={styles.addButton}
       />
 
-      <Modal
-        visible={modalVisible}
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={() => { setModalVisible(false); resetForm(); }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingId ? 'Edit Supplier' : 'Add Supplier'}</Text>
-              <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }}>
-                <Feather name="x" size={24} color={CALM.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text style={styles.label}>
-                Supplier Name <Text style={styles.required}>*</Text>
-              </Text>
-              <TextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder="ABC Supplies Co."
-                placeholderTextColor={CALM.textSecondary}
-                returnKeyType="next"
-              />
-
-              <Text style={styles.label}>Contact Person</Text>
-              <TextInput
-                style={styles.input}
-                value={contactPerson}
-                onChangeText={setContactPerson}
-                placeholder="John Doe"
-                placeholderTextColor={CALM.textSecondary}
-                returnKeyType="next"
-              />
-
-              <Text style={styles.label}>Phone</Text>
-              <TextInput
-                style={styles.input}
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="+60 12-345 6789"
-                placeholderTextColor={CALM.textSecondary}
-                keyboardType="phone-pad"
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="contact@supplier.com"
-                placeholderTextColor={CALM.textSecondary}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                returnKeyType="next"
-              />
-
-              <Text style={styles.label}>Address</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={address}
-                onChangeText={setAddress}
-                placeholder="123 Main Street, City"
-                placeholderTextColor={CALM.textSecondary}
-                multiline
-                numberOfLines={2}
-              />
-
-              <Text style={styles.label}>Payment Terms</Text>
-              <TextInput
-                style={styles.input}
-                value={paymentTerms}
-                onChangeText={setPaymentTerms}
-                placeholder="Net 30 days"
-                placeholderTextColor={CALM.textSecondary}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              <View style={styles.modalActions}>
-                <Button
-                  title="Cancel"
-                  onPress={() => { setModalVisible(false); resetForm(); }}
-                  variant="secondary"
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  title={editingId ? 'Update' : 'Add'}
-                  onPress={handleAdd}
-                  icon="check"
-                  style={{ flex: 1 }}
-                />
+      {modalVisible && (
+        <Modal
+          visible
+          animationType="fade"
+          transparent
+          statusBarTranslucent
+          onRequestClose={() => { setModalVisible(false); resetForm(); }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{editingId ? 'Edit Supplier' : 'Add Supplier'}</Text>
+                <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }}>
+                  <Feather name="x" size={24} color={CALM.textPrimary} />
+                </TouchableOpacity>
               </View>
-            </KeyboardAwareScrollView>
+
+              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={styles.label}>
+                  Supplier Name <Text style={styles.required}>*</Text>
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="ABC Supplies Co."
+                  placeholderTextColor={CALM.textSecondary}
+                  returnKeyType="next"
+                />
+
+                <Text style={styles.label}>Contact Person</Text>
+                <TextInput
+                  style={styles.input}
+                  value={contactPerson}
+                  onChangeText={setContactPerson}
+                  placeholder="John Doe"
+                  placeholderTextColor={CALM.textSecondary}
+                  returnKeyType="next"
+                />
+
+                <Text style={styles.label}>Phone</Text>
+                <TextInput
+                  style={styles.input}
+                  value={phone}
+                  onChangeText={setPhone}
+                  placeholder="+60 12-345 6789"
+                  placeholderTextColor={CALM.textSecondary}
+                  keyboardType="phone-pad"
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                />
+
+                <Text style={styles.label}>Email</Text>
+                <TextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="contact@supplier.com"
+                  placeholderTextColor={CALM.textSecondary}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  returnKeyType="next"
+                />
+
+                <Text style={styles.label}>Address</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={address}
+                  onChangeText={setAddress}
+                  placeholder="123 Main Street, City"
+                  placeholderTextColor={CALM.textSecondary}
+                  multiline
+                  numberOfLines={2}
+                />
+
+                <Text style={styles.label}>Payment Terms</Text>
+                <TextInput
+                  style={styles.input}
+                  value={paymentTerms}
+                  onChangeText={setPaymentTerms}
+                  placeholder="Net 30 days"
+                  placeholderTextColor={CALM.textSecondary}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                />
+
+                <View style={styles.modalActions}>
+                  <Button
+                    title="Cancel"
+                    onPress={() => { setModalVisible(false); resetForm(); }}
+                    variant="secondary"
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    title={editingId ? 'Update' : 'Add'}
+                    onPress={handleAdd}
+                    icon="check"
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </KeyboardAwareScrollView>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </View>
   );
 };

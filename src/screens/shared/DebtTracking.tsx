@@ -347,42 +347,32 @@ const DebtTracking: React.FC = () => {
 
   const settledSplitCount = useMemo(() => searchedSplits.length - activeSplitCount, [searchedSplits.length, activeSplitCount]);
 
+  const searchedModeDebts = useMemo(() => {
+    if (!searchQuery.trim()) return modeDebts;
+    const q = searchQuery.toLowerCase().trim();
+    return modeDebts.filter((d) =>
+      d.contact.name.toLowerCase().includes(q) || d.description.toLowerCase().includes(q)
+    );
+  }, [modeDebts, searchQuery]);
+
   // Debt filter counts (respects type filter + search)
   const debtFilterCounts = useMemo(() => {
-    let base = modeDebts;
-    if (debtTypeFilter) {
-      base = base.filter((d) => d.type === debtTypeFilter);
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      base = base.filter((d) =>
-        d.contact.name.toLowerCase().includes(q) || d.description.toLowerCase().includes(q)
-      );
-    }
+    const base = debtTypeFilter ? searchedModeDebts.filter((d) => d.type === debtTypeFilter) : searchedModeDebts;
     return {
       pending: base.filter((d) => d.status === 'pending').length,
       partial: base.filter((d) => d.status === 'partial').length,
       settled: base.filter((d) => d.status === 'settled').length,
     };
-  }, [modeDebts, debtTypeFilter, searchQuery]);
+  }, [searchedModeDebts, debtTypeFilter]);
 
   // Debt type filter counts (respects status filter + search)
   const debtTypeCounts = useMemo(() => {
-    let base = modeDebts;
-    if (debtFilter) {
-      base = base.filter((d) => d.status === debtFilter);
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      base = base.filter((d) =>
-        d.contact.name.toLowerCase().includes(q) || d.description.toLowerCase().includes(q)
-      );
-    }
+    const base = debtFilter ? searchedModeDebts.filter((d) => d.status === debtFilter) : searchedModeDebts;
     return {
       i_owe: base.filter((d) => d.type === 'i_owe').length,
       they_owe: base.filter((d) => d.type === 'they_owe').length,
     };
-  }, [modeDebts, debtFilter, searchQuery]);
+  }, [searchedModeDebts, debtFilter]);
 
   const getDebtAge = useCallback((createdAt: string | Date): string => {
     const days = differenceInDays(new Date(), new Date(createdAt));
@@ -979,7 +969,7 @@ const DebtTracking: React.FC = () => {
   }, []);
 
   // When participants change in non-wizard split, clean up orphaned item assignments
-  const handleSplitContactsChange = (contacts: Contact[]) => {
+  const handleSplitContactsChange = useCallback((contacts: Contact[]) => {
     const removedIds = splitContacts
       .filter((c) => !contacts.some((nc) => nc.id === c.id))
       .map((c) => c.id);
@@ -992,7 +982,7 @@ const DebtTracking: React.FC = () => {
       );
     }
     setSplitContacts(contacts);
-  };
+  }, [splitContacts]);
 
   const handleEditSplit = useCallback((split: SplitExpense) => {
     setEditingSplitId(split.id);
@@ -1325,7 +1315,7 @@ const DebtTracking: React.FC = () => {
     setSelectedIds(new Set(items.map((i) => i.id)));
   }, [selectionMode, modeDebts, modeSplits]);
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = useCallback(() => {
     const count = selectedIds.size;
     const type = selectionMode === 'debt' ? 'debt' : 'split';
     Alert.alert(
@@ -1359,7 +1349,7 @@ const DebtTracking: React.FC = () => {
         },
       ]
     );
-  };
+  }, [selectedIds, selectionMode, debts, splits, cleanupDebtPayments, deleteDebt, cleanupSplitTransaction, deleteSplit, showToast, exitSelectionMode]);
 
   const handleSelectionEdit = () => {
     if (selectedIds.size !== 1) return;
@@ -2630,7 +2620,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       )}
 
       {/* ── Add/Edit Debt Modal ──────────────────────────────── */}
-      <Modal visible={debtModalVisible} animationType={debtModalAnimation} transparent statusBarTranslucent onRequestClose={() => { setDebtModalVisible(false); resetDebtForm(); }}>
+      {debtModalVisible && (<Modal visible animationType={debtModalAnimation} transparent statusBarTranslucent onRequestClose={() => { setDebtModalVisible(false); resetDebtForm(); }}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setDebtModalVisible(false); resetDebtForm(); }} />
             <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
@@ -2794,10 +2784,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               </Pressable>
             )}
         </View>
-      </Modal>
+      </Modal>)}
 
       {/* ── Add/Edit Split Modal ─────────────────────────────── */}
-      <Modal visible={splitModalVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => { setSplitModalVisible(false); resetSplitForm(); }}>
+      {splitModalVisible && (<Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => { setSplitModalVisible(false); resetSplitForm(); }}>
+
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setSplitModalVisible(false); resetSplitForm(); }} />
             <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
@@ -3066,11 +3057,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               )}
             </View>
         </View>
-      </Modal>
+      </Modal>)}
 
       {/* ── Record Payment Modal ─────────────────────────────── */}
-      <Modal
-        visible={paymentModalVisible}
+      {paymentModalVisible && (<Modal
+        visible
         animationType={paymentModalAnimation}
         transparent
         statusBarTranslucent
@@ -3404,10 +3395,10 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 })()}
               </View>
         </View>
-      </Modal>
+      </Modal>)}
 
       {/* ── Split Detail Modal (Summary View) ─────────────────── */}
-      <Modal visible={splitDetailVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setSplitDetailVisible(false)}>
+      {splitDetailVisible && (<Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setSplitDetailVisible(false)}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => setSplitDetailVisible(false)} />
           <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
@@ -3552,11 +3543,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             })()}
           </View>
         </View>
-      </Modal>
+      </Modal>)}
 
       {/* ── Receipt Split Wizard Modal ────────────────────────── */}
-      <Modal
-        visible={wizardVisible}
+      {wizardVisible && (<Modal
+        visible
         animationType="fade"
         transparent
         statusBarTranslucent
@@ -4292,7 +4283,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           </KeyboardAvoidingView>
         )}
         </KeyboardAvoidingView>
-      </Modal>
+      </Modal>)}
 
       {/* ── Scanning Loading Overlay ──────────────────────────── */}
       {scanningReceipt && (
@@ -4308,7 +4299,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       )}
 
       {/* ── FAB Choice Modal ─────────────────────────────────────────────── */}
-      <Modal visible={fabChoiceVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setFabChoiceVisible(false)}>
+      {fabChoiceVisible && (<Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setFabChoiceVisible(false)}>
         <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setFabChoiceVisible(false)}>
           <Pressable onPress={() => {}} style={styles.choiceCard}>
             <Text style={styles.choiceTitle}>New Entry</Text>
@@ -4328,10 +4319,10 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             ))}
           </Pressable>
         </Pressable>
-      </Modal>
+      </Modal>)}
 
       {/* ── Split Choice Modal (animationType="none" — instant dismiss, safe for native pickers) ── */}
-      <Modal visible={splitChoiceVisible} animationType="none" transparent statusBarTranslucent onRequestClose={() => setSplitChoiceVisible(false)}>
+      {splitChoiceVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={() => setSplitChoiceVisible(false)}>
         <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setSplitChoiceVisible(false)}>
           <Pressable onPress={() => {}} style={styles.choiceCard}>
             <Text style={styles.choiceTitle}>Split Expense</Text>
@@ -4352,10 +4343,10 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             ))}
           </Pressable>
         </Pressable>
-      </Modal>
+      </Modal>)}
 
       {/* ── Reminder Modal ──────────────────────────────── */}
-      <Modal visible={reminderModalVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setReminderModalVisible(false)}>
+      {reminderModalVisible && (<Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setReminderModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => setReminderModalVisible(false)} />
           <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
@@ -4461,11 +4452,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             )}
           </View>
         </View>
-      </Modal>
+      </Modal>)}
 
       {/* ── Request Payment Modal ──────────────────────────────── */}
-      <Modal
-        visible={requestPaymentVisible}
+      {requestPaymentVisible && (<Modal
+        visible
         animationType="fade"
         transparent
         statusBarTranslucent
@@ -4607,10 +4598,10 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           </View>
         </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </Modal>)}
 
       {/* ── Sort Modal ─────────────────────────────────────────── */}
-      <Modal visible={sortModalVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setSortModalVisible(false)}>
+      {sortModalVisible && (<Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setSortModalVisible(false)}>
         <Pressable style={{ flex: 1 }} onPress={() => setSortModalVisible(false)}>
           <View
             style={{
@@ -4718,7 +4709,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             </Pressable>
           </View>
         </Pressable>
-      </Modal>
+      </Modal>)}
 
       {/* ── Inline Category Manager (no navigation needed) ── */}
       <CategoryManager

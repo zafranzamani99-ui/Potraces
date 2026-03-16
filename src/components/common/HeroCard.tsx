@@ -175,4 +175,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default HeroCard;
+export default React.memo(HeroCard);

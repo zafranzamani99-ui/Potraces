@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { shallow } from 'zustand/shallow';
 import { usePersonalStore } from '../store/personalStore';
 import { useCategories } from './useCategories';
 import {
@@ -42,10 +43,10 @@ export interface FinancialInsights {
 }
 
 export function useFinancialInsights(): FinancialInsights {
-  const transactions = usePersonalStore((s) => s.transactions);
-  const subscriptions = usePersonalStore((s) => s.subscriptions);
-  const budgets = usePersonalStore((s) => s.budgets);
-  const goals = usePersonalStore((s) => s.goals);
+  const { transactions, subscriptions, budgets, goals } = usePersonalStore(
+    (s) => ({ transactions: s.transactions, subscriptions: s.subscriptions, budgets: s.budgets, goals: s.goals }),
+    shallow
+  );
   const expenseCategories = useCategories('expense', 'personal');
 
   return useMemo(() => {

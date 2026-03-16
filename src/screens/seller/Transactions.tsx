@@ -535,8 +535,9 @@ const SellerTransactions: React.FC = () => {
       </Animated.View>
 
       {/* ─── Filter modal ──────────────────────────────────── */}
+      {showFilterModal && (
       <Modal
-        visible={showFilterModal}
+        visible
         transparent
         animationType="fade"
         onRequestClose={() => setShowFilterModal(false)}
@@ -731,6 +732,7 @@ const SellerTransactions: React.FC = () => {
           </Pressable>
         </Pressable>
       </Modal>
+      )}
 
     </View>
   );

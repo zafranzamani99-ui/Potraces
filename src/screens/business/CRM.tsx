@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -140,6 +140,14 @@ const CRM: React.FC = () => {
     });
   }, [customers, searchQuery, orders]);
 
+  const customerStatsMap = useMemo(() => {
+    const map: Record<string, ReturnType<typeof getCustomerStats>> = {};
+    for (const c of filteredCustomers) {
+      map[c.id] = getCustomerStats(c.id);
+    }
+    return map;
+  }, [filteredCustomers, orders]);
+
   const globalStats = useMemo(() => {
     const totalCustomers = customers.length;
     const allOrders = orders.filter((o) => o.status !== 'cancelled');
@@ -161,7 +169,7 @@ const CRM: React.FC = () => {
   };
 
   // ── Customer form handlers ──────────────────────────────────
-  const resetCustomerForm = () => {
+  const resetCustomerForm = useCallback(() => {
     setEditingCustomerId(null);
     setCustomerName('');
     setCustomerPhone('');
@@ -169,14 +177,14 @@ const CRM: React.FC = () => {
     setCustomerCompany('');
     setCustomerAddress('');
     setCustomerNotes('');
-  };
+  }, []);
 
-  const openAddCustomer = () => {
+  const openAddCustomer = useCallback(() => {
     resetCustomerForm();
     setCustomerModalVisible(true);
-  };
+  }, [resetCustomerForm]);
 
-  const openEditCustomer = (customer: Customer) => {
+  const openEditCustomer = useCallback((customer: Customer) => {
     setEditingCustomerId(customer.id);
     setCustomerName(customer.name);
     setCustomerPhone(customer.phone || '');
@@ -185,9 +193,9 @@ const CRM: React.FC = () => {
     setCustomerAddress(customer.address || '');
     setCustomerNotes(customer.notes || '');
     setCustomerModalVisible(true);
-  };
+  }, []);
 
-  const handleSaveCustomer = () => {
+  const handleSaveCustomer = useCallback(() => {
     if (!customerName.trim()) {
       showToast('Please enter a customer name', 'error');
       return;
@@ -231,9 +239,9 @@ const CRM: React.FC = () => {
 
     setCustomerModalVisible(false);
     resetCustomerForm();
-  };
+  }, [customerName, customerPhone, customerEmail, customerCompany, customerAddress, customerNotes, editingCustomerId, selectedCustomer, updateCustomer, addCustomer, showToast, resetCustomerForm]);
 
-  const handleDeleteCustomer = (customer: Customer) => {
+  const handleDeleteCustomer = useCallback((customer: Customer) => {
     Alert.alert(
       'Delete Customer',
       `Are you sure you want to delete ${customer.name}? All their orders will also be deleted.`,
@@ -251,29 +259,29 @@ const CRM: React.FC = () => {
         },
       ]
     );
-  };
+  }, [deleteCustomer, showToast]);
 
   // ── Customer detail handlers ────────────────────────────────
-  const openCustomerDetail = (customer: Customer) => {
+  const openCustomerDetail = useCallback((customer: Customer) => {
     setSelectedCustomer(customer);
     setDetailModalVisible(true);
-  };
+  }, []);
 
   const getCustomerOrders = (customerId: string): CustomerOrder[] => {
     return orders.filter((o) => o.customerId === customerId);
   };
 
   // ── Order form handlers ─────────────────────────────────────
-  const resetOrderForm = () => {
+  const resetOrderForm = useCallback(() => {
     setEditingOrderId(null);
     setOrderItems([]);
     setOrderStatus('pending');
     setOrderNotes('');
     setProductPickerOpen(null);
     setProductPickerSearch('');
-  };
+  }, []);
 
-  const openAddOrder = (customerId: string) => {
+  const openAddOrder = useCallback((customerId: string) => {
     resetOrderForm();
     setOrderCustomerId(customerId);
     const firstId = Date.now().toString();
@@ -283,9 +291,9 @@ const CRM: React.FC = () => {
     setProductPickerOpen(firstId);
     setProductPickerSearch('');
     setOrderModalVisible(true);
-  };
+  }, [resetOrderForm]);
 
-  const openEditOrder = (order: CustomerOrder) => {
+  const openEditOrder = useCallback((order: CustomerOrder) => {
     setEditingOrderId(order.id);
     setOrderCustomerId(order.customerId);
     setOrderItems(
@@ -299,7 +307,7 @@ const CRM: React.FC = () => {
     setOrderStatus(order.status);
     setOrderNotes(order.notes || '');
     setOrderModalVisible(true);
-  };
+  }, []);
 
   const handleRemoveOrderItem = (localId: string) => {
     if (orderItems.length <= 1) {
@@ -321,7 +329,7 @@ const CRM: React.FC = () => {
     );
   };
 
-  const handleSaveOrder = () => {
+  const handleSaveOrder = useCallback(() => {
     // Validate items
     const hasEmptyItem = orderItems.some(
       (item) => !item.name.trim() || !item.unitPrice || parseFloat(item.unitPrice) <= 0
@@ -377,9 +385,9 @@ const CRM: React.FC = () => {
 
     setOrderModalVisible(false);
     resetOrderForm();
-  };
+  }, [orderItems, orderCustomerId, editingOrderId, orderStatus, orderNotes, updateOrder, addOrder, showToast, resetOrderForm]);
 
-  const handleDeleteOrder = (orderId: string) => {
+  const handleDeleteOrder = useCallback((orderId: string) => {
     Alert.alert('Delete Order', 'Are you sure you want to delete this order?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -391,23 +399,23 @@ const CRM: React.FC = () => {
         },
       },
     ]);
-  };
+  }, [deleteOrder, showToast]);
 
   // ── Payment handlers ────────────────────────────────────────
-  const openPaymentModal = (orderId: string) => {
+  const openPaymentModal = useCallback((orderId: string) => {
     setPaymentOrderId(orderId);
     setPaymentAmount('');
     setPaymentModalVisible(true);
-  };
+  }, []);
 
   const getPaymentOrder = (): CustomerOrder | undefined => {
     if (!paymentOrderId) return undefined;
     return orders.find((o) => o.id === paymentOrderId);
   };
 
-  const handleRecordPayment = () => {
+  const handleRecordPayment = useCallback(() => {
     if (!paymentOrderId) return;
-    const order = getPaymentOrder();
+    const order = orders.find((o) => o.id === paymentOrderId);
     if (!order) return;
 
     const amount = parseFloat(paymentAmount);
@@ -432,7 +440,7 @@ const CRM: React.FC = () => {
     setPaymentModalVisible(false);
     setDetailModalVisible(true);
     showToast('Payment recorded!', 'success');
-  };
+  }, [paymentOrderId, paymentAmount, orders, currency, selectedCustomer, addOrderPayment, showToast]);
 
   // ── Render helpers ──────────────────────────────────────────
   const getInitial = (name: string): string => {
@@ -568,7 +576,7 @@ const CRM: React.FC = () => {
         {/* Customer List */}
         {filteredCustomers.length > 0 ? (
           filteredCustomers.map((customer) => {
-            const stats = getCustomerStats(customer.id);
+            const stats = customerStatsMap[customer.id];
             return (
               <Card key={customer.id} style={styles.customerCard}>
                 <TouchableOpacity
@@ -669,6 +677,7 @@ const CRM: React.FC = () => {
       />
 
       {/* ── Add/Edit Customer Modal ────────────────────────────── */}
+      {customerModalVisible && (
       <Modal
         visible={customerModalVisible}
         animationType="fade"
@@ -804,8 +813,10 @@ const CRM: React.FC = () => {
             </View>
         </View>
       </Modal>
+      )}
 
       {/* ── Customer Detail Modal ──────────────────────────────── */}
+      {detailModalVisible && (
       <Modal
         visible={detailModalVisible}
         animationType="fade"
@@ -900,7 +911,7 @@ const CRM: React.FC = () => {
 
                 {/* Stats Row */}
                 {(() => {
-                  const stats = getCustomerStats(selectedCustomer.id);
+                  const stats = customerStatsMap[selectedCustomer.id] || getCustomerStats(selectedCustomer.id);
                   return (
                     <View style={styles.detailStatsRow}>
                       <View style={styles.detailStatItem}>
@@ -1133,8 +1144,10 @@ const CRM: React.FC = () => {
           </View>
         </View>
       </Modal>
+      )}
 
       {/* ── Add/Edit Order Modal ───────────────────────────────── */}
+      {orderModalVisible && (
       <Modal
         visible={orderModalVisible}
         animationType="fade"
@@ -1373,8 +1386,10 @@ const CRM: React.FC = () => {
             </View>
         </View>
       </Modal>
+      )}
 
       {/* ── Record Payment Modal ───────────────────────────────── */}
+      {paymentModalVisible && (
       <Modal
         visible={paymentModalVisible}
         animationType="fade"
@@ -1469,6 +1484,7 @@ const CRM: React.FC = () => {
             </View>
         </View>
       </Modal>
+      )}
 
 
 

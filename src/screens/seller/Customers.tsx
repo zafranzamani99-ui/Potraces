@@ -127,7 +127,7 @@ const StatsSummary: React.FC<{
 interface CustomerCardProps {
   customer: DerivedCustomer;
   currency: string;
-  onPress: () => void;
+  onPress: (customer: DerivedCustomer) => void;
   index: number;
 }
 
@@ -148,13 +148,18 @@ const CustomerCard: React.FC<CustomerCardProps> = React.memo(({
     }).start();
   }, [fadeAnim, index]);
 
+  const handlePress = useCallback(() => {
+    lightTap();
+    onPress(customer);
+  }, [onPress, customer]);
+
   const lastOrderLabel = smartDateLabel(customer.lastOrderDate);
 
   return (
     <Animated.View style={[styles.card, customer.unpaidAmount > 0 && styles.cardUnpaid, { opacity: fadeAnim }]}>
       <TouchableOpacity
         style={styles.cardBody}
-        onPress={() => { lightTap(); onPress(); }}
+        onPress={handlePress}
         activeOpacity={0.7}
         accessibilityRole="button"
         accessibilityLabel={`${customer.name}, ${customer.totalOrders} orders`}
@@ -956,17 +961,23 @@ const SellerCustomers: React.FC = () => {
     setShowContactPicker(true);
   }, [derivedCustomers]);
 
+  // ─── Stable customer selection handler ──────────────────────
+  const handleSelectCustomer = useCallback((customer: DerivedCustomer) => {
+    selectionChanged();
+    setSelectedCustomer(customer);
+  }, []);
+
   // ─── FlatList render callback ────────────────────────────────
   const renderCustomerItem = useCallback(
     ({ item, index }: { item: DerivedCustomer; index: number }) => (
       <CustomerCard
         customer={item}
         currency={currency}
-        onPress={() => { selectionChanged(); setSelectedCustomer(item); }}
+        onPress={handleSelectCustomer}
         index={index}
       />
     ),
-    [currency]
+    [currency, handleSelectCustomer]
   );
 
   const customerKeyExtractor = useCallback(

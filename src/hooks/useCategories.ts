@@ -1,3 +1,4 @@
+import { shallow } from 'zustand/shallow';
 import { useCategoryStore } from '../store/categoryStore';
 import { useAppStore } from '../store/appStore';
 import { CategoryOption } from '../types';
@@ -26,7 +27,7 @@ export function useCategories(
     return type === 'expense'
       ? [s.expenseCategoryOverrides, s.customExpenseCategories]
       : [s.incomeCategoryOverrides, s.customIncomeCategories];
-  });
+  }, shallow);
 
   if (type === 'investment') return getInvestment();
   return type === 'expense' ? getExpense(mode) : getIncome(mode);

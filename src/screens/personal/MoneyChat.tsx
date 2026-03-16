@@ -823,6 +823,13 @@ const MoneyChat: React.FC = () => {
     setSelectTextContent(text);
   }, []);
 
+  const copyToClipboard = useCallback(async () => {
+    if (selectTextContent) {
+      await Clipboard.setStringAsync(selectTextContent);
+      setSelectTextContent(null);
+    }
+  }, [selectTextContent]);
+
   const renderMessage = useCallback(({ item }: { item: AIMessage }) => (
     <ChatBubble item={item} onSelectText={handleSelectText} />
   ), [handleSelectText]);
@@ -906,12 +913,14 @@ const MoneyChat: React.FC = () => {
         )}
 
         {/* Edit modal for pending action */}
-        <ActionEditModal
-          visible={editingIndex !== null}
-          action={editingIndex !== null ? pendingActions[editingIndex] : null}
-          onConfirm={(edited) => editingIndex !== null && handleConfirmAction(editingIndex, edited)}
-          onClose={() => setEditingIndex(null)}
-        />
+        {editingIndex !== null && (
+          <ActionEditModal
+            visible
+            action={pendingActions[editingIndex]}
+            onConfirm={(edited) => handleConfirmAction(editingIndex, edited)}
+            onClose={() => setEditingIndex(null)}
+          />
+        )}
 
         {/* Transient error notice — not saved to chat */}
         {errorNotice && !isLoading && (
@@ -1055,13 +1064,16 @@ const MoneyChat: React.FC = () => {
                 <Feather name="x" size={18} color={CALM.textMuted} />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false}>
-              {conversations.length === 0 ? (
-                <Text style={styles.historyEmpty}>no past conversations</Text>
-              ) : (
-                conversations.map((convo) => (
+            {conversations.length === 0 ? (
+              <Text style={styles.historyEmpty}>no past conversations</Text>
+            ) : (
+              <FlatList
+                style={styles.historyList}
+                showsVerticalScrollIndicator={false}
+                data={conversations}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item: convo }) => (
                   <TouchableOpacity
-                    key={convo.id}
                     style={styles.historyItem}
                     onPress={() => {
                       loadConversation(convo.id);
@@ -1088,9 +1100,9 @@ const MoneyChat: React.FC = () => {
                       <Feather name="trash-2" size={14} color={CALM.textMuted} />
                     </TouchableOpacity>
                   </TouchableOpacity>
-                ))
-              )}
-            </ScrollView>
+                )}
+              />
+            )}
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -1112,12 +1124,7 @@ const MoneyChat: React.FC = () => {
               <Text style={styles.selectTextTitle}>select text</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                 <TouchableOpacity
-                  onPress={async () => {
-                    if (selectTextContent) {
-                      await Clipboard.setStringAsync(selectTextContent);
-                      setSelectTextContent(null);
-                    }
-                  }}
+                  onPress={copyToClipboard}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Feather name="copy" size={16} color={CALM.textMuted} />

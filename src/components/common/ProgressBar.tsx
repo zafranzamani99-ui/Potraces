@@ -193,4 +193,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ProgressBar;
+export default React.memo(ProgressBar);

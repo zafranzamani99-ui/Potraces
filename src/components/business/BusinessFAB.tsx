@@ -89,4 +89,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default BusinessFAB;
+export default React.memo(BusinessFAB);

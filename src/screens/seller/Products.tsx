@@ -197,6 +197,8 @@ const Products: React.FC = () => {
   const [reorderMode, setReorderMode] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectedIdsRef = useRef<Set<string>>(selectedIds);
+  useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
 
   // ─── Bulk import state ──────────────────────────────────────
   const [showBulk, setShowBulk] = useState(false);
@@ -750,7 +752,7 @@ const Products: React.FC = () => {
       if (marginPct !== null) sub.push(`${marginPct}% margin`);
       if (item.trackStock && item.stockQuantity != null) sub.push(`${item.stockQuantity} in stock`);
 
-      const isSelected = selectMode && selectedIds.has(item.id);
+      const isSelected = selectMode && selectedIdsRef.current.has(item.id);
 
       return (
         <ScaleDecorator>
@@ -826,7 +828,7 @@ const Products: React.FC = () => {
         </ScaleDecorator>
       );
     },
-    [currency, openEditModal, handleToggleActive, handleDelete, reorderMode, selectMode, selectedIds, toggleSelectProduct]
+    [currency, openEditModal, handleToggleActive, handleDelete, reorderMode, selectMode, toggleSelectProduct]
   );
 
   // ─── FlatList render helpers ────────────────────────────────
@@ -1341,6 +1343,7 @@ const Products: React.FC = () => {
         renderItem={renderProduct}
         keyExtractor={productKeyExtractor}
         onDragEnd={onDragEnd}
+        extraData={selectedIds}
         ListHeaderComponent={products.length > 0 ? ListHeaderComponent : undefined}
         contentContainerStyle={[
           styles.listContent,

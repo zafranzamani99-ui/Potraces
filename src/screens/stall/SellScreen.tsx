@@ -152,32 +152,30 @@ const SellScreen: React.FC = () => {
   }, []);
 
   // ── Totals with discount ──
-  const getSubtotal = () => cart.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const subtotal = useMemo(() => cart.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0), [cart]);
 
-  const getDiscountAmount = (): number => {
-    const subtotal = getSubtotal();
+  const cartQuantityMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of cart) map[item.productId] = item.quantity;
+    return map;
+  }, [cart]);
+
+  const discountAmount = useMemo((): number => {
     const val = parseFloat(discountValue) || 0;
     if (val <= 0) return 0;
     if (discountType === 'percentage') return Math.min(subtotal, (val / 100) * subtotal);
     return Math.min(subtotal, val);
-  };
+  }, [subtotal, discountValue, discountType]);
 
-  const getTotalAmount = () => Math.max(0, getSubtotal() - getDiscountAmount());
-
-  const getCartQuantity = (productId: string): number => {
-    const item = cart.find((i) => i.productId === productId);
-    return item ? item.quantity : 0;
-  };
+  const totalAmount = useMemo(() => Math.max(0, subtotal - discountAmount), [subtotal, discountAmount]);
 
   // ── Checkout ──
   const handleCheckout = useCallback(
     (method: 'cash' | 'qr') => {
       if (cart.length === 0 || !session) return;
 
-      const discountAmt = getDiscountAmount();
-      const subtotal = getSubtotal();
       // Distribute discount proportionally across items
-      const discountRatio = subtotal > 0 && discountAmt > 0 ? discountAmt / subtotal : 0;
+      const discountRatio = subtotal > 0 && discountAmount > 0 ? discountAmount / subtotal : 0;
 
       cart.forEach((item) => {
         const itemTotal = item.unitPrice * item.quantity;
@@ -199,7 +197,7 @@ const SellScreen: React.FC = () => {
       successNotification();
       showToast('Sale recorded.', 'success');
     },
-    [cart, session, addSale, collapseCart, showToast, discountValue, discountType],
+    [cart, session, addSale, collapseCart, showToast, subtotal, discountAmount],
   );
 
   // ─── No active session ──────────────────────────────────────
@@ -317,7 +315,7 @@ const SellScreen: React.FC = () => {
               const snap = snapshotMap[product.id];
               const isSoldOut = snap && snap.startQty > 0 && snap.remainingQty <= 0;
               const hasQty = snap && snap.startQty > 0;
-              const inCartQty = getCartQuantity(product.id);
+              const inCartQty = cartQuantityMap[product.id] || 0;
 
               return (
                 <View key={product.id} style={styles.productCardWrapper}>
@@ -558,33 +556,33 @@ const SellScreen: React.FC = () => {
 
             {/* Totals */}
             <View style={styles.totalsBreakdown}>
-              {(cartExpanded || getDiscountAmount() > 0) && cart.length > 0 && (
+              {(cartExpanded || discountAmount > 0) && cart.length > 0 && (
                 <View style={styles.totalRow}>
                   <Text style={styles.totalRowLabel}>Subtotal</Text>
                   <Text style={styles.totalRowValue}>
-                    {currency} {getSubtotal().toFixed(0)}
+                    {currency} {subtotal.toFixed(0)}
                   </Text>
                 </View>
               )}
-              {getDiscountAmount() > 0 && (
+              {discountAmount > 0 && (
                 <View style={styles.totalRow}>
                   <Text style={[styles.totalRowLabel, { color: CALM.positive }]}>
                     Discount{discountType === 'percentage' ? ` (${discountValue}%)` : ''}
                   </Text>
                   <Text style={[styles.totalRowValue, { color: CALM.positive }]}>
-                    -{currency} {getDiscountAmount().toFixed(0)}
+                    -{currency} {discountAmount.toFixed(0)}
                   </Text>
                 </View>
               )}
               <View
                 style={[
                   styles.totalRow,
-                  (cartExpanded || getDiscountAmount() > 0) && cart.length > 0 && styles.totalRowFinal,
+                  (cartExpanded || discountAmount > 0) && cart.length > 0 && styles.totalRowFinal,
                 ]}
               >
                 <Text style={styles.totalLabel}>Total</Text>
                 <Text style={styles.totalAmount}>
-                  {currency} {getTotalAmount().toFixed(0)}
+                  {currency} {totalAmount.toFixed(0)}
                 </Text>
               </View>
             </View>
@@ -596,7 +594,7 @@ const SellScreen: React.FC = () => {
                 onPress={() => handleCheckout('cash')}
                 activeOpacity={0.85}
                 disabled={cart.length === 0}
-                accessibilityLabel={`Pay cash, ${currency} ${getTotalAmount().toFixed(2)}`}
+                accessibilityLabel={`Pay cash, ${currency} ${totalAmount.toFixed(2)}`}
                 accessibilityRole="button"
               >
                 <Feather name="dollar-sign" size={18} color={cart.length > 0 ? CALM.textPrimary : CALM.neutral} />
@@ -610,7 +608,7 @@ const SellScreen: React.FC = () => {
                 onPress={() => handleCheckout('qr')}
                 activeOpacity={0.85}
                 disabled={cart.length === 0}
-                accessibilityLabel={`Pay QR, ${currency} ${getTotalAmount().toFixed(2)}`}
+                accessibilityLabel={`Pay QR, ${currency} ${totalAmount.toFixed(2)}`}
                 accessibilityRole="button"
               >
                 <Feather name="smartphone" size={18} color={cart.length > 0 ? '#FFFFFF' : CALM.neutral} />

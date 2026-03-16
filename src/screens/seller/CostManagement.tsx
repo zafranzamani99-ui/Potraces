@@ -700,7 +700,7 @@ const CostManagement: React.FC = () => {
       </View>
 
       {/* ─── Recurring Cost Modal ──────────────────────────── */}
-      <Modal visible={showRecurringModal} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowRecurringModal(false)}>
+      {showRecurringModal && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowRecurringModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowRecurringModal(false)}>
           <Pressable style={[styles.modalCard, { gap: SPACING.md }]} onPress={() => {}}>
             <Text style={styles.modalTitle}>recurring cost</Text>
@@ -758,10 +758,10 @@ const CostManagement: React.FC = () => {
             </TouchableOpacity>
           </Pressable>
         </Pressable>
-      </Modal>
+      </Modal>)}
 
       {/* ─── Cost Modal ─────────────────────────────────────── */}
-      <Modal visible={showCostModal} transparent statusBarTranslucent animationType="fade">
+      {showCostModal && (<Modal visible transparent statusBarTranslucent animationType="fade">
         <View style={{flex: 1}}>
         <Pressable style={styles.modalOverlay} onPress={Keyboard.dismiss}>
           <KeyboardAwareScrollView
@@ -1036,10 +1036,10 @@ const CostManagement: React.FC = () => {
           </Pressable>
         )}
         </View>
-      </Modal>
+      </Modal>)}
 
       {/* ─── Budget Modal ───────────────────────────────────── */}
-      <Modal visible={showBudgetModal} transparent statusBarTranslucent animationType="fade">
+      {showBudgetModal && (<Modal visible transparent statusBarTranslucent animationType="fade">
         <Pressable style={styles.modalOverlay} onPress={Keyboard.dismiss}>
           <KeyboardAwareScrollView
             contentContainerStyle={styles.modalScrollContent}
@@ -1119,7 +1119,7 @@ const CostManagement: React.FC = () => {
             </Pressable>
           </KeyboardAwareScrollView>
         </Pressable>
-      </Modal>
+      </Modal>)}
     </View>
   );
 };

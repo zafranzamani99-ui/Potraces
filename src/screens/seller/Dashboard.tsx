@@ -475,6 +475,32 @@ const SellerDashboard: React.FC = () => {
     Linking.openURL('https://wa.me/' + digits);
   }, []);
 
+  // ── Navigation handlers ─────────────────────────────────────
+  const goToPastSeasons = useCallback(() => {
+    lightTap();
+    navigation.getParent()?.navigate('PastSeasons');
+  }, [navigation]);
+
+  const goToProducts = useCallback(() => {
+    lightTap();
+    navigation.getParent()?.navigate('SellerProducts');
+  }, [navigation]);
+
+  const goToCosts = useCallback(() => {
+    lightTap();
+    navigation.getParent()?.navigate('SellerCosts');
+  }, [navigation]);
+
+  const goToNewOrder = useCallback(() => {
+    lightTap();
+    navigation.navigate('SellerNewOrder');
+  }, [navigation]);
+
+  const goToOrders = useCallback(() => {
+    lightTap();
+    navigation.navigate('SellerOrders');
+  }, [navigation]);
+
   // AuthGatedBusiness handles the setup redirect — this is just a safety guard
   const needsSetup = !businessSetupComplete || incomeType !== 'seller';
   if (needsSetup) {
@@ -519,7 +545,7 @@ const SellerDashboard: React.FC = () => {
                 <Feather name="chevron-right" size={14} color={CALM.textMuted} />
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => { lightTap(); navigation.getParent()?.navigate('PastSeasons'); }}
+                onPress={goToPastSeasons}
                 activeOpacity={0.7}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 accessibilityRole="button"
@@ -532,7 +558,7 @@ const SellerDashboard: React.FC = () => {
             <TouchableOpacity
               style={styles.seasonPillEmpty}
               activeOpacity={0.6}
-              onPress={() => { lightTap(); navigation.getParent()?.navigate('PastSeasons'); }}
+              onPress={goToPastSeasons}
               accessibilityRole="button"
               accessibilityLabel="No active season. Tap to manage seasons."
             >
@@ -634,7 +660,7 @@ const SellerDashboard: React.FC = () => {
             <TouchableOpacity
               style={styles.heroSparkline}
               activeOpacity={0.7}
-              onPress={() => { lightTap(); navigation.navigate('SellerOrders'); }}
+              onPress={goToOrders}
               accessibilityRole="button"
               accessibilityLabel="7-day order activity"
             >
@@ -684,7 +710,7 @@ const SellerDashboard: React.FC = () => {
             <TouchableOpacity
               style={[styles.quickActionButton, { borderColor: withAlpha(CALM.accent, 0.25), backgroundColor: withAlpha(CALM.accent, 0.08) }]}
               activeOpacity={0.7}
-              onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerProducts'); }}
+              onPress={goToProducts}
               accessibilityRole="button"
               accessibilityLabel="View products"
             >
@@ -694,7 +720,7 @@ const SellerDashboard: React.FC = () => {
             <TouchableOpacity
               style={styles.quickActionButton}
               activeOpacity={0.7}
-              onPress={() => { lightTap(); navigation.getParent()?.navigate('SellerCosts'); }}
+              onPress={goToCosts}
               accessibilityRole="button"
               accessibilityLabel="Manage costs"
             >
@@ -806,7 +832,7 @@ const SellerDashboard: React.FC = () => {
               <TouchableOpacity
                 style={styles.stepLeft}
                 activeOpacity={0.7}
-                onPress={() => navigation.getParent()?.navigate('PastSeasons')}
+                onPress={goToPastSeasons}
                 accessibilityRole="button"
                 accessibilityLabel="Step 1: Start a season"
               >
@@ -837,7 +863,7 @@ const SellerDashboard: React.FC = () => {
               <TouchableOpacity
                 style={styles.stepLeft}
                 activeOpacity={0.7}
-                onPress={() => navigation.getParent()?.navigate('SellerProducts')}
+                onPress={goToProducts}
                 accessibilityRole="button"
                 accessibilityLabel="Step 2: Add products"
               >
@@ -868,7 +894,7 @@ const SellerDashboard: React.FC = () => {
               <TouchableOpacity
                 style={styles.stepLeft}
                 activeOpacity={0.7}
-                onPress={() => navigation.navigate('SellerNewOrder')}
+                onPress={goToNewOrder}
                 accessibilityRole="button"
                 accessibilityLabel="Step 3: Create an order"
               >
@@ -904,7 +930,7 @@ const SellerDashboard: React.FC = () => {
                 <TouchableOpacity
                   style={styles.emptyStateCta}
                   activeOpacity={0.7}
-                  onPress={() => { lightTap(); navigation.navigate('SellerNewOrder'); }}
+                  onPress={goToNewOrder}
                   accessibilityRole="button"
                   accessibilityLabel="Create new order"
                 >
@@ -1119,8 +1145,9 @@ const SellerDashboard: React.FC = () => {
       </ScrollView>
 
       {/* ── Shop link modal ──────────────────────────────── */}
+      {showShopModal && (
       <Modal
-        visible={showShopModal}
+        visible
         transparent
         statusBarTranslucent
         animationType="none"
@@ -1302,10 +1329,12 @@ const SellerDashboard: React.FC = () => {
         )}
         </KeyboardAvoidingView>
       </Modal>
+      )}
 
       {/* ── Slug confirm modal ────────────────────────────── */}
+      {showSlugConfirm && (
       <Modal
-        visible={showSlugConfirm}
+        visible
         transparent
         statusBarTranslucent
         animationType="fade"
@@ -1352,6 +1381,7 @@ const SellerDashboard: React.FC = () => {
           </View>
         </View>
       </Modal>
+      )}
 
       {/* ── All items modal ───────────────────────────────── */}
       {showItemsModal && (
@@ -1414,8 +1444,9 @@ const SellerDashboard: React.FC = () => {
       )}
 
       {/* QR Fullscreen Modal */}
+      {qrModalVisible && (
       <Modal
-        visible={qrModalVisible}
+        visible
         transparent
         animationType="none"
         onRequestClose={() => setQrModalVisible(false)}
@@ -1463,6 +1494,7 @@ const SellerDashboard: React.FC = () => {
           )}
         </View>
       </Modal>
+      )}
 
     </View>
   );

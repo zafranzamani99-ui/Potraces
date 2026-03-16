@@ -46,4 +46,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default BusinessSectionHeader;
+export default React.memo(BusinessSectionHeader);

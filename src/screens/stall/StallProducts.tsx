@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -23,14 +23,16 @@ const StallProducts: React.FC = () => {
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
 
-  const resetForm = () => {
+  const activeCount = useMemo(() => products.filter((p) => p.isActive).length, [products]);
+
+  const resetForm = useCallback(() => {
     setName('');
     setPrice('');
     setEditingId(null);
     setShowForm(false);
-  };
+  }, []);
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     const trimmedName = name.trim();
     const parsedPrice = parseFloat(price);
     if (!trimmedName || isNaN(parsedPrice) || parsedPrice <= 0) return;
@@ -40,26 +42,29 @@ const StallProducts: React.FC = () => {
     } else {
       addProduct({ name: trimmedName, price: parsedPrice, isActive: true });
     }
-    resetForm();
-  };
+    setName('');
+    setPrice('');
+    setEditingId(null);
+    setShowForm(false);
+  }, [name, price, editingId, updateProduct, addProduct]);
 
-  const handleEdit = (id: string) => {
+  const handleEdit = useCallback((id: string) => {
     const product = products.find((p) => p.id === id);
     if (!product) return;
     setEditingId(id);
     setName(product.name);
     setPrice(product.price.toString());
     setShowForm(true);
-  };
+  }, [products]);
 
-  const handleToggleActive = (id: string, currentlyActive: boolean) => {
+  const handleToggleActive = useCallback((id: string, currentlyActive: boolean) => {
     updateProduct(id, { isActive: !currentlyActive });
-  };
+  }, [updateProduct]);
 
-  const handleDelete = (id: string) => {
+  const handleDelete = useCallback((id: string) => {
     deleteProduct(id);
-    if (editingId === id) resetForm();
-  };
+    setEditingId((prev) => prev === id ? null : prev);
+  }, [deleteProduct]);
 
   return (
     <KeyboardAvoidingView
@@ -74,7 +79,7 @@ const StallProducts: React.FC = () => {
       >
         <Text style={styles.heading}>products</Text>
         <Text style={styles.subheading}>
-          things you sell at the stall{products.length > 0 ? ` \u00B7 ${products.filter((p) => p.isActive).length} active` : ''}
+          things you sell at the stall{products.length > 0 ? ` \u00B7 ${activeCount} active` : ''}
         </Text>
 
         {/* Add / Edit form */}

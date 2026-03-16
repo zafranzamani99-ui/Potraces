@@ -849,6 +849,15 @@ const OrderList: React.FC = () => {
     }
   }, [orders, sortBy]);
 
+  // Pre-compute overdue orders from sortedOrders (same set as orders, just sorted)
+  const overdueOrders = useMemo(() => {
+    return sortedOrders.filter((o) => {
+      if (!o.deliveryDate) return false;
+      const d = o.deliveryDate instanceof Date ? o.deliveryDate : new Date(o.deliveryDate as string);
+      return isPast(startOfDay(d)) && !isToday(d) && o.status !== 'delivered' && o.status !== 'completed';
+    });
+  }, [sortedOrders]);
+
   const filteredOrders = useMemo(() => {
     let result = sortedOrders;
 
@@ -862,13 +871,14 @@ const OrderList: React.FC = () => {
       result = result.filter((o) => o.status === deliveryFilter);
     }
 
-    // Overdue filter — delivery date is past and not yet delivered/completed
+    // Overdue filter — reuse pre-computed overdueOrders when no prior filters applied
     if (overdueOnly) {
-      result = result.filter((o) => {
-        if (!o.deliveryDate) return false;
-        const d = o.deliveryDate instanceof Date ? o.deliveryDate : new Date(o.deliveryDate as string);
-        return isPast(startOfDay(d)) && !isToday(d) && o.status !== 'delivered' && o.status !== 'completed';
-      });
+      if (!onlineOnly && deliveryFilter === 'all') {
+        result = overdueOrders;
+      } else {
+        const overdueIds = new Set(overdueOrders.map((o) => o.id));
+        result = result.filter((o) => overdueIds.has(o.id));
+      }
     }
 
     // Payment state filter (independent of delivery)
@@ -908,7 +918,7 @@ const OrderList: React.FC = () => {
     }
 
     return result;
-  }, [sortedOrders, deliveryFilter, paymentFilter, overdueOnly, onlineOnly, searchQuery, periodFilter, paymentMethodFilter]);
+  }, [sortedOrders, overdueOrders, deliveryFilter, paymentFilter, overdueOnly, onlineOnly, searchQuery, periodFilter, paymentMethodFilter]);
 
   // Group orders by customer name
   const groupedData = useMemo((): CustomerGroup[] => {
@@ -982,14 +992,8 @@ const OrderList: React.FC = () => {
     || (deliveryFilter !== 'all' && deliveryFilter !== 'pending')
     || (paymentFilter === 'paid'), [sortBy, periodFilter, paymentMethodFilter, deliveryFilter, paymentFilter]);
 
-  // Overdue count for badge
-  const overdueCount = useMemo(() => {
-    return orders.filter((o) => {
-      if (!o.deliveryDate) return false;
-      const d = o.deliveryDate instanceof Date ? o.deliveryDate : new Date(o.deliveryDate as string);
-      return isPast(startOfDay(d)) && !isToday(d) && o.status !== 'delivered' && o.status !== 'completed';
-    }).length;
-  }, [orders]);
+  // Overdue count for badge — derived from pre-computed overdueOrders
+  const overdueCount = overdueOrders.length;
 
   // Whether any filters are active
   const hasActiveFilters = useMemo(() => deliveryFilter !== 'all' || paymentFilter !== 'all' || periodFilter !== 'all' || overdueOnly || onlineOnly || searchInput.trim().length > 0 || paymentMethodFilter !== 'all', [deliveryFilter, paymentFilter, periodFilter, overdueOnly, onlineOnly, searchInput, paymentMethodFilter]);

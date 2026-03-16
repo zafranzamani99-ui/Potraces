@@ -965,7 +965,7 @@ const SeasonSummary: React.FC = () => {
       </ScrollView>
 
       {/* ─── End Season Modal ─── */}
-      <Modal visible={showEndModal} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowEndModal(false)}>
+      {showEndModal && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowEndModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowEndModal(false)}>
           <Pressable style={styles.endModalContent} onPress={() => {}}>
             <View style={styles.endModalHeader}>
@@ -1024,10 +1024,10 @@ const SeasonSummary: React.FC = () => {
             </View>
           </Pressable>
         </Pressable>
-      </Modal>
+      </Modal>)}
 
       {/* ─── Orders Modal ─── */}
-      <Modal visible={showOrdersModal} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowOrdersModal(false)}>
+      {showOrdersModal && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowOrdersModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowOrdersModal(false)}>
           <Pressable style={styles.listModalContent} onPress={() => {}}>
             <View style={styles.listModalHeader}>
@@ -1079,10 +1079,10 @@ const SeasonSummary: React.FC = () => {
             </ScrollView>
           </Pressable>
         </Pressable>
-      </Modal>
+      </Modal>)}
 
       {/* ─── Costs Modal ─── */}
-      <Modal visible={showCostsModal} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowCostsModal(false)}>
+      {showCostsModal && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowCostsModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowCostsModal(false)}>
           <Pressable style={styles.listModalContent} onPress={() => {}}>
             <View style={styles.listModalHeader}>
@@ -1129,10 +1129,10 @@ const SeasonSummary: React.FC = () => {
             </ScrollView>
           </Pressable>
         </Pressable>
-      </Modal>
+      </Modal>)}
 
       {/* ─── Rename Season Modal ─── */}
-      <Modal visible={showRenameModal} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowRenameModal(false)}>
+      {showRenameModal && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowRenameModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowRenameModal(false)}>
           <Pressable style={styles.renameModalContent} onPress={() => {}}>
             <Text style={styles.renameModalTitle}>rename season</Text>
@@ -1170,10 +1170,10 @@ const SeasonSummary: React.FC = () => {
             </View>
           </Pressable>
         </Pressable>
-      </Modal>
+      </Modal>)}
 
       {/* ─── Season Target Modal ─── */}
-      <Modal visible={showTargetInput} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowTargetInput(false)}>
+      {showTargetInput && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowTargetInput(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowTargetInput(false)}>
           <Pressable style={styles.renameModalContent} onPress={() => {}}>
             <Text style={styles.renameModalTitle}>season target</Text>
@@ -1211,7 +1211,7 @@ const SeasonSummary: React.FC = () => {
             </View>
           </Pressable>
         </Pressable>
-      </Modal>
+      </Modal>)}
     </View>
   );
 };

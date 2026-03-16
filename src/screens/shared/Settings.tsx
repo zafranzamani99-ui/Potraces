@@ -303,6 +303,33 @@ const Settings: React.FC = () => {
     );
   }, [showToast]);
 
+  const handleHapticToggle = useCallback((value: boolean) => {
+    setHapticEnabled(value);
+    if (value) lightTap();
+  }, [setHapticEnabled]);
+
+  const handleNotificationsToggle = useCallback((value: boolean) => {
+    lightTap();
+    setNotificationsEnabled(value);
+    showToast(
+      value ? 'Notifications enabled' : 'Notifications disabled',
+      'success'
+    );
+  }, [setNotificationsEnabled, showToast]);
+
+  const handleBusinessModeToggle = useCallback((value: boolean) => {
+    lightTap();
+    setBusinessModeEnabled(value);
+    if (!value) {
+      navigation.goBack();
+      setMode('personal');
+    }
+    showToast(
+      value ? 'Business mode enabled' : 'Business mode disabled',
+      'success'
+    );
+  }, [setBusinessModeEnabled, navigation, setMode, showToast]);
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -383,10 +410,7 @@ const Settings: React.FC = () => {
             </View>
             <Switch
               value={hapticEnabled}
-              onValueChange={(value) => {
-                setHapticEnabled(value);
-                if (value) lightTap();
-              }}
+              onValueChange={handleHapticToggle}
               trackColor={{ false: CALM.border, true: CALM.positive }}
               thumbColor="#FFFFFF"
             />
@@ -406,14 +430,7 @@ const Settings: React.FC = () => {
             </View>
             <Switch
               value={notificationsEnabled}
-              onValueChange={(value) => {
-                lightTap();
-                setNotificationsEnabled(value);
-                showToast(
-                  value ? 'Notifications enabled' : 'Notifications disabled',
-                  'success'
-                );
-              }}
+              onValueChange={handleNotificationsToggle}
               trackColor={{ false: CALM.border, true: CALM.positive }}
               thumbColor="#FFFFFF"
             />
@@ -433,18 +450,7 @@ const Settings: React.FC = () => {
             </View>
             <Switch
               value={businessModeEnabled}
-              onValueChange={(value) => {
-                lightTap();
-                setBusinessModeEnabled(value);
-                if (!value) {
-                  navigation.goBack();
-                  setMode('personal');
-                }
-                showToast(
-                  value ? 'Business mode enabled' : 'Business mode disabled',
-                  'success'
-                );
-              }}
+              onValueChange={handleBusinessModeToggle}
               trackColor={{ false: CALM.border, true: CALM.positive }}
               thumbColor="#FFFFFF"
             />
@@ -563,17 +569,21 @@ const Settings: React.FC = () => {
           </>
         )}
 
+        {categoryManagerVisible && (
         <CategoryManager
-          visible={categoryManagerVisible}
+          visible
           onClose={() => setCategoryManagerVisible(false)}
           type={categoryManagerType}
           mode={mode}
         />
+        )}
 
+        {unitManagerVisible && (
         <UnitManager
-          visible={unitManagerVisible}
+          visible
           onClose={() => setUnitManagerVisible(false)}
         />
+        )}
 
         {/* Subscription */}
         <Text style={styles.sectionHeader}>Subscription</Text>
@@ -907,8 +917,9 @@ const Settings: React.FC = () => {
       </Modal>
 
       {/* ─── Currency Picker Modal ─── */}
+      {currencyModalVisible && (
       <Modal
-        visible={currencyModalVisible}
+        visible
         transparent
         statusBarTranslucent
         animationType="fade"
@@ -944,6 +955,7 @@ const Settings: React.FC = () => {
           </View>
         </Pressable>
       </Modal>
+      )}
 
       {/* ─── QR Fullscreen Preview ─── */}
       <Modal

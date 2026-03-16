@@ -24,36 +24,24 @@ export function useKeptNumber(): KeptSummary {
     const now = new Date();
     const monthStart = startOfMonth(now);
     const monthEnd = endOfMonth(now);
-
-    const thisMonthTxns = transactions.filter((t) =>
-      isWithinInterval(t.date, { start: monthStart, end: monthEnd })
-    );
-
-    const incomeThisMonth = thisMonthTxns
-      .filter((t) => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const expensesThisMonth = thisMonthTxns
-      .filter((t) => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const keptThisMonth = incomeThisMonth - expensesThisMonth;
-
-    // Last month — same day range for fair comparison
     const lastMonthStart = startOfMonth(subMonths(now, 1));
     const lastMonthEnd = endOfMonth(subMonths(now, 1));
-    const lastMonthTxns = transactions.filter((t) =>
-      isWithinInterval(t.date, { start: lastMonthStart, end: lastMonthEnd })
-    );
 
-    const lastMonthIncome = lastMonthTxns
-      .filter((t) => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
+    // Single pass over all transactions
+    let incomeThisMonth = 0, expensesThisMonth = 0;
+    let lastMonthIncome = 0, lastMonthExpenses = 0;
 
-    const lastMonthExpenses = lastMonthTxns
-      .filter((t) => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
+    for (const t of transactions) {
+      if (isWithinInterval(t.date, { start: monthStart, end: monthEnd })) {
+        if (t.type === 'income') incomeThisMonth += t.amount;
+        else if (t.type === 'expense') expensesThisMonth += t.amount;
+      } else if (isWithinInterval(t.date, { start: lastMonthStart, end: lastMonthEnd })) {
+        if (t.type === 'income') lastMonthIncome += t.amount;
+        else if (t.type === 'expense') lastMonthExpenses += t.amount;
+      }
+    }
 
+    const keptThisMonth = incomeThisMonth - expensesThisMonth;
     const keptLastMonth = lastMonthIncome - lastMonthExpenses;
 
     const diff = keptThisMonth - keptLastMonth;

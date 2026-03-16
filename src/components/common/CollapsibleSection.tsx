@@ -23,7 +23,7 @@ interface CollapsibleSectionProps {
   defaultOpen?: boolean;
 }
 
-export default function CollapsibleSection({
+const CollapsibleSection = React.memo(function CollapsibleSection({
   title,
   subtitle,
   children,
@@ -56,7 +56,9 @@ export default function CollapsibleSection({
       {isOpen && <View style={styles.content}>{children}</View>}
     </View>
   );
-}
+});
+
+export default CollapsibleSection;
 
 const styles = StyleSheet.create({
   container: {

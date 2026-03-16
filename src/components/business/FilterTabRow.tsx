@@ -82,4 +82,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default FilterTabRow;
+export default React.memo(FilterTabRow);

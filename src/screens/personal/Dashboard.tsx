@@ -805,8 +805,9 @@ const PersonalDashboard: React.FC = () => {
       </ScrollView>
 
       {/* Transaction Edit Modal */}
+      {editModalVisible && (
       <Modal
-        visible={editModalVisible}
+        visible
         animationType="fade"
         transparent
         statusBarTranslucent
@@ -933,10 +934,12 @@ const PersonalDashboard: React.FC = () => {
             </View>
         </Pressable>
       </Modal>
+      )}
 
       {/* QR Fullscreen Modal */}
+      {qrModalVisible && (
       <Modal
-        visible={qrModalVisible}
+        visible
         transparent
         animationType="none"
         onRequestClose={() => setQrModalVisible(false)}
@@ -988,6 +991,7 @@ const PersonalDashboard: React.FC = () => {
           )}
         </View>
       </Modal>
+      )}
 
       <QuickAddExpense />
     </View>
