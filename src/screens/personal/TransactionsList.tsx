@@ -28,6 +28,8 @@ import { Transaction, CategoryOption } from '../../types';
 import { useWalletStore } from '../../store/walletStore';
 import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
+import { useLearningStore } from '../../store/learningStore';
+import { usePlaybookStore } from '../../store/playbookStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToast } from '../../context/ToastContext';
@@ -338,6 +340,7 @@ const TransactionsList: React.FC = () => {
                 (c) => c.personalTransactionId === txn.id
               );
               if (linkedCost) useSellerStore.getState().deleteIngredientCost(linkedCost.id);
+              usePlaybookStore.getState().unlinkAllFromTransaction(id);
               deleteTransaction(id);
             }
             showToast(`${selectedIds.size} transaction${selectedIds.size > 1 ? 's' : ''} deleted`, 'success');
@@ -412,6 +415,16 @@ const TransactionsList: React.FC = () => {
       tags: editTags ? editTags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     });
 
+    // Learn from user edits
+    const learn = useLearningStore.getState();
+    const desc = editDescription.trim();
+    if (desc && editCategory) learn.learnCategory(desc, editCategory);
+    if (desc && editWalletId) {
+      const wName = useWalletStore.getState().wallets.find((w) => w.id === editWalletId)?.name;
+      if (wName) learn.learnWallet(desc, wName);
+    }
+    if (editType !== oldType && desc) learn.learnTypeCorrection(desc, editType);
+
     if (newAmount !== oldAmount) {
       const { linkedDebtId, linkedPaymentId } = editingTransaction;
       if (linkedDebtId && linkedPaymentId) {
@@ -475,6 +488,7 @@ const TransactionsList: React.FC = () => {
       if (linkedCost) {
         useSellerStore.getState().deleteIngredientCost(linkedCost.id);
       }
+      usePlaybookStore.getState().unlinkAllFromTransaction(editingTransaction.id);
       deleteTransaction(editingTransaction.id);
       setEditModalVisible(false);
       setEditingTransaction(null);

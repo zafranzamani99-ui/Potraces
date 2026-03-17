@@ -77,7 +77,7 @@ const PersonalNavigator: React.FC = () => {
       <Tab.Screen
         name="MoneyChat"
         component={MoneyChat}
-        options={{ title: 'Chat' }}
+        options={{ title: 'Echo' }}
       />
       <Tab.Screen
         name="Settings"

@@ -55,6 +55,8 @@ export const usePersonalStore = create<PersonalState>()(
           }),
         })),
 
+      // NOTE: If this transaction has playbookLinks, the caller should also call
+      // usePlaybookStore.getState().unlinkAllFromTransaction(id) to clean up.
       deleteTransaction: (id) =>
         set((state) => ({
           transactions: state.transactions.filter((t) => t.id !== id),
@@ -200,7 +202,7 @@ export const usePersonalStore = create<PersonalState>()(
           goals: state.goals.filter((g) => g.id !== id),
         })),
 
-      contributeToGoal: (goalId, amount, note) =>
+      contributeToGoal: (goalId, amount, note, walletId) =>
         set((state) => ({
           goals: state.goals.map((goal) => {
             if (goal.id !== goalId) return goal;
@@ -209,6 +211,7 @@ export const usePersonalStore = create<PersonalState>()(
               amount,
               note,
               date: new Date(),
+              walletId,
             };
             const newCurrentAmount = Math.min(goal.currentAmount + amount, goal.targetAmount);
             const updatedMilestones = goal.milestones.map((m) => {
@@ -320,6 +323,7 @@ export const usePersonalStore = create<PersonalState>()(
             ...e,
             editedAt: e.editedAt instanceof Date ? e.editedAt.toISOString() : e.editedAt,
           })),
+          playbookLinks: t.playbookLinks || undefined,
         })),
         subscriptions: state.subscriptions.map((s) => ({
           ...s,
@@ -362,6 +366,7 @@ export const usePersonalStore = create<PersonalState>()(
               ...e,
               editedAt: sd(e.editedAt),
             })),
+            playbookLinks: t.playbookLinks || undefined,
           }));
           state.subscriptions = state.subscriptions.map((s: any) => ({
             ...s,

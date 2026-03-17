@@ -19,9 +19,11 @@ import { usePersonalStore } from '../../store/personalStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useCategoryStore } from '../../store/categoryStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { usePlaybookStore } from '../../store/playbookStore';
 import { CALM, SHADOWS, withAlpha } from '../../constants';
 import { lightTap, successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
+import { useLearningStore } from '../../store/learningStore';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const FAB_SIZE = 56;
@@ -65,17 +67,24 @@ const QuickAddExpense: React.FC = () => {
   const currency = useSettingsStore((s) => s.currency);
 
   const addTransaction = usePersonalStore((s) => s.addTransaction);
+  const updateTransaction = usePersonalStore((s) => s.updateTransaction);
   const wallets = useWalletStore((s) => s.wallets);
   const deductFromWallet = useWalletStore((s) => s.deductFromWallet);
+  const addToWallet = useWalletStore((s) => s.addToWallet);
   const getExpenseCategories = useCategoryStore((s) => s.getExpenseCategories);
+  const getIncomeCategories = useCategoryStore((s) => s.getIncomeCategories);
 
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState<Step>('amount');
   const [amount, setAmount] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [txType, setTxType] = useState<'expense' | 'income'>('expense');
+  const [pbPrompt, setPbPrompt] = useState<{ txId: string; amount: number; name: string } | null>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const cardScale = useRef(new Animated.Value(0.92)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
+  const pbPromptScale = useRef(new Animated.Value(0.92)).current;
+  const pbPromptOpacity = useRef(new Animated.Value(0)).current;
 
   // ── Draggable FAB ──────────────────────────────────────────
   const fabPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -175,7 +184,10 @@ const QuickAddExpense: React.FC = () => {
     [fabPos, snapToEdge],
   );
 
-  const categories = useMemo(() => getExpenseCategories('personal'), [getExpenseCategories]);
+  const categories = useMemo(
+    () => txType === 'expense' ? getExpenseCategories('personal') : getIncomeCategories('personal'),
+    [txType, getExpenseCategories, getIncomeCategories],
+  );
   const hasMultipleWallets = wallets.length > 1;
   const totalSteps = hasMultipleWallets ? 3 : 2;
 
@@ -189,6 +201,7 @@ const QuickAddExpense: React.FC = () => {
     lightTap();
     setAmount('');
     setCategoryId('');
+    setTxType('expense');
     setStep('amount');
     slideAnim.setValue(0);
     cardScale.setValue(0.92);
@@ -276,27 +289,75 @@ const QuickAddExpense: React.FC = () => {
       const parsed = parseFloat(amount);
       if (!parsed || parsed <= 0) return;
 
-      addTransaction({
+      const txId = addTransaction({
         amount: parsed,
         category: catId,
         description: catName,
         date: new Date(),
-        type: 'expense',
+        type: txType,
         mode: 'personal',
         walletId: walletId || undefined,
         inputMethod: 'manual',
       });
 
-      if (walletId) deductFromWallet(walletId, parsed);
+      if (walletId) {
+        if (txType === 'expense') {
+          deductFromWallet(walletId, parsed);
+        } else {
+          addToWallet(walletId, parsed);
+        }
+      }
+
+      // Playbook auto-link for expenses
+      if (txType === 'expense') {
+        const activePbs = usePlaybookStore.getState().getActivePlaybooks();
+        if (activePbs.length === 1) {
+          const pb = activePbs[0];
+          usePlaybookStore.getState().linkExpense(pb.id, txId);
+          updateTransaction(txId, {
+            playbookLinks: [{ playbookId: pb.id, amount: parsed }],
+          });
+        }
+      }
+
+      // Learn category association
+      if (catName) useLearningStore.getState().learnCategory(catName, catId);
 
       successNotification();
       setVisible(false);
-      showToast(`${currency} ${parsed.toFixed(2)} added`, 'success');
+      const label = txType === 'expense' ? 'went out' : 'came in';
+      showToast(`${currency} ${parsed.toFixed(2)} ${label}`, 'success');
+
+      // Offer playbook creation for income
+      if (txType === 'income' && usePlaybookStore.getState().canCreatePlaybook()) {
+        setTimeout(() => {
+          setPbPrompt({ txId, amount: parsed, name: catName });
+          pbPromptScale.setValue(0.92);
+          pbPromptOpacity.setValue(0);
+          Animated.parallel([
+            Animated.spring(pbPromptScale, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 3 }),
+            Animated.timing(pbPromptOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+          ]).start();
+        }, 300);
+      }
     },
-    [amount, addTransaction, deductFromWallet, currency, showToast],
+    [amount, txType, addTransaction, updateTransaction, deductFromWallet, addToWallet, currency, showToast],
   );
 
   const handleClose = useCallback(() => setVisible(false), []);
+
+  const handlePbCreate = useCallback(() => {
+    if (!pbPrompt) return;
+    const pbId = usePlaybookStore.getState().createPlaybook({
+      name: pbPrompt.name,
+      sourceAmount: pbPrompt.amount,
+      sourceTransactionId: pbPrompt.txId,
+    });
+    setPbPrompt(null);
+    if (pbId) showToast('playbook created', 'success');
+  }, [pbPrompt, showToast]);
+
+  const handlePbDismiss = useCallback(() => setPbPrompt(null), []);
 
   const parsedAmount = parseFloat(amount) || 0;
   const displayAmount = amount || '0';
@@ -316,7 +377,7 @@ const QuickAddExpense: React.FC = () => {
           style={styles.fab}
           onPress={handleOpen}
           activeOpacity={0.8}
-          accessibilityLabel="Quick add expense"
+          accessibilityLabel="Quick add"
           accessibilityRole="button"
         >
           <Feather name="plus" size={26} color="#fff" />
@@ -375,6 +436,26 @@ const QuickAddExpense: React.FC = () => {
                       <Text style={styles.amountCurrency}>{currency} </Text>
                       {displayAmount}
                     </Text>
+                  </View>
+
+                  {/* Type toggle */}
+                  <View style={styles.typeToggle}>
+                    <TouchableOpacity
+                      style={[styles.typePill, txType === 'expense' && styles.typePillActive]}
+                      onPress={() => { lightTap(); setTxType('expense'); }}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="arrow-up-right" size={14} color={txType === 'expense' ? '#fff' : CALM.textMuted} />
+                      <Text style={[styles.typePillText, txType === 'expense' && styles.typePillTextActive]}>went out</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.typePill, txType === 'income' && styles.typePillActiveIncome]}
+                      onPress={() => { lightTap(); setTxType('income'); }}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="arrow-down-left" size={14} color={txType === 'income' ? '#fff' : CALM.textMuted} />
+                      <Text style={[styles.typePillText, txType === 'income' && styles.typePillTextActive]}>came in</Text>
+                    </TouchableOpacity>
                   </View>
 
                   {/* Numpad */}
@@ -464,6 +545,35 @@ const QuickAddExpense: React.FC = () => {
           </Animated.View>
         </View>
       </Modal>
+
+      {/* ── Playbook prompt ─────────────────────── */}
+      {pbPrompt && (
+        <Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={handlePbDismiss}>
+          <View style={styles.overlay}>
+            <TouchableWithoutFeedback onPress={handlePbDismiss}>
+              <View style={StyleSheet.absoluteFill} />
+            </TouchableWithoutFeedback>
+            <Animated.View style={[styles.pbPromptCard, { transform: [{ scale: pbPromptScale }], opacity: pbPromptOpacity }]}>
+              <View style={styles.pbPromptIcon}>
+                <Feather name="book-open" size={28} color={CALM.accent} />
+              </View>
+              <Text style={styles.pbPromptTitle}>create a playbook?</Text>
+              <Text style={styles.pbPromptSub}>
+                track how you spend this {currency} {pbPrompt.amount.toFixed(2)}
+              </Text>
+              <View style={styles.pbPromptActions}>
+                <TouchableOpacity style={styles.pbPromptSkip} onPress={handlePbDismiss} activeOpacity={0.7}>
+                  <Text style={styles.pbPromptSkipText}>not now</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pbPromptCreate} onPress={handlePbCreate} activeOpacity={0.8}>
+                  <Feather name="plus" size={16} color="#fff" />
+                  <Text style={styles.pbPromptCreateText}>create</Text>
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          </View>
+        </Modal>
+      )}
     </>
   );
 };
@@ -552,8 +662,8 @@ const styles = StyleSheet.create({
   /* ── Amount ──────────────────────────────── */
   amountWrap: {
     alignItems: 'center',
-    paddingVertical: 24,
-    marginBottom: 20,
+    paddingVertical: 20,
+    marginBottom: 8,
   },
   amountDisplay: {
     fontSize: 42,
@@ -566,6 +676,41 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '400',
     color: CALM.textMuted,
+  },
+
+  /* ── Type toggle ────────────────────────── */
+  typeToggle: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  typePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E8E8E6',
+    backgroundColor: 'transparent',
+  },
+  typePillActive: {
+    backgroundColor: CALM.accent,
+    borderColor: CALM.accent,
+  },
+  typePillActiveIncome: {
+    backgroundColor: CALM.positive,
+    borderColor: CALM.positive,
+  },
+  typePillText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: CALM.textMuted,
+  },
+  typePillTextActive: {
+    color: '#fff',
   },
 
   /* ── Numpad ──────────────────────────────── */
@@ -645,4 +790,70 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20,
   },
   defBadgeText: { fontSize: 10, fontWeight: '600', color: CALM.accent, letterSpacing: 0.3 },
+
+  /* ── Playbook prompt ───────────────────── */
+  pbPromptCard: {
+    width: CARD_WIDTH - 32,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.06)',
+    ...SHADOWS.lg,
+  },
+  pbPromptIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: withAlpha(CALM.accent, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  pbPromptTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: CALM.textPrimary,
+    marginBottom: 6,
+  },
+  pbPromptSub: {
+    fontSize: 14,
+    color: CALM.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  pbPromptActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  pbPromptSkip: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 14,
+    alignItems: 'center',
+    backgroundColor: '#F5F5F3',
+  },
+  pbPromptSkipText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: CALM.textMuted,
+  },
+  pbPromptCreate: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CALM.accent,
+  },
+  pbPromptCreateText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
 });

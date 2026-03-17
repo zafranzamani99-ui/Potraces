@@ -26,6 +26,7 @@ import CategoryPicker from '../../components/common/CategoryPicker';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap } from '../../services/haptics';
+import { useLearningStore } from '../../store/learningStore';
 
 type FilterStatus = 'all' | 'active' | 'paused' | 'installments';
 
@@ -236,6 +237,11 @@ const SubscriptionList: React.FC = () => {
         }),
       });
       showToast('commitment added.', 'success');
+    }
+
+    // Learn category association
+    if (name.trim() && category) {
+      useLearningStore.getState().learnCategory(name.trim(), category);
     }
 
     mediumTap();

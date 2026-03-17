@@ -30,6 +30,8 @@ import { recognizeText } from '../../services/ocrService';
 import { transcribeAudio } from '../../services/speechService';
 import { enrichTransaction } from '../../utils/enrichTransaction';
 import { Transaction } from '../../types';
+import { usePlaybookStore } from '../../store/playbookStore';
+import { computePlaybookStats } from '../../utils/playbookStats';
 
 type InputMode = 'text' | 'photo' | 'voice';
 
@@ -224,7 +226,7 @@ const ExpenseEntry: React.FC = () => {
     // Enrich with context
     const enriched = enrichTransaction(baseTx as Transaction, transactions.slice(0, 50));
 
-    addTransaction({
+    const txId = addTransaction({
       ...enriched,
     });
 
@@ -235,6 +237,17 @@ const ExpenseEntry: React.FC = () => {
         addToWallet(selectedWalletId, parsedAmount);
       }
     }
+
+    // Playbook linking
+    const activePlaybooks = usePlaybookStore.getState().getActivePlaybooks();
+    if (type === 'expense' && activePlaybooks.length === 1) {
+      const pb = activePlaybooks[0];
+      usePlaybookStore.getState().linkExpense(pb.id, txId);
+      usePersonalStore.getState().updateTransaction(txId, {
+        playbookLinks: [{ playbookId: pb.id, amount: parsedAmount }],
+      });
+    }
+    // For 2 active playbooks, user should link via Budget Planning
 
     // Reset
     setAmount('');
@@ -247,7 +260,10 @@ const ExpenseEntry: React.FC = () => {
     setInputMethod('manual');
 
     successNotification();
-    showToast(`${type === 'expense' ? 'Expense' : 'Income'} added.`, 'success');
+    const pbNote = type === 'expense' && activePlaybooks.length === 1
+      ? ` (linked to ${activePlaybooks[0].name})`
+      : '';
+    showToast(`${type === 'expense' ? 'Expense' : 'Income'} added.${pbNote}`, 'success');
   }, [amount, description, category, type, tags, selectedWalletId, rawInput, inputMethod, confidence, transactions, addTransaction, deductFromWallet, addToWallet, showToast]);
 
   const handleTypeChange = useCallback((newType: 'expense' | 'income') => {

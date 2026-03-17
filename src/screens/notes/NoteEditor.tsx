@@ -40,6 +40,7 @@ const EDIT_TYPES: { key: ExtractionIntent; label: string; icon: keyof typeof Fea
   { key: 'debt', label: 'Debt', icon: 'repeat' },
   { key: 'debt_update', label: 'Payment', icon: 'check-circle' },
   { key: 'seller_cost', label: 'Cost', icon: 'shopping-bag' },
+  { key: 'playbook', label: 'Playbook', icon: 'book-open' },
 ];
 
 const AUTO_SAVE_DELAY = 600; // ms
@@ -55,28 +56,27 @@ const NoteEditor: React.FC = () => {
   const deletePage = useNotesStore((s) => s.deletePage);
   const updateExtraction = useNotesStore((s) => s.updateExtraction);
 
-  // Split content into title (first line) + body (rest)
-  const initialContent = page?.content ?? '';
-  const firstNewline = initialContent.indexOf('\n');
-  const [title, setTitle] = useState(firstNewline >= 0 ? initialContent.slice(0, firstNewline) : initialContent);
-  const [body, setBody] = useState(firstNewline >= 0 ? initialContent.slice(firstNewline + 1) : '');
-  const textRef = useRef({ title, body });
-  textRef.current = { title, body };
+  // Single unified text (first line = title visually)
+  const [text, setText] = useState(page?.content ?? '');
+  const textRef = useRef(text);
+  textRef.current = text;
 
-  // Derived full text for compatibility
-  const text = body ? `${title}\n${body}` : title;
+  // Derived title/body for compat
+  const firstNewline = text.indexOf('\n');
+  const title = firstNewline >= 0 ? text.slice(0, firstNewline) : text;
+  const body = firstNewline >= 0 ? text.slice(firstNewline + 1) : '';
 
   const [showPaywall, setShowPaywall] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const titleInputRef = useRef<TextInput>(null);
-  const bodyInputRef = useRef<TextInput>(null);
-  const inputRef = bodyInputRef; // keep compat for voice input
+  const inputRef = useRef<TextInput>(null);
   const hasUnsavedRef = useRef(false);
 
   const {
     isClassifying,
+    classifyStep,
+    extractionSource,
     extractions,
     queryAnswer,
     statusMessage,
@@ -160,7 +160,7 @@ const NoteEditor: React.FC = () => {
   // Auto-focus on mount for new (empty) notes
   useEffect(() => {
     if (!page?.content) {
-      setTimeout(() => titleInputRef.current?.focus(), 100);
+      setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, []);
 
@@ -179,16 +179,13 @@ const NoteEditor: React.FC = () => {
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
 
-  // Debounced auto-save
-  const scheduleAutoSave = useCallback(
-    (newTitle?: string, newBody?: string) => {
+  const handleTextChange = useCallback(
+    (newText: string) => {
+      setText(newText);
       hasUnsavedRef.current = true;
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
-        const t = newTitle ?? textRef.current.title;
-        const b = newBody ?? textRef.current.body;
-        const fullText = b ? `${t}\n${b}` : t;
-        updatePageContent(pageId, fullText);
+        updatePageContent(pageId, newText);
         hasUnsavedRef.current = false;
       }, AUTO_SAVE_DELAY);
     },
@@ -200,10 +197,9 @@ const NoteEditor: React.FC = () => {
       mediumTap();
       const transcription = await stopAndTranscribe();
       if (transcription) {
-        const separator = body.trim() ? '\n' : '';
-        const newBody = body + separator + transcription;
-        setBody(newBody);
-        scheduleAutoSave(undefined, newBody);
+        const separator = text.trim() ? '\n' : '';
+        const newText = text + separator + transcription;
+        handleTextChange(newText);
       } else if (voiceError === 'ai limit reached — upgrade for unlimited') {
         setShowPaywall(true);
       }
@@ -211,54 +207,18 @@ const NoteEditor: React.FC = () => {
       lightTap();
       await startRecording();
     }
-  }, [isRecording, body, voiceError, stopAndTranscribe, startRecording, scheduleAutoSave]);
-
-  const handleTitleChange = useCallback(
-    (newTitle: string) => {
-      // If user presses enter in title, move to body
-      if (newTitle.includes('\n')) {
-        const parts = newTitle.split('\n');
-        setTitle(parts[0]);
-        setBody((prev) => (parts.slice(1).join('\n') + (prev ? '\n' + prev : '')));
-        scheduleAutoSave(parts[0]);
-        setTimeout(() => bodyInputRef.current?.focus(), 50);
-        return;
-      }
-      setTitle(newTitle);
-      scheduleAutoSave(newTitle);
-    },
-    [scheduleAutoSave]
-  );
-
-  const handleBodyChange = useCallback(
-    (newBody: string) => {
-      setBody(newBody);
-      scheduleAutoSave(undefined, newBody);
-    },
-    [scheduleAutoSave]
-  );
-
-  const handleBodyKeyPress = useCallback(
-    (e: any) => {
-      // Backspace on empty body → jump back to title
-      if (e.nativeEvent.key === 'Backspace' && !body) {
-        titleInputRef.current?.focus();
-      }
-    },
-    [body]
-  );
+  }, [isRecording, text, voiceError, stopAndTranscribe, startRecording, handleTextChange]);
 
   const handleExtract = useCallback(() => {
     lightTap();
-    const fullText = body ? `${title}\n${body}` : title;
     // Flush pending save so store is up to date
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
-      updatePageContent(pageId, fullText);
+      updatePageContent(pageId, text);
       hasUnsavedRef.current = false;
     }
     classify();
-  }, [classify, title, body, pageId, updatePageContent]);
+  }, [classify, text, pageId, updatePageContent]);
 
   const handleEdit = useCallback((id: string) => {
     const ext = pendingExtractions.find((e) => e.id === id);
@@ -307,6 +267,16 @@ const NoteEditor: React.FC = () => {
     if (editPerson && editPerson !== (orig.extractedData.person || '')) {
       learn.learnPersonAlias(orig.extractedData.person || desc, editPerson);
     }
+    // Learn category association
+    const selectedCatId = editCategoryId;
+    if (desc && selectedCatId) {
+      learn.learnCategory(desc, selectedCatId);
+    }
+    // Learn wallet association
+    const selWallet = wallets.find((w) => w.id === editWalletId);
+    if (desc && selWallet) {
+      learn.learnWallet(desc, selWallet.name);
+    }
 
     // Resolve category and wallet
     const selectedCat = editCategories.find((c) => c.id === editCategoryId);
@@ -345,27 +315,24 @@ const NoteEditor: React.FC = () => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       if (hasUnsavedRef.current) {
-        const { title: t, body: b } = textRef.current;
-        const full = b ? `${t}\n${b}` : t;
-        updatePageContent(pageId, full);
+        updatePageContent(pageId, textRef.current);
       }
     };
   }, [pageId, updatePageContent]);
 
   const handleBack = useCallback(() => {
-    const fullText = body ? `${title}\n${body}` : title;
     // Flush pending save
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     if (hasUnsavedRef.current) {
-      updatePageContent(pageId, fullText);
+      updatePageContent(pageId, text);
       hasUnsavedRef.current = false;
     }
     // Delete empty pages
-    if (!fullText.trim()) {
+    if (!text.trim()) {
       deletePage(pageId);
     }
     navigation.goBack();
-  }, [title, body, pageId, updatePageContent, deletePage, navigation]);
+  }, [text, pageId, updatePageContent, deletePage, navigation]);
 
   const handleDelete = useCallback(() => {
     warningNotification();
@@ -486,26 +453,9 @@ const NoteEditor: React.FC = () => {
         )}
 
         <TextInput
-          ref={titleInputRef}
-          style={styles.titleInput}
-          value={title}
-          onChangeText={handleTitleChange}
-          placeholder="title"
-          placeholderTextColor={CALM.textMuted}
-          multiline
-          scrollEnabled={false}
-          autoCorrect={false}
-          autoCapitalize="none"
-          blurOnSubmit={false}
-          returnKeyType="next"
-          onSubmitEditing={() => bodyInputRef.current?.focus()}
-        />
-        <TextInput
-          ref={bodyInputRef}
-          style={styles.bodyInput}
-          value={body}
-          onChangeText={handleBodyChange}
-          onKeyPress={handleBodyKeyPress}
+          ref={inputRef}
+          style={styles.unifiedInput}
+          onChangeText={handleTextChange}
           placeholder="start writing..."
           placeholderTextColor={CALM.textMuted}
           multiline
@@ -513,8 +463,10 @@ const NoteEditor: React.FC = () => {
           scrollEnabled={false}
           autoCorrect={false}
           autoCapitalize="none"
-          keyboardType="default"
-        />
+        >
+          <Text style={styles.titleLine}>{title}</Text>
+          {body !== '' && <Text style={styles.bodyLine}>{'\n' + body}</Text>}
+        </TextInput>
 
         {/* Inline extract button — appears after text */}
         {text.trim().length > 0 && pendingExtractions.length === 0 && !isClassifying && (
@@ -529,19 +481,65 @@ const NoteEditor: React.FC = () => {
           </TouchableOpacity>
         )}
 
-        {/* Classifying indicator — inline */}
+        {/* Classifying indicator — stepped pipeline */}
         {isClassifying && (
-          <View style={styles.classifyingRow}>
-            <ActivityIndicator size="small" color={CALM.bronze} />
-            <Text style={styles.classifyingText}>reading your note...</Text>
+          <View style={styles.classifyingPipeline}>
+            {/* Step 1: Scanning */}
+            <View style={styles.pipelineStep}>
+              {classifyStep === 'scanning' ? (
+                <ActivityIndicator size={10} color={CALM.bronze} />
+              ) : (
+                <Feather name="check" size={10} color={CALM.positive} />
+              )}
+              <Text style={[styles.pipelineLabel, classifyStep !== 'scanning' && styles.pipelineDone]}>
+                scanning
+              </Text>
+            </View>
+            {/* Connector */}
+            <View style={styles.pipelineConnector} />
+            {/* Step 2: AI or Local */}
+            <View style={styles.pipelineStep}>
+              {classifyStep === 'ai' ? (
+                <>
+                  <ActivityIndicator size={10} color={CALM.bronze} />
+                  <Text style={styles.pipelineLabel}>AI</Text>
+                </>
+              ) : classifyStep === 'local' ? (
+                <>
+                  <ActivityIndicator size={10} color={CALM.bronze} />
+                  <Text style={styles.pipelineLabel}>local parser</Text>
+                </>
+              ) : (classifyStep === 'scanning') ? (
+                <>
+                  <Feather name="cpu" size={10} color={CALM.textMuted} />
+                  <Text style={[styles.pipelineLabel, { color: CALM.textMuted }]}>waiting</Text>
+                </>
+              ) : (
+                <>
+                  <Feather name="check" size={10} color={CALM.positive} />
+                  <Text style={styles.pipelineDone}>done</Text>
+                </>
+              )}
+            </View>
           </View>
         )}
 
         {/* Status message — shows after extraction completes */}
         {statusMessage && !isClassifying && (
           <View style={styles.statusRow}>
-            <Feather name="info" size={12} color={CALM.textMuted} />
-            <Text style={styles.statusText}>{statusMessage}</Text>
+            {extractionSource === 'ai' ? (
+              <Feather name="zap" size={12} color={CALM.positive} />
+            ) : extractionSource === 'local' ? (
+              <Feather name="cpu" size={12} color={CALM.bronze} />
+            ) : (
+              <Feather name="info" size={12} color={CALM.textMuted} />
+            )}
+            <Text style={styles.statusText}>
+              {statusMessage}
+              {extractionSource === 'local' && statusMessage && !statusMessage.includes('unavailable') && !statusMessage.includes('nothing') && !statusMessage.includes('no ')
+                ? '  ·  local parser'
+                : ''}
+            </Text>
           </View>
         )}
 
@@ -593,12 +591,14 @@ const NoteEditor: React.FC = () => {
 
             {/* Header */}
             <View style={styles.extractHeader}>
-              <Feather name="zap" size={25} color={CALM.bronze} />
+              <Feather name={extractionSource === 'ai' ? 'zap' : 'cpu'} size={25} color={CALM.bronze} />
               <View>
                 <Text style={styles.extractTitle}>
                   {pendingExtractions.length} item{pendingExtractions.length > 1 ? 's' : ''} found
                 </Text>
-                <Text style={styles.extractHint}>tap to edit</Text>
+                <Text style={styles.extractHint}>
+                  {extractionSource === 'ai' ? 'via AI' : extractionSource === 'local' ? 'via local parser' : 'tap to edit'}
+                </Text>
               </View>
             </View>
 
@@ -887,23 +887,22 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingBottom: SPACING['3xl'],
   },
-  titleInput: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    lineHeight: 32,
-    color: CALM.textPrimary,
+  unifiedInput: {
+    minHeight: 220,
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
-    paddingBottom: 0,
+    paddingBottom: SPACING.xs,
   },
-  bodyInput: {
-    minHeight: 180,
+  titleLine: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.textPrimary,
+    lineHeight: 28,
+  },
+  bodyLine: {
     fontSize: TYPOGRAPHY.size.base,
     lineHeight: 26,
     color: CALM.textPrimary,
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.xs,
   },
   extractBtn: {
     flexDirection: 'row',
@@ -993,17 +992,32 @@ const styles = StyleSheet.create({
   extractScroll: {
     flexShrink: 1,
   },
-  classifyingRow: {
+  classifyingPipeline: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xl,
+    gap: 6,
   },
-  classifyingText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
-    fontStyle: 'italic',
+  pipelineStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  pipelineLabel: {
+    fontSize: 11,
+    color: CALM.bronze,
+    letterSpacing: 0.3,
+  },
+  pipelineDone: {
+    fontSize: 11,
+    color: CALM.positive,
+    letterSpacing: 0.3,
+  },
+  pipelineConnector: {
+    width: 12,
+    height: 1,
+    backgroundColor: CALM.border,
   },
   statusRow: {
     flexDirection: 'row',

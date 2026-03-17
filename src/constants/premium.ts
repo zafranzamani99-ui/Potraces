@@ -9,6 +9,8 @@ export const FREE_TIER = {
   maxAiCallsPerMonth: 100,
   exportData: true,
   googleDocsSync: false,
+  maxActivePlaybooks: 2,
+  maxSavedPlaybooks: 5,
 };
 
 export const PREMIUM_TIER = {
@@ -18,6 +20,8 @@ export const PREMIUM_TIER = {
   maxAiCallsPerMonth: Infinity,
   exportData: true,
   googleDocsSync: true,
+  maxActivePlaybooks: 2,
+  maxSavedPlaybooks: Infinity,
 };
 
 export const TRIAL_DAYS = 7;

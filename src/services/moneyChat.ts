@@ -1,5 +1,5 @@
 /**
- * Money Chat — Gemini-powered conversational AI
+ * Echo — Gemini-powered conversational AI
  * that knows all the user's financial data.
  *
  * Rich context from all stores, Potraces personality,
@@ -16,10 +16,13 @@ import { useBusinessStore } from '../store/businessStore';
 import { useSellerStore } from '../store/sellerStore';
 import { useAppStore } from '../store/appStore';
 import { useSavingsStore } from '../store/savingsStore';
+import { usePlaybookStore } from '../store/playbookStore';
+import { computePlaybookStats } from '../utils/playbookStats';
 import { AIMessage } from '../types';
 import { ACTION_PROMPT } from './chatActions';
+import { useLearningStore } from '../store/learningStore';
 
-const SYSTEM_PROMPT = `You are the Money Chat inside Potraces, a Malaysian personal finance app built for young adults.
+const SYSTEM_PROMPT = `You are Echo, the AI inside Potraces, a Malaysian personal finance app built for young adults.
 
 WHO YOU ARE:
 - A calm, warm, honest Malaysian friend who knows all their financial data
@@ -91,6 +94,13 @@ Good: [creates 5 expense actions with auto categories] "Got all 5 — RM 950 tot
 Bad: "What category for uniqlo jacket? Which wallet?" (asking unnecessary questions — just auto-pick and let them edit)
 
 SCENARIO HANDLING:
+
+Playbook awareness — when user has active playbooks:
+- When user asks "macam mana gaji aku?" or "where did my salary go?": Show the playbook waterfall — list each category and how much went there
+- When discussing spending, reference the playbook: "From your March Salary, RM 890 went to food — that's 28% of the total"
+- If a playbook is running low, state calmly: "Your March Salary has RM 340 left with 8 days to go — about RM 42/day"
+- After recording expenses via chat: mention which playbook it was linked to and the remaining balance
+- Never say "you're running out" or "you should stop spending" — just show the numbers
 
 Budget stress — when user says "i'm over budget" or "habis duit":
 - Show the numbers calmly: which categories still have breathing room, which don't
@@ -425,6 +435,20 @@ Portfolio: RM ${totalPortfolio.toFixed(2)} (invested RM ${totalInvested.toFixed(
 ${savingsLines}`;
   }
 
+  // Active Playbooks (salary envelope tracking)
+  const pbStore = usePlaybookStore.getState();
+  const activePbs = pbStore.getActivePlaybooks();
+  if (activePbs.length > 0) {
+    const pbLines = activePbs.map((pb) => {
+      const stats = computePlaybookStats(pb, transactions);
+      const topCats = stats.categoryBreakdown.slice(0, 5)
+        .map((c) => `${c.category}: RM ${c.spent.toFixed(0)} (${c.percentOfTotal.toFixed(0)}%)`)
+        .join(', ');
+      return `  ${pb.name}: RM ${pb.sourceAmount.toFixed(2)} → spent RM ${stats.totalSpent.toFixed(2)}, RM ${stats.remaining.toFixed(2)} remaining (${stats.percentSpent.toFixed(0)}%), ~RM ${stats.dailyBurnRate.toFixed(0)}/day${stats.daysUntilEmpty != null ? `, ~${stats.daysUntilEmpty}d until empty` : ''}. Top: ${topCats || '(none yet)'}`;
+    }).join('\n');
+    ctx += `\n\nActive Playbooks (salary envelope tracking):\n${pbLines}`;
+  }
+
   // Business context
   if (mode === 'business') {
     const biz = useBusinessStore.getState();
@@ -523,7 +547,8 @@ export async function sendChatMessage(
 
   try {
     const context = buildFinancialContext();
-    const fullSystem = `${SYSTEM_PROMPT}\n\n${ACTION_PROMPT}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
+    const learnedHints = useLearningStore.getState().getPromptHints();
+    const fullSystem = `${SYSTEM_PROMPT}\n\n${ACTION_PROMPT}${learnedHints}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
 
     // Build conversation history — last 10 messages to keep token usage low
     const recentHistory = history.slice(-10);

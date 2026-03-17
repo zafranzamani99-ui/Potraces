@@ -30,6 +30,8 @@ export type BusinessTransaction = {
   costCategoryOther?: string;
   platform?: string;
   streamLabel?: string;         // mixed mode: user-defined stream label
+  linkedPaymentId?: string;
+  linkedDebtId?: string;
 };
 
 export type Client = {
@@ -529,6 +531,7 @@ export interface Transaction {
   linkedPaymentId?: string;
   linkedDebtId?: string;
   editLog?: TransactionEdit[];
+  playbookLinks?: PlaybookExpenseLink[];
 }
 
 export interface AIMessageAction {
@@ -587,11 +590,57 @@ export interface Budget {
   updatedAt: Date;
 }
 
+// ─── Playbook Types ─────────────────────────────────────────
+
+export interface PlaybookAllocation {
+  category: string;        // expense category ID (food, transport, etc.)
+  allocatedAmount: number; // budget for this category within this playbook
+}
+
+export interface PlaybookExpenseLink {
+  playbookId: string;
+  amount: number;          // how much of this expense drains from this playbook
+}
+
+export interface Playbook {
+  id: string;
+  name: string;                          // "March Salary", "Freelance Gig #4"
+  sourceAmount: number;                  // total income that started this playbook
+  sourceTransactionId?: string;          // link to the income Transaction.id
+  allocations: PlaybookAllocation[];     // optional per-category budgets within this playbook
+  linkedExpenseIds: string[];            // Transaction IDs of linked expenses
+  startDate: Date;
+  suggestedEndDate: Date;                // auto-calculated: startDate + 30 days
+  endDate?: Date;                        // set when user closes it
+  isActive: boolean;                     // true = accepting new expenses
+  isClosed: boolean;                     // true = user closed it, now read-only in Past tab
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PlaybookStats {
+  totalIncome: number;
+  totalSpent: number;
+  remaining: number;
+  percentSpent: number;
+  categoryBreakdown: {
+    category: string;
+    spent: number;
+    allocated?: number;
+    percentOfTotal: number;
+  }[];
+  linkedTransactionCount: number;
+  daysActive: number;
+  dailyBurnRate: number;
+  daysUntilEmpty?: number;
+}
+
 export interface GoalContribution {
   id: string;
   amount: number;
   note?: string;
   date: Date;
+  walletId?: string;
 }
 
 export interface GoalMilestone {
@@ -839,7 +888,7 @@ export interface PersonalState {
   addGoal: (goal: Omit<Goal, 'id' | 'currentAmount' | 'contributions' | 'milestones' | 'createdAt' | 'updatedAt'>) => void;
   updateGoal: (id: string, updates: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
-  contributeToGoal: (goalId: string, amount: number, note?: string) => void;
+  contributeToGoal: (goalId: string, amount: number, note?: string, walletId?: string) => void;
   withdrawFromGoal: (goalId: string, amount: number, note?: string) => void;
   removeContribution: (goalId: string, contributionId: string) => void;
   archiveGoal: (goalId: string) => void;
@@ -870,6 +919,7 @@ export interface BusinessState {
   completeSetup: () => void;
   resetSetup: () => void;
   addBusinessTransaction: (tx: Omit<BusinessTransaction, 'id'>) => string;
+  updateBusinessTransaction: (id: string, updates: Partial<BusinessTransaction>) => void;
   deleteBusinessTransaction: (id: string) => void;
   addClient: (client: Omit<Client, 'id' | 'totalPaid' | 'paymentHistory'>) => void;
   logClientPayment: (clientId: string, amount: number, date: Date) => void;
@@ -1035,7 +1085,7 @@ export interface PremiumState {
 
 export type ExtractionIntent =
   | 'expense' | 'income' | 'debt' | 'debt_update' | 'bnpl'
-  | 'seller_order' | 'seller_cost' | 'query' | 'savings_goal' | 'subscription' | 'plain';
+  | 'seller_order' | 'seller_cost' | 'query' | 'savings_goal' | 'subscription' | 'playbook' | 'plain';
 
 export interface AIExtraction {
   id: string;

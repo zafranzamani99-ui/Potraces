@@ -387,7 +387,7 @@ const AccountOverview: React.FC = () => {
               <Text style={styles.sectionSubtitle}>{data.txCount} transactions</Text>
             </View>
             {data.topCategories.map((cat, i) => (
-              <View key={cat.id} style={styles.categoryRow}>
+              <View key={`${cat.id}-${i}`} style={styles.categoryRow}>
                 <View style={[styles.categoryDot, { backgroundColor: cat.color }]} />
                 <View style={styles.categoryInfo}>
                   <Text style={styles.categoryName} numberOfLines={1}>

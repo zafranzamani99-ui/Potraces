@@ -23,6 +23,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useAppStore } from '../../store/appStore';
 import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import { useWalletStore } from '../../store/walletStore';
+import { useLearningStore } from '../../store/learningStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { AIMessage, AIMessageAction } from '../../types';
 import { useCategories } from '../../hooks/useCategories';
@@ -279,14 +280,28 @@ const ActionEditModal = ({
   const handleConfirm = () => {
     const selectedCat = categories.find((c) => c.id === categoryId);
     const selectedWallet = wallets.find((w) => w.id === walletId);
+    const finalDesc = desc.trim() || action.description;
+    const finalCategory = selectedCat?.id || action.category;
+    const finalWallet = selectedWallet?.name || action.wallet;
+    const finalPerson = person.trim() || action.person;
+
+    // Learn from any corrections the user made
+    const learn = useLearningStore.getState();
+    if (finalDesc && finalCategory) learn.learnCategory(finalDesc, finalCategory);
+    if (finalDesc && finalWallet) learn.learnWallet(finalDesc, finalWallet);
+    if (actionType !== action.type && finalDesc) learn.learnTypeCorrection(finalDesc, actionType);
+    if (finalPerson && action.person && finalPerson !== action.person) {
+      learn.learnPersonAlias(action.person, finalPerson);
+    }
+
     onConfirm({
       ...action,
       type: actionType,
-      description: desc.trim() || action.description,
+      description: finalDesc,
       amount: parseFloat(amount) || action.amount,
-      category: selectedCat?.id || action.category,
-      wallet: selectedWallet?.name || action.wallet,
-      person: person.trim() || action.person,
+      category: finalCategory,
+      wallet: finalWallet,
+      person: finalPerson,
       debtType: showPerson ? debtType : action.debtType,
     });
   };
@@ -846,7 +861,7 @@ const MoneyChat: React.FC = () => {
         {chatMessages.length === 0 && !isLoading ? (
           <View style={styles.emptyState}>
             <Feather name="message-circle" size={48} color={CALM.border} />
-            <Text style={styles.emptyTitle}>Money Chat</Text>
+            <Text style={styles.emptyTitle}>Echo</Text>
             <Text style={styles.emptySubtitle}>
               {isBusinessMode
                 ? 'Ask anything about your earnings'

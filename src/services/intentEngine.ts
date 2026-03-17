@@ -15,10 +15,13 @@ import { usePremiumStore } from '../store/premiumStore';
 import { useLearningStore } from '../store/learningStore';
 import { callGeminiAPI, isGeminiAvailable } from './geminiClient';
 
+export type ExtractionSource = 'ai' | 'local';
+
 export interface IntentResult {
   intent: ExtractionIntent;
   extractions: AIExtraction[];
   confidence: 'high' | 'low';
+  source?: ExtractionSource;
   rawResponse?: string;
 }
 
@@ -51,6 +54,7 @@ INTENT TYPES:
 - seller_cost: business cost/ingredient purchase
 - query: user asking a question about their finances
 - savings_goal: saving or investment action
+- playbook: income/salary with a spending breakdown (title + total + category-amount lines)
 - plain: no financial content
 
 For each financial item found, return a JSON object:
@@ -102,6 +106,14 @@ Users often write quick structured notes. Understand these patterns:
 7. MATH/BALANCE LINES: Lines that are pure arithmetic like "110+20-3-7.5 = 76.7" are the user's own calculations. SKIP these — do not extract them as items.
 
 8. CASH ADDITIONS: "cash + 20" or "cash +20" = income RM20, description: cash, category: other. The "+" indicates money received.
+
+9. SALARY/PLAYBOOK PATTERN:
+   A title line (e.g. "Gaji March", "salary jan", "income feb") followed by a total amount, then itemised "description-amount" or "description amount" lines = playbook (salary envelope).
+   The total is the income. Each subsequent line is a budget ALLOCATION (NOT an expense — money hasn't been spent yet, these are planned limits).
+   Return ONE item inside the items array with intent "playbook":
+   { "intent": "playbook", "items": [{ "intent": "playbook", "amount": 2600, "description": "Gaji March", "type": "income", "category": "salary", "confidence": "high", "allocations": [ { "label": "makan", "category": "food", "amount": 600 }, { "label": "rumah", "category": "rent", "amount": 700 } ] }] }
+   Map allocation labels to the closest match from AVAILABLE CATEGORIES. If unsure, use "other".
+   Key signal: the allocation amounts roughly add up to the total. This distinguishes a playbook from a list of expenses.
 
 RULES:
 - Currency is always MYR (RM). Amount can appear with or without "RM" prefix.
@@ -155,7 +167,12 @@ function parseGeminiResponse(raw: string): IntentResult | null {
 
     const parsed = JSON.parse(cleaned);
     const intent: ExtractionIntent = parsed.intent || 'plain';
-    const items: any[] = Array.isArray(parsed.items) ? parsed.items : [];
+    // Gemini may return items array, or a flat object (single-item like playbook)
+    let items: any[] = Array.isArray(parsed.items) ? parsed.items : [];
+    if (items.length === 0 && parsed.amount && parsed.description) {
+      // Flat single-item response — wrap it
+      items = [parsed];
+    }
 
     const extractions: AIExtraction[] = items.map((item) => ({
       id: makeId(),
@@ -168,6 +185,7 @@ function parseGeminiResponse(raw: string): IntentResult | null {
         transactionType: item.type || 'expense',
         wallet: item.wallet || null,
         person: item.person || null,
+        allocations: item.allocations || null,
       },
       status: 'pending' as const,
       confirmedAt: undefined,
@@ -185,8 +203,69 @@ function parseGeminiResponse(raw: string): IntentResult | null {
 }
 
 /**
+ * Detect salary/playbook pattern locally:
+ * Line 1: title with income keyword (gaji, salary, income)
+ * Line 2: standalone total amount
+ * Lines 3+: description-amount allocation lines
+ */
+const PLAYBOOK_TITLE = /\b(gaji|salary|income|pay|upah|wage)\b/i;
+
+function detectLocalPlaybook(text: string): IntentResult | null {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 3) return null;
+
+  // First line: title with income keyword
+  if (!PLAYBOOK_TITLE.test(lines[0])) return null;
+
+  // Second line: standalone number (total amount)
+  const totalMatch = lines[1].match(/^[\s]*(\d+(?:\.\d{1,2})?)[\s]*$/);
+  if (!totalMatch) return null;
+  const totalAmount = parseFloat(totalMatch[1]);
+  if (totalAmount <= 0) return null;
+
+  // Remaining lines: description-amount or amount-description allocations
+  const allocLines = lines.slice(2);
+  const allocations: { label: string; category: string; amount: number }[] = [];
+  const ALLOC_LAST = /^(.+?)[-–\s]+(\d+(?:\.\d{1,2})?)\s*$/;
+  const ALLOC_FIRST = /^(\d+(?:\.\d{1,2})?)\s*[-–]\s*(.+)$/;
+
+  for (const al of allocLines) {
+    let match = ALLOC_LAST.exec(al);
+    if (match) {
+      allocations.push({ label: match[1].trim(), category: matchCategory(match[1]) || 'other', amount: parseFloat(match[2]) });
+      continue;
+    }
+    match = ALLOC_FIRST.exec(al);
+    if (match) {
+      allocations.push({ label: match[2].trim(), category: matchCategory(match[2]) || 'other', amount: parseFloat(match[1]) });
+    }
+    // Lines that don't match allocation pattern are ignored
+  }
+
+  if (allocations.length < 2) return null;
+
+  const extraction: AIExtraction = {
+    id: makeId(),
+    type: 'playbook',
+    rawText: text,
+    extractedData: {
+      amount: totalAmount,
+      description: lines[0],
+      category: 'salary',
+      transactionType: 'income',
+      wallet: null,
+      person: null,
+      allocations,
+    },
+    status: 'pending' as const,
+  };
+
+  return { intent: 'playbook', extractions: [extraction], confidence: 'low' };
+}
+
+/**
  * Build a local-only IntentResult from pre-filter data.
- * Tries structured line parsing first (for debt lists with headers),
+ * Tries playbook detection first, then structured line parsing (debt lists),
  * then falls back to generic amount-based extraction.
  */
 function buildLocalResult(
@@ -194,6 +273,10 @@ function buildLocalResult(
   amounts: number[],
   intent: ExtractionIntent
 ): IntentResult {
+  // Try playbook pattern first (salary envelope)
+  const playbook = detectLocalPlaybook(text);
+  if (playbook) return playbook;
+
   // Try structured line parsing (multi-line debt format)
   const structured = parseStructuredLines(text);
   if (structured && structured.length > 0) {
@@ -224,6 +307,7 @@ function buildLocalResult(
   }
 
   // Generic: one extraction per amount
+  const suggestedWallet = useLearningStore.getState().getSuggestedWallet(text);
   const extractions: AIExtraction[] = amounts.map((amount) => ({
     id: makeId(),
     type: intent,
@@ -233,7 +317,7 @@ function buildLocalResult(
       description: text.replace(/rm\s*\d+(?:\.\d{1,2})?/gi, '').trim(),
       category: matchCategory(text),
       transactionType: intent === 'income' ? 'income' : 'expense',
-      wallet: null,
+      wallet: suggestedWallet,
       person: null,
     },
     status: 'pending' as const,
@@ -315,16 +399,18 @@ function mergeByPerson(result: IntentResult): IntentResult {
  */
 export async function classifyIntent(
   text: string,
-  walletNames: string[] = []
+  walletNames: string[] = [],
+  onStep?: (step: 'scanning' | 'ai' | 'local') => void
 ): Promise<IntentResult | null> {
   if (!text.trim()) return null;
 
   // Step 1: Local pre-filter
+  onStep?.('scanning');
   const pf = preFilter(text);
 
   // No financial content at all → plain text, no AI call needed
   if (!pf.hasFinancialContent) {
-    return { intent: 'plain', extractions: [], confidence: 'high' };
+    return { intent: 'plain', extractions: [], confidence: 'high', source: 'local' };
   }
 
   // Step 2: Check AI quota + cooldown
@@ -332,13 +418,16 @@ export async function classifyIntent(
   const aiAvailable = premium.canUseAI() && isGeminiAvailable();
   if (!aiAvailable) {
     // Over quota or rate-limited — fallback to local only
+    onStep?.('local');
     if (pf.amounts.length > 0 && pf.hintIntent) {
-      return mergeByPerson(buildLocalResult(text, pf.amounts, pf.hintIntent));
+      const r = mergeByPerson(buildLocalResult(text, pf.amounts, pf.hintIntent));
+      return { ...r, source: 'local' };
     }
-    return { intent: 'plain', extractions: [], confidence: 'low' };
+    return { intent: 'plain', extractions: [], confidence: 'low', source: 'local' };
   }
 
   // Step 3: Try Gemini for structured extraction
+  onStep?.('ai');
   const geminiRaw = await callGemini(text, walletNames);
   if (geminiRaw) {
     premium.incrementAiCalls();
@@ -360,15 +449,18 @@ export async function classifyIntent(
           if (preferred) data.person = preferred;
         }
       }
-      return mergeByPerson(result);
+      const merged = mergeByPerson(result);
+      return { ...merged, source: 'ai' };
     }
     // Gemini returned but with empty items — trust it
-    if (result) return result;
+    if (result) return { ...result, source: 'ai' };
   }
 
   // Step 4: Fallback to local-only extraction
+  onStep?.('local');
   if (pf.amounts.length > 0 && pf.hintIntent) {
-    return mergeByPerson(buildLocalResult(text, pf.amounts, pf.hintIntent));
+    const r = mergeByPerson(buildLocalResult(text, pf.amounts, pf.hintIntent));
+    return { ...r, source: 'local' };
   }
 
   // Query detected but no amounts

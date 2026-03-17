@@ -38,6 +38,8 @@ import CollapsibleSection from '../../components/common/CollapsibleSection';
 import { useWalletStore } from '../../store/walletStore';
 import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
+import { usePlaybookStore } from '../../store/playbookStore';
+import { useLearningStore } from '../../store/learningStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToast } from '../../context/ToastContext';
 import { Transaction, CategoryOption } from '../../types';
@@ -367,6 +369,16 @@ const PersonalDashboard: React.FC = () => {
       tags: editTags ? editTags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     });
 
+    // Learn from user edits
+    const learn = useLearningStore.getState();
+    const descTrimmed = editDescription.trim();
+    if (descTrimmed && editCategory) learn.learnCategory(descTrimmed, editCategory);
+    if (descTrimmed && editWalletId) {
+      const wName = useWalletStore.getState().wallets.find((w) => w.id === editWalletId)?.name;
+      if (wName) learn.learnWallet(descTrimmed, wName);
+    }
+    if (editType !== oldType && descTrimmed) learn.learnTypeCorrection(descTrimmed, editType);
+
     // Sync amount change back to linked debt payment (no double wallet adjustment)
     if (newAmount !== oldAmount) {
       const { linkedDebtId, linkedPaymentId } = editingTransaction;
@@ -424,6 +436,12 @@ const PersonalDashboard: React.FC = () => {
       if (linkedDebtId && linkedPaymentId) {
         useDebtStore.getState().deletePayment(linkedDebtId, linkedPaymentId);
       }
+      // Clean up linked seller ingredient cost
+      const linkedCost = useSellerStore.getState().ingredientCosts.find(
+        (c) => c.personalTransactionId === editingTransaction.id
+      );
+      if (linkedCost) useSellerStore.getState().deleteIngredientCost(linkedCost.id);
+      usePlaybookStore.getState().unlinkAllFromTransaction(editingTransaction.id);
       deleteTransaction(editingTransaction.id);
       setEditModalVisible(false);
       setEditingTransaction(null);

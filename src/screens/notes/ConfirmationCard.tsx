@@ -11,6 +11,7 @@ import { AIExtraction } from '../../types';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { lightTap, mediumTap } from '../../services/haptics';
 import { useFadeSlide } from '../../utils/fadeSlide';
+import { useLearningStore } from '../../store/learningStore';
 
 interface ConfirmationCardProps {
   extraction: AIExtraction;
@@ -29,6 +30,7 @@ const INTENT_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   seller_cost: 'package',
   query: 'help-circle',
   savings_goal: 'target',
+  playbook: 'book-open',
   plain: 'file-text',
 };
 
@@ -42,6 +44,7 @@ const INTENT_LABELS: Record<string, string> = {
   seller_cost: 'Cost',
   query: 'Question',
   savings_goal: 'Savings',
+  playbook: 'Playbook',
   plain: 'Note',
 };
 
@@ -61,8 +64,12 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
 
   const handleConfirm = useCallback(() => {
     mediumTap();
+    // Positive reinforcement — AI got it right, reinforce patterns
+    const learn = useLearningStore.getState();
+    if (description && category) learn.learnCategory(description, category);
+    if (description && wallet) learn.learnWallet(description, wallet);
     onConfirm(extraction.id);
-  }, [extraction.id, onConfirm]);
+  }, [extraction.id, description, category, wallet, onConfirm]);
 
   const handleSkip = useCallback(() => {
     lightTap();
@@ -123,6 +130,18 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
           <Text style={styles.amount}>RM {amount.toFixed(2)}</Text>
         )}
       </TouchableOpacity>
+
+      {/* Playbook allocations preview */}
+      {type === 'playbook' && extractedData.allocations?.length > 0 && (
+        <View style={styles.allocList}>
+          {extractedData.allocations.map((a: any, i: number) => (
+            <View key={i} style={styles.allocRow}>
+              <Text style={styles.allocLabel} numberOfLines={1}>{a.label || a.category}</Text>
+              <Text style={styles.allocAmount}>RM {(a.amount || 0).toFixed(0)}</Text>
+            </View>
+          ))}
+        </View>
+      )}
 
       {/* Actions */}
       <View style={styles.actions}>
@@ -231,5 +250,30 @@ const styles = StyleSheet.create({
   doneTextSkipped: {
     color: CALM.textMuted,
     textDecorationLine: 'line-through',
+  },
+  allocList: {
+    backgroundColor: withAlpha(CALM.accent, 0.04),
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    gap: 2,
+    marginLeft: 36 + SPACING.sm,
+  },
+  allocRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  allocLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+    flex: 1,
+  },
+  allocAmount: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
   },
 });

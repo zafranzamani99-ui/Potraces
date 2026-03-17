@@ -168,7 +168,7 @@ export const useLearningStore = create<LearningState>()(
       },
 
       getPromptHints: () => {
-        const { categoryPatterns, personAliases, typeCorrections } = get();
+        const { categoryPatterns, personAliases, walletPreferences, typeCorrections } = get();
         const hints: string[] = [];
 
         // Category patterns (count >= 2)
@@ -180,6 +180,12 @@ export const useLearningStore = create<LearningState>()(
         // Person aliases
         for (const a of personAliases.slice(0, 10)) {
           hints.push(`"${a.raw}" is a person, preferred name: "${a.preferred}"`);
+        }
+
+        // Wallet preferences (count >= 2)
+        const wallets = walletPreferences.filter((w) => w.count >= 2);
+        for (const w of wallets.slice(0, 5)) {
+          hints.push(`"${w.keyword}" → wallet "${w.wallet}"`);
         }
 
         // Type corrections (count >= 2)

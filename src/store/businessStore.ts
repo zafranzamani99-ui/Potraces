@@ -123,6 +123,13 @@ export const useBusinessStore = create<BusinessState>()(
         return id;
       },
 
+      updateBusinessTransaction: (id, updates) =>
+        set((state) => ({
+          businessTransactions: state.businessTransactions.map((t) =>
+            t.id === id ? { ...t, ...updates } : t
+          ),
+        })),
+
       deleteBusinessTransaction: (id) =>
         set((state) => ({
           businessTransactions: state.businessTransactions.filter((t) => t.id !== id),

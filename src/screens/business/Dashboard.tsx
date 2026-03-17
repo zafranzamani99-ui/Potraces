@@ -301,7 +301,7 @@ const BusinessDashboard: React.FC = () => {
             onPress={() => navigation.getParent()?.navigate('MoneyChat')}
           >
             <Feather name="message-circle" size={20} color={CALM.bronze} />
-            <Text style={styles.quickActionText}>Money Chat</Text>
+            <Text style={styles.quickActionText}>Echo</Text>
           </TouchableOpacity>
         </View>
 

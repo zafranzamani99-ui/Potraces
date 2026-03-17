@@ -112,8 +112,8 @@ const BreathingRoom: React.FC<BreathingRoomProps> = ({ onPress }) => {
         )}
       </View>
 
-      {entries.slice(0, 4).map((entry) => (
-        <View key={entry.category} style={styles.row}>
+      {entries.slice(0, 4).map((entry, idx) => (
+        <View key={`${entry.category}-${idx}`} style={styles.row}>
           <View style={styles.rowTop}>
             <Text style={styles.categoryName}>{entry.categoryName}</Text>
             <Text style={[styles.statusLabel, { color: barColor(entry.percent) }]}>

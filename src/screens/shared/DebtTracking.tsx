@@ -37,6 +37,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useWalletStore } from '../../store/walletStore';
+import { useLearningStore } from '../../store/learningStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   CALM,
@@ -121,6 +122,7 @@ const DebtTracking: React.FC = () => {
   const updateTransaction = usePersonalStore((state) => state.updateTransaction);
   const deleteTransaction = usePersonalStore((state) => state.deleteTransaction);
   const addBusinessTransaction = useBusinessStore((state) => state.addBusinessTransaction);
+  const updateBusinessTransaction = useBusinessStore((state) => state.updateBusinessTransaction);
   const deleteBusinessTransaction = useBusinessStore((state) => state.deleteBusinessTransaction);
 
   const wallets = useWalletStore((s) => s.wallets);
@@ -540,6 +542,11 @@ const DebtTracking: React.FC = () => {
         dueDate: debtDueDateObj ? debtDueDateObj.toISOString() : undefined,
         mode,
       } as any);
+      // Learn person alias from description
+      const contactName = debtContacts[0]?.name;
+      if (contactName && debtDescription.trim()) {
+        useLearningStore.getState().learnPersonAlias(debtDescription.trim(), contactName);
+      }
       showToast('Debt added!', 'success');
     }
 
@@ -703,11 +710,18 @@ const DebtTracking: React.FC = () => {
     });
 
     // Store reverse link on transaction so edits can sync back
-    if (linkedTransactionId && paymentId && mode === 'personal') {
-      updateTransaction(linkedTransactionId, {
-        linkedPaymentId: paymentId,
-        linkedDebtId: debt.id,
-      });
+    if (linkedTransactionId && paymentId) {
+      if (mode === 'personal') {
+        updateTransaction(linkedTransactionId, {
+          linkedPaymentId: paymentId,
+          linkedDebtId: debt.id,
+        });
+      } else {
+        updateBusinessTransaction(linkedTransactionId, {
+          linkedPaymentId: paymentId,
+          linkedDebtId: debt.id,
+        });
+      }
     }
 
     // Check if debt is now settled → mark split participant as paid
@@ -823,9 +837,13 @@ const DebtTracking: React.FC = () => {
       note: editPayNote.trim() || undefined,
     });
 
-    // Sync linked transaction amount if amount changed (personal mode only — no updateBusinessTransaction exists)
-    if (amountChanged && payDetailPayment.linkedTransactionId && mode === 'personal') {
-      updateTransaction(payDetailPayment.linkedTransactionId, { amount: newAmount });
+    // Sync linked transaction amount if amount changed
+    if (amountChanged && payDetailPayment.linkedTransactionId) {
+      if (mode === 'personal') {
+        updateTransaction(payDetailPayment.linkedTransactionId, { amount: newAmount });
+      } else {
+        updateBusinessTransaction(payDetailPayment.linkedTransactionId, { amount: newAmount });
+      }
     }
 
     // Sync wallet balance if amount changed — read debt type from store directly (avoid stale closure)

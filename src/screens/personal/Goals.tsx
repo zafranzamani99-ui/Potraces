@@ -393,7 +393,8 @@ const Goals: React.FC = () => {
     contributeToGoal(
       contributingGoal.id,
       amount,
-      contributeNote.trim() || undefined
+      contributeNote.trim() || undefined,
+      contributeWalletId || undefined
     );
 
     // Deduct from wallet if selected
@@ -446,6 +447,10 @@ const Goals: React.FC = () => {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
+            // Refund wallet if contribution was charged to one
+            if (contrib.walletId) {
+              useWalletStore.getState().addToWallet(contrib.walletId, contrib.amount);
+            }
             removeContribution(goalId, contrib.id);
             showToast('contribution removed.', 'success');
             const updated = usePersonalStore.getState().goals.find((g) => g.id === goalId);

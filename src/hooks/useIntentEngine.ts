@@ -7,12 +7,14 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { classifyIntent, IntentResult } from '../services/intentEngine';
 import { answerQuery, QueryAnswer } from '../services/queryEngine';
 import { isGeminiAvailable } from '../services/geminiClient';
+import { usePremiumStore } from '../store/premiumStore';
 import { useNotesStore } from '../store/notesStore';
 import { usePersonalStore } from '../store/personalStore';
 import { useWalletStore } from '../store/walletStore';
 import { useAppStore } from '../store/appStore';
 import { useDebtStore } from '../store/debtStore';
 import { useSellerStore } from '../store/sellerStore';
+import { usePlaybookStore } from '../store/playbookStore';
 import { AIExtraction } from '../types';
 
 interface UseIntentEngineOptions {
@@ -20,8 +22,12 @@ interface UseIntentEngineOptions {
   enabled?: boolean;
 }
 
+export type ClassifyStep = 'scanning' | 'ai' | 'local' | null;
+
 interface UseIntentEngineReturn {
   isClassifying: boolean;
+  classifyStep: ClassifyStep;
+  extractionSource: 'ai' | 'local' | null;
   result: IntentResult | null;
   extractions: AIExtraction[];
   queryAnswer: QueryAnswer | null;
@@ -36,6 +42,8 @@ export function useIntentEngine({
   enabled = true,
 }: UseIntentEngineOptions): UseIntentEngineReturn {
   const [isClassifying, setIsClassifying] = useState(false);
+  const [classifyStep, setClassifyStep] = useState<ClassifyStep>(null);
+  const [extractionSource, setExtractionSource] = useState<'ai' | 'local' | null>(null);
   const [result, setResult] = useState<IntentResult | null>(null);
   const [queryAnswer, setQueryAnswer] = useState<QueryAnswer | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -76,14 +84,19 @@ export function useIntentEngine({
       if (!text.trim() || !enabled) return;
       abortRef.current = false;
       setIsClassifying(true);
+      setClassifyStep('scanning');
+      setExtractionSource(null);
       setStatusMessage(null);
 
       const aiWasAvailable = isGeminiAvailable();
 
       try {
-        const intentResult = await classifyIntent(text, walletNames);
+        const intentResult = await classifyIntent(text, walletNames, (step) => {
+          if (!abortRef.current) setClassifyStep(step);
+        });
         if (abortRef.current) return;
 
+        setExtractionSource(intentResult?.source || null);
         setResult(intentResult);
 
         // Answer queries inline
@@ -113,12 +126,20 @@ export function useIntentEngine({
         }
 
         // Status feedback
-        if (addedCount > 0) {
-          // Cards appeared — no message needed
+        const usedLocal = intentResult?.source === 'local';
+        const aiLeft = usePremiumStore.getState().getRemainingAiCalls();
+
+        if (addedCount > 0 && usedLocal && !aiWasAvailable) {
+          // Local parser worked but AI was unavailable — tell user
+          showStatus(`extracted via local parser · ${aiLeft} AI calls left`, 5000);
+        } else if (addedCount > 0) {
+          // Cards appeared — no extra message needed
         } else if (intentResult?.intent === 'plain') {
           showStatus('no financial content found');
         } else if (!aiWasAvailable) {
-          showStatus('ai unavailable — try again later');
+          showStatus(aiLeft <= 0
+            ? 'AI limit reached this month · using local parser'
+            : 'AI temporarily unavailable · using local parser');
         } else if (intentResult?.extractions?.length === 0) {
           showStatus('nothing to extract');
         } else {
@@ -128,7 +149,10 @@ export function useIntentEngine({
         console.warn('[useIntentEngine] Classification failed:', err);
         showStatus('extraction failed — try again');
       } finally {
-        if (!abortRef.current) setIsClassifying(false);
+        if (!abortRef.current) {
+          setIsClassifying(false);
+          setClassifyStep(null);
+        }
       }
     },
     [pageId, enabled, walletNames, page?.extractions, addExtraction, showStatus]
@@ -164,6 +188,7 @@ export function useIntentEngine({
         (extraction.type === 'expense' || extraction.type === 'income') &&
         amount > 0
       ) {
+        const wId = resolveWalletId();
         const txnId = addTransaction({
           amount,
           category: category || 'other',
@@ -171,11 +196,19 @@ export function useIntentEngine({
           date: new Date(),
           type: transactionType === 'income' ? 'income' : 'expense',
           mode,
-          walletId: resolveWalletId(),
+          walletId: wId,
           inputMethod: 'text',
           rawInput: extraction.rawText,
           confidence: 'high',
         });
+        // Adjust wallet balance
+        if (wId) {
+          if (transactionType === 'income') {
+            useWalletStore.getState().addToWallet(wId, amount);
+          } else {
+            useWalletStore.getState().deductFromWallet(wId, amount);
+          }
+        }
         updateExtractionStatus(pageId, extractionId, 'confirmed', txnId);
         return;
       }
@@ -216,12 +249,21 @@ export function useIntentEngine({
         );
 
         if (matchingDebt) {
+          const pWalletId = resolveWalletId();
           const paymentId = addPayment(matchingDebt.id, {
             amount,
             date: new Date(),
             note: description || 'payment from note',
-            walletId: resolveWalletId(),
+            walletId: pWalletId,
           });
+          // Adjust wallet: i_owe → money out, they_owe → money in
+          if (pWalletId) {
+            if (matchingDebt.type === 'i_owe') {
+              useWalletStore.getState().deductFromWallet(pWalletId, amount);
+            } else {
+              useWalletStore.getState().addToWallet(pWalletId, amount);
+            }
+          }
           updateExtractionStatus(pageId, extractionId, 'confirmed', paymentId);
         } else {
           // No matching debt — just mark confirmed
@@ -285,6 +327,42 @@ export function useIntentEngine({
         return;
       }
 
+      // ── Playbook → income tx + playbookStore ──
+      if (extraction.type === 'playbook' && amount > 0) {
+        const wId = resolveWalletId();
+        // Create income transaction
+        const txId = addTransaction({
+          amount,
+          category: category || 'salary',
+          description: description || 'income',
+          date: new Date(),
+          type: 'income',
+          mode,
+          walletId: wId,
+          inputMethod: 'text',
+          rawInput: extraction.rawText,
+          confidence: 'high',
+        });
+        if (wId) useWalletStore.getState().addToWallet(wId, amount);
+
+        // Map allocations to PlaybookAllocation[]
+        const rawAllocs = extraction.extractedData.allocations || [];
+        const allocations = rawAllocs.map((a: any) => ({
+          category: a.category || 'other',
+          allocatedAmount: a.amount || 0,
+        }));
+
+        // Create playbook
+        const pbId = usePlaybookStore.getState().createPlaybook({
+          name: description || 'playbook',
+          sourceAmount: amount,
+          sourceTransactionId: txId,
+          allocations,
+        });
+        updateExtractionStatus(pageId, extractionId, 'confirmed', pbId || txId);
+        return;
+      }
+
       // ── Seller Order → sellerStore (simplified — no product matching) ──
       // Orders are complex (need items array). Mark confirmed and let user
       // create the full order through NewOrder screen.
@@ -317,6 +395,8 @@ export function useIntentEngine({
 
   return {
     isClassifying,
+    classifyStep,
+    extractionSource,
     result,
     extractions: page?.extractions || [],
     queryAnswer,

@@ -11,7 +11,10 @@ import { useDebtStore } from '../store/debtStore';
 import { useWalletStore } from '../store/walletStore';
 import { useSavingsStore } from '../store/savingsStore';
 import { useAppStore } from '../store/appStore';
+import { usePlaybookStore } from '../store/playbookStore';
+import { computePlaybookStats } from '../utils/playbookStats';
 import { AppMode } from '../types';
+import { useLearningStore } from '../store/learningStore';
 
 // ─── Action Types ────────────────────────────────────────
 
@@ -149,11 +152,16 @@ export function executeAction(action: ChatAction): ActionResult {
   const mode: AppMode = useAppStore.getState().mode;
   const actionDate = resolveDate(action.date);
 
+  // Learn category + wallet associations from executed actions
+  const learn = useLearningStore.getState();
+  if (action.description && action.category) learn.learnCategory(action.description, action.category);
+  if (action.description && action.wallet) learn.learnWallet(action.description, action.wallet);
+
   try {
     switch (action.type) {
       case 'add_expense': {
         const walletId = findWalletId(action.wallet);
-        usePersonalStore.getState().addTransaction({
+        const txId = usePersonalStore.getState().addTransaction({
           amount: action.amount,
           description: action.description,
           category: action.category || 'other',
@@ -164,9 +172,25 @@ export function executeAction(action: ChatAction): ActionResult {
         });
         if (walletId) useWalletStore.getState().deductFromWallet(walletId, action.amount);
         const impact = getBudgetImpact(action.category || 'other');
+
+        // Playbook auto-link
+        let pbNote = '';
+        const activePbs = usePlaybookStore.getState().getActivePlaybooks();
+        if (activePbs.length === 1) {
+          const pb = activePbs[0];
+          usePlaybookStore.getState().linkExpense(pb.id, txId);
+          usePersonalStore.getState().updateTransaction(txId, {
+            playbookLinks: [{ playbookId: pb.id, amount: action.amount }],
+          });
+          const stats = computePlaybookStats(pb, usePersonalStore.getState().transactions);
+          pbNote = ` (${pb.name}: RM ${stats.remaining.toFixed(0)} left)`;
+        } else if (activePbs.length > 1) {
+          pbNote = ` (${activePbs.length} playbooks active — link it in Budget Planning)`;
+        }
+
         return {
           success: true,
-          message: `Added expense: ${action.description} — RM ${action.amount.toFixed(2)}${impact}`,
+          message: `Added expense: ${action.description} — RM ${action.amount.toFixed(2)}${impact}${pbNote}`,
           action,
         };
       }
@@ -183,9 +207,13 @@ export function executeAction(action: ChatAction): ActionResult {
           walletId,
         });
         if (walletId) useWalletStore.getState().addToWallet(walletId, action.amount);
+        let incomeMsg = `Added income: ${action.description} — RM ${action.amount.toFixed(2)}`;
+        if (action.amount >= 500 && usePlaybookStore.getState().getActivePlaybooks().length < 2) {
+          incomeMsg += `\n\nWant to track where this goes? Create a playbook in Budget Planning.`;
+        }
         return {
           success: true,
-          message: `Added income: ${action.description} — RM ${action.amount.toFixed(2)}`,
+          message: incomeMsg,
           action,
         };
       }
@@ -372,7 +400,7 @@ export function executeAction(action: ChatAction): ActionResult {
         if (!sub) {
           return { success: false, message: `No active subscription matching "${subName}" found.`, action };
         }
-        usePersonalStore.getState().updateSubscription(sub.id, { isActive: false });
+        usePersonalStore.getState().deleteSubscription(sub.id);
         return {
           success: true,
           message: `Cancelled "${sub.name}" (was RM ${sub.amount.toFixed(2)}/${sub.billingCycle})`,

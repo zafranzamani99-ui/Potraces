@@ -13,6 +13,7 @@ import {
   Platform,
   Switch,
   KeyboardAvoidingView,
+  FlatList,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import {
@@ -34,8 +35,11 @@ import PaywallModal from '../../components/common/PaywallModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
-import { Budget, CategoryOption } from '../../types';
+import { Budget, CategoryOption, Playbook, PlaybookAllocation } from '../../types';
 import { lightTap, mediumTap } from '../../services/haptics';
+import { usePlaybookStore } from '../../store/playbookStore';
+import { computePlaybookStats, isOverspent, getOverspentAmount, isPlaybookStale } from '../../utils/playbookStats';
+import { format } from 'date-fns';
 
 // ─── Pace helpers ──────────────────────────────────────────
 const getPaceColor = (paceRatio: number) => {
@@ -95,6 +99,31 @@ const BudgetPlanning: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [period, setPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
   const [rollover, setRollover] = useState(false);
+
+  // ─── Playbook state ─────────────────────────────────────────
+  const [viewMode, setViewMode] = useState<'budget' | 'playbook'>('budget');
+  const [playbookTab, setPlaybookTab] = useState<'active' | 'past'>('active');
+  const [createPlaybookVisible, setCreatePlaybookVisible] = useState(false);
+  const [viewingPlaybook, setViewingPlaybook] = useState<Playbook | null>(null);
+  const [txModalVisible, setTxModalVisible] = useState(false);
+  const [editingPlaybook, setEditingPlaybook] = useState<Playbook | null>(null);
+  const [dismissedNudges, setDismissedNudges] = useState<Set<string>>(new Set());
+
+  // Create/edit playbook form
+  const [pbName, setPbName] = useState('');
+  const [pbAmount, setPbAmount] = useState('');
+  const [pbAllocations, setPbAllocations] = useState<PlaybookAllocation[]>([]);
+  const [showAllocations, setShowAllocations] = useState(false);
+
+  // Playbook store
+  const playbooks = usePlaybookStore((s) => s.playbooks);
+  const createPlaybook = usePlaybookStore((s) => s.createPlaybook);
+  const updatePlaybookAction = usePlaybookStore((s) => s.updatePlaybook);
+  const closePlaybookAction = usePlaybookStore((s) => s.closePlaybook);
+  const deletePlaybookAction = usePlaybookStore((s) => s.deletePlaybook);
+  const reopenPlaybookAction = usePlaybookStore((s) => s.reopenPlaybook);
+  const canCreatePb = usePlaybookStore((s) => s.canCreatePlaybook);
+  const canClosePb = usePlaybookStore((s) => s.canClosePlaybook);
 
   const now = useMemo(() => new Date(), []);
 
@@ -304,6 +333,162 @@ const BudgetPlanning: React.FC = () => {
     };
   }, [now, expenseCategories]);
 
+  // ─── Playbook data ─────────────────────────────────────────
+  const activePlaybooks = useMemo(
+    () => playbooks.filter((p) => p.isActive && !p.isClosed),
+    [playbooks]
+  );
+  const closedPlaybooks = useMemo(
+    () => playbooks.filter((p) => p.isClosed),
+    [playbooks]
+  );
+
+  const stalePlaybooks = useMemo(
+    () => activePlaybooks.filter((p) => isPlaybookStale(p) && !dismissedNudges.has(p.id)),
+    [activePlaybooks, dismissedNudges]
+  );
+
+  const playbookStatsMap = useMemo(() => {
+    const map: Record<string, ReturnType<typeof computePlaybookStats>> = {};
+    for (const pb of [...activePlaybooks, ...closedPlaybooks]) {
+      map[pb.id] = computePlaybookStats(pb, transactions);
+    }
+    return map;
+  }, [activePlaybooks, closedPlaybooks, transactions]);
+
+  // ─── Playbook handlers ──────────────────────────────────────
+  const resetPlaybookForm = useCallback(() => {
+    setPbName('');
+    setPbAmount('');
+    setPbAllocations([]);
+    setShowAllocations(false);
+    setEditingPlaybook(null);
+  }, []);
+
+  const closePlaybookModal = useCallback(() => {
+    setCreatePlaybookVisible(false);
+    resetPlaybookForm();
+  }, [resetPlaybookForm]);
+
+  const handleCreatePlaybook = useCallback(() => {
+    const trimmed = pbName.trim();
+    const parsed = parseFloat(pbAmount);
+    if (!trimmed || isNaN(parsed) || parsed <= 0) {
+      showToast('enter a name and amount', 'error');
+      return;
+    }
+
+    // Edit mode — update name + allocations
+    if (editingPlaybook) {
+      mediumTap();
+      updatePlaybookAction(editingPlaybook.id, {
+        name: trimmed,
+        allocations: pbAllocations.filter((a) => a.allocatedAmount > 0),
+      });
+      closePlaybookModal();
+      showToast('playbook updated', 'success');
+      return;
+    }
+
+    // Create mode
+    if (!canCreatePb()) {
+      showToast('close one of your active playbooks first', 'error');
+      return;
+    }
+    mediumTap();
+    const id = createPlaybook({
+      name: trimmed,
+      sourceAmount: parsed,
+      allocations: pbAllocations.filter((a) => a.allocatedAmount > 0),
+    });
+    if (id) {
+      closePlaybookModal();
+      showToast('playbook created', 'success');
+    } else {
+      showToast('you already have 2 active playbooks', 'error');
+    }
+  }, [pbName, pbAmount, pbAllocations, editingPlaybook, canCreatePb, createPlaybook, updatePlaybookAction, closePlaybookModal, showToast]);
+
+  const handleEditPlaybook = useCallback((pb: Playbook) => {
+    lightTap();
+    setEditingPlaybook(pb);
+    setPbName(pb.name);
+    setPbAmount(pb.sourceAmount.toString());
+    setPbAllocations(pb.allocations.length > 0 ? [...pb.allocations] : []);
+    setShowAllocations(pb.allocations.length > 0);
+    setCreatePlaybookVisible(true);
+  }, []);
+
+  const handleClosePlaybook = useCallback((pb: Playbook) => {
+    Alert.alert(
+      `close "${pb.name}"?`,
+      'you can view it later in Past.',
+      [
+        { text: 'cancel', style: 'cancel' },
+        {
+          text: 'close',
+          onPress: () => {
+            const success = closePlaybookAction(pb.id);
+            if (success) {
+              mediumTap();
+              setPlaybookTab('past');
+              showToast('playbook closed', 'success');
+            } else {
+              showToast('delete an old playbook first (free limit: 5)', 'error');
+            }
+          },
+        },
+      ]
+    );
+  }, [closePlaybookAction, showToast]);
+
+  const handleDeletePlaybook = useCallback((pb: Playbook) => {
+    Alert.alert(
+      `delete "${pb.name}"?`,
+      'this cannot be undone. transactions will stay.',
+      [
+        { text: 'cancel', style: 'cancel' },
+        {
+          text: 'delete',
+          style: 'destructive',
+          onPress: () => {
+            mediumTap();
+            deletePlaybookAction(pb.id);
+            showToast('playbook deleted', 'success');
+          },
+        },
+      ]
+    );
+  }, [deletePlaybookAction, showToast]);
+
+  const handleReopenPlaybook = useCallback((pb: Playbook) => {
+    const success = reopenPlaybookAction(pb.id);
+    if (success) {
+      lightTap();
+      setPlaybookTab('active');
+      showToast('playbook reopened', 'success');
+    } else {
+      showToast('you already have 2 active playbooks', 'error');
+    }
+  }, [reopenPlaybookAction, showToast]);
+
+  const handleViewTransactions = useCallback((pb: Playbook) => {
+    setViewingPlaybook(pb);
+    setTxModalVisible(true);
+  }, []);
+
+  const getCategoryInfo = useCallback((catId: string) => {
+    return expenseCategories.find((c) => c.id === catId);
+  }, [expenseCategories]);
+
+  // Linked transactions for the viewing playbook
+  const viewingLinkedTxns = useMemo(() => {
+    if (!viewingPlaybook) return [];
+    return transactions
+      .filter((t) => viewingPlaybook.linkedExpenseIds.includes(t.id))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [viewingPlaybook, transactions]);
+
   // ─── Render ──────────────────────────────────────────────
   const hasBudgets = budgetsWithSpent.length > 0;
 
@@ -315,6 +500,31 @@ const BudgetPlanning: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* ── Segment Toggle ── */}
+        <View style={styles.segmentRow}>
+          <TouchableOpacity
+            style={[styles.segmentChip, viewMode === 'budget' && styles.segmentChipActive]}
+            onPress={() => { lightTap(); setViewMode('budget'); }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.segmentText, viewMode === 'budget' && styles.segmentTextActive]}>
+              regular budget
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.segmentChip, viewMode === 'playbook' && styles.segmentChipActive]}
+            onPress={() => { lightTap(); setViewMode('playbook'); }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.segmentText, viewMode === 'playbook' && styles.segmentTextActive]}>
+              playbook
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ══════════════ BUDGET VIEW ══════════════ */}
+        {viewMode === 'budget' && (<>
+
         {/* ── Hero: Breathing Room ── */}
         {hasBudgets && (
           <View style={styles.heroCard}>
@@ -495,10 +705,317 @@ const BudgetPlanning: React.FC = () => {
             </TouchableOpacity>
           </View>
         )}
+
+        </>)}
+
+        {/* ══════════════ PLAYBOOK VIEW ══════════════ */}
+        {viewMode === 'playbook' && (<>
+
+          {/* Active / Past tabs */}
+          <View style={styles.pbTabRow}>
+            <TouchableOpacity
+              style={[styles.pbTab, playbookTab === 'active' && styles.pbTabActive]}
+              onPress={() => { lightTap(); setPlaybookTab('active'); }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.pbTabText, playbookTab === 'active' && styles.pbTabTextActive]}>
+                active ({activePlaybooks.length})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.pbTab, playbookTab === 'past' && styles.pbTabActive]}
+              onPress={() => { lightTap(); setPlaybookTab('past'); }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.pbTabText, playbookTab === 'past' && styles.pbTabTextActive]}>
+                past ({closedPlaybooks.length}{tier === 'free' ? `/${FREE_TIER.maxSavedPlaybooks}` : ''})
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Stale playbook nudge */}
+          {playbookTab === 'active' && stalePlaybooks.map((pb) => (
+            <View key={`stale-${pb.id}`} style={styles.nudgeCard}>
+              <Text style={styles.nudgeText}>
+                "{pb.name}" has been open {playbookStatsMap[pb.id]?.daysActive || 0} days
+              </Text>
+              <Text style={styles.nudgeSubtext}>ready to close and see the summary?</Text>
+              <View style={styles.nudgeActions}>
+                <TouchableOpacity
+                  style={styles.nudgeButton}
+                  onPress={() => handleClosePlaybook(pb)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.nudgeButtonText}>close & review</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setDismissedNudges((prev) => new Set(prev).add(pb.id))}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.nudgeDismissText}>keep open</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+
+          {/* ── Active tab ── */}
+          {playbookTab === 'active' && (<>
+            {activePlaybooks.map((pb) => {
+              const stats = playbookStatsMap[pb.id];
+              if (!stats) return null;
+              const over = isOverspent(pb, stats);
+              const overAmount = getOverspentAmount(pb, stats);
+              const rawRemaining = pb.sourceAmount - stats.totalSpent;
+
+              return (
+                <View key={pb.id} style={styles.pbCard}>
+                  {/* Header — wallet-style row */}
+                  <View style={styles.pbCardHeaderRow}>
+                    <View style={[styles.pbIconCircle, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
+                      <Feather name="book-open" size={20} color={CALM.accent} />
+                    </View>
+                    <View style={styles.pbCardInfo}>
+                      <View style={styles.pbCardNameRow}>
+                        <Text style={styles.pbCardTitle} numberOfLines={1}>{pb.name}</Text>
+                        <View style={styles.pbStatusBadge}>
+                          <Text style={styles.pbStatusText}>active</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.pbCardAmount}>
+                        {currency} {pb.sourceAmount.toFixed(2)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Waterfall */}
+                  {stats.categoryBreakdown.length > 0 && (
+                    <View style={styles.pbWaterfall}>
+                      <Text style={styles.pbSectionLabel}>where it went</Text>
+                      {stats.categoryBreakdown.map((cat, catIdx) => {
+                        const catInfo = getCategoryInfo(cat.category);
+                        const barWidth = pb.sourceAmount > 0 ? (cat.spent / pb.sourceAmount) * 100 : 0;
+                        const catColor = catInfo?.color || CALM.neutral;
+                        return (
+                          <View key={`${cat.category}-${catIdx}`} style={styles.pbWaterfallRow}>
+                            <Text style={styles.pbWaterfallLabel} numberOfLines={1}>
+                              {catInfo?.name || cat.category}
+                            </Text>
+                            <View style={styles.pbWaterfallBarTrack}>
+                              <View
+                                style={[
+                                  styles.pbWaterfallBarFill,
+                                  {
+                                    width: `${Math.min(barWidth, 100)}%`,
+                                    backgroundColor: withAlpha(catColor, 0.6),
+                                  },
+                                ]}
+                              />
+                            </View>
+                            <Text style={styles.pbWaterfallAmount}>
+                              {currency} {cat.spent.toFixed(0)}
+                            </Text>
+                            <Text style={styles.pbWaterfallPercent}>
+                              {cat.percentOfTotal.toFixed(0)}%
+                            </Text>
+                          </View>
+                        );
+                      })}
+                      {/* Remaining */}
+                      <View style={[styles.pbWaterfallRow, { marginTop: SPACING.sm }]}>
+                        <Text style={[styles.pbWaterfallLabel, { color: over ? CALM.neutral : CALM.accent, fontWeight: TYPOGRAPHY.weight.semibold }]}>
+                          {over ? 'overspent' : 'remaining'}
+                        </Text>
+                        <View style={{ flex: 1 }} />
+                        <Text style={[styles.pbWaterfallAmount, { color: over ? CALM.neutral : CALM.accent, fontWeight: TYPOGRAPHY.weight.semibold }]}>
+                          {over
+                            ? `${currency} ${overAmount.toFixed(0)} over`
+                            : `${currency} ${rawRemaining.toFixed(0)}`}
+                        </Text>
+                        <Text style={[styles.pbWaterfallPercent, { color: over ? CALM.neutral : CALM.accent }]}>
+                          {over ? '' : `${(100 - stats.percentSpent).toFixed(0)}%`}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Summary row — wallet-style */}
+                  <View style={styles.pbSummaryRow}>
+                    <View style={styles.pbSummaryItem}>
+                      <Text style={styles.pbSummaryLabel}>{stats.linkedTransactionCount} txns</Text>
+                      <Text style={styles.pbSummaryValue}>
+                        ~{currency} {stats.dailyBurnRate.toFixed(0)}/day
+                      </Text>
+                    </View>
+                    <View style={[styles.pbSummaryItem, styles.pbSummaryDivider]}>
+                      <Text style={styles.pbSummaryLabel}>{stats.daysActive} days</Text>
+                      <Text style={styles.pbSummaryValue}>
+                        {stats.daysUntilEmpty != null ? `~${stats.daysUntilEmpty}d left` : '—'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Allocation progress bars */}
+                  {pb.allocations.length > 0 && (
+                    <View style={styles.pbAllocSection}>
+                      <Text style={styles.pbSectionLabel}>category limits</Text>
+                      {pb.allocations.map((alloc, allocIdx) => {
+                        const catInfo = getCategoryInfo(alloc.category);
+                        const catBreakdown = stats.categoryBreakdown.find((c) => c.category === alloc.category);
+                        const spent = catBreakdown?.spent || 0;
+                        const pct = alloc.allocatedAmount > 0 ? (spent / alloc.allocatedAmount) * 100 : 0;
+                        const allocOver = spent > alloc.allocatedAmount;
+                        return (
+                          <View key={`${alloc.category}-${allocIdx}`} style={styles.pbAllocRow}>
+                            <Text style={styles.pbAllocLabel} numberOfLines={1}>
+                              {catInfo?.name || alloc.category}
+                            </Text>
+                            <Text style={styles.pbAllocAmounts}>
+                              {currency} {spent.toFixed(0)}/{alloc.allocatedAmount.toFixed(0)}
+                            </Text>
+                            <View style={styles.pbAllocBarTrack}>
+                              <View
+                                style={[
+                                  styles.pbAllocBarFill,
+                                  {
+                                    width: `${Math.min(pct, 100)}%`,
+                                    backgroundColor: allocOver ? CALM.bronze : (catInfo?.color || CALM.accent),
+                                  },
+                                ]}
+                              />
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {/* Actions */}
+                  <View style={styles.pbCardActions}>
+                    <TouchableOpacity
+                      style={styles.pbActionBtn}
+                      onPress={() => handleViewTransactions(pb)}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="list" size={14} color={CALM.accent} />
+                      <Text style={[styles.pbActionText, { color: CALM.accent }]}>transactions</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.pbActionBtn}
+                      onPress={() => handleEditPlaybook(pb)}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="edit-2" size={14} color={CALM.textSecondary} />
+                      <Text style={[styles.pbActionText, { color: CALM.textSecondary }]}>edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.pbActionBtn}
+                      onPress={() => handleClosePlaybook(pb)}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="check-circle" size={14} color={CALM.bronze} />
+                      <Text style={[styles.pbActionText, { color: CALM.bronze }]}>close</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+
+            {/* Empty active state */}
+            {activePlaybooks.length === 0 && (
+              <View style={styles.pbEmptyState}>
+                <Feather name="book-open" size={40} color={CALM.textMuted} />
+                <Text style={styles.pbEmptyTitle}>no active playbooks</Text>
+                <Text style={styles.pbEmptyMessage}>
+                  create one when income arrives to track where every ringgit goes
+                </Text>
+              </View>
+            )}
+          </>)}
+
+          {/* ── Past tab ── */}
+          {playbookTab === 'past' && (<>
+            {closedPlaybooks.map((pb) => {
+              const stats = playbookStatsMap[pb.id];
+              if (!stats) return null;
+              const startStr = format(pb.startDate instanceof Date ? pb.startDate : new Date(pb.startDate), 'MMM d');
+              const endStr = pb.endDate ? format(pb.endDate instanceof Date ? pb.endDate : new Date(pb.endDate), 'MMM d') : '—';
+
+              return (
+                <View key={pb.id} style={styles.pbCard}>
+                  <View style={styles.pbCardHeaderRow}>
+                    <View style={[styles.pbIconCircle, { backgroundColor: withAlpha(CALM.neutral, 0.08) }]}>
+                      <Feather name="book-open" size={20} color={CALM.neutral} />
+                    </View>
+                    <View style={styles.pbCardInfo}>
+                      <View style={styles.pbCardNameRow}>
+                        <Text style={[styles.pbCardTitle, { color: CALM.textSecondary }]} numberOfLines={1}>{pb.name}</Text>
+                        <View style={[styles.pbStatusBadge, { backgroundColor: withAlpha(CALM.neutral, 0.08) }]}>
+                          <Text style={[styles.pbStatusText, { color: CALM.neutral }]}>ended</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.pbCardAmount}>
+                        {currency} {pb.sourceAmount.toFixed(2)} → {stats.totalSpent.toFixed(0)} spent ({stats.percentSpent.toFixed(0)}%)
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.pbStatsLine}>
+                    {startStr} – {endStr} · {stats.daysActive} days · {stats.linkedTransactionCount} txns
+                  </Text>
+
+                  <View style={styles.pbCardActions}>
+                    <TouchableOpacity
+                      style={styles.pbActionBtn}
+                      onPress={() => handleViewTransactions(pb)}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="eye" size={14} color={CALM.accent} />
+                      <Text style={[styles.pbActionText, { color: CALM.accent }]}>view summary</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.pbActionBtn}
+                      onPress={() => handleReopenPlaybook(pb)}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="rotate-ccw" size={14} color={CALM.bronze} />
+                      <Text style={[styles.pbActionText, { color: CALM.bronze }]}>reopen</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.pbActionBtn}
+                      onPress={() => handleDeletePlaybook(pb)}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="trash-2" size={14} color={CALM.neutral} />
+                      <Text style={[styles.pbActionText, { color: CALM.neutral }]}>delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+
+            {/* Empty past state */}
+            {closedPlaybooks.length === 0 && (
+              <View style={styles.pbEmptyState}>
+                <Text style={styles.pbEmptyTitle}>no past playbooks</Text>
+                <Text style={styles.pbEmptyMessage}>
+                  closed playbooks will appear here
+                </Text>
+              </View>
+            )}
+
+            {/* Free tier counter */}
+            {tier === 'free' && closedPlaybooks.length > 0 && (
+              <Text style={styles.pbTierCounter}>
+                {closedPlaybooks.length}/{FREE_TIER.maxSavedPlaybooks} saved playbooks (free tier)
+              </Text>
+            )}
+          </>)}
+
+        </>)}
+
       </ScrollView>
 
       {/* ── FAB ── */}
-      {hasBudgets && !modalVisible && (
+      {viewMode === 'budget' && hasBudgets && !modalVisible && (
         <TouchableOpacity
           style={[styles.fab, { bottom: Math.max(insets.bottom, SPACING.lg) + SPACING.md }]}
           onPress={openAddModal}
@@ -623,6 +1140,257 @@ const BudgetPlanning: React.FC = () => {
         feature="budget"
         currentUsage={budgets.length}
       />
+
+      {/* ── Playbook FAB ── */}
+      {viewMode === 'playbook' && playbookTab === 'active' && !createPlaybookVisible && (
+        <TouchableOpacity
+          style={[styles.fab, { bottom: Math.max(insets.bottom, SPACING.lg) + SPACING.md }]}
+          onPress={() => {
+            if (!canCreatePb()) {
+              showToast('close one of your active playbooks first', 'error');
+              return;
+            }
+            lightTap();
+            setCreatePlaybookVisible(true);
+          }}
+          activeOpacity={0.85}
+        >
+          <Feather name="plus" size={24} color="#fff" />
+        </TouchableOpacity>
+      )}
+
+      {/* ── Create / Edit Playbook Modal ── */}
+      {createPlaybookVisible && (
+        <Modal
+          visible={createPlaybookVisible}
+          animationType="fade"
+          transparent
+          statusBarTranslucent
+          onRequestClose={closePlaybookModal}
+        >
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closePlaybookModal}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={styles.modalKAV}
+            >
+              <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>
+                    {editingPlaybook ? 'edit playbook' : 'create playbook'}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={closePlaybookModal}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Feather name="x" size={22} color={CALM.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                  <Text style={styles.label}>name</Text>
+                  <TextInput
+                    style={styles.pbInput}
+                    value={pbName}
+                    onChangeText={setPbName}
+                    placeholder="e.g. March Salary"
+                    placeholderTextColor={CALM.textMuted}
+                    autoFocus={!editingPlaybook}
+                  />
+
+                  <Text style={styles.label}>amount ({currency})</Text>
+                  <View style={[styles.amountRow, editingPlaybook && { opacity: 0.5 }]}>
+                    <Text style={styles.currencyPrefix}>{currency}</Text>
+                    <TextInput
+                      style={styles.amountInput}
+                      value={pbAmount}
+                      onChangeText={setPbAmount}
+                      placeholder="0.00"
+                      keyboardType="decimal-pad"
+                      placeholderTextColor={CALM.textMuted}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                      editable={!editingPlaybook}
+                    />
+                  </View>
+                  {editingPlaybook && (
+                    <Text style={styles.pbEditHint}>amount cannot be changed after creation</Text>
+                  )}
+
+                  {/* Optional category limits */}
+                  <TouchableOpacity
+                    style={styles.pbToggleAllocRow}
+                    onPress={() => setShowAllocations(!showAllocations)}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name={showAllocations ? 'chevron-down' : 'chevron-right'} size={16} color={CALM.textSecondary} />
+                    <Text style={styles.pbToggleAllocText}>set category limits (optional)</Text>
+                  </TouchableOpacity>
+
+                  {showAllocations && (
+                    <View style={styles.pbAllocForm}>
+                      {pbAllocations.map((alloc, idx) => {
+                        const catInfo = getCategoryInfo(alloc.category);
+                        const usedIds = pbAllocations.map((a) => a.category);
+                        const availableCats = expenseCategories.filter(
+                          (c) => c.id === alloc.category || !usedIds.includes(c.id),
+                        );
+                        return (
+                          <View key={`${alloc.category}-${idx}`} style={styles.pbAllocFormRow}>
+                            <TouchableOpacity
+                              style={styles.pbAllocCatPicker}
+                              onPress={() => {
+                                // Cycle to next available category
+                                const currentIdx = availableCats.findIndex((c) => c.id === alloc.category);
+                                const next = availableCats[(currentIdx + 1) % availableCats.length];
+                                if (next) {
+                                  const updated = [...pbAllocations];
+                                  updated[idx] = { ...alloc, category: next.id };
+                                  setPbAllocations(updated);
+                                }
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <View style={[styles.pbAllocCatDot, { backgroundColor: catInfo?.color || CALM.accent }]} />
+                              <Text style={styles.pbAllocFormLabel} numberOfLines={1}>
+                                {catInfo?.name || alloc.category}
+                              </Text>
+                              <Feather name="chevron-down" size={12} color={CALM.textMuted} />
+                            </TouchableOpacity>
+                            <Text style={styles.pbAllocFormCurrency}>{currency}</Text>
+                            <TextInput
+                              style={styles.pbAllocFormInput}
+                              value={alloc.allocatedAmount > 0 ? alloc.allocatedAmount.toString() : ''}
+                              onChangeText={(v) => {
+                                const updated = [...pbAllocations];
+                                updated[idx] = { ...alloc, allocatedAmount: parseFloat(v) || 0 };
+                                setPbAllocations(updated);
+                              }}
+                              keyboardType="decimal-pad"
+                              placeholder="0"
+                              placeholderTextColor={CALM.textMuted}
+                            />
+                            <TouchableOpacity
+                              onPress={() => setPbAllocations(pbAllocations.filter((_, i) => i !== idx))}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Feather name="x" size={16} color={CALM.neutral} />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                      <TouchableOpacity
+                        style={styles.pbAddAllocBtn}
+                        onPress={() => {
+                          const usedIds = pbAllocations.map((a) => a.category);
+                          const next = expenseCategories.find((c) => !usedIds.includes(c.id));
+                          if (next) {
+                            setPbAllocations([...pbAllocations, { category: next.id, allocatedAmount: 0 }]);
+                          } else {
+                            showToast('all categories added', 'info');
+                          }
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Feather name="plus" size={14} color={CALM.accent} />
+                        <Text style={styles.pbAddAllocText}>add limit</Text>
+                      </TouchableOpacity>
+
+                      {/* Allocation total vs source amount */}
+                      {pbAllocations.length > 0 && (
+                        <View style={styles.pbAllocTotal}>
+                          <Text style={styles.pbAllocTotalLabel}>total allocated</Text>
+                          <Text style={[
+                            styles.pbAllocTotalAmount,
+                            {
+                              color: pbAllocations.reduce((s, a) => s + a.allocatedAmount, 0) > (parseFloat(pbAmount) || 0)
+                                ? CALM.bronze
+                                : CALM.textSecondary,
+                            },
+                          ]}>
+                            {currency} {pbAllocations.reduce((s, a) => s + a.allocatedAmount, 0).toFixed(0)}
+                            {parseFloat(pbAmount) > 0 ? ` / ${parseFloat(pbAmount).toFixed(0)}` : ''}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.confirmButton}
+                    onPress={handleCreatePlaybook}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.confirmButtonText}>
+                      {editingPlaybook ? 'save changes' : 'create playbook'}
+                    </Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </TouchableOpacity>
+            </KeyboardAvoidingView>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
+      {/* ── View Transactions Modal ── */}
+      {txModalVisible && viewingPlaybook && (
+        <Modal
+          visible={txModalVisible}
+          animationType="fade"
+          transparent
+          statusBarTranslucent
+          onRequestClose={() => setTxModalVisible(false)}
+        >
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setTxModalVisible(false)}>
+            <TouchableOpacity activeOpacity={1} style={[styles.modalCard, { maxHeight: '80%' }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle} numberOfLines={1}>{viewingPlaybook.name}</Text>
+                <TouchableOpacity
+                  onPress={() => setTxModalVisible(false)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Feather name="x" size={22} color={CALM.textPrimary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.pbTxModalSummary}>
+                {viewingLinkedTxns.length} transactions · {currency} {
+                  viewingLinkedTxns.reduce((sum, t) => {
+                    const link = t.playbookLinks?.find((l) => l.playbookId === viewingPlaybook.id);
+                    return sum + (link?.amount || t.amount);
+                  }, 0).toFixed(2)
+                } total
+              </Text>
+              <FlatList
+                data={viewingLinkedTxns}
+                keyExtractor={(tx) => tx.id}
+                style={{ marginTop: SPACING.md }}
+                showsVerticalScrollIndicator={false}
+                ListEmptyComponent={
+                  <Text style={styles.pbEmptyMessage}>no expenses linked yet</Text>
+                }
+                renderItem={({ item: tx }) => {
+                  const link = tx.playbookLinks?.find((l) => l.playbookId === viewingPlaybook!.id);
+                  const displayAmount = link?.amount || tx.amount;
+                  const catInfo = getCategoryInfo(tx.category);
+                  return (
+                    <View style={styles.pbTxRow}>
+                      <Text style={styles.pbTxDate}>
+                        {format(tx.date instanceof Date ? tx.date : new Date(tx.date), 'MMM d')}
+                      </Text>
+                      <View style={styles.pbTxInfo}>
+                        <Text style={styles.pbTxDesc} numberOfLines={1}>{tx.description}</Text>
+                        <Text style={styles.pbTxCat}>{catInfo?.name || tx.category}</Text>
+                      </View>
+                      <Text style={styles.pbTxAmount}>
+                        {currency} {displayAmount.toFixed(2)}
+                      </Text>
+                    </View>
+                  );
+                }}
+              />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </View>
   );
 };
@@ -993,6 +1761,454 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
+  },
+
+  // ─── Segment Toggle ──────────────────────────────────────
+  segmentRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  segmentChip: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    borderRadius: RADIUS.md,
+    backgroundColor: CALM.background,
+    borderWidth: 1,
+    borderColor: CALM.border,
+  },
+  segmentChipActive: {
+    backgroundColor: withAlpha(CALM.accent, 0.08),
+    borderColor: CALM.accent,
+  },
+  segmentText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+  segmentTextActive: {
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.accent,
+  },
+
+  // ─── Playbook Tabs ────────────────────────────────────────
+  pbTabRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  pbTab: {
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.full,
+    backgroundColor: CALM.pillBg,
+  },
+  pbTabActive: {
+    backgroundColor: withAlpha(CALM.accent, 0.08),
+  },
+  pbTabText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+  pbTabTextActive: {
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.accent,
+  },
+
+  // ─── Nudge Card ───────────────────────────────────────────
+  nudgeCard: {
+    backgroundColor: CALM.highlight,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  nudgeText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
+    marginBottom: 2,
+  },
+  nudgeSubtext: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    marginBottom: SPACING.sm,
+  },
+  nudgeActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.lg,
+  },
+  nudgeButton: {
+    backgroundColor: CALM.accent,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+  },
+  nudgeButtonText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: '#fff',
+  },
+  nudgeDismissText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+
+  // ─── Playbook Card (wallet-style) ─────────────────────────
+  pbCard: {
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: CALM.border,
+  },
+  pbCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  pbIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pbCardInfo: {
+    flex: 1,
+  },
+  pbCardNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  pbCardTitle: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+    flex: 1,
+  },
+  pbStatusBadge: {
+    backgroundColor: withAlpha(CALM.accent, 0.08),
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+  },
+  pbStatusText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.accent,
+  },
+  pbCardAmount: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+    marginTop: 2,
+  },
+
+  // ─── Waterfall ────────────────────────────────────────────
+  pbWaterfall: {
+    marginBottom: SPACING.md,
+  },
+  pbSectionLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textSecondary,
+    textTransform: 'lowercase',
+    marginBottom: SPACING.sm,
+  },
+  pbWaterfallRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+    gap: SPACING.sm,
+  },
+  pbWaterfallLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    width: 80,
+  },
+  pbWaterfallBarTrack: {
+    flex: 1,
+    height: 6,
+    backgroundColor: withAlpha(CALM.accent, 0.06),
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+  },
+  pbWaterfallBarFill: {
+    height: '100%',
+    borderRadius: RADIUS.full,
+  },
+  pbWaterfallAmount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+    width: 70,
+    textAlign: 'right',
+  },
+  pbWaterfallPercent: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+    width: 32,
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'] as any,
+  },
+
+  // ─── Summary row (wallet-style) ──────────────────────────
+  pbSummaryRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  pbSummaryItem: {
+    flex: 1,
+  },
+  pbSummaryDivider: {
+    borderLeftWidth: 1,
+    borderLeftColor: CALM.border,
+    paddingLeft: SPACING.md,
+  },
+  pbSummaryLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textSecondary,
+  },
+  pbSummaryValue: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+    marginTop: 1,
+  },
+  pbStatsLine: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+    marginBottom: 2,
+  },
+
+  // ─── Allocation progress ─────────────────────────────────
+  pbAllocSection: {
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: CALM.border,
+  },
+  pbAllocRow: {
+    marginBottom: SPACING.sm,
+  },
+  pbAllocLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    marginBottom: 2,
+  },
+  pbAllocAmounts: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+    marginBottom: 4,
+  },
+  pbAllocBarTrack: {
+    height: 4,
+    backgroundColor: withAlpha(CALM.accent, 0.08),
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+  },
+  pbAllocBarFill: {
+    height: '100%',
+    borderRadius: RADIUS.full,
+  },
+
+  // ─── Card actions ─────────────────────────────────────────
+  pbCardActions: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: CALM.border,
+  },
+  pbActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: CALM.background,
+  },
+  pbActionText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
+  // ─── Empty state ──────────────────────────────────────────
+  pbEmptyState: {
+    alignItems: 'center',
+    paddingVertical: SPACING['4xl'],
+  },
+  pbEmptyTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.textPrimary,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
+  },
+  pbEmptyMessage: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  pbTierCounter: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    textAlign: 'center',
+    marginTop: SPACING.md,
+  },
+
+  // ─── Create Playbook form ─────────────────────────────────
+  pbInput: {
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: CALM.inputBorder,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
+    color: CALM.textPrimary,
+  },
+  pbToggleAllocRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.lg,
+    paddingVertical: SPACING.sm,
+  },
+  pbToggleAllocText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+  pbAllocForm: {
+    marginTop: SPACING.sm,
+  },
+  pbAllocFormRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  pbAllocCatPicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    minWidth: 100,
+  },
+  pbAllocCatDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  pbAllocFormLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    flex: 1,
+  },
+  pbEditHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+    marginTop: SPACING.xs,
+  },
+  pbAllocTotal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: SPACING.sm,
+    marginTop: SPACING.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: CALM.border,
+  },
+  pbAllocTotalLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+  },
+  pbAllocTotalAmount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  pbAllocFormCurrency: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+  },
+  pbAllocFormInput: {
+    flex: 1,
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: CALM.inputBorder,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  pbAddAllocBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+  },
+  pbAddAllocText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.accent,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
+  // ─── Transaction modal ────────────────────────────────────
+  pbTxModalSummary: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  pbTxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: CALM.border,
+    gap: SPACING.sm,
+  },
+  pbTxDate: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textSecondary,
+    width: 44,
+  },
+  pbTxInfo: {
+    flex: 1,
+  },
+  pbTxDesc: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: CALM.textPrimary,
+  },
+  pbTxCat: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: CALM.textMuted,
+  },
+  pbTxAmount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: CALM.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
   },
 });
 
