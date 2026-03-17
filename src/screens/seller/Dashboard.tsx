@@ -1410,7 +1410,7 @@ const SellerDashboard: React.FC = () => {
                   </TouchableOpacity>
                 </View>
               </View>
-              <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+              <ScrollView showsVerticalScrollIndicator={false} bounces={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                 {productionList.map((item, index) => {
                   const done = !!checkedItems[item.name];
                   return (

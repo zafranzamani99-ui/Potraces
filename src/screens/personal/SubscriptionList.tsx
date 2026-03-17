@@ -518,6 +518,7 @@ const SubscriptionList: React.FC = () => {
         <ScrollView
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
           contentContainerStyle={{ paddingBottom: SPACING.lg }}
         >
           {/* Name */}
@@ -776,11 +777,11 @@ const SubscriptionList: React.FC = () => {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.kavWrapper}
           >
-            <TouchableOpacity activeOpacity={1} style={[styles.modalCard, modalView !== 'form' && { maxHeight: undefined }]}>
+            <View style={[styles.modalCard, modalView !== 'form' && { maxHeight: undefined }]} onStartShouldSetResponder={() => true}>
               {modalView === 'form' && renderFormView()}
               {modalView === 'cyclePicker' && renderCyclePickerView()}
               {modalView === 'calendar' && renderCalendarView()}
-            </TouchableOpacity>
+            </View>
           </KeyboardAvoidingView>
         </TouchableOpacity>
       </Modal>

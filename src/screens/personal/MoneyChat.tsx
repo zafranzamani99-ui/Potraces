@@ -313,7 +313,7 @@ const ActionEditModal = ({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
-          <View style={styles.modalCard}>
+          <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             {/* Close — top right */}
             <TouchableOpacity
               onPress={onClose}
@@ -326,6 +326,7 @@ const ActionEditModal = ({
             <ScrollView
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
               bounces={false}
               contentContainerStyle={styles.modalScrollContent}
             >
@@ -891,6 +892,7 @@ const MoneyChat: React.FC = () => {
             removeClippedSubviews
             maxToRenderPerBatch={8}
             windowSize={7}
+            initialNumToRender={10}
             onContentSizeChange={handleContentSizeChange}
             onScroll={handleScroll}
             scrollEventThrottle={100}
@@ -1069,7 +1071,7 @@ const MoneyChat: React.FC = () => {
           activeOpacity={1}
           onPress={() => setShowHistory(false)}
         >
-          <TouchableOpacity activeOpacity={1} style={styles.historyCard}>
+          <View style={styles.historyCard} onStartShouldSetResponder={() => true}>
             <View style={styles.historyHeader}>
               <Text style={styles.historyTitle}>past chats</Text>
               <TouchableOpacity
@@ -1087,6 +1089,10 @@ const MoneyChat: React.FC = () => {
                 showsVerticalScrollIndicator={false}
                 data={conversations}
                 keyExtractor={(item) => item.id}
+                removeClippedSubviews
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                initialNumToRender={10}
                 renderItem={({ item: convo }) => (
                   <TouchableOpacity
                     style={styles.historyItem}
@@ -1118,7 +1124,7 @@ const MoneyChat: React.FC = () => {
                 )}
               />
             )}
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 
@@ -1134,7 +1140,7 @@ const MoneyChat: React.FC = () => {
           activeOpacity={1}
           onPress={() => setSelectTextContent(null)}
         >
-          <TouchableOpacity activeOpacity={1} style={styles.selectTextCard}>
+          <View style={styles.selectTextCard} onStartShouldSetResponder={() => true}>
             <View style={styles.selectTextHeader}>
               <Text style={styles.selectTextTitle}>select text</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
@@ -1160,7 +1166,7 @@ const MoneyChat: React.FC = () => {
               scrollEnabled
               selectTextOnFocus={false}
             />
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 

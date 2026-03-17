@@ -769,6 +769,7 @@ const CostManagement: React.FC = () => {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             bounces={false}
+            nestedScrollEnabled
           >
             <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
               <View style={styles.modalHeader}>
@@ -965,6 +966,7 @@ const CostManagement: React.FC = () => {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               bounces={false}
+              nestedScrollEnabled
             >
               <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
                 <View style={styles.modalHeader}>
@@ -1046,6 +1048,7 @@ const CostManagement: React.FC = () => {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             bounces={false}
+            nestedScrollEnabled
           >
             <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
               <View style={styles.modalHeader}>

@@ -281,7 +281,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
       <View style={styles.detailOverlay}>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
         <View style={[styles.detailSheet, { paddingBottom: Math.max(SPACING['3xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
-          <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+          <ScrollView bounces={false} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             <View style={styles.modalHandle} />
 
             {/* Header — avatar + name + close */}
@@ -1261,7 +1261,7 @@ const SellerCustomers: React.FC = () => {
             style={styles.modalContent}
             onStartShouldSetResponder={() => true}
           >
-            <KeyboardAwareScrollView bounces={false} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Math.max(SPACING['3xl'], insets.bottom + SPACING.lg) }}>
+            <KeyboardAwareScrollView bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING['3xl'], insets.bottom + SPACING.lg) }}>
               <View style={styles.modalHandle} />
 
               <View style={styles.modalHeader}>

@@ -110,6 +110,15 @@ export const useNotesStore = create<NotesState>()(
           ),
         })),
 
+      clearPendingExtractions: (pageId: string) =>
+        set((state) => ({
+          pages: state.pages.map((p) =>
+            p.id === pageId
+              ? { ...p, extractions: p.extractions.filter((e) => e.status !== 'pending') }
+              : p
+          ),
+        })),
+
       markFirstWriteComplete: () => set({ isFirstWrite: false }),
     }),
     {

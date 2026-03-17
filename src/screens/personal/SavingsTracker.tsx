@@ -946,6 +946,7 @@ const SavingsTracker: React.FC = () => {
             <KeyboardAwareScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
               contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}
             >
               <Text style={styles.label}>account name</Text>
@@ -1138,6 +1139,7 @@ const SavingsTracker: React.FC = () => {
             <KeyboardAwareScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
               contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}
             >
               {/* Snapshot type selector */}
@@ -1293,7 +1295,7 @@ const SavingsTracker: React.FC = () => {
               </>
             )}
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
+            <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
               {historyData.grouped.map(({ month, items }) => (
                 <View key={month}>
                   <Text style={styles.historyMonthHeader}>{month}</Text>

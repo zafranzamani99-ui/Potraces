@@ -166,6 +166,7 @@ const FreelancerClientList: React.FC = () => {
           removeClippedSubviews
           windowSize={5}
           maxToRenderPerBatch={8}
+          initialNumToRender={10}
         />
       )}
 

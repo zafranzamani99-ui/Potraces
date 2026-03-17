@@ -132,7 +132,7 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={styles.modalCard}>
+          <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <View style={styles.modalIconWrap}>
                 <Feather name="sunrise" size={20} color={CALM.bronze} />
@@ -154,6 +154,7 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
             <ScrollView
               style={styles.categoryList}
               showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
             >
               {topCategories.map((cat) => {

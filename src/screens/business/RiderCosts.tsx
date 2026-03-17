@@ -105,6 +105,10 @@ const RiderCostsScreen: React.FC = () => {
             <Text style={styles.emptyText}>No costs logged this month.</Text>
           </View>
         }
+        removeClippedSubviews
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        initialNumToRender={10}
       />
 
       {/* Add cost area */}

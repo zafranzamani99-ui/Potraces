@@ -1122,7 +1122,7 @@ const NewOrder: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
               {/* Customer */}
               {(customerName.trim() || customerPhone.trim()) && (
                 <View style={styles.reviewSection}>
@@ -1228,7 +1228,7 @@ const NewOrder: React.FC = () => {
             activeOpacity={1}
             onPress={() => { Keyboard.dismiss(); setShowProductPicker(false); }}
           />
-          <View style={styles.pickerCard}>
+          <View style={styles.pickerCard} onStartShouldSetResponder={() => true}>
             {/* Header */}
             <View style={styles.pickerHeader}>
               <View style={styles.pickerHeaderLeft}>
@@ -1281,6 +1281,7 @@ const NewOrder: React.FC = () => {
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
                 showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
               >
                 {activeProducts.length === 0 ? (
                   <TouchableOpacity
@@ -1425,7 +1426,7 @@ const NewOrder: React.FC = () => {
       >
         <KAView style={styles.contactModalOverlay} behavior="padding">
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setShowContactPicker(false)} />
-          <View style={styles.contactPickerSheet}>
+          <View style={styles.contactPickerSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.contactSheetHandle} />
             <View style={styles.contactSheetHeader}>
               <Text style={styles.contactSheetTitle}>pick contact</Text>

@@ -185,6 +185,10 @@ const NotesHome: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         extraData={selectMode ? selectedIds.size : 0}
+        removeClippedSubviews
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        initialNumToRender={10}
       />
       {selectMode && (
         <View style={styles.selectBar}>

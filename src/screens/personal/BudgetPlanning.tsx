@@ -1038,7 +1038,7 @@ const BudgetPlanning: React.FC = () => {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.modalKAV}
           >
-            <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
+            <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
               {/* Header */}
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
@@ -1055,6 +1055,7 @@ const BudgetPlanning: React.FC = () => {
               <ScrollView
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
                 contentContainerStyle={{ paddingBottom: SPACING.md }}
               >
                 {/* Category */}
@@ -1129,7 +1130,7 @@ const BudgetPlanning: React.FC = () => {
                   </Text>
                 </TouchableOpacity>
               </ScrollView>
-            </TouchableOpacity>
+            </View>
           </KeyboardAvoidingView>
         </TouchableOpacity>
       </Modal>
@@ -1173,7 +1174,7 @@ const BudgetPlanning: React.FC = () => {
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               style={styles.modalKAV}
             >
-              <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
+              <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>
                     {editingPlaybook ? 'edit playbook' : 'create playbook'}
@@ -1186,7 +1187,7 @@ const BudgetPlanning: React.FC = () => {
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
                   <Text style={styles.label}>name</Text>
                   <TextInput
                     style={styles.pbInput}
@@ -1325,7 +1326,7 @@ const BudgetPlanning: React.FC = () => {
                     </Text>
                   </TouchableOpacity>
                 </ScrollView>
-              </TouchableOpacity>
+              </View>
             </KeyboardAvoidingView>
           </TouchableOpacity>
         </Modal>
@@ -1341,7 +1342,7 @@ const BudgetPlanning: React.FC = () => {
           onRequestClose={() => setTxModalVisible(false)}
         >
           <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setTxModalVisible(false)}>
-            <TouchableOpacity activeOpacity={1} style={[styles.modalCard, { maxHeight: '80%' }]}>
+            <View style={[styles.modalCard, { maxHeight: '80%' }]} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle} numberOfLines={1}>{viewingPlaybook.name}</Text>
                 <TouchableOpacity
@@ -1364,6 +1365,7 @@ const BudgetPlanning: React.FC = () => {
                 keyExtractor={(tx) => tx.id}
                 style={{ marginTop: SPACING.md }}
                 showsVerticalScrollIndicator={false}
+                initialNumToRender={10}
                 ListEmptyComponent={
                   <Text style={styles.pbEmptyMessage}>no expenses linked yet</Text>
                 }
@@ -1387,7 +1389,7 @@ const BudgetPlanning: React.FC = () => {
                   );
                 }}
               />
-            </TouchableOpacity>
+            </View>
           </TouchableOpacity>
         </Modal>
       )}

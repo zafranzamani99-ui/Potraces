@@ -1120,5 +1120,6 @@ export interface NotesState {
   addExtraction: (pageId: string, extraction: AIExtraction) => void;
   updateExtractionStatus: (pageId: string, extractionId: string, status: AIExtraction['status'], linkedId?: string) => void;
   updateExtraction: (pageId: string, extractionId: string, updates: { type?: ExtractionIntent; extractedData?: Record<string, any> }) => void;
+  clearPendingExtractions: (pageId: string) => void;
   markFirstWriteComplete: () => void;
 }

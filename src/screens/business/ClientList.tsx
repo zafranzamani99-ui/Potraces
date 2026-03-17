@@ -123,6 +123,11 @@ const ClientList: React.FC = () => {
             <Text style={styles.emptyText}>No clients yet. Add your first one.</Text>
           </View>
         }
+        removeClippedSubviews
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        initialNumToRender={10}
+        keyboardShouldPersistTaps="handled"
       />
 
       {/* Add client button */}

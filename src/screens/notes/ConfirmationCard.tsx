@@ -169,14 +169,16 @@ export default React.memo(ConfirmationCard);
 
 const styles = StyleSheet.create({
   card: {
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
-    gap: 8,
+    backgroundColor: CALM.background,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    gap: 10,
   },
   cardDone: {
     opacity: 0.5,
-    paddingVertical: SPACING.sm,
+    padding: SPACING.sm,
+    marginBottom: SPACING.xs,
   },
   row: {
     flexDirection: 'row',
@@ -184,9 +186,9 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: withAlpha(CALM.bronze, 0.1),
     justifyContent: 'center',
     alignItems: 'center',
@@ -205,7 +207,7 @@ const styles = StyleSheet.create({
     color: CALM.textMuted,
   },
   amount: {
-    fontSize: TYPOGRAPHY.size.base,
+    fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: CALM.textPrimary,
     fontVariant: ['tabular-nums'] as any,
@@ -217,8 +219,11 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   skipBtn: {
-    paddingHorizontal: SPACING.md,
+    paddingHorizontal: 14,
     paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    borderRadius: RADIUS.full,
   },
   skipText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -229,8 +234,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     backgroundColor: CALM.deepOlive,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: 7,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
     borderRadius: RADIUS.full,
   },
   confirmText: {
@@ -257,7 +262,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
     gap: 2,
-    marginLeft: 36 + SPACING.sm,
+    marginLeft: 40 + SPACING.sm,
   },
   allocRow: {
     flexDirection: 'row',

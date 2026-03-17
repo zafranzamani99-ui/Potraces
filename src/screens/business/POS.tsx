@@ -639,7 +639,7 @@ const POS: React.FC = () => {
       >
         <BlurView intensity={80} style={styles.modalOverlay}>
           <View style={styles.modalKeyboardView}>
-            <View style={styles.modalContent}>
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <Text style={styles.modalTitle}>Checkout</Text>
 
               <KeyboardAwareScrollView

@@ -20,7 +20,7 @@ import { format } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNotesStore } from '../../store/notesStore';
 import { useWalletStore } from '../../store/walletStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { lightTap, mediumTap, warningNotification } from '../../services/haptics';
 import { useIntentEngine } from '../../hooks/useIntentEngine';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
@@ -81,6 +81,7 @@ const NoteEditor: React.FC = () => {
     queryAnswer,
     statusMessage,
     classify,
+    retry,
     confirmExtraction,
     skipExtraction,
   } = useIntentEngine({ pageId });
@@ -220,6 +221,12 @@ const NoteEditor: React.FC = () => {
     classify();
   }, [classify, text, pageId, updatePageContent]);
 
+  const handleClearExtractions = useCallback(() => {
+    lightTap();
+    useNotesStore.getState().clearPendingExtractions(pageId);
+    setShowExtractModal(false);
+  }, [pageId]);
+
   const handleEdit = useCallback((id: string) => {
     const ext = pendingExtractions.find((e) => e.id === id);
     if (!ext) return;
@@ -248,8 +255,6 @@ const NoteEditor: React.FC = () => {
 
     // Debt direction
     setEditDebtType(ext.extractedData.transactionType === 'income' ? 'they_owe' : 'i_owe');
-
-    setShowExtractModal(false);
   }, [pendingExtractions, expenseCategories, incomeCategories, wallets]);
 
   const handleEditSave = useCallback(() => {
@@ -305,10 +310,7 @@ const NoteEditor: React.FC = () => {
 
   const handleEditCancel = useCallback(() => {
     setEditingExtraction(null);
-    if (pendingExtractions.length > 0) {
-      setTimeout(() => setShowExtractModal(true), 50);
-    }
-  }, [pendingExtractions.length]);
+  }, []);
 
   // Flush save on unmount / back
   useEffect(() => {
@@ -572,17 +574,18 @@ const NoteEditor: React.FC = () => {
         animationType="fade"
         onRequestClose={() => setShowExtractModal(false)}
       >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setShowExtractModal(false)}
-        >
-          <View
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setShowExtractModal(false)}
+          />
+          <KeyboardAvoidingView
             style={styles.extractCard}
-            onStartShouldSetResponder={() => true}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
-            {/* Close — top right */}
+            {/* Close button */}
             <TouchableOpacity
-              onPress={() => setShowExtractModal(false)}
+              onPress={() => { setEditingExtraction(null); setShowExtractModal(false); }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={styles.extractClose}
             >
@@ -602,11 +605,20 @@ const NoteEditor: React.FC = () => {
               </View>
             </View>
 
-            {/* Extraction cards */}
+            {/* Clear & re-extract */}
+            <TouchableOpacity onPress={handleClearExtractions} style={styles.retryBanner} activeOpacity={0.7}>
+              <Feather name="refresh-cw" size={12} color={CALM.bronze} />
+              <Text style={styles.retryText}>not right? clear and re-extract</Text>
+            </TouchableOpacity>
+
+            {/* Extraction cards — always visible */}
             <ScrollView
               showsVerticalScrollIndicator={false}
               bounces
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
               style={styles.extractScroll}
+              contentContainerStyle={{ paddingTop: SPACING.xs, paddingBottom: SPACING.md }}
             >
               {pendingExtractions.map((ext) => (
                 <ConfirmationCard
@@ -618,197 +630,192 @@ const NoteEditor: React.FC = () => {
                 />
               ))}
             </ScrollView>
-          </View>
-        </Pressable>
+
+          </KeyboardAvoidingView>
+
+          {/* Edit overlay — covers entire modal, edit card centered */}
+          {editingExtraction && (
+            <>
+              <Pressable style={styles.editOverlay} onPress={handleEditCancel} />
+              <KeyboardAvoidingView
+                style={styles.editOverlayCard}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                pointerEvents="box-none"
+              >
+                <View style={styles.editInnerCard}>
+                <TouchableOpacity
+                  onPress={handleEditCancel}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={styles.editOverlayBack}
+                >
+                  <Feather name="arrow-left" size={18} color={CALM.textMuted} />
+                </TouchableOpacity>
+
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  contentContainerStyle={styles.editScrollContent}
+                >
+                  {/* Type selector */}
+                  <View style={styles.editField}>
+                    <Text style={styles.editLabel}>type</Text>
+                    <TouchableOpacity
+                      style={styles.editTypeSelect}
+                      onPress={() => { lightTap(); setShowTypePicker(true); }}
+                      activeOpacity={0.7}
+                    >
+                      <Feather
+                        name={EDIT_TYPES.find((t) => t.key === editType)?.icon || 'circle'}
+                        size={14}
+                        color={CALM.bronze}
+                      />
+                      <Text style={styles.editTypeSelectText}>
+                        {EDIT_TYPES.find((t) => t.key === editType)?.label || editType}
+                      </Text>
+                      <Feather name="chevron-down" size={14} color={CALM.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Amount */}
+                  <View style={styles.editAmountSection}>
+                    <Text style={styles.editAmountPrefix}>RM</Text>
+                    <TextInput
+                      style={styles.editAmountInput}
+                      value={editAmount}
+                      onChangeText={setEditAmount}
+                      keyboardType="decimal-pad"
+                      placeholder="0.00"
+                      placeholderTextColor={CALM.border}
+                    />
+                  </View>
+
+                  {/* Description */}
+                  <TextInput
+                    style={styles.editDescInput}
+                    value={editDescription}
+                    onChangeText={setEditDescription}
+                    placeholder="description"
+                    placeholderTextColor={CALM.textMuted}
+                  />
+
+                  {/* Category */}
+                  {showEditCategory && (
+                    <CategoryPicker
+                      categories={editCategories}
+                      selectedId={editCategoryId}
+                      onSelect={setEditCategoryId}
+                      label="category"
+                      layout="dropdown"
+                      onNavigateToSettings={handleEditNavToSettings}
+                    />
+                  )}
+
+                  {/* Wallet */}
+                  {showEditWallet && wallets.length > 0 && (
+                    <WalletPicker
+                      wallets={wallets}
+                      selectedId={editWalletId}
+                      onSelect={setEditWalletId}
+                      label="wallet"
+                    />
+                  )}
+
+                  {/* Person + debt direction */}
+                  {showEditPerson && (
+                    <>
+                      <View style={styles.editField}>
+                        <Text style={styles.editLabel}>person</Text>
+                        <TextInput
+                          style={styles.editDescInput}
+                          value={editPerson}
+                          onChangeText={setEditPerson}
+                          placeholder="name"
+                          placeholderTextColor={CALM.textMuted}
+                        />
+                      </View>
+                      {showEditDebtDirection && (
+                        <View style={styles.editDebtRow}>
+                          <TouchableOpacity
+                            style={[styles.editDebtToggle, editDebtType === 'they_owe' && styles.editDebtTheyOwe]}
+                            onPress={() => setEditDebtType('they_owe')}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.editDebtText, editDebtType === 'they_owe' && styles.editDebtTextTheyOwe]}>
+                              they owe me
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.editDebtToggle, editDebtType === 'i_owe' && styles.editDebtIOwe]}
+                            onPress={() => setEditDebtType('i_owe')}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.editDebtText, editDebtType === 'i_owe' && styles.editDebtTextIOwe]}>
+                              I owe them
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </>
+                  )}
+
+                  {/* Confirm */}
+                  <TouchableOpacity
+                    style={[styles.editConfirmBtn, !editAmount && styles.editConfirmBtnDisabled]}
+                    onPress={handleEditSave}
+                    disabled={!editAmount}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="check" size={15} color="#fff" />
+                    <Text style={styles.editConfirmText}>confirm</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+                </View>
+              </KeyboardAvoidingView>
+            </>
+          )}
+        </View>
       </Modal>
 
-      {/* Edit extraction modal — matches MoneyChat ActionEditModal */}
+      {/* Type picker — floats over extraction modal */}
       <Modal
-        visible={!!editingExtraction}
+        visible={showTypePicker}
         transparent
-        animationType={editModalAnim}
-        onRequestClose={handleEditCancel}
+        animationType="fade"
+        onRequestClose={() => setShowTypePicker(false)}
       >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        <TouchableOpacity
+          style={styles.typePickerOverlay}
+          activeOpacity={1}
+          onPress={() => setShowTypePicker(false)}
         >
-          <Pressable style={styles.modalOverlay} onPress={handleEditCancel}>
-            <View style={styles.editCard}>
-              {/* Close — top right */}
-              <TouchableOpacity
-                onPress={handleEditCancel}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={styles.editClose}
-              >
-                <Feather name="x" size={18} color={CALM.textMuted} />
-              </TouchableOpacity>
-
-              <ScrollView
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                bounces={false}
-                contentContainerStyle={styles.editScrollContent}
-              >
-                {/* Type selector — tap opens floating picker */}
-                <View style={styles.editField}>
-                  <Text style={styles.editLabel}>type</Text>
-                  <TouchableOpacity
-                    style={styles.editTypeSelect}
-                    onPress={() => {
-                      lightTap();
-                      setShowTypePicker(true);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Feather
-                      name={EDIT_TYPES.find((t) => t.key === editType)?.icon || 'circle'}
-                      size={14}
-                      color={CALM.bronze}
-                    />
-                    <Text style={styles.editTypeSelectText}>
-                      {EDIT_TYPES.find((t) => t.key === editType)?.label || editType}
-                    </Text>
-                    <Feather name="chevron-down" size={14} color={CALM.textMuted} />
-                  </TouchableOpacity>
-                </View>
-
-                {/* Amount — large and clean */}
-                <View style={styles.editAmountSection}>
-                  <Text style={styles.editAmountPrefix}>RM</Text>
-                  <TextInput
-                    style={styles.editAmountInput}
-                    value={editAmount}
-                    onChangeText={setEditAmount}
-                    keyboardType="decimal-pad"
-                    placeholder="0.00"
-                    placeholderTextColor={CALM.border}
-                  />
-                </View>
-
-                {/* Description — underline style */}
-                <TextInput
-                  style={styles.editDescInput}
-                  value={editDescription}
-                  onChangeText={setEditDescription}
-                  placeholder="description"
-                  placeholderTextColor={CALM.textMuted}
-                />
-
-                {/* Category dropdown */}
-                {showEditCategory && (
-                  <CategoryPicker
-                    categories={editCategories}
-                    selectedId={editCategoryId}
-                    onSelect={setEditCategoryId}
-                    label="category"
-                    layout="dropdown"
-                    onNavigateToSettings={handleEditNavToSettings}
-                  />
-                )}
-
-                {/* Wallet dropdown */}
-                {showEditWallet && wallets.length > 0 && (
-                  <WalletPicker
-                    wallets={wallets}
-                    selectedId={editWalletId}
-                    onSelect={setEditWalletId}
-                    label="wallet"
-                  />
-                )}
-
-                {/* Person + debt direction */}
-                {showEditPerson && (
-                  <>
-                    <View style={styles.editField}>
-                      <Text style={styles.editLabel}>person</Text>
-                      <TextInput
-                        style={styles.editDescInput}
-                        value={editPerson}
-                        onChangeText={setEditPerson}
-                        placeholder="name"
-                        placeholderTextColor={CALM.textMuted}
-                      />
-                    </View>
-                    {showEditDebtDirection && (
-                      <View style={styles.editDebtRow}>
-                        <TouchableOpacity
-                          style={[styles.editDebtToggle, editDebtType === 'they_owe' && styles.editDebtTheyOwe]}
-                          onPress={() => setEditDebtType('they_owe')}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.editDebtText, editDebtType === 'they_owe' && styles.editDebtTextTheyOwe]}>
-                            they owe me
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.editDebtToggle, editDebtType === 'i_owe' && styles.editDebtIOwe]}
-                          onPress={() => setEditDebtType('i_owe')}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.editDebtText, editDebtType === 'i_owe' && styles.editDebtTextIOwe]}>
-                            I owe them
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </>
-                )}
-
-                {/* Confirm */}
+          <View style={styles.typePickerCard} onStartShouldSetResponder={() => true}>
+            <Text style={styles.typePickerTitle}>select type</Text>
+            {EDIT_TYPES.map((t) => {
+              const active = editType === t.key;
+              return (
                 <TouchableOpacity
-                  style={[styles.editConfirmBtn, !editAmount && styles.editConfirmBtnDisabled]}
-                  onPress={handleEditSave}
-                  disabled={!editAmount}
+                  key={t.key}
+                  style={[styles.typePickerOption, active && styles.typePickerOptionActive]}
+                  onPress={() => {
+                    setEditType(t.key);
+                    setShowTypePicker(false);
+                  }}
                   activeOpacity={0.7}
                 >
-                  <Feather name="check" size={15} color="#fff" />
-                  <Text style={styles.editConfirmText}>confirm</Text>
+                  <View style={[styles.typePickerIcon, active && styles.typePickerIconActive]}>
+                    <Feather name={t.icon} size={18} color={active ? CALM.bronze : CALM.textMuted} />
+                  </View>
+                  <Text style={[styles.typePickerText, active && styles.typePickerTextActive]}>
+                    {t.label}
+                  </Text>
+                  {active && <Feather name="check" size={18} color={CALM.bronze} />}
                 </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </Pressable>
-        </KeyboardAvoidingView>
-
-        {/* Type picker — inside edit modal */}
-        <Modal
-          visible={showTypePicker}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowTypePicker(false)}
-        >
-          <TouchableOpacity
-            style={styles.typePickerOverlay}
-            activeOpacity={1}
-            onPress={() => setShowTypePicker(false)}
-          >
-            <View style={styles.typePickerCard} onStartShouldSetResponder={() => true}>
-              <Text style={styles.typePickerTitle}>select type</Text>
-              {EDIT_TYPES.map((t) => {
-                const active = editType === t.key;
-                return (
-                  <TouchableOpacity
-                    key={t.key}
-                    style={[styles.typePickerOption, active && styles.typePickerOptionActive]}
-                    onPress={() => {
-                      setEditType(t.key);
-                      setShowTypePicker(false);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.typePickerIcon, active && styles.typePickerIconActive]}>
-                      <Feather name={t.icon} size={18} color={active ? CALM.bronze : CALM.textMuted} />
-                    </View>
-                    <Text style={[styles.typePickerText, active && styles.typePickerTextActive]}>
-                      {t.label}
-                    </Text>
-                    {active && <Feather name="check" size={18} color={CALM.bronze} />}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </TouchableOpacity>
-        </Modal>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
       </Modal>
 
       <PaywallModal
@@ -953,19 +960,12 @@ const styles = StyleSheet.create({
     maxHeight: '75%',
     backgroundColor: CALM.surface,
     borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.xl,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 24,
-      },
-      android: {
-        elevation: 12,
-      },
-    }),
+    paddingBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    ...SHADOWS.lg,
   },
   extractClose: {
     position: 'absolute',
@@ -973,20 +973,61 @@ const styles = StyleSheet.create({
     right: SPACING.md,
     zIndex: 1,
   },
+  editOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: withAlpha(CALM.textPrimary, 0.4),
+    zIndex: 20,
+  },
+  editOverlayCard: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 30,
+  },
+  editInnerCard: {
+    width: '88%',
+    maxHeight: '80%',
+    backgroundColor: CALM.surface,
+    borderRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: CALM.border,
+    ...SHADOWS.lg,
+  },
+  editOverlayBack: {
+    marginBottom: SPACING.sm,
+  },
   extractHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-  },
-  extractHint: {
-    fontSize: 10,
-    color: CALM.bronze,
-    fontStyle: 'italic',
     marginBottom: SPACING.xs,
   },
   extractTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
+    color: CALM.bronze,
+  },
+  extractHint: {
+    fontSize: 10,
+    color: CALM.bronze,
+    fontStyle: 'italic',
+  },
+  retryBanner: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    paddingVertical: 6,
+    marginBottom: SPACING.xs,
+  },
+  retryText: {
+    fontSize: TYPOGRAPHY.size.xs,
     color: CALM.bronze,
   },
   extractScroll: {

@@ -792,7 +792,7 @@ const TransactionsList: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: SPACING.lg }}>
+            <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: SPACING.lg }}>
               {/* Date range */}
               <Text style={styles.filterSectionLabel}>date range</Text>
               <View style={styles.filterChipGrid}>

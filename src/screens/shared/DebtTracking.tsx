@@ -2641,7 +2641,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       {debtModalVisible && (<Modal visible animationType={debtModalAnimation} transparent statusBarTranslucent onRequestClose={() => { setDebtModalVisible(false); resetDebtForm(); }}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setDebtModalVisible(false); resetDebtForm(); }} />
-            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <View style={styles.modalTitleAccent}>
                   <Text style={styles.modalTitle}>{editingDebtId ? 'Edit Debt' : 'Add Debt'}</Text>
@@ -2651,7 +2651,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 </TouchableOpacity>
               </View>
 
-              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
                 <ContactPicker
                   selectedContacts={debtContacts}
                   onSelect={setDebtContacts}
@@ -2809,7 +2809,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setSplitModalVisible(false); resetSplitForm(); }} />
-            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <View style={styles.modalTitleAccent}>
                   <Text style={styles.modalTitle}>{editingSplitId ? 'Edit Split' : 'Split Expense'}</Text>
@@ -2819,7 +2819,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 </TouchableOpacity>
               </View>
 
-              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
                 <Text style={styles.formLabel}>Description</Text>
                 <TextInput
                   style={styles.formInput}
@@ -3087,7 +3087,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       >
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => setPaymentModalVisible(false)} />
-              <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+              <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
                 {(() => {
                   const payDebt = debts.find((d) => d.id === paymentDebtId);
                   if (!payDebt) return null;
@@ -3118,7 +3118,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           </TouchableOpacity>
                         </View>
 
-                        <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bottomOffset={20}>
+                        <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bottomOffset={20} nestedScrollEnabled>
                           {wallet && (
                             <View style={styles.payDetailRow}>
                               <Feather name="credit-card" size={15} color={CALM.textMuted} />
@@ -3255,7 +3255,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         </TouchableOpacity>
                       </View>
 
-                      <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                      <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} nestedScrollEnabled>
                         {/* Debt context card */}
                         <View style={styles.payContextCard}>
                           <View style={styles.payContextRow}>
@@ -3419,7 +3419,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       {splitDetailVisible && (<Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setSplitDetailVisible(false)}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => setSplitDetailVisible(false)} />
-          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleAccent}>
                 <Text style={styles.modalTitle}>Split Summary</Text>
@@ -3456,7 +3456,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               }
 
               return (
-                <ScrollView showsVerticalScrollIndicator={false} bounces>
+                <ScrollView showsVerticalScrollIndicator={false} bounces nestedScrollEnabled keyboardShouldPersistTaps="handled">
                   {/* Summary header */}
                   <View style={styles.wizardSummarySection}>
                     <View style={styles.wizardSummaryRow}>
@@ -3574,7 +3574,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setWizardVisible(false); resetWizardForm(); }} />
-          <View style={styles.wizardContent}>
+          <View style={styles.wizardContent} onStartShouldSetResponder={() => true}>
             {/* Step Indicator */}
             <View style={styles.wizardStepRow}>
               {[1, 2, ...(wizardHasTax ? [3] : []), 4, 5, 6].map((step, idx) => {
@@ -3605,7 +3605,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               })}
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
               {/* Step 1: Purpose */}
               {wizardStep === 1 && (
                 <View>
@@ -4087,9 +4087,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           >
           <View style={[{ flex: 1 }, styles.modalOverlay]}>
           <Pressable style={{ flex: 1 }} onPress={() => setAssigningItemIndex(null)} />
-            <View style={styles.assignModalSheet}>
+            <View style={styles.assignModalSheet} onStartShouldSetResponder={() => true}>
               {itemAssignMode === 'assign' ? (
-                <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} nestedScrollEnabled>
                   {/* Header */}
                   <View style={styles.assignModalHeader}>
                     <View style={{ flex: 1 }}>
@@ -4367,7 +4367,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       {reminderModalVisible && (<Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setReminderModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => setReminderModalVisible(false)} />
-          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleAccent}>
                 <Text style={styles.modalTitle}>Send Reminder</Text>
@@ -4483,7 +4483,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setRequestPaymentVisible(false); setRequestPaymentDebt(null); setShowQrPicker(false); }} />
-          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleAccent}>
                 <Text style={styles.modalTitle}>Request Payment</Text>
@@ -4494,7 +4494,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             </View>
 
             {requestPaymentDebt && (
-              <ScrollView showsVerticalScrollIndicator={false}>
+              <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                 <View style={styles.requestPaymentRecipient}>
                   <View style={[styles.debtAvatar, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
                     <Text style={[styles.debtAvatarText, { color: CALM.accent }]}>

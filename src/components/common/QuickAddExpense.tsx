@@ -403,6 +403,7 @@ const QuickAddExpense: React.FC = () => {
           </TouchableWithoutFeedback>
           <Animated.View
             style={[styles.card, { transform: [{ scale: cardScale }], opacity: cardOpacity, elevation: 24 }]}
+            onStartShouldSetResponder={() => true}
           >
             {/* ── Header row ──────────────────────────── */}
             <View style={styles.hdr}>
@@ -486,7 +487,7 @@ const QuickAddExpense: React.FC = () => {
                     <Text style={styles.badgeText}>{currency} {parsedAmount.toFixed(2)}</Text>
                   </View>
 
-                  <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={styles.catGrid} showsVerticalScrollIndicator={false}>
+                  <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={styles.catGrid} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                     {categories.map((cat) => (
                       <TouchableOpacity
                         key={cat.id}
@@ -516,7 +517,7 @@ const QuickAddExpense: React.FC = () => {
                       </Text>
                     </View>
 
-                    <ScrollView showsVerticalScrollIndicator={false}>
+                    <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                       {[...wallets].sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0)).map((w) => (
                         <TouchableOpacity
                           key={w.id}
@@ -553,7 +554,7 @@ const QuickAddExpense: React.FC = () => {
             <TouchableWithoutFeedback onPress={handlePbDismiss}>
               <View style={StyleSheet.absoluteFill} />
             </TouchableWithoutFeedback>
-            <Animated.View style={[styles.pbPromptCard, { transform: [{ scale: pbPromptScale }], opacity: pbPromptOpacity }]}>
+            <Animated.View style={[styles.pbPromptCard, { transform: [{ scale: pbPromptScale }], opacity: pbPromptOpacity }]} onStartShouldSetResponder={() => true}>
               <View style={styles.pbPromptIcon}>
                 <Feather name="book-open" size={28} color={CALM.accent} />
               </View>

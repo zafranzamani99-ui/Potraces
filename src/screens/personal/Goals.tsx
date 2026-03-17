@@ -944,7 +944,7 @@ const Goals: React.FC = () => {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.kavWrapper}
           >
-            <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
+            <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editingGoal ? 'edit goal' : 'create goal'}</Text>
                 <TouchableOpacity onPress={closeGoalModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -955,6 +955,7 @@ const Goals: React.FC = () => {
               <ScrollView
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
                 contentContainerStyle={{ paddingBottom: SPACING.lg }}
               >
                 {/* Templates */}
@@ -1116,7 +1117,7 @@ const Goals: React.FC = () => {
                   </TouchableOpacity>
                 )}
               </ScrollView>
-            </TouchableOpacity>
+            </View>
           </KeyboardAvoidingView>
         </TouchableOpacity>
       </Modal>}
@@ -1134,7 +1135,7 @@ const Goals: React.FC = () => {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.kavWrapper}
           >
-            <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
+            <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>contribute</Text>
                 <TouchableOpacity onPress={closeContributeModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -1163,6 +1164,7 @@ const Goals: React.FC = () => {
               <ScrollView
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
                 contentContainerStyle={{ paddingBottom: SPACING.lg }}
               >
                 {contributingGoal && (
@@ -1280,7 +1282,7 @@ const Goals: React.FC = () => {
                   <Text style={styles.confirmBtnText}>contribute</Text>
                 </TouchableOpacity>
               </ScrollView>
-            </TouchableOpacity>
+            </View>
           </KeyboardAvoidingView>
         </TouchableOpacity>
       </Modal>}
@@ -1294,7 +1296,7 @@ const Goals: React.FC = () => {
         onRequestClose={() => setHistoryModalVisible(false)}
       >
         <TouchableOpacity style={styles.overlayCenter} activeOpacity={1} onPress={() => setHistoryModalVisible(false)}>
-          <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
+          <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle} numberOfLines={1}>{historyGoal?.name || 'history'}</Text>
               <TouchableOpacity onPress={() => setHistoryModalVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -1321,6 +1323,8 @@ const Goals: React.FC = () => {
 
             <ScrollView
               showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
               style={{ maxHeight: 400 }}
               contentContainerStyle={{ paddingBottom: SPACING.lg }}
             >
@@ -1357,7 +1361,7 @@ const Goals: React.FC = () => {
                 <Text style={styles.noResultsText}>no contributions yet.</Text>
               )}
             </ScrollView>
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>}
     </View>

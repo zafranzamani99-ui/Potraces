@@ -401,7 +401,7 @@ const Inventory: React.FC = () => {
           onRequestClose={() => setModalVisible(false)}
         >
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
                   {editingId ? 'Edit Product' : 'Add Product'}
@@ -533,7 +533,7 @@ const Inventory: React.FC = () => {
           onRequestClose={() => setStockModalVisible(false)}
         >
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { maxHeight: 300, paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+            <View style={[styles.modalContent, { maxHeight: 300, paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Add Stock</Text>
                 <TouchableOpacity onPress={() => setStockModalVisible(false)}>

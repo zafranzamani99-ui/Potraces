@@ -1400,6 +1400,7 @@ const Products: React.FC = () => {
         windowSize={5}
         maxToRenderPerBatch={8}
         removeClippedSubviews
+        initialNumToRender={10}
       />
 
       {/* Bottom-anchored add buttons / select mode bar */}

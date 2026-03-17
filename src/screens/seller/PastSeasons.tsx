@@ -322,7 +322,8 @@ const PastSeasons: React.FC = () => {
         }
         removeClippedSubviews
         windowSize={5}
-        maxToRenderPerBatch={8}
+        maxToRenderPerBatch={10}
+        initialNumToRender={10}
       />
 
       {/* Bottom-anchored add button (only when seasons exist and no active season) */}

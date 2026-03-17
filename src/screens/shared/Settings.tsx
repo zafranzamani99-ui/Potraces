@@ -928,7 +928,7 @@ const Settings: React.FC = () => {
         <Pressable style={styles.currencyOverlay} onPress={() => setCurrencyModalVisible(false)}>
           <View style={styles.currencyCard} onStartShouldSetResponder={() => true}>
             <Text style={styles.currencyTitle}>select currency</Text>
-            <ScrollView style={styles.currencyList} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.currencyList} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
               {CURRENCY_OPTIONS.map((opt) => {
                 const selected = opt.code === currency;
                 return (

@@ -89,6 +89,10 @@ const IncomeStreamsScreen: React.FC = () => {
             <Text style={styles.emptyText}>No income streams yet. Add your first one.</Text>
           </View>
         }
+        removeClippedSubviews
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        initialNumToRender={10}
       />
 
       <TouchableOpacity style={styles.addButton} onPress={() => setShowAdd(true)}>

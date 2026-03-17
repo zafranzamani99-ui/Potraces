@@ -846,7 +846,7 @@ const PersonalDashboard: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
+              <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
                 <Text style={styles.label}>Type</Text>
                 <View style={styles.typeContainer}>
                   <TouchableOpacity

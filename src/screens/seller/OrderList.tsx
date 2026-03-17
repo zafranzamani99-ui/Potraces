@@ -1885,7 +1885,7 @@ const OrderList: React.FC = () => {
               )}
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={styles.filterSortScroll}>
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.filterSortScroll} nestedScrollEnabled keyboardShouldPersistTaps="handled">
               {/* Sort */}
               <Text style={styles.filterSectionLabel}>sort by</Text>
               <View style={styles.filterSectionPills}>
@@ -2187,7 +2187,7 @@ const OrderList: React.FC = () => {
                 </View>
               </>
             )}
-            <ScrollView bounces={false} showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: Math.max(SPACING['3xl'], insets.bottom + SPACING.lg) }}>
+            <ScrollView bounces={false} showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: Math.max(SPACING['3xl'], insets.bottom + SPACING.lg) }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
               {selectedOrder && (
                 <>
                   {/* ── Section: Contact ── */}
@@ -2719,7 +2719,7 @@ const OrderList: React.FC = () => {
               </View>
 
               {/* Product list */}
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
                 {products
                   .filter(p => p.isActive && !editItems.some(ei => ei.productId === p.id))
                   .filter(p => !addProductSearch || p.name.toLowerCase().includes(addProductSearch.toLowerCase()))

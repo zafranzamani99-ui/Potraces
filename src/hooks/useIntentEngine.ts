@@ -33,6 +33,7 @@ interface UseIntentEngineReturn {
   queryAnswer: QueryAnswer | null;
   statusMessage: string | null;
   classify: () => void;
+  retry: () => void;
   confirmExtraction: (extractionId: string) => void;
   skipExtraction: (extractionId: string) => void;
 }
@@ -53,6 +54,7 @@ export function useIntentEngine({
   const page = useNotesStore((s) => s.pages.find((p) => p.id === pageId));
   const addExtraction = useNotesStore((s) => s.addExtraction);
   const updateExtractionStatus = useNotesStore((s) => s.updateExtractionStatus);
+  const clearPendingExtractions = useNotesStore((s) => s.clearPendingExtractions);
   const wallets = useWalletStore((s) => s.wallets);
   const addTransaction = usePersonalStore((s) => s.addTransaction);
   const addSubscription = usePersonalStore((s) => s.addSubscription);
@@ -393,6 +395,11 @@ export function useIntentEngine({
     }
   }, [page?.content, runClassification]);
 
+  const retry = useCallback(() => {
+    clearPendingExtractions(pageId);
+    classify();
+  }, [clearPendingExtractions, pageId, classify]);
+
   return {
     isClassifying,
     classifyStep,
@@ -402,6 +409,7 @@ export function useIntentEngine({
     queryAnswer,
     statusMessage,
     classify,
+    retry,
     confirmExtraction,
     skipExtraction,
   };

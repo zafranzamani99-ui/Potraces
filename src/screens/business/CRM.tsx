@@ -689,7 +689,7 @@ const CRM: React.FC = () => {
         }}
       >
         <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
                   {editingCustomerId ? 'Edit Customer' : 'Add Customer'}
@@ -828,7 +828,7 @@ const CRM: React.FC = () => {
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.detailModalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+          <View style={[styles.modalContent, styles.detailModalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Customer Details</Text>
               <TouchableOpacity
@@ -845,6 +845,8 @@ const CRM: React.FC = () => {
             {selectedCustomer && (
               <ScrollView
                 showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
                 contentContainerStyle={styles.detailScroll}
               >
                 {/* Contact Info Header */}
@@ -1159,7 +1161,7 @@ const CRM: React.FC = () => {
         }}
       >
         <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
                   {editingOrderId ? 'Edit Order' : 'Add Order'}
@@ -1398,7 +1400,7 @@ const CRM: React.FC = () => {
         onRequestClose={() => setPaymentModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Record Payment</Text>
                 <TouchableOpacity

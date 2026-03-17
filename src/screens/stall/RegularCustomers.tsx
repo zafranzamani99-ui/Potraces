@@ -343,6 +343,10 @@ const RegularCustomers: React.FC = () => {
           ListEmptyComponent={renderEmpty}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          removeClippedSubviews
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          initialNumToRender={10}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>

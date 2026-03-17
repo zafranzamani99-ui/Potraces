@@ -1047,7 +1047,7 @@ const SeasonSummary: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.listModalScroll} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.listModalScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
               {seasonOrders.length === 0 ? (
                 <View style={styles.inlineListEmpty}>
                   <Text style={styles.inlineListEmptyText}>no orders yet</Text>
@@ -1102,7 +1102,7 @@ const SeasonSummary: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.listModalScroll} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.listModalScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
               {seasonCosts.length === 0 ? (
                 <View style={styles.inlineListEmpty}>
                   <Text style={styles.inlineListEmptyText}>no costs logged</Text>
