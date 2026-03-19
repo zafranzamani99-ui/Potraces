@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { TYPE, SPACING, CALM } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -29,6 +30,8 @@ const CollapsibleSection = React.memo(function CollapsibleSection({
   children,
   defaultOpen = false,
 }: CollapsibleSectionProps) {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   const toggle = useCallback(() => {
@@ -50,7 +53,7 @@ const CollapsibleSection = React.memo(function CollapsibleSection({
         <Feather
           name={isOpen ? 'chevron-down' : 'chevron-right'}
           size={16}
-          color={CALM.textSecondary}
+          color={C.textSecondary}
         />
       </TouchableOpacity>
       {isOpen && <View style={styles.content}>{children}</View>}
@@ -60,7 +63,7 @@ const CollapsibleSection = React.memo(function CollapsibleSection({
 
 export default CollapsibleSection;
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     marginVertical: SPACING.sm,
   },
@@ -79,7 +82,7 @@ const styles = StyleSheet.create({
   },
   subtitleText: {
     fontSize: 12,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   headerText: {
     fontSize: TYPE.label.fontSize,

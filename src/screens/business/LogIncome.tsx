@@ -1,14 +1,14 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  ScrollView,
   ActivityIndicator,
   Modal,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
 import { useNavigation } from '@react-navigation/native';
@@ -16,6 +16,7 @@ import { useBusinessStore } from '../../store/businessStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { parseTextInput } from '../../services/aiService';
 import { transcribeAudio } from '../../services/speechService';
 import { createTransfer } from '../../utils/transferBridge';
@@ -31,6 +32,8 @@ const PLACEHOLDERS: Record<string, string> = {
 };
 
 const LogIncome: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { incomeType, incomeStreams, addBusinessTransaction, addRiderCost, addTransfer } =
     useBusinessStore();
   const { addTransferIncome } = usePersonalStore();
@@ -172,7 +175,7 @@ const LogIncome: React.FC = () => {
     return (
       <View style={styles.container}>
         <View style={styles.savedContainer}>
-          <Feather name="check-circle" size={48} color={CALM.positive} />
+          <Feather name="check-circle" size={48} color={C.positive} />
           <Text style={styles.savedText}>saved.</Text>
 
           {showTransferPrompt && (
@@ -189,7 +192,7 @@ const LogIncome: React.FC = () => {
                 onChangeText={setTransferAmount}
                 keyboardType="numeric"
                 placeholder="amount"
-                placeholderTextColor={CALM.textSecondary}
+                placeholderTextColor={C.textSecondary}
               />
             </View>
           )}
@@ -223,7 +226,7 @@ const LogIncome: React.FC = () => {
                 onChangeText={setCostAmount}
                 keyboardType="numeric"
                 placeholder="amount"
-                placeholderTextColor={CALM.textSecondary}
+                placeholderTextColor={C.textSecondary}
               />
               <TouchableOpacity onPress={handleSaveCost} style={styles.costSaveButton}>
                 <Text style={styles.costSaveText}>done</Text>
@@ -251,7 +254,7 @@ const LogIncome: React.FC = () => {
             onChangeText={setAmount}
             keyboardType="numeric"
             placeholder="0"
-            placeholderTextColor={CALM.border}
+            placeholderTextColor={C.border}
           />
         </View>
 
@@ -261,14 +264,14 @@ const LogIncome: React.FC = () => {
             style={[styles.pill, mode === 'text' && styles.pillActive]}
             onPress={() => setMode('text')}
           >
-            <Feather name="type" size={16} color={mode === 'text' ? '#fff' : CALM.textSecondary} />
+            <Feather name="type" size={16} color={mode === 'text' ? '#fff' : C.textSecondary} />
             <Text style={[styles.pillText, mode === 'text' && styles.pillTextActive]}>type</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.pill, mode === 'voice' && styles.pillActive]}
             onPress={() => setMode('voice')}
           >
-            <Feather name="mic" size={16} color={mode === 'voice' ? '#fff' : CALM.textSecondary} />
+            <Feather name="mic" size={16} color={mode === 'voice' ? '#fff' : C.textSecondary} />
             <Text style={[styles.pillText, mode === 'voice' && styles.pillTextActive]}>voice</Text>
           </TouchableOpacity>
         </View>
@@ -281,7 +284,7 @@ const LogIncome: React.FC = () => {
               value={textInput}
               onChangeText={setTextInput}
               placeholder={placeholder}
-              placeholderTextColor={CALM.textSecondary}
+              placeholderTextColor={C.textSecondary}
               multiline
               onSubmitEditing={handleTextParse}
               returnKeyType="done"
@@ -301,7 +304,7 @@ const LogIncome: React.FC = () => {
             onPressOut={handleVoiceStop}
             activeOpacity={0.7}
           >
-            <Feather name="mic" size={32} color={isRecording ? '#fff' : CALM.bronze} />
+            <Feather name="mic" size={32} color={isRecording ? '#fff' : C.bronze} />
             <Text style={[styles.voiceHint, isRecording && styles.voiceHintRecording]}>
               {isRecording ? 'listening...' : 'hold to speak'}
             </Text>
@@ -310,7 +313,7 @@ const LogIncome: React.FC = () => {
 
         {isProcessing && (
           <View style={styles.processingRow}>
-            <ActivityIndicator size="small" color={CALM.bronze} />
+            <ActivityIndicator size="small" color={C.bronze} />
             <Text style={styles.processingText}>processing...</Text>
           </View>
         )}
@@ -321,7 +324,7 @@ const LogIncome: React.FC = () => {
           value={note}
           onChangeText={setNote}
           placeholder="note (optional)"
-          placeholderTextColor={CALM.textSecondary}
+          placeholderTextColor={C.textSecondary}
         />
 
         {/* Stream selector for mixed/parttime */}
@@ -369,10 +372,10 @@ const LogIncome: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollContent: {
     padding: SPACING['2xl'],
@@ -391,7 +394,7 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     ...TYPE.amount,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
 
@@ -409,15 +412,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   pillActive: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   pillText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   pillTextActive: {
     color: '#fff',
@@ -430,11 +433,11 @@ const styles = StyleSheet.create({
   textArea: {
     ...TYPE.insight,
     lineHeight: undefined,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.surface,
+    color: C.textPrimary,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.lg,
     minHeight: 80,
     textAlignVertical: 'top',
@@ -444,7 +447,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.full,
   },
   parseButtonText: {
@@ -458,20 +461,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: SPACING['2xl'],
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     marginBottom: SPACING.lg,
     gap: SPACING.sm,
   },
   voiceButtonRecording: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   voiceHint: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   voiceHintRecording: {
     color: '#fff',
@@ -486,18 +489,18 @@ const styles = StyleSheet.create({
   },
   processingText: {
     ...TYPE.muted,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // Note
   noteInput: {
     ...TYPE.insight,
     lineHeight: undefined,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.surface,
+    color: C.textPrimary,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
   },
@@ -519,15 +522,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   streamChipSelected: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   streamChipText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   streamChipTextSelected: {
     color: '#fff',
@@ -535,13 +538,13 @@ const styles = StyleSheet.create({
 
   // Save
   saveButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',
   },
   saveButtonDisabled: {
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   saveText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -560,7 +563,7 @@ const styles = StyleSheet.create({
   savedText: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // Transfer prompt
@@ -571,7 +574,7 @@ const styles = StyleSheet.create({
   },
   transferQuestion: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
   },
   transferLink: {
@@ -581,16 +584,16 @@ const styles = StyleSheet.create({
   transferLinkText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   transferInput: {
     ...TYPE.insight,
     lineHeight: undefined,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.surface,
+    color: C.textPrimary,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     width: 150,
@@ -603,7 +606,7 @@ const styles = StyleSheet.create({
   },
   costLinkText: {
     ...TYPE.label,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   costEntry: {
     alignItems: 'center',
@@ -619,15 +622,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   costTypeSelected: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   costTypeText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   costTypeTextSelected: {
     color: '#fff',
@@ -635,18 +638,18 @@ const styles = StyleSheet.create({
   costAmountInput: {
     ...TYPE.insight,
     lineHeight: undefined,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.surface,
+    color: C.textPrimary,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     width: 150,
     textAlign: 'center',
   },
   costSaveButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xl,
@@ -666,7 +669,7 @@ const styles = StyleSheet.create({
   anotherText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 });
 

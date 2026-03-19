@@ -5,14 +5,15 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  ScrollView,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { formatDistanceToNow, format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { RootStackParamList, CostCategory } from '../../../types';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -42,6 +43,8 @@ const TABS: { label: string; value: FilterTab }[] = [
 ];
 
 const CostHistory: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<RouteProp<RootStackParamList, 'OnTheRoadCostHistory'>>();
   const currency = useSettingsStore((s) => s.currency);
   const { businessTransactions } = useBusinessStore();
@@ -179,15 +182,15 @@ const CostHistory: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
 
   summaryText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     paddingHorizontal: SPACING['2xl'],
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
@@ -202,7 +205,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: SPACING['2xl'],
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   tab: {
     paddingVertical: SPACING.md,
@@ -211,10 +214,10 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   tabTextActive: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   tabUnderline: {
@@ -223,7 +226,7 @@ const styles = StyleSheet.create({
     left: SPACING.lg,
     right: SPACING.lg,
     height: 2,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: 1,
   },
 
@@ -237,14 +240,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   rowLeft: {
     flex: 1,
   },
   rowCategoryLine: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   rowNote: {
     ...TYPE.muted,
@@ -257,11 +260,11 @@ const styles = StyleSheet.create({
   rowAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   rowAmountEarning: {
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Empty
@@ -273,7 +276,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
   },
 });

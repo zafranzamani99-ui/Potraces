@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBusinessStore } from '../../store/businessStore';
 import { useAppStore } from '../../store/appStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { IncomeType } from '../../types';
 
 const TILES: { type: IncomeType; label: string; sublabel: string }[] = [
@@ -16,6 +17,8 @@ const TILES: { type: IncomeType; label: string; sublabel: string }[] = [
 ];
 
 const Setup: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const [selected, setSelected] = useState<IncomeType | null>(null);
   const insets = useSafeAreaInsets();
 
@@ -39,7 +42,7 @@ const Setup: React.FC = () => {
         style={styles.backBtn}
         activeOpacity={0.7}
       >
-        <Feather name="arrow-left" size={22} color={CALM.textPrimary} />
+        <Feather name="arrow-left" size={22} color={C.textPrimary} />
       </TouchableOpacity>
 
       <View style={styles.content}>
@@ -83,10 +86,10 @@ const Setup: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   backBtn: {
     marginTop: 12,
@@ -103,7 +106,7 @@ const styles = StyleSheet.create({
   },
   heading: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING['2xl'],
   },
@@ -115,14 +118,14 @@ const styles = StyleSheet.create({
   },
   tile: {
     width: '48%',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.lg,
   },
   tileSelected: {
-    borderColor: CALM.bronze,
+    borderColor: C.bronze,
     borderWidth: 2,
   },
   fullWidthTile: {
@@ -132,23 +135,23 @@ const styles = StyleSheet.create({
   tileLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   tileSublabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 16,
   },
   confirmButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',
     marginTop: SPACING.lg,
   },
   confirmButtonDisabled: {
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   confirmText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -156,7 +159,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   confirmTextDisabled: {
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 });
 

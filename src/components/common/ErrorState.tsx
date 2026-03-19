@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Button from './Button';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 interface ErrorStateProps {
   title?: string;
@@ -25,6 +26,8 @@ const ErrorState: React.FC<ErrorStateProps> = ({
   contactLabel = 'Contact Support',
   style,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   return (
     <View
       style={[styles.container, style]}
@@ -32,7 +35,7 @@ const ErrorState: React.FC<ErrorStateProps> = ({
       accessibilityLabel={`${title}. ${message}`}
     >
       <View style={styles.iconContainer}>
-        <Feather name={icon} size={48} color={CALM.neutral} />
+        <Feather name={icon} size={48} color={C.neutral} />
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
@@ -62,7 +65,7 @@ const ErrorState: React.FC<ErrorStateProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
@@ -73,9 +76,9 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.xl,
@@ -83,13 +86,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.sm,
     textAlign: 'center',
   },
   message: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING.xl,
     lineHeight: 22,

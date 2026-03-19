@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { CALM, SPACING, TYPOGRAPHY } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 interface BusinessEmptyStateProps {
   message: string;
@@ -8,6 +9,8 @@ interface BusinessEmptyStateProps {
 }
 
 const BusinessEmptyState: React.FC<BusinessEmptyStateProps> = ({ message, submessage }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   return (
     <View style={styles.container}>
       <Text style={styles.message}>{message}</Text>
@@ -16,7 +19,7 @@ const BusinessEmptyState: React.FC<BusinessEmptyStateProps> = ({ message, submes
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
@@ -26,12 +29,12 @@ const styles = StyleSheet.create({
   },
   message: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
   },
   submessage: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
     marginTop: SPACING.sm,
   },

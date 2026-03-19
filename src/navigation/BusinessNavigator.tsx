@@ -1,7 +1,9 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
-import { COLORS, CALM, TYPOGRAPHY } from '../constants';
+import { COLORS, TYPOGRAPHY } from '../constants';
+import { useCalm } from '../hooks/useCalm';
+import { useT } from '../i18n';
 import CustomTabBar from '../components/navigation/CustomTabBar';
 import { useBusinessStore } from '../store/businessStore';
 
@@ -83,6 +85,8 @@ const ICON_MAP: Record<string, keyof typeof Feather.glyphMap> = {
 };
 
 const BusinessNavigator: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
   const incomeType = useBusinessStore((s) => s.incomeType);
 
   const getIcon = (routeName: string, color: string, size: number) => {
@@ -95,59 +99,59 @@ const BusinessNavigator: React.FC = () => {
       case 'seller':
         return (
           <>
-            <Tab.Screen name="SellerHome" component={SellerDashboard} options={{ title: 'Home', headerShown: false }} />
-            <Tab.Screen name="SellerOrders" component={OrderList} options={{ title: 'Orders' }} />
-            <Tab.Screen name="SellerNewOrder" component={NewOrder} options={{ title: 'New Order' }} />
-            <Tab.Screen name="SellerCustomers" component={SellerCustomers} options={{ title: 'Customers' }} />
-            <Tab.Screen name="SellerManage" component={SellerManage} options={{ title: 'Manage' }} />
+            <Tab.Screen name="SellerHome" component={SellerDashboard} options={{ title: t.tabs.home, headerShown: false }} />
+            <Tab.Screen name="SellerOrders" component={OrderList} options={{ title: t.tabs.orders }} />
+            <Tab.Screen name="SellerNewOrder" component={NewOrder} options={{ title: t.tabs.newOrder }} />
+            <Tab.Screen name="SellerCustomers" component={SellerCustomers} options={{ title: t.tabs.customers }} />
+            <Tab.Screen name="SellerManage" component={SellerManage} options={{ title: t.tabs.manage }} />
           </>
         );
 
       case 'stall':
         return (
           <>
-            <Tab.Screen name="StallDashboard" component={StallDashboard} options={{ title: 'Home', headerShown: false }} />
-            <Tab.Screen name="StallHistory" component={SessionHistory} options={{ title: 'History' }} />
-            <Tab.Screen name="StallSell" component={SellScreen} options={{ title: 'Sell' }} />
-            <Tab.Screen name="StallRegulars" component={RegularCustomers} options={{ title: 'Regulars' }} />
-            <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
+            <Tab.Screen name="StallDashboard" component={StallDashboard} options={{ title: t.tabs.home, headerShown: false }} />
+            <Tab.Screen name="StallHistory" component={SessionHistory} options={{ title: t.tabs.history }} />
+            <Tab.Screen name="StallSell" component={SellScreen} options={{ title: t.tabs.sell }} />
+            <Tab.Screen name="StallRegulars" component={RegularCustomers} options={{ title: t.tabs.regulars }} />
+            <Tab.Screen name="Settings" component={Settings} options={{ title: t.tabs.settings }} />
           </>
         );
 
       case 'freelance':
         return (
           <>
-            <Tab.Screen name="FreelancerHome" component={FreelancerDashboard} options={{ title: 'Home', headerShown: false }} />
-            <Tab.Screen name="FreelancerClients" component={FreelancerClientList} options={{ title: 'Clients' }} />
-            <Tab.Screen name="Notes" component={NotesHome} options={{ title: 'Notes' }} />
-            <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
+            <Tab.Screen name="FreelancerHome" component={FreelancerDashboard} options={{ title: t.tabs.home, headerShown: false }} />
+            <Tab.Screen name="FreelancerClients" component={FreelancerClientList} options={{ title: t.tabs.clients }} />
+            <Tab.Screen name="Notes" component={NotesHome} options={{ title: t.tabs.notes }} />
+            <Tab.Screen name="Settings" component={Settings} options={{ title: t.tabs.settings }} />
           </>
         );
 
       case 'rider':
         return (
           <>
-            <Tab.Screen name="OnTheRoadHome" component={OnTheRoadDashboard} options={{ title: 'Home', headerShown: false }} />
-            <Tab.Screen name="Notes" component={NotesHome} options={{ title: 'Notes' }} />
-            <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
+            <Tab.Screen name="OnTheRoadHome" component={OnTheRoadDashboard} options={{ title: t.tabs.home, headerShown: false }} />
+            <Tab.Screen name="Notes" component={NotesHome} options={{ title: t.tabs.notes }} />
+            <Tab.Screen name="Settings" component={Settings} options={{ title: t.tabs.settings }} />
           </>
         );
 
       case 'parttime':
         return (
           <>
-            <Tab.Screen name="PartTimeHome" component={PartTimeDashboard} options={{ title: 'Home', headerShown: false }} />
-            <Tab.Screen name="Notes" component={NotesHome} options={{ title: 'Notes' }} />
-            <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
+            <Tab.Screen name="PartTimeHome" component={PartTimeDashboard} options={{ title: t.tabs.home, headerShown: false }} />
+            <Tab.Screen name="Notes" component={NotesHome} options={{ title: t.tabs.notes }} />
+            <Tab.Screen name="Settings" component={Settings} options={{ title: t.tabs.settings }} />
           </>
         );
 
       case 'mixed':
         return (
           <>
-            <Tab.Screen name="MixedHome" component={MixedDashboard} options={{ title: 'Home', headerShown: false }} />
-            <Tab.Screen name="Notes" component={NotesHome} options={{ title: 'Notes' }} />
-            <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
+            <Tab.Screen name="MixedHome" component={MixedDashboard} options={{ title: t.tabs.home, headerShown: false }} />
+            <Tab.Screen name="Notes" component={NotesHome} options={{ title: t.tabs.notes }} />
+            <Tab.Screen name="Settings" component={Settings} options={{ title: t.tabs.settings }} />
           </>
         );
 
@@ -155,11 +159,11 @@ const BusinessNavigator: React.FC = () => {
         // Fallback — legacy tabs for users who haven't set up yet
         return (
           <>
-            <Tab.Screen name="Dashboard" component={BusinessDashboard} options={{ title: 'Home', headerShown: false }} />
-            <Tab.Screen name="Inventory" component={Inventory} options={{ title: 'Inventory' }} />
+            <Tab.Screen name="Dashboard" component={BusinessDashboard} options={{ title: t.tabs.home, headerShown: false }} />
+            <Tab.Screen name="Inventory" component={Inventory} options={{ title: 'Products' }} />
             <Tab.Screen name="POS" component={POS} options={{ title: 'POS' }} />
             <Tab.Screen name="CRM" component={CRM} options={{ title: 'CRM' }} />
-            <Tab.Screen name="Settings" component={Settings} options={{ title: 'Settings' }} />
+            <Tab.Screen name="Settings" component={Settings} options={{ title: t.tabs.settings }} />
           </>
         );
     }
@@ -174,15 +178,17 @@ const BusinessNavigator: React.FC = () => {
         />
       )}
       screenOptions={({ route }) => ({
+        lazy: false,
+        freezeOnBlur: true,
         tabBarIcon: ({ color, size }: { color: string; size: number }) =>
           getIcon(route.name, color, size),
         tabBarActiveTintColor: COLORS.business,
-        tabBarInactiveTintColor: CALM.textMuted,
+        tabBarInactiveTintColor: C.textMuted,
         tabBarShowLabel: false,
         headerStyle: {
-          backgroundColor: CALM.background,
+          backgroundColor: C.background,
         },
-        headerTintColor: CALM.textPrimary,
+        headerTintColor: C.textPrimary,
         headerTitleStyle: {
           fontWeight: TYPOGRAPHY.weight.semibold as '600',
           fontSize: TYPOGRAPHY.size.lg,

@@ -1,17 +1,26 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, Dimensions, InteractionManager } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { PieChart, LineChart } from 'react-native-chart-kit';
 import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, TYPE, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
+import { generateReportNarrative, ReportMonthData } from '../../services/reportNarrative';
+import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
+import SkeletonLoader from '../../components/common/SkeletonLoader';
 
 const screenWidth = Dimensions.get('window').width;
 
 const PersonalReports: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { transactions, subscriptions } = usePersonalStore();
   const currency = useSettingsStore(state => state.currency);
   const expenseCategories = useCategories('expense');
@@ -38,14 +47,14 @@ const PersonalReports: React.FC = () => {
         return {
           name: cat?.name || category,
           amount,
-          color: cat?.color || CALM.accent,           // keep chart data colors
-          legendFontColor: CALM.textPrimary,
+          color: cat?.color || C.accent,           // keep chart data colors
+          legendFontColor: C.textPrimary,
           legendFontSize: 12,
         };
       })
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 6);
-  }, [transactions, expenseCategories]);
+  }, [transactions, expenseCategories, C]);
 
   const trendData = useMemo(() => {
     const months = [];
@@ -79,18 +88,67 @@ const PersonalReports: React.FC = () => {
       datasets: [
         {
           data: incomeData,
-          color: (opacity = 1) => withAlpha(CALM.positive, opacity),  // income = positive
+          color: (opacity = 1) => withAlpha(C.positive, opacity),  // income = positive
           strokeWidth: 2,
         },
         {
           data: expenseData,
-          color: (opacity = 1) => withAlpha(CALM.textPrimary, opacity), // expense = primary text
+          color: (opacity = 1) => withAlpha(C.textPrimary, opacity), // expense = primary text
           strokeWidth: 2,
         },
       ],
       legend: ['Income', 'Expenses'],
     };
-  }, [transactions]);
+  }, [transactions, C]);
+
+  // Report narrative
+  const reportNarratives = useAIInsightsStore((s) => s.reportNarratives);
+  const monthKey = format(new Date(), 'yyyy-MM');
+  const narrativeEntry = reportNarratives[`personal_${monthKey}`];
+
+  // Compute current month totals for narrative
+  const currentMonthTotals = useMemo(() => {
+    const now = new Date();
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+    const monthTxns = transactions.filter((t) =>
+      isWithinInterval(t.date, { start: monthStart, end: monthEnd })
+    );
+    const income = monthTxns.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expenses = monthTxns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const totalExpenses = categoryData.reduce((s, c) => s + c.amount, 0);
+    const topCategories = categoryData.slice(0, 5).map((c) => ({
+      name: c.name,
+      amount: c.amount,
+      percent: totalExpenses > 0 ? Math.round((c.amount / totalExpenses) * 100) : 0,
+    }));
+
+    // Previous month
+    const prevStart = startOfMonth(subMonths(now, 1));
+    const prevEnd = endOfMonth(subMonths(now, 1));
+    const prevTxns = transactions.filter((t) =>
+      isWithinInterval(t.date, { start: prevStart, end: prevEnd })
+    );
+    const prevIncome = prevTxns.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const prevExpenses = prevTxns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+
+    return { income, expenses, topCategories, prevIncome, prevExpenses, count: monthTxns.length };
+  }, [transactions, categoryData]);
+
+  useEffect(() => {
+    if (transactions.length === 0) return;
+    const data: ReportMonthData = {
+      mode: 'personal',
+      income: currentMonthTotals.income,
+      expenses: currentMonthTotals.expenses,
+      kept: currentMonthTotals.income - currentMonthTotals.expenses,
+      topCategories: currentMonthTotals.topCategories,
+      prevMonthIncome: currentMonthTotals.prevIncome,
+      prevMonthExpenses: currentMonthTotals.prevExpenses,
+      transactionCount: currentMonthTotals.count,
+    };
+    generateReportNarrative(data);
+  }, [currentMonthTotals]);
 
   const subscriptionStats = useMemo(() => {
     const activeCount = subscriptions.filter((s) => s.isActive).length;
@@ -113,13 +171,28 @@ const PersonalReports: React.FC = () => {
     return { activeCount, totalMonthly };
   }, [subscriptions]);
 
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setReady(true));
+    return () => task.cancel();
+  }, []);
+
+  if (!ready) {
+    return (
+      <View style={styles.container}>
+        <SkeletonLoader />
+        <SkeletonLoader style={{ marginTop: SPACING.md }} />
+      </View>
+    );
+  }
+
   if (transactions.length === 0) {
     return (
       <View style={styles.container}>
         <EmptyState
           icon="bar-chart-2"
-          title="No Data Yet"
-          message="Start adding transactions to see your financial reports"
+          title={t.reports.nothingToReport}
+          message={t.reports.spendingStory}
         />
       </View>
     );
@@ -132,19 +205,25 @@ const PersonalReports: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {narrativeEntry?.text ? (
+          <Text style={[{ ...TYPE.narrative }, { color: C.textSecondary, marginBottom: SPACING.md }]}>
+            {narrativeEntry.text}
+          </Text>
+        ) : null}
+
         <Card>
-          <Text style={styles.chartTitle}>Income vs Expenses (6 months)</Text>
+          <Text style={styles.chartTitle}>{t.reports.inVsOut}</Text>
           <LineChart
             data={trendData}
             width={screenWidth - 64}
             height={220}
             chartConfig={{
-              backgroundColor: CALM.surface,
-              backgroundGradientFrom: CALM.surface,
-              backgroundGradientTo: CALM.surface,
+              backgroundColor: C.surface,
+              backgroundGradientFrom: C.surface,
+              backgroundGradientTo: C.surface,
               decimalPlaces: 0,
-              color: (opacity = 1) => withAlpha(CALM.accent, opacity),
-              labelColor: (opacity = 1) => withAlpha(CALM.textSecondary, opacity),
+              color: (opacity = 1) => withAlpha(C.accent, opacity),
+              labelColor: (opacity = 1) => withAlpha(C.textSecondary, opacity),
               style: {
                 borderRadius: 16,
               },
@@ -160,7 +239,7 @@ const PersonalReports: React.FC = () => {
 
         {categoryData.length > 0 && (
           <Card>
-            <Text style={styles.chartTitle}>Expenses by Category (This Month)</Text>
+            <Text style={styles.chartTitle}>{t.reports.whereItWent}</Text>
             <PieChart
               data={categoryData}
               width={screenWidth - 64}
@@ -179,23 +258,23 @@ const PersonalReports: React.FC = () => {
 
         {subscriptionStats.activeCount > 0 && (
           <Card>
-            <Text style={styles.chartTitle}>Subscription Overview</Text>
+            <Text style={styles.chartTitle}>{t.reports.subscriptions}</Text>
             <View style={styles.statRow}>
               <View style={styles.statItem}>
                 <Text style={styles.statValue}>{subscriptionStats.activeCount}</Text>
-                <Text style={styles.statLabel}>Active Subscriptions</Text>
+                <Text style={styles.statLabel}>{t.reports.running}</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
                 <Text style={styles.statValue}>{currency} {subscriptionStats.totalMonthly.toFixed(2)}</Text>
-                <Text style={styles.statLabel}>Monthly Cost</Text>
+                <Text style={styles.statLabel}>{t.reports.monthlyTotal}</Text>
               </View>
             </View>
           </Card>
         )}
 
         <Card>
-          <Text style={styles.chartTitle}>Top Categories</Text>
+          <Text style={styles.chartTitle}>{t.reports.biggestSlices}</Text>
           {categoryData.slice(0, 5).map((category, index) => (
             <View key={index} style={styles.categoryRow}>
               <View style={styles.categoryInfo}>
@@ -211,10 +290,10 @@ const PersonalReports: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -227,7 +306,7 @@ const styles = StyleSheet.create({
   chartTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.lg,
   },
   chart: {
@@ -247,18 +326,18 @@ const styles = StyleSheet.create({
   statDivider: {
     width: 1,
     height: 40,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginHorizontal: SPACING.lg,
   },
   statValue: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: '300',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   statLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
   },
 
@@ -269,7 +348,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   categoryInfo: {
     flexDirection: 'row',
@@ -283,12 +362,12 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   categoryAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 });
 

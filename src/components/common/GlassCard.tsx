@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useMemo } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { CALM, RADIUS, SPACING, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { lightTap } from '../../services/haptics';
 
 // ─── TYPES ──────────────────────────────────────────────────
@@ -25,30 +26,30 @@ interface GlassCardProps {
 }
 
 // ─── VARIANT CONFIG ─────────────────────────────────────────
-const VARIANT_CONFIG: Record<
+const makeVariantConfig = (C: typeof CALM): Record<
   GlassVariant,
   {
     intensity: number;
     backgroundColor: string;
     borderColor: string;
   }
-> = {
+> => ({
   frosted: {
     intensity: 80,
-    backgroundColor: withAlpha(CALM.surface, 0.7),
+    backgroundColor: withAlpha(C.surface, 0.7),
     borderColor: withAlpha('#FFFFFF', 0.2),
   },
   tinted: {
     intensity: 60,
-    backgroundColor: withAlpha(CALM.background, 0.8),
-    borderColor: withAlpha(CALM.accent, 0.3),
+    backgroundColor: withAlpha(C.background, 0.8),
+    borderColor: withAlpha(C.accent, 0.3),
   },
   elevated: {
     intensity: 40,
-    backgroundColor: withAlpha(CALM.surface, 0.9),
+    backgroundColor: withAlpha(C.surface, 0.9),
     borderColor: withAlpha('#FFFFFF', 0.15),
   },
-};
+});
 
 // ─── COMPONENT ──────────────────────────────────────────────
 const GlassCard: React.FC<GlassCardProps> = ({
@@ -61,6 +62,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
   accessibilityLabel,
   accessibilityHint,
 }) => {
+  const C = useCalm();
+  const VARIANT_CONFIG = useMemo(() => makeVariantConfig(C), [C]);
   const opacityAnim = useRef(new Animated.Value(1)).current;
 
   // ── Get variant configuration ──

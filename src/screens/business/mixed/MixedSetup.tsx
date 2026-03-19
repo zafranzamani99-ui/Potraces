@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useMixedStore } from '../../../store/mixedStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { successNotification, lightTap } from '../../../services/haptics';
 
 const PLACEHOLDERS = [
@@ -26,6 +27,8 @@ const PLACEHOLDERS = [
 ];
 
 const MixedSetup: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
   const { mixedDetails, setMixedDetails } = useMixedStore();
 
@@ -104,7 +107,7 @@ const MixedSetup: React.FC = () => {
               value={stream}
               onChangeText={(text) => handleStreamChange(text, index)}
               placeholder={getPlaceholder(index)}
-              placeholderTextColor={CALM.textMuted}
+              placeholderTextColor={C.textMuted}
               returnKeyType="next"
               onSubmitEditing={() => {
                 if (index < streams.length - 1) {
@@ -121,7 +124,7 @@ const MixedSetup: React.FC = () => {
                 activeOpacity={0.7}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Feather name="x" size={16} color={CALM.textMuted} />
+                <Feather name="x" size={16} color={C.textMuted} />
               </TouchableOpacity>
             )}
           </View>
@@ -206,10 +209,10 @@ const MixedSetup: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -222,7 +225,7 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.xl,
   },
@@ -239,9 +242,9 @@ const styles = StyleSheet.create({
   streamInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.lg,
     minHeight: 44,
   },
@@ -256,14 +259,14 @@ const styles = StyleSheet.create({
   },
   addLinkText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
   sectionHeading: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   sectionSubText: {
@@ -280,20 +283,20 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xl,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.bar,
+    borderColor: C.bar,
     minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
   togglePillActive: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   toggleText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   toggleTextActive: {
     color: '#FFFFFF',
@@ -301,7 +304,7 @@ const styles = StyleSheet.create({
   },
 
   saveButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',

@@ -8,6 +8,16 @@ export function formatRM(amount: number, currency = 'RM'): string {
 }
 
 /**
+ * Format amount with comma separators and decimals: "RM 1,234.50"
+ */
+export function formatAmount(amount: number, currency = 'RM', decimals = 2): string {
+  return `${currency} ${Math.abs(amount).toLocaleString('en-MY', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}`;
+}
+
+/**
  * Format amount with sign: "+RM 1,234" or "\u2212RM 1,234"
  */
 export function formatRMSigned(amount: number, currency = 'RM'): string {

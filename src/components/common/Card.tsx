@@ -7,6 +7,7 @@ import {
   Animated,
 } from 'react-native';
 import { CALM, RADIUS, SPACING } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { lightTap } from '../../services/haptics';
 
 // ─── TYPES ──────────────────────────────────────────────────
@@ -25,6 +26,19 @@ interface CardProps {
   elevation?: any;
 }
 
+// ─── Variant helper ─────────────────────────────────────────
+const getVariantStyle = (variant: CardVariant, C: typeof CALM): ViewStyle => {
+  switch (variant) {
+    case 'outlined':
+      return { backgroundColor: C.surface, borderWidth: 1, borderColor: C.border };
+    case 'filled':
+      return { backgroundColor: C.background, borderWidth: 1, borderColor: C.border };
+    case 'elevated':
+    default:
+      return { backgroundColor: C.surface, borderWidth: 1, borderColor: C.border };
+  }
+};
+
 // ─── COMPONENT ──────────────────────────────────────────────
 const Card: React.FC<CardProps> = ({
   children,
@@ -35,89 +49,86 @@ const Card: React.FC<CardProps> = ({
   accessibilityLabel,
   accessibilityHint,
 }) => {
-  const opacityAnim = useRef(new Animated.Value(1)).current;
+  const C = useCalm();
   const radiusValue = RADIUS[borderRadius];
+  const variantStyle = getVariantStyle(variant, C);
+
+  // ── Non-pressable card: plain View (no gesture interference) ──
+  if (!onPress) {
+    return (
+      <View style={[styles.base, variantStyle, { borderRadius: radiusValue }, style]}>
+        {children}
+      </View>
+    );
+  }
+
+  // ── Pressable card: Animated.View for press feedback ──
+  return <PressableCard
+    variantStyle={variantStyle}
+    radiusValue={radiusValue}
+    style={style}
+    onPress={onPress}
+    accessibilityLabel={accessibilityLabel}
+    accessibilityHint={accessibilityHint}
+  >
+    {children}
+  </PressableCard>;
+};
+
+// Split into separate component so Animated.Value is only created when needed
+const PressableCard: React.FC<{
+  children: React.ReactNode;
+  variantStyle: ViewStyle;
+  radiusValue: number;
+  style?: ViewStyle;
+  onPress: () => void;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+}> = ({ children, variantStyle, radiusValue, style, onPress, accessibilityLabel, accessibilityHint }) => {
+  const opacityAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = useCallback(() => {
-    if (!onPress) return;
     Animated.timing(opacityAnim, {
       toValue: 0.7,
       duration: 150,
       useNativeDriver: true,
     }).start();
-  }, [opacityAnim, onPress]);
+  }, [opacityAnim]);
 
   const handlePressOut = useCallback(() => {
-    if (!onPress) return;
     Animated.timing(opacityAnim, {
       toValue: 1,
       duration: 150,
       useNativeDriver: true,
     }).start();
-  }, [opacityAnim, onPress]);
+  }, [opacityAnim]);
 
   const handlePress = useCallback(() => {
-    if (!onPress) return;
     lightTap();
     onPress();
   }, [onPress]);
 
-  const variantStyle: ViewStyle = (() => {
-    switch (variant) {
-      case 'outlined':
-        return {
-          backgroundColor: CALM.surface,
-          borderWidth: 1,
-          borderColor: CALM.border,
-        };
-      case 'filled':
-        return {
-          backgroundColor: CALM.background,
-          borderWidth: 1,
-          borderColor: CALM.border,
-        };
-      case 'elevated':
-      default:
-        return {
-          backgroundColor: CALM.surface,
-          borderWidth: 1,
-          borderColor: CALM.border,
-        };
-    }
-  })();
-
-  const content = (
-    <Animated.View
-      style={[
-        styles.base,
-        variantStyle,
-        {
-          borderRadius: radiusValue,
-          opacity: opacityAnim,
-        },
-        style,
-      ]}
+  return (
+    <Pressable
+      onPress={handlePress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
     >
-      {children}
-    </Animated.View>
-  );
-
-  if (onPress) {
-    return (
-      <Pressable
-        onPress={handlePress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel}
-        accessibilityHint={accessibilityHint}
+      <Animated.View
+        style={[
+          styles.base,
+          variantStyle,
+          { borderRadius: radiusValue, opacity: opacityAnim },
+          style,
+        ]}
       >
-        {content}
-      </Pressable>
-    );
-  }
-
-  return content;
+        {children}
+      </Animated.View>
+    </Pressable>
+  );
 };
 
 const styles = StyleSheet.create({

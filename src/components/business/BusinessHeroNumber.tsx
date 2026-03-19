@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { CALM, TYPE, SPACING, TYPOGRAPHY } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 interface BusinessHeroNumberProps {
   amount: number;
@@ -17,6 +18,8 @@ const BusinessHeroNumber: React.FC<BusinessHeroNumberProps> = ({
   currency = 'RM',
   animated = true,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const animatedValue = useRef(new Animated.Value(0)).current;
   const opacityValue = useRef(new Animated.Value(animated ? 0 : 1)).current;
   const displayAmount = useRef(0);
@@ -68,13 +71,13 @@ const BusinessHeroNumber: React.FC<BusinessHeroNumberProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     alignItems: 'center',
   },
   amount: {
     ...TYPE.balance,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     textAlign: 'center',
   },
   label: {

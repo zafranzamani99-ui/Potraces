@@ -9,9 +9,11 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import { useCategories } from '../../hooks/useCategories';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 interface BreathingRoomProps {
   onPress?: () => void;
@@ -27,6 +29,9 @@ interface RoomEntry {
 }
 
 const BreathingRoom: React.FC<BreathingRoomProps> = ({ onPress }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const currency = useSettingsStore((s) => s.currency);
   const transactions = usePersonalStore((s) => s.transactions);
   const budgets = usePersonalStore((s) => s.budgets);
   const breathingRooms = useAIInsightsStore((s) => s.breathingRooms);
@@ -88,9 +93,9 @@ const BreathingRoom: React.FC<BreathingRoomProps> = ({ onPress }) => {
   if (entries.length === 0) return null;
 
   const barColor = (percent: number) => {
-    if (percent >= 90) return CALM.bronze;
-    if (percent >= 70) return CALM.accent;
-    return CALM.positive;
+    if (percent >= 90) return C.bronze;
+    if (percent >= 70) return C.accent;
+    return C.positive;
   };
 
   const statusText = (entry: RoomEntry) => {
@@ -108,7 +113,7 @@ const BreathingRoom: React.FC<BreathingRoomProps> = ({ onPress }) => {
       <View style={styles.header}>
         <Text style={styles.title}>breathing room</Text>
         {onPress && (
-          <Feather name="chevron-right" size={16} color={CALM.textSecondary} />
+          <Feather name="chevron-right" size={16} color={C.textSecondary} />
         )}
       </View>
 
@@ -133,11 +138,11 @@ const BreathingRoom: React.FC<BreathingRoomProps> = ({ onPress }) => {
           </View>
           <View style={styles.rowBottom}>
             <Text style={styles.spentText}>
-              RM {entry.spent.toFixed(0)} of {entry.limit.toFixed(0)}
+              {currency} {entry.spent.toFixed(0)} of {entry.limit.toFixed(0)}
             </Text>
             <Text style={[styles.remainingText, entry.remaining <= 0 && styles.tightText]}>
               {entry.remaining > 0
-                ? `RM ${entry.remaining.toFixed(0)} left`
+                ? `${currency} ${entry.remaining.toFixed(0)} left`
                 : 'over'}
             </Text>
           </View>
@@ -149,11 +154,11 @@ const BreathingRoom: React.FC<BreathingRoomProps> = ({ onPress }) => {
 
 export default React.memo(BreathingRoom);
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     gap: SPACING.sm,
@@ -166,7 +171,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   row: {
     gap: 4,
@@ -178,7 +183,7 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   statusLabel: {
     fontSize: 10,
@@ -186,7 +191,7 @@ const styles = StyleSheet.create({
   },
   bar: {
     height: 4,
-    backgroundColor: withAlpha(CALM.textMuted, 0.1),
+    backgroundColor: withAlpha(C.textMuted, 0.1),
     borderRadius: 2,
     overflow: 'hidden',
   },
@@ -200,15 +205,15 @@ const styles = StyleSheet.create({
   },
   spentText: {
     fontSize: 10,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
   },
   remainingText: {
     fontSize: 10,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as any,
   },
   tightText: {
-    color: CALM.bronze,
+    color: C.bronze,
   },
 });

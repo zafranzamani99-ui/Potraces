@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Card from './Card';
 import { CALM, withAlpha, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { lightTap } from '../../services/haptics';
 
 interface StatCardProps {
@@ -21,13 +22,16 @@ const StatCard: React.FC<StatCardProps> = ({
   title,
   value,
   icon,
-  iconColor = CALM.accent,
+  iconColor: iconColorProp,
   subtitle,
   trend,
   trendValue,
   onPress,
 }) => {
-  const trendColor = trend === 'up' ? CALM.positive : CALM.neutral;
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const iconColor = iconColorProp ?? C.accent;
+  const trendColor = trend === 'up' ? C.positive : C.neutral;
 
   const handlePress = () => {
     if (onPress) {
@@ -76,7 +80,7 @@ const StatCard: React.FC<StatCardProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   card: {
     flex: 1,
     minWidth: 150,
@@ -108,17 +112,17 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xs,
   },
   value: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   subtitle: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: SPACING.xs,
   },
 });

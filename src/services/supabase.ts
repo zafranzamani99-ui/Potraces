@@ -85,13 +85,16 @@ export async function clearBusinessDataRemote() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return;
 
-  await fetch(`${SUPABASE_URL}/functions/v1/clear-business-data`, {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/clear-business-data`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
     },
   });
+  if (!res.ok) {
+    throw new Error(`Failed to clear remote data (${res.status})`);
+  }
 }
 
 export type SupabaseSellerProduct = {

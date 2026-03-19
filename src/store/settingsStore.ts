@@ -19,11 +19,16 @@ import { useMixedStore } from './mixedStore';
 import { useAuthStore } from './authStore';
 import { clearBusinessDataRemote, signOut } from '../services/supabase';
 import { clearProfileCache } from '../services/sellerSync';
+import { DEFAULT_PAYMENT_METHODS } from '../constants/taxCategories';
+import { CategoryOption } from '../types';
 
 export interface PaymentQr {
   uri: string;
   label: string;
 }
+
+export type ThemePreference = 'light' | 'dark' | 'system';
+export type AppLanguage = 'en' | 'ms';
 
 interface SettingsState {
   userName: string;
@@ -32,21 +37,35 @@ interface SettingsState {
   notificationsEnabled: boolean;
   businessModeEnabled: boolean;
   defaultMode: 'personal' | 'business';
+  themePreference: ThemePreference;
+  language: AppLanguage;
   paymentQrs: PaymentQr[];
   businessPaymentQrs: PaymentQr[];
+  customPaymentMethods: CategoryOption[];
+  paymentMethodOverrides: Record<string, Partial<CategoryOption> & { hidden?: boolean }>;
   hasCompletedOnboarding: boolean;
+  gettingStartedDismissed: boolean;
+  dismissedHints: string[];
+  getPaymentMethods: () => CategoryOption[];
+  addCustomPaymentMethod: (method: CategoryOption) => void;
+  removeCustomPaymentMethod: (id: string) => void;
+  updatePaymentMethodOverride: (id: string, overrides: Partial<CategoryOption> & { hidden?: boolean }) => void;
   setUserName: (name: string) => void;
   setCurrency: (currency: string) => void;
   setHapticEnabled: (enabled: boolean) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
   setBusinessModeEnabled: (enabled: boolean) => void;
   setDefaultMode: (mode: 'personal' | 'business') => void;
+  setThemePreference: (pref: ThemePreference) => void;
+  setLanguage: (lang: AppLanguage) => void;
   addPaymentQr: (uri: string, label: string, mode?: 'personal' | 'business') => void;
   removePaymentQr: (index: number, mode?: 'personal' | 'business') => void;
   replacePaymentQr: (index: number, uri: string, label?: string, mode?: 'personal' | 'business') => void;
   updatePaymentQrLabel: (index: number, label: string, mode?: 'personal' | 'business') => void;
   getPaymentQrs: (mode: 'personal' | 'business') => PaymentQr[];
   setHasCompletedOnboarding: (value: boolean) => void;
+  setGettingStartedDismissed: (value: boolean) => void;
+  dismissHint: (id: string) => void;
   clearAllData: () => void;
   clearBusinessData: () => Promise<void>;
 }
@@ -60,16 +79,40 @@ export const useSettingsStore = create<SettingsState>()(
       notificationsEnabled: true,
       businessModeEnabled: false,
       defaultMode: 'personal',
+      themePreference: 'light',
+      language: 'en',
       paymentQrs: [],
       businessPaymentQrs: [],
+      customPaymentMethods: [],
+      paymentMethodOverrides: {},
       hasCompletedOnboarding: false,
+      gettingStartedDismissed: false,
+      dismissedHints: [],
 
+      getPaymentMethods: () => {
+        const { customPaymentMethods, paymentMethodOverrides } = get();
+        const defaults = DEFAULT_PAYMENT_METHODS
+          .filter((m) => !paymentMethodOverrides[m.id]?.hidden)
+          .map((m) => ({ ...m, ...paymentMethodOverrides[m.id] }));
+        return [...defaults, ...customPaymentMethods];
+      },
+      addCustomPaymentMethod: (method) => set((s) => ({
+        customPaymentMethods: [...s.customPaymentMethods, method],
+      })),
+      removeCustomPaymentMethod: (id) => set((s) => ({
+        customPaymentMethods: s.customPaymentMethods.filter((m) => m.id !== id),
+      })),
+      updatePaymentMethodOverride: (id, overrides) => set((s) => ({
+        paymentMethodOverrides: { ...s.paymentMethodOverrides, [id]: { ...s.paymentMethodOverrides[id], ...overrides } },
+      })),
       setUserName: (userName) => set({ userName }),
       setCurrency: (currency) => set({ currency }),
       setHapticEnabled: (hapticEnabled) => set({ hapticEnabled }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setBusinessModeEnabled: (businessModeEnabled) => set({ businessModeEnabled }),
       setDefaultMode: (defaultMode) => set({ defaultMode }),
+      setThemePreference: (themePreference) => set({ themePreference }),
+      setLanguage: (language) => set({ language }),
       addPaymentQr: (uri, label, mode) => set((s) => {
         const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
         const arr = s[key] || [];
@@ -92,6 +135,10 @@ export const useSettingsStore = create<SettingsState>()(
         return mode === 'business' ? s.businessPaymentQrs : s.paymentQrs;
       },
       setHasCompletedOnboarding: (hasCompletedOnboarding) => set({ hasCompletedOnboarding }),
+      setGettingStartedDismissed: (gettingStartedDismissed) => set({ gettingStartedDismissed }),
+      dismissHint: (id) => set((s) => ({
+        dismissedHints: s.dismissedHints.includes(id) ? s.dismissedHints : [...s.dismissedHints, id],
+      })),
 
       clearAllData: () => {
         usePersonalStore.setState({
@@ -192,9 +239,15 @@ export const useSettingsStore = create<SettingsState>()(
           notificationsEnabled: true,
           businessModeEnabled: false,
           defaultMode: 'personal',
+          themePreference: 'light',
+          language: 'en',
           paymentQrs: [],
           businessPaymentQrs: [],
+          customPaymentMethods: [],
+          paymentMethodOverrides: {},
           hasCompletedOnboarding: false,
+          gettingStartedDismissed: false,
+          dismissedHints: [],
         });
       },
 
@@ -304,6 +357,8 @@ export const useSettingsStore = create<SettingsState>()(
         if (!state.businessPaymentQrs) {
           state.businessPaymentQrs = [];
         }
+        if (!state.customPaymentMethods) state.customPaymentMethods = [];
+        if (!state.paymentMethodOverrides) state.paymentMethodOverrides = {};
       },
     }
   )

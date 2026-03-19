@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Pressable,
   Modal,
@@ -20,12 +19,15 @@ import {
   UIManager,
   RefreshControl,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { format, differenceInDays, isValid } from 'date-fns';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
+// Lazy-loaded: native module crashes Expo Go if imported at top level
+const getDocumentScanner = () => require('react-native-document-scanner-plugin').default as typeof import('react-native-document-scanner-plugin').default;
 import * as Contacts from 'expo-contacts';
 import * as Sharing from 'expo-sharing';
 import * as Clipboard from 'expo-clipboard';
@@ -49,12 +51,15 @@ import {
   DEBT_STATUSES,
   withAlpha,
 } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
 import ProgressBar from '../../components/common/ProgressBar';
 import ContactPicker from '../../components/common/ContactPicker';
 import FAB from '../../components/common/FAB';
+import ScreenGuide from '../../components/common/ScreenGuide';
+import { useT } from '../../i18n';
 import WalletPicker from '../../components/common/WalletPicker';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import CategoryManager from '../../components/common/CategoryManager';
@@ -78,7 +83,7 @@ import { useCategories } from '../../hooks/useCategories';
 type TabType = 'debts' | 'splits';
 
 type DebtTrackingParams = {
-  DebtTracking: { receiptData?: { vendor: string; total: number; items: { name: string; amount: number }[] } } | undefined;
+  DebtTracking: { receiptData?: { vendor: string; total: number; items: { name: string; amount: number }[] }; highlightId?: string } | undefined;
 };
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -86,6 +91,9 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 const DebtTracking: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const route = useRoute<RouteProp<DebtTrackingParams, 'DebtTracking'>>();
   const navigation = useNavigation();
@@ -262,6 +270,8 @@ const DebtTracking: React.FC = () => {
   const [sortModalVisible, setSortModalVisible] = useState(false);
   const [expandedDebtId, setExpandedDebtId] = useState<string | null>(null);
   const [expandedPersonIds, setExpandedPersonIds] = useState<Set<string>>(new Set());
+  const mainScrollRef = useRef<any>(null);
+  const highlightScrollTarget = useRef<string | null>(null);
 
   // Filtered data
   const modeDebts = useMemo(() => debts.filter((d) => d.mode === mode), [debts, mode]);
@@ -432,6 +442,39 @@ const DebtTracking: React.FC = () => {
     }
   }, [route.params?.receiptData]);
 
+  // Auto-expand highlighted debt from navigation params
+  useEffect(() => {
+    const hid = route.params?.highlightId;
+    if (hid) {
+      setActiveTab('debts');
+      highlightScrollTarget.current = hid;
+      setTimeout(() => {
+        // Also expand the person group containing this debt
+        const targetDebt = debts.find((d) => d.id === hid);
+        if (targetDebt) {
+          const groupKey = targetDebt.contact.id || targetDebt.contact.name;
+          setExpandedPersonIds((prev) => new Set(prev).add(groupKey));
+        }
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setExpandedDebtId(hid);
+      }, 300);
+    }
+  }, [route.params?.highlightId, debts]);
+
+  // Scroll to highlighted debt card via callback ref
+  const highlightDebtRef = useCallback((node: View | null) => {
+    if (!node || !highlightScrollTarget.current) return;
+    const hid = highlightScrollTarget.current;
+    highlightScrollTarget.current = null;
+    setTimeout(() => {
+      node.measureInWindow((_x: number, wy: number) => {
+        if (mainScrollRef.current && wy != null) {
+          mainScrollRef.current.scrollTo({ y: Math.max(0, wy - 140), animated: true });
+        }
+      });
+    }, 450);
+  }, []);
+
   // Close modals when navigating away (e.g. to Settings)
   useEffect(() => {
     const unsubscribe = navigation.addListener('blur', () => {
@@ -499,7 +542,7 @@ const DebtTracking: React.FC = () => {
       if (existingDebt && newTotal < existingDebt.paidAmount) {
         Alert.alert(
           'Amount Below Paid',
-          `New amount (RM ${newTotal.toFixed(2)}) is less than already paid (RM ${existingDebt.paidAmount.toFixed(2)}). The debt will be marked as settled.`,
+          `New amount (${currency} ${newTotal.toFixed(2)}) is less than already paid (${currency} ${existingDebt.paidAmount.toFixed(2)}). The debt will be marked as settled.`,
           [
             { text: 'Cancel', style: 'cancel' },
             {
@@ -1422,22 +1465,25 @@ const DebtTracking: React.FC = () => {
       return;
     }
 
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      showToast('Camera permission is required', 'error');
-      return;
+    let imageUri: string | null = null;
+    try {
+      const scanResult = await getDocumentScanner().scanDocument({ maxNumDocuments: 1 });
+      if (scanResult.scannedImages?.length) imageUri = scanResult.scannedImages[0];
+    } catch {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        showToast('Camera permission is required', 'error');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
+      if (!result.canceled && result.assets?.[0]) imageUri = result.assets[0].uri;
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-    });
-
-    if (result.canceled || !result.assets?.[0]) return;
+    if (!imageUri) return;
 
     setScanningReceipt(true);
     try {
-      const receipt = await scanReceipt(result.assets[0].uri);
+      const receipt = await scanReceipt(imageUri);
       premium.incrementScanCount();
       if (receipt.items.length > 0) {
         setSplitItems((prev) => [
@@ -1517,17 +1563,21 @@ const DebtTracking: React.FC = () => {
   };
 
   const handleWizardScan = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      showToast('Camera permission is required', 'error');
-      return;
+    let imageUri: string | null = null;
+    try {
+      const scanResult = await getDocumentScanner().scanDocument({ maxNumDocuments: 1 });
+      if (scanResult.scannedImages?.length) imageUri = scanResult.scannedImages[0];
+    } catch {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        showToast('Camera permission is required', 'error');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
+      if (!result.canceled && result.assets?.[0]) imageUri = result.assets[0].uri;
     }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-    await processReceiptImage(result.assets[0].uri);
+    if (!imageUri) return;
+    await processReceiptImage(imageUri);
   };
 
   const handleWizardGallery = async () => {
@@ -1596,7 +1646,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       if (itemTotalDiff > 0.05) {
         Alert.alert(
           'Amount Mismatch',
-          `Item totals (RM ${itemSum.toFixed(2)}) don't match the receipt total (RM ${totalToCompare.toFixed(2)}). Difference: RM ${itemTotalDiff.toFixed(2)}.\n\nDo you want to continue anyway?`,
+          `Item totals (${currency} ${itemSum.toFixed(2)}) don't match the receipt total (${currency} ${totalToCompare.toFixed(2)}). Difference: ${currency} ${itemTotalDiff.toFixed(2)}.\n\nDo you want to continue anyway?`,
           [
             { text: 'Go Back', style: 'cancel' },
             { text: 'Continue', onPress: () => setWizardStep(5) },
@@ -2046,6 +2096,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   return (
     <View style={styles.container}>
       <ScrollView
+        ref={mainScrollRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -2053,8 +2104,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={CALM.bronze}
-            colors={[CALM.bronze]}
+            tintColor={C.bronze}
+            colors={[C.bronze]}
           />
         }
       >
@@ -2082,13 +2133,13 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               setDebtTypeFilter(debtTypeFilter === 'they_owe' ? null : 'they_owe');
               setDebtFilter(debtFilter === 'pending' ? null : 'pending');
             }}
-            style={[styles.heroMiniCard, { borderLeftColor: CALM.accent }, debtTypeFilter === 'they_owe' && { borderWidth: 1.5, borderColor: CALM.accent }]}
+            style={[styles.heroMiniCard, { borderLeftColor: C.accent }, debtTypeFilter === 'they_owe' && { borderWidth: 1.5, borderColor: C.accent }]}
           >
             <View style={styles.heroMiniLabel}>
-              <Feather name="arrow-down-circle" size={14} color={CALM.accent} />
+              <Feather name="arrow-down-circle" size={14} color={C.accent} />
               <Text style={styles.heroMiniLabelText}>Owed to You</Text>
             </View>
-            <Text style={[styles.heroMiniAmount, { color: CALM.accent }]}>
+            <Text style={[styles.heroMiniAmount, { color: C.accent }]}>
               {currency} {balanceSummary.owedToYou.toFixed(2)}
             </Text>
             {balanceSummary.collected > 0 && (
@@ -2101,18 +2152,18 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
         {/* Search Bar */}
         <View style={styles.searchBar}>
-          <Feather name="search" size={16} color={CALM.textMuted} />
+          <Feather name="search" size={16} color={C.textMuted} />
           <TextInput
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder={activeTab === 'debts' ? 'Search debts...' : 'Search splits...'}
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             returnKeyType="search"
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Feather name="x-circle" size={16} color={CALM.textMuted} />
+              <Feather name="x-circle" size={16} color={C.textMuted} />
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -2121,9 +2172,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             style={{ paddingLeft: SPACING.xs }}
           >
             <View>
-              <Feather name="sliders" size={16} color={(activeTab === 'debts' ? (debtSort !== 'newest' || debtTypeFilter || debtFilter) : splitSort !== 'newest') ? CALM.accent : CALM.textMuted} />
+              <Feather name="sliders" size={16} color={(activeTab === 'debts' ? (debtSort !== 'newest' || debtTypeFilter || debtFilter) : splitSort !== 'newest') ? C.accent : C.textMuted} />
               {activeTab === 'debts' && (debtTypeFilter || debtFilter) && (
-                <View style={{ position: 'absolute', top: -3, right: -3, width: 7, height: 7, borderRadius: 4, backgroundColor: CALM.accent }} />
+                <View style={{ position: 'absolute', top: -3, right: -3, width: 7, height: 7, borderRadius: 4, backgroundColor: C.accent }} />
               )}
             </View>
           </TouchableOpacity>
@@ -2136,19 +2187,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             onPress={() => { exitSelectionMode(); setActiveTab('debts'); }}
             activeOpacity={0.7}
           >
-            <Feather name="users" size={16} color={activeTab === 'debts' ? CALM.accent : CALM.textSecondary} />
+            <Feather name="users" size={16} color={activeTab === 'debts' ? C.accent : C.textSecondary} />
             <Text style={[styles.tabText, activeTab === 'debts' && styles.tabTextActive]}>
               Debts
             </Text>
             <View style={{
-              backgroundColor: activeTab === 'debts' ? CALM.accent : withAlpha(CALM.textSecondary, 0.15),
+              backgroundColor: activeTab === 'debts' ? C.accent : withAlpha(C.textSecondary, 0.15),
               paddingHorizontal: 7,
               paddingVertical: 2,
               borderRadius: RADIUS.full,
               minWidth: 22,
               alignItems: 'center',
             }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: activeTab === 'debts' ? '#fff' : CALM.textSecondary }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: activeTab === 'debts' ? '#fff' : C.textSecondary }}>
                 {modeDebts.length}
               </Text>
             </View>
@@ -2158,19 +2209,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             onPress={() => { exitSelectionMode(); setActiveTab('splits'); }}
             activeOpacity={0.7}
           >
-            <Feather name="scissors" size={16} color={activeTab === 'splits' ? CALM.accent : CALM.textSecondary} />
+            <Feather name="scissors" size={16} color={activeTab === 'splits' ? C.accent : C.textSecondary} />
             <Text style={[styles.tabText, activeTab === 'splits' && styles.tabTextActive]}>
               Splits
             </Text>
             <View style={{
-              backgroundColor: activeTab === 'splits' ? CALM.accent : withAlpha(CALM.textSecondary, 0.15),
+              backgroundColor: activeTab === 'splits' ? C.accent : withAlpha(C.textSecondary, 0.15),
               paddingHorizontal: 7,
               paddingVertical: 2,
               borderRadius: RADIUS.full,
               minWidth: 22,
               alignItems: 'center',
             }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: activeTab === 'splits' ? '#fff' : CALM.textSecondary }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: activeTab === 'splits' ? '#fff' : C.textSecondary }}>
                 {modeSplits.length}
               </Text>
             </View>
@@ -2183,9 +2234,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             {/* Active filter summary */}
             {(debtTypeFilter || debtFilter) && (
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingVertical: 6 }}>
-                <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.textSecondary }}>
+                <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary }}>
                   {filteredDebts.length} {filteredDebts.length === 1 ? 'debt' : 'debts'}
-                  {' · RM '}
+                  {` · ${currency} `}
                   {filteredDebts.reduce((sum, d) => sum + (d.totalAmount - d.paidAmount), 0).toFixed(2)}
                 </Text>
                 <TouchableOpacity
@@ -2193,8 +2244,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                 >
-                  <Feather name="x" size={12} color={CALM.gold} />
-                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.gold, fontWeight: '600' }}>Clear</Text>
+                  <Feather name="x" size={12} color={C.gold} />
+                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.gold, fontWeight: '600' }}>Clear</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -2225,25 +2276,25 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           paddingHorizontal: SPACING.md,
                           paddingVertical: SPACING.sm,
                           marginBottom: isGroupExpanded ? 4 : SPACING.sm,
-                          backgroundColor: withAlpha(CALM.accent, 0.04),
+                          backgroundColor: withAlpha(C.accent, 0.04),
                           borderRadius: RADIUS.md,
                           borderWidth: 1,
-                          borderColor: CALM.border,
+                          borderColor: C.border,
                         }}
                       >
-                        <View style={[styles.debtAvatar, { backgroundColor: withAlpha(CALM.accent, 0.12), borderColor: withAlpha(CALM.accent, 0.25) }]}>
-                          <Text style={[styles.debtAvatarText, { color: CALM.accent }]}>
+                        <View style={[styles.debtAvatar, { backgroundColor: withAlpha(C.accent, 0.12), borderColor: withAlpha(C.accent, 0.25) }]}>
+                          <Text style={[styles.debtAvatarText, { color: C.accent }]}>
                             {group.contactName.charAt(0).toUpperCase()}
                           </Text>
                         </View>
                         <View style={{ flex: 1, marginLeft: SPACING.sm }}>
                           <Text style={[styles.debtName, { fontSize: TYPOGRAPHY.size.base }]}>{group.contactName}</Text>
-                          <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textSecondary }}>{group.debts.length} debts</Text>
+                          <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary }}>{group.debts.length} debts</Text>
                         </View>
-                        <Text style={[styles.debtAmount, { color: CALM.accent, marginRight: SPACING.sm }]}>
+                        <Text style={[styles.debtAmount, { color: C.accent, marginRight: SPACING.sm }]}>
                           {currency} {group.totalRemaining.toFixed(2)}
                         </Text>
-                        <Feather name={isGroupExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={CALM.textMuted} />
+                        <Feather name={isGroupExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={C.textMuted} />
                       </TouchableOpacity>
                     )}
                     {/* Debt cards (always shown for single debts, conditionally for groups) */}
@@ -2256,7 +2307,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       const inDebtSelection = selectionMode === 'debt';
 
                       return (
-                        <Card key={`${debt.id}-${idx}`} style={{ ...styles.debtCard, borderLeftColor: statusConfig.color, ...(showGroupHeader ? { marginLeft: SPACING.md } : {}), ...(isSelected ? { borderColor: CALM.accent, borderWidth: 1.5 } : {}) }}>
+                        <View key={`${debt.id}-${idx}`} ref={expandedDebtId === debt.id && route.params?.highlightId === debt.id ? highlightDebtRef : undefined}>
+                        <Card style={{ ...styles.debtCard, borderLeftColor: statusConfig.color, ...(showGroupHeader ? { marginLeft: SPACING.md } : {}), ...(isSelected ? { borderColor: C.accent, borderWidth: 1.5 } : {}) }}>
                     <TouchableOpacity
                       activeOpacity={0.7}
                       onPress={() => {
@@ -2306,13 +2358,13 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                   const bg = overdue
                                     ? withAlpha('#A0714A', 0.15)
                                     : daysUntil <= 3
-                                    ? withAlpha(CALM.gold, 0.18)
-                                    : withAlpha(CALM.accent, 0.1);
+                                    ? withAlpha(C.gold, 0.18)
+                                    : withAlpha(C.accent, 0.1);
                                   const fg = overdue
                                     ? '#A0714A'
                                     : daysUntil <= 3
-                                    ? CALM.gold
-                                    : CALM.accent;
+                                    ? C.gold
+                                    : C.accent;
                                   return (
                                     <View style={{ backgroundColor: bg, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}>
                                       <Text style={{ fontSize: 10, fontWeight: '600', color: fg }}>{label}</Text>
@@ -2322,8 +2374,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               }
                               // Fallback: aging since creation
                               const days = differenceInDays(new Date(), new Date(debt.createdAt));
-                              const bg = days >= 30 ? withAlpha('#A0714A', 0.15) : days >= 7 ? withAlpha(CALM.gold, 0.15) : withAlpha(CALM.accent, 0.1);
-                              const fg = days >= 30 ? '#A0714A' : days >= 7 ? CALM.gold : CALM.accent;
+                              const bg = days >= 30 ? withAlpha('#A0714A', 0.15) : days >= 7 ? withAlpha(C.gold, 0.15) : withAlpha(C.accent, 0.1);
+                              const fg = days >= 30 ? '#A0714A' : days >= 7 ? C.gold : C.accent;
                               return (
                                 <View style={{ backgroundColor: bg, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}>
                                   <Text style={{ fontSize: 10, fontWeight: '600', color: fg }}>{getDebtAge(debt.createdAt)}</Text>
@@ -2345,12 +2397,36 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             <Feather
                               name={expandedDebtId === debt.id ? 'chevron-up' : 'chevron-down'}
                               size={14}
-                              color={expandedDebtId === debt.id ? CALM.accent : CALM.textMuted}
+                              color={expandedDebtId === debt.id ? C.accent : C.textMuted}
                             />
                           )}
                         </View>
                       </View>
                     </TouchableOpacity>
+
+                    {/* Warm progress framing */}
+                    {debt.status !== 'settled' && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: SPACING.sm, marginTop: 2 }}>
+                        <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>
+                          {debt.type === 'i_owe'
+                            ? `${Math.round((debt.paidAmount / debt.totalAmount) * 100)}% clear`
+                            : `waiting on ${currency} ${Math.max(0, debt.totalAmount - debt.paidAmount).toFixed(2)}`}
+                        </Text>
+                        {debt.type === 'i_owe' && debt.dueDate && (() => {
+                          const dd = new Date(debt.dueDate);
+                          if (isNaN(dd.getTime())) return null;
+                          const daysUntil = differenceInDays(dd, new Date());
+                          if (daysUntil >= 0 && daysUntil <= 7) {
+                            return (
+                              <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.gold, fontWeight: TYPOGRAPHY.weight.semibold }}>
+                                {daysUntil === 0 ? 'due today' : `due in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`}
+                              </Text>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </View>
+                    )}
 
                     {debt.status !== 'settled' && debt.paidAmount > 0 && (
                       <ProgressBar
@@ -2361,36 +2437,36 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     )}
 
                     {!inDebtSelection && expandedDebtId === debt.id && (
-                      <View style={[styles.debtActions, { borderTopWidth: 1, borderTopColor: CALM.border, paddingTop: SPACING.sm }]}>
+                      <View style={[styles.debtActions, { borderTopWidth: 1, borderTopColor: C.border, paddingTop: SPACING.sm }]}>
                         <View style={{ flex: 1 }} />
                         {debt.status === 'settled' ? (
                           <TouchableOpacity
-                            style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.neutral, 0.15) }]}
+                            style={[styles.debtActionButton, { backgroundColor: withAlpha(C.neutral, 0.15) }]}
                             onPress={() => openPaymentModal(debt.id, true)}
                             activeOpacity={0.7}
                           >
-                            <Feather name="clock" size={16} color={CALM.textSecondary} />
-                            <Text style={[styles.debtActionText, { color: CALM.textSecondary }]}>History</Text>
+                            <Feather name="clock" size={16} color={C.textSecondary} />
+                            <Text style={[styles.debtActionText, { color: C.textSecondary }]}>History</Text>
                           </TouchableOpacity>
                         ) : (
                           <>
                             {debt.status === 'partial' && (
                               <TouchableOpacity
-                                style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.neutral, 0.1) }]}
+                                style={[styles.debtActionButton, { backgroundColor: withAlpha(C.neutral, 0.1) }]}
                                 onPress={() => openPaymentModal(debt.id, true)}
                                 activeOpacity={0.7}
                               >
-                                <Feather name="clock" size={16} color={CALM.textSecondary} />
-                                <Text style={[styles.debtActionText, { color: CALM.textSecondary }]}>History</Text>
+                                <Feather name="clock" size={16} color={C.textSecondary} />
+                                <Text style={[styles.debtActionText, { color: C.textSecondary }]}>History</Text>
                               </TouchableOpacity>
                             )}
                             <TouchableOpacity
-                              style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.positive, 0.1) }]}
+                              style={[styles.debtActionButton, { backgroundColor: withAlpha(C.positive, 0.1) }]}
                               onPress={() => openPaymentModal(debt.id, false)}
                               activeOpacity={0.7}
                             >
-                              <Feather name="plus-circle" size={16} color={CALM.positive} />
-                              <Text style={[styles.debtActionText, { color: CALM.positive }]}>Record Payment</Text>
+                              <Feather name="plus-circle" size={16} color={C.positive} />
+                              <Text style={[styles.debtActionText, { color: C.positive }]}>Record Payment</Text>
                             </TouchableOpacity>
                           </>
                         )}
@@ -2398,7 +2474,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           <>
                             {debt.contact.phone ? (
                               <TouchableOpacity
-                                style={[styles.debtActionButton, { backgroundColor: '#E8F5E2' }]}
+                                style={[styles.debtActionButton, { backgroundColor: withAlpha('#25D366', 0.1) }]}
                                 onPress={() => {
                                   const remaining = debt.totalAmount - debt.paidAmount;
                                   const msg = `Hi ${debt.contact.name}, just a reminder you have ${currency} ${remaining.toFixed(2)} outstanding for ${debt.description}. Thank you! 🙏`;
@@ -2413,27 +2489,28 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               </TouchableOpacity>
                             ) : (
                               <TouchableOpacity
-                                style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}
+                                style={[styles.debtActionButton, { backgroundColor: withAlpha(C.accent, 0.1) }]}
                                 onPress={() => handleOpenReminder(debt)}
                                 activeOpacity={0.7}
                               >
-                                <Feather name="bell" size={16} color={CALM.accent} />
-                                <Text style={[styles.debtActionText, { color: CALM.accent }]}>Remind</Text>
+                                <Feather name="bell" size={16} color={C.accent} />
+                                <Text style={[styles.debtActionText, { color: C.accent }]}>Remind</Text>
                               </TouchableOpacity>
                             )}
                             <TouchableOpacity
-                              style={[styles.debtActionButton, { backgroundColor: withAlpha(CALM.gold, 0.1) }]}
+                              style={[styles.debtActionButton, { backgroundColor: withAlpha(C.gold, 0.1) }]}
                               onPress={() => handleRequestPayment(debt)}
                               activeOpacity={0.7}
                             >
-                              <Feather name="send" size={16} color={CALM.gold} />
-                              <Text style={[styles.debtActionText, { color: CALM.gold }]}>Request</Text>
+                              <Feather name="send" size={16} color={C.gold} />
+                              <Text style={[styles.debtActionText, { color: C.gold }]}>Request</Text>
                             </TouchableOpacity>
                           </>
                         )}
                       </View>
                     )}
                       </Card>
+                        </View>
                     );
                   })}
                   </View>
@@ -2463,7 +2540,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             {searchedSplits.length > 0 && (
               <View style={styles.splitFilterRow}>
                 {([
-                  { key: 'active' as const, label: 'Active', count: activeSplitCount, color: CALM.accent },
+                  { key: 'active' as const, label: 'Active', count: activeSplitCount, color: C.accent },
                   { key: 'settled' as const, label: 'Settled', count: settledSplitCount, color: '#6BA3BE' },
                 ] as const).map((f) => {
                   const isActive = splitFilter === f.key;
@@ -2491,14 +2568,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 const methodConfig = SPLIT_METHODS.find((m) => m.value === split.splitMethod);
                 const paidCount = split.participants.filter((p) => p.isPaid).length;
                 const isSettled = !isDraft && paidCount === split.participants.length;
-                const borderColor = isDraft ? CALM.bronze : isSettled ? '#6BA3BE' : (methodConfig?.color || CALM.accent);
+                const borderColor = isDraft ? C.bronze : isSettled ? '#6BA3BE' : (methodConfig?.color || C.accent);
                 const draftAssigned = isDraft ? split.items.filter((item) => item.assignedTo.length > 0).length : 0;
 
                 const isSelected = selectionMode === 'split' && selectedIds.has(split.id);
                 const inSplitSelection = selectionMode === 'split';
 
                 return (
-                  <Card key={`${split.id}-${idx}`} style={{ ...styles.splitCard, overflow: 'hidden' as const, borderLeftWidth: 3, borderLeftColor: borderColor, ...(isSelected ? { borderColor: CALM.accent, borderWidth: 1.5, borderLeftWidth: 3, borderLeftColor: borderColor } : {}) }}>
+                  <Card key={`${split.id}-${idx}`} style={{ ...styles.splitCard, overflow: 'hidden' as const, borderLeftWidth: 3, borderLeftColor: borderColor, ...(isSelected ? { borderColor: C.accent, borderWidth: 1.5, borderLeftWidth: 3, borderLeftColor: borderColor } : {}) }}>
                     <TouchableOpacity
                       activeOpacity={0.7}
                       onPress={() => {
@@ -2528,14 +2605,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                   const daysUntil = differenceInDays(dueD, new Date());
                                   const overdue = daysUntil < 0;
                                   const label = overdue ? `overdue ${Math.abs(daysUntil)}d` : daysUntil === 0 ? 'due today' : `due in ${daysUntil}d`;
-                                  const bg = overdue ? withAlpha('#A0714A', 0.15) : daysUntil <= 3 ? withAlpha(CALM.gold, 0.18) : withAlpha(CALM.accent, 0.1);
-                                  const fg = overdue ? '#A0714A' : daysUntil <= 3 ? CALM.gold : CALM.accent;
+                                  const bg = overdue ? withAlpha('#A0714A', 0.15) : daysUntil <= 3 ? withAlpha(C.gold, 0.18) : withAlpha(C.accent, 0.1);
+                                  const fg = overdue ? '#A0714A' : daysUntil <= 3 ? C.gold : C.accent;
                                   return <View style={{ backgroundColor: bg, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}><Text style={{ fontSize: 10, fontWeight: '600', color: fg }}>{label}</Text></View>;
                                 }
                               }
                               const d = differenceInDays(new Date(), new Date(split.createdAt));
-                              const bg = d >= 30 ? withAlpha('#A0714A', 0.12) : d >= 7 ? withAlpha('#DEAB22', 0.12) : withAlpha(CALM.accent, 0.12);
-                              const fg = d >= 30 ? '#A0714A' : d >= 7 ? '#DEAB22' : CALM.accent;
+                              const bg = d >= 30 ? withAlpha('#A0714A', 0.12) : d >= 7 ? withAlpha('#DEAB22', 0.12) : withAlpha(C.accent, 0.12);
+                              const fg = d >= 30 ? '#A0714A' : d >= 7 ? '#DEAB22' : C.accent;
                               return <View style={{ backgroundColor: bg, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}><Text style={{ fontSize: 10, fontWeight: '600', color: fg }}>{getDebtAge(split.createdAt)}</Text></View>;
                             })()}
                           </View>
@@ -2544,14 +2621,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       </View>
 
                       <View style={styles.splitMeta}>
-                        <View style={[styles.methodPill, { backgroundColor: withAlpha(methodConfig?.color || CALM.accent, 0.1), borderWidth: 1, borderColor: withAlpha(methodConfig?.color || CALM.accent, 0.2) }]}>
-                          <Feather name={methodConfig?.icon as any || 'users'} size={14} color={methodConfig?.color || CALM.accent} />
-                          <Text style={[styles.methodPillText, { color: methodConfig?.color || CALM.accent }]}>{methodConfig?.label}</Text>
+                        <View style={[styles.methodPill, { backgroundColor: withAlpha(methodConfig?.color || C.accent, 0.1), borderWidth: 1, borderColor: withAlpha(methodConfig?.color || C.accent, 0.2) }]}>
+                          <Feather name={methodConfig?.icon as any || 'users'} size={14} color={methodConfig?.color || C.accent} />
+                          <Text style={[styles.methodPillText, { color: methodConfig?.color || C.accent }]}>{methodConfig?.label}</Text>
                         </View>
                         {isDraft ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: withAlpha(CALM.bronze, 0.1), paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full }}>
-                            <Feather name="bookmark" size={13} color={CALM.bronze} />
-                            <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.bronze }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: withAlpha(C.bronze, 0.1), paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full }}>
+                            <Feather name="bookmark" size={13} color={C.bronze} />
+                            <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.bronze }}>
                               draft · {draftAssigned}/{split.items.length}
                             </Text>
                           </View>
@@ -2607,19 +2684,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         <View style={styles.selectionBar}>
           <View style={styles.selectionBarTop}>
             <TouchableOpacity onPress={exitSelectionMode} style={styles.selectionBarBtn}>
-              <Feather name="x" size={18} color={CALM.textPrimary} />
+              <Feather name="x" size={18} color={C.textPrimary} />
               <Text style={styles.selectionBarBtnText}>Cancel</Text>
             </TouchableOpacity>
             <Text style={styles.selectionBarCount}>{selectedIds.size} selected</Text>
             <TouchableOpacity onPress={selectAll} style={styles.selectionBarBtn}>
-              <Feather name="check-square" size={18} color={CALM.accent} />
-              <Text style={[styles.selectionBarBtnText, { color: CALM.accent }]}>All</Text>
+              <Feather name="check-square" size={18} color={C.accent} />
+              <Text style={[styles.selectionBarBtnText, { color: C.accent }]}>All</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.selectionBarActions}>
             {selectedIds.size === 1 && (
               <TouchableOpacity style={styles.selectionEditBtn} onPress={handleSelectionEdit} activeOpacity={0.7}>
-                <Feather name="edit-2" size={18} color={CALM.accent} />
+                <Feather name="edit-2" size={18} color={C.accent} />
                 <Text style={styles.selectionEditText}>Edit</Text>
               </TouchableOpacity>
             )}
@@ -2633,7 +2710,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         <FAB
           onPress={handleFABPress}
           icon="plus"
-          color={CALM.accent}
+          color={C.accent}
         />
       )}
 
@@ -2647,7 +2724,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <Text style={styles.modalTitle}>{editingDebtId ? 'Edit Debt' : 'Add Debt'}</Text>
                 </View>
                 <TouchableOpacity onPress={() => { setDebtModalVisible(false); resetDebtForm(); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                  <Feather name="x" size={24} color={CALM.textPrimary} />
+                  <Feather name="x" size={24} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -2668,7 +2745,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         styles.typeButton,
                         debtType === dt.value
                           ? { backgroundColor: withAlpha(dt.color, 0.1), borderColor: dt.color }
-                          : { borderColor: CALM.border },
+                          : { borderColor: C.border },
                       ]}
                       onPress={() => setDebtType(dt.value as DebtType)}
                     >
@@ -2687,7 +2764,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   onChangeText={setDebtAmount}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -2699,7 +2776,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   if (newVal < existing.paidAmount) {
                     return (
                       <View style={styles.amountWarnRow}>
-                        <Feather name="alert-circle" size={13} color={CALM.bronze} />
+                        <Feather name="alert-circle" size={13} color={C.bronze} />
                         <Text style={styles.amountWarnText}>
                           Below amount already paid ({currency} {existing.paidAmount.toFixed(2)}) — debt will be marked settled
                         </Text>
@@ -2715,7 +2792,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   value={debtDescription}
                   onChangeText={setDebtDescription}
                   placeholder="What for?"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -2749,8 +2826,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   onPress={() => { Keyboard.dismiss(); setDueDatePickerOpen((v) => !v); }}
                   activeOpacity={0.7}
                 >
-                  <Feather name="calendar" size={16} color={debtDueDateObj ? CALM.accent : CALM.textSecondary} />
-                  <Text style={[styles.dateButtonText, !debtDueDateObj && { color: CALM.textSecondary }]}>
+                  <Feather name="calendar" size={16} color={debtDueDateObj ? C.accent : C.textSecondary} />
+                  <Text style={[styles.dateButtonText, !debtDueDateObj && { color: C.textSecondary }]}>
                     {debtDueDateObj ? format(debtDueDateObj, 'd MMM yyyy') : 'Select date'}
                   </Text>
                   {debtDueDateObj && (
@@ -2758,7 +2835,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={(e) => { e.stopPropagation(); setDebtDueDateObj(null); setDebtDueDate(''); setDueDatePickerOpen(false); }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Feather name="x" size={15} color={CALM.textSecondary} />
+                      <Feather name="x" size={15} color={C.textSecondary} />
                     </TouchableOpacity>
                   )}
                 </TouchableOpacity>
@@ -2815,7 +2892,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <Text style={styles.modalTitle}>{editingSplitId ? 'Edit Split' : 'Split Expense'}</Text>
                 </View>
                 <TouchableOpacity onPress={() => { setSplitModalVisible(false); resetSplitForm(); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                  <Feather name="x" size={24} color={CALM.textPrimary} />
+                  <Feather name="x" size={24} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -2826,7 +2903,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   value={splitDescription}
                   onChangeText={setSplitDescription}
                   placeholder="Dinner, trip, etc."
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -2838,7 +2915,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   onChangeText={setSplitAmount}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -2856,7 +2933,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           <Feather
                             name={m.icon as any}
                             size={16}
-                            color={splitMethod === m.value ? CALM.accent : CALM.textPrimary}
+                            color={splitMethod === m.value ? C.accent : C.textPrimary}
                           />
                           <Text style={[styles.methodText, splitMethod === m.value && styles.methodTextActive]}>
                             {m.label}
@@ -2899,19 +2976,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 )}
 
                 {/* Due date */}
-                <Text style={styles.formLabel}>Due Date <Text style={{ color: CALM.textMuted, fontWeight: '400' }}>(optional)</Text></Text>
+                <Text style={styles.formLabel}>Due Date <Text style={{ color: C.textMuted, fontWeight: '400' }}>(optional)</Text></Text>
                 <View>
                   <TouchableOpacity
                     style={[styles.formInput, styles.dateButton]}
                     onPress={() => { Keyboard.dismiss(); setSplitDueDatePickerOpen((v) => !v); }}
                   >
-                    <Feather name="calendar" size={16} color={splitDueDateObj ? CALM.accent : CALM.textSecondary} />
-                    <Text style={[styles.dateButtonText, !splitDueDateObj && { color: CALM.textSecondary }]}>
+                    <Feather name="calendar" size={16} color={splitDueDateObj ? C.accent : C.textSecondary} />
+                    <Text style={[styles.dateButtonText, !splitDueDateObj && { color: C.textSecondary }]}>
                       {splitDueDateObj ? format(splitDueDateObj, 'd MMM yyyy') : 'Select date'}
                     </Text>
                     {splitDueDateObj && (
                       <TouchableOpacity onPress={(e) => { e.stopPropagation(); setSplitDueDateObj(null); setSplitDueDate(''); setSplitDueDatePickerOpen(false); }}>
-                        <Feather name="x" size={15} color={CALM.textSecondary} />
+                        <Feather name="x" size={15} color={C.textSecondary} />
                       </TouchableOpacity>
                     )}
                   </TouchableOpacity>
@@ -2930,7 +3007,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           onChangeText={(v) => setCustomAmounts({ ...customAmounts, [c.id]: v })}
                           placeholder="0.00"
                           keyboardType="decimal-pad"
-                          placeholderTextColor={CALM.textSecondary}
+                          placeholderTextColor={C.textSecondary}
                           returnKeyType="done"
                           onSubmitEditing={Keyboard.dismiss}
                         />
@@ -2952,7 +3029,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           value={newItemName}
                           onChangeText={setNewItemName}
                           placeholder="Item name"
-                          placeholderTextColor={CALM.textSecondary}
+                          placeholderTextColor={C.textSecondary}
                           returnKeyType="next"
                         />
                         <TextInput
@@ -2961,7 +3038,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           onChangeText={setNewItemAmount}
                           placeholder="0.00"
                           keyboardType="decimal-pad"
-                          placeholderTextColor={CALM.textSecondary}
+                          placeholderTextColor={C.textSecondary}
                           returnKeyType="done"
                           onSubmitEditing={Keyboard.dismiss}
                         />
@@ -2977,7 +3054,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           <Text style={styles.itemName}>{item.name}</Text>
                           <Text style={styles.itemAmount}>{currency} {item.amount.toFixed(2)}</Text>
                           <TouchableOpacity onPress={() => setSplitItems(splitItems.filter((_, i) => i !== index))} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                            <Feather name="x" size={16} color={CALM.neutral} />
+                            <Feather name="x" size={16} color={C.neutral} />
                           </TouchableOpacity>
                         </View>
                         <Text style={styles.assignLabel}>Assign to:</Text>
@@ -3023,12 +3100,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   }
                   if (preview.length === 0) return null;
                   return (
-                    <View style={{ marginTop: SPACING.md, marginBottom: SPACING.sm, backgroundColor: withAlpha(CALM.accent, 0.04), borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 1, borderColor: CALM.border }}>
-                      <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textSecondary, fontWeight: TYPOGRAPHY.weight.medium, marginBottom: SPACING.xs, textTransform: 'uppercase', letterSpacing: 0.5 }}>Split Preview</Text>
+                    <View style={{ marginTop: SPACING.md, marginBottom: SPACING.sm, backgroundColor: withAlpha(C.accent, 0.04), borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 1, borderColor: C.border }}>
+                      <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.medium, marginBottom: SPACING.xs, textTransform: 'uppercase', letterSpacing: 0.5 }}>Split Preview</Text>
                       {preview.map((p, i) => (
                         <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
-                          <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.textPrimary }}>{p.name}</Text>
-                          <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: p.amount > 0 ? CALM.textPrimary : CALM.textSecondary }}>RM {p.amount.toFixed(2)}</Text>
+                          <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textPrimary }}>{p.name}</Text>
+                          <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: p.amount > 0 ? C.textPrimary : C.textSecondary }}>{currency} {p.amount.toFixed(2)}</Text>
                         </View>
                       ))}
                     </View>
@@ -3110,35 +3187,35 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       <>
                         <View style={styles.modalHeader}>
                           <TouchableOpacity onPress={handleClosePayDetail} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-                            <Feather name="chevron-left" size={22} color={CALM.accent} />
+                            <Feather name="chevron-left" size={22} color={C.accent} />
                             <Text style={[styles.modalTitle, { fontSize: 18 }]}>Payment Detail</Text>
                           </TouchableOpacity>
                           <TouchableOpacity onPress={() => { handleClosePayDetail(); setPaymentModalVisible(false); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                            <Feather name="x" size={24} color={CALM.textPrimary} />
+                            <Feather name="x" size={24} color={C.textPrimary} />
                           </TouchableOpacity>
                         </View>
 
                         <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bottomOffset={20} nestedScrollEnabled>
                           {wallet && (
                             <View style={styles.payDetailRow}>
-                              <Feather name="credit-card" size={15} color={CALM.textMuted} />
+                              <Feather name="credit-card" size={15} color={C.textMuted} />
                               <Text style={styles.payDetailMeta}>{wallet.name}</Text>
                             </View>
                           )}
                           <View style={styles.payDetailRow}>
-                            <Feather name="clock" size={15} color={CALM.textMuted} />
+                            <Feather name="clock" size={15} color={C.textMuted} />
                             <Text style={styles.payDetailMeta}>{dateStr}</Text>
                           </View>
                           {payDetailPayment.linkedTransactionId && (
                             <View style={styles.payDetailRow}>
-                              <Feather name="link" size={15} color={CALM.textMuted} />
+                              <Feather name="link" size={15} color={C.textMuted} />
                               <Text style={styles.payDetailMeta}>Linked to transaction</Text>
                               {mode === 'personal' && <Text style={styles.payDetailMetaHint}> · amount synced on save</Text>}
                             </View>
                           )}
                           {payDetailPayment.tipAmount ? (
                             <View style={styles.payDetailRow}>
-                              <Feather name="gift" size={15} color={CALM.textMuted} />
+                              <Feather name="gift" size={15} color={C.textMuted} />
                               <Text style={styles.payDetailMeta}>Tip: {currency} {payDetailPayment.tipAmount.toFixed(2)}</Text>
                             </View>
                           ) : null}
@@ -3162,7 +3239,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             value={editPayNote}
                             onChangeText={setEditPayNote}
                             placeholder="Add a note..."
-                            placeholderTextColor={CALM.textSecondary}
+                            placeholderTextColor={C.textSecondary}
                             returnKeyType="done"
                             onSubmitEditing={Keyboard.dismiss}
                           />
@@ -3170,7 +3247,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           {payDetailPayment.editLog && payDetailPayment.editLog.length > 0 && (
                             <View style={styles.editHistorySection}>
                               <View style={styles.editHistoryHeader}>
-                                <Feather name="clock" size={13} color={CALM.bronze} />
+                                <Feather name="clock" size={13} color={C.bronze} />
                                 <Text style={styles.editHistoryTitle}>Edit History</Text>
                                 <Text style={styles.editHistoryCount}>{payDetailPayment.editLog.length} change{payDetailPayment.editLog.length > 1 ? 's' : ''}</Text>
                               </View>
@@ -3251,7 +3328,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           <Text style={styles.modalTitle}>{paymentViewOnly ? 'Payment History' : 'Record Payment'}</Text>
                         </View>
                         <TouchableOpacity onPress={() => setPaymentModalVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                          <Feather name="x" size={24} color={CALM.textPrimary} />
+                          <Feather name="x" size={24} color={C.textPrimary} />
                         </TouchableOpacity>
                       </View>
 
@@ -3277,7 +3354,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             <View style={[styles.payContextDivider]} />
                             <View style={styles.payContextAmountItem}>
                               <Text style={styles.payContextAmountLabel}>Paid</Text>
-                              <Text style={[styles.payContextAmountValue, { color: CALM.positive }]}>{currency} {payDebt.paidAmount.toFixed(2)}</Text>
+                              <Text style={[styles.payContextAmountValue, { color: C.positive }]}>{currency} {payDebt.paidAmount.toFixed(2)}</Text>
                             </View>
                             <View style={[styles.payContextDivider]} />
                             <View style={styles.payContextAmountItem}>
@@ -3290,7 +3367,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                         {payDebt.status === 'settled' && (
                           <View style={styles.settledNotice}>
-                            <Feather name="check-circle" size={15} color={CALM.positive} />
+                            <Feather name="check-circle" size={15} color={C.positive} />
                             <Text style={styles.settledNoticeText}>This debt is fully settled. View history below.</Text>
                           </View>
                         )}
@@ -3332,7 +3409,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                 value={paymentAmount}
                                 onChangeText={setPaymentAmount}
                                 placeholder="0.00"
-                                placeholderTextColor={CALM.textSecondary}
+                                placeholderTextColor={C.textSecondary}
                                 keyboardType="decimal-pad"
                                 returnKeyType="done"
                                 onSubmitEditing={Keyboard.dismiss}
@@ -3353,7 +3430,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               value={paymentNote}
                               onChangeText={setPaymentNote}
                               placeholder="Optional note"
-                              placeholderTextColor={CALM.textSecondary}
+                              placeholderTextColor={C.textSecondary}
                               returnKeyType="done"
                               onSubmitEditing={Keyboard.dismiss}
                             />
@@ -3380,7 +3457,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                 activeOpacity={0.7}
                               >
                                 <View style={styles.payHistoryIcon}>
-                                  <Feather name="check-circle" size={16} color={CALM.positive} />
+                                  <Feather name="check-circle" size={16} color={C.positive} />
                                 </View>
                                 <View style={{ flex: 1 }}>
                                   <View style={styles.payHistoryTopRow}>
@@ -3393,7 +3470,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                   {payment.note ? <Text style={styles.payHistoryNote}>{payment.note}</Text> : null}
                                   {payment.editLog && payment.editLog.length > 0 && (
                                     <View style={styles.payEditedBadge}>
-                                      <Feather name="edit-2" size={10} color={CALM.bronze} />
+                                      <Feather name="edit-2" size={10} color={C.bronze} />
                                       <Text style={styles.payEditedBadgeText}>
                                         edited {(() => { const d = new Date(payment.editLog[payment.editLog.length - 1].editedAt); return isValid(d) ? format(d, 'MMM d, HH:mm') : '—'; })()}
                                       </Text>
@@ -3401,7 +3478,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                   )}
                                 </View>
                                 <View style={styles.payHistoryEditHint}>
-                                  <Feather name="chevron-right" size={14} color={CALM.textMuted} />
+                                  <Feather name="chevron-right" size={14} color={C.textMuted} />
                                 </View>
                               </TouchableOpacity>
                             ))}
@@ -3425,7 +3502,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 <Text style={styles.modalTitle}>Split Summary</Text>
               </View>
               <TouchableOpacity onPress={() => setSplitDetailVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Feather name="x" size={24} color={CALM.textPrimary} />
+                <Feather name="x" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -3500,7 +3577,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     const isPaid = p.isPaid;
                     const isSelf = p.contact.id === '__self__';
 
-                    const participantColor = isSelf ? '#A688B8' : isPaid ? CALM.positive : '#DEAB22';
+                    const participantColor = isSelf ? '#A688B8' : isPaid ? C.positive : '#DEAB22';
 
                     return (
                       <View key={p.contact.id} style={[
@@ -3524,7 +3601,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               activeOpacity={0.7}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             >
-                              <Feather name="check" size={12} color={CALM.positive} />
+                              <Feather name="check" size={12} color={C.positive} />
                               <Text style={styles.splitPaidChipText}>Paid</Text>
                             </TouchableOpacity>
                           ) : !isSelf ? (
@@ -3534,7 +3611,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               activeOpacity={0.7}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             >
-                              <Feather name="circle" size={12} color={CALM.textSecondary} />
+                              <Feather name="circle" size={12} color={C.textSecondary} />
                               <Text style={styles.splitMarkPaidChipText}>Mark Paid</Text>
                             </TouchableOpacity>
                           ) : null}
@@ -3583,13 +3660,13 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 return (
                   <View key={step} style={styles.wizardStepItem}>
                     {idx > 0 && (
-                      <View style={[styles.wizardStepLine, isCompleted && { backgroundColor: CALM.accent }]} />
+                      <View style={[styles.wizardStepLine, isCompleted && { backgroundColor: C.accent }]} />
                     )}
                     <View
                       style={[
                         styles.wizardStepCircle,
-                        isActive && { backgroundColor: CALM.accent, borderColor: CALM.accent },
-                        isCompleted && { backgroundColor: CALM.accent, borderColor: CALM.accent },
+                        isActive && { backgroundColor: C.accent, borderColor: C.accent },
+                        isCompleted && { backgroundColor: C.accent, borderColor: C.accent },
                       ]}
                     >
                       {isCompleted ? (
@@ -3615,7 +3692,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     value={wizardDescription}
                     onChangeText={setWizardDescription}
                     placeholder="e.g. Dinner, Groceries..."
-                    placeholderTextColor={CALM.textSecondary}
+                    placeholderTextColor={C.textSecondary}
                     autoFocus
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
@@ -3624,11 +3701,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     <View style={styles.wizardContext}>
                       {wizardReceipt.date && (
                         <Text style={styles.wizardContextText}>
-                          <Feather name="calendar" size={13} color={CALM.textSecondary} /> {wizardReceipt.date}
+                          <Feather name="calendar" size={13} color={C.textSecondary} /> {wizardReceipt.date}
                         </Text>
                       )}
                       <Text style={styles.wizardContextText}>
-                        <Feather name="list" size={13} color={CALM.textSecondary} /> {wizardReceipt.items.length} items scanned
+                        <Feather name="list" size={13} color={C.textSecondary} /> {wizardReceipt.items.length} items scanned
                       </Text>
                     </View>
                   )}
@@ -3668,7 +3745,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           onPress={() => setWizardEditingAmount(true)}
                           activeOpacity={0.7}
                         >
-                          <Feather name="edit-2" size={18} color={CALM.accent} />
+                          <Feather name="edit-2" size={18} color={C.accent} />
                           <Text style={styles.wizardEditText}>Edit</Text>
                         </TouchableOpacity>
                       </View>
@@ -3706,8 +3783,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     activeOpacity={0.7}
                   >
                     <View style={styles.wizardOptionHeader}>
-                      <Feather name="divide" size={20} color={wizardTaxHandling === 'divide' ? CALM.accent : CALM.textSecondary} />
-                      <Text style={[styles.wizardOptionTitle, wizardTaxHandling === 'divide' && { color: CALM.accent }]}>
+                      <Feather name="divide" size={20} color={wizardTaxHandling === 'divide' ? C.accent : C.textSecondary} />
+                      <Text style={[styles.wizardOptionTitle, wizardTaxHandling === 'divide' && { color: C.accent }]}>
                         Divide Evenly
                       </Text>
                     </View>
@@ -3724,8 +3801,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     activeOpacity={0.7}
                   >
                     <View style={styles.wizardOptionHeader}>
-                      <Feather name="x-circle" size={20} color={wizardTaxHandling === 'waive' ? CALM.accent : CALM.textSecondary} />
-                      <Text style={[styles.wizardOptionTitle, wizardTaxHandling === 'waive' && { color: CALM.accent }]}>
+                      <Feather name="x-circle" size={20} color={wizardTaxHandling === 'waive' ? C.accent : C.textSecondary} />
+                      <Text style={[styles.wizardOptionTitle, wizardTaxHandling === 'waive' && { color: C.accent }]}>
                         Waive Tax
                       </Text>
                     </View>
@@ -3748,24 +3825,24 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={handleAssignAllEvenly}
                       activeOpacity={0.7}
                     >
-                      <Feather name="users" size={14} color={CALM.accent} />
+                      <Feather name="users" size={14} color={C.accent} />
                       <Text style={styles.wizardAssignAllText}>Assign all evenly</Text>
                     </TouchableOpacity>
                   )}
 
                   {wizardItems.map((item, index) => (
                     editingItemIndex === index ? (
-                      <View key={index} style={[styles.itemCard, { borderColor: CALM.accent, borderWidth: 1 }]}>
+                      <View key={index} style={[styles.itemCard, { borderColor: C.accent, borderWidth: 1 }]}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                           <TextInput
-                            style={[styles.itemName, { flex: 1, borderBottomWidth: 1, borderBottomColor: CALM.border, paddingVertical: 4 }]}
+                            style={[styles.itemName, { flex: 1, borderBottomWidth: 1, borderBottomColor: C.border, paddingVertical: 4 }]}
                             value={editItemName}
                             onChangeText={setEditItemName}
                             placeholder="Item name"
                             autoFocus
                           />
                           <TextInput
-                            style={[styles.itemAmount, { width: 80, borderBottomWidth: 1, borderBottomColor: CALM.border, paddingVertical: 4, textAlign: 'right' }]}
+                            style={[styles.itemAmount, { width: 80, borderBottomWidth: 1, borderBottomColor: C.border, paddingVertical: 4, textAlign: 'right' }]}
                             value={editItemAmount}
                             onChangeText={setEditItemAmount}
                             keyboardType="decimal-pad"
@@ -3774,13 +3851,13 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         </View>
                         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: SPACING.sm, marginTop: SPACING.sm }}>
                           <TouchableOpacity onPress={() => handleDeleteItem(index)} style={{ padding: 6 }}>
-                            <Feather name="trash-2" size={16} color={CALM.neutral} />
+                            <Feather name="trash-2" size={16} color={C.neutral} />
                           </TouchableOpacity>
                           <TouchableOpacity onPress={() => setEditingItemIndex(null)} style={{ padding: 6 }}>
-                            <Feather name="x" size={16} color={CALM.neutral} />
+                            <Feather name="x" size={16} color={C.neutral} />
                           </TouchableOpacity>
                           <TouchableOpacity onPress={handleSaveEditItem} style={{ padding: 6 }}>
-                            <Feather name="check" size={16} color={CALM.accent} />
+                            <Feather name="check" size={16} color={C.accent} />
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -3799,7 +3876,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               onPress={() => handleStartEditItem(index)}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             >
-                              <Feather name="edit-2" size={13} color={CALM.textSecondary} />
+                              <Feather name="edit-2" size={13} color={C.textSecondary} />
                             </TouchableOpacity>
                           </View>
                         </View>
@@ -3818,7 +3895,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             <Text style={styles.itemUnassignedText}>not assigned</Text>
                           )}
                           <View style={styles.itemAddBtn}>
-                            <Feather name="plus" size={14} color={CALM.accent} />
+                            <Feather name="plus" size={14} color={C.accent} />
                           </View>
                         </View>
                       </TouchableOpacity>
@@ -3831,7 +3908,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onPress={handleAddWizardItem}
                     activeOpacity={0.7}
                   >
-                    <Feather name="plus" size={14} color={CALM.accent} />
+                    <Feather name="plus" size={14} color={C.accent} />
                     <Text style={styles.wizardAssignAllText}>add item</Text>
                   </TouchableOpacity>
                 </View>
@@ -3854,15 +3931,15 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         onPress={() => setWizardPaidBy(self)}
                         activeOpacity={0.7}
                       >
-                        <View style={[styles.participantAvatar, { backgroundColor: withAlpha(isSelected ? CALM.accent : CALM.neutral, 0.12) }]}>
-                          <Text style={[styles.participantAvatarText, { color: isSelected ? CALM.accent : CALM.neutral }]}>
+                        <View style={[styles.participantAvatar, { backgroundColor: withAlpha(isSelected ? C.accent : C.neutral, 0.12) }]}>
+                          <Text style={[styles.participantAvatarText, { color: isSelected ? C.accent : C.neutral }]}>
                             {self.name.charAt(0).toUpperCase()}
                           </Text>
                         </View>
-                        <Text style={[styles.wizardPayerName, isSelected && { color: CALM.accent }]}>
+                        <Text style={[styles.wizardPayerName, isSelected && { color: C.accent }]}>
                           {self.name}
                         </Text>
-                        {isSelected && <Feather name="check-circle" size={20} color={CALM.accent} />}
+                        {isSelected && <Feather name="check-circle" size={20} color={C.accent} />}
                       </TouchableOpacity>
                     );
                   })()}
@@ -3879,15 +3956,15 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           onPress={() => setWizardPaidBy(p)}
                           activeOpacity={0.7}
                         >
-                          <View style={[styles.participantAvatar, { backgroundColor: withAlpha(isSelected ? CALM.accent : CALM.neutral, 0.12) }]}>
-                            <Text style={[styles.participantAvatarText, { color: isSelected ? CALM.accent : CALM.neutral }]}>
+                          <View style={[styles.participantAvatar, { backgroundColor: withAlpha(isSelected ? C.accent : C.neutral, 0.12) }]}>
+                            <Text style={[styles.participantAvatarText, { color: isSelected ? C.accent : C.neutral }]}>
                               {p.name.charAt(0).toUpperCase()}
                             </Text>
                           </View>
-                          <Text style={[styles.wizardPayerName, isSelected && { color: CALM.accent }]}>
+                          <Text style={[styles.wizardPayerName, isSelected && { color: C.accent }]}>
                             {p.name}
                           </Text>
-                          {isSelected && <Feather name="check-circle" size={20} color={CALM.accent} />}
+                          {isSelected && <Feather name="check-circle" size={20} color={C.accent} />}
                         </TouchableOpacity>
                       );
                     })}
@@ -3956,7 +4033,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                   <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>Per Person</Text>
                   {wizardResult.breakdown.map((person) => {
                     const isMe = person.contact.id === '__self__';
-                    const cardColor = isMe ? '#A688B8' : CALM.accent;
+                    const cardColor = isMe ? '#A688B8' : C.accent;
                     return (
                     <View key={person.contact.id} style={[styles.wizardPersonCard, { borderLeftWidth: 3, borderLeftColor: cardColor }]}>
                       <View style={styles.wizardPersonHeader}>
@@ -4020,14 +4097,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             <Feather
                               name={d.type === 'they_owe' ? 'arrow-down-left' : 'arrow-up-right'}
                               size={16}
-                              color={d.type === 'they_owe' ? CALM.positive : CALM.neutral}
+                              color={d.type === 'they_owe' ? C.positive : C.neutral}
                             />
                             <Text style={styles.wizardDebtText}>
                               {d.type === 'they_owe'
                                 ? `${d.name} owes you`
                                 : `You owe ${d.name}`}
                             </Text>
-                            <Text style={[styles.wizardDebtAmount, { color: d.type === 'they_owe' ? CALM.positive : CALM.neutral }]}>
+                            <Text style={[styles.wizardDebtAmount, { color: d.type === 'they_owe' ? C.positive : C.neutral }]}>
                               {currency} {d.amount.toFixed(2)}
                             </Text>
                           </View>
@@ -4053,8 +4130,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onPress={handleSaveAsDraft}
                     variant="outline"
                     icon="bookmark"
-                    style={{ borderColor: CALM.bronze, paddingHorizontal: 12 }}
-                    textStyle={{ color: CALM.bronze }}
+                    style={{ borderColor: C.bronze, paddingHorizontal: 12 }}
+                    textStyle={{ color: C.bronze }}
                   />
                 )}
                 {wizardStep === 6 ? (
@@ -4104,7 +4181,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={() => setAssigningItemIndex(null)}
                       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     >
-                      <Feather name="x" size={22} color={CALM.textPrimary} />
+                      <Feather name="x" size={22} color={C.textPrimary} />
                     </TouchableOpacity>
                   </View>
 
@@ -4115,7 +4192,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={() => handleItemAddContact(getSelfContact())}
                       activeOpacity={0.7}
                     >
-                      <Feather name="user" size={16} color={CALM.accent} />
+                      <Feather name="user" size={16} color={C.accent} />
                       <Text style={styles.addMeBtnText}>+ {getSelfContact().name}</Text>
                     </TouchableOpacity>
                   )}
@@ -4136,7 +4213,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             <Text style={[styles.assignChipText, styles.assignChipTextActive]} numberOfLines={1}>
                               {c.name.split(' ')[0]}
                             </Text>
-                            <Feather name="x" size={10} color={CALM.accent} style={{ marginLeft: 4 }} />
+                            <Feather name="x" size={10} color={C.accent} style={{ marginLeft: 4 }} />
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -4175,7 +4252,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     onPress={loadItemPhoneContacts}
                     activeOpacity={0.7}
                   >
-                    <Feather name="book" size={16} color={CALM.accent} />
+                    <Feather name="book" size={16} color={C.accent} />
                     <Text style={styles.assignFromContactsText}>From Contacts</Text>
                   </TouchableOpacity>
 
@@ -4187,7 +4264,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       value={itemManualName}
                       onChangeText={setItemManualName}
                       placeholder="Type a name"
-                      placeholderTextColor={CALM.textSecondary}
+                      placeholderTextColor={C.textSecondary}
                       returnKeyType="done"
                       onSubmitEditing={handleItemAddManual}
                     />
@@ -4217,7 +4294,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={() => setItemAssignMode('assign')}
                       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     >
-                      <Feather name="arrow-left" size={22} color={CALM.textPrimary} />
+                      <Feather name="arrow-left" size={22} color={C.textPrimary} />
                     </TouchableOpacity>
                     <Text style={[styles.assignModalItemName, { flex: 1, marginLeft: SPACING.md }]}>
                       Select Contact
@@ -4226,7 +4303,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={() => { setItemAssignMode('assign'); }}
                       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     >
-                      <Feather name="x" size={22} color={CALM.textPrimary} />
+                      <Feather name="x" size={22} color={C.textPrimary} />
                     </TouchableOpacity>
                   </View>
 
@@ -4235,7 +4312,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     value={itemContactSearch}
                     onChangeText={setItemContactSearch}
                     placeholder="Search contacts..."
-                    placeholderTextColor={CALM.textSecondary}
+                    placeholderTextColor={C.textSecondary}
                     autoFocus
                     returnKeyType="search"
                     onSubmitEditing={Keyboard.dismiss}
@@ -4271,15 +4348,15 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                             )}
                           </View>
                           {isAssigned && (
-                            <Feather name="check-circle" size={20} color={CALM.positive} />
+                            <Feather name="check-circle" size={20} color={C.positive} />
                           )}
                         </TouchableOpacity>
                       );
                     }}
                     ListEmptyComponent={
                       <View style={{ alignItems: 'center', paddingVertical: SPACING['2xl'] }}>
-                        <Feather name="users" size={28} color={CALM.neutral} />
-                        <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.textSecondary, marginTop: SPACING.sm }}>
+                        <Feather name="users" size={28} color={C.neutral} />
+                        <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, marginTop: SPACING.sm }}>
                           No contacts found
                         </Text>
                       </View>
@@ -4308,7 +4385,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         <Modal visible transparent statusBarTranslucent animationType="fade">
           <View style={styles.scanningOverlay}>
             <View style={styles.scanningCard}>
-              <ActivityIndicator size="large" color={CALM.accent} />
+              <ActivityIndicator size="large" color={C.accent} />
               <Text style={styles.scanningTitle}>Scanning receipt...</Text>
               <Text style={styles.scanningSubtext}>AI is reading your receipt</Text>
             </View>
@@ -4327,12 +4404,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               { icon: 'scissors' as const, label: 'Split Expense', desc: 'Divide a bill among a group', onPress: () => { setFabChoiceVisible(false); setSplitChoiceVisible(true); } },
             ] as const).map((opt, i, arr) => (
               <TouchableOpacity key={opt.label} onPress={opt.onPress} activeOpacity={0.7} style={[styles.choiceRow, i < arr.length - 1 && styles.choiceRowBorder]}>
-                <View style={styles.choiceIcon}><Feather name={opt.icon} size={18} color={CALM.accent} /></View>
+                <View style={styles.choiceIcon}><Feather name={opt.icon} size={18} color={C.accent} /></View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.choiceLabel}>{opt.label}</Text>
                   <Text style={styles.choiceDesc}>{opt.desc}</Text>
                 </View>
-                <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+                <Feather name="chevron-right" size={16} color={C.textMuted} />
               </TouchableOpacity>
             ))}
           </Pressable>
@@ -4351,12 +4428,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               { icon: 'image' as const, label: 'Choose from Gallery', desc: 'Pick a receipt photo from your gallery', onPress: () => { setSplitChoiceVisible(false); setTimeout(handleWizardGallery, 50); } },
             ] as const).map((opt, i, arr) => (
               <TouchableOpacity key={opt.label} onPress={opt.onPress} activeOpacity={0.7} style={[styles.choiceRow, i < arr.length - 1 && styles.choiceRowBorder]}>
-                <View style={styles.choiceIcon}><Feather name={opt.icon} size={18} color={CALM.accent} /></View>
+                <View style={styles.choiceIcon}><Feather name={opt.icon} size={18} color={C.accent} /></View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.choiceLabel}>{opt.label}</Text>
                   <Text style={styles.choiceDesc}>{opt.desc}</Text>
                 </View>
-                <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+                <Feather name="chevron-right" size={16} color={C.textMuted} />
               </TouchableOpacity>
             ))}
           </Pressable>
@@ -4373,7 +4450,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 <Text style={styles.modalTitle}>Send Reminder</Text>
               </View>
               <TouchableOpacity onPress={() => setReminderModalVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Feather name="x" size={24} color={CALM.textPrimary} />
+                <Feather name="x" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -4381,8 +4458,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               <>
                 {/* Recipient */}
                 <View style={styles.requestPaymentRecipient}>
-                  <View style={[styles.debtAvatar, { backgroundColor: withAlpha(CALM.accent, 0.12), borderColor: withAlpha(CALM.accent, 0.25) }]}>
-                    <Text style={[styles.debtAvatarText, { color: CALM.accent }]}>
+                  <View style={[styles.debtAvatar, { backgroundColor: withAlpha(C.accent, 0.12), borderColor: withAlpha(C.accent, 0.25) }]}>
+                    <Text style={[styles.debtAvatarText, { color: C.accent }]}>
                       {reminderDebt.contact.name.charAt(0).toUpperCase()}
                     </Text>
                   </View>
@@ -4391,7 +4468,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     <Text style={styles.requestPaymentOwes}>
                       Owes {currency} {(reminderDebt.totalAmount - reminderDebt.paidAmount).toFixed(2)}
                       {' · '}
-                      <Text style={{ color: (() => { const d = differenceInDays(Date.now(), new Date(reminderDebt.createdAt)); return d >= 30 ? '#A0714A' : d >= 7 ? CALM.gold : CALM.accent; })() }}>
+                      <Text style={{ color: (() => { const d = differenceInDays(Date.now(), new Date(reminderDebt.createdAt)); return d >= 30 ? '#A0714A' : d >= 7 ? C.gold : C.accent; })() }}>
                         {getDebtAge(reminderDebt.createdAt)} ago
                       </Text>
                     </Text>
@@ -4406,7 +4483,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={() => { Keyboard.dismiss(); setReminderEditing(false); }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.accent }}>Done</Text>
+                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.accent }}>Done</Text>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
@@ -4414,20 +4491,20 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                     >
-                      <Feather name="edit-3" size={13} color={CALM.accent} />
-                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.accent }}>Edit</Text>
+                      <Feather name="edit-3" size={13} color={C.accent} />
+                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.accent }}>Edit</Text>
                     </TouchableOpacity>
                   )}
                 </View>
 
                 {/* Message input */}
                 <TextInput
-                  style={[styles.requestPaymentMessageInput, !reminderEditing && { color: CALM.textSecondary }]}
+                  style={[styles.requestPaymentMessageInput, !reminderEditing && { color: C.textSecondary }]}
                   value={reminderMessage}
                   onChangeText={setReminderMessage}
                   multiline
                   textAlignVertical="top"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   editable={reminderEditing}
                   onFocus={() => setReminderEditing(true)}
                   onBlur={() => setReminderEditing(false)}
@@ -4436,7 +4513,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 {/* Action buttons */}
                 <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
                   <TouchableOpacity
-                    style={[styles.requestPaymentCopyBtn, { flex: 1 }, reminderCopied && { backgroundColor: withAlpha(CALM.positive, 0.1) }]}
+                    style={[styles.requestPaymentCopyBtn, { flex: 1 }, reminderCopied && { backgroundColor: withAlpha(C.positive, 0.1) }]}
                     onPress={async () => {
                       await Clipboard.setStringAsync(reminderMessage);
                       setReminderCopied(true);
@@ -4444,8 +4521,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     }}
                     activeOpacity={0.7}
                   >
-                    <Feather name={reminderCopied ? 'check' : 'copy'} size={18} color={reminderCopied ? CALM.positive : CALM.accent} />
-                    <Text style={[styles.requestPaymentCopyText, reminderCopied && { color: CALM.positive }]}>
+                    <Feather name={reminderCopied ? 'check' : 'copy'} size={18} color={reminderCopied ? C.positive : C.accent} />
+                    <Text style={[styles.requestPaymentCopyText, reminderCopied && { color: C.positive }]}>
                       {reminderCopied ? 'Copied!' : 'Copy'}
                     </Text>
                   </TouchableOpacity>
@@ -4489,15 +4566,15 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 <Text style={styles.modalTitle}>Request Payment</Text>
               </View>
               <TouchableOpacity onPress={() => { setRequestPaymentVisible(false); setRequestPaymentDebt(null); setShowQrPicker(false); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Feather name="x" size={24} color={CALM.textPrimary} />
+                <Feather name="x" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
 
             {requestPaymentDebt && (
               <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                 <View style={styles.requestPaymentRecipient}>
-                  <View style={[styles.debtAvatar, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
-                    <Text style={[styles.debtAvatarText, { color: CALM.accent }]}>
+                  <View style={[styles.debtAvatar, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
+                    <Text style={[styles.debtAvatarText, { color: C.accent }]}>
                       {requestPaymentDebt.contact.name.charAt(0).toUpperCase()}
                     </Text>
                   </View>
@@ -4516,7 +4593,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       onPress={() => { Keyboard.dismiss(); setMessageEditing(false); }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.accent }}>Done</Text>
+                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.accent }}>Done</Text>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
@@ -4524,19 +4601,19 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                     >
-                      <Feather name="edit-3" size={13} color={CALM.accent} />
-                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.accent }}>Edit</Text>
+                      <Feather name="edit-3" size={13} color={C.accent} />
+                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.accent }}>Edit</Text>
                     </TouchableOpacity>
                   )}
                 </View>
                 <TextInput
                   ref={messageInputRef}
-                  style={[styles.requestPaymentMessageInput, !messageEditing && { color: CALM.textSecondary }]}
+                  style={[styles.requestPaymentMessageInput, !messageEditing && { color: C.textSecondary }]}
                   value={requestPaymentMessage}
                   onChangeText={setRequestPaymentMessage}
                   multiline
                   textAlignVertical="top"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   editable={messageEditing}
                   onFocus={() => setMessageEditing(true)}
                   onBlur={() => setMessageEditing(false)}
@@ -4544,12 +4621,12 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                 <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
                   <TouchableOpacity
-                    style={[styles.requestPaymentCopyBtn, { flex: 1 }, messageCopied && { backgroundColor: withAlpha(CALM.positive, 0.1) }]}
+                    style={[styles.requestPaymentCopyBtn, { flex: 1 }, messageCopied && { backgroundColor: withAlpha(C.positive, 0.1) }]}
                     onPress={handleCopyPaymentMessage}
                     activeOpacity={0.7}
                   >
-                    <Feather name={messageCopied ? 'check' : 'copy'} size={18} color={messageCopied ? CALM.positive : CALM.accent} />
-                    <Text style={[styles.requestPaymentCopyText, messageCopied && { color: CALM.positive }]}>
+                    <Feather name={messageCopied ? 'check' : 'copy'} size={18} color={messageCopied ? C.positive : C.accent} />
+                    <Text style={[styles.requestPaymentCopyText, messageCopied && { color: C.positive }]}>
                       {messageCopied ? 'Copied!' : 'Copy'}
                     </Text>
                   </TouchableOpacity>
@@ -4570,7 +4647,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                 {showQrPicker && paymentQrs.length > 1 && (
                   <View style={{ marginTop: SPACING.md }}>
-                    <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: CALM.textSecondary, marginBottom: SPACING.sm, fontWeight: '600' }}>
+                    <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, marginBottom: SPACING.sm, fontWeight: '600' }}>
                       Which QR to send?
                     </Text>
                     {paymentQrs.map((qr, idx) => (
@@ -4581,7 +4658,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           alignItems: 'center',
                           padding: SPACING.md,
                           borderRadius: SPACING.sm,
-                          backgroundColor: withAlpha(CALM.accent, 0.06),
+                          backgroundColor: withAlpha(C.accent, 0.06),
                           marginBottom: SPACING.sm,
                           gap: SPACING.md,
                         }}
@@ -4589,8 +4666,8 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                         onPress={() => sendWhatsAppWithQr(idx)}
                       >
                         <Image source={{ uri: qr.uri }} style={{ width: 44, height: 44, borderRadius: SPACING.xs }} resizeMode="cover" />
-                        <Text style={{ flex: 1, fontSize: TYPOGRAPHY.size.base, color: CALM.textPrimary, fontWeight: '500' }} numberOfLines={1}>{qr.label}</Text>
-                        <Feather name="send" size={16} color={CALM.accent} />
+                        <Text style={{ flex: 1, fontSize: TYPOGRAPHY.size.base, color: C.textPrimary, fontWeight: '500' }} numberOfLines={1}>{qr.label}</Text>
+                        <Feather name="send" size={16} color={C.accent} />
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -4598,7 +4675,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                 {!hasPaymentQr && (
                   <View style={styles.requestPaymentQrHint}>
-                    <Feather name="info" size={16} color={CALM.textSecondary} />
+                    <Feather name="info" size={16} color={C.textSecondary} />
                     <Text style={styles.requestPaymentQrHintText}>
                       Add your payment QR in Settings for easier payments
                     </Text>
@@ -4627,7 +4704,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               top: 120,
               right: 16,
               width: 240,
-              backgroundColor: '#fff',
+              backgroundColor: C.surface,
               borderRadius: 14,
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 4 },
@@ -4642,7 +4719,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               {/* Filter by Type — debts tab only */}
               {activeTab === 'debts' && (
                 <>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: CALM.textSecondary, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>Filter by Type</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: C.textSecondary, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>Filter by Type</Text>
                   {([
                     { key: 'they_owe' as const, label: 'They Owe' },
                     { key: 'i_owe' as const, label: 'I Owe' },
@@ -4651,17 +4728,17 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     return (
                       <TouchableOpacity
                         key={f.key}
-                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: isActive ? withAlpha(CALM.accent, 0.06) : 'transparent' }}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: isActive ? withAlpha(C.accent, 0.06) : 'transparent' }}
                         onPress={() => setDebtTypeFilter(isActive ? null : f.key)}
                         activeOpacity={0.7}
                       >
-                        <Text style={{ fontSize: 14, color: isActive ? CALM.accent : CALM.textPrimary, fontWeight: isActive ? '600' : '400' }}>{f.label}</Text>
-                        {isActive && <Feather name="check" size={16} color={CALM.accent} />}
+                        <Text style={{ fontSize: 14, color: isActive ? C.accent : C.textPrimary, fontWeight: isActive ? '600' : '400' }}>{f.label}</Text>
+                        {isActive && <Feather name="check" size={16} color={C.accent} />}
                       </TouchableOpacity>
                     );
                   })}
-                  <View style={{ height: 1, backgroundColor: CALM.border, marginHorizontal: 16, marginVertical: 4 }} />
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: CALM.textSecondary, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>Filter by Status</Text>
+                  <View style={{ height: 1, backgroundColor: C.border, marginHorizontal: 16, marginVertical: 4 }} />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: C.textSecondary, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>Filter by Status</Text>
                   {([
                     { key: 'pending' as const, label: 'Pending' },
                     { key: 'partial' as const, label: 'Partial' },
@@ -4671,20 +4748,20 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     return (
                       <TouchableOpacity
                         key={f.key}
-                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: isActive ? withAlpha(CALM.accent, 0.06) : 'transparent' }}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: isActive ? withAlpha(C.accent, 0.06) : 'transparent' }}
                         onPress={() => setDebtFilter(isActive ? null : f.key)}
                         activeOpacity={0.7}
                       >
-                        <Text style={{ fontSize: 14, color: isActive ? CALM.accent : CALM.textPrimary, fontWeight: isActive ? '600' : '400' }}>{f.label}</Text>
-                        {isActive && <Feather name="check" size={16} color={CALM.accent} />}
+                        <Text style={{ fontSize: 14, color: isActive ? C.accent : C.textPrimary, fontWeight: isActive ? '600' : '400' }}>{f.label}</Text>
+                        {isActive && <Feather name="check" size={16} color={C.accent} />}
                       </TouchableOpacity>
                     );
                   })}
-                  <View style={{ height: 1, backgroundColor: CALM.border, marginHorizontal: 16, marginVertical: 4 }} />
+                  <View style={{ height: 1, backgroundColor: C.border, marginHorizontal: 16, marginVertical: 4 }} />
                 </>
               )}
               {/* Sort By */}
-              <Text style={{ fontSize: 11, fontWeight: '600', color: CALM.textSecondary, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>Sort By</Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: C.textSecondary, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' }}>Sort By</Text>
               {([
                 { key: 'newest' as const, label: 'Newest First', icon: 'arrow-down' as const },
                 { key: 'oldest' as const, label: 'Oldest First', icon: 'arrow-up' as const },
@@ -4696,7 +4773,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                 return (
                   <TouchableOpacity
                     key={option.key}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: isActive ? withAlpha(CALM.accent, 0.06) : 'transparent' }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: isActive ? withAlpha(C.accent, 0.06) : 'transparent' }}
                     onPress={() => {
                       if (activeTab === 'splits') setSplitSort(option.key);
                       else setDebtSort(option.key);
@@ -4704,23 +4781,23 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                     }}
                     activeOpacity={0.7}
                   >
-                    <Feather name={option.icon} size={16} color={isActive ? CALM.accent : CALM.textSecondary} />
-                    <Text style={{ flex: 1, fontSize: 14, color: isActive ? CALM.accent : CALM.textPrimary, fontWeight: isActive ? '600' : '400' }}>{option.label}</Text>
-                    {isActive && <Feather name="check" size={16} color={CALM.accent} />}
+                    <Feather name={option.icon} size={16} color={isActive ? C.accent : C.textSecondary} />
+                    <Text style={{ flex: 1, fontSize: 14, color: isActive ? C.accent : C.textPrimary, fontWeight: isActive ? '600' : '400' }}>{option.label}</Text>
+                    {isActive && <Feather name="check" size={16} color={C.accent} />}
                   </TouchableOpacity>
                 );
               })}
               {/* Clear filters button — show when any filter active */}
               {(debtTypeFilter || debtFilter) && activeTab === 'debts' && (
                 <>
-                  <View style={{ height: 1, backgroundColor: CALM.border, marginHorizontal: 16, marginVertical: 4 }} />
+                  <View style={{ height: 1, backgroundColor: C.border, marginHorizontal: 16, marginVertical: 4 }} />
                   <TouchableOpacity
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10 }}
                     onPress={() => { setDebtTypeFilter(null); setDebtFilter(null); setSortModalVisible(false); }}
                     activeOpacity={0.7}
                   >
-                    <Feather name="x-circle" size={16} color={CALM.gold} />
-                    <Text style={{ fontSize: 14, color: CALM.gold, fontWeight: '600' }}>Clear Filters</Text>
+                    <Feather name="x-circle" size={16} color={C.gold} />
+                    <Text style={{ fontSize: 14, color: C.gold, fontWeight: '600' }}>Clear Filters</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -4745,14 +4822,24 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         type={categoryManagerType ?? 'expense'}
         mode={mode === 'personal' ? 'personal' : 'business'}
       />
+      <ScreenGuide
+        id="guide_debts"
+        title={t.guide.whoOwesWho}
+        icon="git-branch"
+        tips={[
+          t.guide.tipDebt1,
+          t.guide.tipDebt2,
+          t.guide.tipDebt3,
+        ]}
+      />
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -4770,11 +4857,11 @@ const styles = StyleSheet.create({
   },
   heroMiniCard: {
     flex: 1,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderLeftWidth: 3,
   },
   heroMiniLabel: {
@@ -4785,7 +4872,7 @@ const styles = StyleSheet.create({
   },
   heroMiniLabelText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   heroMiniAmount: {
@@ -4795,7 +4882,7 @@ const styles = StyleSheet.create({
   },
   heroMiniSub: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 2,
   },
 
@@ -4803,19 +4890,19 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: 6,
     marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     gap: SPACING.sm,
   },
   searchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     padding: 0,
   },
 
@@ -4830,21 +4917,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   debtFilterPillActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.12),
-    borderColor: CALM.accent,
+    backgroundColor: withAlpha(C.accent, 0.12),
+    borderColor: C.accent,
   },
   debtFilterText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   debtFilterTextActive: {
-    color: CALM.accent,
+    color: C.accent,
   },
   sortOption: {
     flexDirection: 'row',
@@ -4856,15 +4943,15 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   sortOptionActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
   },
   sortOptionText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   sortOptionTextActive: {
-    color: CALM.accent,
+    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
@@ -4886,12 +4973,12 @@ const styles = StyleSheet.create({
   },
   summaryDivider: {
     width: 1,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginHorizontal: SPACING.sm,
   },
   summaryLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
     letterSpacing: 0.3,
   },
@@ -4906,12 +4993,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   netLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     letterSpacing: 0.2,
   },
   netAmount: {
@@ -4937,15 +5024,15 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   tabActive: {
-    borderBottomColor: CALM.accent,
+    borderBottomColor: C.accent,
   },
   tabText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   tabTextActive: {
-    color: CALM.accent,
+    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.bold,
   },
 
@@ -4978,16 +5065,16 @@ const styles = StyleSheet.create({
   debtName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 2,
   },
   debtDesc: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   debtTimestamp: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.neutral,
+    color: C.neutral,
     marginTop: 2,
   },
   debtAmountCol: {
@@ -5060,17 +5147,17 @@ const styles = StyleSheet.create({
   splitTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 2,
   },
   splitSubtext: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   splitAmount: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   splitMeta: {
@@ -5093,7 +5180,7 @@ const styles = StyleSheet.create({
   },
   participantCount: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   splitParticipants: {
@@ -5109,9 +5196,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   participantChipPaid: {
     backgroundColor: withAlpha('#6BA3BE', 0.1),
@@ -5120,7 +5207,7 @@ const styles = StyleSheet.create({
   participantChipText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     maxWidth: 80,
   },
   participantChipTextPaid: {
@@ -5132,7 +5219,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
 
   // Modals
@@ -5142,7 +5229,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
@@ -5154,17 +5241,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING['2xl'],
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingBottom: SPACING.lg,
   },
   modalTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   modalTitleAccent: {
     borderLeftWidth: 3,
-    borderLeftColor: CALM.accent,
+    borderLeftColor: C.accent,
     paddingLeft: SPACING.sm,
   },
   modalActions: {
@@ -5177,24 +5264,24 @@ const styles = StyleSheet.create({
   formLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
     marginTop: SPACING.md,
   },
   formLabelOptional: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.regular,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   formInput: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderWidth: 1.5,
-    borderColor: withAlpha(CALM.accent, 0.2),
+    borderColor: withAlpha(C.accent, 0.2),
   },
   dateButton: {
     flexDirection: 'row',
@@ -5204,7 +5291,7 @@ const styles = StyleSheet.create({
   dateButtonText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   datePickerOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -5213,7 +5300,7 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
   },
   datePickerCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
     alignSelf: 'stretch',
@@ -5225,17 +5312,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   datePickerTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   datePickerDone: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: C.accent,
   },
   typeContainer: {
     flexDirection: 'row',
@@ -5250,13 +5337,13 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.sm,
     borderWidth: 1.5,
-    borderColor: CALM.border,
-    backgroundColor: CALM.background,
+    borderColor: C.border,
+    backgroundColor: C.background,
   },
   typeText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   methodContainer: {
     flexDirection: 'row',
@@ -5271,20 +5358,20 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.sm,
     borderWidth: 2,
-    borderColor: CALM.border,
-    backgroundColor: CALM.surface,
+    borderColor: C.border,
+    backgroundColor: C.surface,
   },
   methodButtonActive: {
-    borderColor: CALM.accent,
-    backgroundColor: withAlpha(CALM.accent, 0.12),
+    borderColor: C.accent,
+    backgroundColor: withAlpha(C.accent, 0.12),
   },
   methodText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   methodTextActive: {
-    color: CALM.accent,
+    color: C.accent,
   },
 
   // Custom split
@@ -5301,19 +5388,19 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   customInput: {
     width: 100,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     textAlign: 'right',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
 
   // Item-based split
@@ -5327,17 +5414,17 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   itemCard: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   itemHeader: {
     flexDirection: 'row',
@@ -5349,17 +5436,17 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   itemAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   assignLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xs,
   },
   assignChips: {
@@ -5371,34 +5458,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   assignChipActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.12),
-    borderColor: CALM.accent,
+    backgroundColor: withAlpha(C.accent, 0.12),
+    borderColor: C.accent,
   },
   assignChipText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     maxWidth: 80,
   },
   assignChipTextActive: {
-    color: CALM.accent,
+    color: C.accent,
   },
 
   // Split Detail
   detailTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   detailSubtext: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.lg,
   },
   participantList: {
@@ -5429,11 +5516,11 @@ const styles = StyleSheet.create({
   participantName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   participantAmount: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   paidBadge: {
@@ -5462,7 +5549,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: withAlpha(CALM.positive, 0.1),
+    backgroundColor: withAlpha(C.positive, 0.1),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 3,
     borderRadius: RADIUS.full,
@@ -5471,13 +5558,13 @@ const styles = StyleSheet.create({
   splitPaidChipText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.positive,
+    color: C.positive,
   },
   splitMarkPaidChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: withAlpha(CALM.textSecondary, 0.08),
+    backgroundColor: withAlpha(C.textSecondary, 0.08),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 3,
     borderRadius: RADIUS.full,
@@ -5486,12 +5573,12 @@ const styles = StyleSheet.create({
   splitMarkPaidChipText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Wizard
   wizardContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     paddingTop: SPACING['2xl'],
@@ -5513,7 +5600,7 @@ const styles = StyleSheet.create({
   wizardStepLine: {
     width: 28,
     height: 2,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginHorizontal: SPACING.xs,
   },
   wizardStepCircle: {
@@ -5521,25 +5608,25 @@ const styles = StyleSheet.create({
     height: 30,
     borderRadius: 15,
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
   },
   wizardStepNum: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   wizardTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.lg,
   },
   wizardSubtitle: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.lg,
   },
   wizardContext: {
@@ -5548,7 +5635,7 @@ const styles = StyleSheet.create({
   },
   wizardContextText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   wizardAmountDisplay: {
     alignItems: 'center',
@@ -5557,7 +5644,7 @@ const styles = StyleSheet.create({
   wizardAmountBig: {
     fontSize: 36,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
     marginBottom: SPACING.md,
   },
@@ -5568,7 +5655,7 @@ const styles = StyleSheet.create({
   },
   wizardBreakdownText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   wizardAmountActions: {
@@ -5579,7 +5666,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.positive,
+    backgroundColor: C.positive,
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.md,
@@ -5594,7 +5681,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
     borderWidth: 2,
-    borderColor: CALM.accent,
+    borderColor: C.accent,
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.md,
@@ -5602,18 +5689,18 @@ const styles = StyleSheet.create({
   wizardEditText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   wizardOptionCard: {
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     marginBottom: SPACING.md,
   },
   wizardOptionCardActive: {
-    borderColor: CALM.accent,
-    backgroundColor: withAlpha(CALM.accent, 0.04),
+    borderColor: C.accent,
+    backgroundColor: withAlpha(C.accent, 0.04),
   },
   wizardOptionHeader: {
     flexDirection: 'row',
@@ -5624,11 +5711,11 @@ const styles = StyleSheet.create({
   wizardOptionTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   wizardOptionDesc: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 20,
   },
   wizardAssignAllBtn: {
@@ -5638,7 +5725,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
     borderRadius: RADIUS.sm,
     marginTop: SPACING.md,
     marginBottom: SPACING.md,
@@ -5646,10 +5733,10 @@ const styles = StyleSheet.create({
   wizardAssignAllText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   wizardSummarySection: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     gap: SPACING.md,
@@ -5662,24 +5749,24 @@ const styles = StyleSheet.create({
   },
   wizardSummaryLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
     flexShrink: 0,
   },
   wizardSummaryValue: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontWeight: TYPOGRAPHY.weight.semibold,
     textAlign: 'right',
     flexShrink: 1,
   },
   wizardPersonCard: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   wizardPersonHeader: {
     flexDirection: 'row',
@@ -5691,12 +5778,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   wizardPersonTotal: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: C.accent,
     fontVariant: ['tabular-nums'],
   },
   wizardShareRow: {
@@ -5708,11 +5795,11 @@ const styles = StyleSheet.create({
   wizardShareName: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   wizardShareAmount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -5723,19 +5810,19 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     padding: SPACING.lg,
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     marginBottom: SPACING.md,
   },
   wizardPayerCardActive: {
-    borderColor: CALM.accent,
-    backgroundColor: withAlpha(CALM.accent, 0.04),
+    borderColor: C.accent,
+    backgroundColor: withAlpha(C.accent, 0.04),
   },
   wizardPayerName: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // Debt preview
@@ -5745,7 +5832,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     marginBottom: SPACING.xs,
   },
@@ -5753,7 +5840,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   wizardDebtAmount: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -5771,7 +5858,7 @@ const styles = StyleSheet.create({
   itemUnassignedText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontStyle: 'italic',
   },
   itemAddBtn: {
@@ -5779,7 +5866,7 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: withAlpha(CALM.accent, 0.3),
+    borderColor: withAlpha(C.accent, 0.3),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -5791,21 +5878,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: withAlpha(CALM.accent, 0.2),
+    borderColor: withAlpha(C.accent, 0.2),
     marginBottom: SPACING.lg,
   },
   addMeBtnText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
 
   // Assignment modal overlay
   assignModalSheet: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
@@ -5820,18 +5907,18 @@ const styles = StyleSheet.create({
   assignModalItemName: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   assignModalItemAmount: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
     marginTop: 2,
   },
   assignModalLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.sm,
   },
   assignManualRow: {
@@ -5844,7 +5931,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -5854,21 +5941,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     marginBottom: SPACING.md,
   },
   assignFromContactsText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   assignDoneBtn: {
     alignItems: 'center',
     paddingVertical: SPACING.md,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.md,
     marginTop: SPACING.sm,
   },
@@ -5887,13 +5974,13 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
   },
   phoneContactRowSelected: {
-    backgroundColor: withAlpha(CALM.accent, 0.06),
+    backgroundColor: withAlpha(C.accent, 0.06),
   },
   phoneContactAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: withAlpha(CALM.accent, 0.12),
+    backgroundColor: withAlpha(C.accent, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
@@ -5901,16 +5988,16 @@ const styles = StyleSheet.create({
   phoneContactAvatarText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: C.accent,
   },
   phoneContactName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   phoneContactPhone: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 2,
   },
 
@@ -5922,7 +6009,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   scanningCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS['2xl'],
     padding: SPACING['3xl'],
     alignItems: 'center',
@@ -5932,18 +6019,18 @@ const styles = StyleSheet.create({
   scanningTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   scanningSubtext: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
   },
 
   // Choice card (FAB / Split choice)
   choiceCard: {
     width: '82%',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: 18,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
@@ -5957,12 +6044,12 @@ const styles = StyleSheet.create({
   choiceTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   choiceSubtitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.lg,
   },
   choiceRow: {
@@ -5973,24 +6060,24 @@ const styles = StyleSheet.create({
   },
   choiceRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   choiceIcon: {
     width: 40,
     height: 40,
     borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
   choiceLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   choiceDesc: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 1,
   },
 
@@ -6003,7 +6090,7 @@ const styles = StyleSheet.create({
   },
   requestPaymentOwes: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.positive,
+    color: C.positive,
     fontWeight: TYPOGRAPHY.weight.semibold,
     fontVariant: ['tabular-nums'],
     marginTop: 2,
@@ -6011,17 +6098,17 @@ const styles = StyleSheet.create({
   requestPaymentLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.sm,
   },
   requestPaymentMessageInput: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     lineHeight: 20,
     minHeight: 240,
     maxHeight: 320,
@@ -6032,15 +6119,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: withAlpha(CALM.accent, 0.2),
+    borderColor: withAlpha(C.accent, 0.2),
   },
   requestPaymentCopyText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   requestPaymentQrSection: {
     alignItems: 'center',
@@ -6051,7 +6138,7 @@ const styles = StyleSheet.create({
     height: 180,
     borderRadius: RADIUS.lg,
     marginBottom: SPACING.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   requestPaymentShareQrBtn: {
     flexDirection: 'row',
@@ -6060,7 +6147,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.md,
   },
   requestPaymentShareQrText: {
@@ -6073,7 +6160,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
     padding: SPACING.md,
-    backgroundColor: withAlpha(CALM.textSecondary, 0.06),
+    backgroundColor: withAlpha(C.textSecondary, 0.06),
     borderRadius: RADIUS.md,
     marginTop: SPACING.lg,
     marginBottom: SPACING.lg,
@@ -6081,7 +6168,7 @@ const styles = StyleSheet.create({
   requestPaymentQrHintText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 18,
   },
   requestPaymentWhatsAppBtn: {
@@ -6107,23 +6194,23 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.sm,
   },
   selectionCheckboxActive: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
   },
   selectionBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopWidth: 2,
-    borderTopColor: CALM.accent,
+    borderTopColor: C.accent,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING['3xl'],
@@ -6142,12 +6229,12 @@ const styles = StyleSheet.create({
   selectionBarBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   selectionBarCount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: C.accent,
   },
   selectionBarActions: {
     flexDirection: 'row',
@@ -6160,15 +6247,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: CALM.accent,
+    borderColor: C.accent,
   },
   selectionEditText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   selectionDeleteBtn: {
     flexDirection: 'row',
@@ -6195,27 +6282,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   splitFilterPillActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.12),
+    backgroundColor: withAlpha(C.accent, 0.12),
     borderWidth: 1.5,
-    borderColor: CALM.accent,
+    borderColor: C.accent,
   },
   splitFilterText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   splitFilterTextActive: {
-    color: CALM.accent,
+    color: C.accent,
   },
 
   // Payment modal redesign
   payContextCard: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -6240,11 +6327,11 @@ const styles = StyleSheet.create({
   payContextName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   payContextDesc: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 1,
   },
   payContextAmounts: {
@@ -6258,7 +6345,7 @@ const styles = StyleSheet.create({
   },
   payContextAmountLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: 2,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -6266,12 +6353,12 @@ const styles = StyleSheet.create({
   payContextAmountValue: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   payContextDivider: {
     width: 1,
     height: 20,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   payAmountRow: {
     flexDirection: 'row',
@@ -6279,28 +6366,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   payQuickFill: {
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.sm,
     borderWidth: 1,
-    borderColor: withAlpha(CALM.accent, 0.2),
+    borderColor: withAlpha(C.accent, 0.2),
   },
   payQuickFillText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   payHistorySection: {
     marginTop: SPACING.lg,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     paddingTop: SPACING.md,
   },
   payHistoryTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.md,
   },
   payHistoryItem: {
@@ -6320,21 +6407,21 @@ const styles = StyleSheet.create({
   payHistoryAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   payHistoryDate: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   payHistoryTip: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.accent,
+    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.medium,
     marginTop: 2,
   },
   payHistoryNote: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 2,
   },
   payHistoryDelete: {
@@ -6354,7 +6441,7 @@ const styles = StyleSheet.create({
   },
   amountWarnText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: C.bronze,
     flex: 1,
     lineHeight: 16,
   },
@@ -6362,7 +6449,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: withAlpha(CALM.positive, 0.08),
+    backgroundColor: withAlpha(C.positive, 0.08),
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
@@ -6370,7 +6457,7 @@ const styles = StyleSheet.create({
   },
   settledNoticeText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.positive,
+    color: C.positive,
     flex: 1,
   },
   // Payment detail modal
@@ -6382,15 +6469,15 @@ const styles = StyleSheet.create({
   },
   payDetailMeta: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   payDetailMetaHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   payDetailDivider: {
     height: 1,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
     marginVertical: SPACING.md,
   },
   payDetailActions: {
@@ -6407,13 +6494,13 @@ const styles = StyleSheet.create({
   },
   payEditedBadgeText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   // Edit history section in payment detail
   editHistorySection: {
     marginTop: SPACING.lg,
     borderTopWidth: 1,
-    borderTopColor: withAlpha(CALM.accent, 0.08),
+    borderTopColor: withAlpha(C.accent, 0.08),
     paddingTop: SPACING.md,
   },
   editHistoryHeader: {
@@ -6425,12 +6512,12 @@ const styles = StyleSheet.create({
   editHistoryTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
     flex: 1,
   },
   editHistoryCount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   editHistoryRow: {
     flexDirection: 'row',
@@ -6442,17 +6529,17 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: withAlpha(CALM.bronze, 0.5),
+    backgroundColor: withAlpha(C.bronze, 0.5),
     marginTop: 5,
   },
   editHistoryMeta: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginBottom: 1,
   },
   editHistoryDetail: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 });
 

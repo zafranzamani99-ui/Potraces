@@ -1,16 +1,22 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import React, { useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { BarChart, PieChart } from 'react-native-chart-kit';
 import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, COLORS, SPACING, TYPOGRAPHY, RADIUS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
+import { CALM, COLORS, SPACING, TYPOGRAPHY, RADIUS, PRODUCT_CATEGORIES, TYPE, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
+import { generateReportNarrative, ReportMonthData } from '../../services/reportNarrative';
+import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 
 const screenWidth = Dimensions.get('window').width;
 
 const BusinessReports: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { sales, products } = useBusinessStore();
   const currency = useSettingsStore(state => state.currency);
 
@@ -85,9 +91,9 @@ const BusinessReports: React.FC = () => {
     const card = sales.filter((s) => s.paymentMethod === 'card').reduce((sum, s) => sum + s.totalAmount, 0);
 
     const data = [];
-    if (cash > 0) data.push({ name: 'Cash', amount: cash, color: COLORS.success, legendFontColor: CALM.textPrimary, legendFontSize: 12 });
-    if (digital > 0) data.push({ name: 'Digital', amount: digital, color: COLORS.info, legendFontColor: CALM.textPrimary, legendFontSize: 12 });
-    if (card > 0) data.push({ name: 'Card', amount: card, color: COLORS.warning, legendFontColor: CALM.textPrimary, legendFontSize: 12 });
+    if (cash > 0) data.push({ name: 'Cash', amount: cash, color: COLORS.success, legendFontColor: C.textPrimary, legendFontSize: 12 });
+    if (digital > 0) data.push({ name: 'Digital', amount: digital, color: COLORS.info, legendFontColor: C.textPrimary, legendFontSize: 12 });
+    if (card > 0) data.push({ name: 'Card', amount: card, color: COLORS.warning, legendFontColor: C.textPrimary, legendFontSize: 12 });
 
     return data;
   }, [sales]);
@@ -115,13 +121,83 @@ const BusinessReports: React.FC = () => {
     };
   }, [sales, products]);
 
+  // Report narrative
+  const reportNarratives = useAIInsightsStore((s) => s.reportNarratives);
+  const monthKey = format(new Date(), 'yyyy-MM');
+  const narrativeEntry = reportNarratives[`seller_${monthKey}`];
+
+  const currentMonthNarrative = useMemo(() => {
+    const now = new Date();
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+    const monthSales = sales.filter((s) =>
+      isWithinInterval(s.date, { start: monthStart, end: monthEnd })
+    );
+    const income = monthSales.reduce((sum, s) => sum + s.totalAmount, 0);
+    let costs = 0;
+    monthSales.forEach((sale) => {
+      sale.items.forEach((item) => {
+        const product = products.find((p) => p.id === item.productId);
+        if (product) costs += product.cost * item.quantity;
+      });
+    });
+
+    // Product-level breakdown for top categories
+    const productTotals: Record<string, number> = {};
+    monthSales.forEach((sale) => {
+      sale.items.forEach((item) => {
+        productTotals[item.productName] = (productTotals[item.productName] || 0) + item.totalPrice;
+      });
+    });
+    const topCategories = Object.entries(productTotals)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([name, amount]) => ({
+        name,
+        amount,
+        percent: income > 0 ? Math.round((amount / income) * 100) : 0,
+      }));
+
+    // Previous month
+    const prevStart = startOfMonth(subMonths(now, 1));
+    const prevEnd = endOfMonth(subMonths(now, 1));
+    const prevSales = sales.filter((s) =>
+      isWithinInterval(s.date, { start: prevStart, end: prevEnd })
+    );
+    const prevIncome = prevSales.reduce((sum, s) => sum + s.totalAmount, 0);
+    let prevCosts = 0;
+    prevSales.forEach((sale) => {
+      sale.items.forEach((item) => {
+        const product = products.find((p) => p.id === item.productId);
+        if (product) prevCosts += product.cost * item.quantity;
+      });
+    });
+
+    return { income, costs, topCategories, prevIncome, prevCosts, count: monthSales.length };
+  }, [sales, products]);
+
+  useEffect(() => {
+    if (sales.length === 0) return;
+    const data: ReportMonthData = {
+      mode: 'seller',
+      income: currentMonthNarrative.income,
+      expenses: currentMonthNarrative.costs,
+      kept: currentMonthNarrative.income - currentMonthNarrative.costs,
+      topCategories: currentMonthNarrative.topCategories,
+      prevMonthIncome: currentMonthNarrative.prevIncome,
+      prevMonthExpenses: currentMonthNarrative.prevCosts,
+      transactionCount: currentMonthNarrative.count,
+    };
+    generateReportNarrative(data);
+  }, [currentMonthNarrative]);
+
   if (sales.length === 0) {
     return (
       <View style={styles.container}>
         <EmptyState
           icon="trending-up"
-          title="No Sales Data"
-          message="Start making sales to see your business reports and analytics"
+          title="nothing here yet"
+          message="once orders start flowing, you'll see everything here"
         />
       </View>
     );
@@ -134,21 +210,27 @@ const BusinessReports: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {narrativeEntry?.text ? (
+          <Text style={[{ ...TYPE.narrative }, { color: C.textSecondary, marginBottom: SPACING.md }]}>
+            {narrativeEntry.text}
+          </Text>
+        ) : null}
+
         <View style={styles.statsRow}>
           <Card style={styles.statCard}>
-            <Text style={styles.statLabel}>Total Revenue</Text>
+            <Text style={styles.statLabel}>total came in</Text>
             <Text style={styles.statValue}>{currency} {totalStats.revenue.toFixed(2)}</Text>
           </Card>
           <Card style={styles.statCard}>
-            <Text style={styles.statLabel}>Total Profit</Text>
-            <Text style={[styles.statValue, { color: CALM.positive }]}>
+            <Text style={styles.statLabel}>total kept</Text>
+            <Text style={[styles.statValue, { color: C.positive }]}>
               {currency} {totalStats.profit.toFixed(2)}
             </Text>
           </Card>
         </View>
 
         <Card>
-          <Text style={styles.chartTitle}>Monthly Sales (6 months)</Text>
+          <Text style={styles.chartTitle}>monthly flow (6 months)</Text>
           <BarChart
             data={monthlySalesData}
             width={screenWidth - 64}
@@ -156,12 +238,12 @@ const BusinessReports: React.FC = () => {
             yAxisLabel={currency}
             yAxisSuffix=""
             chartConfig={{
-              backgroundColor: CALM.surface,
-              backgroundGradientFrom: CALM.surface,
-              backgroundGradientTo: CALM.surface,
+              backgroundColor: C.surface,
+              backgroundGradientFrom: C.surface,
+              backgroundGradientTo: C.surface,
               decimalPlaces: 0,
-              color: (opacity = 1) => withAlpha(CALM.bronze, opacity),
-              labelColor: (opacity = 1) => withAlpha(CALM.textSecondary, opacity),
+              color: (opacity = 1) => withAlpha(C.bronze, opacity),
+              labelColor: (opacity = 1) => withAlpha(C.textSecondary, opacity),
               style: {
                 borderRadius: 16,
               },
@@ -209,11 +291,11 @@ const BusinessReports: React.FC = () => {
         )}
 
         <Card>
-          <Text style={styles.chartTitle}>Business Metrics</Text>
+          <Text style={styles.chartTitle}>the numbers</Text>
           <View style={styles.metricsGrid}>
             <View style={styles.metricItem}>
               <Text style={styles.metricValue}>{sales.length}</Text>
-              <Text style={styles.metricLabel}>Total Sales</Text>
+              <Text style={styles.metricLabel}>orders</Text>
             </View>
             <View style={styles.metricDivider} />
             <View style={styles.metricItem}>
@@ -222,10 +304,10 @@ const BusinessReports: React.FC = () => {
             </View>
             <View style={styles.metricDivider} />
             <View style={styles.metricItem}>
-              <Text style={[styles.metricValue, { color: CALM.positive }]}>
+              <Text style={[styles.metricValue, { color: C.positive }]}>
                 {totalStats.profitMargin.toFixed(1)}%
               </Text>
-              <Text style={styles.metricLabel}>Profit Margin</Text>
+              <Text style={styles.metricLabel}>kept per sale</Text>
             </View>
           </View>
         </Card>
@@ -234,10 +316,10 @@ const BusinessReports: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -258,20 +340,20 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.sm,
   },
   statValue: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // Charts
   chartTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.lg,
   },
   chart: {
@@ -285,13 +367,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   productRank: {
     width: 32,
     height: 32,
     borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
@@ -299,7 +381,7 @@ const styles = StyleSheet.create({
   rankText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   productInfo: {
     flex: 1,
@@ -307,17 +389,17 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 2,
   },
   productQuantity: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   productRevenue: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // Metrics
@@ -332,17 +414,17 @@ const styles = StyleSheet.create({
   metricDivider: {
     width: 1,
     height: 40,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   metricValue: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   metricLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
   },
 });

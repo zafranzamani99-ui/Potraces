@@ -12,6 +12,7 @@ import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { RiderCost } from '../../types';
 
 const COST_TYPES: { type: RiderCost['type']; label: string }[] = [
@@ -22,6 +23,8 @@ const COST_TYPES: { type: RiderCost['type']; label: string }[] = [
 ];
 
 const RiderCostsScreen: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { businessTransactions, riderCosts, addRiderCost } = useBusinessStore();
   const currency = useSettingsStore((s) => s.currency);
 
@@ -139,7 +142,7 @@ const RiderCostsScreen: React.FC = () => {
               onChangeText={setCostAmount}
               keyboardType="numeric"
               placeholder="amount"
-              placeholderTextColor={CALM.textSecondary}
+              placeholderTextColor={C.textSecondary}
               autoFocus
             />
             <TouchableOpacity onPress={handleAdd} style={styles.doneButton}>
@@ -157,10 +160,10 @@ const RiderCostsScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   statsRow: {
     flexDirection: 'row',
@@ -177,12 +180,12 @@ const styles = StyleSheet.create({
   statValue: {
     ...TYPE.insight,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   keptValue: {
     fontSize: 20,
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   listContent: {
     padding: SPACING.lg,
@@ -192,26 +195,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   costType: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   costDate: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 2,
   },
   costAmount: {
     ...TYPE.insight,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   emptyState: {
     alignItems: 'center',
@@ -219,14 +222,14 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   addArea: {
     padding: SPACING.lg,
     gap: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
-    backgroundColor: CALM.surface,
+    borderTopColor: C.border,
+    backgroundColor: C.surface,
   },
   typeChips: {
     flexDirection: 'row',
@@ -237,15 +240,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   typeChipSelected: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   typeChipText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   typeChipTextSelected: {
     color: '#fff',
@@ -258,15 +261,15 @@ const styles = StyleSheet.create({
   addInput: {
     flex: 1,
     ...TYPE.insight,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
+    color: C.textPrimary,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   doneButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
@@ -281,7 +284,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     margin: SPACING.lg,

@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,11 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { AIExtraction } from '../../types';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { lightTap, mediumTap } from '../../services/haptics';
 import { useFadeSlide } from '../../utils/fadeSlide';
 import { useLearningStore } from '../../store/learningStore';
+import { useSettingsStore } from '../../store/settingsStore';
 
 interface ConfirmationCardProps {
   extraction: AIExtraction;
@@ -54,6 +56,9 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
   onSkip,
   onEdit,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const currency = useSettingsStore((s) => s.currency);
   const { type, extractedData, status } = extraction;
   const { amount, description, category, wallet, person } = extractedData;
 
@@ -90,11 +95,11 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
           <Feather
             name={isConfirmed ? 'check' : 'x'}
             size={13}
-            color={isConfirmed ? CALM.deepOlive : CALM.textMuted}
+            color={isConfirmed ? C.deepOlive : C.textMuted}
           />
           <Text style={[styles.doneText, isSkipped && styles.doneTextSkipped]}>
             {isConfirmed ? 'saved' : 'skipped'} — {description || 'item'}
-            {amount > 0 ? ` RM ${amount.toFixed(2)}` : ''}
+            {amount > 0 ? ` ${currency} ${amount.toFixed(2)}` : ''}
           </Text>
         </View>
       </View>
@@ -111,7 +116,7 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
           <Feather
             name={INTENT_ICONS[type] || 'circle'}
             size={16}
-            color={CALM.bronze}
+            color={C.bronze}
           />
         </View>
 
@@ -127,7 +132,7 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
 
         {/* Right: amount */}
         {amount > 0 && (
-          <Text style={styles.amount}>RM {amount.toFixed(2)}</Text>
+          <Text style={styles.amount}>{currency} {amount.toFixed(2)}</Text>
         )}
       </TouchableOpacity>
 
@@ -137,7 +142,7 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
           {extractedData.allocations.map((a: any, i: number) => (
             <View key={i} style={styles.allocRow}>
               <Text style={styles.allocLabel} numberOfLines={1}>{a.label || a.category}</Text>
-              <Text style={styles.allocAmount}>RM {(a.amount || 0).toFixed(0)}</Text>
+              <Text style={styles.allocAmount}>{currency} {(a.amount || 0).toFixed(0)}</Text>
             </View>
           ))}
         </View>
@@ -167,9 +172,9 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
 
 export default React.memo(ConfirmationCard);
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   card: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -189,7 +194,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -200,16 +205,16 @@ const styles = StyleSheet.create({
   name: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   sub: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   amount: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
   actions: {
@@ -222,18 +227,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.full,
   },
   skipText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   confirmBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: RADIUS.full,
@@ -250,14 +255,14 @@ const styles = StyleSheet.create({
   },
   doneText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.deepOlive,
+    color: C.deepOlive,
   },
   doneTextSkipped: {
-    color: CALM.textMuted,
+    color: C.textMuted,
     textDecorationLine: 'line-through',
   },
   allocList: {
-    backgroundColor: withAlpha(CALM.accent, 0.04),
+    backgroundColor: withAlpha(C.accent, 0.04),
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
@@ -272,13 +277,13 @@ const styles = StyleSheet.create({
   },
   allocLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     flex: 1,
   },
   allocAmount: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
 });

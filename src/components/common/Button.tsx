@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import {
   Pressable,
   Text,
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { lightTap } from '../../services/haptics';
 
 // ─── TYPES ──────────────────────────────────────────────────
@@ -36,47 +37,47 @@ interface ButtonProps {
 }
 
 // ─── VARIANT COLOURS ────────────────────────────────────────
-const VARIANT_CONFIG: Record<
+const makeVariantConfig = (C: typeof CALM): Record<
   ButtonVariant,
   { bg: string; text: string; border: string; filled: boolean }
-> = {
+> => ({
   primary: {
-    bg: CALM.accent,
+    bg: C.accent,
     text: '#FFFFFF',
-    border: CALM.accent,
+    border: C.accent,
     filled: true,
   },
   secondary: {
-    bg: CALM.positive,
+    bg: C.positive,
     text: '#FFFFFF',
-    border: CALM.positive,
+    border: C.positive,
     filled: true,
   },
   outline: {
     bg: 'transparent',
-    text: CALM.accent,
-    border: CALM.accent,
+    text: C.accent,
+    border: C.accent,
     filled: false,
   },
   ghost: {
     bg: 'transparent',
-    text: CALM.accent,
+    text: C.accent,
     border: 'transparent',
     filled: false,
   },
   danger: {
-    bg: CALM.neutral,
+    bg: C.neutral,
     text: '#FFFFFF',
-    border: CALM.neutral,
+    border: C.neutral,
     filled: true,
   },
   success: {
-    bg: CALM.positive,
+    bg: C.positive,
     text: '#FFFFFF',
-    border: CALM.positive,
+    border: C.positive,
     filled: true,
   },
-};
+});
 
 const SIZE_CONFIG: Record<
   ButtonSize,
@@ -118,6 +119,8 @@ const Button: React.FC<ButtonProps> = ({
   accessibilityLabel,
   accessibilityHint,
 }) => {
+  const C = useCalm();
+  const VARIANT_CONFIG = useMemo(() => makeVariantConfig(C), [C]);
   const opacityAnim = useRef(new Animated.Value(1)).current;
   const variantCfg = VARIANT_CONFIG[variant];
   const sizeCfg = SIZE_CONFIG[size];
@@ -155,7 +158,7 @@ const Button: React.FC<ButtonProps> = ({
   };
 
   const labelColor = variantCfg.filled ? '#FFFFFF' : variantCfg.text;
-  const indicatorColor = variantCfg.filled ? '#FFFFFF' : CALM.accent;
+  const indicatorColor = variantCfg.filled ? '#FFFFFF' : C.accent;
 
   const renderIcon = () => {
     if (loading || !icon) return null;

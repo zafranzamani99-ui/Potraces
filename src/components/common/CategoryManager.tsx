@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import DraggableFlatList, {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { useCategoryStore } from '../../store/categoryStore';
 import { useCategories } from '../../hooks/useCategories';
 import { CategoryOption } from '../../types';
@@ -49,6 +50,8 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
   type,
   mode,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
   const categories = useCategories(type, mode);
   const { updateCategoryOverride, addCustomCategory, deleteCustomCategory, setCategoryOrder } =
@@ -170,10 +173,10 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
             <Text style={styles.customBadge}>Custom</Text>
           )}
         </View>
-        <Feather name="menu" size={18} color={isActive ? CALM.accent : CALM.neutral} />
+        <Feather name="menu" size={18} color={isActive ? C.accent : C.neutral} />
       </TouchableOpacity>
     </ScaleDecorator>
-  ), []);
+  ), [styles, C, openEdit]);
 
   return (
     <Modal
@@ -194,7 +197,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
               {type === 'expense' ? 'Expense' : type === 'income' ? 'Income' : 'Investment'} Categories
             </Text>
             <TouchableOpacity onPress={onClose}>
-              <Feather name="x" size={22} color={CALM.textPrimary} />
+              <Feather name="x" size={22} color={C.textPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -213,7 +216,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
           </GestureHandlerRootView>
 
           <TouchableOpacity style={styles.addButton} onPress={openNew}>
-            <Feather name="plus" size={18} color={CALM.accent} />
+            <Feather name="plus" size={18} color={C.accent} />
             <Text style={styles.addButtonText}>Add Custom Category</Text>
           </TouchableOpacity>
         </View>
@@ -241,7 +244,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                 {isNewCategory ? 'New Category' : 'Edit Category'}
               </Text>
               <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Feather name="x" size={22} color={CALM.textPrimary} />
+                <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -253,7 +256,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                 value={editName}
                 onChangeText={setEditName}
                 placeholder="Category name"
-                placeholderTextColor={CALM.neutral}
+                placeholderTextColor={C.neutral}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
@@ -279,7 +282,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                     <Feather
                       name={iconName as keyof typeof Feather.glyphMap}
                       size={20}
-                      color={editIcon === iconName ? editColor : CALM.textSecondary}
+                      color={editIcon === iconName ? editColor : C.textSecondary}
                     />
                   </TouchableOpacity>
                 ))}
@@ -317,7 +320,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                   style={styles.deleteButton}
                   onPress={handleDelete}
                 >
-                  <Feather name="trash-2" size={16} color={CALM.neutral} />
+                  <Feather name="trash-2" size={16} color={C.neutral} />
                   <Text style={styles.deleteText}>Delete</Text>
                 </TouchableOpacity>
               )}
@@ -334,7 +337,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -342,18 +345,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
   },
   modal: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '70%',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   editModal: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '80%',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   header: {
     flexDirection: 'row',
@@ -361,16 +364,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   title: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   dragHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.neutral,
+    color: C.neutral,
     textAlign: 'center',
     paddingTop: SPACING.sm,
   },
@@ -384,12 +387,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     gap: SPACING.md,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
   },
   categoryRowDragging: {
-    backgroundColor: withAlpha(CALM.accent, 0.06),
+    backgroundColor: withAlpha(C.accent, 0.06),
     borderWidth: 1,
-    borderColor: withAlpha(CALM.accent, 0.2),
+    borderColor: withAlpha(C.accent, 0.2),
   },
   categoryIcon: {
     width: 40,
@@ -404,11 +407,11 @@ const styles = StyleSheet.create({
   categoryName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   customBadge: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.accent,
+    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.medium,
     marginTop: 1,
   },
@@ -419,12 +422,12 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     padding: SPACING.lg,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   addButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   editContent: {
     padding: SPACING.lg,
@@ -432,19 +435,19 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.md,
   },
   input: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
+    color: C.textPrimary,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   iconGrid: {
     flexDirection: 'row',
@@ -457,7 +460,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 2,
     borderColor: 'transparent',
   },
@@ -474,7 +477,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   colorSelected: {
-    borderColor: CALM.textPrimary,
+    borderColor: C.textPrimary,
     borderWidth: 3,
   },
   editActions: {
@@ -484,7 +487,7 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     gap: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   deleteButton: {
     flexDirection: 'row',
@@ -493,19 +496,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(CALM.neutral, 0.1),
+    backgroundColor: withAlpha(C.neutral, 0.1),
     marginRight: 'auto',
   },
   deleteText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.neutral,
+    color: C.neutral,
   },
   saveButton: {
     paddingHorizontal: SPACING['2xl'],
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   saveText: {
     fontSize: TYPOGRAPHY.size.base,

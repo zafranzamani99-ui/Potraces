@@ -3,9 +3,9 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval, formatDistanceToNow, format } from 'date-fns';
@@ -14,6 +14,7 @@ import { usePartTimeStore } from '../../../store/partTimeStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { explainPartTimeMonth } from '../../../utils/explainPartTimeMonth';
 import WeekBar from '../../../components/common/WeekBar';
 import ModeToggle from '../../../components/common/ModeToggle';
@@ -24,6 +25,8 @@ function toDate(d: Date | string): Date {
 }
 
 const PartTimeDashboard: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { businessTransactions } = useBusinessStore();
   const {
     jobDetails,
@@ -271,7 +274,7 @@ const PartTimeDashboard: React.FC = () => {
           onPress={() => navigation.getParent()?.navigate('PartTimeReports')}
           activeOpacity={0.7}
         >
-          <Feather name="bar-chart-2" size={16} color={CALM.textSecondary} />
+          <Feather name="bar-chart-2" size={16} color={C.textSecondary} />
           <Text style={styles.reportsLinkText}>view reports</Text>
         </TouchableOpacity>
 
@@ -302,10 +305,10 @@ const PartTimeDashboard: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -318,7 +321,7 @@ const styles = StyleSheet.create({
   // Zone 1 — Hero
   heroAmount: {
     ...TYPE.hero,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     textAlign: 'center',
   },
   heroLabel: {
@@ -340,10 +343,10 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   splitBarMain: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   splitBarSide: {
-    backgroundColor: withAlpha(CALM.bronze, 0.4),
+    backgroundColor: withAlpha(C.bronze, 0.4),
   },
   splitLabels: {
     flexDirection: 'row',
@@ -351,12 +354,12 @@ const styles = StyleSheet.create({
   },
   splitLabelMain: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   splitLabelSide: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   splitPercentage: {
@@ -378,14 +381,14 @@ const styles = StyleSheet.create({
   },
   payDayLink: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textDecorationLine: 'underline',
   },
 
   // Zone 4 — Insight
   insightText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.lg,
   },
 
@@ -407,13 +410,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   recentAmount: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   recentStream: {
@@ -431,7 +434,7 @@ const styles = StyleSheet.create({
   },
   seeAllText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Reports link
@@ -444,7 +447,7 @@ const styles = StyleSheet.create({
   },
   reportsLinkText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Bottom links
@@ -454,7 +457,7 @@ const styles = StyleSheet.create({
   },
   bottomLinkText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // FAB
@@ -462,7 +465,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: SPACING['2xl'],
     right: SPACING['2xl'],
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,

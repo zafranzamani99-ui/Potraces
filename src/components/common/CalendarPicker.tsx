@@ -16,6 +16,7 @@ import {
 } from 'date-fns';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 interface CalendarPickerProps {
   value: Date;
@@ -33,6 +34,8 @@ const EDIT_ICON_STYLE = { marginLeft: 5 };
 const CHEVRON_STYLE = { marginLeft: 5 };
 
 const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, onChange }: CalendarPickerProps) {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const [viewMonth, setViewMonth] = useState(startOfMonth(value));
   const [showPicker, setShowPicker] = useState(false);
   const [pickerYear, setPickerYear] = useState(getYear(value));
@@ -114,7 +117,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={styles.navBtn}
           >
-            <Feather name="chevron-left" size={18} color={CALM.accent} />
+            <Feather name="chevron-left" size={18} color={C.accent} />
           </TouchableOpacity>
 
           {editingYear ? (
@@ -137,7 +140,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
               style={styles.yearPill}
             >
               <Text style={styles.yearPillText}>{pickerYear}</Text>
-              <Feather name="edit-2" size={11} color={CALM.accent} style={EDIT_ICON_STYLE} />
+              <Feather name="edit-2" size={11} color={C.accent} style={EDIT_ICON_STYLE} />
             </TouchableOpacity>
           )}
 
@@ -146,7 +149,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={styles.navBtn}
           >
-            <Feather name="chevron-right" size={18} color={CALM.accent} />
+            <Feather name="chevron-right" size={18} color={C.accent} />
           </TouchableOpacity>
         </View>
 
@@ -187,7 +190,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           style={styles.navBtn}
         >
-          <Feather name="chevron-left" size={18} color={CALM.accent} />
+          <Feather name="chevron-left" size={18} color={C.accent} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -196,7 +199,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
           activeOpacity={0.7}
         >
           <Text style={styles.monthLabel}>{format(viewMonth, 'MMMM yyyy')}</Text>
-          <Feather name="chevron-down" size={14} color={CALM.accent} style={CHEVRON_STYLE} />
+          <Feather name="chevron-down" size={14} color={C.accent} style={CHEVRON_STYLE} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -204,7 +207,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           style={styles.navBtn}
         >
-          <Feather name="chevron-right" size={18} color={CALM.accent} />
+          <Feather name="chevron-right" size={18} color={C.accent} />
         </TouchableOpacity>
       </View>
 
@@ -255,7 +258,7 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
   );
 });
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.md,
@@ -270,7 +273,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
     marginHorizontal: SPACING.xs,
   },
   navBtn: {
@@ -279,7 +282,7 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(CALM.accent, 0.07),
+    backgroundColor: withAlpha(C.accent, 0.07),
   },
   monthLabelBtn: {
     flexDirection: 'row',
@@ -288,7 +291,7 @@ const styles = StyleSheet.create({
   monthLabel: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     letterSpacing: 0.2,
   },
   row: {
@@ -299,7 +302,7 @@ const styles = StyleSheet.create({
   dayLabel: {
     fontSize: 11,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
@@ -312,22 +315,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cellSelected: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   cellToday: {
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
   },
   cellText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   cellTextDisabled: {
-    color: withAlpha(CALM.textPrimary, 0.25),
+    color: withAlpha(C.textPrimary, 0.25),
     fontWeight: TYPOGRAPHY.weight.regular,
   },
   cellTextToday: {
-    color: CALM.accent,
+    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.bold,
   },
   cellTextSelected: {
@@ -340,7 +343,7 @@ const styles = StyleSheet.create({
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   // Year picker
   yearPill: {
@@ -349,19 +352,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
   },
   yearPillText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: C.accent,
   },
   yearInput: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: C.accent,
     borderBottomWidth: 2,
-    borderBottomColor: CALM.accent,
+    borderBottomColor: C.accent,
     minWidth: 60,
     textAlign: 'center',
     paddingVertical: 2,
@@ -377,15 +380,15 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.lg,
     alignItems: 'center',
-    backgroundColor: withAlpha(CALM.accent, 0.05),
+    backgroundColor: withAlpha(C.accent, 0.05),
   },
   monthCellSelected: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   monthCellText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     letterSpacing: 0.3,
   },
   monthCellTextSelected: {

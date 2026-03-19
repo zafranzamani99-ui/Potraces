@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { View } from 'react-native';
 import Svg, { Polyline, Polygon, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { CALM, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 interface SparklineProps {
   data: number[];
@@ -18,12 +19,15 @@ const Sparkline: React.FC<SparklineProps> = memo(({
   data,
   width = 120,
   height = 40,
-  color = CALM.accent,
-  negativeColor = CALM.neutral,
+  color: colorProp,
+  negativeColor: negativeColorProp,
   showDot = true,
   strokeWidth = 2,
   filled = false,
 }) => {
+  const C = useCalm();
+  const color = colorProp ?? C.accent;
+  const negativeColor = negativeColorProp ?? C.neutral;
   if (data.length < 2) return null;
 
   const padding = strokeWidth + 2;
@@ -57,7 +61,7 @@ const Sparkline: React.FC<SparklineProps> = memo(({
   const gradientId = `sparkFill_${isPositive ? 'pos' : 'neg'}`;
 
   return (
-    <View style={{ width, height }}>
+    <View style={{ width, height }} pointerEvents="none">
       <Svg width={width} height={height}>
         {filled && (
           <Defs>

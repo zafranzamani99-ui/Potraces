@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   Alert,
@@ -11,6 +10,7 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { format, isValid } from 'date-fns';
@@ -26,6 +26,7 @@ import { createTransfer } from '../../utils/transferBridge';
 import { lightTap, mediumTap, successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 // -- Count-up animation hook ----------------------------------------
 const useCountUp = (target: number, duration: number = 300) => {
@@ -76,9 +77,10 @@ const FadeInSection: React.FC<{ delay: number; children: React.ReactNode }> = Re
 });
 
 // -- Animated kept amount display -----------------------------------
-const AnimatedKeptAmount: React.FC<{ value: number; currency: string }> = React.memo(({
+const AnimatedKeptAmount: React.FC<{ value: number; currency: string; styles: ReturnType<typeof makeStyles> }> = React.memo(({
   value,
   currency,
+  styles,
 }) => {
   const animatedValue = useCountUp(value, 300);
   const [displayText, setDisplayText] = React.useState(`${currency} 0`);
@@ -94,6 +96,8 @@ const AnimatedKeptAmount: React.FC<{ value: number; currency: string }> = React.
 });
 
 const SeasonSummary: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { seasons, orders, ingredientCosts, endSeason, addSeason, markOrdersTransferred, unmarkOrdersTransferred, deleteSeason, updateSeasonName, updateSeasonTarget } = useSellerStore();
@@ -367,7 +371,7 @@ const SeasonSummary: React.FC = () => {
         ['Kept', stats.kept],
         [''],
         ['TOP PRODUCTS'],
-        ['Product', 'Quantity', 'Revenue'],
+        ['Product', 'Quantity', 'Came In'],
         ...stats.topProducts.map((p) => [p.name, p.qty, p.revenue]),
       ];
       const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
@@ -417,7 +421,7 @@ const SeasonSummary: React.FC = () => {
     return (
       <View style={styles.container}>
         <View style={styles.noSeason}>
-          <Feather name="calendar" size={48} color={CALM.border} />
+          <Feather name="calendar" size={48} color={C.border} />
           <Text style={styles.noSeasonTitle}>no active season</Text>
           <Text style={styles.noSeasonText}>
             start a season when you begin taking orders for an event, like Raya or CNY.
@@ -460,7 +464,7 @@ const SeasonSummary: React.FC = () => {
             accessibilityLabel="Edit season name"
           >
             <Text style={styles.seasonName}>{season.name}</Text>
-            <Feather name="edit-2" size={14} color={CALM.textMuted} />
+            <Feather name="edit-2" size={14} color={C.textMuted} />
           </TouchableOpacity>
           <Text style={styles.seasonDates}>
             {format(season.startDate instanceof Date ? season.startDate : new Date(season.startDate), 'dd MMM yyyy, h:mm a')}
@@ -476,7 +480,7 @@ const SeasonSummary: React.FC = () => {
             <View style={styles.ledgerLine} />
             <View style={styles.keptInner}>
               <Text style={styles.keptLabel}>you kept</Text>
-              <AnimatedKeptAmount value={stats.kept} currency={currency} />
+              <AnimatedKeptAmount value={stats.kept} currency={currency} styles={styles} />
               <Text style={styles.keptSubtext}>
                 after {currency} {stats.totalCosts.toFixed(0)} in ingredients
               </Text>
@@ -496,8 +500,8 @@ const SeasonSummary: React.FC = () => {
         <FadeInSection delay={150}>
           <View style={styles.statsRow}>
             <View style={styles.statBox} accessible={true} accessibilityLabel={`${stats.totalOrders} orders`}>
-              <View style={[styles.statIconCircle, { backgroundColor: withAlpha(CALM.gold, 0.1) }]}>
-                <Feather name="clipboard" size={16} color={CALM.gold} />
+              <View style={[styles.statIconCircle, { backgroundColor: withAlpha(C.gold, 0.1) }]}>
+                <Feather name="clipboard" size={16} color={C.gold} />
               </View>
               <Text style={styles.statNumber}>{stats.totalOrders}</Text>
               <Text style={styles.statLabel}>orders</Text>
@@ -529,16 +533,16 @@ const SeasonSummary: React.FC = () => {
           {season.revenueTarget ? (
             <View style={styles.targetCard}>
               <View style={styles.targetRow}>
-                <Feather name="target" size={14} color={CALM.accent} />
+                <Feather name="target" size={14} color={C.accent} />
                 <Text style={styles.targetLabel}>
                   {currency} {stats.totalIncome.toFixed(0)} / {currency} {season.revenueTarget.toFixed(0)} target
                 </Text>
                 <TouchableOpacity onPress={() => { setTargetInput(String(season.revenueTarget)); setShowTargetInput(true); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Feather name="edit-2" size={12} color={CALM.textMuted} />
+                  <Feather name="edit-2" size={12} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
               <View style={styles.targetBarBg}>
-                <View style={[styles.targetBarFill, { width: `${Math.min(100, (stats.totalIncome / season.revenueTarget) * 100)}%` as any, backgroundColor: stats.totalIncome >= season.revenueTarget ? BIZ.profit : CALM.accent }]} />
+                <View style={[styles.targetBarFill, { width: `${Math.min(100, (stats.totalIncome / season.revenueTarget) * 100)}%` as any, backgroundColor: stats.totalIncome >= season.revenueTarget ? BIZ.profit : C.accent }]} />
               </View>
               <Text style={styles.targetPct}>
                 {stats.totalIncome >= season.revenueTarget
@@ -548,7 +552,7 @@ const SeasonSummary: React.FC = () => {
             </View>
           ) : (
             <TouchableOpacity style={styles.setTargetBtn} onPress={() => { setTargetInput(''); setShowTargetInput(true); }} activeOpacity={0.7}>
-              <Feather name="target" size={14} color={CALM.textMuted} />
+              <Feather name="target" size={14} color={C.textMuted} />
               <Text style={styles.setTargetText}>set season target</Text>
             </TouchableOpacity>
           )}
@@ -562,9 +566,9 @@ const SeasonSummary: React.FC = () => {
               onPress={() => { lightTap(); setShowCompare((v) => !v); }}
               activeOpacity={0.7}
             >
-              <Feather name="bar-chart-2" size={14} color={CALM.textMuted} />
+              <Feather name="bar-chart-2" size={14} color={C.textMuted} />
               <Text style={styles.compareToggleText}>compare with previous season</Text>
-              <Feather name={showCompare ? 'chevron-up' : 'chevron-down'} size={14} color={CALM.textMuted} />
+              <Feather name={showCompare ? 'chevron-up' : 'chevron-down'} size={14} color={C.textMuted} />
             </TouchableOpacity>
             {showCompare && (
               <View style={styles.compareCard}>
@@ -613,8 +617,8 @@ const SeasonSummary: React.FC = () => {
                           <View style={styles.compareRowDelta}>
                             {!same && (
                               <>
-                                <Feather name={up ? 'arrow-up' : 'arrow-down'} size={10} color={isGood ? BIZ.profit : CALM.bronze} />
-                                <Text style={[styles.compareRowDeltaText, { color: isGood ? BIZ.profit : CALM.bronze }]}>
+                                <Feather name={up ? 'arrow-up' : 'arrow-down'} size={10} color={isGood ? BIZ.profit : C.bronze} />
+                                <Text style={[styles.compareRowDeltaText, { color: isGood ? BIZ.profit : C.bronze }]}>
                                   {pct != null ? `${pct.toFixed(0)}%` : (up ? '+' : '−')}
                                 </Text>
                               </>
@@ -652,7 +656,7 @@ const SeasonSummary: React.FC = () => {
           <FadeInSection delay={225}>
             <View style={styles.transferCard}>
               <View style={styles.transferHeader}>
-                <Feather name="refresh-cw" size={16} color={CALM.bronze} />
+                <Feather name="refresh-cw" size={16} color={C.bronze} />
                 <Text style={styles.transferTitle}>
                   {currency} {untransferredAmount.toFixed(0)} untransferred
                 </Text>
@@ -689,7 +693,7 @@ const SeasonSummary: React.FC = () => {
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Text style={styles.transferButtonText}>transfer to personal</Text>
-                  <Feather name="arrow-right" size={14} color={CALM.bronze} />
+                  <Feather name="arrow-right" size={14} color={C.bronze} />
                 </TouchableOpacity>
               )}
             </View>
@@ -739,8 +743,8 @@ const SeasonSummary: React.FC = () => {
                 onPress={() => { lightTap(); setShowOrdersModal(true); }}
               >
                 <View style={styles.actionRowLeft}>
-                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(CALM.gold, 0.1) }]}>
-                    <Feather name="clipboard" size={16} color={CALM.gold} />
+                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(C.gold, 0.1) }]}>
+                    <Feather name="clipboard" size={16} color={C.gold} />
                   </View>
                   <Text style={styles.actionRowText}>orders</Text>
                 </View>
@@ -748,7 +752,7 @@ const SeasonSummary: React.FC = () => {
                   <View style={styles.inlineListBadge}>
                     <Text style={styles.inlineListBadgeText}>{seasonOrders.length}</Text>
                   </View>
-                  <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+                  <Feather name="chevron-right" size={16} color={C.textMuted} />
                 </View>
               </TouchableOpacity>
 
@@ -761,8 +765,8 @@ const SeasonSummary: React.FC = () => {
                 onPress={() => { lightTap(); setShowCostsModal(true); }}
               >
                 <View style={styles.actionRowLeft}>
-                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}>
-                    <Feather name="dollar-sign" size={16} color={CALM.accent} />
+                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
+                    <Feather name="dollar-sign" size={16} color={C.accent} />
                   </View>
                   <Text style={styles.actionRowText}>costs</Text>
                 </View>
@@ -770,7 +774,7 @@ const SeasonSummary: React.FC = () => {
                   <View style={styles.inlineListBadge}>
                     <Text style={styles.inlineListBadgeText}>{seasonCosts.length}</Text>
                   </View>
-                  <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+                  <Feather name="chevron-right" size={16} color={C.textMuted} />
                 </View>
               </TouchableOpacity>
 
@@ -790,7 +794,7 @@ const SeasonSummary: React.FC = () => {
                   </View>
                   <Text style={styles.actionRowText}>copy report</Text>
                 </View>
-                <Feather name="copy" size={14} color={CALM.textMuted} />
+                <Feather name="copy" size={14} color={C.textMuted} />
               </TouchableOpacity>
 
               <View style={styles.actionDivider} />
@@ -809,7 +813,7 @@ const SeasonSummary: React.FC = () => {
                   </View>
                   <Text style={styles.actionRowText}>export report</Text>
                 </View>
-                <Feather name="download" size={14} color={CALM.textMuted} />
+                <Feather name="download" size={14} color={C.textMuted} />
               </TouchableOpacity>
 
               <View style={styles.actionDivider} />
@@ -908,7 +912,7 @@ const SeasonSummary: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Undo transfers to personal"
                 >
-                  <Feather name="rotate-ccw" size={16} color={CALM.bronze} />
+                  <Feather name="rotate-ccw" size={16} color={C.bronze} />
                   <Text style={styles.undoTransfersText}>undo transfers</Text>
                 </TouchableOpacity>
               )}
@@ -969,7 +973,7 @@ const SeasonSummary: React.FC = () => {
         <Pressable style={styles.modalOverlay} onPress={() => setShowEndModal(false)}>
           <Pressable style={styles.endModalContent} onPress={() => {}}>
             <View style={styles.endModalHeader}>
-              <Feather name="calendar" size={20} color={CALM.bronze} />
+              <Feather name="calendar" size={20} color={C.bronze} />
               <Text style={styles.endModalTitle}>end {season?.name}?</Text>
             </View>
 
@@ -999,7 +1003,7 @@ const SeasonSummary: React.FC = () => {
             )}
 
             {untransferredAmount > 0 && (
-              <View style={[styles.endModalInfoBox, { borderLeftColor: CALM.bronze }]}>
+              <View style={[styles.endModalInfoBox, { borderLeftColor: C.bronze }]}>
                 <Text style={styles.endModalInfoText}>
                   {currency} {untransferredAmount.toFixed(0)} not yet transferred to personal
                 </Text>
@@ -1029,10 +1033,10 @@ const SeasonSummary: React.FC = () => {
       {/* ─── Orders Modal ─── */}
       {showOrdersModal && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowOrdersModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowOrdersModal(false)}>
-          <Pressable style={styles.listModalContent} onPress={() => {}}>
+          <Pressable style={styles.listModalContent} onPress={() => {}} onStartShouldSetResponder={() => true}>
             <View style={styles.listModalHeader}>
-              <View style={[styles.inlineListIconCircle, { backgroundColor: withAlpha(CALM.gold, 0.1) }]}>
-                <Feather name="clipboard" size={14} color={CALM.gold} />
+              <View style={[styles.inlineListIconCircle, { backgroundColor: withAlpha(C.gold, 0.1) }]}>
+                <Feather name="clipboard" size={14} color={C.gold} />
               </View>
               <Text style={styles.listModalTitle}>orders</Text>
               <View style={styles.inlineListBadge}>
@@ -1043,7 +1047,7 @@ const SeasonSummary: React.FC = () => {
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 style={styles.listModalClose}
               >
-                <Feather name="x" size={20} color={CALM.textMuted} />
+                <Feather name="x" size={20} color={C.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -1084,10 +1088,10 @@ const SeasonSummary: React.FC = () => {
       {/* ─── Costs Modal ─── */}
       {showCostsModal && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowCostsModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowCostsModal(false)}>
-          <Pressable style={styles.listModalContent} onPress={() => {}}>
+          <Pressable style={styles.listModalContent} onPress={() => {}} onStartShouldSetResponder={() => true}>
             <View style={styles.listModalHeader}>
-              <View style={[styles.inlineListIconCircle, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}>
-                <Feather name="dollar-sign" size={14} color={CALM.accent} />
+              <View style={[styles.inlineListIconCircle, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
+                <Feather name="dollar-sign" size={14} color={C.accent} />
               </View>
               <Text style={styles.listModalTitle}>costs</Text>
               <View style={styles.inlineListBadge}>
@@ -1098,7 +1102,7 @@ const SeasonSummary: React.FC = () => {
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 style={styles.listModalClose}
               >
-                <Feather name="x" size={20} color={CALM.textMuted} />
+                <Feather name="x" size={20} color={C.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -1141,7 +1145,7 @@ const SeasonSummary: React.FC = () => {
               value={renameValue}
               onChangeText={setRenameValue}
               placeholder="Season name"
-              placeholderTextColor={CALM.textSecondary}
+              placeholderTextColor={C.textSecondary}
               autoFocus
               selectTextOnFocus
             />
@@ -1182,7 +1186,7 @@ const SeasonSummary: React.FC = () => {
               value={targetInput}
               onChangeText={setTargetInput}
               placeholder="e.g. 2000"
-              placeholderTextColor={CALM.textSecondary}
+              placeholderTextColor={C.textSecondary}
               keyboardType="numeric"
               autoFocus
               selectTextOnFocus
@@ -1193,7 +1197,7 @@ const SeasonSummary: React.FC = () => {
                 style={styles.renameModalCancel}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.renameModalCancelText, { color: CALM.textMuted }]}>clear</Text>
+                <Text style={[styles.renameModalCancelText, { color: C.textMuted }]}>clear</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
@@ -1203,7 +1207,7 @@ const SeasonSummary: React.FC = () => {
                   }
                   setShowTargetInput(false);
                 }}
-                style={[styles.renameModalConfirm, { backgroundColor: CALM.accent }]}
+                style={[styles.renameModalConfirm, { backgroundColor: C.accent }]}
                 activeOpacity={0.7}
               >
                 <Text style={styles.renameModalConfirmText}>save</Text>
@@ -1242,10 +1246,10 @@ function getEmotionalMessage(
   return null;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,   // #F9F9F7
+    backgroundColor: C.background,   // #F9F9F7
   },
   scrollView: {
     flex: 1,
@@ -1267,11 +1271,11 @@ const styles = StyleSheet.create({
   noSeasonTitle: {
     fontSize: TYPOGRAPHY.size.xl,        // 20
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary,             // #1A1A1A
+    color: C.textPrimary,             // #1A1A1A
   },
   noSeasonText: {
     ...TYPE.insight,                     // fontSize 14, lineHeight 22
-    color: CALM.textSecondary,           // #6B6B6B
+    color: C.textSecondary,           // #6B6B6B
     textAlign: 'center',
     lineHeight: 22,
   },
@@ -1280,7 +1284,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING['2xl'],
@@ -1303,7 +1307,7 @@ const styles = StyleSheet.create({
   seasonName: {
     fontSize: TYPOGRAPHY.size['2xl'],    // 24
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary,             // #1A1A1A
+    color: C.textPrimary,             // #1A1A1A
   },
   seasonDates: {
     ...TYPE.muted,                       // fontSize 12, color #A0A0A0
@@ -1316,7 +1320,7 @@ const styles = StyleSheet.create({
   },
   ledgerLine: {
     height: 1,
-    backgroundColor: CALM.border,        // #EBEBEB
+    backgroundColor: C.border,        // #EBEBEB
   },
   keptInner: {
     alignItems: 'center',
@@ -1329,20 +1333,20 @@ const styles = StyleSheet.create({
   keptAmount: {
     fontSize: 56,                        // LARGEST element on screen
     fontWeight: TYPOGRAPHY.weight.light,  // 300
-    color: CALM.textPrimary,             // #1A1A1A
+    color: C.textPrimary,             // #1A1A1A
     fontVariant: ['tabular-nums'],
     marginBottom: SPACING.sm,            // 8pt
   },
   keptSubtext: {
     ...TYPE.muted,                       // fontSize 12, color #A0A0A0
-    color: CALM.textSecondary,           // #6B6B6B
+    color: C.textSecondary,           // #6B6B6B
     fontVariant: ['tabular-nums'],
   },
 
   // -- Emotional message --------------------------------------------
   emotionalText: {
     ...TYPE.insight,                     // fontSize 14, lineHeight 22
-    color: CALM.textSecondary,           // #6B6B6B
+    color: C.textSecondary,           // #6B6B6B
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: SPACING['2xl'],        // 24pt
@@ -1352,10 +1356,10 @@ const styles = StyleSheet.create({
   // -- Stats grid: enhanced with icon circles -----------------------
   statsRow: {
     flexDirection: 'row',
-    backgroundColor: CALM.surface,       // #FFFFFF
+    backgroundColor: C.surface,       // #FFFFFF
     borderRadius: RADIUS.lg,             // 14
     borderWidth: 1,
-    borderColor: CALM.border,            // #EBEBEB
+    borderColor: C.border,            // #EBEBEB
     marginBottom: SPACING.md,            // 16pt
   },
   statBox: {
@@ -1367,17 +1371,17 @@ const styles = StyleSheet.create({
   },
   statBoxDivider: {
     width: 1,
-    backgroundColor: CALM.border,        // #EBEBEB
+    backgroundColor: C.border,        // #EBEBEB
     marginVertical: SPACING.md,          // 16pt top/bottom inset
   },
   statsWideRow: {
     marginBottom: SPACING.xl,            // 24pt
   },
   statBoxWide: {
-    backgroundColor: CALM.surface,       // #FFFFFF
+    backgroundColor: C.surface,       // #FFFFFF
     borderRadius: RADIUS.lg,             // 14
     borderWidth: 1,
-    borderColor: CALM.border,            // #EBEBEB
+    borderColor: C.border,            // #EBEBEB
     paddingVertical: SPACING.lg,         // 16pt
     paddingHorizontal: SPACING.lg,       // 16pt
     alignItems: 'flex-start',
@@ -1387,7 +1391,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: withAlpha(CALM.gold, 0.1), // gold at 10% opacity
+    backgroundColor: withAlpha(C.gold, 0.1), // gold at 10% opacity
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.xs,            // 4pt below icon circle
@@ -1395,7 +1399,7 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: TYPOGRAPHY.size.xl,        // 20 (upgraded from 17)
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary,             // #1A1A1A
+    color: C.textPrimary,             // #1A1A1A
     fontVariant: ['tabular-nums'],
   },
   statLabel: {
@@ -1404,10 +1408,10 @@ const styles = StyleSheet.create({
 
   // -- Unpaid card -- actionable ------------------------------------
   unpaidCard: {
-    backgroundColor: CALM.surface,       // #FFFFFF
+    backgroundColor: C.surface,       // #FFFFFF
     borderRadius: RADIUS.lg,             // 14
     borderWidth: 1,
-    borderColor: CALM.border,            // #EBEBEB
+    borderColor: C.border,            // #EBEBEB
     borderLeftWidth: 3,
     borderLeftColor: BIZ.unpaid,          // warm sand — unpaid semantic
     padding: SPACING.lg,                 // 16pt
@@ -1418,7 +1422,7 @@ const styles = StyleSheet.create({
   },
   unpaidText: {
     ...TYPE.insight,                     // fontSize 14, lineHeight 22
-    color: CALM.textPrimary,             // #1A1A1A
+    color: C.textPrimary,             // #1A1A1A
     fontVariant: ['tabular-nums'],
   },
   unpaidAction: {
@@ -1434,10 +1438,10 @@ const styles = StyleSheet.create({
 
   // -- Transfer bridge -----------------------------------------------
   transferCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.md,
     marginBottom: SPACING.lg,
   },
@@ -1450,11 +1454,11 @@ const styles = StyleSheet.create({
   transferTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   transferSubtext: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginBottom: SPACING.md,
   },
   transferButton: {
@@ -1464,12 +1468,12 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
   },
   transferButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   transferInputRow: {
     flexDirection: 'row',
@@ -1481,26 +1485,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.sm,
     height: 40,
   },
   transferCurrencyPrefix: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginRight: 4,
   },
   transferInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     padding: 0,
     fontVariant: ['tabular-nums'] as any,
   },
   transferConfirmButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.md,
@@ -1533,7 +1537,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: CALM.accent,        // #4F5104 olive
+    backgroundColor: C.accent,        // #4F5104 olive
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1544,7 +1548,7 @@ const styles = StyleSheet.create({
   },
   topName: {
     ...TYPE.insight,                     // fontSize 14, lineHeight 22
-    color: CALM.textPrimary,             // #1A1A1A
+    color: C.textPrimary,             // #1A1A1A
     flex: 1,
   },
   topQty: {
@@ -1562,15 +1566,15 @@ const styles = StyleSheet.create({
   barFill: {
     height: 3,
     borderRadius: 1.5,
-    backgroundColor: withAlpha(CALM.accent, 0.15), // CALM.accent at 0.15 opacity
+    backgroundColor: withAlpha(C.accent, 0.15), // C.accent at 0.15 opacity
   },
 
   // -- Inline orders & costs lists -----------------------------------
   inlineListCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.md,
     marginBottom: SPACING.md,
   },
@@ -1590,11 +1594,11 @@ const styles = StyleSheet.create({
   inlineListTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     flex: 1,
   },
   inlineListBadge: {
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 1,
@@ -1604,7 +1608,7 @@ const styles = StyleSheet.create({
   inlineListBadgeText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: C.bronze,
     fontVariant: ['tabular-nums'] as any,
   },
   inlineListEmpty: {
@@ -1613,21 +1617,21 @@ const styles = StyleSheet.create({
   },
   inlineListEmptyText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   inlineListDivider: {
     height: 1,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginLeft: 40,
   },
   // -- Clickable list tap rows
   listTapRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
     gap: SPACING.sm,
@@ -1635,12 +1639,12 @@ const styles = StyleSheet.create({
   listTapLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   // -- List detail modal
   listModalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     width: '100%',
@@ -1656,7 +1660,7 @@ const styles = StyleSheet.create({
   listModalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   listModalClose: {
@@ -1680,11 +1684,11 @@ const styles = StyleSheet.create({
   orderItemName: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   orderItemMeta: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   orderItemRight: {
     flexDirection: 'row',
@@ -1694,7 +1698,7 @@ const styles = StyleSheet.create({
   orderItemAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
   orderStatusDot: {
@@ -1729,25 +1733,25 @@ const styles = StyleSheet.create({
   costItemDesc: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   costItemDate: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   costItemAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
 
   // -- Season actions card ------------------------------------------
   actionsCard: {
-    backgroundColor: CALM.surface,       // #FFFFFF
+    backgroundColor: C.surface,       // #FFFFFF
     borderRadius: RADIUS.lg,             // 14
     borderWidth: 1,
-    borderColor: CALM.border,            // #EBEBEB
+    borderColor: C.border,            // #EBEBEB
     marginTop: SPACING.lg,              // 16pt
   },
   actionRow: {
@@ -1767,18 +1771,18 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: withAlpha(CALM.bronze, 0.08), // bronze at 8% opacity
+    backgroundColor: withAlpha(C.bronze, 0.08), // bronze at 8% opacity
     alignItems: 'center',
     justifyContent: 'center',
   },
   actionRowText: {
     fontSize: TYPOGRAPHY.size.base,      // 15
     fontWeight: TYPOGRAPHY.weight.medium, // 500
-    color: CALM.textPrimary,             // #1A1A1A
+    color: C.textPrimary,             // #1A1A1A
   },
   actionDivider: {
     height: 1,
-    backgroundColor: CALM.border,        // #EBEBEB
+    backgroundColor: C.border,        // #EBEBEB
     marginHorizontal: SPACING.lg,        // 16pt inset from edges
   },
 
@@ -1791,10 +1795,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,                     // 16pt
-    backgroundColor: CALM.surface,       // #FFFFFF
+    backgroundColor: C.surface,       // #FFFFFF
     borderRadius: RADIUS.lg,             // 14
     borderWidth: 1,
-    borderColor: CALM.border,            // #EBEBEB
+    borderColor: C.border,            // #EBEBEB
     padding: SPACING.lg,                // 16pt
   },
   completeIconCircle: {
@@ -1812,7 +1816,7 @@ const styles = StyleSheet.create({
   completeTitle: {
     fontSize: TYPOGRAPHY.size.base,      // 15
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary,             // #1A1A1A
+    color: C.textPrimary,             // #1A1A1A
   },
   completeDate: {
     ...TYPE.muted,                       // fontSize 12, color #A0A0A0
@@ -1822,7 +1826,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     minHeight: 52,
@@ -1865,13 +1869,13 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.2),
-    backgroundColor: withAlpha(CALM.bronze, 0.04),
+    borderColor: withAlpha(C.bronze, 0.2),
+    backgroundColor: withAlpha(C.bronze, 0.04),
   },
   undoTransfersText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // -- Delete season button (completed seasons) -------------------------
@@ -1894,10 +1898,10 @@ const styles = StyleSheet.create({
 
   // -- Season target -----------------------------------------------
   targetCard: {
-    backgroundColor: withAlpha(CALM.accent, 0.06),
+    backgroundColor: withAlpha(C.accent, 0.06),
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: withAlpha(CALM.accent, 0.2),
+    borderColor: withAlpha(C.accent, 0.2),
     padding: SPACING.lg,
     gap: SPACING.sm,
   },
@@ -1909,12 +1913,12 @@ const styles = StyleSheet.create({
   targetLabel: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.accent,
+    color: C.accent,
     fontVariant: ['tabular-nums'],
   },
   targetBarBg: {
     height: 6,
-    backgroundColor: withAlpha(CALM.accent, 0.15),
+    backgroundColor: withAlpha(C.accent, 0.15),
     borderRadius: 3,
     overflow: 'hidden',
   },
@@ -1925,7 +1929,7 @@ const styles = StyleSheet.create({
   },
   targetPct: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
   setTargetBtn: {
@@ -1937,12 +1941,12 @@ const styles = StyleSheet.create({
   },
   setTargetText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // -- Rename season modal -----------------------------------------------
   renameModalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     width: '100%',
@@ -1951,16 +1955,16 @@ const styles = StyleSheet.create({
   renameModalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   renameModalInput: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
+    color: C.textPrimary,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   renameModalActions: {
     flexDirection: 'row',
@@ -1975,12 +1979,12 @@ const styles = StyleSheet.create({
   },
   renameModalCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   renameModalConfirm: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.md,
     minHeight: 44,
     justifyContent: 'center',
@@ -1994,14 +1998,14 @@ const styles = StyleSheet.create({
   // -- Modal overlay ----------------------------------------------------
   modalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(CALM.textPrimary, 0.5),
+    backgroundColor: withAlpha(C.textPrimary, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
   // -- End season modal --------------------------------------------------
   endModalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     gap: SPACING.lg,
@@ -2016,13 +2020,13 @@ const styles = StyleSheet.create({
   endModalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   endModalStats: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: SPACING.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
   },
   endModalStatItem: {
@@ -2032,7 +2036,7 @@ const styles = StyleSheet.create({
   endModalStatValue: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
   endModalStatLabel: {
@@ -2040,7 +2044,7 @@ const styles = StyleSheet.create({
   },
   endModalWarning: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 20,
   },
   endModalInfoBox: {
@@ -2050,7 +2054,7 @@ const styles = StyleSheet.create({
   },
   endModalInfoText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 20,
   },
   endModalActions: {
@@ -2064,13 +2068,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     minHeight: 48,
   },
   endModalCancelText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   endModalConfirmBtn: {
     flex: 1,
@@ -2078,7 +2082,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.xl,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     minHeight: 48,
   },
   endModalConfirmText: {
@@ -2098,10 +2102,10 @@ const styles = StyleSheet.create({
   compareToggleText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   compareCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -2120,14 +2124,14 @@ const styles = StyleSheet.create({
     maxWidth: 110,
   },
   comparePillActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.12),
+    backgroundColor: withAlpha(C.accent, 0.12),
   },
   comparePillText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   comparePillTextActive: {
-    color: CALM.accent,
+    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
   },
   compareGrid: {
@@ -2137,31 +2141,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingVertical: 4,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     marginBottom: 4,
   },
   compareHeaderLabel: {
     flex: 1.2,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   compareHeaderThis: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'right',
     fontWeight: TYPOGRAPHY.weight.semibold as any,
   },
   compareHeaderPrev: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'right',
   },
   compareHeaderDelta: {
     width: 36,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'right',
   },
   compareRow: {
@@ -2169,24 +2173,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 5,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   compareRowLabel: {
     flex: 1.2,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   compareRowCur: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
     textAlign: 'right',
   },
   compareRowPrev: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'right',
   },
   compareRowDelta: {
@@ -2198,7 +2202,7 @@ const styles = StyleSheet.create({
   },
   compareRowDeltaText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 });
 

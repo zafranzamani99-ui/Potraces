@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { lightTap } from '../../services/haptics';
 import SkeletonLoader from './SkeletonLoader';
 
@@ -44,6 +45,9 @@ const HeroCard: React.FC<HeroCardProps> = ({
   accessibilityLabel,
   accessibilityHint,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
+
   const handlePress = () => {
     if (!onPress) return;
     lightTap();
@@ -73,7 +77,7 @@ const HeroCard: React.FC<HeroCardProps> = ({
             {breakdown.slice(0, 3).map((item, index) => (
               <View key={index} style={styles.breakdownItem}>
                 <View style={styles.breakdownIconCircle}>
-                  <Feather name={item.icon} size={14} color={CALM.accent} />
+                  <Feather name={item.icon} size={14} color={C.accent} />
                 </View>
                 <View style={styles.breakdownTextGroup}>
                   <Text style={styles.breakdownLabel}>{item.label}</Text>
@@ -105,16 +109,16 @@ const HeroCard: React.FC<HeroCardProps> = ({
   return content;
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: { minHeight: 180 },
   heroContainer: {
     minHeight: 180,
     padding: SPACING['2xl'],
     borderRadius: RADIUS.xl,
     justifyContent: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   title: { ...TYPE.label, marginBottom: SPACING.sm },
   amountContainer: {
@@ -125,22 +129,22 @@ const styles = StyleSheet.create({
   currency: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginRight: SPACING.xs,
   },
   amount: {
     ...TYPE.amount,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   subtitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.lg,
   },
   breakdownDivider: {
     height: 1,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginTop: SPACING.lg,
     marginBottom: SPACING.md,
   },
@@ -159,9 +163,9 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -170,7 +174,7 @@ const styles = StyleSheet.create({
   breakdownValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 });

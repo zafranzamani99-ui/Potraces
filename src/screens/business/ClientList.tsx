@@ -13,9 +13,12 @@ import { format } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { Client } from '../../types';
 
 const ClientList: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { clients, addClient, logClientPayment, addBusinessTransaction } = useBusinessStore();
   const currency = useSettingsStore((s) => s.currency);
 
@@ -83,7 +86,7 @@ const ClientList: React.FC = () => {
           setShowPayment(true);
         }}
       >
-        <Feather name="plus" size={14} color={CALM.bronze} />
+        <Feather name="plus" size={14} color={C.bronze} />
         <Text style={styles.logPaymentText}>log payment</Text>
       </TouchableOpacity>
 
@@ -149,7 +152,7 @@ const ClientList: React.FC = () => {
               value={newClientName}
               onChangeText={setNewClientName}
               placeholder="client name"
-              placeholderTextColor={CALM.textSecondary}
+              placeholderTextColor={C.textSecondary}
               autoFocus
             />
             <View style={styles.modalActions}>
@@ -176,7 +179,7 @@ const ClientList: React.FC = () => {
               value={paymentAmount}
               onChangeText={setPaymentAmount}
               placeholder="amount"
-              placeholderTextColor={CALM.textSecondary}
+              placeholderTextColor={C.textSecondary}
               keyboardType="numeric"
               autoFocus
             />
@@ -201,14 +204,14 @@ const ClientList: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   summary: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     padding: SPACING['2xl'],
     paddingBottom: SPACING.md,
   },
@@ -218,10 +221,10 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
   clientCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.lg,
   },
   clientHeader: {
@@ -232,12 +235,12 @@ const styles = StyleSheet.create({
   clientName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   clientTotal: {
     ...TYPE.insight,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   clientLastPaid: {
     ...TYPE.label,
@@ -252,13 +255,13 @@ const styles = StyleSheet.create({
   },
   logPaymentText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   historySection: {
     marginTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     paddingTop: SPACING.md,
     gap: SPACING.sm,
   },
@@ -268,12 +271,12 @@ const styles = StyleSheet.create({
   },
   historyDate: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   historyAmount: {
     ...TYPE.muted,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   emptyState: {
     alignItems: 'center',
@@ -281,14 +284,14 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     margin: SPACING.lg,
@@ -306,7 +309,7 @@ const styles = StyleSheet.create({
     padding: SPACING['2xl'],
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     width: '100%',
@@ -315,16 +318,16 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   modalInput: {
     ...TYPE.insight,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
+    color: C.textPrimary,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   modalActions: {
     flexDirection: 'row',
@@ -337,12 +340,12 @@ const styles = StyleSheet.create({
   },
   modalCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   modalConfirm: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.md,
   },
   modalConfirmText: {

@@ -14,10 +14,16 @@ import { format } from 'date-fns';
 import { useNotesStore } from '../../store/notesStore';
 import { useAppStore } from '../../store/appStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { NotePage } from '../../types';
+import ScreenGuide from '../../components/common/ScreenGuide';
 import { lightTap, mediumTap, warningNotification } from '../../services/haptics';
 
 const NotesHome: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const pages = useNotesStore((s) => s.pages);
   const isFirstWrite = useNotesStore((s) => s.isFirstWrite);
   const createPage = useNotesStore((s) => s.createPage);
@@ -75,12 +81,12 @@ const NotesHome: React.FC = () => {
     const count = selectedIds.size;
     warningNotification();
     Alert.alert(
-      `Delete ${count} note${count > 1 ? 's' : ''}?`,
-      'This cannot be undone.',
+      t.notes.deleteNotes,
+      t.notes.cannotUndo,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: t.common.delete,
           style: 'destructive',
           onPress: () => {
             deletePages(Array.from(selectedIds));
@@ -136,7 +142,7 @@ const NotesHome: React.FC = () => {
             </View>
           )}
           {!selectMode && (
-            <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+            <Feather name="chevron-right" size={16} color={C.textMuted} />
           )}
         </TouchableOpacity>
       );
@@ -152,7 +158,7 @@ const NotesHome: React.FC = () => {
       <View style={styles.container}>
         <View style={styles.emptyWrap}>
           <View style={styles.emptyIconCircle}>
-            <Feather name="edit-3" size={28} color={CALM.bronze} />
+            <Feather name="edit-3" size={28} color={C.bronze} />
           </View>
           <Text style={styles.emptyTitle}>
             {isFirstWrite ? 'just write' : 'no notes yet'}
@@ -197,7 +203,7 @@ const NotesHome: React.FC = () => {
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={styles.selectBarCloseBtn}
           >
-            <Feather name="x" size={18} color={CALM.textSecondary} />
+            <Feather name="x" size={18} color={C.textSecondary} />
           </TouchableOpacity>
           <Text style={styles.selectBarCount}>
             {selectedIds.size} selected
@@ -207,7 +213,7 @@ const NotesHome: React.FC = () => {
             onPress={handleBulkDelete}
             activeOpacity={0.7}
           >
-            <Feather name="trash-2" size={15} color={CALM.textMuted} />
+            <Feather name="trash-2" size={15} color={C.textMuted} />
             <Text style={styles.selectBarDeleteText}>Delete</Text>
           </TouchableOpacity>
         </View>
@@ -221,16 +227,26 @@ const NotesHome: React.FC = () => {
           <Feather name="plus" size={22} color="#fff" />
         </TouchableOpacity>
       )}
+      <ScreenGuide
+        id="guide_notes"
+        title={t.guide.yourMoneyNotes}
+        icon="edit-3"
+        tips={[
+          t.guide.tipNotes1,
+          t.guide.tipNotes2,
+          t.guide.tipNotes3,
+        ]}
+      />
     </View>
   );
 };
 
 export default NotesHome;
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   listContent: {
     paddingHorizontal: SPACING.lg,
@@ -246,7 +262,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   pageContent: {
     flex: 1,
@@ -255,21 +271,21 @@ const styles = StyleSheet.create({
   pageTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   pagePreview: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 19,
   },
   pageDate: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
     marginTop: 1,
   },
   extractionBadge: {
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
     borderRadius: RADIUS.full,
     paddingHorizontal: 7,
     paddingVertical: 2,
@@ -277,7 +293,7 @@ const styles = StyleSheet.create({
   extractionBadgeText: {
     fontSize: 11,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
     fontVariant: ['tabular-nums'] as any,
   },
 
@@ -292,10 +308,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     ...SHADOWS.md,
   },
   selectBarCloseBtn: {
@@ -308,7 +324,7 @@ const styles = StyleSheet.create({
   selectBarCount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
   selectBarDeleteBtn: {
@@ -320,23 +336,23 @@ const styles = StyleSheet.create({
   },
   selectBarDeleteText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   pageRowSelected: {
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
   },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 1.5,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkboxActive: {
-    backgroundColor: CALM.deepOlive,
-    borderColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
+    borderColor: C.deepOlive,
   },
 
   // FAB
@@ -347,7 +363,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOWS.lg,
@@ -365,7 +381,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.sm,
@@ -373,11 +389,11 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   emptyHint: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
   },
@@ -386,7 +402,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING['2xl'],

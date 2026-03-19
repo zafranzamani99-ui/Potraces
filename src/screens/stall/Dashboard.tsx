@@ -3,15 +3,16 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Animated,
   Easing,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallHistory } from '../../utils/explainStallHistory';
@@ -45,6 +46,8 @@ function useFadeSlide(delay: number) {
 }
 
 const StallDashboard: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const {
     sessions,
     activeSessionId,
@@ -146,13 +149,13 @@ const StallDashboard: React.FC = () => {
             {/* Cash / QR pills */}
             <View style={styles.pillRow}>
               <View style={styles.pill}>
-                <Feather name="dollar-sign" size={14} color={CALM.textSecondary} />
+                <Feather name="dollar-sign" size={14} color={C.textSecondary} />
                 <Text style={styles.pillText}>
                   cash {currency} {activeSession.totalCash.toFixed(0)}
                 </Text>
               </View>
               <View style={styles.pill}>
-                <Feather name="smartphone" size={14} color={CALM.textSecondary} />
+                <Feather name="smartphone" size={14} color={C.textSecondary} />
                 <Text style={styles.pillText}>
                   qr {currency} {activeSession.totalQR.toFixed(0)}
                 </Text>
@@ -197,7 +200,7 @@ const StallDashboard: React.FC = () => {
             accessibilityLabel="Close current selling session"
             activeOpacity={0.7}
           >
-            <Feather name="square" size={16} color={CALM.textSecondary} />
+            <Feather name="square" size={16} color={C.textSecondary} />
             <Text style={styles.closeSessionText}>close session</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -240,8 +243,8 @@ const StallDashboard: React.FC = () => {
             <Text style={styles.sectionLabel}>LIFETIME</Text>
             <View style={styles.lifetimeGrid}>
               <View style={styles.lifetimeStat}>
-                <View style={[styles.statIcon, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
-                  <Feather name="activity" size={16} color={CALM.accent} />
+                <View style={[styles.statIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
+                  <Feather name="activity" size={16} color={C.accent} />
                 </View>
                 <Text style={styles.lifetimeNumber}>
                   {lifetimeStats.totalSessions}
@@ -249,8 +252,8 @@ const StallDashboard: React.FC = () => {
                 <Text style={styles.lifetimeLabel}>sessions</Text>
               </View>
               <View style={styles.lifetimeStat}>
-                <View style={[styles.statIcon, { backgroundColor: withAlpha(CALM.bronze, 0.12) }]}>
-                  <Feather name="dollar-sign" size={16} color={CALM.bronze} />
+                <View style={[styles.statIcon, { backgroundColor: withAlpha(C.bronze, 0.12) }]}>
+                  <Feather name="dollar-sign" size={16} color={C.bronze} />
                 </View>
                 <Text
                   style={styles.lifetimeNumber}
@@ -261,8 +264,8 @@ const StallDashboard: React.FC = () => {
                 <Text style={styles.lifetimeLabel}>total revenue</Text>
               </View>
               <View style={styles.lifetimeStat}>
-                <View style={[styles.statIcon, { backgroundColor: withAlpha(CALM.gold, 0.12) }]}>
-                  <Feather name="trending-up" size={16} color={CALM.gold} />
+                <View style={[styles.statIcon, { backgroundColor: withAlpha(C.gold, 0.12) }]}>
+                  <Feather name="trending-up" size={16} color={C.gold} />
                 </View>
                 <Text
                   style={styles.lifetimeNumber}
@@ -292,7 +295,7 @@ const StallDashboard: React.FC = () => {
             accessibilityLabel="View past selling sessions"
           >
             <Text style={styles.historyLinkText}>session history</Text>
-            <Feather name="chevron-right" size={16} color={CALM.textSecondary} />
+            <Feather name="chevron-right" size={16} color={C.textSecondary} />
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -300,10 +303,10 @@ const StallDashboard: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -317,12 +320,12 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   headingSubtitle: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING['3xl'],
   },
   startButton: {
@@ -330,7 +333,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     minHeight: 52,
@@ -354,10 +357,10 @@ const styles = StyleSheet.create({
   },
   lifetimeStat: {
     flex: 1,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING.md,
     alignItems: 'center',
@@ -373,7 +376,7 @@ const styles = StyleSheet.create({
   lifetimeNumber: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   lifetimeLabel: {
@@ -381,7 +384,7 @@ const styles = StyleSheet.create({
   },
   insightText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xl,
   },
   historyLink: {
@@ -390,12 +393,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: SPACING.lg,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     minHeight: 48,
   },
   historyLinkText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // ─── State B: Active session ────────────────────────────────
@@ -409,23 +412,23 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: CALM.positive,
+    backgroundColor: C.positive,
   },
   sellingNowLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.positive,
+    color: C.positive,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   sessionName: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.lg,
   },
   runningTotalCard: {
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     marginBottom: SPACING['3xl'],
@@ -436,7 +439,7 @@ const styles = StyleSheet.create({
   },
   runningTotal: {
     ...TYPE.balance,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.lg,
   },
   pillRow: {
@@ -447,17 +450,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
   },
   pillText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   recentSection: {
     marginBottom: SPACING['3xl'],
@@ -468,7 +471,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     minHeight: 44,
   },
   saleInfo: {
@@ -477,7 +480,7 @@ const styles = StyleSheet.create({
   saleProduct: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   saleQty: {
     ...TYPE.muted,
@@ -486,7 +489,7 @@ const styles = StyleSheet.create({
   saleAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   emptySales: {
@@ -495,7 +498,7 @@ const styles = StyleSheet.create({
   },
   emptySalesText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   closeSessionButton: {
     flexDirection: 'row',
@@ -506,13 +509,13 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
-    backgroundColor: CALM.surface,
+    borderColor: C.border,
+    backgroundColor: C.surface,
   },
   closeSessionText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 });
 

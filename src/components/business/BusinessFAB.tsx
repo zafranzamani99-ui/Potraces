@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 interface BusinessFABProps {
   label: string;
@@ -13,8 +14,11 @@ const BusinessFAB: React.FC<BusinessFABProps> = ({
   label,
   onPress,
   secondaryAction,
-  accentColor = CALM.bronze,
+  accentColor: accentColorProp,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const accentColor = accentColorProp ?? C.bronze;
   const scale = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -52,7 +56,7 @@ const BusinessFAB: React.FC<BusinessFABProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     position: 'absolute',
     bottom: SPACING['2xl'],
@@ -81,7 +85,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   secondaryText: {
     fontSize: TYPOGRAPHY.size.sm,

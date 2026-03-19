@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   Modal,
@@ -15,6 +14,7 @@ import {
   Alert,
   Animated,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -25,6 +25,7 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { IngredientCost, RecurringFrequency } from '../../types';
 import { createTransfer } from '../../utils/transferBridge';
 import {
@@ -41,6 +42,8 @@ import { useFadeSlide } from '../../utils/fadeSlide';
 
 // ─── Component ───────────────────────────────────────────────
 const CostManagement: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const ingredientCosts = useSellerStore((s) => s.ingredientCosts);
   const orders = useSellerStore((s) => s.orders);
@@ -172,7 +175,7 @@ const CostManagement: React.FC = () => {
     const _budgetColor = _budgetPercent >= 100
       ? BIZ.loss
       : _budgetPercent >= 80
-      ? CALM.bronze
+      ? C.bronze
       : BIZ.profit;
     return { budget: _budget, budgetPercent: _budgetPercent, budgetColor: _budgetColor };
   }, [activeSeason?.costBudget, seasonStats.totalCosts]);
@@ -378,6 +381,7 @@ const CostManagement: React.FC = () => {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
       >
         {/* ─── Summary ──────────────────────────────── */}
         <Animated.View style={[styles.summaryCard, summaryAnim]}>
@@ -422,7 +426,7 @@ const CostManagement: React.FC = () => {
             <View style={styles.budgetHeader}>
               <View style={styles.budgetHeaderLeft}>
                 <View style={styles.budgetIconWrap}>
-                  <Feather name="pie-chart" size={14} color={CALM.bronze} />
+                  <Feather name="pie-chart" size={14} color={C.bronze} />
                 </View>
                 <Text style={styles.budgetTitle}>cost budget</Text>
               </View>
@@ -438,7 +442,7 @@ const CostManagement: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel={budget ? "Edit cost budget" : "Set cost budget"}
               >
-                <Feather name={budget ? 'edit-2' : 'plus'} size={14} color={CALM.bronze} />
+                <Feather name={budget ? 'edit-2' : 'plus'} size={14} color={C.bronze} />
               </TouchableOpacity>
             </View>
 
@@ -478,7 +482,7 @@ const CostManagement: React.FC = () => {
             <View style={styles.transferHeader}>
               <View style={styles.transferHeaderLeft}>
                 <View style={styles.transferIconWrap}>
-                  <Feather name="refresh-cw" size={14} color={CALM.bronze} />
+                  <Feather name="refresh-cw" size={14} color={C.bronze} />
                 </View>
                 <View>
                   <Text style={styles.transferTitle}>transfer to personal</Text>
@@ -530,13 +534,13 @@ const CostManagement: React.FC = () => {
         {recurringCosts.length > 0 && (
           <View style={styles.recurringCard}>
             <View style={styles.recurringHeader}>
-              <Feather name="repeat" size={14} color={CALM.bronze} />
+              <Feather name="repeat" size={14} color={C.bronze} />
               <Text style={styles.recurringTitle}>recurring</Text>
               <TouchableOpacity
                 onPress={() => { setRecurringDesc(''); setRecurringAmount(''); setRecurringFreq('weekly'); setShowRecurringModal(true); }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Feather name="plus" size={16} color={CALM.bronze} />
+                <Feather name="plus" size={16} color={C.bronze} />
               </TouchableOpacity>
             </View>
             {recurringCosts.filter((r) => r.isActive).map((r) => {
@@ -567,13 +571,13 @@ const CostManagement: React.FC = () => {
                       }}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.recurringApplyText, !isDue && { color: CALM.textMuted }]}>apply</Text>
+                      <Text style={[styles.recurringApplyText, !isDue && { color: C.textMuted }]}>apply</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => { warningNotification(); deleteRecurringCost(r.id); }}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     >
-                      <Feather name="trash-2" size={14} color={CALM.textMuted} />
+                      <Feather name="trash-2" size={14} color={C.textMuted} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -587,7 +591,7 @@ const CostManagement: React.FC = () => {
             onPress={() => { setRecurringDesc(''); setRecurringAmount(''); setRecurringFreq('weekly'); setShowRecurringModal(true); }}
             activeOpacity={0.7}
           >
-            <Feather name="repeat" size={14} color={CALM.textMuted} />
+            <Feather name="repeat" size={14} color={C.textMuted} />
             <Text style={styles.recurringAddText}>add recurring cost</Text>
           </TouchableOpacity>
         )}
@@ -603,11 +607,11 @@ const CostManagement: React.FC = () => {
 
           {seasonCostEntries.length > 0 && (
             <View style={styles.historySearchBar}>
-              <Feather name="search" size={14} color={CALM.textMuted} />
+              <Feather name="search" size={14} color={C.textMuted} />
               <TextInput
                 style={styles.historySearchInput}
                 placeholder="search costs..."
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 value={costSearch}
                 onChangeText={setCostSearch}
                 returnKeyType="search"
@@ -617,7 +621,7 @@ const CostManagement: React.FC = () => {
                   onPress={() => setCostSearch('')}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
-                  <Feather name="x" size={14} color={CALM.textMuted} />
+                  <Feather name="x" size={14} color={C.textMuted} />
                 </TouchableOpacity>
               )}
             </View>
@@ -625,12 +629,12 @@ const CostManagement: React.FC = () => {
 
           {seasonCostEntries.length === 0 ? (
             <View style={styles.historyEmptyWrap}>
-              <Feather name="inbox" size={24} color={CALM.textMuted} />
+              <Feather name="inbox" size={24} color={C.textMuted} />
               <Text style={styles.historyEmpty}>no costs logged yet</Text>
             </View>
           ) : filteredCostEntries.length === 0 ? (
             <View style={styles.historyEmptyWrap}>
-              <Feather name="search" size={18} color={CALM.textMuted} />
+              <Feather name="search" size={18} color={C.textMuted} />
               <Text style={styles.historyEmpty}>no match</Text>
             </View>
           ) : (
@@ -669,7 +673,7 @@ const CostManagement: React.FC = () => {
                           {cost.syncedToPersonal && (
                             <View style={styles.historyItemBottom}>
                               <View style={styles.historyLinkedBadge}>
-                                <Feather name="link" size={9} color={CALM.bronze} />
+                                <Feather name="link" size={9} color={C.bronze} />
                                 <Text style={styles.historyLinkedText}>synced</Text>
                               </View>
                             </View>
@@ -709,17 +713,17 @@ const CostManagement: React.FC = () => {
               value={recurringDesc}
               onChangeText={setRecurringDesc}
               placeholder="e.g. Tepung from Billion"
-              placeholderTextColor={CALM.textMuted}
+              placeholderTextColor={C.textMuted}
               autoFocus
             />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-              <Text style={{ color: CALM.textMuted, fontSize: TYPOGRAPHY.size.sm }}>{currency}</Text>
+              <Text style={{ color: C.textMuted, fontSize: TYPOGRAPHY.size.sm }}>{currency}</Text>
               <TextInput
                 style={[styles.modalInput, { flex: 1 }]}
                 value={recurringAmount}
                 onChangeText={setRecurringAmount}
                 placeholder="amount"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 keyboardType="numeric"
               />
             </View>
@@ -787,12 +791,12 @@ const CostManagement: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Close"
                 >
-                  <Feather name="x" size={18} color={CALM.textMuted} />
+                  <Feather name="x" size={18} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.costDatePill}>
-                <Feather name="calendar" size={12} color={CALM.textSecondary} />
+                <Feather name="calendar" size={12} color={C.textSecondary} />
                 <Text style={styles.costDateText}>
                   {editingCostId
                     ? format(
@@ -857,7 +861,7 @@ const CostManagement: React.FC = () => {
                     value={costDescription}
                     onChangeText={setCostDescription}
                     placeholder="e.g. tepung, gula, mentega"
-                    placeholderTextColor={CALM.textMuted}
+                    placeholderTextColor={C.textMuted}
                     autoFocus
                   />
                 </Animated.View>
@@ -878,7 +882,7 @@ const CostManagement: React.FC = () => {
                       value={costAmount}
                       onChangeText={setCostAmount}
                       placeholder="0.00"
-                      placeholderTextColor={CALM.textMuted}
+                      placeholderTextColor={C.textMuted}
                       keyboardType="decimal-pad"
                     />
                   </View>
@@ -977,7 +981,7 @@ const CostManagement: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel="Close"
                   >
-                    <Feather name="x" size={20} color={CALM.textSecondary} />
+                    <Feather name="x" size={20} color={C.textSecondary} />
                   </TouchableOpacity>
                 </View>
 
@@ -986,7 +990,7 @@ const CostManagement: React.FC = () => {
                   value={templateDesc}
                   onChangeText={setTemplateDesc}
                   placeholder="description"
-                  placeholderTextColor={CALM.textMuted}
+                  placeholderTextColor={C.textMuted}
                   autoFocus
                 />
 
@@ -997,7 +1001,7 @@ const CostManagement: React.FC = () => {
                     value={templateAmt}
                     onChangeText={setTemplateAmt}
                     placeholder="0.00"
-                    placeholderTextColor={CALM.textMuted}
+                    placeholderTextColor={C.textMuted}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -1059,7 +1063,7 @@ const CostManagement: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Close"
                 >
-                  <Feather name="x" size={20} color={CALM.textSecondary} />
+                  <Feather name="x" size={20} color={C.textSecondary} />
                 </TouchableOpacity>
               </View>
 
@@ -1074,7 +1078,7 @@ const CostManagement: React.FC = () => {
                   value={budgetInput}
                   onChangeText={setBudgetInput}
                   placeholder="0.00"
-                  placeholderTextColor={CALM.textMuted}
+                  placeholderTextColor={C.textMuted}
                   keyboardType="decimal-pad"
                   autoFocus
                 />
@@ -1128,10 +1132,10 @@ const CostManagement: React.FC = () => {
 };
 
 // ─── Styles ──────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scroll: {
     flex: 1,
@@ -1145,16 +1149,16 @@ const styles = StyleSheet.create({
 
   // ── Summary card ────────────────────────────────────────────
   summaryCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.lg,
     alignItems: 'center',
   },
   summarySeasonLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.8,
     marginBottom: SPACING.xs,
@@ -1172,7 +1176,7 @@ const styles = StyleSheet.create({
   },
   summaryHeroLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 2,
     marginBottom: SPACING.md,
   },
@@ -1190,25 +1194,25 @@ const styles = StyleSheet.create({
     width: 3,
     height: 3,
     borderRadius: 1.5,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   summaryBreakdownValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
   summaryBreakdownLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Budget card ─────────────────────────────────────────────
   budgetCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.md,
   },
   budgetHeader: {
@@ -1225,20 +1229,20 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },
   budgetTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as any,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   budgetEditBtn: {
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1249,7 +1253,7 @@ const styles = StyleSheet.create({
   budgetTrack: {
     height: 8,
     borderRadius: 4,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     overflow: 'hidden' as const,
   },
   budgetFill: {
@@ -1268,21 +1272,21 @@ const styles = StyleSheet.create({
   },
   budgetTextMuted: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
   },
   budgetHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: SPACING.xs,
   },
 
   // ── Transfer card ───────────────────────────────────────────
   transferCard: {
-    backgroundColor: withAlpha(CALM.bronze, 0.04),
+    backgroundColor: withAlpha(C.bronze, 0.04),
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.2),
+    borderColor: withAlpha(C.bronze, 0.2),
     padding: SPACING.md,
   },
   transferHeader: {
@@ -1300,18 +1304,18 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
   },
   transferTitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
   },
   transferSubtext: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
     marginTop: 1,
   },
@@ -1326,26 +1330,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.sm,
     height: 36,
   },
   transferPrefix: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginRight: 4,
   },
   transferInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     padding: 0,
     fontVariant: ['tabular-nums'] as any,
   },
   transferConfirmBtn: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     width: 36,
     height: 36,
     borderRadius: RADIUS.md,
@@ -1357,7 +1361,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.xs,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.sm,
     marginTop: SPACING.sm,
@@ -1370,10 +1374,10 @@ const styles = StyleSheet.create({
 
   // ── History card ────────────────────────────────────────────
   historyCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.md,
   },
   historyHeader: {
@@ -1384,10 +1388,10 @@ const styles = StyleSheet.create({
   },
   historyTitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   historyBadge: {
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 1,
@@ -1397,13 +1401,13 @@ const styles = StyleSheet.create({
   historyBadgeText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.bronze,
+    color: C.bronze,
     fontVariant: ['tabular-nums'] as any,
   },
   historySearchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
@@ -1413,7 +1417,7 @@ const styles = StyleSheet.create({
   historySearchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
   historySectionHeader: {
@@ -1428,14 +1432,14 @@ const styles = StyleSheet.create({
   historySectionLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.6,
   },
   historySectionLine: {
     flex: 1,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   historyEmptyWrap: {
     alignItems: 'center',
@@ -1444,11 +1448,11 @@ const styles = StyleSheet.create({
   },
   historyEmpty: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   historyItemDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginLeft: 44,
   },
   historyItemRow: {
@@ -1483,13 +1487,13 @@ const styles = StyleSheet.create({
   historyItemDesc: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as any,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   historyItemAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
   historyItemBottom: {
@@ -1501,14 +1505,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.xs + 2,
     paddingVertical: 1,
   },
   historyLinkedText: {
     fontSize: 10,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium as any,
   },
 
@@ -1522,7 +1526,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     ...SHADOWS.sm,
@@ -1545,7 +1549,7 @@ const styles = StyleSheet.create({
     padding: SPACING['2xl'],
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: 20,
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.md,
@@ -1561,14 +1565,14 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold as any,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     letterSpacing: -0.3,
   },
   modalCloseBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1578,14 +1582,14 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.8,
   },
   modalInput: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
+    color: C.textPrimary,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
@@ -1594,7 +1598,7 @@ const styles = StyleSheet.create({
   },
   modalInputError: {
     borderColor: '#D4775C',
-    backgroundColor: withAlpha('#D4775C', 0.04),
+    backgroundColor: withAlpha('#D4775C', 0.08),
   },
   modalActions: {
     flexDirection: 'row',
@@ -1604,7 +1608,7 @@ const styles = StyleSheet.create({
   modalCancel: {
     flex: 1,
     paddingVertical: SPACING.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     minHeight: 48,
     alignItems: 'center',
@@ -1613,12 +1617,12 @@ const styles = StyleSheet.create({
   modalCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as any,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   modalConfirm: {
     flex: 2,
     paddingVertical: SPACING.md,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.lg,
     minHeight: 48,
     alignItems: 'center',
@@ -1634,14 +1638,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: SPACING.xs,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
   },
   costDateText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium as any,
   },
   templateHeader: {
@@ -1651,7 +1655,7 @@ const styles = StyleSheet.create({
   },
   templateCount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   templateList: {
     maxHeight: 140,
@@ -1662,30 +1666,30 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     marginBottom: 4,
   },
   templateItemName: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   templateItemAmount: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium as any,
     marginLeft: SPACING.sm,
   },
   templateHint: {
     fontSize: 10,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 4,
   },
   currencyInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     borderWidth: 1.5,
     borderColor: 'transparent',
@@ -1693,18 +1697,18 @@ const styles = StyleSheet.create({
   },
   currencyInputRowError: {
     borderColor: '#D4775C',
-    backgroundColor: withAlpha('#D4775C', 0.04),
+    backgroundColor: withAlpha('#D4775C', 0.08),
   },
   currencyPrefix: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium as any,
     marginRight: SPACING.xs,
   },
   currencyInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.md + 2,
     paddingRight: SPACING.md,
     paddingLeft: 0,
@@ -1720,26 +1724,26 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 4,
     borderWidth: 1.5,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   syncToggleBoxActive: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   syncToggleText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   budgetModalHint: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // ─── Recurring costs ──────────────────────────────────────
   recurringCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -1754,7 +1758,7 @@ const styles = StyleSheet.create({
   recurringTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
@@ -1763,26 +1767,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     gap: SPACING.sm,
   },
   recurringDesc: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontWeight: TYPOGRAPHY.weight.medium as any,
     flex: 1,
   },
   recurringMeta: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 2,
   },
   recurringDue: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   recurringDueNow: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
   },
   recurringApplyBtn: {
@@ -1792,7 +1796,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
   },
   recurringApplyBtnMuted: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   recurringApplyText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1808,19 +1812,19 @@ const styles = StyleSheet.create({
   },
   recurringAddText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ─── Recurring modal ──────────────────────────────────────
   modalCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     marginHorizontal: SPACING.xl,
     ...SHADOWS.lg,
   },
   modalSave: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -1838,15 +1842,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   freqPillActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.12),
+    backgroundColor: withAlpha(C.accent, 0.12),
   },
   freqPillText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium as any,
   },
   freqPillTextActive: {
-    color: CALM.accent,
+    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
   },
 });

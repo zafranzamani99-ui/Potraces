@@ -6,7 +6,6 @@ import {
   FlatList,
   TouchableOpacity,
   Modal,
-  ScrollView,
   Animated,
   Alert,
   Linking,
@@ -15,7 +14,9 @@ import {
   Platform,
   AppState,
   RefreshControl,
+  Keyboard,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { format, isToday, isYesterday, isPast, startOfDay, isThisWeek, isThisMonth, isValid } from 'date-fns';
@@ -26,6 +27,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { SellerOrder, SellerOrderItem, OrderStatus, SellerPaymentMethod, SellerProduct, DepositEntry } from '../../types';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -181,7 +183,9 @@ const LIFECYCLE_STEPS: OrderStatus[] = ['pending', 'confirmed', 'ready', 'delive
 const OrderLifecycleBar: React.FC<{
   currentStatus: OrderStatus;
   onChangeStatus?: (status: OrderStatus) => void;
-}> = React.memo(({ currentStatus, onChangeStatus }) => {
+  styles: ReturnType<typeof makeStyles>;
+}> = React.memo(({ currentStatus, onChangeStatus, styles }) => {
+  const C = useCalm();
   const currentIndex = LIFECYCLE_STEPS.indexOf(currentStatus);
   const currentColor = statusColor(currentStatus);
 
@@ -190,7 +194,7 @@ const OrderLifecycleBar: React.FC<{
       <View style={styles.lifecycleRow}>
         {LIFECYCLE_STEPS.map((step, i) => {
           const isCompleted = i <= currentIndex;
-          const dotColor = isCompleted ? statusColor(step) : CALM.border;
+          const dotColor = isCompleted ? statusColor(step) : C.border;
 
           return (
             <React.Fragment key={step}>
@@ -198,7 +202,7 @@ const OrderLifecycleBar: React.FC<{
                 <View
                   style={[
                     styles.lifecycleLine,
-                    { backgroundColor: i <= currentIndex ? statusColor(step) : CALM.border },
+                    { backgroundColor: i <= currentIndex ? statusColor(step) : C.border },
                   ]}
                 />
               )}
@@ -275,7 +279,9 @@ const AnimatedOrderCard: React.FC<{
   onToggleSelect: (id: string) => void;
   onAdvanceStatus: (item: SellerOrder) => void;
   onMarkPaid: (item: SellerOrder) => void;
-}> = React.memo(({ item, index, currency, selectMode, isSelected, isExpanded, isUnseen, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid }) => {
+  styles: ReturnType<typeof makeStyles>;
+}> = React.memo(({ item, index, currency, selectMode, isSelected, isExpanded, isUnseen, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid, styles }) => {
+  const C = useCalm();
   const alreadySeen = _animatedOrderIds.has(item.id);
   const fadeAnim = useRef(new Animated.Value(alreadySeen ? 1 : 0)).current;
 
@@ -335,12 +341,12 @@ const AnimatedOrderCard: React.FC<{
                 <View style={styles.orderMetaLeft}>
                   {deliveryInfo && (
                     <>
-                      <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : CALM.textMuted} />
+                      <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : C.textMuted} />
                       <Text style={[styles.orderMetaDelivery, deliveryInfo.isOverdue && styles.deliveryOverdue, deliveryInfo.isTodayDelivery && styles.deliveryToday]}>{deliveryInfo.label}</Text>
                       <Text style={styles.orderMetaDot}>·</Text>
                     </>
                   )}
-                  <Feather name="calendar" size={11} color={CALM.textMuted} />
+                  <Feather name="calendar" size={11} color={C.textMuted} />
                   <Text style={styles.orderMetaText} numberOfLines={1}>{dateLabel}{item.orderNumber ? `  ·  ${item.orderNumber}` : ''}</Text>
                 </View>
                 <View style={styles.orderTags}>
@@ -359,18 +365,18 @@ const AnimatedOrderCard: React.FC<{
               <View style={styles.orderMetaLeft}>
                 {deliveryInfo && (
                   <>
-                    <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : CALM.textMuted} />
+                    <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : C.textMuted} />
                     <Text style={[styles.orderMetaDelivery, deliveryInfo.isOverdue && styles.deliveryOverdue, deliveryInfo.isTodayDelivery && styles.deliveryToday]}>{deliveryInfo.label}</Text>
                     <Text style={styles.orderMetaDot}>·</Text>
                   </>
                 )}
-                <Feather name="calendar" size={11} color={CALM.textMuted} />
+                <Feather name="calendar" size={11} color={C.textMuted} />
                 <Text style={styles.orderMetaText} numberOfLines={1}>{dateLabel}{item.orderNumber ? `  ·  ${item.orderNumber}` : ''}</Text>
               </View>
               <View style={styles.orderTags}>
                 <Text style={[styles.orderTag, { color }]}>{item.status}</Text>
-                <View style={[styles.paymentBadge, { backgroundColor: item.isPaid ? withAlpha(BIZ.success, 0.1) : withAlpha(CALM.bronze, 0.1) }]}>
-                  <Text style={[styles.paymentBadgeText, { color: item.isPaid ? BIZ.success : CALM.bronze }]}>{item.isPaid ? 'paid' : 'unpaid'}</Text>
+                <View style={[styles.paymentBadge, { backgroundColor: item.isPaid ? withAlpha(BIZ.success, 0.1) : withAlpha(C.bronze, 0.1) }]}>
+                  <Text style={[styles.paymentBadgeText, { color: item.isPaid ? BIZ.success : C.bronze }]}>{item.isPaid ? 'paid' : 'unpaid'}</Text>
                 </View>
                 {item.source === 'order_link' && (
                   <View style={styles.onlineBadge}>
@@ -414,7 +420,7 @@ const AnimatedOrderCard: React.FC<{
                     onPress={() => { lightTap(); onOpenDetail(item); }}
                     hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
                   >
-                    <Feather name="more-horizontal" size={16} color={CALM.textMuted} />
+                    <Feather name="more-horizontal" size={16} color={C.textMuted} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -441,7 +447,9 @@ const GroupedCustomerCard: React.FC<{
   onToggleSelect: (id: string) => void;
   onAdvanceStatus: (item: SellerOrder) => void;
   onMarkPaid: (item: SellerOrder) => void;
-}> = React.memo(({ group, index, currency, selectMode, selectedIds, expandedId, seenSet, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid }) => {
+  styles: ReturnType<typeof makeStyles>;
+}> = React.memo(({ group, index, currency, selectMode, selectedIds, expandedId, seenSet, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid, styles }) => {
+  const C = useCalm();
   const alreadySeen = _animatedOrderIds.has(`group_${group.customerKey}`);
   const fadeAnim = useRef(new Animated.Value(alreadySeen ? 1 : 0)).current;
 
@@ -475,6 +483,7 @@ const GroupedCustomerCard: React.FC<{
         onToggleSelect={onToggleSelect}
         onAdvanceStatus={onAdvanceStatus}
         onMarkPaid={onMarkPaid}
+        styles={styles}
       />
     );
   }
@@ -532,22 +541,22 @@ const GroupedCustomerCard: React.FC<{
                   <View style={styles.orderMetaLeft}>
                     {deliveryInfo && (
                       <>
-                        <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : CALM.textMuted} />
+                        <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : C.textMuted} />
                         <Text style={[styles.orderMetaDelivery, deliveryInfo.isOverdue && styles.deliveryOverdue, deliveryInfo.isTodayDelivery && styles.deliveryToday]}>
                           {deliveryInfo.label}
                         </Text>
                         <Text style={styles.orderMetaDot}>·</Text>
                       </>
                     )}
-                    <Feather name="calendar" size={11} color={CALM.textMuted} />
+                    <Feather name="calendar" size={11} color={C.textMuted} />
                     <Text style={styles.orderMetaText} numberOfLines={1}>
                       {dateLabel}{order.orderNumber ? `  ·  ${order.orderNumber}` : ''}
                     </Text>
                   </View>
                   <View style={styles.orderTags}>
                     <Text style={[styles.orderTag, { color }]}>{order.status}</Text>
-                    <View style={[styles.paymentBadge, { backgroundColor: order.isPaid ? withAlpha(BIZ.success, 0.1) : withAlpha(CALM.bronze, 0.1) }]}>
-                      <Text style={[styles.paymentBadgeText, { color: order.isPaid ? BIZ.success : CALM.bronze }]}>
+                    <View style={[styles.paymentBadge, { backgroundColor: order.isPaid ? withAlpha(BIZ.success, 0.1) : withAlpha(C.bronze, 0.1) }]}>
+                      <Text style={[styles.paymentBadgeText, { color: order.isPaid ? BIZ.success : C.bronze }]}>
                         {order.isPaid ? 'paid' : 'unpaid'}
                       </Text>
                     </View>
@@ -593,7 +602,7 @@ const GroupedCustomerCard: React.FC<{
                         onPress={() => { lightTap(); onOpenDetail(order); }}
                         hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
                       >
-                        <Feather name="more-horizontal" size={16} color={CALM.textMuted} />
+                        <Feather name="more-horizontal" size={16} color={C.textMuted} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -618,6 +627,8 @@ const GroupedCustomerCard: React.FC<{
 
 // ─── MAIN COMPONENT ─────────────────────────────────────────
 const OrderList: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const orders = useSellerStore((s) => s.orders);
   const products = useSellerStore((s) => s.products);
@@ -1552,9 +1563,10 @@ const OrderList: React.FC = () => {
         onToggleSelect={handleToggleSelect}
         onAdvanceStatus={handleAdvanceStatus}
         onMarkPaid={handleMarkPaidFromCard}
+        styles={styles}
       />
     ),
-    [currency, selectMode, selectedIds, expandedId, seenSet, handleToggleExpand, handleOpenDetail, handleLongPress, handleToggleSelect, handleAdvanceStatus, handleMarkPaidFromCard]
+    [currency, selectMode, selectedIds, expandedId, seenSet, handleToggleExpand, handleOpenDetail, handleLongPress, handleToggleSelect, handleAdvanceStatus, handleMarkPaidFromCard, styles]
   );
 
   const renderGroup = useCallback(
@@ -1573,9 +1585,10 @@ const OrderList: React.FC = () => {
         onToggleSelect={handleToggleSelect}
         onAdvanceStatus={handleAdvanceStatus}
         onMarkPaid={handleMarkPaidFromCard}
+        styles={styles}
       />
     ),
-    [currency, selectMode, selectedIds, expandedId, seenSet, handleToggleExpand, handleOpenDetail, handleLongPress, handleToggleSelect, handleAdvanceStatus, handleMarkPaidFromCard]
+    [currency, selectMode, selectedIds, expandedId, seenSet, handleToggleExpand, handleOpenDetail, handleLongPress, handleToggleSelect, handleAdvanceStatus, handleMarkPaidFromCard, styles]
   );
 
   // Stable keyExtractor — avoids creating new function reference every render
@@ -1588,7 +1601,7 @@ const OrderList: React.FC = () => {
   const listEmptyComponent = useMemo(() => (
     <View style={styles.emptyState}>
       <View style={styles.emptyIconCircle}>
-        <Feather name="inbox" size={32} color={CALM.textMuted} />
+        <Feather name="inbox" size={32} color={C.textMuted} />
       </View>
       <Text style={styles.emptyTitle}>
         {hasActiveFilters ? 'no matching orders' : 'no orders yet'}
@@ -1629,11 +1642,11 @@ const OrderList: React.FC = () => {
       {/* ─── Search bar + filter + view toggle ─── */}
       <View style={styles.searchRow}>
         <View style={styles.searchContainer}>
-          <Feather name="search" size={16} color={CALM.textMuted} />
+          <Feather name="search" size={16} color={C.textMuted} />
           <TextInput
             style={styles.searchInput}
             placeholder="search orders..."
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             value={searchInput}
             onChangeText={setSearchInput}
             returnKeyType="search"
@@ -1647,7 +1660,7 @@ const OrderList: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Clear search"
             >
-              <Feather name="x" size={16} color={CALM.textMuted} />
+              <Feather name="x" size={16} color={C.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -1658,7 +1671,7 @@ const OrderList: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Filter and sort"
         >
-          <Feather name="sliders" size={18} color={CALM.bronze} />
+          <Feather name="sliders" size={18} color={C.bronze} />
           {modalHasAdvancedFilters && <View style={styles.sortActiveDot} />}
         </TouchableOpacity>
         <TouchableOpacity
@@ -1668,7 +1681,7 @@ const OrderList: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel={`View mode: ${viewMode}`}
         >
-          <Feather name={viewMode === 'grouped' ? 'layers' : 'list'} size={16} color={CALM.textSecondary} />
+          <Feather name={viewMode === 'grouped' ? 'layers' : 'list'} size={16} color={C.textSecondary} />
         </TouchableOpacity>
       </View>
 
@@ -1711,8 +1724,8 @@ const OrderList: React.FC = () => {
           >
             <Text style={[styles.quickChipText, activeChip === 'unpaid' && styles.quickChipTextActive]}>unpaid</Text>
             {(statusCounts['unpaid'] || 0) > 0 && (
-              <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(CALM.bronze, 0.15) }]}>
-                <Text style={[styles.chipCountText, { color: CALM.bronze }]}>{statusCounts['unpaid']}</Text>
+              <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(C.bronze, 0.15) }]}>
+                <Text style={[styles.chipCountText, { color: C.bronze }]}>{statusCounts['unpaid']}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -1763,7 +1776,7 @@ const OrderList: React.FC = () => {
           </TouchableOpacity>
         </ScrollView>
         <View style={styles.scrollHintRight} pointerEvents="none">
-          <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+          <Feather name="chevron-right" size={16} color={C.textMuted} />
         </View>
       </View>
 
@@ -1780,7 +1793,7 @@ const OrderList: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Clear all filters"
           >
-            <Feather name="x" size={14} color={CALM.bronze} />
+            <Feather name="x" size={14} color={C.bronze} />
             <Text style={styles.clearFiltersText}>clear</Text>
           </TouchableOpacity>
         </View>
@@ -1797,7 +1810,9 @@ const OrderList: React.FC = () => {
         windowSize={5}
         maxToRenderPerBatch={8}
         initialNumToRender={10}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CALM.bronze} colors={[CALM.bronze]} />}
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze} colors={[C.bronze]} />}
       />
 
       {/* ─── Bulk select floating bar ─── */}
@@ -1810,7 +1825,7 @@ const OrderList: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Cancel selection"
           >
-            <Feather name="x" size={16} color={CALM.textMuted} />
+            <Feather name="x" size={16} color={C.textMuted} />
           </TouchableOpacity>
           <Text style={styles.bulkCountText}>{selectedIds.size} selected</Text>
           {unpaidFilteredIds.length > 0 && selectedIds.size < unpaidFilteredIds.length && (
@@ -1898,7 +1913,7 @@ const OrderList: React.FC = () => {
                       activeOpacity={0.7}
                       onPress={() => { selectionChanged(); setSortBy(opt.value); }}
                     >
-                      <Feather name={opt.icon} size={13} color={isActive ? CALM.bronze : CALM.textMuted} />
+                      <Feather name={opt.icon} size={13} color={isActive ? C.bronze : C.textMuted} />
                       <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
                         {opt.label}
                       </Text>
@@ -1987,7 +2002,7 @@ const OrderList: React.FC = () => {
                   activeOpacity={0.7}
                   onPress={() => { selectionChanged(); setOverdueOnly(!overdueOnly); }}
                 >
-                  <Feather name="alert-circle" size={13} color={overdueOnly ? BIZ.overdue : CALM.textMuted} />
+                  <Feather name="alert-circle" size={13} color={overdueOnly ? BIZ.overdue : C.textMuted} />
                   <Text style={[styles.filterPillText, overdueOnly && styles.filterPillOverdueText]}>
                     overdue only
                   </Text>
@@ -1997,7 +2012,7 @@ const OrderList: React.FC = () => {
                   activeOpacity={0.7}
                   onPress={() => { selectionChanged(); setOnlineOnly(!onlineOnly); }}
                 >
-                  <Feather name="globe" size={13} color={onlineOnly ? CALM.bronze : CALM.textMuted} />
+                  <Feather name="globe" size={13} color={onlineOnly ? C.bronze : C.textMuted} />
                   <Text style={[styles.filterPillText, onlineOnly && styles.filterPillTextActive]}>
                     online only
                   </Text>
@@ -2085,7 +2100,7 @@ const OrderList: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel={`Pay by ${m.label}`}
                   >
-                    <Feather name={m.icon} size={14} color={active ? BIZ.success : CALM.textSecondary} />
+                    <Feather name={m.icon} size={14} color={active ? BIZ.success : C.textSecondary} />
                     <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
                   </TouchableOpacity>
                 );
@@ -2097,7 +2112,7 @@ const OrderList: React.FC = () => {
                 value={paymentNote}
                 onChangeText={setPaymentNote}
                 placeholder="note (optional)"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="done"
               />
             )}
@@ -2110,8 +2125,8 @@ const OrderList: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Confirm payment"
             >
-              <Feather name="check" size={16} color={selectedPaymentMethod ? '#fff' : CALM.textMuted} />
-              <Text style={[styles.paymentConfirmText, !selectedPaymentMethod && { color: CALM.textMuted }]}>
+              <Feather name="check" size={16} color={selectedPaymentMethod ? '#fff' : C.textMuted} />
+              <Text style={[styles.paymentConfirmText, !selectedPaymentMethod && { color: C.textMuted }]}>
                 confirm paid
               </Text>
             </TouchableOpacity>
@@ -2181,7 +2196,7 @@ const OrderList: React.FC = () => {
                       accessibilityRole="button"
                       accessibilityLabel="Close"
                     >
-                      <Feather name="x" size={18} color={CALM.textMuted} />
+                      <Feather name="x" size={18} color={C.textMuted} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -2195,7 +2210,7 @@ const OrderList: React.FC = () => {
                     <View style={styles.modalSection}>
                       {!!selectedOrder.customerPhone && (
                         <View style={styles.phoneRow}>
-                          <Feather name="phone" size={14} color={CALM.textMuted} />
+                          <Feather name="phone" size={14} color={C.textMuted} />
                           <Text style={styles.phoneText} numberOfLines={1}>
                             {selectedOrder.customerPhone}
                           </Text>
@@ -2206,7 +2221,7 @@ const OrderList: React.FC = () => {
                             accessibilityRole="button"
                             accessibilityLabel="Call customer"
                           >
-                            <Feather name="phone-call" size={15} color={CALM.bronze} />
+                            <Feather name="phone-call" size={15} color={C.bronze} />
                           </TouchableOpacity>
                           <TouchableOpacity
                             activeOpacity={0.7}
@@ -2215,13 +2230,13 @@ const OrderList: React.FC = () => {
                             accessibilityRole="button"
                             accessibilityLabel="WhatsApp customer"
                           >
-                            <Feather name="message-circle" size={15} color={CALM.bronze} />
+                            <Feather name="message-circle" size={15} color={C.bronze} />
                           </TouchableOpacity>
                         </View>
                       )}
                       {!!selectedOrder.customerAddress && (
                         <View style={styles.addressRow}>
-                          <Feather name="map-pin" size={14} color={CALM.textMuted} />
+                          <Feather name="map-pin" size={14} color={C.textMuted} />
                           <Text style={styles.addressText} numberOfLines={2}>
                             {selectedOrder.customerAddress}
                           </Text>
@@ -2232,7 +2247,7 @@ const OrderList: React.FC = () => {
                             accessibilityRole="button"
                             accessibilityLabel="Open in navigation app"
                           >
-                            <Feather name="navigation" size={15} color={CALM.bronze} />
+                            <Feather name="navigation" size={15} color={C.bronze} />
                           </TouchableOpacity>
                         </View>
                       )}
@@ -2246,7 +2261,7 @@ const OrderList: React.FC = () => {
                       <Text style={styles.editFieldLabel}>items</Text>
                       <View style={styles.editItemsList}>
                         {editItems.map((item, i) => (
-                          <View key={`ei_${i}`} style={[styles.editItemRow, i < editItems.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: CALM.border }]}>
+                          <View key={`ei_${i}`} style={[styles.editItemRow, i < editItems.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border }]}>
                             <View style={{ flex: 1 }}>
                               <Text style={styles.editItemName} numberOfLines={1}>{item.productName}</Text>
                               <Text style={styles.editItemPrice}>{currency} {item.unitPrice.toFixed(2)} / {item.unit}</Text>
@@ -2256,14 +2271,14 @@ const OrderList: React.FC = () => {
                                 onPress={() => { lightTap(); setEditItems(prev => prev.map((it, idx) => idx === i ? { ...it, quantity: Math.max(1, it.quantity - 1) } : it)); }}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                               >
-                                <Feather name="minus-circle" size={20} color={CALM.textMuted} />
+                                <Feather name="minus-circle" size={20} color={C.textMuted} />
                               </TouchableOpacity>
                               <Text style={styles.editItemQty}>{item.quantity}</Text>
                               <TouchableOpacity
                                 onPress={() => { lightTap(); setEditItems(prev => prev.map((it, idx) => idx === i ? { ...it, quantity: it.quantity + 1 } : it)); }}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                               >
-                                <Feather name="plus-circle" size={20} color={CALM.bronze} />
+                                <Feather name="plus-circle" size={20} color={C.bronze} />
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => {
@@ -2278,7 +2293,7 @@ const OrderList: React.FC = () => {
                                 hitSlop={{ top: 8, bottom: 8, left: 12, right: 8 }}
                                 style={{ marginLeft: 6 }}
                               >
-                                <Feather name="trash-2" size={16} color={CALM.textMuted} />
+                                <Feather name="trash-2" size={16} color={C.textMuted} />
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -2289,7 +2304,7 @@ const OrderList: React.FC = () => {
                             activeOpacity={0.7}
                             onPress={() => { lightTap(); setShowAddProductModal(true); }}
                           >
-                            <Feather name="plus" size={14} color={CALM.bronze} />
+                            <Feather name="plus" size={14} color={C.bronze} />
                             <Text style={styles.editItemAddText}>add product</Text>
                           </TouchableOpacity>
                         )}
@@ -2302,7 +2317,7 @@ const OrderList: React.FC = () => {
                         value={editPhone}
                         onChangeText={setEditPhone}
                         placeholder="customer phone"
-                        placeholderTextColor={CALM.textMuted}
+                        placeholderTextColor={C.textMuted}
                         keyboardType="phone-pad"
                       />
 
@@ -2313,7 +2328,7 @@ const OrderList: React.FC = () => {
                         value={editAddress}
                         onChangeText={setEditAddress}
                         placeholder="customer address"
-                        placeholderTextColor={CALM.textMuted}
+                        placeholderTextColor={C.textMuted}
                         multiline
                         numberOfLines={3}
                       />
@@ -2325,13 +2340,13 @@ const OrderList: React.FC = () => {
                         activeOpacity={0.7}
                         onPress={() => setShowDeliveryDateModal(true)}
                       >
-                        <Feather name="calendar" size={15} color={editDeliveryDate ? CALM.bronze : CALM.textMuted} />
-                        <Text style={[styles.editDateButtonText, !editDeliveryDate && { color: CALM.textMuted }]}>
+                        <Feather name="calendar" size={15} color={editDeliveryDate ? C.bronze : C.textMuted} />
+                        <Text style={[styles.editDateButtonText, !editDeliveryDate && { color: C.textMuted }]}>
                           {editDeliveryDate ? format(editDeliveryDate, 'd MMM yyyy') : 'tap to set'}
                         </Text>
                         {!!editDeliveryDate && (
                           <TouchableOpacity onPress={() => setEditDeliveryDate(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                            <Feather name="x" size={14} color={CALM.textMuted} />
+                            <Feather name="x" size={14} color={C.textMuted} />
                           </TouchableOpacity>
                         )}
                       </TouchableOpacity>
@@ -2343,7 +2358,7 @@ const OrderList: React.FC = () => {
                         value={editNote}
                         onChangeText={setEditNote}
                         placeholder="order note"
-                        placeholderTextColor={CALM.textMuted}
+                        placeholderTextColor={C.textMuted}
                         multiline
                       />
 
@@ -2363,7 +2378,7 @@ const OrderList: React.FC = () => {
                   {!isEditing && (
                     <View style={styles.modalSection}>
                       <View style={styles.modalDateRow}>
-                        <Feather name="calendar" size={14} color={CALM.textMuted} />
+                        <Feather name="calendar" size={14} color={C.textMuted} />
                         <Text style={styles.modalDateText}>
                           {format(
                             selectedOrder.date instanceof Date
@@ -2387,7 +2402,7 @@ const OrderList: React.FC = () => {
                                   ? BIZ.overdue
                                   : info.isTodayDelivery
                                     ? BIZ.warning
-                                    : CALM.textMuted
+                                    : C.textMuted
                               }
                             />
                             <Text
@@ -2406,6 +2421,7 @@ const OrderList: React.FC = () => {
                       <OrderLifecycleBar
                         currentStatus={selectedOrder.status}
                         onChangeStatus={(newStatus) => handleChangeStatus(selectedOrder, newStatus)}
+                        styles={styles}
                       />
                     </View>
                   )}
@@ -2442,7 +2458,7 @@ const OrderList: React.FC = () => {
                             onPress={() => { lightTap(); setEditingPayHistory(true); setEditPayIdx(null); }}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >
-                            <Feather name="edit-2" size={14} color={CALM.bronze} />
+                            <Feather name="edit-2" size={14} color={C.bronze} />
                           </TouchableOpacity>
                         )}
                       </View>
@@ -2463,13 +2479,13 @@ const OrderList: React.FC = () => {
                                     const before = d.note.slice(0, idx).replace(/\s*·\s*$/, '');
                                     const tipText = tipMatch[1];
                                     return (
-                                      <Text style={{ width: '100%', fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, marginTop: 2, paddingLeft: 21 }}>
+                                      <Text style={{ width: '100%', fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 2, paddingLeft: 21 }}>
                                         {before ? <>{before} · </> : null}
-                                        <Text style={{ color: CALM.bronze }}>{tipText}</Text>
+                                        <Text style={{ color: C.bronze }}>{tipText}</Text>
                                       </Text>
                                     );
                                   }
-                                  return <Text style={{ width: '100%', fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, marginTop: 2, paddingLeft: 21 }}>{d.note}</Text>;
+                                  return <Text style={{ width: '100%', fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 2, paddingLeft: 21 }}>{d.note}</Text>;
                                 })() : null}
                               </View>
                             );
@@ -2500,7 +2516,7 @@ const OrderList: React.FC = () => {
                   {!isEditing && selectedOrder.note && (
                     <View style={styles.modalSection}>
                       <View style={styles.modalNoteRow}>
-                        <Feather name="file-text" size={14} color={CALM.textMuted} />
+                        <Feather name="file-text" size={14} color={C.textMuted} />
                         <Text style={styles.modalNote}>{selectedOrder.note}</Text>
                       </View>
                     </View>
@@ -2516,7 +2532,7 @@ const OrderList: React.FC = () => {
                         accessibilityLabel="Toggle original WhatsApp message"
                         style={styles.rawWhatsAppToggleRow}
                       >
-                        <Feather name={showRawWhatsApp ? 'chevron-up' : 'chevron-down'} size={14} color={CALM.textMuted} />
+                        <Feather name={showRawWhatsApp ? 'chevron-up' : 'chevron-down'} size={14} color={C.textMuted} />
                         <Text style={styles.rawWhatsAppToggle}>
                           {showRawWhatsApp ? 'hide original message' : 'show original message'}
                         </Text>
@@ -2536,7 +2552,7 @@ const OrderList: React.FC = () => {
                         <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
                           <TouchableOpacity
                             activeOpacity={0.7}
-                            style={[styles.paidButton, { flex: 1, backgroundColor: withAlpha(CALM.bronze, 0.15) }]}
+                            style={[styles.paidButton, { flex: 1, backgroundColor: withAlpha(C.bronze, 0.15) }]}
                             onPress={() => {
                               lightTap();
                               setDepositAmount('');
@@ -2547,8 +2563,8 @@ const OrderList: React.FC = () => {
                             accessibilityRole="button"
                             accessibilityLabel="Record a deposit"
                           >
-                            <Feather name="credit-card" size={16} color={CALM.bronze} />
-                            <Text style={[styles.paidButtonText, { color: CALM.bronze }]}>deposit</Text>
+                            <Feather name="credit-card" size={16} color={C.bronze} />
+                            <Text style={[styles.paidButtonText, { color: C.bronze }]}>deposit</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             activeOpacity={0.7}
@@ -2582,8 +2598,8 @@ const OrderList: React.FC = () => {
                             accessibilityRole="button"
                             accessibilityLabel="Send QR with total via WhatsApp"
                           >
-                            <Feather name="maximize" size={16} color={CALM.accent} />
-                            <Text style={[styles.gridActionText, { color: CALM.accent }]}>send QR</Text>
+                            <Feather name="maximize" size={16} color={C.accent} />
+                            <Text style={[styles.gridActionText, { color: C.accent }]}>send QR</Text>
                           </TouchableOpacity>
                         )}
 
@@ -2595,8 +2611,8 @@ const OrderList: React.FC = () => {
                             accessibilityRole="button"
                             accessibilityLabel="Send receipt via WhatsApp"
                           >
-                            <Feather name="send" size={16} color={CALM.accent} />
-                            <Text style={[styles.gridActionText, { color: CALM.accent }]}>send receipt</Text>
+                            <Feather name="send" size={16} color={C.accent} />
+                            <Text style={[styles.gridActionText, { color: C.accent }]}>send receipt</Text>
                           </TouchableOpacity>
                         )}
 
@@ -2608,7 +2624,7 @@ const OrderList: React.FC = () => {
                             accessibilityRole="button"
                             accessibilityLabel="Copy reminder"
                           >
-                            <Feather name="message-circle" size={16} color={CALM.bronze} />
+                            <Feather name="message-circle" size={16} color={C.bronze} />
                             <Text style={styles.gridActionText}>reminder</Text>
                           </TouchableOpacity>
                         )}
@@ -2620,7 +2636,7 @@ const OrderList: React.FC = () => {
                           accessibilityRole="button"
                           accessibilityLabel="Edit details"
                         >
-                          <Feather name="edit-2" size={16} color={CALM.bronze} />
+                          <Feather name="edit-2" size={16} color={C.bronze} />
                           <Text style={styles.gridActionText}>edit</Text>
                         </TouchableOpacity>
 
@@ -2670,7 +2686,7 @@ const OrderList: React.FC = () => {
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
                     <Text style={styles.dateModalTitle}>delivery date</Text>
                     <TouchableOpacity onPress={() => setShowDeliveryDateModal(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                      <Feather name="x" size={17} color={CALM.textMuted} />
+                      <Feather name="x" size={17} color={C.textMuted} />
                     </TouchableOpacity>
                   </View>
                   <CalendarPicker
@@ -2697,23 +2713,23 @@ const OrderList: React.FC = () => {
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
                 <Text style={styles.paymentSheetTitle}>add items</Text>
                 <TouchableOpacity onPress={() => { setShowAddProductModal(false); setAddProductSearch(''); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                  <Feather name="x" size={18} color={CALM.textMuted} />
+                  <Feather name="x" size={18} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
 
               {/* Search */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: CALM.border, borderRadius: RADIUS.md, paddingHorizontal: SPACING.sm, marginBottom: SPACING.sm, gap: SPACING.xs }}>
-                <Feather name="search" size={14} color={CALM.textMuted} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.border, borderRadius: RADIUS.md, paddingHorizontal: SPACING.sm, marginBottom: SPACING.sm, gap: SPACING.xs }}>
+                <Feather name="search" size={14} color={C.textMuted} />
                 <TextInput
-                  style={{ flex: 1, fontSize: TYPOGRAPHY.size.sm, color: CALM.textPrimary, paddingVertical: SPACING.sm }}
+                  style={{ flex: 1, fontSize: TYPOGRAPHY.size.sm, color: C.textPrimary, paddingVertical: SPACING.sm }}
                   value={addProductSearch}
                   onChangeText={setAddProductSearch}
                   placeholder="search products..."
-                  placeholderTextColor={CALM.textMuted}
+                  placeholderTextColor={C.textMuted}
                 />
                 {addProductSearch.length > 0 && (
                   <TouchableOpacity onPress={() => setAddProductSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Feather name="x" size={13} color={CALM.textMuted} />
+                    <Feather name="x" size={13} color={C.textMuted} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -2729,7 +2745,7 @@ const OrderList: React.FC = () => {
                       activeOpacity={0.7}
                       style={[
                         { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm },
-                        idx < arr.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: CALM.border },
+                        idx < arr.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
                       ]}
                       onPress={() => {
                         lightTap();
@@ -2739,10 +2755,10 @@ const OrderList: React.FC = () => {
                       }}
                     >
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: CALM.textPrimary }}>{p.name}</Text>
-                        <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, marginTop: 2 }}>{currency} {p.pricePerUnit.toFixed(2)} / {p.unit}</Text>
+                        <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: C.textPrimary }}>{p.name}</Text>
+                        <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 2 }}>{currency} {p.pricePerUnit.toFixed(2)} / {p.unit}</Text>
                       </View>
-                      <Feather name="plus-circle" size={18} color={CALM.bronze} />
+                      <Feather name="plus-circle" size={18} color={C.bronze} />
                     </TouchableOpacity>
                   ))
                 }
@@ -2805,7 +2821,7 @@ const OrderList: React.FC = () => {
                 value={depositAmount}
                 onChangeText={setDepositAmount}
                 placeholder="amount"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 keyboardType="decimal-pad"
                 autoFocus
               />
@@ -2835,7 +2851,7 @@ const OrderList: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel={`Deposit via ${m.label}`}
                   >
-                    <Feather name={m.icon} size={14} color={active ? BIZ.success : CALM.textSecondary} />
+                    <Feather name={m.icon} size={14} color={active ? BIZ.success : C.textSecondary} />
                     <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
                   </TouchableOpacity>
                 );
@@ -2847,7 +2863,7 @@ const OrderList: React.FC = () => {
                 value={depositNote}
                 onChangeText={setDepositNote}
                 placeholder="note (optional)"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="done"
               />
             )}
@@ -2955,39 +2971,39 @@ const OrderList: React.FC = () => {
               const d2 = d.date instanceof Date ? d.date : new Date(d.date);
               const isEditingThis = editPayIdx === i;
               return (
-                <View key={i} style={[{ paddingVertical: SPACING.sm }, i < selectedOrder.deposits!.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: CALM.border }]}>
+                <View key={i} style={[{ paddingVertical: SPACING.sm }, i < selectedOrder.deposits!.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                     <Feather name={paymentMethodIcon(d.method)} size={14} color={BIZ.success} />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium as any, color: BIZ.success }}>{paymentMethodLabel(d.method)}</Text>
-                      <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, marginTop: 1 }}>{format(d2, 'd MMM yyyy, h:mm a')}</Text>
+                      <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 1 }}>{format(d2, 'd MMM yyyy, h:mm a')}</Text>
                       {d.note ? (() => {
                         const tipMatch = d.note.match(/(tip\s+\S+\s+[\d,.]+)/i);
                         if (tipMatch) {
                           const tidx = d.note.indexOf(tipMatch[1]);
                           const before = d.note.slice(0, tidx).replace(/\s*·\s*$/, '');
                           return (
-                            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, marginTop: 2 }}>
+                            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 2 }}>
                               {before ? <>{before} · </> : null}
-                              <Text style={{ color: CALM.bronze }}>{tipMatch[1]}</Text>
+                              <Text style={{ color: C.bronze }}>{tipMatch[1]}</Text>
                             </Text>
                           );
                         }
-                        return <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textSecondary, marginTop: 2 }}>{d.note}</Text>;
+                        return <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, marginTop: 2 }}>{d.note}</Text>;
                       })() : null}
                     </View>
-                    <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold as any, color: CALM.textPrimary }}>{currency} {d.amount.toFixed(2)}</Text>
+                    <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold as any, color: C.textPrimary }}>{currency} {d.amount.toFixed(2)}</Text>
                     <TouchableOpacity
                       onPress={() => { lightTap(); if (isEditingThis) { setEditPayIdx(null); } else { setEditPayIdx(i); setEditPayAmount(d.amount.toFixed(2)); setEditPayMethod(d.method); setEditPayNote(d.note || ''); } }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Feather name={isEditingThis ? 'chevron-up' : 'edit-2'} size={15} color={CALM.bronze} />
+                      <Feather name={isEditingThis ? 'chevron-up' : 'edit-2'} size={15} color={C.bronze} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => { lightTap(); setRemoveDepositConfirm({ idx: i, deposit: d }); }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Feather name="trash-2" size={15} color={CALM.textMuted} />
+                      <Feather name="trash-2" size={15} color={C.textMuted} />
                     </TouchableOpacity>
                   </View>
 
@@ -3002,7 +3018,7 @@ const OrderList: React.FC = () => {
                           onChangeText={setEditPayAmount}
                           keyboardType="decimal-pad"
                           placeholder="amount"
-                          placeholderTextColor={CALM.textMuted}
+                          placeholderTextColor={C.textMuted}
                           returnKeyType="done"
                         />
                       </View>
@@ -3020,7 +3036,7 @@ const OrderList: React.FC = () => {
                         value={editPayNote}
                         onChangeText={setEditPayNote}
                         placeholder="note (optional)"
-                        placeholderTextColor={CALM.textMuted}
+                        placeholderTextColor={C.textMuted}
                         returnKeyType="done"
                       />
                       <View style={styles.paymentPickerRow}>
@@ -3033,7 +3049,7 @@ const OrderList: React.FC = () => {
                               style={[styles.paymentPill, active && styles.paymentPillActive]}
                               onPress={() => { lightTap(); setEditPayMethod(m.value as SellerPaymentMethod); }}
                             >
-                              <Feather name={m.icon} size={13} color={active ? BIZ.success : CALM.textSecondary} />
+                              <Feather name={m.icon} size={13} color={active ? BIZ.success : C.textSecondary} />
                               <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
                             </TouchableOpacity>
                           );
@@ -3094,7 +3110,7 @@ const OrderList: React.FC = () => {
                 accessibilityLabel="Open in Google Maps"
               >
                 <View style={styles.navAppIcon}>
-                  <Feather name="map" size={18} color={CALM.bronze} />
+                  <Feather name="map" size={18} color={C.bronze} />
                 </View>
                 <Text style={styles.navAppLabel}>Google Maps</Text>
               </TouchableOpacity>
@@ -3106,7 +3122,7 @@ const OrderList: React.FC = () => {
                 accessibilityLabel="Open in Waze"
               >
                 <View style={styles.navAppIcon}>
-                  <Feather name="navigation" size={18} color={CALM.bronze} />
+                  <Feather name="navigation" size={18} color={C.bronze} />
                 </View>
                 <Text style={styles.navAppLabel}>Waze</Text>
               </TouchableOpacity>
@@ -3119,7 +3135,7 @@ const OrderList: React.FC = () => {
                   accessibilityLabel="Open in Apple Maps"
                 >
                   <View style={styles.navAppIcon}>
-                    <Feather name="compass" size={18} color={CALM.bronze} />
+                    <Feather name="compass" size={18} color={C.bronze} />
                   </View>
                   <Text style={styles.navAppLabel}>Apple Maps</Text>
                 </TouchableOpacity>
@@ -3146,7 +3162,7 @@ const OrderList: React.FC = () => {
           <TouchableOpacity style={styles.sortOverlay} activeOpacity={1} onPress={() => setDeleteItemConfirm(null)}>
             <View style={styles.deleteConfirmCard} onStartShouldSetResponder={() => true}>
               <View style={styles.deleteConfirmIconWrap}>
-                <Feather name={isLastItem ? 'shield' : 'alert-triangle'} size={24} color={CALM.bronze} />
+                <Feather name={isLastItem ? 'shield' : 'alert-triangle'} size={24} color={C.bronze} />
               </View>
               <Text style={styles.deleteConfirmTitle}>
                 {isLastItem ? 'can\'t remove' : 'remove item?'}
@@ -3160,7 +3176,7 @@ const OrderList: React.FC = () => {
                 </Text>
               )}
               <View style={styles.deleteConfirmWarning}>
-                <Feather name="info" size={14} color={CALM.bronze} style={{ marginTop: 1 }} />
+                <Feather name="info" size={14} color={C.bronze} style={{ marginTop: 1 }} />
                 <Text style={styles.deleteConfirmWarningText}>
                   {isLastItem
                     ? 'an order must have at least one item. add another item first before removing this one.'
@@ -3213,7 +3229,7 @@ const OrderList: React.FC = () => {
           <TouchableOpacity style={styles.sortOverlay} activeOpacity={1} onPress={() => setRemoveDepositConfirm(null)}>
             <View style={styles.deleteConfirmCard} onStartShouldSetResponder={() => true}>
               <View style={styles.deleteConfirmIconWrap}>
-                <Feather name="trash-2" size={24} color={CALM.bronze} />
+                <Feather name="trash-2" size={24} color={C.bronze} />
               </View>
               <Text style={styles.deleteConfirmTitle}>remove payment?</Text>
               <Text style={styles.deleteConfirmItem}>
@@ -3226,7 +3242,7 @@ const OrderList: React.FC = () => {
                 − {currency} {removeDepositConfirm.deposit.amount.toFixed(2)}
               </Text>
               <View style={styles.deleteConfirmWarning}>
-                <Feather name="info" size={14} color={CALM.bronze} style={{ marginTop: 1 }} />
+                <Feather name="info" size={14} color={C.bronze} style={{ marginTop: 1 }} />
                 <Text style={styles.deleteConfirmWarningText}>
                   removing this payment will update the order balance.
                 </Text>
@@ -3270,10 +3286,10 @@ const OrderList: React.FC = () => {
 };
 
 // ─── STYLES ─────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
 
   // ── Search bar + sort ──
@@ -3289,10 +3305,10 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     paddingHorizontal: SPACING.md,
     minHeight: 44,
     gap: SPACING.sm,
@@ -3300,21 +3316,21 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.sm,
   },
   sortButton: {
     width: 44,
     height: 44,
     borderRadius: RADIUS.lg,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sortButtonActive: {
-    borderColor: CALM.bronze,
+    borderColor: C.bronze,
   },
   sortActiveDot: {
     position: 'absolute',
@@ -3323,9 +3339,9 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderWidth: 1.5,
-    borderColor: CALM.background,
+    borderColor: C.background,
   },
 
   // ── Quick filter chips (inline bar) ──
@@ -3344,7 +3360,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     // Fade from transparent to background to blend chips out
-    backgroundColor: withAlpha(CALM.background, 0.85),
+    backgroundColor: withAlpha(C.background, 0.85),
   },
   quickFilterRow: {
     paddingHorizontal: 8,
@@ -3365,38 +3381,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   quickChipActive: {
-    borderColor: CALM.bronze,
+    borderColor: C.bronze,
   },
   quickChipText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   quickChipTextActive: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   chipCountBadge: {
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: withAlpha(CALM.textMuted, 0.12),
+    backgroundColor: withAlpha(C.textMuted, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
   chipCountBadgeActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.2),
+    backgroundColor: withAlpha(C.bronze, 0.2),
   },
   chipCountText: {
     fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
     lineHeight: 14,
   },
   chipCountTextActive: {
-    color: CALM.bronze,
+    color: C.bronze,
   },
   viewModeToggle: {
     flexDirection: 'row',
@@ -3419,26 +3435,26 @@ const styles = StyleSheet.create({
     minHeight: 30,
   },
   filterPillActive: {
-    borderColor: CALM.bronze,
+    borderColor: C.bronze,
   },
   filterPillText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   filterPillTextActive: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   filterPillCount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
     fontVariant: ['tabular-nums'] as any,
     marginLeft: 1,
   },
   filterPillCountActive: {
-    color: CALM.bronze,
+    color: C.bronze,
   },
   filterPillOverdue: {
     backgroundColor: withAlpha(BIZ.overdue, 0.12),
@@ -3459,7 +3475,7 @@ const styles = StyleSheet.create({
   },
   resultText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
   clearFiltersBtn: {
@@ -3472,7 +3488,7 @@ const styles = StyleSheet.create({
   clearFiltersText: {
     fontSize: TYPOGRAPHY.size.sm,
     lineHeight: 14,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
     includeFontPadding: false,
   },
@@ -3487,17 +3503,17 @@ const styles = StyleSheet.create({
 
   // ── Order card ──
   orderCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     paddingVertical: SPACING.md - 2,
     paddingHorizontal: SPACING.md,
     gap: 3,
   },
   orderCardSelected: {
-    borderColor: withAlpha(CALM.bronze, 0.4),
-    backgroundColor: withAlpha(CALM.bronze, 0.04),
+    borderColor: withAlpha(C.bronze, 0.4),
+    backgroundColor: withAlpha(C.bronze, 0.04),
   },
   orderCardUnseen: {
     borderLeftWidth: 3,
@@ -3513,13 +3529,13 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   selectCheckboxActive: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   orderRow: {
     flexDirection: 'row',
@@ -3530,13 +3546,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginRight: SPACING.sm,
   },
   orderTotal: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   orderItemsRow: {
@@ -3546,14 +3562,14 @@ const styles = StyleSheet.create({
   orderItems: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 18,
     marginRight: SPACING.sm,
   },
   orderMetaText: {
     flexShrink: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
   orderTags: {
@@ -3637,11 +3653,11 @@ const styles = StyleSheet.create({
   },
   orderMetaDelivery: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   orderMetaDot: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Expanded card content ──
@@ -3649,12 +3665,12 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     paddingTop: SPACING.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(CALM.border, 0.5),
+    borderTopColor: withAlpha(C.border, 0.5),
     gap: SPACING.xs + 1,
   },
   expandedMeta: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
   },
   expandedItemRow: {
@@ -3665,16 +3681,16 @@ const styles = StyleSheet.create({
   expandedItemName: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   expandedItemQty: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginLeft: SPACING.sm,
   },
   expandedDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: withAlpha(CALM.border, 0.5),
+    backgroundColor: withAlpha(C.border, 0.5),
     marginVertical: 2,
   },
   expandedRow: {
@@ -3684,12 +3700,12 @@ const styles = StyleSheet.create({
   },
   expandedText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     flex: 1,
   },
   expandedNote: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontStyle: 'italic',
   },
   expandedActionsRow: {
@@ -3718,7 +3734,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
   },
 
   // ── Shared badges (detail modal, grouped) ──
@@ -3752,7 +3768,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.sm,
@@ -3760,11 +3776,11 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   emptySubtitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -3772,7 +3788,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING['2xl'],
@@ -3796,16 +3812,16 @@ const styles = StyleSheet.create({
   emptyCtaSecondaryText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // ── Bulk select bar ──
   bulkBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     gap: SPACING.sm,
@@ -3814,14 +3830,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
   bulkCountText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   bulkSelectAllButton: {
@@ -3832,7 +3848,7 @@ const styles = StyleSheet.create({
   },
   bulkSelectAllText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   bulkPayButton: {
@@ -3869,7 +3885,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sortSheet: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING['2xl'],
@@ -3895,16 +3911,16 @@ const styles = StyleSheet.create({
   },
   sortOptionText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   sortOptionTextActive: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
   // ── Filter + sort modal ──
   filterSortSheet: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.lg,
     paddingHorizontal: SPACING['2xl'],
@@ -3922,7 +3938,7 @@ const styles = StyleSheet.create({
   filterSortClear: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   filterSortScroll: {
     flexGrow: 0,
@@ -3942,17 +3958,17 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm + 2,
     marginTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   filterSortDoneText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // ── Payment picker modal ──
   paymentSheet: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING['2xl'],
@@ -3962,13 +3978,13 @@ const styles = StyleSheet.create({
   paymentSheetTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.regular,
-    color: CALM.textMuted,
+    color: C.textMuted,
     letterSpacing: 1,
     marginBottom: SPACING.md,
     textTransform: 'uppercase',
   },
   paymentContext: {
-    backgroundColor: withAlpha(CALM.textMuted, 0.04),
+    backgroundColor: withAlpha(C.textMuted, 0.04),
     borderRadius: RADIUS.md,
     padding: SPACING.sm + 2,
     marginBottom: SPACING.md,
@@ -3983,18 +3999,18 @@ const styles = StyleSheet.create({
   paymentContextName: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   paymentContextAmount: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
   paymentContextItems: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 1,
   },
   paymentPickerRow: {
@@ -4010,7 +4026,7 @@ const styles = StyleSheet.create({
     gap: 2,
     paddingVertical: SPACING.sm + 2,
     borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     minHeight: 52,
   },
   paymentPillActive: {
@@ -4021,7 +4037,7 @@ const styles = StyleSheet.create({
   paymentPillText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   paymentPillTextActive: {
     color: BIZ.success,
@@ -4029,7 +4045,7 @@ const styles = StyleSheet.create({
   },
   paymentPillHint: {
     fontSize: 10,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
   },
   paymentPillHintActive: {
@@ -4046,7 +4062,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   paymentConfirmBtnDisabled: {
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
   },
   paymentConfirmText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -4054,12 +4070,12 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   paymentNoteInput: {
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm + 2,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.md,
     minHeight: 40,
   },
@@ -4067,30 +4083,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     marginBottom: SPACING.xs,
   },
   payAmountPrefix: {
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontSize: TYPOGRAPHY.size.sm,
   },
   payAmountInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.md,
     paddingLeft: SPACING.xs,
   },
   tipHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: C.bronze,
     marginBottom: SPACING.sm,
   },
   payContextDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginVertical: SPACING.xs,
   },
   payContextSubRow: {
@@ -4099,7 +4115,7 @@ const styles = StyleSheet.create({
   },
   payContextSubLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   payContextPaid: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -4110,7 +4126,7 @@ const styles = StyleSheet.create({
   payContextRemaining: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.bronze,
+    color: C.bronze,
     fontVariant: ['tabular-nums'],
   },
 
@@ -4129,14 +4145,14 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
   navAppLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   navCancelBtn: {
     alignItems: 'center',
@@ -4146,12 +4162,12 @@ const styles = StyleSheet.create({
   navCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Delete item confirmation ──
   deleteConfirmCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     marginHorizontal: SPACING.xl,
@@ -4162,7 +4178,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.md,
@@ -4170,23 +4186,23 @@ const styles = StyleSheet.create({
   deleteConfirmTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.sm,
   },
   deleteConfirmItem: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as any,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   deleteConfirmAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.bronze,
+    color: C.bronze,
     marginBottom: SPACING.md,
   },
   deleteConfirmWarning: {
     flexDirection: 'row',
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     gap: SPACING.sm,
@@ -4195,7 +4211,7 @@ const styles = StyleSheet.create({
   deleteConfirmWarningText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: C.bronze,
     lineHeight: 16,
   },
   deleteConfirmActions: {
@@ -4209,12 +4225,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   deleteConfirmCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as any,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   deleteConfirmRemove: {
     flex: 1,
@@ -4224,7 +4240,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   deleteConfirmRemoveText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -4241,7 +4257,7 @@ const styles = StyleSheet.create({
   },
   payHistoryEditBtn: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   payHistoryRow: {
@@ -4258,7 +4274,7 @@ const styles = StyleSheet.create({
   },
   payHistoryDate: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   payHistoryAmount: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -4270,16 +4286,16 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs + 2,
     borderRadius: RADIUS.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: CALM.border,
-    backgroundColor: CALM.surface,
+    borderColor: C.border,
+    backgroundColor: C.surface,
   },
   payHistoryMethodChipActive: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   payHistoryMethodChipText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   payHistoryMethodChipTextActive: {
     color: '#fff',
@@ -4289,7 +4305,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.sm,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.md,
   },
   payHistorySaveBtnText: {
@@ -4305,16 +4321,16 @@ const styles = StyleSheet.create({
     padding: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
   },
   payHistoryBalanceLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   payHistoryBalanceAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.bronze,
+    color: C.bronze,
     fontVariant: ['tabular-nums'],
   },
   // ── Modal ──
@@ -4324,7 +4340,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     paddingHorizontal: SPACING['2xl'],
@@ -4340,13 +4356,13 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   modalCloseButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: SPACING.sm,
@@ -4373,13 +4389,13 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   modalOrderCode: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textMuted,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    color: C.textMuted,
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.sm,
@@ -4387,7 +4403,7 @@ const styles = StyleSheet.create({
   },
   customerContextText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 2,
     fontVariant: ['tabular-nums'],
   },
@@ -4397,7 +4413,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     paddingTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   modalSectionLabel: {
     ...TYPE.label,
@@ -4412,14 +4428,14 @@ const styles = StyleSheet.create({
   },
   phoneText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     flex: 1,
   },
   phoneButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4433,7 +4449,7 @@ const styles = StyleSheet.create({
   },
   addressText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     flex: 1,
   },
 
@@ -4446,7 +4462,7 @@ const styles = StyleSheet.create({
   },
   modalDateText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
 
@@ -4483,12 +4499,12 @@ const styles = StyleSheet.create({
   },
   lifecycleLabel: {
     fontSize: 10,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
     width: 52,
   },
   lifecycleLabelActive: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
@@ -4497,24 +4513,24 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     paddingTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     gap: SPACING.sm,
   },
   editFieldLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   editInput: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     minHeight: 44,
   },
   editInputMultiline: {
@@ -4536,7 +4552,7 @@ const styles = StyleSheet.create({
   },
   editCancelButton: {
     flex: 1,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -4546,12 +4562,12 @@ const styles = StyleSheet.create({
   editCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   editSaveButton: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -4568,9 +4584,9 @@ const styles = StyleSheet.create({
   // ── Edit: items inline ──
   editItemsList: {
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     overflow: 'hidden',
   },
   editItemRow: {
@@ -4583,11 +4599,11 @@ const styles = StyleSheet.create({
   editItemName: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   editItemPrice: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 2,
   },
   editItemStepper: {
@@ -4598,7 +4614,7 @@ const styles = StyleSheet.create({
   editItemQty: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     minWidth: 24,
     textAlign: 'center',
     fontVariant: ['tabular-nums'] as any,
@@ -4610,11 +4626,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   editItemAddText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
@@ -4628,12 +4644,12 @@ const styles = StyleSheet.create({
   editDateButtonText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // ── Delivery date keyboard modal ──
   dateModalSheet: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.xl,
     paddingHorizontal: SPACING['2xl'],
@@ -4650,26 +4666,26 @@ const styles = StyleSheet.create({
   },
   dateModalHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
     marginBottom: SPACING.xs,
   },
   dateModalInput: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.xl,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     textAlign: 'center',
     letterSpacing: 2,
     fontVariant: ['tabular-nums'] as any,
     minHeight: 56,
   },
   dateModalDone: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -4692,11 +4708,11 @@ const styles = StyleSheet.create({
   },
   modalItemRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   modalItemName: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
     marginRight: SPACING.sm,
     lineHeight: 20,
@@ -4704,7 +4720,7 @@ const styles = StyleSheet.create({
   modalItemPrice: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   modalTotalRow: {
@@ -4712,7 +4728,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     paddingTop: SPACING.md,
     marginTop: SPACING.xs,
   },
@@ -4722,7 +4738,7 @@ const styles = StyleSheet.create({
   modalTotalAmount: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -4734,7 +4750,7 @@ const styles = StyleSheet.create({
   },
   modalNote: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontStyle: 'italic',
     flex: 1,
     lineHeight: 20,
@@ -4753,13 +4769,13 @@ const styles = StyleSheet.create({
   },
   rawWhatsAppToggle: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   rawWhatsAppText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 18,
-    backgroundColor: withAlpha(CALM.textMuted, 0.04),
+    backgroundColor: withAlpha(C.textMuted, 0.04),
     borderRadius: RADIUS.md,
     padding: SPACING.sm,
   },
@@ -4771,7 +4787,7 @@ const styles = StyleSheet.create({
   },
   advanceButton: {
     flexDirection: 'row',
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -4813,7 +4829,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: withAlpha(CALM.textMuted, 0.05),
+    backgroundColor: withAlpha(C.textMuted, 0.05),
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     minHeight: 44,
@@ -4821,7 +4837,7 @@ const styles = StyleSheet.create({
   gridActionText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   gridActionTextDanger: {
     color: BIZ.error,
@@ -4834,14 +4850,14 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingVertical: SPACING.sm,
     minHeight: 44,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
     borderRadius: RADIUS.md,
     marginTop: SPACING.xs,
   },
   duplicateButtonText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   deleteButton: {
     alignItems: 'center',
@@ -4853,15 +4869,15 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.regular,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Grouped customer card ──
   groupCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     overflow: 'hidden',
   },
   groupHeader: {
@@ -4871,10 +4887,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm + 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   groupBadge: {
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.full,
@@ -4882,7 +4898,7 @@ const styles = StyleSheet.create({
   groupBadgeText: {
     fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
     fontVariant: ['tabular-nums'],
   },
   subOrderRow: {
@@ -4894,10 +4910,10 @@ const styles = StyleSheet.create({
   },
   subOrderRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(CALM.border, 0.6),
+    borderBottomColor: withAlpha(C.border, 0.6),
   },
   subOrderSelected: {
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
   },
   subOrderUnseen: {
     borderLeftWidth: 3,
@@ -4908,7 +4924,7 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4924,19 +4940,19 @@ const styles = StyleSheet.create({
   subOrderItems: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginRight: SPACING.sm,
   },
   subOrderAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   subOrderDate: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
   groupFooter: {
@@ -4945,17 +4961,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(CALM.border, 0.6),
+    borderTopColor: withAlpha(C.border, 0.6),
   },
   groupTotalLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginRight: SPACING.xs,
   },
   groupTotal: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   groupUnpaid: {

@@ -3,13 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   Modal,
   TouchableOpacity,
   Keyboard,
   Alert,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -17,12 +17,15 @@ import { format } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 import { useToast } from '../../context/ToastContext';
 
 const SupplierList: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useBusinessStore();
@@ -131,19 +134,19 @@ const SupplierList: React.FC = () => {
         {/* Search bar */}
         {suppliers.length > 0 && (
           <View style={styles.searchContainer}>
-            <Feather name="search" size={18} color={CALM.textSecondary} />
+            <Feather name="search" size={18} color={C.textSecondary} />
             <TextInput
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Search suppliers..."
-              placeholderTextColor={CALM.textSecondary}
+              placeholderTextColor={C.textSecondary}
               returnKeyType="search"
               onSubmitEditing={Keyboard.dismiss}
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Feather name="x" size={18} color={CALM.textSecondary} />
+                <Feather name="x" size={18} color={C.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
@@ -154,7 +157,7 @@ const SupplierList: React.FC = () => {
             <Card key={supplier.id} style={styles.supplierCard}>
               <View style={styles.supplierHeader}>
                 <View style={styles.iconContainer}>
-                  <Feather name="truck" size={24} color={CALM.bronze} />
+                  <Feather name="truck" size={24} color={C.bronze} />
                 </View>
                 <View style={styles.supplierInfo}>
                   <Text style={styles.supplierName}>{supplier.name}</Text>
@@ -164,10 +167,10 @@ const SupplierList: React.FC = () => {
                 </View>
                 <View style={styles.cardActions}>
                   <TouchableOpacity onPress={() => handleEdit(supplier.id)} style={styles.actionButton}>
-                    <Feather name="edit-2" size={18} color={CALM.bronze} />
+                    <Feather name="edit-2" size={18} color={C.bronze} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleDelete(supplier.id, supplier.name)} style={styles.actionButton}>
-                    <Feather name="trash-2" size={18} color={CALM.neutral} />
+                    <Feather name="trash-2" size={18} color={C.neutral} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -177,25 +180,25 @@ const SupplierList: React.FC = () => {
               <View style={styles.detailsSection}>
                 {supplier.phone && (
                   <View style={styles.detailRow}>
-                    <Feather name="phone" size={16} color={CALM.textSecondary} />
+                    <Feather name="phone" size={16} color={C.textSecondary} />
                     <Text style={styles.detailText}>{supplier.phone}</Text>
                   </View>
                 )}
                 {supplier.email && (
                   <View style={styles.detailRow}>
-                    <Feather name="mail" size={16} color={CALM.textSecondary} />
+                    <Feather name="mail" size={16} color={C.textSecondary} />
                     <Text style={styles.detailText}>{supplier.email}</Text>
                   </View>
                 )}
                 {supplier.address && (
                   <View style={styles.detailRow}>
-                    <Feather name="map-pin" size={16} color={CALM.textSecondary} />
+                    <Feather name="map-pin" size={16} color={C.textSecondary} />
                     <Text style={styles.detailText}>{supplier.address}</Text>
                   </View>
                 )}
                 {supplier.paymentTerms && (
                   <View style={styles.detailRow}>
-                    <Feather name="credit-card" size={16} color={CALM.textSecondary} />
+                    <Feather name="credit-card" size={16} color={C.textSecondary} />
                     <Text style={styles.detailText}>{supplier.paymentTerms}</Text>
                   </View>
                 )}
@@ -221,7 +224,7 @@ const SupplierList: React.FC = () => {
           ))
         ) : suppliers.length > 0 ? (
           <View style={styles.noResults}>
-            <Feather name="search" size={40} color={CALM.textSecondary} />
+            <Feather name="search" size={40} color={C.textSecondary} />
             <Text style={styles.noResultsTitle}>No results found</Text>
             <Text style={styles.noResultsText}>
               Try a different search term
@@ -262,7 +265,7 @@ const SupplierList: React.FC = () => {
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editingId ? 'Edit Supplier' : 'Add Supplier'}</Text>
                 <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }}>
-                  <Feather name="x" size={24} color={CALM.textPrimary} />
+                  <Feather name="x" size={24} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -275,7 +278,7 @@ const SupplierList: React.FC = () => {
                   value={name}
                   onChangeText={setName}
                   placeholder="ABC Supplies Co."
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   returnKeyType="next"
                 />
 
@@ -285,7 +288,7 @@ const SupplierList: React.FC = () => {
                   value={contactPerson}
                   onChangeText={setContactPerson}
                   placeholder="John Doe"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   returnKeyType="next"
                 />
 
@@ -295,7 +298,7 @@ const SupplierList: React.FC = () => {
                   value={phone}
                   onChangeText={setPhone}
                   placeholder="+60 12-345 6789"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   keyboardType="phone-pad"
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
@@ -307,7 +310,7 @@ const SupplierList: React.FC = () => {
                   value={email}
                   onChangeText={setEmail}
                   placeholder="contact@supplier.com"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   returnKeyType="next"
@@ -319,7 +322,7 @@ const SupplierList: React.FC = () => {
                   value={address}
                   onChangeText={setAddress}
                   placeholder="123 Main Street, City"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   multiline
                   numberOfLines={2}
                 />
@@ -330,7 +333,7 @@ const SupplierList: React.FC = () => {
                   value={paymentTerms}
                   onChangeText={setPaymentTerms}
                   placeholder="Net 30 days"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -358,10 +361,10 @@ const SupplierList: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -375,19 +378,19 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
     gap: SPACING.sm,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   searchInput: {
     flex: 1,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // Supplier cards
@@ -403,7 +406,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: RADIUS['2xl'],
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
@@ -422,16 +425,16 @@ const styles = StyleSheet.create({
   supplierName: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 2,
   },
   supplierContact: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   divider: {
     height: 1,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginVertical: SPACING.md,
   },
   detailsSection: {
@@ -444,7 +447,7 @@ const styles = StyleSheet.create({
   },
   detailText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   statsSection: {
@@ -456,13 +459,13 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xs,
   },
   statValue: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // No results
@@ -475,12 +478,12 @@ const styles = StyleSheet.create({
   noResultsTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginTop: SPACING.sm,
   },
   noResultsText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // FAB
@@ -498,7 +501,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
@@ -513,27 +516,27 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   label: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
   required: {
-    color: CALM.neutral,
+    color: C.neutral,
   },
   input: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   textArea: {
     minHeight: 80,

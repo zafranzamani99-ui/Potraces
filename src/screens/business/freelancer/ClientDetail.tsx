@@ -3,17 +3,18 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { useFreelancerStore } from '../../../store/freelancerStore';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { RootStackParamList } from '../../../types';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap } from '../../../services/haptics';
@@ -23,6 +24,8 @@ function toDate(d: Date | string): Date {
 }
 
 const ClientDetail: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<RouteProp<RootStackParamList, 'FreelancerClientDetail'>>();
   const navigation = useNavigation();
   const { showToast } = useToast();
@@ -138,7 +141,7 @@ const ClientDetail: React.FC = () => {
             onChangeText={setContactValue}
             autoFocus
             placeholder="contact"
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             onBlur={saveContact}
             onSubmitEditing={saveContact}
             returnKeyType="done"
@@ -159,7 +162,7 @@ const ClientDetail: React.FC = () => {
             onChangeText={setNotesValue}
             autoFocus
             placeholder="notes"
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             onBlur={saveNotes}
             onSubmitEditing={saveNotes}
             returnKeyType="done"
@@ -229,10 +232,10 @@ const ClientDetail: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -246,16 +249,16 @@ const styles = StyleSheet.create({
   clientName: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   nameInput: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.bronze,
+    borderBottomColor: C.bronze,
     paddingVertical: SPACING.xs,
   },
 
@@ -270,9 +273,9 @@ const styles = StyleSheet.create({
   },
   secondaryInput: {
     ...TYPE.insight,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.bronze,
+    borderBottomColor: C.bronze,
     paddingVertical: SPACING.xs,
     marginBottom: SPACING.xs,
   },
@@ -285,7 +288,7 @@ const styles = StyleSheet.create({
   // Hero total
   totalEarned: {
     ...TYPE.balance,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginTop: SPACING.xl,
   },
   totalLabel: {
@@ -296,7 +299,7 @@ const styles = StyleSheet.create({
   // Stats
   statsLine: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xs,
   },
   statusText: {
@@ -318,12 +321,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   paymentAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   paymentDate: {
@@ -343,12 +346,12 @@ const styles = StyleSheet.create({
   },
   deleteText: {
     ...TYPE.muted,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   emptyText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     marginTop: SPACING['4xl'],
   },

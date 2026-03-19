@@ -13,11 +13,14 @@ import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { IncomeStream } from '../../types';
 
 const PRESET_COLORS = ['#4F5104', '#B2780A', '#DEAB22', '#6BA3BE', '#C4956A', '#B8AFBC'];
 
 const IncomeStreamsScreen: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { incomeStreams, businessTransactions, addIncomeStream } = useBusinessStore();
   const currency = useSettingsStore((s) => s.currency);
 
@@ -109,7 +112,7 @@ const IncomeStreamsScreen: React.FC = () => {
               value={newLabel}
               onChangeText={setNewLabel}
               placeholder="e.g. freelance design, tutoring"
-              placeholderTextColor={CALM.textSecondary}
+              placeholderTextColor={C.textSecondary}
               autoFocus
             />
             <View style={styles.colorPicker}>
@@ -140,14 +143,14 @@ const IncomeStreamsScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   summary: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     padding: SPACING['2xl'],
     paddingBottom: SPACING.md,
   },
@@ -157,10 +160,10 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
   streamCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.lg,
   },
   streamRow: {
@@ -177,12 +180,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   streamAmount: {
     ...TYPE.insight,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   emptyState: {
     alignItems: 'center',
@@ -190,14 +193,14 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     margin: SPACING.lg,
@@ -215,7 +218,7 @@ const styles = StyleSheet.create({
     padding: SPACING['2xl'],
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     width: '100%',
@@ -224,16 +227,16 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   modalInput: {
     ...TYPE.insight,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
+    color: C.textPrimary,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   colorPicker: {
     flexDirection: 'row',
@@ -246,7 +249,7 @@ const styles = StyleSheet.create({
   },
   colorDotSelected: {
     borderWidth: 3,
-    borderColor: CALM.textPrimary,
+    borderColor: C.textPrimary,
   },
   modalActions: {
     flexDirection: 'row',
@@ -259,12 +262,12 @@ const styles = StyleSheet.create({
   },
   modalCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   modalConfirm: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.md,
   },
   modalConfirmText: {

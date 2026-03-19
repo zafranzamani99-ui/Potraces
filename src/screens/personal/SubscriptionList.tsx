@@ -1,9 +1,8 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   Alert,
   Modal,
@@ -15,23 +14,35 @@ import {
   Platform,
   Animated,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, differenceInDays, addWeeks, addMonths, addQuarters, addYears, isValid } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, BILLING_CYCLES, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import { useToast } from '../../context/ToastContext';
+import { useRoute, RouteProp } from '@react-navigation/native';
 import { lightTap, mediumTap } from '../../services/haptics';
 import { useLearningStore } from '../../store/learningStore';
+import { useT } from '../../i18n';
 
 type FilterStatus = 'all' | 'active' | 'paused' | 'installments';
 
+type SubscriptionListParams = {
+  SubscriptionList: { highlightId?: string } | undefined;
+};
+
 const SubscriptionList: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
+  const route = useRoute<RouteProp<SubscriptionListParams, 'SubscriptionList'>>();
   const { showToast } = useToast();
   const {
     subscriptions,
@@ -142,7 +153,8 @@ const SubscriptionList: React.FC = () => {
     if (start >= today) return start;
 
     let next = start;
-    while (next < now) {
+    let safety = 0;
+    while (next < now && safety++ < 500) {
       switch (cycle) {
         case 'weekly': next = addWeeks(next, 1); break;
         case 'quarterly': next = addQuarters(next, 1); break;
@@ -185,12 +197,22 @@ const SubscriptionList: React.FC = () => {
     setModalVisible(true);
   }, [subscriptions]);
 
+  // Auto-open highlighted subscription from navigation params
+  const highlightHandled = useRef(false);
+  useEffect(() => {
+    const hid = route.params?.highlightId;
+    if (hid && !highlightHandled.current) {
+      highlightHandled.current = true;
+      setTimeout(() => handleEdit(hid), 300);
+    }
+  }, [route.params?.highlightId, handleEdit]);
+
   const handleSave = useCallback(() => {
     if (!name.trim()) {
       showToast('please enter a name', 'error');
       return;
     }
-    if (!amount || parseFloat(amount) <= 0) {
+    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
       showToast('please enter a valid amount', 'error');
       return;
     }
@@ -304,7 +326,7 @@ const SubscriptionList: React.FC = () => {
           </TouchableOpacity>
         </View>
         <Text style={styles.heroSubtext}>
-          {activeSubs.length} active{dueSoonSubs.length > 0 ? ` \u00B7 ${dueSoonSubs.length} due soon` : ''}
+          {activeSubs.length} {t.subscriptions.running}{dueSoonSubs.length > 0 ? ` \u00B7 ${dueSoonSubs.length} ${t.account.dueSoon.toLowerCase()}` : ''}
         </Text>
       </View>
     );
@@ -330,11 +352,11 @@ const SubscriptionList: React.FC = () => {
                 ]}
                 onPress={() => handleEdit(sub.id)}
               >
-                <View style={[styles.dueSoonIcon, { backgroundColor: withAlpha(cat?.color || CALM.accent, 0.08) }]}>
+                <View style={[styles.dueSoonIcon, { backgroundColor: withAlpha(cat?.color || C.accent, 0.08) }]}>
                   <Feather
                     name={(cat?.icon as keyof typeof Feather.glyphMap) || 'repeat'}
                     size={16}
-                    color={cat?.color || CALM.accent}
+                    color={cat?.color || C.accent}
                   />
                 </View>
                 <Text style={styles.dueSoonName} numberOfLines={1}>{sub.name}</Text>
@@ -353,19 +375,19 @@ const SubscriptionList: React.FC = () => {
 
     return (
       <View style={styles.searchContainer}>
-        <Feather name="search" size={16} color={CALM.textMuted} style={{ marginRight: SPACING.sm }} />
+        <Feather name="search" size={16} color={C.textMuted} style={{ marginRight: SPACING.sm }} />
         <TextInput
           style={styles.searchInput}
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholder="search commitments..."
-          placeholderTextColor={CALM.textMuted}
+          placeholderTextColor={C.textMuted}
           returnKeyType="search"
           onSubmitEditing={Keyboard.dismiss}
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Feather name="x" size={16} color={CALM.textMuted} />
+            <Feather name="x" size={16} color={C.textMuted} />
           </TouchableOpacity>
         )}
       </View>
@@ -376,10 +398,10 @@ const SubscriptionList: React.FC = () => {
     if (subscriptions.length === 0) return null;
 
     const filters: { key: FilterStatus; label: string }[] = [
-      { key: 'all', label: 'all' },
-      { key: 'active', label: 'active' },
-      { key: 'paused', label: 'paused' },
-      { key: 'installments', label: 'installments' },
+      { key: 'all', label: t.common.all.toLowerCase() },
+      { key: 'active', label: t.subscriptions.active.toLowerCase() },
+      { key: 'paused', label: t.subscriptions.paused.toLowerCase() },
+      { key: 'installments', label: t.subscriptions.installments.toLowerCase() },
     ];
 
     return (
@@ -412,7 +434,7 @@ const SubscriptionList: React.FC = () => {
     const total = sub.totalInstallments || 1;
     const progress = isInstallmentSub && total > 0 ? completed / total : 0;
     const renewText = days < 0 ? 'pending renewal' : `renews ${days}d`;
-    const renewColor = days >= 0 && days <= 7 ? CALM.bronze : CALM.textMuted;
+    const renewColor = days >= 0 && days <= 7 ? C.bronze : C.textMuted;
 
     return (
       <Pressable
@@ -422,11 +444,11 @@ const SubscriptionList: React.FC = () => {
       >
         <View style={styles.subCardRow}>
           {/* Icon */}
-          <View style={[styles.subIconWrap, { backgroundColor: withAlpha(cat?.color || CALM.accent, 0.08) }]}>
+          <View style={[styles.subIconWrap, { backgroundColor: withAlpha(cat?.color || C.accent, 0.08) }]}>
             <Feather
               name={(cat?.icon as keyof typeof Feather.glyphMap) || 'repeat'}
               size={18}
-              color={cat?.color || CALM.accent}
+              color={cat?.color || C.accent}
             />
           </View>
 
@@ -436,7 +458,7 @@ const SubscriptionList: React.FC = () => {
               <Text style={styles.subName} numberOfLines={1}>{sub.name}</Text>
               {isPausedSub && (
                 <View style={styles.pausedBadge}>
-                  <Text style={styles.pausedBadgeText}>paused</Text>
+                  <Text style={styles.pausedBadgeText}>{t.subscriptions.paused.toLowerCase()}</Text>
                 </View>
               )}
             </View>
@@ -473,25 +495,25 @@ const SubscriptionList: React.FC = () => {
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
       <View style={styles.emptyIconWrap}>
-        <Feather name="calendar" size={48} color={CALM.textMuted} />
+        <Feather name="calendar" size={48} color={C.textMuted} />
       </View>
-      <Text style={styles.emptyTitle}>no commitments yet</Text>
+      <Text style={styles.emptyTitle}>{t.subscriptions.noBills}</Text>
       <Text style={styles.emptyText}>
-        track recurring expenses like subscriptions, bills, and installments
+        {t.subscriptions.trackRecurring}
       </Text>
       <TouchableOpacity
         style={styles.emptyButton}
         onPress={() => { lightTap(); setModalVisible(true); }}
         activeOpacity={0.7}
       >
-        <Text style={styles.emptyButtonText}>add commitment</Text>
+        <Text style={styles.emptyButtonText}>{t.subscriptions.addBill}</Text>
       </TouchableOpacity>
     </View>
   );
 
   const renderNoResults = () => (
     <View style={styles.noResults}>
-      <Feather name="search" size={36} color={CALM.textMuted} />
+      <Feather name="search" size={36} color={C.textMuted} />
       <Text style={styles.noResultsTitle}>no results found</Text>
       <Text style={styles.noResultsText}>try a different search or filter</Text>
     </View>
@@ -506,12 +528,12 @@ const SubscriptionList: React.FC = () => {
       <>
         {/* Header */}
         <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>{editingId ? 'edit commitment' : 'add commitment'}</Text>
+          <Text style={styles.modalTitle}>{editingId ? t.subscriptions.editSubscription.toLowerCase() : t.subscriptions.addSubscription.toLowerCase()}</Text>
           <TouchableOpacity
             onPress={() => { setModalVisible(false); resetForm(); }}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Feather name="x" size={22} color={CALM.textPrimary} />
+            <Feather name="x" size={22} color={C.textPrimary} />
           </TouchableOpacity>
         </View>
 
@@ -528,7 +550,7 @@ const SubscriptionList: React.FC = () => {
             value={name}
             onChangeText={setName}
             placeholder="Netflix, Spotify, etc."
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             returnKeyType="next"
           />
 
@@ -542,7 +564,7 @@ const SubscriptionList: React.FC = () => {
               onChangeText={setAmount}
               placeholder="0.00"
               keyboardType="decimal-pad"
-              placeholderTextColor={CALM.textMuted}
+              placeholderTextColor={C.textMuted}
               returnKeyType="done"
               onSubmitEditing={Keyboard.dismiss}
             />
@@ -558,14 +580,14 @@ const SubscriptionList: React.FC = () => {
           />
 
           {/* Billing Cycle */}
-          <Text style={styles.fieldLabel}>billing cycle</Text>
+          <Text style={styles.fieldLabel}>repeats</Text>
           <TouchableOpacity
             style={styles.fieldTouchable}
             onPress={() => { lightTap(); setModalView('cyclePicker'); }}
             activeOpacity={0.6}
           >
             <Text style={styles.fieldTouchableText}>{getCycleLabel(billingCycle)}</Text>
-            <Feather name="chevron-down" size={16} color={CALM.textMuted} />
+            <Feather name="chevron-down" size={16} color={C.textMuted} />
           </TouchableOpacity>
 
           {/* Start Date */}
@@ -578,7 +600,7 @@ const SubscriptionList: React.FC = () => {
             <Text style={styles.fieldTouchableText}>
               {isValid(startDate) ? format(startDate, 'MMM dd, yyyy') : 'select date'}
             </Text>
-            <Feather name="calendar" size={16} color={CALM.textMuted} />
+            <Feather name="calendar" size={16} color={C.textMuted} />
           </TouchableOpacity>
 
           {/* Reminder */}
@@ -590,7 +612,7 @@ const SubscriptionList: React.FC = () => {
               onChangeText={setReminderDays}
               placeholder="3"
               keyboardType="number-pad"
-              placeholderTextColor={CALM.textMuted}
+              placeholderTextColor={C.textMuted}
               returnKeyType="done"
               onSubmitEditing={Keyboard.dismiss}
             />
@@ -610,8 +632,8 @@ const SubscriptionList: React.FC = () => {
             <Switch
               value={isInstallment}
               onValueChange={val => { lightTap(); setIsInstallment(val); }}
-              trackColor={{ false: CALM.border, true: withAlpha(CALM.accent, 0.4) }}
-              thumbColor={isInstallment ? CALM.accent : '#FFFFFF'}
+              trackColor={{ false: C.border, true: withAlpha(C.accent, 0.4) }}
+              thumbColor={isInstallment ? C.accent : '#FFFFFF'}
               pointerEvents="none"
             />
           </TouchableOpacity>
@@ -625,7 +647,7 @@ const SubscriptionList: React.FC = () => {
                 onChangeText={setTotalInstallments}
                 placeholder="e.g. 24"
                 keyboardType="number-pad"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
@@ -634,7 +656,7 @@ const SubscriptionList: React.FC = () => {
 
           {/* Paused toggle */}
           <TouchableOpacity
-            style={[styles.toggleCard, isPaused && { backgroundColor: withAlpha(CALM.bronze, 0.06) }]}
+            style={[styles.toggleCard, isPaused && { backgroundColor: withAlpha(C.bronze, 0.06) }]}
             onPress={() => { lightTap(); setIsPaused(!isPaused); }}
             activeOpacity={0.7}
           >
@@ -645,8 +667,8 @@ const SubscriptionList: React.FC = () => {
             <Switch
               value={isPaused}
               onValueChange={val => { lightTap(); setIsPaused(val); }}
-              trackColor={{ false: CALM.border, true: withAlpha(CALM.bronze, 0.4) }}
-              thumbColor={isPaused ? CALM.bronze : '#FFFFFF'}
+              trackColor={{ false: C.border, true: withAlpha(C.bronze, 0.4) }}
+              thumbColor={isPaused ? C.bronze : '#FFFFFF'}
               pointerEvents="none"
             />
           </TouchableOpacity>
@@ -660,7 +682,7 @@ const SubscriptionList: React.FC = () => {
               }}
               activeOpacity={0.7}
             >
-              <Feather name="check-circle" size={18} color={CALM.accent} />
+              <Feather name="check-circle" size={18} color={C.accent} />
               <Text style={styles.markPaymentText}>
                 mark payment ({editingSub!.completedInstallments || 0}/{editingSub!.totalInstallments})
               </Text>
@@ -678,7 +700,7 @@ const SubscriptionList: React.FC = () => {
               }}
               activeOpacity={0.7}
             >
-              <Feather name="trash-2" size={16} color={CALM.neutral} />
+              <Feather name="trash-2" size={16} color={C.neutral} />
               <Text style={styles.deleteBtnText}>delete commitment</Text>
             </TouchableOpacity>
           )}
@@ -689,7 +711,7 @@ const SubscriptionList: React.FC = () => {
             onPress={handleSave}
             activeOpacity={0.7}
           >
-            <Text style={styles.confirmBtnText}>{editingId ? 'save changes' : 'add commitment'}</Text>
+            <Text style={styles.confirmBtnText}>{editingId ? t.common.save.toLowerCase() : t.subscriptions.addSubscription.toLowerCase()}</Text>
           </TouchableOpacity>
         </ScrollView>
       </>
@@ -703,9 +725,9 @@ const SubscriptionList: React.FC = () => {
             style={styles.backBtn}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Feather name="arrow-left" size={20} color={CALM.textPrimary} />
+            <Feather name="arrow-left" size={20} color={C.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.modalTitle}>billing cycle</Text>
+          <Text style={styles.modalTitle}>repeats</Text>
           <View style={{ width: 20 }} />
         </View>
         {BILLING_CYCLES.map(cycle => {
@@ -724,7 +746,7 @@ const SubscriptionList: React.FC = () => {
               <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextActive]}>
                 {cycle.label.toLowerCase()}
               </Text>
-              {isSelected && <Feather name="check" size={18} color={CALM.accent} />}
+              {isSelected && <Feather name="check" size={18} color={C.accent} />}
             </TouchableOpacity>
           );
         })}
@@ -739,7 +761,7 @@ const SubscriptionList: React.FC = () => {
             style={styles.backBtn}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Feather name="arrow-left" size={20} color={CALM.textPrimary} />
+            <Feather name="arrow-left" size={20} color={C.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.modalTitle}>start date</Text>
           <View style={{ width: 20 }} />
@@ -845,10 +867,10 @@ const SubscriptionList: React.FC = () => {
 };
 
 // ─── Styles ────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -859,7 +881,7 @@ const styles = StyleSheet.create({
 
   // ── Hero ─────────────────────────────────────────────
   heroCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     marginBottom: SPACING.lg,
@@ -867,7 +889,7 @@ const styles = StyleSheet.create({
   heroLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: SPACING.sm,
@@ -881,18 +903,18 @@ const styles = StyleSheet.create({
   heroAmount: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   heroPeriod: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.regular,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   periodToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs + 2,
@@ -900,20 +922,20 @@ const styles = StyleSheet.create({
   periodToggleText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   periodToggleDivider: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginHorizontal: 4,
   },
   periodToggleActive: {
-    color: CALM.deepOlive,
+    color: C.deepOlive,
     fontWeight: TYPOGRAPHY.weight.bold,
   },
   heroSubtext: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // ── Due Soon ─────────────────────────────────────────
@@ -923,14 +945,14 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: SPACING.sm,
     marginLeft: SPACING.xs,
   },
   dueSoonCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
   },
@@ -942,7 +964,7 @@ const styles = StyleSheet.create({
   },
   dueSoonRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   dueSoonIcon: {
     width: 30,
@@ -956,19 +978,19 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   dueSoonAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginRight: SPACING.sm,
     fontVariant: ['tabular-nums'],
   },
   dueSoonDays: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
     minWidth: 24,
     textAlign: 'right',
   },
@@ -977,7 +999,7 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     marginBottom: SPACING.md,
@@ -986,7 +1008,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: SPACING.sm + 2,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // ── Filter Chips ─────────────────────────────────────
@@ -999,15 +1021,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs + 2,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
   },
   filterChipActive: {
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
   },
   filterChipText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   filterChipTextActive: {
     color: '#FFFFFF',
@@ -1015,7 +1037,7 @@ const styles = StyleSheet.create({
 
   // ── Subscription Cards ───────────────────────────────
   groupCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
     ...SHADOWS.xs,
@@ -1026,7 +1048,7 @@ const styles = StyleSheet.create({
   },
   cardDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginLeft: 36 + SPACING.md + SPACING.md,
   },
   subCardRow: {
@@ -1053,11 +1075,11 @@ const styles = StyleSheet.create({
   subName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flexShrink: 1,
   },
   pausedBadge: {
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.xs + 2,
     paddingVertical: 1,
@@ -1065,7 +1087,7 @@ const styles = StyleSheet.create({
   pausedBadgeText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   subMeta: {
     flexDirection: 'row',
@@ -1074,12 +1096,12 @@ const styles = StyleSheet.create({
   },
   subCategory: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     flexShrink: 1,
   },
   subMetaDot: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   subRenew: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1090,25 +1112,25 @@ const styles = StyleSheet.create({
   installmentCount: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
     marginBottom: 2,
   },
   subAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   progressBarContainer: {
     height: 3,
-    backgroundColor: withAlpha(CALM.textMuted, 0.1),
+    backgroundColor: withAlpha(C.textMuted, 0.1),
     borderRadius: RADIUS.full,
     marginTop: SPACING.xs,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.full,
   },
 
@@ -1123,7 +1145,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.xl,
@@ -1131,18 +1153,18 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.sm,
   },
   emptyText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
     lineHeight: TYPOGRAPHY.size.sm * 1.6,
     marginBottom: SPACING.xl,
   },
   emptyButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.md,
@@ -1163,12 +1185,12 @@ const styles = StyleSheet.create({
   noResultsTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginTop: SPACING.sm,
   },
   noResultsText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── FAB ──────────────────────────────────────────────
@@ -1180,7 +1202,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOWS.md,
@@ -1201,7 +1223,7 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '90%',
     maxHeight: '85%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     ...SHADOWS.lg,
@@ -1215,23 +1237,23 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // ── Modal Fields ─────────────────────────────────────
   fieldLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xs,
     marginTop: SPACING.lg,
   },
   fieldInput: {
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.sm,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   amountRow: {
     flexDirection: 'row',
@@ -1241,19 +1263,19 @@ const styles = StyleSheet.create({
   amountPrefix: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   fieldTouchable: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.sm + 2,
   },
   fieldTouchableText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   reminderRow: {
     flexDirection: 'row',
@@ -1262,7 +1284,7 @@ const styles = StyleSheet.create({
   },
   reminderSuffix: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Toggles ──────────────────────────────────────────
@@ -1272,20 +1294,20 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xl,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
-    backgroundColor: withAlpha(CALM.textMuted, 0.04),
+    backgroundColor: withAlpha(C.textMuted, 0.04),
     borderRadius: RADIUS.lg,
   },
   toggleCardActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.06),
+    backgroundColor: withAlpha(C.accent, 0.06),
   },
   toggleLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   toggleHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 2,
   },
 
@@ -1297,13 +1319,13 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xl,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
     borderRadius: RADIUS.md,
   },
   markPaymentText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: C.accent,
   },
 
   // ── Delete Button ────────────────────────────────────
@@ -1317,12 +1339,12 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.neutral,
+    color: C.neutral,
   },
 
   // ── Confirm Button ───────────────────────────────────
   confirmBtn: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -1339,7 +1361,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1355,16 +1377,16 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   pickerOptionActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
   },
   pickerOptionText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   pickerOptionTextActive: {
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
 
 });

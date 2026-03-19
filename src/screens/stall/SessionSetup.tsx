@@ -3,16 +3,17 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   Switch,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 
@@ -25,6 +26,8 @@ interface ProductSetupItem {
 }
 
 const SessionSetup: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { products, startSession } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
@@ -105,7 +108,7 @@ const SessionSetup: React.FC = () => {
             accessibilityLabel="Go back"
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+            <Feather name="arrow-left" size={24} color={C.textPrimary} />
           </TouchableOpacity>
         </View>
 
@@ -119,7 +122,7 @@ const SessionSetup: React.FC = () => {
             value={sessionName}
             onChangeText={setSessionName}
             placeholder="e.g. pasar malam seri kembangan"
-            placeholderTextColor={CALM.neutral}
+            placeholderTextColor={C.neutral}
             returnKeyType="done"
             accessibilityLabel="Session name, optional"
             accessibilityHint="Enter a name for this selling session"
@@ -176,7 +179,7 @@ const SessionSetup: React.FC = () => {
                     value={item.startQty}
                     onChangeText={(val) => setQuantity(item.productId, val)}
                     placeholder="qty"
-                    placeholderTextColor={CALM.neutral}
+                    placeholderTextColor={C.neutral}
                     keyboardType="number-pad"
                     returnKeyType="done"
                     accessibilityLabel={`Starting quantity for ${item.name}`}
@@ -190,7 +193,7 @@ const SessionSetup: React.FC = () => {
 
         {activeProducts.length === 0 && (
           <View style={styles.noProducts}>
-            <Feather name="package" size={24} color={CALM.neutral} />
+            <Feather name="package" size={24} color={C.neutral} />
             <Text style={styles.noProductsText}>
               no products set up yet.{'\n'}you can still start selling.
             </Text>
@@ -223,10 +226,10 @@ const SessionSetup: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -249,7 +252,7 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING['3xl'],
   },
 
@@ -262,14 +265,14 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   textInput: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     minHeight: 48,
   },
 
@@ -286,8 +289,8 @@ const styles = StyleSheet.create({
   productCountBadge: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
-    backgroundColor: withAlpha(CALM.bronze, 0.10),
+    color: C.bronze,
+    backgroundColor: withAlpha(C.bronze, 0.10),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.full,
@@ -296,9 +299,9 @@ const styles = StyleSheet.create({
   productRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
@@ -306,8 +309,8 @@ const styles = StyleSheet.create({
     minHeight: 56,
   },
   productRowIncluded: {
-    borderColor: withAlpha(CALM.bronze, 0.2),
-    backgroundColor: withAlpha(CALM.bronze, 0.03),
+    borderColor: withAlpha(C.bronze, 0.2),
+    backgroundColor: withAlpha(C.bronze, 0.03),
   },
   productToggleArea: {
     flexDirection: 'row',
@@ -321,13 +324,13 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: RADIUS.xs,
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkboxActive: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   productInfo: {
     flex: 1,
@@ -335,10 +338,10 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   productNameDisabled: {
-    color: CALM.neutral,
+    color: C.neutral,
   },
   productPrice: {
     ...TYPE.muted,
@@ -346,14 +349,14 @@ const styles = StyleSheet.create({
   },
   qtyInput: {
     width: 60,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.sm,
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     textAlign: 'center',
     minHeight: 36,
   },
@@ -364,13 +367,13 @@ const styles = StyleSheet.create({
   },
   noProductsText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
   },
 
   // ─── Actions ─────────────────────────────────────────────────
   startButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',
@@ -392,7 +395,7 @@ const styles = StyleSheet.create({
   skipLinkText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 });
 

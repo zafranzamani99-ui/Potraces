@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,11 @@ import {
   Keyboard,
   Platform,
   KeyboardAvoidingView,
-  ScrollView,
   ActivityIndicator,
   Modal,
   Pressable,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { format } from 'date-fns';
@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNotesStore } from '../../store/notesStore';
 import { useWalletStore } from '../../store/walletStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { lightTap, mediumTap, warningNotification } from '../../services/haptics';
 import { useIntentEngine } from '../../hooks/useIntentEngine';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
@@ -28,6 +29,7 @@ import { useCategories } from '../../hooks/useCategories';
 import { usePremiumStore } from '../../store/premiumStore';
 import { AIExtraction, ExtractionIntent } from '../../types';
 import { useLearningStore } from '../../store/learningStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import ConfirmationCard from './ConfirmationCard';
@@ -46,6 +48,9 @@ const EDIT_TYPES: { key: ExtractionIntent; label: string; icon: keyof typeof Fea
 const AUTO_SAVE_DELAY = 600; // ms
 
 const NoteEditor: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const currency = useSettingsStore((s) => s.currency);
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -371,7 +376,7 @@ const NoteEditor: React.FC = () => {
           onPress={handleBack}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Feather name="chevron-left" size={22} color={CALM.textPrimary} />
+          <Feather name="chevron-left" size={22} color={C.textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerDate}>{dateLabel}</Text>
@@ -385,12 +390,12 @@ const NoteEditor: React.FC = () => {
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           {isTranscribing ? (
-            <ActivityIndicator size="small" color={CALM.bronze} />
+            <ActivityIndicator size="small" color={C.bronze} />
           ) : (
             <Feather
               name={isRecording ? 'mic-off' : 'mic'}
               size={18}
-              color={isRecording ? '#fff' : CALM.textMuted}
+              color={isRecording ? '#fff' : C.textMuted}
             />
           )}
         </TouchableOpacity>
@@ -404,7 +409,7 @@ const NoteEditor: React.FC = () => {
               .map((e) => {
                 const d = e.extractedData;
                 const status = e.status === 'confirmed' ? 'saved' : 'pending';
-                return `[${status}] ${e.type}: ${d.description || 'item'} RM${d.amount}${d.person ? ` (${d.person})` : ''}`;
+                return `[${status}] ${e.type}: ${d.description || 'item'} ${currency}${d.amount}${d.person ? ` (${d.person})` : ''}`;
               })
               .join('\n');
             navigation.navigate('MoneyChat', {
@@ -414,14 +419,14 @@ const NoteEditor: React.FC = () => {
           }}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Feather name="message-circle" size={18} color={CALM.textMuted} />
+          <Feather name="message-circle" size={18} color={C.textMuted} />
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.deleteBtn}
           onPress={handleDelete}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Feather name="trash-2" size={18} color={CALM.textMuted} />
+          <Feather name="trash-2" size={18} color={C.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -444,13 +449,13 @@ const NoteEditor: React.FC = () => {
         )}
         {isTranscribing && (
           <View style={styles.recordingBar}>
-            <ActivityIndicator size="small" color={CALM.bronze} />
+            <ActivityIndicator size="small" color={C.bronze} />
             <Text style={styles.recordingText}>transcribing...</Text>
           </View>
         )}
         {voiceError && (
           <View style={styles.recordingBar}>
-            <Text style={[styles.recordingText, { color: CALM.bronze }]}>{voiceError}</Text>
+            <Text style={[styles.recordingText, { color: C.bronze }]}>{voiceError}</Text>
           </View>
         )}
 
@@ -459,7 +464,7 @@ const NoteEditor: React.FC = () => {
           style={styles.unifiedInput}
           onChangeText={handleTextChange}
           placeholder="start writing..."
-          placeholderTextColor={CALM.textMuted}
+          placeholderTextColor={C.textMuted}
           multiline
           textAlignVertical="top"
           scrollEnabled={false}
@@ -478,7 +483,7 @@ const NoteEditor: React.FC = () => {
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Feather name="zap" size={13} color={CALM.bronze} />
+            <Feather name="zap" size={13} color={C.bronze} />
             <Text style={styles.extractBtnText}>extract</Text>
           </TouchableOpacity>
         )}
@@ -489,9 +494,9 @@ const NoteEditor: React.FC = () => {
             {/* Step 1: Scanning */}
             <View style={styles.pipelineStep}>
               {classifyStep === 'scanning' ? (
-                <ActivityIndicator size={10} color={CALM.bronze} />
+                <ActivityIndicator size={10} color={C.bronze} />
               ) : (
-                <Feather name="check" size={10} color={CALM.positive} />
+                <Feather name="check" size={10} color={C.positive} />
               )}
               <Text style={[styles.pipelineLabel, classifyStep !== 'scanning' && styles.pipelineDone]}>
                 scanning
@@ -503,22 +508,22 @@ const NoteEditor: React.FC = () => {
             <View style={styles.pipelineStep}>
               {classifyStep === 'ai' ? (
                 <>
-                  <ActivityIndicator size={10} color={CALM.bronze} />
+                  <ActivityIndicator size={10} color={C.bronze} />
                   <Text style={styles.pipelineLabel}>AI</Text>
                 </>
               ) : classifyStep === 'local' ? (
                 <>
-                  <ActivityIndicator size={10} color={CALM.bronze} />
+                  <ActivityIndicator size={10} color={C.bronze} />
                   <Text style={styles.pipelineLabel}>local parser</Text>
                 </>
               ) : (classifyStep === 'scanning') ? (
                 <>
-                  <Feather name="cpu" size={10} color={CALM.textMuted} />
-                  <Text style={[styles.pipelineLabel, { color: CALM.textMuted }]}>waiting</Text>
+                  <Feather name="cpu" size={10} color={C.textMuted} />
+                  <Text style={[styles.pipelineLabel, { color: C.textMuted }]}>waiting</Text>
                 </>
               ) : (
                 <>
-                  <Feather name="check" size={10} color={CALM.positive} />
+                  <Feather name="check" size={10} color={C.positive} />
                   <Text style={styles.pipelineDone}>done</Text>
                 </>
               )}
@@ -530,11 +535,11 @@ const NoteEditor: React.FC = () => {
         {statusMessage && !isClassifying && (
           <View style={styles.statusRow}>
             {extractionSource === 'ai' ? (
-              <Feather name="zap" size={12} color={CALM.positive} />
+              <Feather name="zap" size={12} color={C.positive} />
             ) : extractionSource === 'local' ? (
-              <Feather name="cpu" size={12} color={CALM.bronze} />
+              <Feather name="cpu" size={12} color={C.bronze} />
             ) : (
-              <Feather name="info" size={12} color={CALM.textMuted} />
+              <Feather name="info" size={12} color={C.textMuted} />
             )}
             <Text style={styles.statusText}>
               {statusMessage}
@@ -552,7 +557,7 @@ const NoteEditor: React.FC = () => {
             onPress={() => setShowExtractModal(true)}
             activeOpacity={0.7}
           >
-            <Feather name="layers" size={13} color={CALM.bronze} />
+            <Feather name="layers" size={13} color={C.bronze} />
             <Text style={styles.reopenText}>
               {pendingExtractions.length} item{pendingExtractions.length > 1 ? 's' : ''} found
             </Text>
@@ -589,12 +594,12 @@ const NoteEditor: React.FC = () => {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={styles.extractClose}
             >
-              <Feather name="x" size={18} color={CALM.textMuted} />
+              <Feather name="x" size={18} color={C.textMuted} />
             </TouchableOpacity>
 
             {/* Header */}
             <View style={styles.extractHeader}>
-              <Feather name={extractionSource === 'ai' ? 'zap' : 'cpu'} size={25} color={CALM.bronze} />
+              <Feather name={extractionSource === 'ai' ? 'zap' : 'cpu'} size={25} color={C.bronze} />
               <View>
                 <Text style={styles.extractTitle}>
                   {pendingExtractions.length} item{pendingExtractions.length > 1 ? 's' : ''} found
@@ -607,7 +612,7 @@ const NoteEditor: React.FC = () => {
 
             {/* Clear & re-extract */}
             <TouchableOpacity onPress={handleClearExtractions} style={styles.retryBanner} activeOpacity={0.7}>
-              <Feather name="refresh-cw" size={12} color={CALM.bronze} />
+              <Feather name="refresh-cw" size={12} color={C.bronze} />
               <Text style={styles.retryText}>not right? clear and re-extract</Text>
             </TouchableOpacity>
 
@@ -642,13 +647,13 @@ const NoteEditor: React.FC = () => {
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 pointerEvents="box-none"
               >
-                <View style={styles.editInnerCard}>
+                <View style={styles.editInnerCard} onStartShouldSetResponder={() => true}>
                 <TouchableOpacity
                   onPress={handleEditCancel}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={styles.editOverlayBack}
                 >
-                  <Feather name="arrow-left" size={18} color={CALM.textMuted} />
+                  <Feather name="arrow-left" size={18} color={C.textMuted} />
                 </TouchableOpacity>
 
                 <ScrollView
@@ -669,25 +674,25 @@ const NoteEditor: React.FC = () => {
                       <Feather
                         name={EDIT_TYPES.find((t) => t.key === editType)?.icon || 'circle'}
                         size={14}
-                        color={CALM.bronze}
+                        color={C.bronze}
                       />
                       <Text style={styles.editTypeSelectText}>
                         {EDIT_TYPES.find((t) => t.key === editType)?.label || editType}
                       </Text>
-                      <Feather name="chevron-down" size={14} color={CALM.textMuted} />
+                      <Feather name="chevron-down" size={14} color={C.textMuted} />
                     </TouchableOpacity>
                   </View>
 
                   {/* Amount */}
                   <View style={styles.editAmountSection}>
-                    <Text style={styles.editAmountPrefix}>RM</Text>
+                    <Text style={styles.editAmountPrefix}>{currency}</Text>
                     <TextInput
                       style={styles.editAmountInput}
                       value={editAmount}
                       onChangeText={setEditAmount}
                       keyboardType="decimal-pad"
                       placeholder="0.00"
-                      placeholderTextColor={CALM.border}
+                      placeholderTextColor={C.border}
                     />
                   </View>
 
@@ -697,7 +702,7 @@ const NoteEditor: React.FC = () => {
                     value={editDescription}
                     onChangeText={setEditDescription}
                     placeholder="description"
-                    placeholderTextColor={CALM.textMuted}
+                    placeholderTextColor={C.textMuted}
                   />
 
                   {/* Category */}
@@ -732,7 +737,7 @@ const NoteEditor: React.FC = () => {
                           value={editPerson}
                           onChangeText={setEditPerson}
                           placeholder="name"
-                          placeholderTextColor={CALM.textMuted}
+                          placeholderTextColor={C.textMuted}
                         />
                       </View>
                       {showEditDebtDirection && (
@@ -805,12 +810,12 @@ const NoteEditor: React.FC = () => {
                   activeOpacity={0.7}
                 >
                   <View style={[styles.typePickerIcon, active && styles.typePickerIconActive]}>
-                    <Feather name={t.icon} size={18} color={active ? CALM.bronze : CALM.textMuted} />
+                    <Feather name={t.icon} size={18} color={active ? C.bronze : C.textMuted} />
                   </View>
                   <Text style={[styles.typePickerText, active && styles.typePickerTextActive]}>
                     {t.label}
                   </Text>
-                  {active && <Feather name="check" size={18} color={CALM.bronze} />}
+                  {active && <Feather name="check" size={18} color={C.bronze} />}
                 </TouchableOpacity>
               );
             })}
@@ -840,10 +845,10 @@ const NoteEditor: React.FC = () => {
 
 export default NoteEditor;
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   header: {
     flexDirection: 'row',
@@ -851,7 +856,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     gap: SPACING.sm,
   },
   backBtn: {
@@ -867,7 +872,7 @@ const styles = StyleSheet.create({
   },
   headerDate: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
   },
   micBtn: {
@@ -878,7 +883,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   micBtnActive: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   deleteBtn: {
     width: 36,
@@ -903,13 +908,13 @@ const styles = StyleSheet.create({
   titleLine: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     lineHeight: 28,
   },
   bodyLine: {
     fontSize: TYPOGRAPHY.size.base,
     lineHeight: 26,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   extractBtn: {
     flexDirection: 'row',
@@ -920,13 +925,13 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     borderRadius: RADIUS.full,
   },
   extractBtnText: {
     fontSize: 12,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   inlineCard: {
     paddingHorizontal: SPACING.lg,
@@ -941,13 +946,13 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     borderRadius: RADIUS.full,
   },
   reopenText: {
     fontSize: 12,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   modalOverlay: {
     flex: 1,
@@ -958,13 +963,13 @@ const styles = StyleSheet.create({
   extractCard: {
     width: '88%',
     maxHeight: '75%',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.xl,
     paddingBottom: SPACING.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     ...SHADOWS.lg,
   },
   extractClose: {
@@ -975,7 +980,7 @@ const styles = StyleSheet.create({
   },
   editOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: withAlpha(CALM.textPrimary, 0.4),
+    backgroundColor: withAlpha(C.textPrimary, 0.4),
     zIndex: 20,
   },
   editOverlayCard: {
@@ -991,13 +996,13 @@ const styles = StyleSheet.create({
   editInnerCard: {
     width: '88%',
     maxHeight: '80%',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     ...SHADOWS.lg,
   },
   editOverlayBack: {
@@ -1012,11 +1017,11 @@ const styles = StyleSheet.create({
   extractTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   extractHint: {
     fontSize: 10,
-    color: CALM.bronze,
+    color: C.bronze,
     fontStyle: 'italic',
   },
   retryBanner: {
@@ -1028,7 +1033,7 @@ const styles = StyleSheet.create({
   },
   retryText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   extractScroll: {
     flexShrink: 1,
@@ -1047,18 +1052,18 @@ const styles = StyleSheet.create({
   },
   pipelineLabel: {
     fontSize: 11,
-    color: CALM.bronze,
+    color: C.bronze,
     letterSpacing: 0.3,
   },
   pipelineDone: {
     fontSize: 11,
-    color: CALM.positive,
+    color: C.positive,
     letterSpacing: 0.3,
   },
   pipelineConnector: {
     width: 12,
     height: 1,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   statusRow: {
     flexDirection: 'row',
@@ -1069,7 +1074,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontStyle: 'italic',
   },
   recordingBar: {
@@ -1078,22 +1083,22 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.xs,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
   },
   recordingDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   recordingText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontStyle: 'italic',
   },
   errorText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
     marginTop: SPACING['3xl'],
   },
@@ -1101,7 +1106,7 @@ const styles = StyleSheet.create({
   editCard: {
     width: '88%',
     maxHeight: '80%',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     paddingTop: SPACING.xl,
@@ -1133,13 +1138,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: SPACING.sm,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
   },
   editTypeSelectText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   typePickerOverlay: {
@@ -1150,7 +1155,7 @@ const styles = StyleSheet.create({
   },
   typePickerCard: {
     width: '75%',
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     gap: 2,
@@ -1168,7 +1173,7 @@ const styles = StyleSheet.create({
   },
   typePickerTitle: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginBottom: SPACING.sm,
   },
   typePickerOption: {
@@ -1180,26 +1185,26 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
   },
   typePickerOptionActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
   },
   typePickerIcon: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     justifyContent: 'center',
     alignItems: 'center',
   },
   typePickerIconActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
   },
   typePickerText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   typePickerTextActive: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   editAmountSection: {
@@ -1211,20 +1216,20 @@ const styles = StyleSheet.create({
   editAmountPrefix: {
     fontSize: 18,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   editAmountInput: {
     flex: 1,
     fontSize: 28,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     padding: 0,
   },
   editDescInput: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.sm,
   },
   editField: {
@@ -1232,7 +1237,7 @@ const styles = StyleSheet.create({
   },
   editLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginBottom: 2,
   },
   editDebtRow: {
@@ -1244,21 +1249,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   editDebtTheyOwe: {
-    backgroundColor: withAlpha(CALM.deepOlive, 0.12),
+    backgroundColor: withAlpha(C.deepOlive, 0.12),
   },
   editDebtIOwe: {
     backgroundColor: withAlpha('#C1694F', 0.12),
   },
   editDebtText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   editDebtTextTheyOwe: {
-    color: CALM.deepOlive,
+    color: C.deepOlive,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   editDebtTextIOwe: {
@@ -1270,7 +1275,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     marginTop: SPACING.xs,
@@ -1290,7 +1295,7 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: CALM.gold,
+    backgroundColor: C.gold,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,

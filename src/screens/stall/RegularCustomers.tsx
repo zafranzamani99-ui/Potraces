@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,12 @@ import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useStallStore } from '../../store/stallStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { RegularCustomer } from '../../types';
 
 const RegularCustomers: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const {
     regularCustomers,
     addRegularCustomer,
@@ -143,7 +146,7 @@ const RegularCustomers: React.FC = () => {
                 value={editName}
                 onChangeText={setEditName}
                 placeholder="name"
-                placeholderTextColor={CALM.textSecondary}
+                placeholderTextColor={C.textSecondary}
                 autoFocus
                 accessibilityLabel="Customer name"
               />
@@ -152,7 +155,7 @@ const RegularCustomers: React.FC = () => {
                 value={editUsualOrder}
                 onChangeText={setEditUsualOrder}
                 placeholder="usual order (optional)"
-                placeholderTextColor={CALM.textSecondary}
+                placeholderTextColor={C.textSecondary}
                 accessibilityLabel="Usual order"
               />
               <TextInput
@@ -160,7 +163,7 @@ const RegularCustomers: React.FC = () => {
                 value={editNote}
                 onChangeText={setEditNote}
                 placeholder="note (optional)"
-                placeholderTextColor={CALM.textSecondary}
+                placeholderTextColor={C.textSecondary}
                 accessibilityLabel="Note about this customer"
               />
 
@@ -240,7 +243,7 @@ const RegularCustomers: React.FC = () => {
             )}
           </View>
 
-          <Feather name="chevron-right" size={16} color={CALM.neutral} />
+          <Feather name="chevron-right" size={16} color={C.neutral} />
         </TouchableOpacity>
       );
     },
@@ -267,7 +270,7 @@ const RegularCustomers: React.FC = () => {
             <Feather
               name={showAddForm ? 'x' : 'plus'}
               size={20}
-              color={CALM.bronze}
+              color={C.bronze}
             />
           </TouchableOpacity>
         </View>
@@ -280,7 +283,7 @@ const RegularCustomers: React.FC = () => {
               value={newName}
               onChangeText={setNewName}
               placeholder="name"
-              placeholderTextColor={CALM.textSecondary}
+              placeholderTextColor={C.textSecondary}
               autoFocus
               accessibilityLabel="New customer name"
             />
@@ -289,7 +292,7 @@ const RegularCustomers: React.FC = () => {
               value={newUsualOrder}
               onChangeText={setNewUsualOrder}
               placeholder="e.g. 2 kuih seri muka + teh tarik"
-              placeholderTextColor={CALM.textSecondary}
+              placeholderTextColor={C.textSecondary}
               accessibilityLabel="Usual order, optional"
             />
             <TextInput
@@ -297,7 +300,7 @@ const RegularCustomers: React.FC = () => {
               value={newNote}
               onChangeText={setNewNote}
               placeholder="note (optional)"
-              placeholderTextColor={CALM.textSecondary}
+              placeholderTextColor={C.textSecondary}
               accessibilityLabel="Note, optional"
             />
             <TouchableOpacity
@@ -321,7 +324,7 @@ const RegularCustomers: React.FC = () => {
   const renderEmpty = useCallback(() => {
     return (
       <View style={styles.emptyContainer}>
-        <Feather name="users" size={40} color={CALM.border} />
+        <Feather name="users" size={40} color={C.border} />
         <Text style={styles.emptyTitle}>no regulars yet</Text>
         <Text style={styles.emptyHint}>they'll show up.</Text>
       </View>
@@ -353,10 +356,10 @@ const RegularCustomers: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   keyboardView: {
     flex: 1,
@@ -380,7 +383,7 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   subheading: {
     ...TYPE.muted,
@@ -393,32 +396,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: CALM.border,
-    backgroundColor: CALM.surface,
+    borderColor: C.border,
+    backgroundColor: C.surface,
   },
 
   // ─── Add form ──────────────────────────────────────────
   addForm: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.bronze,
+    borderColor: C.bronze,
     padding: SPACING.lg,
     gap: SPACING.md,
     marginBottom: SPACING.sm,
   },
   addInput: {
     ...TYPE.insight,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
+    color: C.textPrimary,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     minHeight: 44,
   },
   addSaveButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -436,10 +439,10 @@ const styles = StyleSheet.create({
 
   // ─── Customer card ────────────────────────────────────
   customerCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.lg,
     flexDirection: 'row',
     alignItems: 'center',
@@ -448,7 +451,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: withAlpha(CALM.bronze, 0.10),
+    backgroundColor: withAlpha(C.bronze, 0.10),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
@@ -456,7 +459,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   customerInfo: {
     flex: 1,
@@ -465,11 +468,11 @@ const styles = StyleSheet.create({
   customerName: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   usualOrder: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontStyle: 'italic',
   },
   customerMeta: {
@@ -486,7 +489,7 @@ const styles = StyleSheet.create({
   },
   customerNote: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: SPACING.xs,
   },
 
@@ -497,12 +500,12 @@ const styles = StyleSheet.create({
   },
   editInput: {
     ...TYPE.insight,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
+    color: C.textPrimary,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     minHeight: 44,
   },
   editActions: {
@@ -518,7 +521,7 @@ const styles = StyleSheet.create({
   },
   deleteActionText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.neutral,
+    color: C.neutral,
   },
   editActionRight: {
     flexDirection: 'row',
@@ -533,10 +536,10 @@ const styles = StyleSheet.create({
   },
   cancelActionText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   saveAction: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
@@ -561,7 +564,7 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   emptyHint: {
     ...TYPE.muted,

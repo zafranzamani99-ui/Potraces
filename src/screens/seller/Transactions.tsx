@@ -7,10 +7,10 @@ import {
   TextInput,
   TouchableOpacity,
   Modal,
-  ScrollView,
   Animated,
   Pressable,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -28,6 +28,7 @@ import {
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, TYPE, withAlpha, BIZ } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { SellerPaymentMethod } from '../../types';
 import { useFadeSlide } from '../../utils/fadeSlide';
 import { useToast } from '../../context/ToastContext';
@@ -97,6 +98,8 @@ const METHOD_LABEL: Record<SellerPaymentMethod, string> = {
 
 // ─── Component ─────────────────────────────────────────────
 const SellerTransactions: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { orders } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
   const toast = useToast();
@@ -384,7 +387,7 @@ const SellerTransactions: React.FC = () => {
                   return (
                     <Text style={styles.txNote} numberOfLines={1}>
                       {before ? <>{before} · </> : null}
-                      <Text style={{ color: CALM.bronze, fontStyle: 'normal', fontWeight: '600' }}>{tipMatch[1]}</Text>
+                      <Text style={{ color: C.bronze, fontStyle: 'normal', fontWeight: '600' }}>{tipMatch[1]}</Text>
                     </Text>
                   );
                 }
@@ -443,7 +446,7 @@ const SellerTransactions: React.FC = () => {
             style={styles.exportBtn}
             activeOpacity={0.7}
           >
-            <Feather name="copy" size={14} color={CALM.textMuted} />
+            <Feather name="copy" size={14} color={C.textMuted} />
           </TouchableOpacity>
         </View>
       </Animated.View>
@@ -451,18 +454,18 @@ const SellerTransactions: React.FC = () => {
       {/* Search bar + filter icon */}
       <Animated.View style={[styles.searchRowOuter, headerAnim]}>
         <View style={styles.searchRow}>
-          <Feather name="search" size={16} color={CALM.textMuted} />
+          <Feather name="search" size={16} color={C.textMuted} />
           <TextInput
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="search by name, order #, or note"
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             returnKeyType="search"
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Feather name="x" size={16} color={CALM.textMuted} />
+              <Feather name="x" size={16} color={C.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -471,7 +474,7 @@ const SellerTransactions: React.FC = () => {
           onPress={() => { setShowFilterModal(true); lightTap(); }}
           activeOpacity={0.7}
         >
-          <Feather name="sliders" size={18} color={hasActiveFilters ? CALM.bronze : CALM.textSecondary} />
+          <Feather name="sliders" size={18} color={hasActiveFilters ? C.bronze : C.textSecondary} />
           {hasActiveFilters && <View style={styles.sortActiveDot} />}
         </TouchableOpacity>
       </Animated.View>
@@ -494,7 +497,7 @@ const SellerTransactions: React.FC = () => {
                 <Feather
                   name={chip.icon as any}
                   size={12}
-                  color={chip.active ? CALM.bronze : CALM.textSecondary}
+                  color={chip.active ? C.bronze : C.textSecondary}
                 />
               )}
               <Text style={[styles.quickChipText, chip.active && styles.quickChipTextActive]}>
@@ -518,7 +521,7 @@ const SellerTransactions: React.FC = () => {
           maxToRenderPerBatch={8}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Feather name="inbox" size={32} color={CALM.textMuted} />
+              <Feather name="inbox" size={32} color={C.textMuted} />
               <Text style={styles.emptyText}>
                 {allPayments.length === 0
                   ? 'no payments recorded yet.'
@@ -546,13 +549,13 @@ const SellerTransactions: React.FC = () => {
           style={styles.sortOverlay}
           onPress={() => setShowFilterModal(false)}
         >
-          <Pressable style={styles.filterSortSheet} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={styles.filterSortSheet} onPress={(e) => e.stopPropagation()} onStartShouldSetResponder={() => true}>
             {(showFromCalendar || showToCalendar) ? (
               <>
                 {/* Calendar view */}
                 <View style={styles.filterSortHeader}>
                   <TouchableOpacity onPress={() => { setShowFromCalendar(false); setShowToCalendar(false); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Feather name="arrow-left" size={16} color={CALM.textSecondary} />
+                    <Feather name="arrow-left" size={16} color={C.textSecondary} />
                     <Text style={TYPE.label}>{showFromCalendar ? 'from date' : 'to date'}</Text>
                   </TouchableOpacity>
                 </View>
@@ -598,7 +601,7 @@ const SellerTransactions: React.FC = () => {
                           <Feather
                             name={opt.icon as any}
                             size={12}
-                            color={active ? CALM.bronze : CALM.textMuted}
+                            color={active ? C.bronze : C.textMuted}
                           />
                           <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
                             {opt.label}
@@ -632,7 +635,7 @@ const SellerTransactions: React.FC = () => {
                           <Feather
                             name={METHOD_ICON[m] as any}
                             size={12}
-                            color={active ? CALM.bronze : CALM.textMuted}
+                            color={active ? C.bronze : C.textMuted}
                           />
                           <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
                             {METHOD_LABEL[m]}
@@ -701,7 +704,7 @@ const SellerTransactions: React.FC = () => {
                         <Text style={styles.dateRangeValue}>
                           {customDateFrom ? format(customDateFrom, 'd MMM yyyy') : 'select date'}
                         </Text>
-                        <Feather name="calendar" size={14} color={CALM.textMuted} />
+                        <Feather name="calendar" size={14} color={C.textMuted} />
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -713,7 +716,7 @@ const SellerTransactions: React.FC = () => {
                         <Text style={styles.dateRangeValue}>
                           {customDateTo ? format(customDateTo, 'd MMM yyyy') : 'select date'}
                         </Text>
-                        <Feather name="calendar" size={14} color={CALM.textMuted} />
+                        <Feather name="calendar" size={14} color={C.textMuted} />
                       </TouchableOpacity>
                     </View>
                   )}
@@ -739,10 +742,10 @@ const SellerTransactions: React.FC = () => {
 };
 
 // ─── Styles ────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   header: {
     paddingHorizontal: SPACING.lg,
@@ -752,31 +755,31 @@ const styles = StyleSheet.create({
   headerLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.bold as any,
-    color: CALM.textMuted,
+    color: C.textMuted,
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
   headerSubtitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 2,
   },
   summaryCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.md,
     marginBottom: SPACING.sm,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   summaryLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginBottom: 2,
   },
   summaryAmount: {
@@ -791,13 +794,13 @@ const styles = StyleSheet.create({
   },
   summaryCount: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   exportBtn: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -814,32 +817,32 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     minHeight: 44,
     gap: SPACING.sm,
   },
   searchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.sm,
   },
   sortButton: {
     width: 44,
     height: 44,
     borderRadius: RADIUS.lg,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sortButtonActive: {
-    borderColor: CALM.bronze,
+    borderColor: C.bronze,
   },
   sortActiveDot: {
     position: 'absolute',
@@ -848,9 +851,9 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderWidth: 1.5,
-    borderColor: CALM.background,
+    borderColor: C.background,
   },
 
   // ── Quick chips ──
@@ -871,15 +874,15 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   quickChipActive: {
-    borderColor: CALM.bronze,
+    borderColor: C.bronze,
   },
   quickChipText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium as any,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   quickChipTextActive: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
   },
 
@@ -898,7 +901,7 @@ const styles = StyleSheet.create({
   dateHeader: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -911,12 +914,12 @@ const styles = StyleSheet.create({
   txRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.xs,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   txIcon: {
     width: 36,
@@ -937,7 +940,7 @@ const styles = StyleSheet.create({
   txName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as any,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
     marginRight: SPACING.sm,
   },
@@ -955,16 +958,16 @@ const styles = StyleSheet.create({
   },
   txMeta: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     flex: 1,
   },
   txTime: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   txNote: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 3,
     fontStyle: 'italic',
   },
@@ -976,11 +979,11 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   clearFiltersText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium as any,
   },
 
@@ -992,7 +995,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   filterSortSheet: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     paddingTop: SPACING.lg,
     paddingHorizontal: SPACING['2xl'],
@@ -1010,7 +1013,7 @@ const styles = StyleSheet.create({
   filterSortClear: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium as any,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   filterSortScroll: {
     flexGrow: 0,
@@ -1037,15 +1040,15 @@ const styles = StyleSheet.create({
     minHeight: 30,
   },
   filterPillActive: {
-    borderColor: CALM.bronze,
+    borderColor: C.bronze,
   },
   filterPillText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium as any,
   },
   filterPillTextActive: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
   },
   filterSortDone: {
@@ -1053,12 +1056,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm + 2,
     marginTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   filterSortDoneText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // ── Custom date range ──
@@ -1069,7 +1072,7 @@ const styles = StyleSheet.create({
   dateRangeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(CALM.accent, 0.05),
+    backgroundColor: withAlpha(C.accent, 0.05),
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
@@ -1077,14 +1080,14 @@ const styles = StyleSheet.create({
   },
   dateRangeLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium as any,
     width: 36,
   },
   dateRangeValue: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
 });

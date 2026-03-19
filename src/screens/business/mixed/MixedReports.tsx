@@ -1,18 +1,22 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { StackedBarChart, LineChart } from 'react-native-chart-kit';
+import { format } from 'date-fns';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useMixedStore } from '../../../store/mixedStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha, COLORS } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { askMixedQuestion } from '../../../services/aiService';
+import { generateReportNarrative, ReportMonthData } from '../../../services/reportNarrative';
+import { useAIInsightsStore } from '../../../store/aiInsightsStore';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -41,6 +45,8 @@ function toDate(d: Date | string): Date {
 }
 
 const MixedReports: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
   const { businessTransactions } = useBusinessStore();
   const {
@@ -131,14 +137,57 @@ const MixedReports: React.FC = () => {
     ? Math.max(...costBreakdown.map((b) => b.amount), 1)
     : 1;
 
+  // Report narrative
+  const reportNarratives = useAIInsightsStore((s) => s.reportNarratives);
+  const monthKey = format(new Date(), 'yyyy-MM');
+  const narrativeEntry = reportNarratives[`mixed_${monthKey}`];
+
+  const currentMonthNarrative = useMemo(() => {
+    const currentMonth = monthlyData.length > 0 ? monthlyData[monthlyData.length - 1] : null;
+    const income = currentMonth?.total || 0;
+    const costs = currentMonth?.costs || 0;
+    const byStream = currentMonth?.byStream || {};
+
+    const topCategories = Object.entries(byStream)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([name, amount]) => ({
+        name,
+        amount,
+        percent: income > 0 ? Math.round((amount / income) * 100) : 0,
+      }));
+
+    // Previous month
+    const prevMonth = monthlyData.length > 1 ? monthlyData[monthlyData.length - 2] : null;
+    const prevIncome = prevMonth?.total || 0;
+    const prevCosts = prevMonth?.costs || 0;
+
+    return { income, costs, topCategories, prevIncome, prevCosts, count: businessTransactions.length };
+  }, [monthlyData, businessTransactions.length]);
+
+  useEffect(() => {
+    if (businessTransactions.length === 0) return;
+    const data: ReportMonthData = {
+      mode: 'mixed',
+      income: currentMonthNarrative.income,
+      expenses: currentMonthNarrative.costs,
+      kept: currentMonthNarrative.income - currentMonthNarrative.costs,
+      topCategories: currentMonthNarrative.topCategories,
+      prevMonthIncome: currentMonthNarrative.prevIncome,
+      prevMonthExpenses: currentMonthNarrative.prevCosts,
+      transactionCount: currentMonthNarrative.count,
+    };
+    generateReportNarrative(data);
+  }, [currentMonthNarrative]);
+
   const chartConfig = {
-    backgroundGradientFrom: CALM.background,
-    backgroundGradientTo: CALM.background,
-    color: () => withAlpha(CALM.bronze, 0.6),
-    labelColor: () => CALM.textSecondary,
+    backgroundGradientFrom: C.background,
+    backgroundGradientTo: C.background,
+    color: () => withAlpha(C.bronze, 0.6),
+    labelColor: () => C.textSecondary,
     barPercentage: 0.6,
     propsForBackgroundLines: {
-      stroke: CALM.border,
+      stroke: C.border,
       strokeDasharray: '4 4',
     },
     decimalPlaces: 0,
@@ -170,6 +219,12 @@ const MixedReports: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {narrativeEntry?.text ? (
+          <Text style={[{ ...TYPE.narrative }, { color: C.textSecondary, marginBottom: SPACING.md }]}>
+            {narrativeEntry.text}
+          </Text>
+        ) : null}
+
         {/* Section 1 — Stacked Bar: Income by Stream */}
         <Text style={styles.sectionLabel}>income by source</Text>
         {stackedBarData && hasMonthlyData ? (
@@ -201,7 +256,7 @@ const MixedReports: React.FC = () => {
                   propsForDots: {
                     r: '3',
                     strokeWidth: '1',
-                    stroke: CALM.bronze,
+                    stroke: C.bronze,
                   },
                 }}
                 style={styles.chart}
@@ -268,7 +323,7 @@ const MixedReports: React.FC = () => {
                           styles.breakdownBar,
                           {
                             width: Math.max(barWidth, 4),
-                            backgroundColor: withAlpha(CALM.bronze, Math.max(opacity, 0.2)),
+                            backgroundColor: withAlpha(C.bronze, Math.max(opacity, 0.2)),
                           },
                         ]}
                       />
@@ -304,10 +359,10 @@ const MixedReports: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -357,7 +412,7 @@ const styles = StyleSheet.create({
   },
   lineLegendText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Consistency
@@ -369,14 +424,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   consistencyLeft: {
     flex: 1,
   },
   consistencyStream: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   consistencyMonths: {
     ...TYPE.muted,
@@ -385,7 +440,7 @@ const styles = StyleSheet.create({
   consistencyTotal: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
@@ -398,7 +453,7 @@ const styles = StyleSheet.create({
   },
   breakdownLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
     maxWidth: 160,
   },
@@ -413,7 +468,7 @@ const styles = StyleSheet.create({
   },
   breakdownAmount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
@@ -422,11 +477,11 @@ const styles = StyleSheet.create({
     marginTop: SPACING['2xl'],
     paddingTop: SPACING.xl,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   aiSummaryText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 22,
   },
   aiLoadingText: {
@@ -439,7 +494,7 @@ const styles = StyleSheet.create({
   },
   showSummaryText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 });
 

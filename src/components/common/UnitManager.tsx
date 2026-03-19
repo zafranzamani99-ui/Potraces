@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import DraggableFlatList, {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { useSellerStore } from '../../store/sellerStore';
 import { lightTap } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
@@ -35,6 +36,8 @@ interface UnitItem {
 }
 
 const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
   const customUnits = useSellerStore((s) => s.customUnits);
   const unitOrder = useSellerStore((s) => s.unitOrder);
@@ -165,7 +168,7 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
         activeOpacity={0.6}
       >
         <View style={styles.unitIcon}>
-          <Feather name="box" size={20} color={CALM.bronze} />
+          <Feather name="box" size={20} color={C.bronze} />
         </View>
         <View style={styles.unitInfo}>
           <Text style={styles.unitName}>{item.name}</Text>
@@ -173,7 +176,7 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
             <Text style={styles.customBadge}>Custom</Text>
           )}
         </View>
-        <Feather name="menu" size={18} color={isActive ? CALM.accent : CALM.neutral} />
+        <Feather name="menu" size={18} color={isActive ? C.accent : C.neutral} />
       </TouchableOpacity>
     </ScaleDecorator>
   );
@@ -195,7 +198,7 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
           <View style={styles.header}>
             <Text style={styles.title}>Product Units</Text>
             <TouchableOpacity onPress={onClose}>
-              <Feather name="x" size={22} color={CALM.textPrimary} />
+              <Feather name="x" size={22} color={C.textPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -226,7 +229,7 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
                     activeOpacity={0.7}
                   >
                     <Text style={styles.hiddenChipText}>{u}</Text>
-                    <Feather name="plus" size={14} color={CALM.accent} />
+                    <Feather name="plus" size={14} color={C.accent} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -234,7 +237,7 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
           )}
 
           <TouchableOpacity style={styles.addButton} onPress={openNew}>
-            <Feather name="plus" size={18} color={CALM.accent} />
+            <Feather name="plus" size={18} color={C.accent} />
             <Text style={styles.addButtonText}>Add Custom Unit</Text>
           </TouchableOpacity>
         </View>
@@ -264,7 +267,7 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
                 {isNewUnit ? 'New Unit' : 'Edit Unit'}
               </Text>
               <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Feather name="x" size={22} color={CALM.textPrimary} />
+                <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -275,7 +278,7 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
                 value={editName}
                 onChangeText={setEditName}
                 placeholder="e.g. botol, beg, dozen"
-                placeholderTextColor={CALM.neutral}
+                placeholderTextColor={C.neutral}
                 returnKeyType="done"
                 autoFocus
                 autoCapitalize="none"
@@ -289,7 +292,7 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
                   style={styles.deleteButton}
                   onPress={handleDelete}
                 >
-                  <Feather name="trash-2" size={16} color={CALM.neutral} />
+                  <Feather name="trash-2" size={16} color={C.neutral} />
                   <Text style={styles.deleteText}>
                     {editingUnit.isCustom ? 'Delete' : 'Remove'}
                   </Text>
@@ -308,7 +311,7 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -316,17 +319,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
   },
   modal: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '70%',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   editModal: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   header: {
     flexDirection: 'row',
@@ -334,16 +337,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   title: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   dragHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.neutral,
+    color: C.neutral,
     textAlign: 'center',
     paddingTop: SPACING.sm,
   },
@@ -357,12 +360,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     gap: SPACING.md,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
   },
   unitRowDragging: {
-    backgroundColor: withAlpha(CALM.accent, 0.06),
+    backgroundColor: withAlpha(C.accent, 0.06),
     borderWidth: 1,
-    borderColor: withAlpha(CALM.accent, 0.2),
+    borderColor: withAlpha(C.accent, 0.2),
   },
   unitIcon: {
     width: 40,
@@ -370,7 +373,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(CALM.bronze, 0.15),
+    backgroundColor: withAlpha(C.bronze, 0.15),
   },
   unitInfo: {
     flex: 1,
@@ -378,11 +381,11 @@ const styles = StyleSheet.create({
   unitName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   customBadge: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.accent,
+    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.medium,
     marginTop: 1,
   },
@@ -390,11 +393,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   hiddenLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.neutral,
+    color: C.neutral,
     marginBottom: SPACING.sm,
   },
   hiddenRow: {
@@ -409,11 +412,11 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.neutral, 0.08),
+    backgroundColor: withAlpha(C.neutral, 0.08),
   },
   hiddenChipText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   addButton: {
     flexDirection: 'row',
@@ -422,12 +425,12 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     padding: SPACING.lg,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   addButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   editContent: {
     padding: SPACING.lg,
@@ -435,18 +438,18 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.sm,
   },
   input: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
+    color: C.textPrimary,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   editActions: {
     flexDirection: 'row',
@@ -456,7 +459,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.lg,
     gap: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   deleteButton: {
     flexDirection: 'row',
@@ -465,19 +468,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(CALM.neutral, 0.1),
+    backgroundColor: withAlpha(C.neutral, 0.1),
     marginRight: 'auto',
   },
   deleteText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.neutral,
+    color: C.neutral,
   },
   saveButton: {
     paddingHorizontal: SPACING['2xl'],
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   saveText: {
     fontSize: TYPOGRAPHY.size.base,

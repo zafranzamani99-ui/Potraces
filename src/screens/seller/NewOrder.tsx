@@ -10,7 +10,6 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
-  ScrollView,
   FlatList,
   KeyboardAvoidingView,
   Keyboard,
@@ -21,6 +20,7 @@ import {
   Image,
   Dimensions,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import * as Clipboard from 'expo-clipboard';
 import * as Contacts from 'expo-contacts';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -30,6 +30,7 @@ import { format, addDays, isValid } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { SellerOrderItem, SellerProduct, SellerOrder } from '../../types';
 import { parseWhatsAppOrder, detectWhatsAppSections, WhatsAppSection } from '../../utils/parseWhatsAppOrder';
 import { parseWhatsAppOrderAI } from '../../services/aiService';
@@ -47,14 +48,17 @@ const SEARCH_THRESHOLD = 8;
 const WHATSAPP_GREEN = '#25D366'; // WhatsApp brand color — intentional exception to CALM palette
 
 // ─── Memoized row to avoid re-rendering all items on single qty change ───
-const SelectedItemRow = React.memo(({ item, index, currency, qty, isEditing, editingValue, onQtyChange, onEditStart, onEditChange, onEditSubmit }: {
+const SelectedItemRow = React.memo(({ item, index, currency, qty, isEditing, editingValue, onQtyChange, onEditStart, onEditChange, onEditSubmit, styles }: {
   item: SellerOrderItem; index: number; currency: string; qty: number;
   isEditing: boolean; editingValue: string;
   onQtyChange: (id: string, qty: number) => void;
   onEditStart: (id: string, qty: number) => void;
   onEditChange: (v: string) => void;
   onEditSubmit: (id: string) => void;
-}) => (
+  styles: ReturnType<typeof makeStyles>;
+}) => {
+  const C = useCalm();
+  return (
   <View style={[styles.selectedItemRow, index > 0 && styles.selectedItemRowBorder]}>
     <View style={styles.selectedItemLeft}>
       <Text style={styles.selectedItemName} numberOfLines={1}>{item.productName}</Text>
@@ -67,7 +71,7 @@ const SelectedItemRow = React.memo(({ item, index, currency, qty, isEditing, edi
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         accessibilityRole="button" accessibilityLabel={`Decrease ${item.productName}`}
       >
-        <Feather name="minus" size={13} color={CALM.textSecondary} />
+        <Feather name="minus" size={13} color={C.textSecondary} />
       </TouchableOpacity>
       {isEditing ? (
         <TextInput
@@ -88,15 +92,18 @@ const SelectedItemRow = React.memo(({ item, index, currency, qty, isEditing, edi
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         accessibilityRole="button" accessibilityLabel={`Increase ${item.productName}`}
       >
-        <Feather name="plus" size={13} color={CALM.bronze} />
+        <Feather name="plus" size={13} color={C.bronze} />
       </TouchableOpacity>
     </View>
     <Text style={styles.selectedItemTotal}>{currency} {(item.unitPrice * item.quantity).toFixed(0)}</Text>
   </View>
-));
+);
+});
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────
 const NewOrder: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const products = useSellerStore((s) => s.products);
@@ -631,6 +638,7 @@ const NewOrder: React.FC = () => {
         showsVerticalScrollIndicator={false}
         bottomOffset={80}
         keyboardDismissMode="on-drag"
+        onScrollBeginDrag={Keyboard.dismiss}
       >
         {/* ── Section: Customer ─────────────────────────────── */}
         <View style={styles.sectionWrap}>
@@ -644,7 +652,7 @@ const NewOrder: React.FC = () => {
                 {customerName.trim() ? (
                   <Text style={styles.avatarText}>{customerName.trim()?.[0]?.toUpperCase() ?? ''}</Text>
                 ) : (
-                  <Feather name="user" size={14} color={CALM.textMuted} />
+                  <Feather name="user" size={14} color={C.textMuted} />
                 )}
               </View>
               <TextInput
@@ -652,7 +660,7 @@ const NewOrder: React.FC = () => {
                 value={customerName}
                 onChangeText={setCustomerName}
                 placeholder="who's this for?"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 accessibilityLabel="Customer name"
               />
               {!customerName.trim() && (
@@ -663,7 +671,7 @@ const NewOrder: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Import from contacts"
                 >
-                  <Feather name="book" size={12} color={CALM.bronze} />
+                  <Feather name="book" size={12} color={C.bronze} />
                   <Text style={styles.contactsPillText}>contacts</Text>
                 </TouchableOpacity>
               )}
@@ -675,7 +683,7 @@ const NewOrder: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Clear customer"
                 >
-                  <Feather name="x" size={14} color={CALM.textMuted} />
+                  <Feather name="x" size={14} color={C.textMuted} />
                 </TouchableOpacity>
               )}
             </View>
@@ -684,26 +692,26 @@ const NewOrder: React.FC = () => {
               <>
                 <View style={styles.customerFieldDivider} />
                 <View style={styles.customerFieldRow}>
-                  <Feather name="phone" size={12} color={CALM.textMuted} />
+                  <Feather name="phone" size={12} color={C.textMuted} />
                   <TextInput
                     style={styles.customerFieldInput}
                     value={customerPhone}
                     onChangeText={setCustomerPhone}
                     placeholder="phone number"
-                    placeholderTextColor={withAlpha(CALM.textMuted, 0.6)}
+                    placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     keyboardType="phone-pad"
                     accessibilityLabel="Phone"
                   />
                 </View>
                 <View style={styles.customerFieldDivider} />
                 <View style={styles.customerFieldRow}>
-                  <Feather name="map-pin" size={12} color={CALM.textMuted} />
+                  <Feather name="map-pin" size={12} color={C.textMuted} />
                   <TextInput
                     style={styles.customerFieldInput}
                     value={customerAddress}
                     onChangeText={setCustomerAddress}
                     placeholder="delivery address"
-                    placeholderTextColor={withAlpha(CALM.textMuted, 0.6)}
+                    placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     accessibilityLabel="Address"
                   />
                 </View>
@@ -795,7 +803,7 @@ const NewOrder: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel={showWhatsAppPaste ? 'Close WhatsApp import' : 'Import from WhatsApp'}
               >
-                <Feather name="clipboard" size={13} color={showWhatsAppPaste ? '#fff' : CALM.bronze} />
+                <Feather name="clipboard" size={13} color={showWhatsAppPaste ? '#fff' : C.bronze} />
                 <Text style={[styles.waPasteBtnText, showWhatsAppPaste && styles.waPasteBtnTextActive]}>
                   paste order
                 </Text>
@@ -825,7 +833,7 @@ const NewOrder: React.FC = () => {
                   value={whatsAppText}
                   onChangeText={setWhatsAppText}
                   placeholder="paste WhatsApp message..."
-                  placeholderTextColor={CALM.textMuted}
+                  placeholderTextColor={C.textMuted}
                   multiline
                   numberOfLines={2}
                   accessibilityLabel="WhatsApp message"
@@ -862,10 +870,10 @@ const NewOrder: React.FC = () => {
                 >
                   {({ pressed }) => (
                     isParsing ? (
-                      <ActivityIndicator size="small" color={whatsAppText.trim() ? (pressed ? '#fff' : CALM.textPrimary) : CALM.textMuted} />
+                      <ActivityIndicator size="small" color={whatsAppText.trim() ? (pressed ? '#fff' : C.textPrimary) : C.textMuted} />
                     ) : (
                       <>
-                        <Feather name="zap" size={15} color={!whatsAppText.trim() ? CALM.textMuted : pressed ? '#fff' : CALM.textPrimary} />
+                        <Feather name="zap" size={15} color={!whatsAppText.trim() ? C.textMuted : pressed ? '#fff' : C.textPrimary} />
                         <Text style={[styles.whatsAppParseBtnText, !whatsAppText.trim() && styles.whatsAppParseBtnTextDisabled, whatsAppText.trim() && pressed && styles.whatsAppParseBtnTextPressed]}>
                           extract
                         </Text>
@@ -902,7 +910,7 @@ const NewOrder: React.FC = () => {
                   >
                     {({ pressed }) => (
                       <>
-                        <Feather name="rotate-ccw" size={14} color={pressed ? '#fff' : CALM.bronze} />
+                        <Feather name="rotate-ccw" size={14} color={pressed ? '#fff' : C.bronze} />
                         <Text style={[styles.reorderPillText, pressed && styles.reorderPillTextPressed]} numberOfLines={1}>
                           {format(
                             order.date instanceof Date ? order.date : new Date(order.date),
@@ -924,7 +932,7 @@ const NewOrder: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Add items"
               >
-                <Feather name="shopping-bag" size={20} color={CALM.textMuted} />
+                <Feather name="shopping-bag" size={20} color={C.textMuted} />
                 <Text style={styles.emptyItemsHint}>tap to add items</Text>
               </Pressable>
             )}
@@ -945,6 +953,7 @@ const NewOrder: React.FC = () => {
                     onEditStart={handleQtyTap}
                     onEditChange={setEditingQtyValue}
                     onEditSubmit={handleQtyInputSubmit}
+                    styles={styles}
                   />
                 ))}
                 {/* Subtotal row */}
@@ -964,7 +973,7 @@ const NewOrder: React.FC = () => {
             {/* Delivery */}
             <View style={styles.detailsFieldRow}>
               <View style={styles.deliveryRow}>
-                <Feather name="truck" size={14} color={CALM.textMuted} />
+                <Feather name="truck" size={14} color={C.textMuted} />
                 <Text style={styles.deliveryLabel}>delivery</Text>
                 <View style={styles.deliveryPills}>
                   <TouchableOpacity
@@ -995,13 +1004,13 @@ const NewOrder: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel="Pick a date"
                   >
-                    <Feather name="calendar" size={14} color={deliveryMode === 'pick' ? '#fff' : CALM.bronze} />
+                    <Feather name="calendar" size={14} color={deliveryMode === 'pick' ? '#fff' : C.bronze} />
                   </TouchableOpacity>
                 </View>
               </View>
               {deliveryDate && isValid(deliveryDate) && (
                 <View style={styles.deliveryBadge}>
-                  <Feather name="calendar" size={12} color={CALM.bronze} />
+                  <Feather name="calendar" size={12} color={C.bronze} />
                   <Text style={styles.deliveryBadgeText}>
                     {format(deliveryDate, 'EEEE, dd MMM')}
                   </Text>
@@ -1012,7 +1021,7 @@ const NewOrder: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel="Clear delivery date"
                   >
-                    <Feather name="x" size={12} color={CALM.textMuted} />
+                    <Feather name="x" size={12} color={C.textMuted} />
                   </TouchableOpacity>
                 </View>
               )}
@@ -1023,7 +1032,7 @@ const NewOrder: React.FC = () => {
             {/* Note */}
             <View style={styles.detailsFieldRow}>
               <View style={styles.detailsFieldHeader}>
-                <Feather name="edit-3" size={14} color={CALM.textMuted} />
+                <Feather name="edit-3" size={14} color={C.textMuted} />
                 <Text style={styles.detailsFieldLabel}>note</Text>
               </View>
               <TextInput
@@ -1031,7 +1040,7 @@ const NewOrder: React.FC = () => {
                 value={note}
                 onChangeText={setNote}
                 placeholder="add a note for this order..."
-                placeholderTextColor={withAlpha(CALM.textMuted, 0.6)}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 accessibilityLabel="Order note"
                 multiline
                 scrollEnabled={false}
@@ -1109,7 +1118,7 @@ const NewOrder: React.FC = () => {
             <View style={styles.reviewHeader}>
               <View style={styles.reviewHeaderLeft}>
                 <View style={styles.reviewIconWrap}>
-                  <Feather name="file-text" size={16} color={CALM.bronze} />
+                  <Feather name="file-text" size={16} color={C.bronze} />
                 </View>
                 <Text style={styles.reviewTitle}>review order</Text>
               </View>
@@ -1118,7 +1127,7 @@ const NewOrder: React.FC = () => {
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 style={styles.reviewCloseBtn}
               >
-                <Feather name="x" size={16} color={CALM.textMuted} />
+                <Feather name="x" size={16} color={C.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -1165,7 +1174,7 @@ const NewOrder: React.FC = () => {
               {/* Delivery */}
               {deliveryDate && isValid(deliveryDate) && (
                 <View style={styles.reviewMeta}>
-                  <Feather name="truck" size={13} color={CALM.textMuted} />
+                  <Feather name="truck" size={13} color={C.textMuted} />
                   <Text style={styles.reviewMetaText}>{format(deliveryDate, 'EEEE, dd MMM')}</Text>
                 </View>
               )}
@@ -1173,7 +1182,7 @@ const NewOrder: React.FC = () => {
               {/* Note */}
               {note.trim() !== '' && (
                 <View style={styles.reviewMeta}>
-                  <Feather name="file-text" size={13} color={CALM.textMuted} />
+                  <Feather name="file-text" size={13} color={C.textMuted} />
                   <Text style={styles.reviewMetaText}>{note.trim()}</Text>
                 </View>
               )}
@@ -1233,7 +1242,7 @@ const NewOrder: React.FC = () => {
             <View style={styles.pickerHeader}>
               <View style={styles.pickerHeaderLeft}>
                 <View style={styles.pickerIconWrap}>
-                  <Feather name="shopping-bag" size={17} color={CALM.bronze} />
+                  <Feather name="shopping-bag" size={17} color={C.bronze} />
                 </View>
                 <Text style={styles.pickerTitle}>add items</Text>
               </View>
@@ -1244,19 +1253,19 @@ const NewOrder: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Close"
               >
-                <Feather name="x" size={16} color={CALM.textMuted} />
+                <Feather name="x" size={16} color={C.textMuted} />
               </TouchableOpacity>
             </View>
 
             {/* Search */}
             <View style={styles.pickerSearchRow}>
-              <Feather name="search" size={15} color={withAlpha(CALM.textMuted, 0.6)} />
+              <Feather name="search" size={15} color={withAlpha(C.textMuted, 0.6)} />
               <TextInput
                 style={styles.pickerSearchInput}
                 value={productSearch}
                 onChangeText={setProductSearch}
                 placeholder="search products..."
-                placeholderTextColor={withAlpha(CALM.textMuted, 0.6)}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 accessibilityLabel="Search products"
               />
               {productSearch.length > 0 && (
@@ -1265,7 +1274,7 @@ const NewOrder: React.FC = () => {
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   style={styles.pickerSearchClear}
                 >
-                  <Feather name="x" size={12} color={CALM.textMuted} />
+                  <Feather name="x" size={12} color={C.textMuted} />
                 </TouchableOpacity>
               )}
             </View>
@@ -1295,7 +1304,7 @@ const NewOrder: React.FC = () => {
                     accessibilityLabel="Add products to get started"
                   >
                     <View style={styles.noProductsIconWrap}>
-                      <Feather name="plus" size={18} color={CALM.bronze} />
+                      <Feather name="plus" size={18} color={C.bronze} />
                     </View>
                     <Text style={styles.noProductsText}>add products to get started</Text>
                     <Text style={styles.noProductsHint}>tap to go to products</Text>
@@ -1341,7 +1350,7 @@ const NewOrder: React.FC = () => {
                               accessibilityRole="button"
                               accessibilityLabel={`Decrease ${product.name}`}
                             >
-                              <Feather name="minus" size={13} color={CALM.textSecondary} />
+                              <Feather name="minus" size={13} color={C.textSecondary} />
                             </TouchableOpacity>
                             {editingQtyProductId === product.id ? (
                               <TextInput
@@ -1371,12 +1380,12 @@ const NewOrder: React.FC = () => {
                               accessibilityRole="button"
                               accessibilityLabel={`Increase ${product.name}`}
                             >
-                              <Feather name="plus" size={13} color={CALM.bronze} />
+                              <Feather name="plus" size={13} color={C.bronze} />
                             </TouchableOpacity>
                           </View>
                         ) : (
                           <View style={styles.addBtn}>
-                            <Feather name="plus" size={14} color={CALM.bronze} />
+                            <Feather name="plus" size={14} color={C.bronze} />
                           </View>
                         )}
                       </TouchableOpacity>
@@ -1431,22 +1440,22 @@ const NewOrder: React.FC = () => {
             <View style={styles.contactSheetHeader}>
               <Text style={styles.contactSheetTitle}>pick contact</Text>
               <TouchableOpacity onPress={() => setShowContactPicker(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Feather name="x" size={20} color={CALM.textMuted} />
+                <Feather name="x" size={20} color={C.textMuted} />
               </TouchableOpacity>
             </View>
             <View style={styles.contactSearchBar}>
-              <Feather name="search" size={18} color={CALM.textMuted} />
+              <Feather name="search" size={18} color={C.textMuted} />
               <TextInput
                 style={styles.contactSearchInput}
                 placeholder="search contacts..."
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 value={contactSearch}
                 onChangeText={setContactSearch}
                 autoFocus
               />
               {contactSearch.length > 0 && (
                 <TouchableOpacity onPress={() => setContactSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Feather name="x" size={14} color={CALM.textMuted} />
+                  <Feather name="x" size={14} color={C.textMuted} />
                 </TouchableOpacity>
               )}
             </View>
@@ -1486,7 +1495,7 @@ const NewOrder: React.FC = () => {
                       <Text style={styles.contactName} numberOfLines={1}>{contact.name}</Text>
                       {phone ? <Text style={styles.contactPhone} numberOfLines={1}>{phone}</Text> : null}
                     </View>
-                    <Feather name="chevron-right" size={18} color={CALM.textMuted} />
+                    <Feather name="chevron-right" size={18} color={C.textMuted} />
                   </TouchableOpacity>
                 );
               }}
@@ -1545,7 +1554,7 @@ const NewOrder: React.FC = () => {
                 <Feather
                   name={copiedFlag ? 'check' : 'copy'}
                   size={16}
-                  color={CALM.bronze}
+                  color={C.bronze}
                 />
                 <Text style={styles.modalCopyText}>
                   {copiedFlag ? 'copied' : 'copy message'}
@@ -1581,10 +1590,10 @@ const NewOrder: React.FC = () => {
 };
 
 // ─── STYLES ──────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -1603,7 +1612,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     letterSpacing: 0.3,
     paddingHorizontal: SPACING.xs,
   },
@@ -1615,7 +1624,7 @@ const styles = StyleSheet.create({
   },
   sectionLabelMeta: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
@@ -1625,14 +1634,14 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.sm,
   },
   avatarCircleFilled: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   avatarText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -1642,10 +1651,10 @@ const styles = StyleSheet.create({
 
   // ── Customer card ─────────────────────────────────────────
   customerCard: {
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     overflow: 'hidden',
   },
   customerMainRow: {
@@ -1658,20 +1667,20 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.sm,
   },
   customerClearBtn: {
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
   customerFieldDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginHorizontal: SPACING.lg,
   },
   customerFieldRow: {
@@ -1684,7 +1693,7 @@ const styles = StyleSheet.create({
   customerFieldInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
   contactsPill: {
@@ -1694,12 +1703,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: 5,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
   },
   contactsPillText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // ── Recent customers ──────────────────────────────────────
@@ -1715,16 +1724,16 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
   },
   recentPillPressed: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   recentPillAvatar: {
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1734,7 +1743,7 @@ const styles = StyleSheet.create({
   recentPillAvatarText: {
     fontSize: 10,
     fontWeight: '700' as '700',
-    color: CALM.bronze,
+    color: C.bronze,
   },
   recentPillAvatarTextPressed: {
     color: '#fff',
@@ -1742,7 +1751,7 @@ const styles = StyleSheet.create({
   recentName: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: C.bronze,
     maxWidth: 100,
   },
   recentNamePressed: {
@@ -1765,15 +1774,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
   },
   suggestionPillPressed: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   suggestionText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: C.bronze,
   },
   suggestionTextPressed: {
     color: '#fff',
@@ -1793,15 +1802,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
   },
   reorderPillPressed: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   reorderPillText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: C.bronze,
   },
   reorderPillTextPressed: {
     color: '#fff',
@@ -1815,8 +1824,8 @@ const styles = StyleSheet.create({
   },
   whatsAppInput: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
+    color: C.textPrimary,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     minHeight: 56,
@@ -1834,18 +1843,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     backgroundColor: 'transparent',
     marginRight: SPACING.xs,
   },
   sectionChipActive: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
   },
   sectionChipText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     maxWidth: 140,
   },
   sectionChipTextActive: {
@@ -1854,8 +1863,8 @@ const styles = StyleSheet.create({
   sectionChipCount: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textMuted,
-    backgroundColor: withAlpha(CALM.textMuted, 0.12),
+    color: C.textMuted,
+    backgroundColor: withAlpha(C.textMuted, 0.12),
     borderRadius: 8,
     minWidth: 18,
     textAlign: 'center',
@@ -1864,12 +1873,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sectionChipCountActive: {
-    color: CALM.accent,
+    color: C.accent,
     backgroundColor: withAlpha('#fff', 0.85),
   },
   whatsAppParseBtn: {
     flexDirection: 'row',
-    backgroundColor: withAlpha(CALM.textPrimary, 0.06),
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
@@ -1878,24 +1887,24 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   whatsAppParseBtnPressed: {
-    backgroundColor: CALM.textPrimary,
+    backgroundColor: C.textPrimary,
   },
   whatsAppParseBtnDisabled: {
-    backgroundColor: withAlpha(CALM.textMuted, 0.04),
+    backgroundColor: withAlpha(C.textMuted, 0.04),
   },
   whatsAppParseBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   whatsAppParseBtnTextPressed: {
     color: '#fff',
   },
   whatsAppParseBtnTextDisabled: {
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   unmatchedBox: {
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     gap: SPACING.xs,
@@ -1905,15 +1914,15 @@ const styles = StyleSheet.create({
   },
   unmatchedItem: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // ── Product menu ──────────────────────────────────────────
   menuCard: {
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     overflow: 'hidden',
   },
   menuActionBar: {
@@ -1930,7 +1939,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: 8,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   addItemsPillPressed: {
     opacity: 0.8,
@@ -1948,21 +1957,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: 6,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
   },
   waPasteBtnActive: {
-    backgroundColor: CALM.textPrimary,
+    backgroundColor: C.textPrimary,
   },
   waPasteBtnText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: C.bronze,
   },
   waPasteBtnTextActive: {
     color: '#fff',
   },
   itemCountBadge: {
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.full,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -1985,7 +1994,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.xs,
@@ -1993,11 +2002,11 @@ const styles = StyleSheet.create({
   noProductsText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   noProductsHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // Product search
@@ -2011,7 +2020,7 @@ const styles = StyleSheet.create({
   productSearchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
 
@@ -2025,10 +2034,10 @@ const styles = StyleSheet.create({
   },
   productRowBorder: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(CALM.border, 0.7),
+    borderTopColor: withAlpha(C.border, 0.7),
   },
   productRowActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.04),
+    backgroundColor: withAlpha(C.bronze, 0.04),
   },
   productRowLeft: {
     flex: 1,
@@ -2049,15 +2058,15 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   productNameActive: {
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: C.bronze,
   },
   productPrice: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     letterSpacing: 0.2,
   },
@@ -2066,7 +2075,7 @@ const styles = StyleSheet.create({
   qtyControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
     borderRadius: RADIUS.full,
     paddingHorizontal: 4,
     paddingVertical: 3,
@@ -2080,12 +2089,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   qtyBtnPlus: {
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
   },
   qtyText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     minWidth: 24,
     textAlign: 'center',
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
@@ -2093,8 +2102,8 @@ const styles = StyleSheet.create({
   qtyInput: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.textPrimary,
-    backgroundColor: '#fff',
+    color: C.textPrimary,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.xs,
     paddingVertical: 2,
@@ -2107,13 +2116,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
   },
   addProductBtn: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2127,13 +2136,13 @@ const styles = StyleSheet.create({
   },
   emptyItemsHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Selected items in card ────────────────────────────────
   selectedItemsWrap: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   selectedItemRow: {
     flexDirection: 'row' as const,
@@ -2145,7 +2154,7 @@ const styles = StyleSheet.create({
   },
   selectedItemRowBorder: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   selectedItemLeft: {
     flex: 1,
@@ -2154,18 +2163,18 @@ const styles = StyleSheet.create({
   selectedItemName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   selectedItemPrice: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     letterSpacing: 0.2,
   },
   selectedItemTotal: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     minWidth: 48,
     textAlign: 'right',
@@ -2177,30 +2186,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
-    backgroundColor: withAlpha(CALM.textMuted, 0.02),
+    borderTopColor: C.border,
+    backgroundColor: withAlpha(C.textMuted, 0.02),
   },
   subtotalLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textMuted,
+    color: C.textMuted,
     letterSpacing: 0.3,
   },
   subtotalAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
   // ── Contact picker ────────────────────────────────────────
   contactModalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(CALM.textPrimary, 0.4),
+    backgroundColor: withAlpha(C.textPrimary, 0.4),
     justifyContent: 'flex-end',
   },
   contactPickerSheet: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     maxHeight: '75%',
@@ -2210,7 +2219,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     alignSelf: 'center',
     marginTop: SPACING.sm,
     marginBottom: SPACING.sm,
@@ -2225,12 +2234,12 @@ const styles = StyleSheet.create({
   contactSheetTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   contactSearchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
@@ -2241,7 +2250,7 @@ const styles = StyleSheet.create({
   contactSearchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
   contactList: {
@@ -2259,14 +2268,14 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
   },
   contactAvatarText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.bronze,
+    color: C.bronze,
   },
   contactInfo: {
     flex: 1,
@@ -2274,11 +2283,11 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   contactPhone: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 1,
   },
   contactEmpty: {
@@ -2287,20 +2296,20 @@ const styles = StyleSheet.create({
   },
   contactEmptyText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Product picker modal ──────────────────────────────────
   pickerOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(CALM.textPrimary, 0.5),
+    backgroundColor: withAlpha(C.textPrimary, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
   },
   pickerCard: {
     width: '100%',
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '80%',
     overflow: 'hidden',
@@ -2322,21 +2331,21 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
   pickerTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     letterSpacing: -0.3,
   },
   pickerCloseBtn: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2349,19 +2358,19 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.OS === 'ios' ? SPACING.sm : 2,
     gap: SPACING.sm,
     borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
   },
   pickerSearchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
   pickerSearchClear: {
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: withAlpha(CALM.textMuted, 0.12),
+    backgroundColor: withAlpha(C.textMuted, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2376,11 +2385,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     letterSpacing: 0.2,
   },
   pickerSectionBadge: {
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     borderRadius: RADIUS.full,
     paddingHorizontal: 7,
     paddingVertical: 2,
@@ -2388,13 +2397,13 @@ const styles = StyleSheet.create({
   pickerSectionCount: {
     fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   pickerGroupCard: {
     maxHeight: Dimensions.get('window').height * 0.42,
     marginHorizontal: SPACING.md,
-    backgroundColor: withAlpha(CALM.textMuted, 0.03),
+    backgroundColor: withAlpha(C.textMuted, 0.03),
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
   },
@@ -2408,16 +2417,16 @@ const styles = StyleSheet.create({
   },
   pickerBottomBarActive: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(CALM.border, 0.5),
+    borderTopColor: withAlpha(C.border, 0.5),
   },
   pickerBottomCount: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
   },
   pickerBottomCountEmpty: {
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   pickerDoneBtn: {
     alignItems: 'center',
@@ -2425,18 +2434,18 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xl,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
   },
   pickerDoneBtnHasItems: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   pickerDoneBtnPressed: {
-    backgroundColor: withAlpha(CALM.bronze, 0.8),
+    backgroundColor: withAlpha(C.bronze, 0.8),
   },
   pickerDoneBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   pickerDoneBtnTextHasItems: {
     color: '#fff',
@@ -2447,7 +2456,7 @@ const styles = StyleSheet.create({
 
   // ── Order slip ────────────────────────────────────────────
   orderSlip: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.md,
@@ -2463,7 +2472,7 @@ const styles = StyleSheet.create({
   slipDash: {
     flex: 1,
     height: 1.5,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     borderRadius: 1,
   },
   slipRow: {
@@ -2474,7 +2483,7 @@ const styles = StyleSheet.create({
   },
   slipQty: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textMuted,
+    color: C.textMuted,
     width: 22,
     textAlign: 'right',
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
@@ -2482,11 +2491,11 @@ const styles = StyleSheet.create({
   slipName: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   slipPrice: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   slipTotalRow: {
@@ -2496,31 +2505,31 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.sm,
     marginTop: SPACING.xs,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   slipTotalLabel: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   slipTotalAmount: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
   // ── Review modal ─────────────────────────────────────────
   reviewOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(CALM.textPrimary, 0.5),
+    backgroundColor: withAlpha(C.textPrimary, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
   },
   reviewSheet: {
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
@@ -2543,21 +2552,21 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
   reviewTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     letterSpacing: -0.3,
   },
   reviewCloseBtn: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2567,18 +2576,18 @@ const styles = StyleSheet.create({
   reviewCustomerName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   reviewCustomerSub: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 2,
   },
   reviewSlip: {
-    backgroundColor: withAlpha(CALM.textMuted, 0.03),
+    backgroundColor: withAlpha(C.textMuted, 0.03),
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.md,
     marginBottom: SPACING.sm,
@@ -2592,10 +2601,10 @@ const styles = StyleSheet.create({
   },
   reviewMetaText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   confirmBtn: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
@@ -2632,7 +2641,7 @@ const styles = StyleSheet.create({
   },
   cancelBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Calendar date picker overlay ─────────────────────────
@@ -2649,7 +2658,7 @@ const styles = StyleSheet.create({
     ...SHADOWS.lg,
   },
   datePickerCardInner: {
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
   },
@@ -2660,25 +2669,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   datePickerTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   datePickerDone: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // ── Details card (delivery + note) ───────────────────────
   detailsCard: {
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     overflow: 'hidden',
     paddingHorizontal: SPACING.lg,
   },
@@ -2695,12 +2704,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textMuted,
+    color: C.textMuted,
     letterSpacing: 0.3,
   },
   detailsDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   deliveryRow: {
     flexDirection: 'row' as const,
@@ -2710,7 +2719,7 @@ const styles = StyleSheet.create({
   deliveryLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textMuted,
+    color: C.textMuted,
     letterSpacing: 0.3,
     marginRight: SPACING.xs,
   },
@@ -2722,7 +2731,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     marginLeft: SPACING.xs,
@@ -2736,15 +2745,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     minHeight: 30,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
   },
   dPillActive: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   dPillText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.bronze,
+    color: C.bronze,
   },
   dPillTextActive: {
     color: '#fff',
@@ -2760,11 +2769,11 @@ const styles = StyleSheet.create({
   deliveryBadgeText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   noteInput: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: 2,
   },
 
@@ -2776,7 +2785,7 @@ const styles = StyleSheet.create({
     right: SPACING.xl,
   },
   saveButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.xl,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -2819,14 +2828,14 @@ const styles = StyleSheet.create({
   // ── Confirmation modal ────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(CALM.textPrimary, 0.5),
+    backgroundColor: withAlpha(C.textPrimary, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
   modalCard: {
     width: '100%',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     gap: SPACING.lg,
@@ -2848,31 +2857,31 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   modalOrderNumber: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
     fontVariant: ['tabular-nums'],
     marginTop: 1,
   },
   modalCustomerName: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 2,
   },
   modalTextBox: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.lg,
   },
   modalPreviewText: {
     fontSize: TYPOGRAPHY.size.base,
     lineHeight: 20,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   modalActions: {
     gap: SPACING.sm,
@@ -2884,13 +2893,13 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.xl,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     minHeight: 44,
   },
   modalCopyText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.bronze,
+    color: C.bronze,
   },
   modalWhatsAppButton: {
     flexDirection: 'row',
@@ -2912,7 +2921,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.xl,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     minHeight: 48,
   },
   modalDoneText: {
@@ -2923,10 +2932,10 @@ const styles = StyleSheet.create({
 
   // ── QR panel ─────────────────────────────────────────────
   qrPanel: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.lg,
     alignItems: 'center',
     gap: SPACING.md,
@@ -2934,7 +2943,7 @@ const styles = StyleSheet.create({
   qrAmount: {
     fontSize: 28,
     fontWeight: '700' as '700',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     letterSpacing: -0.5,
   },
   qrTabs: {
@@ -2947,11 +2956,11 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
   },
   qrTabActive: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   qrTabText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   qrTabTextActive: {
     color: '#fff',
@@ -2963,7 +2972,7 @@ const styles = StyleSheet.create({
   },
   qrLabel: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   modalQrButton: {
     flexDirection: 'row',
@@ -2972,13 +2981,13 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.xl,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     minHeight: 44,
   },
   modalQrText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.bronze,
+    color: C.bronze,
   },
 });
 

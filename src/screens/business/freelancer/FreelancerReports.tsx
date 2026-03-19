@@ -1,20 +1,23 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { BarChart } from 'react-native-chart-kit';
 import { format, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useFreelancerStore } from '../../../store/freelancerStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { askFreelancerQuestion } from '../../../services/aiService';
+import { generateReportNarrative, ReportMonthData } from '../../../services/reportNarrative';
+import { useAIInsightsStore } from '../../../store/aiInsightsStore';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -32,6 +35,8 @@ const PERIODS: { label: string; value: PeriodOption }[] = [
 ];
 
 const FreelancerReports: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
   const { businessTransactions } = useBusinessStore();
   const {
@@ -134,6 +139,60 @@ const FreelancerReports: React.FC = () => {
       .filter(Boolean) as { name: string; averageGap: number; longestGap: number }[];
   }, [clients, businessTransactions]);
 
+  // Report narrative
+  const reportNarratives = useAIInsightsStore((s) => s.reportNarratives);
+  const monthKey = format(new Date(), 'yyyy-MM');
+  const narrativeEntry = reportNarratives[`freelancer_${monthKey}`];
+
+  const currentMonthNarrative = useMemo(() => {
+    const now = new Date();
+    const ms = startOfMonth(now);
+    const me = endOfMonth(now);
+    const monthTxns = businessTransactions.filter(
+      (t) => t.type === 'income' && isWithinInterval(toDate(t.date), { start: ms, end: me })
+    );
+    const income = monthTxns.reduce((s, t) => s + t.amount, 0);
+
+    // By client for top categories
+    const clientTotals: Record<string, number> = {};
+    for (const t of monthTxns) {
+      const client = clients.find((c) => c.id === t.clientId);
+      const name = client?.name || 'uncategorized';
+      clientTotals[name] = (clientTotals[name] || 0) + t.amount;
+    }
+    const topCategories = Object.entries(clientTotals)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([name, amount]) => ({
+        name,
+        amount,
+        percent: income > 0 ? Math.round((amount / income) * 100) : 0,
+      }));
+
+    // Previous month
+    const prevMs = startOfMonth(subMonths(now, 1));
+    const prevMe = endOfMonth(subMonths(now, 1));
+    const prevIncome = businessTransactions
+      .filter((t) => t.type === 'income' && isWithinInterval(toDate(t.date), { start: prevMs, end: prevMe }))
+      .reduce((s, t) => s + t.amount, 0);
+
+    return { income, topCategories, prevIncome, count: monthTxns.length };
+  }, [businessTransactions, clients]);
+
+  useEffect(() => {
+    if (businessTransactions.length === 0) return;
+    const data: ReportMonthData = {
+      mode: 'freelancer',
+      income: currentMonthNarrative.income,
+      expenses: 0,
+      kept: currentMonthNarrative.income,
+      topCategories: currentMonthNarrative.topCategories,
+      prevMonthIncome: currentMonthNarrative.prevIncome,
+      transactionCount: currentMonthNarrative.count,
+    };
+    generateReportNarrative(data);
+  }, [currentMonthNarrative]);
+
   const longestWait = gapData.length > 0
     ? gapData.reduce((prev, curr) =>
         curr.longestGap > prev.longestGap ? curr : prev
@@ -142,13 +201,13 @@ const FreelancerReports: React.FC = () => {
 
   // Chart config
   const chartConfig = {
-    backgroundGradientFrom: CALM.background,
-    backgroundGradientTo: CALM.background,
-    color: () => withAlpha(CALM.bronze, 0.6),
-    labelColor: () => CALM.textSecondary,
+    backgroundGradientFrom: C.background,
+    backgroundGradientTo: C.background,
+    color: () => withAlpha(C.bronze, 0.6),
+    labelColor: () => C.textSecondary,
     barPercentage: 0.6,
     propsForBackgroundLines: {
-      stroke: CALM.border,
+      stroke: C.border,
       strokeDasharray: '4 4',
     },
     decimalPlaces: 0,
@@ -187,6 +246,12 @@ const FreelancerReports: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {narrativeEntry?.text ? (
+          <Text style={[{ ...TYPE.narrative }, { color: C.textSecondary, marginBottom: SPACING.md }]}>
+            {narrativeEntry.text}
+          </Text>
+        ) : null}
+
         {/* Section 1 — Income Over Time */}
         <Text style={styles.sectionLabel}>income over time</Text>
         {monthlyIncome.some((m) => m.amount > 0) ? (
@@ -260,7 +325,7 @@ const FreelancerReports: React.FC = () => {
                         styles.clientBar,
                         {
                           width: Math.max(barWidth, 4),
-                          backgroundColor: withAlpha(CALM.bronze, Math.max(opacity, 0.2)),
+                          backgroundColor: withAlpha(C.bronze, Math.max(opacity, 0.2)),
                         },
                       ]}
                     />
@@ -321,10 +386,10 @@ const FreelancerReports: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -350,7 +415,7 @@ const styles = StyleSheet.create({
   },
   avgLine: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: SPACING.xs,
   },
 
@@ -371,21 +436,21 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     minHeight: 44,
     minWidth: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
   periodOptionActive: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   periodText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   periodTextActive: {
     color: '#FFFFFF',
@@ -401,7 +466,7 @@ const styles = StyleSheet.create({
   },
   clientBarName: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
     maxWidth: 120,
   },
@@ -416,7 +481,7 @@ const styles = StyleSheet.create({
   },
   clientBarAmount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -427,11 +492,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   gapName: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   gapStats: {
@@ -440,12 +505,12 @@ const styles = StyleSheet.create({
   },
   gapAvg: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   gapLongest: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
   longestWaitText: {
@@ -458,11 +523,11 @@ const styles = StyleSheet.create({
     marginTop: SPACING['2xl'],
     paddingTop: SPACING.xl,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   aiSummaryText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 22,
   },
   aiLoadingText: {
@@ -475,7 +540,7 @@ const styles = StyleSheet.create({
   },
   showSummaryText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 });
 

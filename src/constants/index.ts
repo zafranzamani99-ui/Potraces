@@ -401,6 +401,29 @@ export const CALM = {
   lavender: '#B8AFBC',
 };
 
+// ─── CALM DARK MODE ──────────────────────────────────────────
+// Warm dark palette — same shape as CALM, earthy tones preserved.
+export const CALM_DARK = {
+  background: '#121212',
+  surface: '#1E1E1E',
+  textPrimary: '#F0EDE8',
+  textSecondary: '#A8A8A8',
+  textMuted: '#6B6B6B',
+  accent: '#7A7D2E',         // lighter olive for dark bg
+  positive: '#7A7D2E',
+  neutral: '#8E869A',
+  border: '#2D2D2D',
+  inputBorder: 'rgba(240,237,232,0.18)',
+  pillBg: 'rgba(240,237,232,0.08)',
+  bar: '#3A3A3A',
+  barActive: '#7A7D2E',
+  highlight: '#2A2518',
+  gold: '#E8BC3F',
+  bronze: '#C9924A',
+  deepOlive: '#9A9540',
+  lavender: '#8E869A',
+};
+
 // ─── BUSINESS SEMANTIC COLORS ──────────────────────────────
 // Softer, pleasant tones — visually distinct without being heavy/depressing.
 export const BIZ = {
@@ -423,6 +446,7 @@ export const TYPE = {
   balance: { fontSize: 36, fontWeight: '300' as const, fontVariant: ['tabular-nums'] as ('tabular-nums')[] },
   muted: { fontSize: 12, color: '#A0A0A0' },
   amount: { fontSize: 48, fontWeight: '200' as const, fontVariant: ['tabular-nums'] as ('tabular-nums')[] },
+  narrative: { fontSize: 14, lineHeight: 22, fontWeight: '400' as const, letterSpacing: 0.1 },
 };
 
 // ─── HELPERS ────────────────────────────────────────────────

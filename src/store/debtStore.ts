@@ -232,6 +232,15 @@ export const useDebtStore = create<DebtState>()(
       deleteContact: (id) =>
         set((state) => ({
           contacts: state.contacts.filter((c) => c.id !== id),
+          debts: state.debts.map((d) =>
+            d.contact?.id === id ? { ...d, contact: { ...d.contact, name: '(deleted)' } } : d
+          ),
+          splits: state.splits.map((s) => ({
+            ...s,
+            participants: s.participants.map((p) =>
+              p.contact.id === id ? { ...p, contact: { ...p.contact, name: '(deleted)' } } : p
+            ),
+          })),
         })),
     }),
     {

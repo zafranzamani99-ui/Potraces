@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CALM, TYPE, SPACING, TYPOGRAPHY } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 interface BusinessSectionHeaderProps {
   title: string;
@@ -11,8 +12,10 @@ interface BusinessSectionHeaderProps {
 const BusinessSectionHeader: React.FC<BusinessSectionHeaderProps> = ({
   title,
   action,
-  accentColor = CALM.bronze,
+  accentColor: accentColorProp,
 }) => {
+  const C = useCalm();
+  const accentColor = accentColorProp ?? C.bronze;
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{title}</Text>

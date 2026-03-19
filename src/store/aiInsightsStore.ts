@@ -19,6 +19,9 @@ interface AIInsightsState {
   breathingRooms: BreathingRoom[];
   freshStartDismissedMonth: string | null; // "2026-03" — don't show again this month
 
+  // Report Narratives (per mode+month)
+  reportNarratives: Record<string, { text: string; generatedAt: number }>;
+
   // Money Chat history
   chatMessages: AIMessage[];
   conversations: ChatConversation[];
@@ -30,6 +33,7 @@ interface AIInsightsState {
   setBreathingRoom: (category: string, limit: number) => void;
   removeBreathingRoom: (category: string) => void;
   dismissFreshStart: (monthKey: string) => void;
+  setReportNarrative: (key: string, text: string) => void;
   addChatMessage: (msg: AIMessage) => void;
   clearChat: () => void;
   archiveChat: () => void;
@@ -46,6 +50,7 @@ export const useAIInsightsStore = create<AIInsightsState>()(
       isGenerating: false,
       breathingRooms: [],
       freshStartDismissedMonth: null,
+      reportNarratives: {},
       chatMessages: [],
       conversations: [],
 
@@ -83,6 +88,14 @@ export const useAIInsightsStore = create<AIInsightsState>()(
         })),
 
       dismissFreshStart: (monthKey) => set({ freshStartDismissedMonth: monthKey }),
+
+      setReportNarrative: (key, text) =>
+        set((state) => ({
+          reportNarratives: {
+            ...state.reportNarratives,
+            [key]: { text, generatedAt: Date.now() },
+          },
+        })),
 
       addChatMessage: (msg) =>
         set((state) => ({
@@ -150,6 +163,7 @@ export const useAIInsightsStore = create<AIInsightsState>()(
         spendingMirrorMonthKey: state.spendingMirrorMonthKey,
         breathingRooms: state.breathingRooms,
         freshStartDismissedMonth: state.freshStartDismissedMonth,
+        reportNarratives: state.reportNarratives,
         chatMessages: state.chatMessages,
         conversations: state.conversations,
       }),

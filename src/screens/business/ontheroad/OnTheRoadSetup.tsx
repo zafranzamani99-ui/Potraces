@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useOnTheRoadStore } from '../../../store/onTheRoadStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { successNotification } from '../../../services/haptics';
 
 type VehicleType = 'car' | 'motorcycle' | 'bicycle' | 'other';
@@ -22,6 +23,8 @@ const VEHICLES: { type: VehicleType; emoji: string; label: string }[] = [
 ];
 
 const OnTheRoadSetup: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
   const { roadDetails, setRoadDetails } = useOnTheRoadStore();
 
@@ -69,7 +72,7 @@ const OnTheRoadSetup: React.FC = () => {
           value={description}
           onChangeText={setDescription}
           placeholder="Grab driver, Foodpanda rider, runner..."
-          placeholderTextColor={CALM.textMuted}
+          placeholderTextColor={C.textMuted}
           returnKeyType="next"
         />
 
@@ -120,7 +123,7 @@ const OnTheRoadSetup: React.FC = () => {
             value={vehicleOther}
             onChangeText={setVehicleOther}
             placeholder="what do you use?"
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
             autoFocus
@@ -143,10 +146,10 @@ const OnTheRoadSetup: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -159,16 +162,16 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING['3xl'],
     marginTop: SPACING.xl,
   },
 
   input: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.lg,
     marginBottom: SPACING['2xl'],
     minHeight: 44,
@@ -190,13 +193,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: SPACING.lg,
     borderRadius: RADIUS.lg,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.bar,
+    borderColor: C.bar,
     minHeight: 80,
   },
   vehicleTileActive: {
-    borderColor: CALM.bronze,
+    borderColor: C.bronze,
     borderWidth: 2,
   },
   vehicleEmoji: {
@@ -205,10 +208,10 @@ const styles = StyleSheet.create({
   },
   vehicleLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   vehicleLabelActive: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
@@ -218,25 +221,25 @@ const styles = StyleSheet.create({
   },
   otherLinkText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textDecorationLine: 'underline',
   },
   otherLinkTextActive: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   otherInput: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.lg,
     marginBottom: SPACING['2xl'],
     minHeight: 44,
   },
 
   saveButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',

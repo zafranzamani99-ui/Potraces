@@ -15,6 +15,7 @@ import { format, differenceInDays, differenceInHours } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { useToast } from '../../context/ToastContext';
 import { warningNotification } from '../../services/haptics';
 import { Season } from '../../types';
@@ -63,7 +64,7 @@ const AnimatedSeasonCard: React.FC<{ index: number; children: React.ReactNode }>
 });
 
 // -- Pulsing dot for active badge -----------------------------------
-const PulsingDot: React.FC = React.memo(() => {
+const PulsingDot: React.FC<{ styles: ReturnType<typeof makeStyles> }> = React.memo(({ styles }) => {
   const opacity = useRef(new Animated.Value(0.5)).current;
 
   useEffect(() => {
@@ -93,6 +94,8 @@ const PulsingDot: React.FC = React.memo(() => {
 });
 
 const PastSeasons: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { seasons, orders, ingredientCosts, addSeason, useSeasonTemplate } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
@@ -206,7 +209,7 @@ const PastSeasons: React.FC = () => {
                   {/* Header with badge */}
                   <View style={styles.seasonHeader}>
                     <View style={styles.seasonIconArea}>
-                      <Feather name="calendar" size={20} color={CALM.bronze} />
+                      <Feather name="calendar" size={20} color={C.bronze} />
                     </View>
                     <View style={styles.seasonHeaderInfo}>
                       <Text style={styles.seasonName}>{item.name}</Text>
@@ -217,7 +220,7 @@ const PastSeasons: React.FC = () => {
                       </Text>
                     </View>
                     <View style={styles.activeBadge}>
-                      <PulsingDot />
+                      <PulsingDot styles={styles} />
                       <Text style={styles.activeBadgeText}>active</Text>
                     </View>
                   </View>
@@ -232,7 +235,7 @@ const PastSeasons: React.FC = () => {
                   {/* View details link */}
                   <View style={styles.viewDetailsRow}>
                     <Text style={styles.viewDetailsText}>view details</Text>
-                    <Feather name="arrow-right" size={14} color={CALM.bronze} />
+                    <Feather name="arrow-right" size={14} color={C.bronze} />
                   </View>
                 </TouchableOpacity>
               ) : (
@@ -247,7 +250,7 @@ const PastSeasons: React.FC = () => {
                   {/* Header with icon */}
                   <View style={styles.seasonHeader}>
                     <View style={styles.seasonIconArea}>
-                      <Feather name="calendar" size={20} color={CALM.textMuted} />
+                      <Feather name="calendar" size={20} color={C.textMuted} />
                     </View>
                     <View style={styles.seasonHeaderInfo}>
                       <Text style={styles.seasonName}>{item.name}</Text>
@@ -270,7 +273,7 @@ const PastSeasons: React.FC = () => {
                   {/* View details link */}
                   <View style={styles.viewDetailsRow}>
                     <Text style={styles.viewDetailsText}>view details</Text>
-                    <Feather name="arrow-right" size={14} color={CALM.bronze} />
+                    <Feather name="arrow-right" size={14} color={C.bronze} />
                   </View>
                 </TouchableOpacity>
               )}
@@ -303,7 +306,7 @@ const PastSeasons: React.FC = () => {
         ]}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Feather name="calendar" size={40} color={CALM.border} />
+            <Feather name="calendar" size={40} color={C.border} />
             <Text style={styles.emptyTitle}>no seasons yet</Text>
             <Text style={styles.emptyHint}>
               a season is like Raya, CNY, or any event where you take orders.
@@ -352,7 +355,7 @@ const PastSeasons: React.FC = () => {
                 value={newName}
                 onChangeText={setNewName}
                 placeholder="e.g. Raya 2025, CNY 2025"
-                placeholderTextColor={CALM.textSecondary}
+                placeholderTextColor={C.textSecondary}
                 autoFocus
               />
               {pastSeasons.length > 0 && (
@@ -414,10 +417,10 @@ const PastSeasons: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,     // #F9F9F7
+    backgroundColor: C.background,     // #F9F9F7
   },
   listContent: {
     paddingHorizontal: SPACING['2xl'],     // 24pt horizontal
@@ -436,7 +439,7 @@ const styles = StyleSheet.create({
   pageTitle: {
     fontSize: TYPOGRAPHY.size.xl,          // 20
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary,               // #1A1A1A
+    color: C.textPrimary,               // #1A1A1A
     marginBottom: SPACING.xs,              // 4pt
   },
   pageSubtitle: {
@@ -459,17 +462,17 @@ const styles = StyleSheet.create({
   timelineDotActive: {
     width: 8,
     height: 8,
-    backgroundColor: CALM.bronze,          // #B2780A filled
+    backgroundColor: C.bronze,          // #B2780A filled
   },
   timelineDotPast: {
     width: 6,
     height: 6,
-    backgroundColor: CALM.border,          // #EBEBEB
+    backgroundColor: C.border,          // #EBEBEB
   },
   timelineLine: {
     flex: 1,
     width: 1,
-    backgroundColor: CALM.border,          // #EBEBEB
+    backgroundColor: C.border,          // #EBEBEB
     marginTop: SPACING.xs,                 // 4pt gap below dot
   },
   timelineCardWrapper: {
@@ -480,20 +483,20 @@ const styles = StyleSheet.create({
 
   // -- Active season card (prominent) -------------------------------
   activeSeasonCard: {
-    backgroundColor: withAlpha(CALM.bronze, 0.06), // bronze at 6% opacity
+    backgroundColor: withAlpha(C.bronze, 0.06), // bronze at 6% opacity
     borderRadius: RADIUS.lg,               // 14
     borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.15), // subtle bronze border
+    borderColor: withAlpha(C.bronze, 0.15), // subtle bronze border
     padding: SPACING.lg,                   // 16pt
     gap: SPACING.md,                       // 16pt between sections
   },
 
   // -- Past season card ---------------------------------------------
   seasonCard: {
-    backgroundColor: CALM.surface,         // #FFFFFF
+    backgroundColor: C.surface,         // #FFFFFF
     borderRadius: RADIUS.lg,               // 14
     borderWidth: 1,
-    borderColor: CALM.border,              // #EBEBEB
+    borderColor: C.border,              // #EBEBEB
     padding: SPACING.lg,                   // 16pt
     gap: SPACING.sm,                       // 8pt
   },
@@ -508,7 +511,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: withAlpha(CALM.bronze, 0.08), // bronze at 8% opacity
+    backgroundColor: withAlpha(C.bronze, 0.08), // bronze at 8% opacity
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -519,7 +522,7 @@ const styles = StyleSheet.create({
   seasonName: {
     fontSize: TYPOGRAPHY.size.base,        // 15
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary,               // #1A1A1A
+    color: C.textPrimary,               // #1A1A1A
   },
   seasonDates: {
     ...TYPE.muted,                         // fontSize 12, color #A0A0A0
@@ -530,7 +533,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,                       // 4pt
-    backgroundColor: CALM.bronze,          // #B2780A
+    backgroundColor: C.bronze,          // #B2780A
     borderRadius: RADIUS.full,
     paddingVertical: 4,
     paddingHorizontal: SPACING.sm,         // 8pt
@@ -551,7 +554,7 @@ const styles = StyleSheet.create({
   // -- Compact stats inline -----------------------------------------
   seasonStatsInline: {
     ...TYPE.muted,                         // fontSize 12, color #A0A0A0
-    color: CALM.textSecondary,             // #6B6B6B
+    color: C.textSecondary,             // #6B6B6B
     fontVariant: ['tabular-nums'],
   },
 
@@ -565,7 +568,7 @@ const styles = StyleSheet.create({
   viewDetailsText: {
     fontSize: TYPOGRAPHY.size.sm,          // 13
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.bronze,                    // #B2780A
+    color: C.bronze,                    // #B2780A
   },
 
   // -- Empty state --------------------------------------------------
@@ -578,11 +581,11 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.lg,          // 17
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary,               // #1A1A1A
+    color: C.textPrimary,               // #1A1A1A
   },
   emptyHint: {
     ...TYPE.insight,                       // fontSize 14, lineHeight 22
-    color: CALM.textSecondary,             // #6B6B6B
+    color: C.textSecondary,             // #6B6B6B
     textAlign: 'center',
   },
   emptyCTA: {
@@ -590,7 +593,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     alignSelf: 'stretch',
@@ -613,7 +616,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     ...SHADOWS.sm,
@@ -633,7 +636,7 @@ const styles = StyleSheet.create({
     padding: SPACING['2xl'],               // 24pt
   },
   modalContent: {
-    backgroundColor: CALM.surface,         // #FFFFFF
+    backgroundColor: C.surface,         // #FFFFFF
     borderRadius: RADIUS.lg,               // 14
     padding: SPACING.xl,                   // 24pt
     width: '100%',
@@ -642,16 +645,16 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.lg,          // 17
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary,               // #1A1A1A
+    color: C.textPrimary,               // #1A1A1A
   },
   modalInput: {
     ...TYPE.insight,                       // fontSize 14, lineHeight 22
-    color: CALM.textPrimary,               // #1A1A1A
-    backgroundColor: CALM.background,      // #F9F9F7
+    color: C.textPrimary,               // #1A1A1A
+    backgroundColor: C.background,      // #F9F9F7
     borderRadius: RADIUS.md,               // 10
     padding: SPACING.md,                   // 16pt
     borderWidth: 1,
-    borderColor: CALM.border,              // #EBEBEB
+    borderColor: C.border,              // #EBEBEB
   },
   modalActions: {
     flexDirection: 'row',
@@ -666,12 +669,12 @@ const styles = StyleSheet.create({
   },
   modalCancelText: {
     fontSize: TYPOGRAPHY.size.sm,          // 13
-    color: CALM.textSecondary,             // #6B6B6B
+    color: C.textSecondary,             // #6B6B6B
   },
   modalConfirm: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.xl,
     minHeight: 44,
     justifyContent: 'center',
@@ -686,7 +689,7 @@ const styles = StyleSheet.create({
   },
   templateLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     letterSpacing: 0.3,
   },
   templatePills: {
@@ -701,19 +704,19 @@ const styles = StyleSheet.create({
     maxWidth: 120,
   },
   templatePillActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.12),
+    backgroundColor: withAlpha(C.accent, 0.12),
   },
   templatePillText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   templatePillTextActive: {
-    color: CALM.accent,
+    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
   },
   templateHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontStyle: 'italic',
   },
 });

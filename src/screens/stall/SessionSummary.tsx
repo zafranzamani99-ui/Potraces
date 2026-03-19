@@ -3,16 +3,17 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Share,
   TextInput,
   Animated,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { useStallStore } from '../../store/stallStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -23,6 +24,8 @@ import { RootStackParamList } from '../../types';
 type SessionSummaryRoute = RouteProp<RootStackParamList, 'StallSessionSummary'>;
 
 const SessionSummary: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<SessionSummaryRoute>();
   const { sessionId } = route.params;
 
@@ -203,11 +206,11 @@ const SessionSummary: React.FC = () => {
         {/* Duration, sale count */}
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
-            <Feather name="clock" size={16} color={CALM.textSecondary} />
+            <Feather name="clock" size={16} color={C.textSecondary} />
             <Text style={styles.statText}>{formatDuration(summary.duration)}</Text>
           </View>
           <View style={styles.statItem}>
-            <Feather name="shopping-bag" size={16} color={CALM.textSecondary} />
+            <Feather name="shopping-bag" size={16} color={C.textSecondary} />
             <Text style={styles.statText}>
               {summary.saleCount} sale{summary.saleCount !== 1 ? 's' : ''}
             </Text>
@@ -217,7 +220,7 @@ const SessionSummary: React.FC = () => {
         {/* Cash / QR split */}
         <View style={styles.splitRow}>
           <View style={styles.splitItem}>
-            <Feather name="dollar-sign" size={16} color={CALM.textSecondary} style={{ marginBottom: 4 }} />
+            <Feather name="dollar-sign" size={16} color={C.textSecondary} style={{ marginBottom: 4 }} />
             <Text style={styles.splitLabel}>CASH</Text>
             <Text
               style={styles.splitValue}
@@ -228,7 +231,7 @@ const SessionSummary: React.FC = () => {
           </View>
           <View style={styles.splitDivider} />
           <View style={styles.splitItem}>
-            <Feather name="smartphone" size={16} color={CALM.textSecondary} style={{ marginBottom: 4 }} />
+            <Feather name="smartphone" size={16} color={C.textSecondary} style={{ marginBottom: 4 }} />
             <Text style={styles.splitLabel}>QR</Text>
             <Text
               style={styles.splitValue}
@@ -265,7 +268,7 @@ const SessionSummary: React.FC = () => {
         {/* AI insight */}
         {insight && (
           <View style={styles.insightCard}>
-            <Feather name="message-circle" size={14} color={CALM.textSecondary} />
+            <Feather name="message-circle" size={14} color={C.textSecondary} />
             <Text style={styles.insightText}>{insight}</Text>
           </View>
         )}
@@ -334,7 +337,7 @@ const SessionSummary: React.FC = () => {
         {/* Transfer confirmation */}
         {transferDone && (
           <Animated.View style={[styles.transferConfirm, { opacity: fadeAnim }]}>
-            <Feather name="check" size={16} color={CALM.positive} />
+            <Feather name="check" size={16} color={C.positive} />
             <Text style={styles.transferConfirmText}>
               {currency} {session?.transferAmount?.toFixed(2) || transferAmount} transferred
             </Text>
@@ -349,7 +352,7 @@ const SessionSummary: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Share session summary via WhatsApp or other apps"
         >
-          <Feather name="share" size={18} color={CALM.bronze} />
+          <Feather name="share" size={18} color={C.bronze} />
           <Text style={styles.shareButtonText}>share summary</Text>
         </TouchableOpacity>
 
@@ -368,10 +371,10 @@ const SessionSummary: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -385,12 +388,12 @@ const styles = StyleSheet.create({
   sessionName: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   dateText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING['3xl'],
   },
 
@@ -401,7 +404,7 @@ const styles = StyleSheet.create({
   },
   revenueAmount: {
     ...TYPE.balance,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xl,
     fontSize: TYPOGRAPHY.size['4xl'],
   },
@@ -420,15 +423,15 @@ const styles = StyleSheet.create({
   statText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // ─── Cash / QR split ────────────────────────────────────────
   splitRow: {
     flexDirection: 'row',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     marginBottom: SPACING['3xl'],
@@ -444,12 +447,12 @@ const styles = StyleSheet.create({
   splitValue: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   splitDivider: {
     width: 1,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
 
   // ─── Product breakdown ───────────────────────────────────────
@@ -466,7 +469,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     minHeight: 44,
   },
   productInfo: {
@@ -475,7 +478,7 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   productQty: {
     ...TYPE.muted,
@@ -484,7 +487,7 @@ const styles = StyleSheet.create({
   productRevenue: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -493,29 +496,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: SPACING.sm,
-    backgroundColor: CALM.highlight,
+    backgroundColor: C.highlight,
     borderRadius: RADIUS.md,
     padding: SPACING.lg,
     marginBottom: SPACING.xl,
   },
   insightText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     flex: 1,
   },
 
   // ─── Comparison ──────────────────────────────────────────────
   comparisonCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
     padding: SPACING.lg,
     marginBottom: SPACING.xl,
   },
   comparisonText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     fontVariant: ['tabular-nums'],
   },
@@ -523,9 +526,9 @@ const styles = StyleSheet.create({
   // ─── Condition badge ─────────────────────────────────────────
   conditionBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.2),
+    borderColor: withAlpha(C.bronze, 0.2),
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
@@ -534,29 +537,29 @@ const styles = StyleSheet.create({
   conditionBadgeText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // ─── Note ────────────────────────────────────────────────────
   noteCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
     padding: SPACING.lg,
     marginBottom: SPACING.xl,
   },
   noteText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontStyle: 'italic',
   },
 
   // ─── Transfer bridge ────────────────────────────────────────
   transferCard: {
-    backgroundColor: withAlpha(CALM.bronze, 0.04),
+    backgroundColor: withAlpha(C.bronze, 0.04),
     borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.2),
+    borderColor: withAlpha(C.bronze, 0.2),
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     marginBottom: SPACING.xl,
@@ -578,23 +581,23 @@ const styles = StyleSheet.create({
   transferCurrency: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   transferInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.surface,
+    color: C.textPrimary,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     fontVariant: ['tabular-nums'],
   },
   transferButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -615,16 +618,16 @@ const styles = StyleSheet.create({
   skipLinkText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   transferConfirm: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.xl,
@@ -632,7 +635,7 @@ const styles = StyleSheet.create({
   transferConfirmText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.positive,
+    color: C.positive,
     fontVariant: ['tabular-nums'],
   },
 
@@ -642,9 +645,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.bronze,
+    borderColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     minHeight: 48,
@@ -653,10 +656,10 @@ const styles = StyleSheet.create({
   shareButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   doneButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',
@@ -678,7 +681,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.lg,
   },
   doneButtonEmpty: {
@@ -688,7 +691,7 @@ const styles = StyleSheet.create({
   doneButtonEmptyText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 });
 

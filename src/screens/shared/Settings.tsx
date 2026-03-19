@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   Switch,
   TouchableOpacity,
@@ -18,6 +17,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Feather } from '@expo/vector-icons';
@@ -35,12 +35,16 @@ import { RootStackParamList } from '../../types';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import CategoryManager from '../../components/common/CategoryManager';
+import PaymentMethodManager from '../../components/common/PaymentMethodManager';
 import UnitManager from '../../components/common/UnitManager';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import { signOut } from '../../services/supabase';
 import { clearProfileCache } from '../../services/sellerSync';
 import { useAuthStore } from '../../store/authStore';
+import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
+import type { ThemePreference, AppLanguage } from '../../store/settingsStore';
 
 const CURRENCY_OPTIONS = [
   // Southeast Asia
@@ -65,6 +69,386 @@ const CURRENCY_OPTIONS = [
   { code: 'KRW', label: 'South Korean Won' },
 ];
 
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: C.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: SPACING.lg,
+  },
+  sectionHeader: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.md,
+    marginLeft: SPACING.xs,
+  },
+  card: {
+    marginBottom: SPACING.sm,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    minHeight: 44,
+  },
+  settingLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  settingLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  settingDescription: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    marginTop: 2,
+    marginLeft: 18 + SPACING.md,
+  },
+  valueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  settingValue: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textSecondary,
+  },
+  input: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    textAlign: 'right',
+    flex: 1,
+    marginLeft: SPACING.lg,
+    paddingVertical: SPACING.xs,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: C.border,
+    marginVertical: SPACING.xs,
+  },
+  premiumStatusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  premiumBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.md,
+    backgroundColor: C.accent,
+  },
+  premiumBadgeText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: '#fff',
+  },
+  unsubscribeText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.neutral,
+  },
+  usageLimits: {
+    gap: SPACING.sm,
+  },
+  usageRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.xs,
+  },
+  usageLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  usageValue: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  subscribeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    backgroundColor: C.accent,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.md,
+  },
+  subscribeButtonText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: '#fff',
+  },
+  qrSubtitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    marginBottom: SPACING.md,
+  },
+  qrSlots: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  qrSlot: {
+    flex: 1,
+  },
+  qrSlotFilled: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: withAlpha(C.accent, 0.06),
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    gap: SPACING.sm,
+  },
+  qrSlotIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.sm,
+    backgroundColor: withAlpha(C.accent, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrSlotLabel: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  qrSlotEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.lg,
+    gap: SPACING.xs,
+  },
+  qrSlotAddText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.accent,
+  },
+  // QR Action Sheet
+  qrActionOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING['2xl'],
+  },
+  qrActionSheet: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  qrActionTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    marginBottom: SPACING.lg,
+    textAlign: 'center',
+  },
+  qrActionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    gap: SPACING.md,
+  },
+  qrActionIconBg: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrActionText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  qrActionDivider: {
+    height: 1,
+    backgroundColor: C.border,
+  },
+
+  // ── QR Label Prompt ──
+  qrLabelOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING['2xl'],
+  },
+  qrLabelCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING['2xl'],
+    width: '100%',
+    maxWidth: 340,
+    gap: SPACING.lg,
+  },
+  qrLabelTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: C.textPrimary,
+  },
+  qrLabelInput: {
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    backgroundColor: C.background,
+  },
+  qrLabelCancel: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+  },
+  qrLabelSave: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xl,
+    backgroundColor: C.accent,
+    borderRadius: RADIUS.md,
+  },
+
+  // ── QR Preview (matches Dashboard style) ──
+  qrPreviewOverlay: {
+    flex: 1,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrPreviewClose: {
+    position: 'absolute',
+    top: 72,
+    right: SPACING.xl,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  qrPreviewLabel: {
+    position: 'absolute',
+    top: 80,
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold as any,
+    color: '#fff',
+    zIndex: 10,
+  },
+  qrPreviewImage: {
+    width: Dimensions.get('window').width - SPACING['2xl'] * 2,
+    height: Dimensions.get('window').width - SPACING['2xl'] * 2,
+    borderRadius: RADIUS.lg,
+    backgroundColor: '#fff',
+  },
+  qrPreviewTabs: {
+    position: 'absolute',
+    bottom: 60,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    zIndex: 10,
+  },
+  qrPreviewTab: {
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  qrPreviewTabActive: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  qrPreviewTabText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  qrPreviewTabTextActive: {
+    color: '#fff',
+  },
+
+  // ── Currency Picker ──
+  currencyOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING['2xl'],
+  },
+  currencyCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    width: '100%',
+    maxWidth: 340,
+    maxHeight: 420,
+  },
+  currencyTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: C.textPrimary,
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.xs,
+  },
+  currencyList: {
+    maxHeight: 360,
+  },
+  currencyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    marginBottom: 2,
+  },
+  currencyItemSelected: {
+    backgroundColor: withAlpha(C.accent, 0.08),
+  },
+  currencyCode: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: C.textPrimary,
+  },
+  currencyCodeSelected: {
+    color: C.accent,
+  },
+  currencyLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    marginTop: 1,
+  },
+});
+
 const Settings: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<{ Settings: { scrollTo?: string } }, 'Settings'>>();
@@ -86,6 +470,7 @@ const Settings: React.FC = () => {
   const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
   const [categoryManagerType, setCategoryManagerType] = useState<'expense' | 'income' | 'investment'>('expense');
   const [unitManagerVisible, setUnitManagerVisible] = useState(false);
+  const [paymentMethodManagerVisible, setPaymentMethodManagerVisible] = useState(false);
   const [qrActionIndex, setQrActionIndex] = useState<number | null>(null);
   const [qrLoadingIndex, setQrLoadingIndex] = useState<number | null>(null);
   const [qrLabelModal, setQrLabelModal] = useState<{ visible: boolean; uri?: string; replaceIndex?: number; renameIndex?: number; defaultLabel: string }>({ visible: false, defaultLabel: '' });
@@ -116,6 +501,14 @@ const Settings: React.FC = () => {
   const updatePaymentQrLabel = useSettingsStore((s) => s.updatePaymentQrLabel);
   const clearAllData = useSettingsStore((s) => s.clearAllData);
   const clearBusinessData = useSettingsStore((s) => s.clearBusinessData);
+  const themePreference = useSettingsStore((s) => s.themePreference);
+  const setThemePreference = useSettingsStore((s) => s.setThemePreference);
+  const language = useSettingsStore((s) => s.language);
+  const setLanguage = useSettingsStore((s) => s.setLanguage);
+
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
 
   useEffect(() => {
     if (ready) return;
@@ -331,7 +724,7 @@ const Settings: React.FC = () => {
   }, [setBusinessModeEnabled, navigation, setMode, showToast]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: C.background }]}>
       <ScrollView
         ref={scrollRef}
         style={styles.scrollView}
@@ -341,19 +734,19 @@ const Settings: React.FC = () => {
         scrollEventThrottle={16}
       >
         {/* Profile */}
-        <Text style={styles.sectionHeader}>Profile</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Profile</Text>
         <Card style={styles.card}>
           <View style={styles.settingRow}>
             <View style={styles.settingLabelRow}>
-              <Feather name="user" size={18} color={CALM.textSecondary} />
-              <Text style={styles.settingLabel}>Name</Text>
+              <Feather name="user" size={18} color={C.textSecondary} />
+              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Name</Text>
             </View>
             <TextInput
               value={userName}
               onChangeText={setUserName}
               placeholder="Enter your name"
-              placeholderTextColor={CALM.neutral}
-              style={styles.input}
+              placeholderTextColor={C.neutral}
+              style={[styles.input, { color: C.textPrimary }]}
               returnKeyType="done"
               onSubmitEditing={Keyboard.dismiss}
             />
@@ -361,7 +754,7 @@ const Settings: React.FC = () => {
         </Card>
 
         {/* Preferences */}
-        <Text style={styles.sectionHeader}>Preferences</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Preferences</Text>
         <Card style={styles.card}>
           <TouchableOpacity
             style={styles.settingRow}
@@ -369,18 +762,18 @@ const Settings: React.FC = () => {
             activeOpacity={0.6}
           >
             <View style={styles.settingLabelRow}>
-              <Feather name="dollar-sign" size={18} color={CALM.textSecondary} />
-              <Text style={styles.settingLabel}>Currency</Text>
+              <Feather name="dollar-sign" size={18} color={C.textSecondary} />
+              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Currency</Text>
             </View>
             <View style={styles.valueRow}>
-              <Text style={styles.settingValue}>{currency}</Text>
-              <Feather name="chevron-right" size={18} color={CALM.neutral} />
+              <Text style={[styles.settingValue, { color: C.textSecondary }]}>{currency}</Text>
+              <Feather name="chevron-right" size={18} color={C.neutral} />
             </View>
           </TouchableOpacity>
 
           {businessModeEnabled && (
             <>
-              <View style={styles.divider} />
+              <View style={[styles.divider, { backgroundColor: C.border }]} />
 
               <TouchableOpacity
                 style={styles.settingRow}
@@ -388,41 +781,41 @@ const Settings: React.FC = () => {
                 activeOpacity={0.6}
               >
                 <View style={styles.settingLabelRow}>
-                  <Feather name="layout" size={18} color={CALM.textSecondary} />
-                  <Text style={styles.settingLabel}>Default Mode</Text>
+                  <Feather name="layout" size={18} color={C.textSecondary} />
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Default Mode</Text>
                 </View>
                 <View style={styles.valueRow}>
-                  <Text style={styles.settingValue}>
+                  <Text style={[styles.settingValue, { color: C.textSecondary }]}>
                     {defaultMode === 'personal' ? 'Personal' : 'Business'}
                   </Text>
-                  <Feather name="chevron-right" size={18} color={CALM.neutral} />
+                  <Feather name="chevron-right" size={18} color={C.neutral} />
                 </View>
               </TouchableOpacity>
             </>
           )}
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: C.border }]} />
 
           <View style={styles.settingRow}>
             <View style={styles.settingLabelRow}>
-              <Feather name="smartphone" size={18} color={CALM.textSecondary} />
-              <Text style={styles.settingLabel}>Haptic Feedback</Text>
+              <Feather name="smartphone" size={18} color={C.textSecondary} />
+              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Haptic Feedback</Text>
             </View>
             <Switch
               value={hapticEnabled}
               onValueChange={handleHapticToggle}
-              trackColor={{ false: CALM.border, true: CALM.positive }}
+              trackColor={{ false: C.border, true: C.positive }}
               thumbColor="#FFFFFF"
             />
           </View>
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: C.border }]} />
 
           <View style={styles.settingRow}>
             <View style={{ flex: 1 }}>
               <View style={styles.settingLabelRow}>
-                <Feather name="bell" size={18} color={CALM.textSecondary} />
-                <Text style={styles.settingLabel}>Notifications</Text>
+                <Feather name="bell" size={18} color={C.textSecondary} />
+                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Notifications</Text>
               </View>
               <Text style={styles.settingDescription}>
                 new orders from your web shop link
@@ -431,18 +824,18 @@ const Settings: React.FC = () => {
             <Switch
               value={notificationsEnabled}
               onValueChange={handleNotificationsToggle}
-              trackColor={{ false: CALM.border, true: CALM.positive }}
+              trackColor={{ false: C.border, true: C.positive }}
               thumbColor="#FFFFFF"
             />
           </View>
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: C.border }]} />
 
           <View style={styles.settingRow}>
             <View style={{ flex: 1 }}>
               <View style={styles.settingLabelRow}>
-                <Feather name="briefcase" size={18} color={CALM.textSecondary} />
-                <Text style={styles.settingLabel}>Business Mode</Text>
+                <Feather name="briefcase" size={18} color={C.textSecondary} />
+                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Business Mode</Text>
               </View>
               <Text style={styles.settingDescription}>
                 Enable to switch between Personal and Business modes
@@ -451,9 +844,101 @@ const Settings: React.FC = () => {
             <Switch
               value={businessModeEnabled}
               onValueChange={handleBusinessModeToggle}
-              trackColor={{ false: CALM.border, true: CALM.positive }}
+              trackColor={{ false: C.border, true: C.positive }}
               thumbColor="#FFFFFF"
             />
+          </View>
+        </Card>
+
+        {/* Appearance */}
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Appearance</Text>
+        <Card style={styles.card}>
+          {/* Theme */}
+          <View style={styles.settingRow}>
+            <View style={styles.settingLabelRow}>
+              <Feather name="moon" size={18} color={C.textSecondary} />
+              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>
+                {t.settings.theme}
+              </Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
+            {(['light', 'dark', 'system'] as ThemePreference[]).map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                style={[
+                  {
+                    flex: 1,
+                    paddingVertical: SPACING.sm,
+                    borderRadius: RADIUS.full,
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: themePreference === opt ? C.accent : C.border,
+                    backgroundColor: themePreference === opt ? withAlpha(C.accent, 0.1) : 'transparent',
+                  },
+                ]}
+                onPress={() => {
+                  lightTap();
+                  setThemePreference(opt);
+                }}
+                activeOpacity={0.6}
+              >
+                <Text
+                  style={{
+                    fontSize: TYPOGRAPHY.size.sm,
+                    fontWeight: themePreference === opt ? TYPOGRAPHY.weight.semibold : TYPOGRAPHY.weight.medium,
+                    color: themePreference === opt ? C.accent : C.textSecondary,
+                  }}
+                >
+                  {opt === 'light' ? t.settings.themeLight : opt === 'dark' ? t.settings.themeDark : t.settings.themeSystem}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: C.border }]} />
+
+          {/* Language */}
+          <View style={styles.settingRow}>
+            <View style={styles.settingLabelRow}>
+              <Feather name="globe" size={18} color={C.textSecondary} />
+              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>
+                {t.settings.language}
+              </Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+            {([{ key: 'en' as AppLanguage, label: 'English' }, { key: 'ms' as AppLanguage, label: 'Bahasa Melayu' }]).map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[
+                  {
+                    flex: 1,
+                    paddingVertical: SPACING.sm,
+                    borderRadius: RADIUS.full,
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: language === opt.key ? C.accent : C.border,
+                    backgroundColor: language === opt.key ? withAlpha(C.accent, 0.1) : 'transparent',
+                  },
+                ]}
+                onPress={() => {
+                  lightTap();
+                  setLanguage(opt.key);
+                }}
+                activeOpacity={0.6}
+              >
+                <Text
+                  style={{
+                    fontSize: TYPOGRAPHY.size.sm,
+                    fontWeight: language === opt.key ? TYPOGRAPHY.weight.semibold : TYPOGRAPHY.weight.medium,
+                    color: language === opt.key ? C.accent : C.textSecondary,
+                  }}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </Card>
 
@@ -461,7 +946,7 @@ const Settings: React.FC = () => {
         {/* Business Income Type */}
         {businessModeEnabled && mode === 'business' && (
           <>
-            <Text style={styles.sectionHeader}>Business Setup</Text>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Business Setup</Text>
             <Card style={styles.card}>
               <TouchableOpacity
                 style={styles.settingRow}
@@ -472,14 +957,14 @@ const Settings: React.FC = () => {
                 activeOpacity={0.6}
               >
                 <View style={styles.settingLabelRow}>
-                  <Feather name="briefcase" size={18} color={CALM.textSecondary} />
-                  <Text style={styles.settingLabel}>Change Income Type</Text>
+                  <Feather name="briefcase" size={18} color={C.textSecondary} />
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Change Income Type</Text>
                 </View>
                 <View style={styles.valueRow}>
-                  <Text style={styles.settingValue}>
+                  <Text style={[styles.settingValue, { color: C.textSecondary }]}>
                     {incomeType || 'not set'}
                   </Text>
-                  <Feather name="chevron-right" size={18} color={CALM.neutral} />
+                  <Feather name="chevron-right" size={18} color={C.neutral} />
                 </View>
               </TouchableOpacity>
             </Card>
@@ -489,7 +974,7 @@ const Settings: React.FC = () => {
         {/* Categories — show in personal mode, hide for seller & stall in business mode */}
         {(mode === 'personal' || (incomeType !== 'seller' && incomeType !== 'stall')) && (
           <>
-            <Text style={styles.sectionHeader} onLayout={(e) => { sectionY.current.categories = e.nativeEvent.layout.y; }}>Categories</Text>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]} onLayout={(e) => { sectionY.current.categories = e.nativeEvent.layout.y; }}>Categories</Text>
             <Card style={styles.card}>
               <TouchableOpacity
                 style={styles.settingRow}
@@ -501,13 +986,13 @@ const Settings: React.FC = () => {
                 activeOpacity={0.6}
               >
                 <View style={styles.settingLabelRow}>
-                  <Feather name="tag" size={18} color={CALM.textSecondary} />
-                  <Text style={styles.settingLabel}>Expense Categories</Text>
+                  <Feather name="tag" size={18} color={C.textSecondary} />
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Expense Categories</Text>
                 </View>
-                <Feather name="chevron-right" size={18} color={CALM.neutral} />
+                <Feather name="chevron-right" size={18} color={C.neutral} />
               </TouchableOpacity>
 
-              <View style={styles.divider} />
+              <View style={[styles.divider, { backgroundColor: C.border }]} />
 
               <TouchableOpacity
                 style={styles.settingRow}
@@ -519,13 +1004,13 @@ const Settings: React.FC = () => {
                 activeOpacity={0.6}
               >
                 <View style={styles.settingLabelRow}>
-                  <Feather name="trending-up" size={18} color={CALM.textSecondary} />
-                  <Text style={styles.settingLabel}>Income Categories</Text>
+                  <Feather name="trending-up" size={18} color={C.textSecondary} />
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Income Categories</Text>
                 </View>
-                <Feather name="chevron-right" size={18} color={CALM.neutral} />
+                <Feather name="chevron-right" size={18} color={C.neutral} />
               </TouchableOpacity>
 
-              <View style={styles.divider} />
+              <View style={[styles.divider, { backgroundColor: C.border }]} />
 
               <TouchableOpacity
                 style={styles.settingRow}
@@ -537,10 +1022,27 @@ const Settings: React.FC = () => {
                 activeOpacity={0.6}
               >
                 <View style={styles.settingLabelRow}>
-                  <Feather name="pie-chart" size={18} color={CALM.textSecondary} />
-                  <Text style={styles.settingLabel}>Investment Categories</Text>
+                  <Feather name="pie-chart" size={18} color={C.textSecondary} />
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Investment Categories</Text>
                 </View>
-                <Feather name="chevron-right" size={18} color={CALM.neutral} />
+                <Feather name="chevron-right" size={18} color={C.neutral} />
+              </TouchableOpacity>
+
+              <View style={[styles.divider, { backgroundColor: C.border }]} />
+
+              <TouchableOpacity
+                style={styles.settingRow}
+                onPress={() => {
+                  lightTap();
+                  setPaymentMethodManagerVisible(true);
+                }}
+                activeOpacity={0.6}
+              >
+                <View style={styles.settingLabelRow}>
+                  <Feather name="credit-card" size={18} color={C.textSecondary} />
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Payment Methods</Text>
+                </View>
+                <Feather name="chevron-right" size={18} color={C.neutral} />
               </TouchableOpacity>
             </Card>
           </>
@@ -549,7 +1051,7 @@ const Settings: React.FC = () => {
         {/* Product Units — only for seller & stall in business mode */}
         {mode === 'business' && (incomeType === 'seller' || incomeType === 'stall') && (
           <>
-            <Text style={styles.sectionHeader}>Product Units</Text>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Product Units</Text>
             <Card style={styles.card}>
               <TouchableOpacity
                 style={styles.settingRow}
@@ -560,10 +1062,10 @@ const Settings: React.FC = () => {
                 activeOpacity={0.6}
               >
                 <View style={styles.settingLabelRow}>
-                  <Feather name="box" size={18} color={CALM.textSecondary} />
-                  <Text style={styles.settingLabel}>Manage Units</Text>
+                  <Feather name="box" size={18} color={C.textSecondary} />
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Manage Units</Text>
                 </View>
-                <Feather name="chevron-right" size={18} color={CALM.neutral} />
+                <Feather name="chevron-right" size={18} color={C.neutral} />
               </TouchableOpacity>
             </Card>
           </>
@@ -585,8 +1087,15 @@ const Settings: React.FC = () => {
         />
         )}
 
+        {paymentMethodManagerVisible && (
+        <PaymentMethodManager
+          visible
+          onClose={() => setPaymentMethodManagerVisible(false)}
+        />
+        )}
+
         {/* Subscription */}
-        <Text style={styles.sectionHeader}>Subscription</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Subscription</Text>
         <Card style={styles.card}>
           {tier === 'premium' ? (
             <View style={styles.premiumStatusRow}>
@@ -621,28 +1130,28 @@ const Settings: React.FC = () => {
               <View style={styles.usageLimits}>
                 <View style={styles.usageRow}>
                   <View style={styles.settingLabelRow}>
-                    <Feather name="credit-card" size={16} color={CALM.textSecondary} />
+                    <Feather name="credit-card" size={16} color={C.textSecondary} />
                     <Text style={styles.usageLabel}>Wallets</Text>
                   </View>
                   <Text style={styles.usageValue}>{walletCount}/{FREE_TIER.maxWallets}</Text>
                 </View>
                 <View style={styles.usageRow}>
                   <View style={styles.settingLabelRow}>
-                    <Feather name="pie-chart" size={16} color={CALM.textSecondary} />
+                    <Feather name="pie-chart" size={16} color={C.textSecondary} />
                     <Text style={styles.usageLabel}>Budgets</Text>
                   </View>
                   <Text style={styles.usageValue}>{budgetCount}/{FREE_TIER.maxBudgets}</Text>
                 </View>
                 <View style={styles.usageRow}>
                   <View style={styles.settingLabelRow}>
-                    <Feather name="camera" size={16} color={CALM.textSecondary} />
+                    <Feather name="camera" size={16} color={C.textSecondary} />
                     <Text style={styles.usageLabel}>Scans this month</Text>
                   </View>
                   <Text style={styles.usageValue}>{scanCount}/{FREE_TIER.maxScansPerMonth}</Text>
                 </View>
                 <View style={styles.usageRow}>
                   <View style={styles.settingLabelRow}>
-                    <Feather name="cpu" size={16} color={CALM.textSecondary} />
+                    <Feather name="cpu" size={16} color={C.textSecondary} />
                     <Text style={styles.usageLabel}>AI calls this month</Text>
                   </View>
                   <Text style={styles.usageValue}>{aiCallsCount}/{FREE_TIER.maxAiCallsPerMonth}</Text>
@@ -666,7 +1175,7 @@ const Settings: React.FC = () => {
         </Card>
 
         {/* Wallets */}
-        <Text style={styles.sectionHeader}>Wallets</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Wallets</Text>
         <Card style={styles.card}>
           <Button
             title="Manage Wallets"
@@ -681,7 +1190,7 @@ const Settings: React.FC = () => {
         </Card>
 
         {/* Payment QR */}
-        <Text style={styles.sectionHeader} onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }}>Payment QR</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]} onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }}>Payment QR</Text>
         <Card style={styles.card}>
           <Text style={styles.qrSubtitle}>
             Add up to 2 QR codes. View them from the Dashboard.
@@ -702,16 +1211,16 @@ const Settings: React.FC = () => {
                     >
                       <View style={styles.qrSlotIcon}>
                         {qrLoadingIndex === idx ? (
-                          <ActivityIndicator size="small" color={CALM.accent} />
+                          <ActivityIndicator size="small" color={C.accent} />
                         ) : (
-                          <Feather name="check-circle" size={20} color={CALM.accent} />
+                          <Feather name="check-circle" size={20} color={C.accent} />
                         )}
                       </View>
                       <Text style={styles.qrSlotLabel} numberOfLines={1}>
                         {qrLoadingIndex === idx ? 'Opening...' : qr.label}
                       </Text>
                       {qrLoadingIndex !== idx && (
-                        <Feather name="more-vertical" size={16} color={CALM.textMuted} />
+                        <Feather name="more-vertical" size={16} color={C.textMuted} />
                       )}
                     </TouchableOpacity>
                   ) : (
@@ -722,9 +1231,9 @@ const Settings: React.FC = () => {
                       disabled={qrLoadingIndex !== null}
                     >
                       {qrLoadingIndex === idx ? (
-                        <ActivityIndicator size="small" color={CALM.accent} />
+                        <ActivityIndicator size="small" color={C.accent} />
                       ) : (
-                        <Feather name="plus" size={22} color={CALM.accent} />
+                        <Feather name="plus" size={22} color={C.accent} />
                       )}
                       <Text style={styles.qrSlotAddText}>
                         {qrLoadingIndex === idx ? 'Opening...' : 'Add QR'}
@@ -738,7 +1247,7 @@ const Settings: React.FC = () => {
         </Card>
 
         {/* Data */}
-        <Text style={styles.sectionHeader}>Data</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Data</Text>
         <Card style={styles.card}>
           <Button
             title="View Reports"
@@ -786,16 +1295,16 @@ const Settings: React.FC = () => {
         </Card>
 
         {/* About */}
-        <Text style={styles.sectionHeader}>About</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>About</Text>
         <Card style={styles.card}>
           <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>App</Text>
-            <Text style={styles.settingValue}>Potraces</Text>
+            <Text style={[styles.settingLabel, { color: C.textPrimary }]}>App</Text>
+            <Text style={[styles.settingValue, { color: C.textSecondary }]}>Potraces</Text>
           </View>
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: C.border }]} />
           <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Version</Text>
-            <Text style={styles.settingValue}>1.0.0</Text>
+            <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Version</Text>
+            <Text style={[styles.settingValue, { color: C.textSecondary }]}>1.0.0</Text>
           </View>
         </Card>
 
@@ -812,7 +1321,7 @@ const Settings: React.FC = () => {
         onRequestClose={() => setQrActionIndex(null)}
       >
         <Pressable style={styles.qrActionOverlay} onPress={() => setQrActionIndex(null)}>
-          <View style={styles.qrActionSheet} onStartShouldSetResponder={() => true}>
+          <View style={[styles.qrActionSheet, { backgroundColor: C.surface }]} onStartShouldSetResponder={() => true}>
             <Text style={styles.qrActionTitle}>
               {qrActionIndex !== null ? paymentQrs[qrActionIndex]?.label ?? '' : ''}
             </Text>
@@ -822,11 +1331,11 @@ const Settings: React.FC = () => {
               onPress={() => handleQrAction('replace')}
               activeOpacity={0.6}
             >
-              <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}>
-                <Feather name="image" size={18} color={CALM.accent} />
+              <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
+                <Feather name="image" size={18} color={C.accent} />
               </View>
               <Text style={styles.qrActionText}>Replace Image</Text>
-              <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+              <Feather name="chevron-right" size={16} color={C.textMuted} />
             </TouchableOpacity>
 
             <View style={styles.qrActionDivider} />
@@ -836,11 +1345,11 @@ const Settings: React.FC = () => {
               onPress={() => handleQrAction('rename')}
               activeOpacity={0.6}
             >
-              <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}>
-                <Feather name="edit-2" size={18} color={CALM.accent} />
+              <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
+                <Feather name="edit-2" size={18} color={C.accent} />
               </View>
               <Text style={styles.qrActionText}>Rename</Text>
-              <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+              <Feather name="chevron-right" size={16} color={C.textMuted} />
             </TouchableOpacity>
 
             <View style={styles.qrActionDivider} />
@@ -850,10 +1359,10 @@ const Settings: React.FC = () => {
               onPress={() => handleQrAction('delete')}
               activeOpacity={0.6}
             >
-              <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(CALM.neutral, 0.1) }]}>
-                <Feather name="trash-2" size={18} color={CALM.neutral} />
+              <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(C.neutral, 0.1) }]}>
+                <Feather name="trash-2" size={18} color={C.neutral} />
               </View>
-              <Text style={[styles.qrActionText, { color: CALM.neutral }]}>Delete</Text>
+              <Text style={[styles.qrActionText, { color: C.neutral }]}>Delete</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -869,16 +1378,16 @@ const Settings: React.FC = () => {
       >
         <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }}>
         <Pressable style={[styles.qrLabelOverlay, { backgroundColor: 'transparent' }]} onPress={() => setQrLabelModal((s) => ({ ...s, visible: false }))}>
-          <Pressable style={styles.qrLabelCard} onPress={() => {}}>
+          <Pressable style={[styles.qrLabelCard, { backgroundColor: C.surface }]} onPress={() => {}}>
             <Text style={styles.qrLabelTitle}>
               {qrLabelModal.renameIndex !== undefined ? 'rename QR' : 'name this QR'}
             </Text>
             <TextInput
-              style={styles.qrLabelInput}
+              style={[styles.qrLabelInput, { color: C.textPrimary }]}
               value={qrLabelInput}
               onChangeText={setQrLabelInput}
               placeholder="e.g. Maybank, TnG, ShopeePay"
-              placeholderTextColor={CALM.textMuted}
+              placeholderTextColor={C.textMuted}
               autoFocus
               selectTextOnFocus
             />
@@ -887,7 +1396,7 @@ const Settings: React.FC = () => {
                 style={styles.qrLabelCancel}
                 onPress={() => setQrLabelModal((s) => ({ ...s, visible: false }))}
               >
-                <Text style={{ color: CALM.textSecondary, fontWeight: TYPOGRAPHY.weight.medium as any }}>cancel</Text>
+                <Text style={{ color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.medium as any }}>cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.qrLabelSave}
@@ -926,7 +1435,7 @@ const Settings: React.FC = () => {
         onRequestClose={() => setCurrencyModalVisible(false)}
       >
         <Pressable style={styles.currencyOverlay} onPress={() => setCurrencyModalVisible(false)}>
-          <View style={styles.currencyCard} onStartShouldSetResponder={() => true}>
+          <View style={[styles.currencyCard, { backgroundColor: C.surface }]} onStartShouldSetResponder={() => true}>
             <Text style={styles.currencyTitle}>select currency</Text>
             <ScrollView style={styles.currencyList} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
               {CURRENCY_OPTIONS.map((opt) => {
@@ -947,7 +1456,7 @@ const Settings: React.FC = () => {
                       <Text style={[styles.currencyCode, selected && styles.currencyCodeSelected]}>{opt.code}</Text>
                       <Text style={styles.currencyLabel}>{opt.label}</Text>
                     </View>
-                    {selected && <Feather name="check" size={18} color={CALM.accent} />}
+                    {selected && <Feather name="check" size={18} color={C.accent} />}
                   </TouchableOpacity>
                 );
               })}
@@ -1006,385 +1515,5 @@ const Settings: React.FC = () => {
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: CALM.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: SPACING.lg,
-  },
-  sectionHeader: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: SPACING.sm,
-    marginTop: SPACING.md,
-    marginLeft: SPACING.xs,
-  },
-  card: {
-    marginBottom: SPACING.sm,
-  },
-  settingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    minHeight: 44,
-  },
-  settingLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  settingLabel: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
-  },
-  settingDescription: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
-    marginTop: 2,
-    marginLeft: 18 + SPACING.md,
-  },
-  valueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  settingValue: {
-    fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
-  },
-  input: {
-    fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
-    textAlign: 'right',
-    flex: 1,
-    marginLeft: SPACING.lg,
-    paddingVertical: SPACING.xs,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: CALM.border,
-    marginVertical: SPACING.xs,
-  },
-  premiumStatusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  premiumBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.md,
-    backgroundColor: CALM.accent,
-  },
-  premiumBadgeText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#fff',
-  },
-  unsubscribeText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.neutral,
-  },
-  usageLimits: {
-    gap: SPACING.sm,
-  },
-  usageRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.xs,
-  },
-  usageLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
-  },
-  usageValue: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
-  subscribeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    backgroundColor: CALM.accent,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
-    marginTop: SPACING.md,
-  },
-  subscribeButtonText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#fff',
-  },
-  qrSubtitle: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
-    marginBottom: SPACING.md,
-  },
-  qrSlots: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  qrSlot: {
-    flex: 1,
-  },
-  qrSlotFilled: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: withAlpha(CALM.accent, 0.06),
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    gap: SPACING.sm,
-  },
-  qrSlotIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: RADIUS.sm,
-    backgroundColor: withAlpha(CALM.accent, 0.1),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qrSlotLabel: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
-  },
-  qrSlotEmpty: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: CALM.border,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.lg,
-    gap: SPACING.xs,
-  },
-  qrSlotAddText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
-  },
-  // QR Action Sheet
-  qrActionOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    paddingHorizontal: SPACING['2xl'],
-  },
-  qrActionSheet: {
-    backgroundColor: CALM.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: CALM.border,
-  },
-  qrActionTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
-    marginBottom: SPACING.lg,
-    textAlign: 'center',
-  },
-  qrActionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.md,
-    gap: SPACING.md,
-  },
-  qrActionIconBg: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qrActionText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
-  },
-  qrActionDivider: {
-    height: 1,
-    backgroundColor: CALM.border,
-  },
-
-  // ── QR Label Prompt ──
-  qrLabelOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: SPACING['2xl'],
-  },
-  qrLabelCard: {
-    backgroundColor: CALM.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING['2xl'],
-    width: '100%',
-    maxWidth: 340,
-    gap: SPACING.lg,
-  },
-  qrLabelTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textPrimary,
-  },
-  qrLabelInput: {
-    borderWidth: 1,
-    borderColor: CALM.border,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
-  },
-  qrLabelCancel: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-  },
-  qrLabelSave: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.xl,
-    backgroundColor: CALM.accent,
-    borderRadius: RADIUS.md,
-  },
-
-  // ── QR Preview (matches Dashboard style) ──
-  qrPreviewOverlay: {
-    flex: 1,
-    backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qrPreviewClose: {
-    position: 'absolute',
-    top: 72,
-    right: SPACING.xl,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 20,
-  },
-  qrPreviewLabel: {
-    position: 'absolute',
-    top: 80,
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.bold as any,
-    color: '#fff',
-    zIndex: 10,
-  },
-  qrPreviewImage: {
-    width: Dimensions.get('window').width - SPACING['2xl'] * 2,
-    height: Dimensions.get('window').width - SPACING['2xl'] * 2,
-    borderRadius: RADIUS.lg,
-    backgroundColor: '#fff',
-  },
-  qrPreviewTabs: {
-    position: 'absolute',
-    bottom: 60,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    zIndex: 10,
-  },
-  qrPreviewTab: {
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  qrPreviewTabActive: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
-  qrPreviewTabText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: 'rgba(255,255,255,0.5)',
-  },
-  qrPreviewTabTextActive: {
-    color: '#fff',
-  },
-
-  // ── Currency Picker ──
-  currencyOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: SPACING['2xl'],
-  },
-  currencyCard: {
-    backgroundColor: CALM.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    width: '100%',
-    maxWidth: 340,
-    maxHeight: 420,
-  },
-  currencyTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textPrimary,
-    marginBottom: SPACING.md,
-    paddingHorizontal: SPACING.xs,
-  },
-  currencyList: {
-    maxHeight: 360,
-  },
-  currencyItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.md,
-    marginBottom: 2,
-  },
-  currencyItemSelected: {
-    backgroundColor: withAlpha(CALM.accent, 0.08),
-  },
-  currencyCode: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textPrimary,
-  },
-  currencyCodeSelected: {
-    color: CALM.accent,
-  },
-  currencyLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
-    marginTop: 1,
-  },
-});
 
 export default Settings;

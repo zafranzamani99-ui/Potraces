@@ -16,6 +16,7 @@ import { useFreelancerStore } from '../../../store/freelancerStore';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { lightTap } from '../../../services/haptics';
 import { useToast } from '../../../context/ToastContext';
 
@@ -26,6 +27,8 @@ function toDate(d: Date | string): Date {
 type SortMode = 'recent' | 'total';
 
 const FreelancerClientList: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
   const { showToast } = useToast();
   const currency = useSettingsStore((s) => s.currency);
@@ -121,7 +124,7 @@ const FreelancerClientList: React.FC = () => {
             })}
           </Text>
         )}
-        <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+        <Feather name="chevron-right" size={16} color={C.textMuted} />
       </View>
     </TouchableOpacity>
   ), [currency, navigation]);
@@ -136,7 +139,7 @@ const FreelancerClientList: React.FC = () => {
             <Text style={styles.sortText}>
               {sortMode === 'recent' ? 'recent' : 'total earned'}
             </Text>
-            <Feather name="chevron-down" size={14} color={CALM.textSecondary} />
+            <Feather name="chevron-down" size={14} color={C.textSecondary} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
@@ -145,7 +148,7 @@ const FreelancerClientList: React.FC = () => {
             }}
             style={styles.addButton}
           >
-            <Feather name="plus" size={20} color={CALM.bronze} />
+            <Feather name="plus" size={20} color={C.bronze} />
           </TouchableOpacity>
         </View>
       </View>
@@ -198,7 +201,7 @@ const FreelancerClientList: React.FC = () => {
               value={newName}
               onChangeText={setNewName}
               placeholder="name"
-              placeholderTextColor={CALM.textMuted}
+              placeholderTextColor={C.textMuted}
               autoFocus
               returnKeyType="next"
             />
@@ -207,7 +210,7 @@ const FreelancerClientList: React.FC = () => {
               value={newContact}
               onChangeText={setNewContact}
               placeholder="contact (optional)"
-              placeholderTextColor={CALM.textMuted}
+              placeholderTextColor={C.textMuted}
               returnKeyType="next"
             />
             <TextInput
@@ -215,7 +218,7 @@ const FreelancerClientList: React.FC = () => {
               value={newNotes}
               onChangeText={setNewNotes}
               placeholder="notes (optional)"
-              placeholderTextColor={CALM.textMuted}
+              placeholderTextColor={C.textMuted}
               returnKeyType="done"
               onSubmitEditing={handleAddClient}
             />
@@ -245,10 +248,10 @@ const FreelancerClientList: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   header: {
     flexDirection: 'row',
@@ -261,7 +264,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   headerActions: {
     flexDirection: 'row',
@@ -277,7 +280,7 @@ const styles = StyleSheet.create({
   },
   sortText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   addButton: {
     width: 44,
@@ -295,7 +298,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   clientInfo: {
     flex: 1,
@@ -303,7 +306,7 @@ const styles = StyleSheet.create({
   clientName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   clientEarned: {
     ...TYPE.muted,
@@ -320,7 +323,7 @@ const styles = StyleSheet.create({
   },
   clientLastPaid: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   emptyContainer: {
     flex: 1,
@@ -330,7 +333,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
   },
 
@@ -342,28 +345,28 @@ const styles = StyleSheet.create({
     padding: SPACING['2xl'],
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING['2xl'],
   },
   modalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xl,
   },
   modalInput: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.md,
     minHeight: 44,
   },
   saveButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -372,7 +375,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveButtonDisabled: {
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -380,7 +383,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   saveButtonTextDisabled: {
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 });
 

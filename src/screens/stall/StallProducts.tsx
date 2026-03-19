@@ -3,18 +3,21 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 const StallProducts: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { products, addProduct, updateProduct, deleteProduct } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
 
@@ -90,7 +93,7 @@ const StallProducts: React.FC = () => {
               value={name}
               onChangeText={setName}
               placeholder="e.g. kuih seri muka"
-              placeholderTextColor={CALM.neutral}
+              placeholderTextColor={C.neutral}
               autoFocus
               accessibilityLabel="Product name"
             />
@@ -101,7 +104,7 @@ const StallProducts: React.FC = () => {
                 value={price}
                 onChangeText={setPrice}
                 placeholder="0.00"
-                placeholderTextColor={CALM.neutral}
+                placeholderTextColor={C.neutral}
                 keyboardType="decimal-pad"
                 accessibilityLabel="Product price"
               />
@@ -164,7 +167,7 @@ const StallProducts: React.FC = () => {
                   <Feather
                     name={product.isActive ? 'check-circle' : 'circle'}
                     size={20}
-                    color={product.isActive ? CALM.bronze : CALM.neutral}
+                    color={product.isActive ? C.bronze : C.neutral}
                   />
                 </TouchableOpacity>
 
@@ -190,7 +193,7 @@ const StallProducts: React.FC = () => {
                   accessibilityLabel={`Edit ${product.name}`}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Feather name="edit-2" size={16} color={CALM.textSecondary} />
+                  <Feather name="edit-2" size={16} color={C.textSecondary} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -200,7 +203,7 @@ const StallProducts: React.FC = () => {
                   accessibilityLabel={`Delete ${product.name}`}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Feather name="trash-2" size={16} color={CALM.neutral} />
+                  <Feather name="trash-2" size={16} color={C.neutral} />
                 </TouchableOpacity>
               </View>
             ))}
@@ -220,10 +223,10 @@ const StallProducts: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -235,33 +238,33 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   subheading: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING['3xl'],
   },
 
   // ─── Form ──────────────────────────────────────────────────
   formCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     marginBottom: SPACING.xl,
   },
   input: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.md,
   },
   priceRow: {
@@ -272,7 +275,7 @@ const styles = StyleSheet.create({
   priceCurrency: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   priceInput: {
     flex: 1,
@@ -284,7 +287,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   saveButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING['2xl'],
@@ -304,7 +307,7 @@ const styles = StyleSheet.create({
   cancelLinkText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // ─── Add button ────────────────────────────────────────────
@@ -313,7 +316,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     minHeight: 48,
@@ -334,7 +337,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     minHeight: 52,
     gap: SPACING.md,
   },
@@ -350,10 +353,10 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   productNameInactive: {
-    color: CALM.neutral,
+    color: C.neutral,
   },
   productPrice: {
     ...TYPE.muted,
@@ -383,7 +386,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 });
 

@@ -437,6 +437,8 @@ export type RootStackParamList = {
   SellerCustomersStack: undefined;
   Goals: undefined;
   FinancialPulse: undefined;
+  ReceiptHistory: undefined;
+  ReceiptDetail: { receiptId: string };
   Settings: { scrollTo?: string } | undefined;
   SellerSettings: undefined;
   // Stall screens
@@ -602,6 +604,19 @@ export interface PlaybookExpenseLink {
   amount: number;          // how much of this expense drains from this playbook
 }
 
+export interface PlaybookLineItem {
+  id: string;
+  label: string;           // "CC bill", "car loan", "grab food budget"
+  plannedAmount: number;    // what user expects to spend
+  actualAmount?: number;    // filled when paid (can differ from planned)
+  isPaid: boolean;          // checkbox state
+  note?: string;            // optional short note
+  linkedExpenseId?: string; // link to actual Transaction when paid
+  sortOrder: number;        // drag-reorder support
+  category?: string;        // expense category ID — makes this a trackable spending limit
+  linkedObligationIds?: string[];  // obligation IDs this budget covers (e.g., ['sub-abc', 'sub-def'])
+}
+
 export interface Playbook {
   id: string;
   name: string;                          // "March Salary", "Freelance Gig #4"
@@ -614,6 +629,9 @@ export interface Playbook {
   endDate?: Date;                        // set when user closes it
   isActive: boolean;                     // true = accepting new expenses
   isClosed: boolean;                     // true = user closed it, now read-only in Past tab
+  lineItems?: PlaybookLineItem[];
+  notebookNote?: string;             // free-text scratch area
+  coveredObligationIds?: string[];   // subscription/debt IDs marked "covered this paycheck"
   createdAt: Date;
   updatedAt: Date;
 }
@@ -814,6 +832,78 @@ export interface ExtractedReceipt {
   total: number;
   date?: string;
   rawText: string;
+  location?: string;
+  paymentMethod?: string;
+  suggestedExpenseCategory?: string;
+  suggestedTaxCategory?: string;
+}
+
+// ─── RECEIPT & TAX TYPES ────────────────────────────────────
+
+export interface MyTaxCategory {
+  id: string;
+  name: string;
+  limit: number | null;
+  description: string;
+  icon: string;
+}
+
+export interface SavedReceipt {
+  id: string;
+  title: string;
+  vendor?: string;
+  items: ReceiptItem[];
+  subtotal?: number;
+  tax?: number;
+  total: number;
+  date: Date;
+  category: string;
+  myTaxCategory: string;
+  paymentMethod?: string;
+  location?: string;
+  walletId?: string;
+  imageUri?: string;
+  verified: boolean;
+  transactionId?: string;
+  year: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TaxCategorySummary {
+  categoryId: string;
+  categoryName: string;
+  totalSpent: number;
+  limit: number | null;
+  receiptCount: number;
+  remaining: number | null;
+}
+
+export interface ReceiptDraft {
+  title: string;
+  vendor: string;
+  items: ReceiptItem[];
+  total: string;
+  date: Date;
+  category: string;
+  myTaxCategory: string;
+  paymentMethod: string | null;
+  location: string;
+  imageUri: string | null;
+  savedAt: Date;
+}
+
+export interface ReceiptState {
+  receipts: SavedReceipt[];
+  draft: ReceiptDraft | null;
+  addReceipt: (receipt: Omit<SavedReceipt, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  updateReceipt: (id: string, updates: Partial<SavedReceipt>) => void;
+  deleteReceipt: (id: string) => void;
+  getReceiptsByYear: (year: number) => SavedReceipt[];
+  getReceiptsByTaxCategory: (year: number, categoryId: string) => SavedReceipt[];
+  getTaxSummary: (year: number) => TaxCategorySummary[];
+  saveDraft: (draft: Omit<ReceiptDraft, 'savedAt'>) => void;
+  clearDraft: () => void;
 }
 
 // CRM Types

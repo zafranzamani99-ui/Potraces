@@ -10,6 +10,7 @@ import { formatDistanceToNow, format } from 'date-fns';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -24,6 +25,8 @@ const TABS: { label: string; value: FilterTab }[] = [
 ];
 
 const IncomeHistory: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
   const { businessTransactions } = useBusinessStore();
   const [filter, setFilter] = useState<FilterTab>('all');
@@ -124,10 +127,10 @@ const IncomeHistory: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
 
   // Tabs
@@ -136,7 +139,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
     paddingTop: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   tab: {
     paddingVertical: SPACING.md,
@@ -145,10 +148,10 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   tabTextActive: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   tabUnderline: {
@@ -157,7 +160,7 @@ const styles = StyleSheet.create({
     left: SPACING.lg,
     right: SPACING.lg,
     height: 2,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: 1,
   },
 
@@ -171,7 +174,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   rowLeft: {
     flex: 1,
@@ -179,7 +182,7 @@ const styles = StyleSheet.create({
   rowAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   rowNote: {
@@ -206,7 +209,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
   },
 });

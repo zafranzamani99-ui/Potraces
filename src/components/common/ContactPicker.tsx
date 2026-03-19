@@ -19,6 +19,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { Contact } from '../../types';
 import Button from './Button';
 
@@ -39,6 +40,8 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
   includeSelf = false,
   selfName = 'Me',
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const [phoneModalVisible, setPhoneModalVisible] = useState(false);
   const [manualModalVisible, setManualModalVisible] = useState(false);
@@ -143,7 +146,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
           )}
         </View>
         {isSelected && (
-          <Feather name="check-circle" size={20} color={CALM.positive} />
+          <Feather name="check-circle" size={20} color={C.positive} />
         )}
       </TouchableOpacity>
     );
@@ -158,10 +161,10 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
         <View style={styles.pillContainer}>
           {selectedContacts.map((contact) => (
             <View key={contact.id} style={styles.pill}>
-              <Feather name="user" size={14} color={CALM.accent} />
+              <Feather name="user" size={14} color={C.accent} />
               <Text style={styles.pillText} numberOfLines={1}>{contact.name}</Text>
               <TouchableOpacity onPress={() => handleRemove(contact.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Feather name="x" size={14} color={CALM.textSecondary} />
+                <Feather name="x" size={14} color={C.textSecondary} />
               </TouchableOpacity>
             </View>
           ))}
@@ -188,17 +191,17 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
               }}
               activeOpacity={0.7}
             >
-              <Feather name="user" size={18} color={selfSelected ? '#fff' : CALM.accent} />
+              <Feather name="user" size={18} color={selfSelected ? '#fff' : C.accent} />
               <Text style={[styles.actionText, selfSelected && styles.actionTextSelected]}>{selfName}</Text>
             </TouchableOpacity>
           );
         })()}
         <TouchableOpacity style={styles.actionButton} onPress={loadPhoneContacts} activeOpacity={0.7}>
-          <Feather name="book" size={18} color={CALM.accent} />
+          <Feather name="book" size={18} color={C.accent} />
           <Text style={styles.actionText}>From Contacts</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionButton} onPress={() => setManualModalVisible(true)} activeOpacity={0.7}>
-          <Feather name="edit-3" size={18} color={CALM.accent} />
+          <Feather name="edit-3" size={18} color={C.accent} />
           <Text style={styles.actionText}>Add Manually</Text>
         </TouchableOpacity>
       </View>
@@ -210,11 +213,11 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <Pressable style={{ flex: 1 }} onPress={() => setPhoneModalVisible(false)} />
-            <View style={[styles.modalContent, { paddingBottom: Math.max(24, insets.bottom + SPACING.lg) }]}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(24, insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Select Contact</Text>
                 <TouchableOpacity onPress={() => { setPhoneModalVisible(false); setSearchQuery(''); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                  <Feather name="x" size={24} color={CALM.textPrimary} />
+                  <Feather name="x" size={24} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -223,7 +226,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholder="Search contacts..."
-                placeholderTextColor={CALM.textSecondary}
+                placeholderTextColor={C.textSecondary}
                 autoCorrect={false}
                 returnKeyType="search"
                 onSubmitEditing={Keyboard.dismiss}
@@ -240,7 +243,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                 renderItem={renderPhoneContact}
                 ListEmptyComponent={
                   <View style={styles.emptyContainer}>
-                    <Feather name="users" size={32} color={CALM.neutral} />
+                    <Feather name="users" size={32} color={C.neutral} />
                     <Text style={styles.emptyText}>No contacts found</Text>
                   </View>
                 }
@@ -267,7 +270,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Add Contact</Text>
                 <TouchableOpacity onPress={() => { setManualModalVisible(false); setManualName(''); setManualPhone(''); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                  <Feather name="x" size={24} color={CALM.textPrimary} />
+                  <Feather name="x" size={24} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -276,13 +279,13 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                 showsVerticalScrollIndicator={false}
                 bottomOffset={20}
               >
-                <Text style={styles.inputLabel}>Name <Text style={{ color: CALM.neutral }}>*</Text></Text>
+                <Text style={styles.inputLabel}>Name <Text style={{ color: C.neutral }}>*</Text></Text>
                 <TextInput
                   style={styles.input}
                   value={manualName}
                   onChangeText={setManualName}
                   placeholder="John Doe"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   returnKeyType="next"
                   autoFocus
                   onSubmitEditing={() => phoneInputRef.current?.focus()}
@@ -295,7 +298,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                   value={manualPhone}
                   onChangeText={setManualPhone}
                   placeholder="+60 12-345 6789"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   keyboardType="phone-pad"
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
@@ -324,14 +327,14 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     marginBottom: SPACING.sm,
   },
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
@@ -345,7 +348,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
@@ -353,7 +356,7 @@ const styles = StyleSheet.create({
   pillText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
     maxWidth: 120,
   },
   actionRow: {
@@ -367,19 +370,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   actionText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   actionButtonSelected: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
   },
   actionTextSelected: {
     color: '#fff',
@@ -392,21 +395,21 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
     maxHeight: '85%',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   manualModalSheet: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -417,15 +420,15 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   searchInput: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: 16,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.md,
   },
   contactRow: {
@@ -436,13 +439,13 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
   },
   contactRowSelected: {
-    backgroundColor: withAlpha(CALM.accent, 0.06),
+    backgroundColor: withAlpha(C.accent, 0.06),
   },
   contactAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: withAlpha(CALM.accent, 0.12),
+    backgroundColor: withAlpha(C.accent, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
@@ -450,7 +453,7 @@ const styles = StyleSheet.create({
   contactAvatarText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: C.accent,
   },
   contactInfo: {
     flex: 1,
@@ -458,11 +461,11 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   contactPhone: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 2,
   },
   emptyContainer: {
@@ -472,24 +475,24 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   inputLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
   input: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   modalActions: {
     flexDirection: 'row',

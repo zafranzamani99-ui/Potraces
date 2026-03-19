@@ -1,13 +1,13 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { TouchableOpacity, Easing } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { TouchableOpacity } from 'react-native';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';
-import { createStackNavigator, CardStyleInterpolators, StackCardStyleInterpolator } from '@react-navigation/stack';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { useAppStore } from '../store/appStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
-import { CALM } from '../constants';
+import { useCalm } from '../hooks/useCalm';
 import AuthScreen from '../screens/auth/AuthScreen';
 import OtpVerificationScreen from '../screens/auth/OtpVerificationScreen';
 import { requestOtp, signOut, getAuthSession } from '../services/supabase';
@@ -21,6 +21,8 @@ import SupplierList from '../screens/business/SupplierList';
 import TransactionsList from '../screens/personal/TransactionsList';
 import DebtTracking from '../screens/shared/DebtTracking';
 import ReceiptScanner from '../screens/shared/ReceiptScanner';
+import ReceiptHistory from '../screens/shared/ReceiptHistory';
+import ReceiptDetail from '../screens/shared/ReceiptDetail';
 import Onboarding from '../screens/shared/Onboarding';
 import WalletManagement from '../screens/personal/WalletManagement';
 import AccountOverview from '../screens/personal/AccountOverview';
@@ -73,48 +75,7 @@ import MixedStreamHistory from '../screens/business/mixed/StreamHistory';
 import MixedReports from '../screens/business/mixed/MixedReports';
 import NoteEditor from '../screens/notes/NoteEditor';
 
-const Stack = createStackNavigator();
-
-// Smooth crossfade with subtle scale for mode toggle
-const forCrossFade: StackCardStyleInterpolator = ({ current }) => ({
-  cardStyle: {
-    opacity: current.progress.interpolate({
-      inputRange: [0, 0.5, 0.9, 1],
-      outputRange: [0, 0.25, 0.7, 1],
-    }),
-    transform: [
-      {
-        scale: current.progress.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.94, 1],
-        }),
-      },
-    ],
-  },
-  overlayStyle: {
-    opacity: current.progress.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0, 0.5],
-    }),
-  },
-});
-
-const modeTransitionSpec = {
-  open: {
-    animation: 'timing' as const,
-    config: {
-      duration: 300,
-      easing: Easing.out(Easing.cubic),
-    },
-  },
-  close: {
-    animation: 'timing' as const,
-    config: {
-      duration: 250,
-      easing: Easing.in(Easing.cubic),
-    },
-  },
-};
+const Stack = createNativeStackNavigator();
 
 /** Wraps business mode with auth gating + setup gating. */
 const AuthGatedBusiness: React.FC = () => {
@@ -212,13 +173,25 @@ const AuthGatedBusiness: React.FC = () => {
 const RootNavigator: React.FC = () => {
   const mode = useAppStore((state) => state.mode);
   const hasCompletedOnboarding = useSettingsStore((s) => s.hasCompletedOnboarding);
+  const C = useCalm();
+  const navTheme = {
+    ...(C.background === '#121212' ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(C.background === '#121212' ? DarkTheme : DefaultTheme).colors,
+      background: C.background,
+      card: C.surface,
+      text: C.textPrimary,
+      border: C.border,
+      primary: C.accent,
+    },
+  };
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer ref={navigationRef} theme={navTheme}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
-          cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+          animation: 'ios_from_right',
           gestureEnabled: true,
         }}
       >
@@ -228,7 +201,7 @@ const RootNavigator: React.FC = () => {
             component={Onboarding}
             options={{
               gestureEnabled: false,
-              cardStyleInterpolator: () => ({}),
+              animation: 'none',
             }}
           />
         ) : mode === 'personal' ? (
@@ -236,8 +209,8 @@ const RootNavigator: React.FC = () => {
             name="PersonalMain"
             component={PersonalNavigator}
             options={{
-              cardStyleInterpolator: forCrossFade,
-              transitionSpec: modeTransitionSpec,
+              animation: 'fade',
+              animationDuration: 300,
               gestureEnabled: false,
             }}
           />
@@ -246,8 +219,8 @@ const RootNavigator: React.FC = () => {
             name="BusinessMain"
             component={AuthGatedBusiness}
             options={{
-              cardStyleInterpolator: forCrossFade,
-              transitionSpec: modeTransitionSpec,
+              animation: 'fade',
+              animationDuration: 300,
               gestureEnabled: false,
             }}
           />
@@ -258,10 +231,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Reports',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -277,7 +250,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -288,10 +261,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Reports',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -307,7 +280,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -318,10 +291,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'All Transactions',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -337,7 +310,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -348,10 +321,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Commitments',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -367,7 +340,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -378,10 +351,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Budgets',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -397,7 +370,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -408,10 +381,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Suppliers',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -427,7 +400,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -438,10 +411,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Debts & Splits',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -457,7 +430,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -467,11 +440,11 @@ const RootNavigator: React.FC = () => {
           component={ReceiptScanner}
           options={({ navigation }) => ({
             headerShown: true,
-            headerTitle: 'Scan Receipt',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerTitle: 'Save Receipt',
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -487,10 +460,34 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
+        />
+        <Stack.Screen
+          name="ReceiptHistory"
+          component={ReceiptHistory}
+          options={{
+            headerShown: true,
+            headerTitle: 'Receipts',
+            headerBackTitle: ' ',
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+          }}
+        />
+        <Stack.Screen
+          name="ReceiptDetail"
+          component={ReceiptDetail}
+          options={{
+            headerShown: true,
+            headerTitle: 'Receipt',
+            headerBackTitle: ' ',
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
+            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+          }}
         />
         <Stack.Screen
           name="WalletManagement"
@@ -498,10 +495,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Manage Wallets',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -517,7 +514,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -528,10 +525,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Account Overview',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -547,7 +544,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -558,10 +555,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Savings & Investments',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -577,7 +574,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -588,10 +585,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Money Chat',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -607,7 +604,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -618,10 +615,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'My Goals',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -637,7 +634,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -648,10 +645,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Financial Pulse',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -667,7 +664,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -678,10 +675,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Log Income',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -697,7 +694,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -708,10 +705,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Clients',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -727,7 +724,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -738,10 +735,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Costs',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -757,7 +754,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -768,10 +765,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Income Streams',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -787,7 +784,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -798,10 +795,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'New Order',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -817,7 +814,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -828,10 +825,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Orders',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -847,7 +844,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -858,17 +855,17 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Transactions',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => navigation.goBack()}
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -879,10 +876,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Products',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -898,7 +895,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -909,10 +906,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Costs',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -928,7 +925,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -939,10 +936,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Customers',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -958,7 +955,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -969,10 +966,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Season',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -988,7 +985,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -999,17 +996,17 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Settings',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => navigation.goBack()}
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1020,10 +1017,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Settings',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1039,7 +1036,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1050,10 +1047,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Seasons',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1069,7 +1066,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1080,10 +1077,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'New Session',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1099,7 +1096,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1110,10 +1107,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Close Session',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1129,7 +1126,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1140,10 +1137,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Session Summary',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1159,7 +1156,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1170,10 +1167,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Products',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1189,7 +1186,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1200,10 +1197,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Clients',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1219,7 +1216,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1230,10 +1227,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Client',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1249,7 +1246,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1260,10 +1257,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Log Payment',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1279,7 +1276,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1290,10 +1287,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Reports',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1309,7 +1306,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1320,10 +1317,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Job Details',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1339,7 +1336,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1350,10 +1347,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Log Income',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1369,7 +1366,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1380,10 +1377,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Income History',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1399,7 +1396,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1410,10 +1407,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Reports',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1429,7 +1426,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1440,10 +1437,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Road Details',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1459,7 +1456,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1470,10 +1467,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Log Earnings',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1489,7 +1486,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1500,10 +1497,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Log Cost',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1519,7 +1516,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1530,10 +1527,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Costs',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1549,7 +1546,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1560,10 +1557,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Reports',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1579,7 +1576,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1590,10 +1587,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Stream Setup',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1609,7 +1606,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1620,10 +1617,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Log Income',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1639,7 +1636,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1650,10 +1647,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Log Cost',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1669,7 +1666,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1680,10 +1677,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'History',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1699,7 +1696,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1710,10 +1707,10 @@ const RootNavigator: React.FC = () => {
           options={({ navigation }) => ({
             headerShown: true,
             headerTitle: 'Reports',
-            headerStyle: { backgroundColor: CALM.background },
-            headerTintColor: CALM.textPrimary,
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.textPrimary,
             headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-            presentation: 'card',
+
             headerLeft: () => (
               <TouchableOpacity
                 onPress={() => {
@@ -1729,7 +1726,7 @@ const RootNavigator: React.FC = () => {
                 style={{ marginLeft: 16 }}
                 accessibilityLabel="Go back"
               >
-                <Feather name="arrow-left" size={24} color={CALM.textPrimary} />
+                <Feather name="arrow-left" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             ),
           })}
@@ -1737,7 +1734,7 @@ const RootNavigator: React.FC = () => {
         <Stack.Screen
           name="NoteEditor"
           component={NoteEditor}
-          options={{ headerShown: false, presentation: 'card' }}
+          options={{ headerShown: false }}
         />
       </Stack.Navigator>
     </NavigationContainer>

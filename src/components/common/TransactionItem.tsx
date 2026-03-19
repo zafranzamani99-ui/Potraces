@@ -1,8 +1,10 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { Feather } from '@expo/vector-icons';
 import { format, isValid } from 'date-fns';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, ICON_SIZE, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { Transaction, CategoryOption, Wallet } from '../../types';
 import { lightTap } from '../../services/haptics';
 
@@ -13,6 +15,7 @@ interface TransactionItemProps {
   wallet?: Wallet | null;
   onPress?: (id: string) => void;
   onLongPress?: (id: string) => void;
+  onSwipeDelete?: (id: string) => void;
   isSelected?: boolean;
   selectMode?: boolean;
   isFirst?: boolean;
@@ -26,11 +29,15 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   wallet,
   onPress,
   onLongPress,
+  onSwipeDelete,
   isSelected = false,
   selectMode = false,
   isFirst = false,
   isLast = false,
 }) => {
+  const swipeableRef = useRef<Swipeable>(null);
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const isExpense = transaction.type === 'expense';
   const editCount = transaction.editLog?.length ?? 0;
   const lastEdit = editCount > 0 ? transaction.editLog![editCount - 1] : null;
@@ -55,7 +62,22 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     onLongPress?.(transaction.id);
   }, [onLongPress, transaction.id]);
 
-  return (
+  const handleSwipeDelete = useCallback(() => {
+    swipeableRef.current?.close();
+    onSwipeDelete?.(transaction.id);
+  }, [onSwipeDelete, transaction.id]);
+
+  const renderRightActions = useCallback(() => (
+    <TouchableOpacity
+      style={styles.swipeDeleteBtn}
+      onPress={handleSwipeDelete}
+      activeOpacity={0.8}
+    >
+      <Feather name="trash-2" size={20} color="#fff" />
+    </TouchableOpacity>
+  ), [handleSwipeDelete, styles.swipeDeleteBtn]);
+
+  const content = (
     <TouchableOpacity
       onPress={handlePress}
       onLongPress={handleLongPress}
@@ -85,13 +107,13 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         <View
           style={[
             styles.iconContainer,
-            { backgroundColor: category?.color ? withAlpha(category.color, 0.08) : CALM.background }
+            { backgroundColor: category?.color ? withAlpha(category.color, 0.08) : C.background }
           ]}
         >
           <Feather
             name={(category?.icon as keyof typeof Feather.glyphMap) || 'dollar-sign'}
             size={ICON_SIZE.sm}
-            color={category?.color || CALM.textPrimary}
+            color={category?.color || C.textPrimary}
           />
         </View>
         <View style={styles.details}>
@@ -100,7 +122,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
             {transaction.emotionalFlag && <View style={styles.emotionalDot} />}
             {transaction.linkedDebtId && (
               <View style={styles.linkedBadge}>
-                <Feather name="link" size={9} color={CALM.bronze} />
+                <Feather name="link" size={9} color={C.bronze} />
               </View>
             )}
           </View>
@@ -110,7 +132,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
           </Text>
           {lastEdit && (
             <View style={styles.editedBadge}>
-              <Feather name="edit-2" size={9} color={CALM.bronze} />
+              <Feather name="edit-2" size={9} color={C.bronze} />
               <Text style={styles.editedBadgeText}>
                 edited {isValid(new Date(lastEdit.editedAt)) ? format(new Date(lastEdit.editedAt), 'MMM d, HH:mm') : '—'}
                 {editCount > 1 ? ` · ${editCount}×` : ''}
@@ -126,7 +148,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
           )}
         </View>
         <View style={styles.amountContainer}>
-          <Text style={[styles.amount, !isExpense && { color: CALM.accent }]}>
+          <Text style={[styles.amount, !isExpense && { color: C.accent }]}>
             {isExpense ? '-' : '+'}{currency} {transaction.amount.toFixed(2)}
           </Text>
           {tags.length > 0 && (
@@ -142,19 +164,34 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
       </Animated.View>
     </TouchableOpacity>
   );
+
+  if (onSwipeDelete && !selectMode) {
+    return (
+      <Swipeable
+        ref={swipeableRef}
+        renderRightActions={renderRightActions}
+        overshootRight={false}
+        friction={2}
+      >
+        {content}
+      </Swipeable>
+    );
+  }
+
+  return content;
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     paddingHorizontal: SPACING.md,
     paddingVertical: 12,
   },
   dividerTop: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   firstItem: {
     borderTopLeftRadius: RADIUS.lg,
@@ -165,21 +202,21 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: RADIUS.lg,
   },
   selectedBg: {
-    backgroundColor: withAlpha(CALM.accent, 0.04),
+    backgroundColor: withAlpha(C.accent, 0.04),
   },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.sm,
   },
   checkboxChecked: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
   },
   iconContainer: {
     width: 40,
@@ -191,20 +228,20 @@ const styles = StyleSheet.create({
   },
   details: { flex: 1 },
   categoryRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  emotionalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: CALM.accent },
+  emotionalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent },
   category: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 1,
   },
-  description: { fontSize: TYPOGRAPHY.size.sm, color: CALM.textSecondary, marginBottom: 1 },
-  date: { fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted },
+  description: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, marginBottom: 1 },
+  date: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
   amountContainer: { alignItems: 'flex-end', marginLeft: SPACING.sm },
   amount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   tagsRow: {
@@ -215,24 +252,30 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   tagContainer: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: RADIUS.xs,
     maxWidth: 70,
   },
-  tag: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.medium, color: CALM.textMuted },
+  tag: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.medium, color: C.textMuted },
   editedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
-  editedBadgeText: { fontSize: 9, color: CALM.bronze },
+  editedBadgeText: { fontSize: 9, color: C.bronze },
   walletBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
   walletBadgeText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.medium },
   linkedBadge: {
     width: 15,
     height: 15,
     borderRadius: 3,
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  swipeDeleteBtn: {
+    backgroundColor: C.neutral,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 72,
   },
 });
 

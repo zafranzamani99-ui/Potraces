@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { supabase, requestOtp, checkVerification } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
 
@@ -31,6 +32,8 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   onBack,
   initialError,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const [code, setCode] = useState(initialCode);
   const [copied, setCopied] = useState(false);
@@ -152,14 +155,14 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {onBack && (
         <TouchableOpacity onPress={onBack} style={styles.backBtn} activeOpacity={0.7}>
-          <Feather name="arrow-left" size={22} color={CALM.textPrimary} />
+          <Feather name="arrow-left" size={22} color={C.textPrimary} />
         </TouchableOpacity>
       )}
       <View style={styles.content}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.iconCircle}>
-            <Feather name="shield" size={28} color={CALM.accent} />
+            <Feather name="shield" size={28} color={C.accent} />
           </View>
           <Text style={styles.title}>verify your account</Text>
           <Text style={styles.subtitle}>
@@ -173,12 +176,12 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
             <>
               <Text style={styles.codeText}>{code}</Text>
               <View style={styles.copyRow}>
-                <Feather name={copied ? 'check' : 'copy'} size={14} color={CALM.accent} />
+                <Feather name={copied ? 'check' : 'copy'} size={14} color={C.accent} />
                 <Text style={styles.copyText}>{copied ? 'copied!' : 'tap to copy'}</Text>
               </View>
             </>
           ) : (
-            <ActivityIndicator size="small" color={CALM.accent} style={{ paddingVertical: 12 }} />
+            <ActivityIndicator size="small" color={C.accent} style={{ paddingVertical: 12 }} />
           )}
         </TouchableOpacity>
 
@@ -210,7 +213,7 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
 
         {/* Waiting indicator */}
         <View style={styles.waitingRow}>
-          <ActivityIndicator size="small" color={CALM.textMuted} />
+          <ActivityIndicator size="small" color={C.textMuted} />
           <Text style={styles.waitingText}>waiting for verification...</Text>
         </View>
 
@@ -238,8 +241,8 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CALM.background },
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.background },
   backBtn: { marginTop: 12, marginLeft: SPACING.lg, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   content: { flex: 1, paddingHorizontal: SPACING.lg, justifyContent: 'center' },
   header: { alignItems: 'center', marginBottom: 28 },
@@ -255,19 +258,19 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: '700' as const,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 6,
   },
   subtitle: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
   },
   codeBox: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 2,
-    borderColor: CALM.accent,
+    borderColor: C.accent,
     borderRadius: RADIUS.lg,
     paddingVertical: 20,
     alignItems: 'center',
@@ -276,12 +279,12 @@ const styles = StyleSheet.create({
   codeText: {
     fontSize: 32,
     fontWeight: '800' as const,
-    color: CALM.accent,
+    color: C.accent,
     letterSpacing: 6,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   copyRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
-  copyText: { fontSize: 12, color: CALM.accent, fontWeight: '500' as const },
+  copyText: { fontSize: 12, color: C.accent, fontWeight: '500' as const },
   steps: { marginBottom: 24 },
   step: {
     flexDirection: 'row',
@@ -293,22 +296,22 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: CALM.pillBg,
+    backgroundColor: C.pillBg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepNumText: {
     fontSize: 12,
     fontWeight: '700' as const,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   stepText: {
     fontSize: 14,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   telegramBtn: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.md,
     paddingVertical: 14,
     flexDirection: 'row',
@@ -331,7 +334,7 @@ const styles = StyleSheet.create({
   },
   waitingText: {
     fontSize: 13,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontStyle: 'italic',
   },
   actions: {
@@ -343,13 +346,13 @@ const styles = StyleSheet.create({
   linkBtn: { paddingVertical: 4, paddingHorizontal: 2 },
   linkText: {
     fontSize: 13,
-    color: CALM.accent,
+    color: C.accent,
     fontWeight: '500' as const,
   },
-  dot: { color: CALM.textMuted, fontSize: 13 },
+  dot: { color: C.textMuted, fontSize: 13 },
   errorText: {
     fontSize: 12,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     marginTop: 10,
     fontStyle: 'italic',

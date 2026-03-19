@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Pressable,
   Modal,
@@ -15,6 +14,7 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import {
   format,
@@ -36,6 +36,8 @@ import {
   SHADOWS,
   withAlpha,
 } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import Sparkline from '../../components/common/Sparkline';
 import CalendarPicker from '../../components/common/CalendarPicker';
 
@@ -66,8 +68,8 @@ const GOAL_ICONS: (keyof typeof Feather.glyphMap)[] = [
 ];
 
 const GOAL_COLORS = [
-  '#4F5104', // CALM.accent (olive)
-  '#2E7D5B', // CALM.positive (green)
+  '#4F5104', // C.accent (olive)
+  '#2E7D5B', // C.positive (green)
   '#E67E22', // warm orange
   '#3498DB', // sky blue
   '#9B59B6', // amethyst purple
@@ -95,18 +97,32 @@ const getObservation = (percentage: number): string => {
 
 const MAX_GOALS = 10;
 
-// ── GOAL TEMPLATES ────────────────────────────────────────────
-const GOAL_TEMPLATES = [
-  { name: 'Emergency Fund', icon: 'shield' as const, color: '#4F5104' },
-  { name: 'Raya Savings', icon: 'gift' as const, color: '#F39C12' },
-  { name: 'Travel', icon: 'send' as const, color: '#E67E22' },
-  { name: 'Gadget Fund', icon: 'smartphone' as const, color: '#9B59B6' },
-  { name: 'Downpayment', icon: 'home' as const, color: '#3498DB' },
-  { name: 'Education', icon: 'book' as const, color: '#8B7355' },
-];
-
 // ── MAIN COMPONENT ────────────────────────────────────────────
 const Goals: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
+
+  // ── Observation helper (i18n) ──
+  const getObservation = useCallback((percentage: number): string => {
+    if (percentage >= 100) return t.goals.goalReached;
+    if (percentage >= 75) return t.goals.almostThere;
+    if (percentage >= 50) return t.goals.halfway;
+    if (percentage >= 25) return t.goals.quarterSaved;
+    if (percentage >= 10) return t.goals.gettingStarted;
+    return '';
+  }, [t]);
+
+  // ── Goal templates (i18n) ──
+  const goalTemplates = useMemo(() => [
+    { name: t.goals.emergencyFund, icon: 'shield' as const, color: '#4F5104' },
+    { name: t.goals.rayaSavings, icon: 'gift' as const, color: '#F39C12' },
+    { name: t.goals.travel, icon: 'send' as const, color: '#E67E22' },
+    { name: t.goals.gadgetFund, icon: 'smartphone' as const, color: '#9B59B6' },
+    { name: t.goals.downpayment, icon: 'home' as const, color: '#3498DB' },
+    { name: t.goals.education, icon: 'book' as const, color: '#8B7355' },
+  ], [t]);
+
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const goals = usePersonalStore((s) => s.goals);
@@ -143,6 +159,8 @@ const Goals: React.FC = () => {
   const [contributeAmount, setContributeAmount] = useState('');
   const [contributeNote, setContributeNote] = useState('');
   const [contributeWalletId, setContributeWalletId] = useState<string | undefined>(undefined);
+  const [isWithdrawMode, setIsWithdrawMode] = useState(false);
+  const withdrawFromGoal = usePersonalStore((s) => s.withdrawFromGoal);
 
   // ── History Modal state ──
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
@@ -273,7 +291,7 @@ const Goals: React.FC = () => {
   // ── Open Add Modal ──
   const openAddGoal = useCallback(() => {
     if (goalsList.length >= MAX_GOALS) {
-      showToast(`Maximum ${MAX_GOALS} goals allowed`, 'error');
+      showToast(t.goals.maxGoals.replace('{n}', String(MAX_GOALS)), 'error');
       return;
     }
     resetGoalForm();
@@ -296,12 +314,12 @@ const Goals: React.FC = () => {
   // ── Save Goal ──
   const handleSaveGoal = useCallback(() => {
     if (!goalName.trim()) {
-      showToast('Please enter a goal name', 'error');
+      showToast(t.goals.enterGoalName, 'error');
       return;
     }
     const target = parseFloat(goalTarget);
     if (!target || target <= 0) {
-      showToast('Please enter a valid target amount', 'error');
+      showToast(t.goals.enterValidTarget, 'error');
       return;
     }
 
@@ -313,7 +331,7 @@ const Goals: React.FC = () => {
         icon: goalIcon,
         color: goalColor,
       });
-      showToast('goal updated.', 'success');
+      showToast(t.goals.goalUpdated, 'success');
     } else {
       addGoal({
         name: goalName.trim(),
@@ -323,7 +341,7 @@ const Goals: React.FC = () => {
         icon: goalIcon,
         color: goalColor,
       });
-      showToast('goal created.', 'success');
+      showToast(t.goals.goalCreated, 'success');
     }
 
     setGoalModalVisible(false);
@@ -346,31 +364,32 @@ const Goals: React.FC = () => {
     (goal: Goal) => {
       lightTap();
       Alert.alert(
-        'Delete Goal',
-        `Remove "${goal.name}" from your goals? This cannot be undone.`,
+        t.goals.deleteGoal,
+        t.goals.removeGoalConfirm.replace('{name}', goal.name),
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: t.common.cancel, style: 'cancel' },
           {
-            text: 'Delete',
+            text: t.common.delete,
             style: 'destructive',
             onPress: () => {
               deleteGoal(goal.id);
-              showToast('goal removed.', 'success');
+              showToast(t.goals.goalRemoved, 'success');
             },
           },
         ]
       );
     },
-    [deleteGoal, showToast]
+    [deleteGoal, showToast, t]
   );
 
   // ── Open Contribute Modal ──
-  const openContribute = useCallback((goal: Goal, presetAmount?: number) => {
+  const openContribute = useCallback((goal: Goal, presetAmount?: number, withdraw?: boolean) => {
     lightTap();
     setContributingGoal(goal);
     setContributeAmount(presetAmount ? presetAmount.toString() : '');
     setContributeNote('');
-    setContributeWalletId(goal.walletId || undefined);
+    setContributeWalletId(withdraw ? undefined : (goal.walletId || undefined));
+    setIsWithdrawMode(!!withdraw);
     setContributeModalVisible(true);
   }, []);
 
@@ -378,11 +397,15 @@ const Goals: React.FC = () => {
   const handleContribute = useCallback(() => {
     if (!contributingGoal) return;
 
-    const amount = parseFloat(contributeAmount);
-    if (!amount || amount <= 0) {
-      showToast('Please enter a valid amount', 'error');
+    const rawAmount = parseFloat(contributeAmount);
+    if (!rawAmount || rawAmount <= 0) {
+      showToast(t.goals.enterValidAmount, 'error');
       return;
     }
+
+    // Cap to remaining so we don't over-contribute or over-deduct
+    const remaining = contributingGoal.targetAmount - contributingGoal.currentAmount;
+    const amount = remaining > 0 ? Math.min(rawAmount, remaining) : rawAmount;
 
     // Snapshot milestones BEFORE contribution
     const milestonesBefore = contributingGoal.milestones
@@ -421,70 +444,102 @@ const Goals: React.FC = () => {
       );
       if (crossedPct === 100) {
         successNotification();
-        showToast('goal reached.', 'success');
+        showToast(t.goals.goalReached, 'success');
       } else if (crossedPct) {
         mediumTap();
         showToast(`${crossedPct}% milestone.`, 'success');
       } else {
-        showToast('contribution added.', 'success');
+        showToast(t.goals.contributionAdded, 'success');
       }
     } else {
-      showToast('contribution added.', 'success');
+      showToast(t.goals.contributionAdded, 'success');
     }
 
     setContributeModalVisible(false);
     setContributingGoal(null);
-  }, [contributingGoal, contributeAmount, contributeNote, contributeWalletId, contributeToGoal, showToast]);
+  }, [contributingGoal, contributeAmount, contributeNote, contributeWalletId, contributeToGoal, showToast, currency, t]);
+
+  // ── Handle Withdraw ──
+  const handleWithdraw = useCallback(() => {
+    if (!contributingGoal) return;
+    const amount = parseFloat(contributeAmount);
+    if (!amount || amount <= 0) {
+      showToast(t.goals.enterValidAmount, 'error');
+      return;
+    }
+    const capped = Math.min(amount, contributingGoal.currentAmount);
+    if (capped <= 0) {
+      showToast(t.goals.nothingToWithdraw, 'error');
+      return;
+    }
+    withdrawFromGoal(contributingGoal.id, capped, contributeNote.trim() || undefined);
+
+    // Return to wallet if one was selected
+    if (contributeWalletId) {
+      useWalletStore.getState().addToWallet(contributeWalletId, capped);
+    }
+
+    lightTap();
+    showToast(`${currency} ${capped.toFixed(2)} ${t.goals.withdrawn}`, 'success');
+    setContributeModalVisible(false);
+    setContributingGoal(null);
+  }, [contributingGoal, contributeAmount, contributeNote, contributeWalletId, withdrawFromGoal, showToast, currency, t]);
 
   // ── Handle undo contribution ──
   const handleUndoContribution = useCallback((goalId: string, contrib: GoalContribution) => {
     Alert.alert(
-      'Remove Contribution',
-      `Remove this ${currency} ${Math.abs(contrib.amount).toFixed(2)} contribution?`,
+      t.goals.removeContribution,
+      t.goals.removeContribConfirm.replace('{currency}', currency).replace('{amount}', Math.abs(contrib.amount).toFixed(2)),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Remove',
+          text: t.common.delete,
           style: 'destructive',
           onPress: () => {
             // Refund wallet if contribution was charged to one
             if (contrib.walletId) {
-              useWalletStore.getState().addToWallet(contrib.walletId, contrib.amount);
+              if (contrib.amount < 0) {
+                // Withdrawal undo: take money back from wallet
+                useWalletStore.getState().deductFromWallet(contrib.walletId, Math.abs(contrib.amount));
+              } else {
+                // Contribution undo: refund money to wallet
+                useWalletStore.getState().addToWallet(contrib.walletId, contrib.amount);
+              }
             }
             removeContribution(goalId, contrib.id);
-            showToast('contribution removed.', 'success');
+            showToast(t.goals.contributionRemoved, 'success');
             const updated = usePersonalStore.getState().goals.find((g) => g.id === goalId);
             if (updated) setHistoryGoal(updated);
           },
         },
       ]
     );
-  }, [removeContribution, showToast, currency]);
+  }, [removeContribution, showToast, currency, t]);
 
   // ── Pause / Resume ──
   const handleTogglePause = useCallback((goal: Goal) => {
     selectionChanged();
     if (goal.isPaused) {
       resumeGoal(goal.id);
-      showToast('goal resumed.', 'success');
+      showToast(t.goals.goalResumed, 'success');
     } else {
       pauseGoal(goal.id);
-      showToast('goal paused.', 'success');
+      showToast(t.goals.goalPaused, 'success');
     }
-  }, [pauseGoal, resumeGoal, showToast]);
+  }, [pauseGoal, resumeGoal, showToast, t]);
 
   // ── Archive / Unarchive ──
   const handleArchive = useCallback((goal: Goal) => {
     lightTap();
     archiveGoal(goal.id);
-    showToast('goal archived.', 'success');
-  }, [archiveGoal, showToast]);
+    showToast(t.goals.goalArchived, 'success');
+  }, [archiveGoal, showToast, t]);
 
   const handleUnarchive = useCallback((goalId: string) => {
     lightTap();
     unarchiveGoal(goalId);
-    showToast('goal restored.', 'success');
-  }, [unarchiveGoal, showToast]);
+    showToast(t.goals.goalRestored, 'success');
+  }, [unarchiveGoal, showToast, t]);
 
   const archivedGoals = useMemo(() => goalsList.filter((g) => g.isArchived), [goalsList]);
 
@@ -519,7 +574,7 @@ const Goals: React.FC = () => {
                   styles.milestoneDot,
                   reached
                     ? { backgroundColor: goal.color }
-                    : { backgroundColor: CALM.border },
+                    : { backgroundColor: C.border },
                 ]}
                 accessibilityLabel={`${pct}% milestone ${reached ? 'reached' : 'not yet reached'}`}
               />
@@ -547,6 +602,7 @@ const Goals: React.FC = () => {
   const closeContributeModal = useCallback(() => {
     setContributeModalVisible(false);
     setContributingGoal(null);
+    setIsWithdrawMode(false);
   }, []);
 
   // ── History modal grouped contributions ──
@@ -579,26 +635,26 @@ const Goals: React.FC = () => {
   // FAB animation
   const fabScale = useRef(new Animated.Value(1)).current;
 
-  const filterOptions: { key: GoalFilter; label: string }[] = [
-    { key: 'all', label: 'all' },
-    { key: 'active', label: 'active' },
-    { key: 'completed', label: 'done' },
-    { key: 'paused', label: 'paused' },
-  ];
+  const filterOptions = useMemo<{ key: GoalFilter; label: string }[]>(() => [
+    { key: 'all', label: t.goals.all },
+    { key: 'active', label: t.goals.active },
+    { key: 'completed', label: t.goals.done },
+    { key: 'paused', label: t.goals.paused },
+  ], [t]);
 
-  const sortOptions: { key: GoalSort; label: string; icon: keyof typeof Feather.glyphMap }[] = [
+  const sortOptions = useMemo<{ key: GoalSort; label: string; icon: keyof typeof Feather.glyphMap }[]>(() => [
     { key: 'manual', label: 'default', icon: 'list' },
-    { key: 'deadline', label: 'deadline', icon: 'calendar' },
-    { key: 'progress', label: 'progress', icon: 'trending-up' },
-  ];
+    { key: 'deadline', label: t.goals.deadline, icon: 'calendar' },
+    { key: 'progress', label: t.goals.progress, icon: 'trending-up' },
+  ], [t]);
 
   // ── Apply template ──
-  const applyTemplate = useCallback((template: typeof GOAL_TEMPLATES[0]) => {
+  const applyTemplate = useCallback((template: typeof goalTemplates[0]) => {
     selectionChanged();
     setGoalName(template.name);
     setGoalIcon(template.icon);
     setGoalColor(template.color);
-  }, []);
+  }, [goalTemplates]);
 
   return (
     <View style={styles.container}>
@@ -607,17 +663,18 @@ const Goals: React.FC = () => {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
       >
         {activeGoals.length > 0 ? (
           <>
             {/* ── Hero Card ── */}
             <View style={styles.heroCard}>
-              <Text style={styles.heroLabel}>goals</Text>
+              <Text style={styles.heroLabel}>{t.dashboard.goals.toLowerCase()}</Text>
               <Text style={styles.heroAmount}>
                 {currency} {summary.totalSaved.toFixed(2)}
               </Text>
               <Text style={styles.heroSubtext}>
-                of {currency} {summary.totalTarget.toFixed(2)} target · {summary.overallPercentage.toFixed(0)}%
+                {t.goals.ofTarget.replace('{currency}', currency).replace('{amount}', summary.totalTarget.toFixed(2))} · {summary.overallPercentage.toFixed(0)}%
               </Text>
 
               {/* Progress bar */}
@@ -627,13 +684,13 @@ const Goals: React.FC = () => {
 
               {monthlyContrib.thisMonth > 0 && (
                 <Text style={styles.heroMonthly}>
-                  +{currency} {monthlyContrib.thisMonth.toFixed(2)} this month
-                  {monthlyContrib.lastMonth > 0 && `  ·  vs ${currency} ${monthlyContrib.lastMonth.toFixed(2)} last month`}
+                  +{currency} {monthlyContrib.thisMonth.toFixed(2)} {t.goals.thisMonth}
+                  {monthlyContrib.lastMonth > 0 && `  ·  ${t.goals.vsLastMonth.replace('{currency}', currency).replace('{amount}', monthlyContrib.lastMonth.toFixed(2))}`}
                 </Text>
               )}
 
               <Text style={styles.heroStats}>
-                {summary.activeCount} active{summary.completedCount > 0 ? ` · ${summary.completedCount} done` : ''}
+                {t.goals.nActive.replace('{n}', String(summary.activeCount))}{summary.completedCount > 0 ? ` · ${t.goals.nDone.replace('{n}', String(summary.completedCount))}` : ''}
               </Text>
             </View>
 
@@ -658,7 +715,7 @@ const Goals: React.FC = () => {
                   onPress={() => { selectionChanged(); setSort(sort === opt.key ? 'manual' : opt.key); }}
                   activeOpacity={0.7}
                 >
-                  <Feather name={opt.icon} size={12} color={sort === opt.key ? '#FFFFFF' : CALM.textMuted} style={{ marginRight: 4 }} />
+                  <Feather name={opt.icon} size={12} color={sort === opt.key ? '#FFFFFF' : C.textMuted} style={{ marginRight: 4 }} />
                   <Text style={[styles.filterChipText, sort === opt.key && styles.filterChipTextActive]}>
                     {opt.label}
                   </Text>
@@ -688,18 +745,18 @@ const Goals: React.FC = () => {
                             <Feather
                               name={(goal.icon as keyof typeof Feather.glyphMap) || 'target'}
                               size={18}
-                              color={goal.isPaused ? CALM.neutral : goal.color}
+                              color={goal.isPaused ? C.neutral : goal.color}
                             />
                           </View>
 
                           <View style={styles.goalInfo}>
                             <View style={styles.goalNameRow}>
-                              <Text style={[styles.goalName, goal.isPaused && { color: CALM.neutral }]} numberOfLines={1}>
+                              <Text style={[styles.goalName, goal.isPaused && { color: C.neutral }]} numberOfLines={1}>
                                 {goal.name}
                               </Text>
                               {goal.isPaused && (
                                 <View style={styles.pausedBadge}>
-                                  <Text style={styles.pausedBadgeText}>paused</Text>
+                                  <Text style={styles.pausedBadgeText}>{t.goals.paused}</Text>
                                 </View>
                               )}
                             </View>
@@ -710,17 +767,17 @@ const Goals: React.FC = () => {
                               {goal.deadline && daysUntilDeadline !== null && !goal.isPaused && (
                                 <>
                                   <Text style={styles.goalMetaDot}> {'\u00B7'} </Text>
-                                  <Text style={[styles.goalMetaText, daysUntilDeadline < 0 && { color: CALM.bronze, fontWeight: TYPOGRAPHY.weight.semibold }]}>
+                                  <Text style={[styles.goalMetaText, daysUntilDeadline < 0 && { color: C.bronze, fontWeight: TYPOGRAPHY.weight.semibold }]}>
                                     {daysUntilDeadline < 0
-                                      ? `${Math.abs(daysUntilDeadline)}d overdue`
-                                      : daysUntilDeadline === 0 ? 'due today' : `${daysUntilDeadline}d`}
+                                      ? t.goals.dOverdue.replace('{n}', String(Math.abs(daysUntilDeadline)))
+                                      : daysUntilDeadline === 0 ? t.goals.dueToday : `${daysUntilDeadline}d`}
                                   </Text>
                                 </>
                               )}
                             </View>
                           </View>
 
-                          <Text style={[styles.goalPercentage, isCompleted && { color: CALM.positive }]}>
+                          <Text style={[styles.goalPercentage, isCompleted && { color: C.positive }]}>
                             {percentage.toFixed(0)}%
                           </Text>
                         </View>
@@ -732,7 +789,7 @@ const Goals: React.FC = () => {
                               styles.goalProgressFill,
                               {
                                 width: `${Math.min(percentage, 100)}%`,
-                                backgroundColor: goal.isPaused ? CALM.neutral : goal.color,
+                                backgroundColor: goal.isPaused ? C.neutral : goal.color,
                               },
                             ]}
                           />
@@ -744,16 +801,42 @@ const Goals: React.FC = () => {
                         {/* Calm observation */}
                         {getObservation(percentage) !== '' && (
                           <Text style={styles.observationText}>
-                            {isCompleted ? 'goal reached.' : `${percentage.toFixed(0)}% — ${getObservation(percentage)}`}
+                            {isCompleted ? t.goals.goalReached : `${percentage.toFixed(0)}% — ${getObservation(percentage)}`}
                           </Text>
                         )}
 
                         {/* Pace */}
                         {paceDaily !== null && paceMonthly !== null && !goal.isPaused && (
                           <Text style={styles.paceText}>
-                            ~{currency} {paceDaily < 10 ? paceDaily.toFixed(2) : Math.ceil(paceDaily).toString()}/day · ~{currency} {Math.ceil(paceMonthly)}/mo
+                            ~{currency} {paceDaily < 10 ? paceDaily.toFixed(2) : Math.ceil(paceDaily).toString()}{t.goals.perDay} · ~{currency} {Math.ceil(paceMonthly)}{t.goals.perMonth}
                           </Text>
                         )}
+
+                        {/* Pace context */}
+                        {!goal.isPaused && !isCompleted && (() => {
+                          if (goal.deadline && paceMonthly !== null && paceMonthly > 0) {
+                            // Estimate current monthly rate from contributions
+                            const monthsSinceCreation = Math.max(1, Math.round(
+                              (Date.now() - new Date(goal.createdAt).getTime()) / (30 * 86400000)
+                            ));
+                            const currentMonthlyRate = goal.currentAmount / monthsSinceCreation;
+                            const onPace = currentMonthlyRate >= paceMonthly;
+                            return (
+                              <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: onPace ? C.accent : C.textMuted, marginTop: 2 }}>
+                                {onPace
+                                  ? (currentMonthlyRate >= paceMonthly * 1.2 ? t.goals.aheadOfSchedule : t.goals.onPace)
+                                  : t.goals.needAboutPerMonth.replace('{currency}', currency).replace('{amount}', String(Math.ceil(paceMonthly)))}
+                              </Text>
+                            );
+                          }
+                          // No deadline — simple percent message
+                          const pct = Math.round(percentage);
+                          return (
+                            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 2 }}>
+                              {pct >= 20 ? t.goals.percentThereNice.replace('{n}', String(pct)) : t.goals.percentThere.replace('{n}', String(pct))}
+                            </Text>
+                          );
+                        })()}
 
                         {/* Sparkline */}
                         {sparkData.length >= 2 && (
@@ -763,13 +846,13 @@ const Goals: React.FC = () => {
                                 data={sparkData}
                                 width={SCREEN_W - SPACING.xl * 2 - SPACING.md * 2}
                                 height={36}
-                                color={goal.isPaused ? CALM.neutral : goal.color}
+                                color={goal.isPaused ? C.neutral : goal.color}
                                 filled
                               />
                             </View>
                             <Text style={styles.sparklineLabel}>
-                              {goal.contributions?.filter((c) => c.amount > 0).length || 0} contributions
-                              {lastContribDaysAgo !== null && ` · last: ${lastContribDaysAgo === 0 ? 'today' : `${lastContribDaysAgo}d ago`}`}
+                              {t.goals.contributions.replace('{n}', String(goal.contributions?.filter((c) => c.amount > 0).length || 0))}
+                              {lastContribDaysAgo !== null && ` · ${lastContribDaysAgo === 0 ? t.goals.lastToday : t.goals.lastDaysAgo.replace('{n}', String(lastContribDaysAgo))}`}
                             </Text>
                           </TouchableOpacity>
                         )}
@@ -788,11 +871,11 @@ const Goals: React.FC = () => {
                               </TouchableOpacity>
                             ))}
                             <TouchableOpacity
-                              style={[styles.quickBtn, { backgroundColor: withAlpha(CALM.textMuted, 0.06) }]}
+                              style={[styles.quickBtn, { backgroundColor: withAlpha(C.textMuted, 0.06) }]}
                               onPress={() => openContribute(goal)}
                               activeOpacity={0.7}
                             >
-                              <Text style={[styles.quickBtnText, { color: CALM.textSecondary }]}>custom</Text>
+                              <Text style={[styles.quickBtnText, { color: C.textSecondary }]}>{t.goals.custom}</Text>
                             </TouchableOpacity>
                           </View>
                         )}
@@ -806,17 +889,26 @@ const Goals: React.FC = () => {
                               activeOpacity={0.7}
                             >
                               <Feather name="plus-circle" size={14} color={goal.color} />
-                              <Text style={[styles.actionBtnText, { color: goal.color }]}>contribute</Text>
+                              <Text style={[styles.actionBtnText, { color: goal.color }]}>{t.goals.contribute.toLowerCase()}</Text>
                             </TouchableOpacity>
                           )}
                           {isCompleted && (
                             <TouchableOpacity
-                              style={[styles.actionBtn, { backgroundColor: withAlpha(CALM.positive, 0.08) }]}
+                              style={[styles.actionBtn, { backgroundColor: withAlpha(C.positive, 0.08) }]}
                               onPress={() => handleArchive(goal)}
                               activeOpacity={0.7}
                             >
-                              <Feather name="archive" size={14} color={CALM.positive} />
-                              <Text style={[styles.actionBtnText, { color: CALM.positive }]}>archive</Text>
+                              <Feather name="archive" size={14} color={C.positive} />
+                              <Text style={[styles.actionBtnText, { color: C.positive }]}>{t.goals.archive}</Text>
+                            </TouchableOpacity>
+                          )}
+                          {goal.currentAmount > 0 && !goal.isPaused && (
+                            <TouchableOpacity
+                              style={styles.actionIconBtn}
+                              onPress={() => openContribute(goal, undefined, true)}
+                              activeOpacity={0.7}
+                            >
+                              <Feather name="minus-circle" size={15} color={C.textMuted} />
                             </TouchableOpacity>
                           )}
                           {goal.contributions?.length > 0 && (
@@ -825,7 +917,7 @@ const Goals: React.FC = () => {
                               onPress={() => openHistory(goal)}
                               activeOpacity={0.7}
                             >
-                              <Feather name="clock" size={15} color={CALM.textMuted} />
+                              <Feather name="clock" size={15} color={C.textMuted} />
                             </TouchableOpacity>
                           )}
                           <TouchableOpacity
@@ -833,7 +925,7 @@ const Goals: React.FC = () => {
                             onPress={() => handleTogglePause(goal)}
                             activeOpacity={0.7}
                           >
-                            <Feather name={goal.isPaused ? 'play' : 'pause'} size={15} color={CALM.textMuted} />
+                            <Feather name={goal.isPaused ? 'play' : 'pause'} size={15} color={C.textMuted} />
                           </TouchableOpacity>
                         </View>
                       </Pressable>
@@ -844,16 +936,16 @@ const Goals: React.FC = () => {
               </View>
             ) : (
               <View style={styles.noResults}>
-                <Feather name="search" size={36} color={CALM.textMuted} />
-                <Text style={styles.noResultsTitle}>no results found</Text>
-                <Text style={styles.noResultsText}>try a different filter</Text>
+                <Feather name="search" size={36} color={C.textMuted} />
+                <Text style={styles.noResultsTitle}>{t.goals.noResultsFound}</Text>
+                <Text style={styles.noResultsText}>{t.goals.tryDifferentFilter}</Text>
               </View>
             )}
 
             {/* ── Archived ── */}
             {archivedGoals.length > 0 && (
               <>
-                <Text style={[styles.sectionLabel, { marginTop: SPACING['2xl'] }]}>archived</Text>
+                <Text style={[styles.sectionLabel, { marginTop: SPACING['2xl'] }]}>{t.goals.archived}</Text>
                 <View style={styles.groupCard}>
                   <TouchableOpacity
                     style={styles.archivedToggle}
@@ -861,10 +953,10 @@ const Goals: React.FC = () => {
                     activeOpacity={0.7}
                   >
                     <View style={styles.archivedToggleLeft}>
-                      <Feather name="archive" size={16} color={CALM.textMuted} />
-                      <Text style={styles.archivedToggleText}>{archivedGoals.length} archived goal{archivedGoals.length > 1 ? 's' : ''}</Text>
+                      <Feather name="archive" size={16} color={C.textMuted} />
+                      <Text style={styles.archivedToggleText}>{archivedGoals.length > 1 ? t.goals.archivedGoalsPlural.replace('{n}', String(archivedGoals.length)) : t.goals.archivedGoals.replace('{n}', String(archivedGoals.length))}</Text>
                     </View>
-                    <Feather name={showArchived ? 'chevron-up' : 'chevron-down'} size={18} color={CALM.textMuted} />
+                    <Feather name={showArchived ? 'chevron-up' : 'chevron-down'} size={18} color={C.textMuted} />
                   </TouchableOpacity>
 
                   {showArchived && archivedGoals.map((goal, index) => {
@@ -887,7 +979,7 @@ const Goals: React.FC = () => {
                             onPress={() => handleUnarchive(goal.id)}
                             activeOpacity={0.7}
                           >
-                            <Feather name="rotate-ccw" size={14} color={CALM.accent} />
+                            <Feather name="rotate-ccw" size={14} color={C.accent} />
                           </TouchableOpacity>
                         </View>
                       </React.Fragment>
@@ -901,18 +993,18 @@ const Goals: React.FC = () => {
           /* ── Empty State ── */
           <View style={styles.emptyState}>
             <View style={styles.emptyIconWrap}>
-              <Feather name="target" size={48} color={CALM.textMuted} />
+              <Feather name="target" size={48} color={C.textMuted} />
             </View>
-            <Text style={styles.emptyTitle}>no goals yet</Text>
+            <Text style={styles.emptyTitle}>{t.goals.whatSavingFor}</Text>
             <Text style={styles.emptyText}>
-              whether it's an emergency fund or a dream vacation, every ringgit counts
+              {t.goals.setGoalWatch}
             </Text>
             <TouchableOpacity
               style={styles.emptyButton}
               onPress={() => { lightTap(); openAddGoal(); }}
               activeOpacity={0.7}
             >
-              <Text style={styles.emptyButtonText}>add goal</Text>
+              <Text style={styles.emptyButtonText}>{t.goals.addGoal}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -939,16 +1031,17 @@ const Goals: React.FC = () => {
         statusBarTranslucent
         onRequestClose={closeGoalModal}
       >
-        <TouchableOpacity style={styles.overlayCenter} activeOpacity={1} onPress={closeGoalModal}>
+        <View style={styles.overlayCenter}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeGoalModal} />
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.kavWrapper}
           >
             <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{editingGoal ? 'edit goal' : 'create goal'}</Text>
+                <Text style={styles.modalTitle}>{editingGoal ? t.goals.editGoalTitle : t.goals.createGoal}</Text>
                 <TouchableOpacity onPress={closeGoalModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                  <Feather name="x" size={22} color={CALM.textPrimary} />
+                  <Feather name="x" size={22} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -961,21 +1054,21 @@ const Goals: React.FC = () => {
                 {/* Templates */}
                 {!editingGoal && (
                   <>
-                    <Text style={styles.fieldLabel}>quick start</Text>
+                    <Text style={styles.fieldLabel}>{t.goals.quickStart}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: SPACING.xs }}>
-                      {GOAL_TEMPLATES.map((t) => (
+                      {goalTemplates.map((tmpl) => (
                         <TouchableOpacity
-                          key={t.name}
+                          key={tmpl.name}
                           style={[
                             styles.templateChip,
-                            goalName === t.name && { backgroundColor: withAlpha(t.color, 0.12), borderColor: t.color },
+                            goalName === tmpl.name && { backgroundColor: withAlpha(tmpl.color, 0.12), borderColor: tmpl.color },
                           ]}
-                          onPress={() => applyTemplate(t)}
+                          onPress={() => applyTemplate(tmpl)}
                           activeOpacity={0.7}
                         >
-                          <Feather name={t.icon} size={14} color={goalName === t.name ? t.color : CALM.textSecondary} />
-                          <Text style={[styles.templateChipText, goalName === t.name && { color: t.color }]}>
-                            {t.name}
+                          <Feather name={tmpl.icon} size={14} color={goalName === tmpl.name ? tmpl.color : C.textSecondary} />
+                          <Text style={[styles.templateChipText, goalName === tmpl.name && { color: tmpl.color }]}>
+                            {tmpl.name}
                           </Text>
                         </TouchableOpacity>
                       ))}
@@ -983,18 +1076,18 @@ const Goals: React.FC = () => {
                   </>
                 )}
 
-                <Text style={styles.fieldLabel}>name</Text>
+                <Text style={styles.fieldLabel}>{t.goals.name}</Text>
                 <TextInput
                   style={styles.fieldInput}
                   value={goalName}
                   onChangeText={setGoalName}
-                  placeholder="e.g. Emergency Fund, Japan Trip"
-                  placeholderTextColor={CALM.textMuted}
+                  placeholder={t.goals.namePlaceholder}
+                  placeholderTextColor={C.textMuted}
                   returnKeyType="next"
                   maxLength={50}
                 />
 
-                <Text style={styles.fieldLabel}>target amount</Text>
+                <Text style={styles.fieldLabel}>{t.goals.amount}</Text>
                 <View style={styles.amountRow}>
                   <Text style={styles.amountPrefix}>{currency}</Text>
                   <TextInput
@@ -1003,14 +1096,14 @@ const Goals: React.FC = () => {
                     onChangeText={setGoalTarget}
                     placeholder="0.00"
                     keyboardType="decimal-pad"
-                    placeholderTextColor={CALM.textMuted}
+                    placeholderTextColor={C.textMuted}
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
                   />
                 </View>
 
                 {/* Deadline */}
-                <Text style={styles.fieldLabel}>deadline (optional)</Text>
+                <Text style={styles.fieldLabel}>{t.goals.deadlineOptional}</Text>
                 {!showCalendar ? (
                   <TouchableOpacity
                     style={styles.fieldTouchable}
@@ -1018,9 +1111,9 @@ const Goals: React.FC = () => {
                     activeOpacity={0.6}
                   >
                     <Text style={styles.fieldTouchableText}>
-                      {goalDeadline ? format(goalDeadline, 'dd MMM yyyy') : 'set deadline'}
+                      {goalDeadline ? format(goalDeadline, 'dd MMM yyyy') : t.goals.setDeadline}
                     </Text>
-                    <Feather name="calendar" size={16} color={CALM.textMuted} />
+                    <Feather name="calendar" size={16} color={C.textMuted} />
                   </TouchableOpacity>
                 ) : (
                   <View>
@@ -1034,13 +1127,13 @@ const Goals: React.FC = () => {
                       onPress={() => { setGoalDeadline(undefined); setShowCalendar(false); }}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.clearDeadlineText}>clear deadline</Text>
+                      <Text style={styles.clearDeadlineText}>{t.goals.clearDeadline}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
 
                 {/* Icon Picker */}
-                <Text style={styles.fieldLabel}>icon</Text>
+                <Text style={styles.fieldLabel}>{t.goals.icon.toLowerCase()}</Text>
                 <View style={styles.iconPickerGrid}>
                   {GOAL_ICONS.map((icon) => {
                     const isSelected = goalIcon === icon;
@@ -1056,14 +1149,14 @@ const Goals: React.FC = () => {
                         accessibilityLabel={`Icon: ${icon}`}
                         accessibilityState={{ selected: isSelected }}
                       >
-                        <Feather name={icon} size={22} color={isSelected ? goalColor : CALM.textSecondary} />
+                        <Feather name={icon} size={22} color={isSelected ? goalColor : C.textSecondary} />
                       </TouchableOpacity>
                     );
                   })}
                 </View>
 
                 {/* Color Picker */}
-                <Text style={styles.fieldLabel}>color</Text>
+                <Text style={styles.fieldLabel}>{t.goals.color.toLowerCase()}</Text>
                 <View style={styles.colorPickerRow}>
                   {GOAL_COLORS.map((color) => {
                     const isSelected = goalColor === color;
@@ -1103,7 +1196,7 @@ const Goals: React.FC = () => {
                   onPress={handleSaveGoal}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.confirmBtnText}>{editingGoal ? 'save changes' : 'create goal'}</Text>
+                  <Text style={styles.confirmBtnText}>{editingGoal ? t.goals.saveChanges : t.goals.createGoal}</Text>
                 </TouchableOpacity>
 
                 {editingGoal && (
@@ -1112,14 +1205,14 @@ const Goals: React.FC = () => {
                     onPress={() => { setGoalModalVisible(false); resetGoalForm(); handleDeleteGoal(editingGoal); }}
                     activeOpacity={0.7}
                   >
-                    <Feather name="trash-2" size={14} color={CALM.neutral} />
-                    <Text style={styles.deleteBtnText}>delete this goal</Text>
+                    <Feather name="trash-2" size={14} color={C.neutral} />
+                    <Text style={styles.deleteBtnText}>{t.goals.deleteThisGoal}</Text>
                   </TouchableOpacity>
                 )}
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
-        </TouchableOpacity>
+        </View>
       </Modal>}
 
       {/* ═══ CONTRIBUTE MODAL ═══ */}
@@ -1130,16 +1223,17 @@ const Goals: React.FC = () => {
         statusBarTranslucent
         onRequestClose={closeContributeModal}
       >
-        <TouchableOpacity style={styles.overlayCenter} activeOpacity={1} onPress={closeContributeModal}>
+        <View style={styles.overlayCenter}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeContributeModal} />
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.kavWrapper}
           >
             <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>contribute</Text>
+                <Text style={styles.modalTitle}>{isWithdrawMode ? t.goals.withdraw : t.goals.contribute.toLowerCase()}</Text>
                 <TouchableOpacity onPress={closeContributeModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                  <Feather name="x" size={22} color={CALM.textPrimary} />
+                  <Feather name="x" size={22} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -1167,7 +1261,7 @@ const Goals: React.FC = () => {
                 nestedScrollEnabled
                 contentContainerStyle={{ paddingBottom: SPACING.lg }}
               >
-                {contributingGoal && (
+                {contributingGoal && !isWithdrawMode && (
                   <View style={styles.quickRow}>
                     {QUICK_AMOUNTS.map((amt) => (
                       <TouchableOpacity
@@ -1186,7 +1280,7 @@ const Goals: React.FC = () => {
                   </View>
                 )}
 
-                <Text style={styles.fieldLabel}>amount</Text>
+                <Text style={styles.fieldLabel}>{t.goals.amount}</Text>
                 <View style={styles.amountRow}>
                   <Text style={styles.amountPrefix}>{currency}</Text>
                   <TextInput
@@ -1195,7 +1289,7 @@ const Goals: React.FC = () => {
                     onChangeText={setContributeAmount}
                     placeholder="0.00"
                     keyboardType="decimal-pad"
-                    placeholderTextColor={CALM.textMuted}
+                    placeholderTextColor={C.textMuted}
                     returnKeyType="next"
                     autoFocus
                   />
@@ -1204,32 +1298,37 @@ const Goals: React.FC = () => {
                 {contributingGoal && contributeAmount && parseFloat(contributeAmount) > 0 && (
                   <View style={styles.contributePreview}>
                     {(() => {
-                      const newAmount = contributingGoal.currentAmount + parseFloat(contributeAmount);
+                      const inputAmt = parseFloat(contributeAmount);
+                      const newAmount = isWithdrawMode
+                        ? Math.max(contributingGoal.currentAmount - Math.min(inputAmt, contributingGoal.currentAmount), 0)
+                        : Math.min(contributingGoal.currentAmount + inputAmt, contributingGoal.targetAmount);
                       const newPct = contributingGoal.targetAmount > 0
                         ? Math.min((newAmount / contributingGoal.targetAmount) * 100, 100)
                         : 0;
                       const remaining = Math.max(contributingGoal.targetAmount - newAmount, 0);
                       let paceStr = '';
-                      if (contributingGoal.deadline && remaining > 0) {
+                      if (!isWithdrawMode && contributingGoal.deadline && remaining > 0) {
                         const dl = new Date(contributingGoal.deadline);
                         const daysLeft = differenceInCalendarDays(dl, new Date());
                         if (daysLeft > 0) {
-                          paceStr = `~${currency} ${Math.ceil(remaining / daysLeft)}/day to deadline`;
+                          paceStr = `~${currency} ${Math.ceil(remaining / daysLeft)}${t.goals.perDay} ${t.goals.toDeadline}`;
                         }
                       }
                       return (
                         <>
-                          <Text style={styles.contributePreviewLabel}>after this contribution</Text>
-                          <Text style={[styles.contributePreviewValue, { color: newPct >= 100 ? CALM.positive : CALM.textPrimary }]}>
-                            {newPct.toFixed(0)}% complete
+                          <Text style={styles.contributePreviewLabel}>
+                            {isWithdrawMode ? t.goals.afterWithdrawal : t.goals.afterContribution}
+                          </Text>
+                          <Text style={[styles.contributePreviewValue, { color: newPct >= 100 ? C.positive : C.textPrimary }]}>
+                            {t.goals.percentComplete.replace('{n}', newPct.toFixed(0))}
                           </Text>
                           {remaining > 0 && (
                             <Text style={styles.contributePreviewRemaining}>
-                              {currency} {remaining.toFixed(2)} to go
+                              {currency} {remaining.toFixed(2)} {t.goals.toGo}
                             </Text>
                           )}
                           {paceStr !== '' && <Text style={styles.contributePreviewRemaining}>{paceStr}</Text>}
-                          {newPct >= 100 && <Text style={styles.contributePreviewCelebrate}>goal will be reached.</Text>}
+                          {!isWithdrawMode && newPct >= 100 && <Text style={styles.contributePreviewCelebrate}>{t.goals.goalWillBeReached}</Text>}
                         </>
                       );
                     })()}
@@ -1238,14 +1337,14 @@ const Goals: React.FC = () => {
 
                 {wallets.length > 0 && (
                   <>
-                    <Text style={styles.fieldLabel}>wallet (optional)</Text>
+                    <Text style={styles.fieldLabel}>{isWithdrawMode ? t.goals.returnToWallet : t.goals.walletOptional}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: SPACING.sm }}>
                       <TouchableOpacity
                         style={[styles.walletChip, !contributeWalletId && styles.walletChipActive]}
                         onPress={() => setContributeWalletId(undefined)}
                         activeOpacity={0.7}
                       >
-                        <Text style={[styles.walletChipText, !contributeWalletId && styles.walletChipTextActive]}>none</Text>
+                        <Text style={[styles.walletChipText, !contributeWalletId && styles.walletChipTextActive]}>{t.goals.none}</Text>
                       </TouchableOpacity>
                       {wallets.filter((w) => w.type !== 'credit').map((w) => (
                         <TouchableOpacity
@@ -1263,28 +1362,30 @@ const Goals: React.FC = () => {
                   </>
                 )}
 
-                <Text style={styles.fieldLabel}>note (optional)</Text>
+                <Text style={styles.fieldLabel}>{t.goals.noteOptional}</Text>
                 <TextInput
                   style={styles.fieldInput}
                   value={contributeNote}
                   onChangeText={setContributeNote}
-                  placeholder="e.g. birthday money, bonus"
-                  placeholderTextColor={CALM.textMuted}
+                  placeholder={t.goals.notePlaceholder}
+                  placeholderTextColor={C.textMuted}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
 
                 <TouchableOpacity
-                  style={styles.confirmBtn}
-                  onPress={handleContribute}
+                  style={[styles.confirmBtn, isWithdrawMode && { backgroundColor: withAlpha(C.bronze, 0.12) }]}
+                  onPress={isWithdrawMode ? handleWithdraw : handleContribute}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.confirmBtnText}>contribute</Text>
+                  <Text style={[styles.confirmBtnText, isWithdrawMode && { color: C.bronze }]}>
+                    {isWithdrawMode ? t.goals.withdraw : t.goals.contribute.toLowerCase()}
+                  </Text>
                 </TouchableOpacity>
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
-        </TouchableOpacity>
+        </View>
       </Modal>}
 
       {/* ═══ CONTRIBUTION HISTORY MODAL ═══ */}
@@ -1295,28 +1396,29 @@ const Goals: React.FC = () => {
         statusBarTranslucent
         onRequestClose={() => setHistoryModalVisible(false)}
       >
-        <TouchableOpacity style={styles.overlayCenter} activeOpacity={1} onPress={() => setHistoryModalVisible(false)}>
+        <View style={styles.overlayCenter}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setHistoryModalVisible(false)} />
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle} numberOfLines={1}>{historyGoal?.name || 'history'}</Text>
+              <Text style={styles.modalTitle} numberOfLines={1}>{historyGoal?.name || t.goals.history}</Text>
               <TouchableOpacity onPress={() => setHistoryModalVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Feather name="x" size={22} color={CALM.textPrimary} />
+                <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
 
             <View style={styles.historyStatsRow}>
               <View style={styles.historyStatItem}>
-                <Text style={styles.historyStatLabel}>total</Text>
+                <Text style={styles.historyStatLabel}>{t.goals.total}</Text>
                 <Text style={styles.historyStatValue}>{currency} {historyStats.total.toFixed(2)}</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.historyStatItem}>
-                <Text style={styles.historyStatLabel}>average</Text>
+                <Text style={styles.historyStatLabel}>{t.goals.average}</Text>
                 <Text style={styles.historyStatValue}>{currency} {historyStats.avg.toFixed(2)}</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.historyStatItem}>
-                <Text style={styles.historyStatLabel}>count</Text>
+                <Text style={styles.historyStatLabel}>{t.goals.count}</Text>
                 <Text style={styles.historyStatValue}>{historyStats.count}</Text>
               </View>
             </View>
@@ -1338,7 +1440,7 @@ const Goals: React.FC = () => {
                       <View key={c.id} style={styles.historyItem}>
                         <View style={styles.historyItemLeft}>
                           <Text style={styles.historyItemDate}>{isValid(d) ? format(d, 'MMM dd') : '—'}</Text>
-                          <Text style={[styles.historyItemAmount, isWithdrawal && { color: CALM.neutral }]}>
+                          <Text style={[styles.historyItemAmount, isWithdrawal && { color: C.neutral }]}>
                             {isWithdrawal ? '-' : '+'}{currency} {Math.abs(c.amount).toFixed(2)}
                           </Text>
                           {c.note && <Text style={styles.historyItemNote} numberOfLines={1}>{c.note}</Text>}
@@ -1349,7 +1451,7 @@ const Goals: React.FC = () => {
                             activeOpacity={0.7}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >
-                            <Feather name="corner-down-left" size={16} color={CALM.neutral} />
+                            <Feather name="corner-down-left" size={16} color={C.neutral} />
                           </TouchableOpacity>
                         )}
                       </View>
@@ -1358,25 +1460,25 @@ const Goals: React.FC = () => {
                 </View>
               ))}
               {historyGroups.length === 0 && (
-                <Text style={styles.noResultsText}>no contributions yet.</Text>
+                <Text style={styles.noResultsText}>{t.goals.noContributionsYet}</Text>
               )}
             </ScrollView>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>}
     </View>
   );
 };
 
 // ── STYLES ────────────────────────────────────────────────────
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CALM.background },
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.background },
   scrollView: { flex: 1 },
   scrollContent: { padding: SPACING.xl },
 
   // ── Hero ──
   heroCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     marginBottom: SPACING.lg,
@@ -1384,7 +1486,7 @@ const styles = StyleSheet.create({
   heroLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: SPACING.sm,
@@ -1392,38 +1494,38 @@ const styles = StyleSheet.create({
   heroAmount: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
     marginBottom: SPACING.xs,
   },
   heroSubtext: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
     marginBottom: SPACING.md,
   },
   heroProgressTrack: {
     height: 4,
-    backgroundColor: withAlpha(CALM.textMuted, 0.1),
+    backgroundColor: withAlpha(C.textMuted, 0.1),
     borderRadius: RADIUS.full,
     overflow: 'hidden',
     marginBottom: SPACING.sm,
   },
   heroProgressFill: {
     height: '100%',
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.full,
   },
   heroMonthly: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: C.accent,
     fontVariant: ['tabular-nums'],
     marginBottom: SPACING.xs,
   },
   heroStats: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // ── Filter Chips ──
@@ -1437,15 +1539,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs + 2,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
   },
   filterChipActive: {
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
   },
   filterChipText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   filterChipTextActive: {
     color: '#FFFFFF',
@@ -1455,7 +1557,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: SPACING.sm,
@@ -1464,14 +1566,14 @@ const styles = StyleSheet.create({
 
   // ── Group Card ──
   groupCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
     ...SHADOWS.xs,
   },
   cardDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginLeft: 36 + SPACING.md + SPACING.md,
   },
   goalItem: {
@@ -1502,11 +1604,11 @@ const styles = StyleSheet.create({
   goalName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flexShrink: 1,
   },
   pausedBadge: {
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.xs + 2,
     paddingVertical: 1,
@@ -1514,7 +1616,7 @@ const styles = StyleSheet.create({
   pausedBadgeText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   goalMeta: {
     flexDirection: 'row',
@@ -1523,24 +1625,24 @@ const styles = StyleSheet.create({
   },
   goalMetaText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
   goalMetaDot: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   goalPercentage: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
   // ── Progress ──
   goalProgressTrack: {
     height: 3,
-    backgroundColor: withAlpha(CALM.textMuted, 0.1),
+    backgroundColor: withAlpha(C.textMuted, 0.1),
     borderRadius: RADIUS.full,
     overflow: 'hidden',
     marginBottom: SPACING.sm,
@@ -1554,12 +1656,12 @@ const styles = StyleSheet.create({
   milestoneDots: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: SPACING.sm, marginBottom: SPACING.sm },
   milestoneDotContainer: { alignItems: 'center', gap: 3 },
   milestoneDot: { width: 8, height: 8, borderRadius: RADIUS.full },
-  milestoneDotLabel: { fontSize: 10, color: CALM.neutral, fontWeight: TYPOGRAPHY.weight.medium, fontVariant: ['tabular-nums'] },
+  milestoneDotLabel: { fontSize: 10, color: C.neutral, fontWeight: TYPOGRAPHY.weight.medium, fontVariant: ['tabular-nums'] },
 
   // ── Observation ──
   observationText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontStyle: 'italic',
     marginBottom: SPACING.sm,
   },
@@ -1567,14 +1669,14 @@ const styles = StyleSheet.create({
   // ── Pace ──
   paceText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
     marginBottom: SPACING.sm,
   },
 
   // ── Sparkline ──
   sparklineWrap: { marginBottom: 4 },
-  sparklineLabel: { fontSize: TYPOGRAPHY.size.xs, color: CALM.neutral, marginBottom: SPACING.sm },
+  sparklineLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.neutral, marginBottom: SPACING.sm },
 
   // ── Quick Contribute ──
   quickRow: { flexDirection: 'row', gap: SPACING.xs, marginBottom: SPACING.sm, flexWrap: 'wrap' },
@@ -1586,9 +1688,9 @@ const styles = StyleSheet.create({
   quickBtnText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, fontVariant: ['tabular-nums'] },
 
   // ── Wallet Chips ──
-  walletChip: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, borderWidth: 1, borderColor: CALM.border, marginRight: SPACING.xs },
-  walletChipActive: { backgroundColor: CALM.accent, borderColor: CALM.accent },
-  walletChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: CALM.textSecondary },
+  walletChip: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, borderWidth: 1, borderColor: C.border, marginRight: SPACING.xs },
+  walletChipActive: { backgroundColor: C.accent, borderColor: C.accent },
+  walletChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: C.textSecondary },
   walletChipTextActive: { color: '#FFFFFF' },
 
   // ── Action Row ──
@@ -1626,12 +1728,12 @@ const styles = StyleSheet.create({
   noResultsTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginTop: SPACING.sm,
   },
   noResultsText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
   },
 
@@ -1646,7 +1748,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.xl,
@@ -1654,18 +1756,18 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.sm,
   },
   emptyText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
     lineHeight: TYPOGRAPHY.size.sm * 1.6,
     marginBottom: SPACING.xl,
   },
   emptyButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.md,
@@ -1685,7 +1787,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
   },
   archivedToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  archivedToggleText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: CALM.textMuted },
+  archivedToggleText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: C.textMuted },
   archivedItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1693,8 +1795,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     opacity: 0.6,
   },
-  archivedName: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.textSecondary },
-  archivedAmount: { fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, fontVariant: ['tabular-nums'], marginTop: 2 },
+  archivedName: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textSecondary },
+  archivedAmount: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, fontVariant: ['tabular-nums'], marginTop: 2 },
   restoreBtn: {
     padding: SPACING.sm,
     borderRadius: RADIUS.md,
@@ -1709,7 +1811,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOWS.md,
@@ -1730,7 +1832,7 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '90%',
     maxHeight: '85%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     ...SHADOWS.lg,
@@ -1744,23 +1846,23 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // ── Modal Fields ──
   fieldLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xs,
     marginTop: SPACING.lg,
   },
   fieldInput: {
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.sm,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   amountRow: {
     flexDirection: 'row',
@@ -1770,43 +1872,43 @@ const styles = StyleSheet.create({
   amountPrefix: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   fieldTouchable: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.sm + 2,
   },
   fieldTouchableText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   clearDeadlineBtn: { alignItems: 'center', paddingVertical: SPACING.sm, marginTop: SPACING.xs },
-  clearDeadlineText: { fontSize: TYPOGRAPHY.size.sm, color: CALM.neutral, fontWeight: TYPOGRAPHY.weight.medium },
+  clearDeadlineText: { fontSize: TYPOGRAPHY.size.sm, color: C.neutral, fontWeight: TYPOGRAPHY.weight.medium },
 
   // ── Templates ──
-  templateChip: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, borderWidth: 1, borderColor: CALM.border, marginRight: SPACING.xs },
-  templateChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: CALM.textSecondary },
+  templateChip: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, borderWidth: 1, borderColor: C.border, marginRight: SPACING.xs },
+  templateChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: C.textSecondary },
 
   // ── Pickers ──
   iconPickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
-  iconPickerItem: { width: 48, height: 48, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', backgroundColor: CALM.background, borderWidth: 1.5, borderColor: CALM.border },
+  iconPickerItem: { width: 48, height: 48, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', backgroundColor: C.background, borderWidth: 1.5, borderColor: C.border },
   colorPickerRow: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
   colorPickerItem: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  colorPickerItemSelected: { borderWidth: 3, borderColor: CALM.surface, shadowColor: '#000', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 3 },
+  colorPickerItemSelected: { borderWidth: 3, borderColor: C.surface, shadowColor: '#000', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 3 },
 
   // ── Preview ──
-  goalPreview: { flexDirection: 'row', alignItems: 'center', backgroundColor: CALM.background, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.lg, gap: SPACING.sm },
+  goalPreview: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.background, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.lg, gap: SPACING.sm },
   goalPreviewIcon: { width: 36, height: 36, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
-  goalPreviewName: { flex: 1, fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.textPrimary },
-  goalPreviewTarget: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: CALM.accent, fontVariant: ['tabular-nums'] },
+  goalPreviewName: { flex: 1, fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary },
+  goalPreviewTarget: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: C.accent, fontVariant: ['tabular-nums'] },
 
   // ── Confirm / Delete ──
   confirmBtn: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -1818,34 +1920,34 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, marginTop: SPACING.lg, paddingVertical: SPACING.sm },
-  deleteBtnText: { fontSize: TYPOGRAPHY.size.sm, color: CALM.neutral },
+  deleteBtnText: { fontSize: TYPOGRAPHY.size.sm, color: C.neutral },
 
   // ── Contribute Context ──
-  contributeContext: { flexDirection: 'row', alignItems: 'center', backgroundColor: CALM.background, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm, gap: SPACING.md },
+  contributeContext: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.background, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm, gap: SPACING.md },
   contributeContextIcon: { width: 40, height: 40, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
   contributeContextInfo: { flex: 1 },
-  contributeContextName: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.textPrimary, marginBottom: 2 },
-  contributeContextProgress: { fontSize: TYPOGRAPHY.size.sm, color: CALM.textSecondary, fontVariant: ['tabular-nums'] },
+  contributeContextName: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary, marginBottom: 2 },
+  contributeContextProgress: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, fontVariant: ['tabular-nums'] },
 
   // ── Contribute Preview ──
-  contributePreview: { backgroundColor: CALM.background, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.lg, alignItems: 'center' },
-  contributePreviewLabel: { fontSize: TYPOGRAPHY.size.xs, color: CALM.textSecondary, marginBottom: 4 },
+  contributePreview: { backgroundColor: C.background, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.lg, alignItems: 'center' },
+  contributePreviewLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, marginBottom: 4 },
   contributePreviewValue: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, fontVariant: ['tabular-nums'] },
-  contributePreviewRemaining: { fontSize: TYPOGRAPHY.size.sm, color: CALM.textSecondary, marginTop: 2, fontVariant: ['tabular-nums'] },
-  contributePreviewCelebrate: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: CALM.positive, marginTop: SPACING.xs },
+  contributePreviewRemaining: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, marginTop: 2, fontVariant: ['tabular-nums'] },
+  contributePreviewCelebrate: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: C.positive, marginTop: SPACING.xs },
 
   // ── History ──
-  historyStatsRow: { flexDirection: 'row', backgroundColor: CALM.background, borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.lg },
+  historyStatsRow: { flexDirection: 'row', backgroundColor: C.background, borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.lg },
   historyStatItem: { flex: 1, alignItems: 'center', gap: 2 },
-  historyStatLabel: { fontSize: TYPOGRAPHY.size.xs, color: CALM.textSecondary, fontWeight: TYPOGRAPHY.weight.medium },
-  historyStatValue: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: CALM.textPrimary, fontVariant: ['tabular-nums'] },
-  statDivider: { width: 1, backgroundColor: CALM.border },
-  historyGroupLabel: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: CALM.textSecondary, marginTop: SPACING.md, marginBottom: SPACING.sm },
-  historyItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: SPACING.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: CALM.border },
+  historyStatLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.medium },
+  historyStatValue: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, fontVariant: ['tabular-nums'] },
+  statDivider: { width: 1, backgroundColor: C.border },
+  historyGroupLabel: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textSecondary, marginTop: SPACING.md, marginBottom: SPACING.sm },
+  historyItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: SPACING.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
   historyItemLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flexWrap: 'wrap' },
-  historyItemDate: { fontSize: TYPOGRAPHY.size.sm, color: CALM.textSecondary, minWidth: 50 },
-  historyItemAmount: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: CALM.textPrimary, fontVariant: ['tabular-nums'] },
-  historyItemNote: { fontSize: TYPOGRAPHY.size.xs, color: CALM.neutral, maxWidth: 120 },
+  historyItemDate: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, minWidth: 50 },
+  historyItemAmount: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, fontVariant: ['tabular-nums'] },
+  historyItemNote: { fontSize: TYPOGRAPHY.size.xs, color: C.neutral, maxWidth: 120 },
 });
 
 export default Goals;

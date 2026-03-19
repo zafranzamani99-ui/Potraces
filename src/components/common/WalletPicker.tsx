@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { WALLET_TYPE_CONFIG } from '../../constants/premium';
 import { Wallet, WalletType } from '../../types';
 import { lightTap } from '../../services/haptics';
@@ -31,6 +32,8 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
   label,
   typeFilter,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -68,7 +71,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
           <Feather
             name={WALLET_TYPE_CONFIG[group.type].icon as keyof typeof Feather.glyphMap}
             size={14}
-            color={CALM.textMuted}
+            color={C.textMuted}
           />
           <Text style={styles.sectionTitle}>
             {WALLET_TYPE_CONFIG[group.type].label}
@@ -152,7 +155,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
     switch (type) {
       case 'bank': return '#0052A5';
       case 'ewallet': return '#00B14F';
-      case 'credit': return CALM.bronze;
+      case 'credit': return C.bronze;
     }
   };
 
@@ -201,7 +204,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
             <Text style={styles.placeholder}>Select wallet</Text>
           )}
         </View>
-        <Feather name="chevron-down" size={20} color={CALM.textSecondary} />
+        <Feather name="chevron-down" size={20} color={C.textSecondary} />
       </TouchableOpacity>
 
       <Modal
@@ -220,7 +223,7 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
             <View style={styles.header}>
               <Text style={styles.title}>{label || 'Select Wallet'}</Text>
               <TouchableOpacity onPress={() => setDropdownOpen(false)}>
-                <Feather name="x" size={22} color={CALM.textPrimary} />
+                <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
             <FlatList
@@ -239,26 +242,26 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     marginBottom: SPACING.lg,
   },
   label: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.md,
   },
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   selectedRow: {
     flexDirection: 'row',
@@ -284,7 +287,7 @@ const styles = StyleSheet.create({
   walletName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   typeBadge: {
     paddingHorizontal: SPACING.xs,
@@ -298,13 +301,13 @@ const styles = StyleSheet.create({
   walletBalance: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 1,
   },
   placeholder: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.neutral,
+    color: C.neutral,
   },
   overlay: {
     flex: 1,
@@ -313,11 +316,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
   },
   modal: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   header: {
     flexDirection: 'row',
@@ -325,12 +328,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   title: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -343,7 +346,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -367,15 +370,15 @@ const styles = StyleSheet.create({
   itemName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   itemBalance: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 1,
   },
   defaultBadge: {
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.sm,
@@ -383,7 +386,7 @@ const styles = StyleSheet.create({
   defaultText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
 });
 

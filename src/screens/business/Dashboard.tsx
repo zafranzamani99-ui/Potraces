@@ -1,5 +1,6 @@
-import React, { useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useMemo, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, InteractionManager } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
 import { Feather } from '@expo/vector-icons';
@@ -7,12 +8,16 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import type { BusinessTransaction, RiderCost } from '../../types';
 import { explainBusinessMonth } from '../../utils/explainBusinessMonth';
 import WeekBar from '../../components/common/WeekBar';
 import ModeToggle from '../../components/common/ModeToggle';
+import SkeletonLoader from '../../components/common/SkeletonLoader';
 
 const BusinessDashboard: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const {
     incomeType,
     businessSetupComplete,
@@ -115,6 +120,21 @@ const BusinessDashboard: React.FC = () => {
     }
     return months > 0 ? total / months : 0;
   }, [businessTransactions]);
+
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setReady(true));
+    return () => task.cancel();
+  }, []);
+
+  if (!ready) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top + SPACING.md }]}>
+        <SkeletonLoader />
+        <SkeletonLoader style={{ marginTop: SPACING.md }} />
+      </View>
+    );
+  }
 
   // AuthGatedBusiness handles the setup redirect — this is just a safety guard
   if (!businessSetupComplete || !incomeType) {
@@ -262,7 +282,7 @@ const BusinessDashboard: React.FC = () => {
             style={styles.quickAction}
             onPress={() => navigation.getParent()?.navigate('LogIncome')}
           >
-            <Feather name="plus" size={20} color={CALM.bronze} />
+            <Feather name="plus" size={20} color={C.bronze} />
             <Text style={styles.quickActionText}>Log Income</Text>
           </TouchableOpacity>
 
@@ -271,7 +291,7 @@ const BusinessDashboard: React.FC = () => {
               style={styles.quickAction}
               onPress={() => navigation.getParent()?.navigate('ClientList')}
             >
-              <Feather name="users" size={20} color={CALM.bronze} />
+              <Feather name="users" size={20} color={C.bronze} />
               <Text style={styles.quickActionText}>Clients</Text>
             </TouchableOpacity>
           )}
@@ -281,7 +301,7 @@ const BusinessDashboard: React.FC = () => {
               style={styles.quickAction}
               onPress={() => navigation.getParent()?.navigate('RiderCosts')}
             >
-              <Feather name="tool" size={20} color={CALM.bronze} />
+              <Feather name="tool" size={20} color={C.bronze} />
               <Text style={styles.quickActionText}>Costs</Text>
             </TouchableOpacity>
           )}
@@ -291,7 +311,7 @@ const BusinessDashboard: React.FC = () => {
               style={styles.quickAction}
               onPress={() => navigation.getParent()?.navigate('IncomeStreams')}
             >
-              <Feather name="layers" size={20} color={CALM.bronze} />
+              <Feather name="layers" size={20} color={C.bronze} />
               <Text style={styles.quickActionText}>Streams</Text>
             </TouchableOpacity>
           )}
@@ -300,7 +320,7 @@ const BusinessDashboard: React.FC = () => {
             style={styles.quickAction}
             onPress={() => navigation.getParent()?.navigate('MoneyChat')}
           >
-            <Feather name="message-circle" size={20} color={CALM.bronze} />
+            <Feather name="message-circle" size={20} color={C.bronze} />
             <Text style={styles.quickActionText}>Echo</Text>
           </TouchableOpacity>
         </View>
@@ -324,10 +344,10 @@ const BusinessDashboard: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -344,7 +364,7 @@ const styles = StyleSheet.create({
   },
   netAmount: {
     ...TYPE.amount,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.lg,
   },
 
@@ -356,7 +376,7 @@ const styles = StyleSheet.create({
   // Zone 3
   insightText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xl,
   },
 
@@ -379,21 +399,21 @@ const styles = StyleSheet.create({
   sideValue: {
     ...TYPE.insight,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   keptLine: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   riderKept: {
     fontSize: 20,
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginTop: SPACING.sm,
   },
   insightLine: {
     ...TYPE.insight,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   labelLine: {
@@ -415,19 +435,19 @@ const styles = StyleSheet.create({
   },
   streamLabel: {
     ...TYPE.insight,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   streamAmount: {
     ...TYPE.insight,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   streamTotalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     paddingTop: SPACING.md,
     marginTop: SPACING.sm,
   },
@@ -437,7 +457,7 @@ const styles = StyleSheet.create({
   streamTotalAmount: {
     ...TYPE.insight,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // Quick actions
@@ -451,23 +471,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
   },
   quickActionText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // Transfer
   transferLine: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.lg,
   },
 
@@ -478,7 +498,7 @@ const styles = StyleSheet.create({
   },
   changeSetupText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 });
 

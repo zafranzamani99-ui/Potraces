@@ -10,6 +10,7 @@ import { useWalletStore } from '../store/walletStore';
 import { useSellerStore } from '../store/sellerStore';
 import { callGeminiAPI, isGeminiAvailable } from './geminiClient';
 import { usePremiumStore } from '../store/premiumStore';
+import { useSettingsStore } from '../store/settingsStore';
 
 export interface QueryAnswer {
   title: string;
@@ -82,6 +83,7 @@ function extractCategoryFromQuery(text: string): string | null {
  * Build a concise data summary for the AI query prompt.
  */
 function buildQueryContext(): string {
+  const currency = useSettingsStore.getState().currency;
   const transactions = usePersonalStore.getState().transactions;
   const debts = useDebtStore.getState().debts;
   const wallets = useWalletStore.getState().wallets;
@@ -120,7 +122,7 @@ function buildQueryContext(): string {
   const catLines = Object.entries(byCategory)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map(([cat, amt]) => `- ${cat}: RM ${amt.toFixed(2)}`)
+    .map(([cat, amt]) => `- ${cat}: ${currency} ${amt.toFixed(2)}`)
     .join('\n');
 
   // Top recent expenses
@@ -130,13 +132,13 @@ function buildQueryContext(): string {
     .slice(0, 5)
     .map((t) => {
       const d = t.date instanceof Date ? t.date : new Date(t.date);
-      return `- ${t.description}: RM ${t.amount.toFixed(2)} (${t.category}, ${format(d, 'dd MMM')})`;
+      return `- ${t.description}: ${currency} ${t.amount.toFixed(2)} (${t.category}, ${format(d, 'dd MMM')})`;
     })
     .join('\n');
 
   // Wallets
   const walletLines = wallets
-    .map((w) => `- ${w.name} (${w.type}): RM ${(w.balance || 0).toFixed(2)}`)
+    .map((w) => `- ${w.name} (${w.type}): ${currency} ${(w.balance || 0).toFixed(2)}`)
     .join('\n');
 
   // BNPL
@@ -150,9 +152,9 @@ function buildQueryContext(): string {
   const theyOwe = activeDebts.filter((d) => d.type === 'they_owe').reduce((s, d) => s + (d.totalAmount - d.paidAmount), 0);
 
   return `Month: ${monthLabel} (${daysLeft} days left)
-Came in: RM ${totalIncome.toFixed(2)}
-Went out: RM ${totalExpenses.toFixed(2)}
-Kept: RM ${kept.toFixed(2)} (last month: RM ${keptLastMonth.toFixed(2)})
+Came in: ${currency} ${totalIncome.toFixed(2)}
+Went out: ${currency} ${totalExpenses.toFixed(2)}
+Kept: ${currency} ${kept.toFixed(2)} (last month: ${currency} ${keptLastMonth.toFixed(2)})
 
 Categories:
 ${catLines || '(none)'}
@@ -163,14 +165,15 @@ ${topExpenses || '(none)'}
 Wallets:
 ${walletLines || '(none)'}
 
-BNPL: RM ${bnplTotal.toFixed(2)}
-Debts: you owe RM ${iOwe.toFixed(2)} | owed to you RM ${theyOwe.toFixed(2)} | ${activeDebts.length} active`;
+BNPL: ${currency} ${bnplTotal.toFixed(2)}
+Debts: you owe ${currency} ${iOwe.toFixed(2)} | owed to you ${currency} ${theyOwe.toFixed(2)} | ${activeDebts.length} active`;
 }
 
 /**
  * Get an AI-powered natural language answer to a financial question.
  */
 async function getAIAnswer(question: string): Promise<string | null> {
+  const currency = useSettingsStore.getState().currency;
   const context = buildQueryContext();
 
   const systemPrompt = `You are the AI inside Potraces, a Malaysian personal finance app. The user asked a question in their notes. Answer naturally.
@@ -181,7 +184,7 @@ RULES:
 - NEVER say "you should", "consider", "try to"
 - Use Potraces language: "kept" not "saved/profit", "came in" not "revenue", "went out" not "spent/loss"
 - Keep answers SHORT — 2-4 sentences max. This appears inline in a note.
-- Use RM formatting: "RM X.XX"
+- Use ${currency} formatting: "${currency} X.XX"
 
 USER'S DATA:
 ${context}`;
@@ -208,6 +211,7 @@ ${context}`;
  * Fast local answer from store data (no API call).
  */
 function answerQueryLocal(text: string): QueryAnswer {
+  const currency = useSettingsStore.getState().currency;
   const queryType = detectQueryType(text);
   const now = new Date();
   const monthStart = startOfMonth(now);
@@ -231,7 +235,7 @@ function answerQueryLocal(text: string): QueryAnswer {
       const count = thisMonthTxns.filter((t) => t.type === 'expense').length;
       return {
         title: `spent in ${monthLabel}`,
-        value: `RM ${total.toFixed(2)}`,
+        value: `${currency} ${total.toFixed(2)}`,
         detail: `${count} transaction${count !== 1 ? 's' : ''}`,
         icon: 'arrow-up-right',
       };
@@ -243,7 +247,7 @@ function answerQueryLocal(text: string): QueryAnswer {
         .reduce((sum, t) => sum + t.amount, 0);
       return {
         title: `income in ${monthLabel}`,
-        value: `RM ${total.toFixed(2)}`,
+        value: `${currency} ${total.toFixed(2)}`,
         icon: 'arrow-down-left',
       };
     }
@@ -258,7 +262,7 @@ function answerQueryLocal(text: string): QueryAnswer {
       const kept = income - expenses;
       return {
         title: `kept in ${monthLabel}`,
-        value: `RM ${kept.toFixed(2)}`,
+        value: `${currency} ${kept.toFixed(2)}`,
         detail: kept >= 0 ? 'you\'re ahead' : 'spent more than earned',
         icon: kept >= 0 ? 'trending-up' : 'trending-down',
       };
@@ -273,7 +277,7 @@ function answerQueryLocal(text: string): QueryAnswer {
         const total = catTxns.reduce((sum, t) => sum + t.amount, 0);
         return {
           title: `${cat} in ${monthLabel}`,
-          value: `RM ${total.toFixed(2)}`,
+          value: `${currency} ${total.toFixed(2)}`,
           detail: `${catTxns.length} transaction${catTxns.length !== 1 ? 's' : ''}`,
           icon: 'tag',
         };
@@ -295,8 +299,8 @@ function answerQueryLocal(text: string): QueryAnswer {
         .reduce((sum, d) => sum + (d.totalAmount - d.paidAmount), 0);
 
       const parts: string[] = [];
-      if (iOwe > 0) parts.push(`you owe RM ${iOwe.toFixed(2)}`);
-      if (theyOwe > 0) parts.push(`owed to you RM ${theyOwe.toFixed(2)}`);
+      if (iOwe > 0) parts.push(`you owe ${currency} ${iOwe.toFixed(2)}`);
+      if (theyOwe > 0) parts.push(`owed to you ${currency} ${theyOwe.toFixed(2)}`);
 
       return {
         title: 'debts',
@@ -313,7 +317,7 @@ function answerQueryLocal(text: string): QueryAnswer {
       }, 0);
       return {
         title: 'total balance',
-        value: `RM ${total.toFixed(2)}`,
+        value: `${currency} ${total.toFixed(2)}`,
         detail: `across ${wallets.filter((w) => w.type !== 'credit').length} wallet${wallets.length !== 1 ? 's' : ''}`,
         icon: 'credit-card',
       };
@@ -327,7 +331,7 @@ function answerQueryLocal(text: string): QueryAnswer {
         const total = seasonOrders.reduce((sum, o) => sum + o.totalAmount, 0);
         return {
           title: `came in — ${activeSeason.name}`,
-          value: `RM ${total.toFixed(2)}`,
+          value: `${currency} ${total.toFixed(2)}`,
           detail: `${seasonOrders.length} order${seasonOrders.length !== 1 ? 's' : ''}`,
           icon: 'shopping-bag',
         };
@@ -347,7 +351,7 @@ function answerQueryLocal(text: string): QueryAnswer {
         const total = seasonCosts.reduce((sum, c) => sum + c.amount, 0);
         return {
           title: `costs — ${activeSeason.name}`,
-          value: `RM ${total.toFixed(2)}`,
+          value: `${currency} ${total.toFixed(2)}`,
           detail: `${seasonCosts.length} item${seasonCosts.length !== 1 ? 's' : ''}`,
           icon: 'package',
         };

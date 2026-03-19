@@ -4,7 +4,6 @@ import {
   Text,
   Image,
   StyleSheet,
-  ScrollView,
   RefreshControl,
   TouchableOpacity,
   Pressable,
@@ -14,7 +13,9 @@ import {
   Keyboard,
   Dimensions,
   StatusBar,
+  InteractionManager,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { format, addDays, isWithinInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear, subMonths, getDaysInMonth } from 'date-fns';
@@ -24,6 +25,8 @@ import { usePersonalStore } from '../../store/personalStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
 import StatCard from '../../components/common/StatCard';
@@ -45,7 +48,6 @@ import { useToast } from '../../context/ToastContext';
 import { Transaction, CategoryOption } from '../../types';
 import { LinearGradient } from 'expo-linear-gradient';
 import { lightTap } from '../../services/haptics';
-import { explainMonth } from '../../utils/explainMonth';
 import QuickAddExpense from '../../components/common/QuickAddExpense';
 import { useBNPLTotal } from '../../hooks/useBNPLTotal';
 import { useKeptNumber } from '../../hooks/useKeptNumber';
@@ -53,28 +55,34 @@ import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import { generateSpendingMirror } from '../../services/spendingMirror';
 import BreathingRoom from '../../components/common/BreathingRoom';
 import FreshStart from '../../components/common/FreshStart';
+import GettingStarted from '../../components/common/GettingStarted';
+import SkeletonLoader from '../../components/common/SkeletonLoader';
+import RAnimated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
-const getGreeting = (): string => {
+const getGreetingKey = (): 'goodMorning' | 'goodAfternoon' | 'goodEvening' => {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < 12) return 'goodMorning';
+  if (hour < 17) return 'goodAfternoon';
+  return 'goodEvening';
 };
 
 const QUICK_ACTIONS = [
-  { key: 'wallets', label: 'Wallets', icon: 'credit-card' as const, screen: 'WalletManagement', color: '#6BA3BE' },
-  { key: 'savings', label: 'Savings', icon: 'archive' as const, screen: 'SavingsTracker', color: '#A688B8' },
-  { key: 'debts', label: 'Splits', icon: 'git-branch' as const, screen: 'DebtTracking', color: '#C1694F' },
-  { key: 'subscriptions', label: 'Bills', icon: 'refresh-cw' as const, screen: 'SubscriptionList', color: CALM.accent },
-  { key: 'budgets', label: 'Budgets', icon: 'sliders' as const, screen: 'BudgetPlanning', color: CALM.bronze },
-  { key: 'reports', label: 'Reports', icon: 'trending-up' as const, screen: 'PersonalReports', color: '#8B7355' },
-  { key: 'goals', label: 'Goals', icon: 'flag' as const, screen: 'Goals', color: '#D4884A' },
-  { key: 'scan', label: 'Scan', icon: 'aperture' as const, screen: 'ReceiptScanner', color: '#B87333' },
-  { key: 'chat', label: 'Chat', icon: 'zap' as const, screen: 'MoneyChat', color: CALM.gold },
-  { key: 'pulse', label: 'Pulse', icon: 'activity' as const, screen: 'FinancialPulse', color: '#7B8D6E' },
+  { key: 'wallets' as const, icon: 'credit-card' as const, screen: 'WalletManagement', color: '#6BA3BE' },
+  { key: 'savings' as const, icon: 'archive' as const, screen: 'SavingsTracker', color: '#A688B8' },
+  { key: 'debts' as const, icon: 'git-branch' as const, screen: 'DebtTracking', color: '#C1694F' },
+  { key: 'bills' as const, icon: 'refresh-cw' as const, screen: 'SubscriptionList', color: CALM.accent },
+  { key: 'budgets' as const, icon: 'sliders' as const, screen: 'BudgetPlanning', color: CALM.bronze },
+  { key: 'reports' as const, icon: 'trending-up' as const, screen: 'PersonalReports', color: '#8B7355' },
+  { key: 'goals' as const, icon: 'flag' as const, screen: 'Goals', color: '#D4884A' },
+  { key: 'receipts' as const, icon: 'file-text' as const, screen: 'ReceiptHistory', color: '#8B7355' },
+  { key: 'chat' as const, icon: 'zap' as const, screen: 'MoneyChat', color: CALM.gold },
+  { key: 'pulse' as const, icon: 'activity' as const, screen: 'FinancialPulse', color: '#7B8D6E' },
 ];
 
 const PersonalDashboard: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const transactions = usePersonalStore((s) => s.transactions);
@@ -125,15 +133,11 @@ const PersonalDashboard: React.FC = () => {
 
   const userName = useSettingsStore((s) => s.userName);
   const greeting = useMemo(() => {
-    const base = getGreeting();
+    const base = t.dashboard[getGreetingKey()];
     return userName ? `${base}, ${userName}` : base;
-  }, [userName]);
+  }, [userName, t]);
   const bnpl = useBNPLTotal();
   const kept = useKeptNumber();
-
-  // Spending Mirror
-  const mirrorText = useAIInsightsStore((s) => s.spendingMirrorText);
-  const mirrorGenerating = useAIInsightsStore((s) => s.isGenerating);
 
   useEffect(() => {
     // Generate spending mirror on mount (cached, won't re-call if recent)
@@ -226,11 +230,62 @@ const PersonalDashboard: React.FC = () => {
 
   const netThisMonth = useMemo(() => stats.income - stats.expenses, [stats.income, stats.expenses]);
 
-  // Insight from explainMonth
-  const insight = useMemo(
-    () => explainMonth(stats.monthlyTransactions, stats.prevMonthTransactions),
-    [stats.monthlyTransactions, stats.prevMonthTransactions]
-  );
+  // Dynamic hero headline — warm, contextual
+  const heroHeadline = useMemo(() => {
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+    const daysLeft = getDaysInMonth(now) - dayOfMonth;
+    const savingsRate = stats.income > 0
+      ? Math.round(((stats.income - stats.expenses) / stats.income) * 100)
+      : 0;
+    const breathingRoom = heroBalance - stats.expenses;
+
+    // Context-aware sub-line
+    let subLine = '';
+    if (stats.income > 0 && daysLeft > 0) {
+      subLine = `${currency} ${Math.abs(netThisMonth).toFixed(0)} ${netThisMonth >= 0 ? 'kept' : 'over'} · ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`;
+    } else if (stats.income > 0) {
+      subLine = `${currency} ${Math.abs(netThisMonth).toFixed(0)} ${netThisMonth >= 0 ? 'kept this month' : 'over this month'}`;
+    }
+
+    // Big income day detected (payday)
+    const todayIncome = transactions
+      .filter((tx) => {
+        const d = tx.date instanceof Date ? tx.date : new Date(tx.date);
+        return tx.type === 'income' && d.toDateString() === now.toDateString();
+      })
+      .reduce((s, tx) => s + tx.amount, 0);
+    if (todayIncome > stats.income * 0.5 && todayIncome > 0) {
+      return { headline: 'payday landed', subLine: `${currency} ${todayIncome.toFixed(0)} came in today` };
+    }
+
+    // No spending in 2+ days
+    const recentExpenses = transactions.filter((tx) => {
+      if (tx.type !== 'expense') return false;
+      const d = tx.date instanceof Date ? tx.date : new Date(tx.date);
+      const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+      return diffDays < 2;
+    });
+    if (recentExpenses.length === 0 && stats.transactionCount > 3) {
+      return { headline: 'quiet stretch', subLine };
+    }
+
+    // First day of month
+    if (dayOfMonth === 1) {
+      return { headline: 'fresh start', subLine: `new month — ${currency} ${heroBalance.toFixed(0)} to work with` };
+    }
+
+    // Last 3 days
+    if (daysLeft <= 3 && daysLeft >= 0 && stats.income > 0) {
+      return { headline: `wrapping up`, subLine: `${savingsRate}% kept so far` };
+    }
+
+    // Savings-rate based
+    if (savingsRate >= 20) return { headline: 'comfortable month so far', subLine };
+    if (savingsRate >= 5) return { headline: 'steady month', subLine };
+    if (savingsRate >= 0) return { headline: 'tight but managing', subLine };
+    return { headline: 'a stretch this month', subLine };
+  }, [stats, heroBalance, netThisMonth, currency, transactions]);
 
   const recentTransactions = useMemo(() => {
     return [...transactions]
@@ -254,7 +309,7 @@ const PersonalDashboard: React.FC = () => {
         ? Math.round(((stats.income - stats.expenses) / stats.income) * 100)
         : 0;
     const savingsColor =
-      savingsRate > 20 ? CALM.positive : savingsRate > 0 ? CALM.accent : CALM.neutral;
+      savingsRate > 20 ? C.positive : savingsRate > 0 ? C.accent : C.neutral;
 
     // Spending velocity
     const lastMonthExpenses = stats.prevMonthTransactions
@@ -269,10 +324,10 @@ const PersonalDashboard: React.FC = () => {
     }
     const velocityColor =
       velocityPercent < 90
-        ? CALM.positive
+        ? C.positive
         : velocityPercent > 110
-        ? CALM.neutral
-        : CALM.accent;
+        ? C.neutral
+        : C.accent;
 
     // Upcoming bills (next 7 days)
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -293,7 +348,7 @@ const PersonalDashboard: React.FC = () => {
       upcomingCount: upcomingWeek.length,
       upcomingTotal,
     };
-  }, [stats, subscriptions]);
+  }, [stats, subscriptions, C]);
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
@@ -475,16 +530,32 @@ const PersonalDashboard: React.FC = () => {
   const handleEditTypeChange = useCallback((newType: 'expense' | 'income') => {
     setEditType(newType);
     const newCategories = newType === 'expense' ? expenseCategories : incomeCategories;
-    setEditCategory(newCategories[0].id);
+    setEditCategory(newCategories[0]?.id || 'other');
   }, [expenseCategories, incomeCategories]);
 
   const handleQuickAction = useCallback((screen: string) => {
-    if (screen === 'PersonalReports' || screen === 'SubscriptionList' || screen === 'DebtTracking' || screen === 'WalletManagement' || screen === 'SavingsTracker' || screen === 'MoneyChat' || screen === 'Goals' || screen === 'FinancialPulse') {
+    if (screen === 'PersonalReports' || screen === 'SubscriptionList' || screen === 'DebtTracking' || screen === 'WalletManagement' || screen === 'SavingsTracker' || screen === 'MoneyChat' || screen === 'Goals' || screen === 'FinancialPulse' || screen === 'ReceiptHistory') {
       navigation.getParent()?.navigate(screen);
     } else {
       navigation.navigate(screen);
     }
   }, [navigation]);
+
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setReady(true));
+    return () => task.cancel();
+  }, []);
+
+  if (!ready) {
+    return (
+      <View style={styles.container}>
+        <SkeletonLoader />
+        <SkeletonLoader style={{ marginTop: SPACING.md }} />
+        <SkeletonLoader shape="line" style={{ marginTop: SPACING.md }} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -521,37 +592,34 @@ const PersonalDashboard: React.FC = () => {
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Feather name="maximize" size={22} color={paymentQrs.length > 0 ? CALM.accent : CALM.textMuted} />
+            <Feather name="maximize" size={22} color={paymentQrs.length > 0 ? C.accent : C.textMuted} />
           </TouchableOpacity>
         </View>
 
+        {/* Getting Started — first-time checklist */}
+        <GettingStarted />
+
         {/* Zone 2 — Balance (the hero) */}
-        <Text style={styles.balanceAmount}>
-          {currency} {heroBalance.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </Text>
-        <Text style={styles.netMonth}>
-          {netThisMonth >= 0 ? '+' : ''}{currency} {netThisMonth.toFixed(2)} this month
-        </Text>
+        <RAnimated.View entering={FadeIn.duration(200)}>
+          <Text style={[styles.heroHeadline, { color: C.textSecondary }]}>{heroHeadline.headline}</Text>
+          <Text style={styles.balanceAmount}>
+            {currency} {heroBalance.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </Text>
+          {heroHeadline.subLine ? (
+            <Text style={styles.netMonth}>{heroHeadline.subLine}</Text>
+          ) : null}
+        </RAnimated.View>
 
         {/* Zone 3 — Week Timeline */}
-        <WeekBar transactions={transactions} />
+        <RAnimated.View entering={FadeInDown.delay(100).duration(200)}>
+          <WeekBar transactions={transactions} />
+        </RAnimated.View>
 
         {/* Fresh Start — 1st of month ritual */}
         <FreshStart />
 
-        {/* Zone 4 — Spending Mirror */}
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => { lightTap(); navigation.navigate('MoneyChat'); }}
-          style={styles.insightWrap}
-        >
-          <Text style={styles.insight}>
-            {mirrorText && mirrorText.length > 10 ? mirrorText : insight}
-          </Text>
-        </TouchableOpacity>
-
         {/* Zone 5 — Insight Strip */}
-        <View style={styles.insightStripWrap}>
+        <RAnimated.View entering={FadeInDown.delay(150).duration(200)} style={styles.insightStripWrap}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -560,18 +628,18 @@ const PersonalDashboard: React.FC = () => {
         >
           {/* Transactions */}
           <TouchableOpacity
-            style={[styles.insightCard, { backgroundColor: withAlpha(CALM.accent, 0.05) }]}
+            style={[styles.insightCard, { backgroundColor: withAlpha(C.accent, 0.05) }]}
             activeOpacity={0.7}
             onPress={() => { lightTap(); navigation.getParent()?.navigate('TransactionsList'); }}
             accessibilityLabel={`${stats.transactionCount} transactions this month`}
           >
             <View style={styles.insightCardHeader}>
-              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(CALM.accent, 0.10) }]}>
-                <Feather name="layers" size={16} color={CALM.accent} />
+              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                <Feather name="layers" size={16} color={C.accent} />
               </View>
               <Text style={styles.insightCardLabel}>this month</Text>
             </View>
-            <Text style={[styles.insightValue, { color: CALM.textPrimary }]}>
+            <Text style={[styles.insightValue, { color: C.textPrimary }]}>
               {stats.transactionCount}
             </Text>
             <Text style={styles.insightContext}>transactions</Text>
@@ -590,7 +658,7 @@ const PersonalDashboard: React.FC = () => {
               </View>
               <Text style={styles.insightCardLabel}>pace</Text>
             </View>
-            <Text style={[styles.insightValue, { color: CALM.textPrimary }]}>
+            <Text style={[styles.insightValue, { color: C.textPrimary }]}>
               {insightStrip.velocityPercent}%
             </Text>
             <Text style={styles.insightContext}>of usual spending</Text>
@@ -598,18 +666,18 @@ const PersonalDashboard: React.FC = () => {
 
           {/* Kept */}
           <TouchableOpacity
-            style={[styles.insightCard, { backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral, 0.08) }]}
+            style={[styles.insightCard, { backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, 0.08) }]}
             activeOpacity={0.7}
             onPress={() => { lightTap(); navigation.getParent()?.navigate('TransactionsList'); }}
             accessibilityLabel={`Kept ${currency} ${kept.keptThisMonth.toFixed(2)} this month`}
           >
             <View style={styles.insightCardHeader}>
-              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral, 0.10) }]}>
-                <Feather name="pocket" size={16} color={kept.keptThisMonth >= 0 ? CALM.positive : CALM.neutral} />
+              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, 0.10) }]}>
+                <Feather name="pocket" size={16} color={kept.keptThisMonth >= 0 ? C.positive : C.neutral} />
               </View>
               <Text style={styles.insightCardLabel}>kept</Text>
             </View>
-            <Text style={[styles.insightValue, { color: CALM.textPrimary }]}>
+            <Text style={[styles.insightValue, { color: C.textPrimary }]}>
               {kept.keptThisMonth >= 0 ? '+' : ''}{currency} {kept.keptThisMonth.toFixed(0)}
             </Text>
             <Text style={styles.insightContext}>net this month</Text>
@@ -618,18 +686,18 @@ const PersonalDashboard: React.FC = () => {
           {/* BNPL / Credit */}
           {bnpl.walletCount > 0 && bnpl.totalUsed > 0 && (
             <TouchableOpacity
-              style={[styles.insightCard, { backgroundColor: withAlpha(CALM.bronze, 0.05) }]}
+              style={[styles.insightCard, { backgroundColor: withAlpha(C.bronze, 0.05) }]}
               activeOpacity={0.7}
               onPress={() => { lightTap(); navigation.getParent()?.navigate('WalletManagement'); }}
               accessibilityLabel={`Future you owes ${currency} ${bnpl.totalUsed.toFixed(2)}`}
             >
               <View style={styles.insightCardHeader}>
-                <View style={[styles.insightIconBg, { backgroundColor: withAlpha(CALM.bronze, 0.10) }]}>
-                  <Feather name="clock" size={16} color={CALM.bronze} />
+                <View style={[styles.insightIconBg, { backgroundColor: withAlpha(C.bronze, 0.10) }]}>
+                  <Feather name="clock" size={16} color={C.bronze} />
                 </View>
                 <Text style={styles.insightCardLabel}>owed later</Text>
               </View>
-              <Text style={[styles.insightValue, { color: CALM.textPrimary }]}>
+              <Text style={[styles.insightValue, { color: C.textPrimary }]}>
                 {currency} {bnpl.totalUsed.toFixed(0)}
               </Text>
               <Text style={styles.insightContext}>buy now pay later</Text>
@@ -638,36 +706,36 @@ const PersonalDashboard: React.FC = () => {
 
           {/* Upcoming Bills */}
           <TouchableOpacity
-            style={[styles.insightCard, { backgroundColor: withAlpha(CALM.gold, 0.05) }]}
+            style={[styles.insightCard, { backgroundColor: withAlpha(C.gold, 0.05) }]}
             activeOpacity={0.7}
             onPress={() => { lightTap(); navigation.getParent()?.navigate('SubscriptionList'); }}
             accessibilityLabel={`${insightStrip.upcomingCount} bills due this week`}
           >
             <View style={styles.insightCardHeader}>
-              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(CALM.gold, 0.10) }]}>
-                <Feather name="bell" size={16} color={CALM.gold} />
+              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(C.gold, 0.10) }]}>
+                <Feather name="bell" size={16} color={C.gold} />
               </View>
               <Text style={styles.insightCardLabel}>coming up</Text>
             </View>
-            <Text style={[styles.insightValue, { color: CALM.textPrimary }]}>
+            <Text style={[styles.insightValue, { color: C.textPrimary }]}>
               {insightStrip.upcomingCount} {insightStrip.upcomingCount === 1 ? 'bill' : 'bills'}
             </Text>
             <Text style={styles.insightContext}>{currency} {insightStrip.upcomingTotal.toFixed(0)} this week</Text>
           </TouchableOpacity>
         </ScrollView>
         <LinearGradient
-          colors={['rgba(249,249,247,0)', 'rgba(249,249,247,1)']}
+          colors={[withAlpha(C.background, 0), withAlpha(C.background, 1)]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={styles.insightStripFade}
           pointerEvents="none"
         />
-        </View>
+        </RAnimated.View>
 
         {/* Quick Actions — pill grid */}
         {/* Quick Actions — 2-row horizontal scroll */}
         <View style={styles.quickActionsSection}>
-          <Text style={styles.detailSectionTitle}>Quick Actions</Text>
+          <Text style={styles.detailSectionTitle}>{t.dashboard.quickActions}</Text>
           {[0, 1].map((rowIdx) => (
             <View key={rowIdx} style={styles.quickActionsRowWrap}>
               <ScrollView
@@ -687,13 +755,13 @@ const PersonalDashboard: React.FC = () => {
                       <Feather name={action.icon} size={22} color={action.color} />
                     </View>
                     <Text style={styles.quickActionLabel} numberOfLines={1}>
-                      {action.label}
+                      {t.dashboard[action.key]}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
               <LinearGradient
-                colors={['rgba(249,249,247,0)', 'rgba(249,249,247,1)']}
+                colors={[withAlpha(C.background, 0), withAlpha(C.background, 1)]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.quickActionsFade}
@@ -704,7 +772,7 @@ const PersonalDashboard: React.FC = () => {
         </View>
 
         {/* Details section */}
-        <CollapsibleSection title="Details" subtitle="bills, budgets, transactions" defaultOpen={false}>
+        <CollapsibleSection title={t.dashboard.details} subtitle={t.dashboard.detailsSubtitle} defaultOpen={false}>
           {/* Upcoming Bills */}
           <TouchableOpacity
             activeOpacity={0.7}
@@ -716,9 +784,9 @@ const PersonalDashboard: React.FC = () => {
             {stats.upcomingBillsList.length > 0 ? (
               <Card style={styles.detailCard}>
                 <View style={styles.upcomingHeader}>
-                  <Feather name="calendar" size={18} color={CALM.neutral} />
-                  <Text style={styles.upcomingTitle}>Upcoming Bills</Text>
-                  <Feather name="chevron-right" size={16} color={CALM.textSecondary} />
+                  <Feather name="calendar" size={18} color={C.neutral} />
+                  <Text style={styles.upcomingTitle}>{t.dashboard.upcomingBills}</Text>
+                  <Feather name="chevron-right" size={16} color={C.textSecondary} />
                 </View>
                 {stats.upcomingBillsList.slice(0, 3).map((sub) => {
                   const daysUntil = Math.ceil(
@@ -746,9 +814,9 @@ const PersonalDashboard: React.FC = () => {
             ) : (
               <Card style={styles.detailCard}>
                 <View style={styles.upcomingHeader}>
-                  <Feather name="calendar" size={18} color={CALM.neutral} />
-                  <Text style={styles.upcomingTitle}>Upcoming Bills</Text>
-                  <Feather name="chevron-right" size={16} color={CALM.textSecondary} />
+                  <Feather name="calendar" size={18} color={C.neutral} />
+                  <Text style={styles.upcomingTitle}>{t.dashboard.upcomingBills}</Text>
+                  <Feather name="chevron-right" size={16} color={C.textSecondary} />
                 </View>
                 <Text style={styles.upcomingEmpty}>No bills due soon</Text>
               </Card>
@@ -762,14 +830,14 @@ const PersonalDashboard: React.FC = () => {
                 title="You Owe"
                 value={`${currency} ${stats.youOwe.toFixed(2)}`}
                 icon="arrow-up-circle"
-                iconColor={CALM.neutral}
+                iconColor={C.neutral}
                 subtitle="Outstanding"
               />
               <StatCard
                 title="Owed to You"
                 value={`${currency} ${stats.owedToYou.toFixed(2)}`}
                 icon="arrow-down-circle"
-                iconColor={CALM.positive}
+                iconColor={C.positive}
                 subtitle="Outstanding"
               />
             </View>
@@ -786,7 +854,7 @@ const PersonalDashboard: React.FC = () => {
           {/* Recent Transactions */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.detailSectionTitle}>Recent Transactions</Text>
+              <Text style={styles.detailSectionTitle}>{t.dashboard.recentTransactions}</Text>
               {transactions.length > 0 && (
                 <TouchableOpacity
                   activeOpacity={0.7}
@@ -795,7 +863,7 @@ const PersonalDashboard: React.FC = () => {
                     navigation.getParent()?.navigate('TransactionsList');
                   }}
                 >
-                  <Text style={styles.seeAll}>See All</Text>
+                  <Text style={styles.seeAll}>{t.dashboard.seeAll}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -842,7 +910,7 @@ const PersonalDashboard: React.FC = () => {
                   setEditModalVisible(false);
                   setEditingTransaction(null);
                 }}>
-                  <Feather name="x" size={24} color={CALM.textPrimary} />
+                  <Feather name="x" size={24} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -852,15 +920,15 @@ const PersonalDashboard: React.FC = () => {
                   <TouchableOpacity
                     style={[
                       styles.typeButton,
-                      editType === 'expense' && [styles.typeButtonActive, { backgroundColor: CALM.accent }],
-                      { borderColor: CALM.accent },
+                      editType === 'expense' && [styles.typeButtonActive, { backgroundColor: C.accent }],
+                      { borderColor: C.accent },
                     ]}
                     onPress={() => handleEditTypeChange('expense')}
                   >
                     <Feather
                       name="arrow-down-circle"
                       size={20}
-                      color={editType === 'expense' ? '#fff' : CALM.accent}
+                      color={editType === 'expense' ? '#fff' : C.accent}
                     />
                     <Text style={[styles.typeText, editType === 'expense' && styles.typeTextActive]}>
                       Expense
@@ -870,15 +938,15 @@ const PersonalDashboard: React.FC = () => {
                   <TouchableOpacity
                     style={[
                       styles.typeButton,
-                      editType === 'income' && [styles.typeButtonActive, { backgroundColor: CALM.positive }],
-                      { borderColor: CALM.positive },
+                      editType === 'income' && [styles.typeButtonActive, { backgroundColor: C.positive }],
+                      { borderColor: C.positive },
                     ]}
                     onPress={() => handleEditTypeChange('income')}
                   >
                     <Feather
                       name="arrow-up-circle"
                       size={20}
-                      color={editType === 'income' ? '#fff' : CALM.positive}
+                      color={editType === 'income' ? '#fff' : C.positive}
                     />
                     <Text style={[styles.typeText, editType === 'income' && styles.typeTextActive]}>
                       Income
@@ -893,7 +961,7 @@ const PersonalDashboard: React.FC = () => {
                   onChangeText={setEditAmount}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -919,7 +987,7 @@ const PersonalDashboard: React.FC = () => {
                   value={editDescription}
                   onChangeText={setEditDescription}
                   placeholder="What was this for?"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                 />
 
                 <Text style={styles.label}>Tags (optional)</Text>
@@ -928,7 +996,7 @@ const PersonalDashboard: React.FC = () => {
                   value={editTags}
                   onChangeText={setEditTags}
                   placeholder="personal, family, work"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -1018,10 +1086,10 @@ const PersonalDashboard: React.FC = () => {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -1039,7 +1107,7 @@ const styles = StyleSheet.create({
   },
   greeting: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase' as const,
     letterSpacing: 1.5,
     fontWeight: TYPOGRAPHY.weight.medium,
@@ -1048,23 +1116,29 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   // Zone 2 — Balance
+  heroHeadline: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginBottom: SPACING.xs,
+    letterSpacing: 0.3,
+  },
   balanceAmount: {
     fontSize: 40,
     fontWeight: TYPOGRAPHY.weight.light,
     letterSpacing: -1,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
     marginBottom: SPACING.xs,
   },
   netMonth: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as any,
     marginBottom: SPACING.lg,
   },
@@ -1076,7 +1150,7 @@ const styles = StyleSheet.create({
   insight: {
     fontSize: TYPOGRAPHY.size.base,
     lineHeight: 24,
-    color: '#7B7568',
+    color: C.textSecondary,
     fontStyle: 'italic',
   },
 
@@ -1121,7 +1195,7 @@ const styles = StyleSheet.create({
   insightCardLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
   },
@@ -1132,7 +1206,7 @@ const styles = StyleSheet.create({
   },
   insightContext: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 2,
   },
 
@@ -1143,7 +1217,7 @@ const styles = StyleSheet.create({
   detailSectionTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   statsGrid: {
@@ -1166,16 +1240,16 @@ const styles = StyleSheet.create({
   budgetTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   budgetPercentage: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: C.accent,
   },
   budgetBar: {
     height: SPACING.sm,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     borderRadius: RADIUS.xs,
     overflow: 'hidden',
   },
@@ -1195,11 +1269,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   upcomingEmpty: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     paddingVertical: SPACING.md,
   },
@@ -1209,41 +1283,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     marginTop: SPACING.xs,
   },
   upcomingFooterTotal: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   upcomingFooterMore: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   upcomingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: SPACING.xs,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   upcomingName: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   upcomingDays: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.neutral,
+    color: C.neutral,
     fontWeight: TYPOGRAPHY.weight.semibold,
     marginRight: SPACING.sm,
   },
   upcomingAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1286,7 +1360,7 @@ const styles = StyleSheet.create({
   quickActionLabel: {
     fontSize: 11,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     textAlign: 'center',
   },
 
@@ -1302,7 +1376,7 @@ const styles = StyleSheet.create({
   },
   seeAll: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.accent,
+    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
@@ -1313,7 +1387,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
@@ -1328,24 +1402,24 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   label: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
   input: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   typeContainer: {
     flexDirection: 'row',
@@ -1360,14 +1434,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.md,
     borderWidth: 2,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     gap: SPACING.sm,
   },
   typeButtonActive: {},
   typeText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   typeTextActive: {
     color: '#fff',
@@ -1379,7 +1453,7 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     flex: 1,
-    borderColor: CALM.neutral,
+    borderColor: C.neutral,
   },
 
   // QR Fullscreen Modal

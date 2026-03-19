@@ -3,9 +3,9 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval, formatDistanceToNow } from 'date-fns';
@@ -14,6 +14,7 @@ import { useMixedStore } from '../../../store/mixedStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { explainMixedMonth } from '../../../utils/explainMixedMonth';
 import WeekBar from '../../../components/common/WeekBar';
 import ModeToggle from '../../../components/common/ModeToggle';
@@ -34,6 +35,8 @@ const CATEGORY_EMOJIS: Record<string, string> = {
 };
 
 const MixedDashboard: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { businessTransactions } = useBusinessStore();
   const {
     mixedDetails,
@@ -210,7 +213,7 @@ const MixedDashboard: React.FC = () => {
                       styles.streamBarSegment,
                       {
                         flex: amount,
-                        backgroundColor: withAlpha(CALM.bronze, opacity),
+                        backgroundColor: withAlpha(C.bronze, opacity),
                       },
                     ]}
                   />
@@ -225,7 +228,7 @@ const MixedDashboard: React.FC = () => {
                     <View
                       style={[
                         styles.legendDot,
-                        { backgroundColor: withAlpha(CALM.bronze, opacity) },
+                        { backgroundColor: withAlpha(C.bronze, opacity) },
                       ]}
                     />
                     <Text style={styles.legendText} numberOfLines={1}>
@@ -323,7 +326,7 @@ const MixedDashboard: React.FC = () => {
           onPress={() => navigation.getParent()?.navigate('MixedReports')}
           activeOpacity={0.7}
         >
-          <Feather name="bar-chart-2" size={16} color={CALM.textSecondary} />
+          <Feather name="bar-chart-2" size={16} color={C.textSecondary} />
           <Text style={styles.reportsLinkText}>view reports</Text>
         </TouchableOpacity>
 
@@ -365,10 +368,10 @@ const MixedDashboard: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -381,7 +384,7 @@ const styles = StyleSheet.create({
   // Zone 1 — Hero
   heroAmount: {
     ...TYPE.hero,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     textAlign: 'center',
   },
   heroLabel: {
@@ -420,7 +423,7 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     flex: 1,
   },
@@ -438,7 +441,7 @@ const styles = StyleSheet.create({
   // Zone 3 — Insight
   insightText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.lg,
   },
 
@@ -462,7 +465,7 @@ const styles = StyleSheet.create({
   },
   costCategoryText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     width: 120,
   },
   costBarContainer: {
@@ -474,12 +477,12 @@ const styles = StyleSheet.create({
   costBar: {
     height: 16,
     borderRadius: RADIUS.xs,
-    backgroundColor: withAlpha(CALM.bronze, 0.2),
+    backgroundColor: withAlpha(C.bronze, 0.2),
     minWidth: 4,
   },
   costAmount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
@@ -492,17 +495,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   recentAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     minWidth: 90,
   },
   recentAmountCost: {
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   recentMeta: {
     flex: 1,
@@ -523,7 +526,7 @@ const styles = StyleSheet.create({
   },
   seeAllText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Reports link
@@ -536,7 +539,7 @@ const styles = StyleSheet.create({
   },
   reportsLinkText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Bottom links
@@ -546,7 +549,7 @@ const styles = StyleSheet.create({
   },
   bottomLinkText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // FABs
@@ -565,16 +568,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: CALM.bronze,
-    backgroundColor: CALM.background,
+    borderColor: C.bronze,
+    backgroundColor: C.background,
   },
   fabSecondaryText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   fab: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,

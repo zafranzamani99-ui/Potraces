@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Animated, ViewStyle } from 'react-native';
 import { CALM, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 type SkeletonShape = 'box' | 'circle' | 'line';
 
@@ -25,6 +26,7 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({
   borderRadius,
   style,
 }) => {
+  const C = useCalm();
   const opacityAnim = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
@@ -51,7 +53,7 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({
           width: finalWidth as any,
           height: finalHeight,
           borderRadius: finalBorderRadius,
-          backgroundColor: CALM.border,
+          backgroundColor: C.border,
           opacity: opacityAnim,
         },
         style,

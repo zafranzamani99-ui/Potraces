@@ -31,6 +31,7 @@ import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { SellerProduct, IngredientCost } from '../../types';
 import {
   lightTap,
@@ -85,6 +86,8 @@ const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }
 
 // ─── Main component ────────────────────────────────────────────
 const Products: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const products = useSellerStore((s) => s.products);
   const orders = useSellerStore((s) => s.orders);
   const ingredientCosts = useSellerStore((s) => s.ingredientCosts);
@@ -811,12 +814,12 @@ const Products: React.FC = () => {
                 )}
               </View>
               {reorderMode ? (
-                <Feather name="menu" size={18} color={isDragging ? CALM.accent : CALM.neutral} />
+                <Feather name="menu" size={18} color={isDragging ? C.accent : C.neutral} />
               ) : !selectMode ? (
                 <Switch
                   value={item.isActive}
                   onValueChange={() => handleToggleActive(item)}
-                  trackColor={{ false: CALM.border, true: CALM.bronze }}
+                  trackColor={{ false: C.border, true: C.bronze }}
                   thumbColor="#fff"
                   style={styles.rowSwitch}
                   accessibilityRole="switch"
@@ -858,7 +861,7 @@ const Products: React.FC = () => {
                 <Feather
                   name={selectedIds.size === filteredProducts.length ? 'check-square' : 'square'}
                   size={14}
-                  color={CALM.bronze}
+                  color={C.bronze}
                 />
                 <Text style={styles.reorderText}>
                   {selectedIds.size === filteredProducts.length ? 'deselect all' : 'select all'}
@@ -891,7 +894,7 @@ const Products: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel="Select products to delete"
                   >
-                    <Feather name="check-square" size={14} color={CALM.bronze} />
+                    <Feather name="check-square" size={14} color={C.bronze} />
                     <Text style={styles.reorderText}>select</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -904,7 +907,7 @@ const Products: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel={reorderMode ? 'Done reordering' : 'Reorder products'}
                   >
-                    <Feather name="list" size={14} color={reorderMode ? '#fff' : CALM.bronze} />
+                    <Feather name="list" size={14} color={reorderMode ? '#fff' : C.bronze} />
                     <Text style={[styles.reorderText, reorderMode && styles.reorderTextActive]}>
                       {reorderMode ? 'done' : 'reorder'}
                     </Text>
@@ -918,7 +921,7 @@ const Products: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Log ingredient cost"
               >
-                <Feather name="plus-circle" size={14} color={CALM.bronze} />
+                <Feather name="plus-circle" size={14} color={C.bronze} />
                 <Text style={styles.logCostHeaderText}>log cost</Text>
               </TouchableOpacity>
             </>
@@ -928,11 +931,11 @@ const Products: React.FC = () => {
 
       {/* Search bar */}
       <View style={styles.searchBar}>
-        <Feather name="search" size={14} color={CALM.textMuted} />
+        <Feather name="search" size={14} color={C.textMuted} />
         <TextInput
           style={styles.searchInput}
           placeholder="search products..."
-          placeholderTextColor={CALM.textMuted}
+          placeholderTextColor={C.textMuted}
           value={search}
           onChangeText={setSearch}
           returnKeyType="search"
@@ -946,7 +949,7 @@ const Products: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Clear search"
           >
-            <Feather name="x" size={14} color={CALM.textMuted} />
+            <Feather name="x" size={14} color={C.textMuted} />
           </TouchableOpacity>
         ) : (
           <Text style={styles.searchProductCount}>{products.length}</Text>
@@ -1007,7 +1010,7 @@ const Products: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Close"
         >
-          <Feather name="x" size={18} color={CALM.textMuted} />
+          <Feather name="x" size={18} color={C.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -1037,11 +1040,11 @@ const Products: React.FC = () => {
             activeOpacity={0.7}
           >
             {imageUploading ? (
-              <ActivityIndicator size="small" color={CALM.bronze} />
+              <ActivityIndicator size="small" color={C.bronze} />
             ) : newImageUrl ? (
               <Image source={{ uri: newImageUrl }} style={styles.prodThumb} />
             ) : (
-              <Feather name="camera" size={16} color={CALM.textMuted} />
+              <Feather name="camera" size={16} color={C.textMuted} />
             )}
           </TouchableOpacity>
           <View style={styles.previewInfo}>
@@ -1071,7 +1074,7 @@ const Products: React.FC = () => {
         </View>
         {newImageUrl && (
           <TouchableOpacity onPress={() => handlePickProductImage(editingProduct?.id)} activeOpacity={0.7} style={styles.changePhotoBtn}>
-            <Feather name="camera" size={11} color={CALM.textMuted} />
+            <Feather name="camera" size={11} color={C.textMuted} />
             <Text style={styles.changePhotoText}>change photo</Text>
           </TouchableOpacity>
         )}
@@ -1086,7 +1089,7 @@ const Products: React.FC = () => {
             value={newName}
             onChangeText={setNewName}
             placeholder="e.g. semperit kuning"
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             autoFocus={!editingProduct}
             onFocus={() => setFocusedField('name')}
             onBlur={() => setFocusedField(null)}
@@ -1094,7 +1097,7 @@ const Products: React.FC = () => {
         </Animated.View>
         {duplicateWarning && (
           <View style={styles.warningRow}>
-            <Feather name="alert-circle" size={12} color={CALM.bronze} />
+            <Feather name="alert-circle" size={12} color={C.bronze} />
             <Text style={styles.warningText}>
               "{duplicateWarning}" already exists
             </Text>
@@ -1110,7 +1113,7 @@ const Products: React.FC = () => {
           value={newDescription}
           onChangeText={setNewDescription}
           placeholder="e.g. 40+ pieces per tin"
-          placeholderTextColor={CALM.textMuted}
+          placeholderTextColor={C.textMuted}
           multiline
           numberOfLines={2}
           textAlignVertical="top"
@@ -1138,7 +1141,7 @@ const Products: React.FC = () => {
                   value={newPrice}
                   onChangeText={setNewPrice}
                   placeholder="price"
-                  placeholderTextColor={CALM.textMuted}
+                  placeholderTextColor={C.textMuted}
                   keyboardType="decimal-pad"
                   onFocus={() => setFocusedField('price')}
                   onBlur={() => setFocusedField(null)}
@@ -1159,7 +1162,7 @@ const Products: React.FC = () => {
                 value={newCostPerUnit}
                 onChangeText={setNewCostPerUnit}
                 placeholder="cost"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 keyboardType="decimal-pad"
                 onFocus={() => setFocusedField('cost')}
                 onBlur={() => setFocusedField(null)}
@@ -1209,7 +1212,7 @@ const Products: React.FC = () => {
             <Text style={styles.unitSelectorLabel}>unit</Text>
             <View style={styles.unitSelectorValue}>
               <Text style={styles.unitSelectorText}>{newUnit}</Text>
-              <Feather name="chevron-down" size={14} color={CALM.textMuted} />
+              <Feather name="chevron-down" size={14} color={C.textMuted} />
             </View>
           </TouchableOpacity>
 
@@ -1246,7 +1249,7 @@ const Products: React.FC = () => {
                 value={newStockQty}
                 onChangeText={setNewStockQty}
                 placeholder="current stock"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 keyboardType="decimal-pad"
                 onFocus={() => setFocusedField('stock')}
                 onBlur={() => setFocusedField(null)}
@@ -1294,7 +1297,7 @@ const Products: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Add another product"
           >
-            <Feather name="plus" size={14} color={CALM.bronze} />
+            <Feather name="plus" size={14} color={C.bronze} />
             <Text style={styles.addAnotherText}>add another</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -1353,7 +1356,7 @@ const Products: React.FC = () => {
           products.length === 0 ? (
             <View style={styles.emptyState}>
               <View style={styles.emptyIconCircle}>
-                <Feather name="package" size={28} color={CALM.textMuted} />
+                <Feather name="package" size={28} color={C.textMuted} />
               </View>
               <Text style={styles.emptyTitle}>no products yet</Text>
               <Text style={styles.emptyHint}>
@@ -1377,13 +1380,13 @@ const Products: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Bulk add with AI"
               >
-                <Feather name="zap" size={16} color={CALM.bronze} />
+                <Feather name="zap" size={16} color={C.bronze} />
                 <Text style={styles.emptyBulkText}>bulk add with AI</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.noResultsContainer}>
-              <Feather name="search" size={20} color={CALM.textMuted} />
+              <Feather name="search" size={20} color={C.textMuted} />
               <Text style={styles.noResultsText}>no match</Text>
               <TouchableOpacity
                 onPress={() => setSearch('')}
@@ -1410,14 +1413,14 @@ const Products: React.FC = () => {
             <TouchableOpacity
               style={[
                 styles.addButton,
-                { flex: 1, backgroundColor: selectedIds.size > 0 ? '#C1694F' : withAlpha(CALM.textMuted, 0.12) },
+                { flex: 1, backgroundColor: selectedIds.size > 0 ? '#C1694F' : withAlpha(C.textMuted, 0.12) },
               ]}
               activeOpacity={0.7}
               onPress={handleBulkDelete}
               disabled={selectedIds.size === 0}
             >
-              <Feather name="trash-2" size={18} color={selectedIds.size > 0 ? '#fff' : CALM.textMuted} />
-              <Text style={[styles.addButtonText, selectedIds.size === 0 && { color: CALM.textMuted }]}>
+              <Feather name="trash-2" size={18} color={selectedIds.size > 0 ? '#fff' : C.textMuted} />
+              <Text style={[styles.addButtonText, selectedIds.size === 0 && { color: C.textMuted }]}>
                 {selectedIds.size > 0
                   ? `remove ${selectedIds.size} product${selectedIds.size > 1 ? 's' : ''}`
                   : 'select products to remove'}
@@ -1433,7 +1436,7 @@ const Products: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Bulk add with AI"
             >
-              <Feather name="zap" size={18} color={CALM.bronze} />
+              <Feather name="zap" size={18} color={C.bronze} />
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.addButton, { flex: 1 }]}
@@ -1490,7 +1493,7 @@ const Products: React.FC = () => {
                     onPress={() => { lightTap(); setShowUnitPicker(false); }}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   >
-                    <Feather name="x" size={20} color={CALM.textSecondary} />
+                    <Feather name="x" size={20} color={C.textSecondary} />
                   </TouchableOpacity>
                 </View>
 
@@ -1527,7 +1530,7 @@ const Products: React.FC = () => {
                             <Feather
                               name="box"
                               size={16}
-                              color={isSelected ? '#fff' : CALM.bronze}
+                              color={isSelected ? '#fff' : C.bronze}
                             />
                           </View>
                           <Text
@@ -1540,7 +1543,7 @@ const Products: React.FC = () => {
                           </Text>
                         </View>
                         {isSelected && (
-                          <Feather name="check" size={18} color={CALM.bronze} />
+                          <Feather name="check" size={18} color={C.bronze} />
                         )}
                       </TouchableOpacity>
                     );
@@ -1556,7 +1559,7 @@ const Products: React.FC = () => {
                         navigation.navigate('SellerSettings');
                       }}
                     >
-                      <Feather name="settings" size={14} color={CALM.bronze} />
+                      <Feather name="settings" size={14} color={C.bronze} />
                       <Text style={styles.unitModalManageText}>manage units in settings</Text>
                     </TouchableOpacity>
                   }
@@ -1600,12 +1603,12 @@ const Products: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Close"
                 >
-                  <Feather name="x" size={18} color={CALM.textMuted} />
+                  <Feather name="x" size={18} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.costDatePill}>
-                <Feather name="calendar" size={12} color={CALM.textSecondary} />
+                <Feather name="calendar" size={12} color={C.textSecondary} />
                 <Text style={styles.costDateText}>
                   {editingCostId
                     ? format(ingredientCosts.find(c => c.id === editingCostId)?.date ?? new Date(), 'dd MMM yyyy')
@@ -1621,7 +1624,7 @@ const Products: React.FC = () => {
                     value={costDescription}
                     onChangeText={setCostDescription}
                     placeholder="e.g. tepung, gula, mentega"
-                    placeholderTextColor={CALM.textMuted}
+                    placeholderTextColor={C.textMuted}
                     autoFocus
                   />
                 </Animated.View>
@@ -1642,7 +1645,7 @@ const Products: React.FC = () => {
                       value={costAmount}
                       onChangeText={setCostAmount}
                       placeholder="0.00"
-                      placeholderTextColor={CALM.textMuted}
+                      placeholderTextColor={C.textMuted}
                       keyboardType="decimal-pad"
                     />
                   </View>
@@ -1705,7 +1708,7 @@ const Products: React.FC = () => {
                   style={styles.modalCloseBtn}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
-                  <Feather name="x" size={18} color={CALM.textMuted} />
+                  <Feather name="x" size={18} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
 
@@ -1723,7 +1726,7 @@ const Products: React.FC = () => {
                       onPress={() => handleBulkImage('camera')}
                       disabled={bulkParsing}
                     >
-                      <Feather name="camera" size={18} color={CALM.bronze} />
+                      <Feather name="camera" size={18} color={C.bronze} />
                       <Text style={styles.bulkImageText}>take photo</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -1732,7 +1735,7 @@ const Products: React.FC = () => {
                       onPress={() => handleBulkImage('gallery')}
                       disabled={bulkParsing}
                     >
-                      <Feather name="image" size={18} color={CALM.bronze} />
+                      <Feather name="image" size={18} color={C.bronze} />
                       <Text style={styles.bulkImageText}>from gallery</Text>
                     </TouchableOpacity>
                   </View>
@@ -1747,7 +1750,7 @@ const Products: React.FC = () => {
                     style={styles.bulkTextArea}
                     multiline
                     placeholder={'e.g.\nKuih Lapis - RM 8/tin\nDodol - RM 12/pack\nRendang - RM 15/bekas'}
-                    placeholderTextColor={CALM.textMuted}
+                    placeholderTextColor={C.textMuted}
                     value={bulkText}
                     onChangeText={setBulkText}
                     textAlignVertical="top"
@@ -1755,7 +1758,7 @@ const Products: React.FC = () => {
 
                   {bulkParsing && (
                     <View style={styles.bulkLoadingRow}>
-                      <ActivityIndicator size="small" color={CALM.bronze} />
+                      <ActivityIndicator size="small" color={C.bronze} />
                       <Text style={styles.bulkLoadingText}>AI is reading your list...</Text>
                     </View>
                   )}
@@ -1845,10 +1848,10 @@ const Products: React.FC = () => {
 };
 
 // ─── Styles ──────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   listContent: {
     paddingHorizontal: SPACING.lg,
@@ -1870,7 +1873,7 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
@@ -1879,18 +1882,18 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
   searchCount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
     paddingLeft: SPACING.xs,
   },
   searchProductCount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
@@ -1903,9 +1906,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
     borderRadius: RADIUS.lg,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     marginBottom: SPACING.sm,
   },
   productRowInactive: {
@@ -1916,15 +1919,15 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha('#C1694F', 0.04),
   },
   productRowDragging: {
-    backgroundColor: withAlpha(CALM.accent, 0.06),
-    borderColor: withAlpha(CALM.accent, 0.2),
+    backgroundColor: withAlpha(C.accent, 0.06),
+    borderColor: withAlpha(C.accent, 0.2),
   },
   selectCheckbox: {
     width: 24,
     height: 24,
     borderRadius: 7,
     borderWidth: 1.5,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
@@ -1936,17 +1939,17 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },
   rowAvatarInactive: {
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
   },
   rowAvatarText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   rowContent: {
     flex: 1,
@@ -1961,23 +1964,23 @@ const styles = StyleSheet.create({
   rowName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   rowPrice: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
   rowUnit: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.regular,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   rowSub: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
   },
   rowSwitch: {
@@ -1986,7 +1989,7 @@ const styles = StyleSheet.create({
   },
   rowDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginLeft: 52,
   },
 
@@ -1998,12 +2001,12 @@ const styles = StyleSheet.create({
   },
   noResultsText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   noResultsClear: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
     paddingVertical: SPACING.xs,
   },
 
@@ -2019,17 +2022,17 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 4,
     borderWidth: 1.5,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   syncToggleBoxActive: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   syncToggleText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // List header
@@ -2047,10 +2050,10 @@ const styles = StyleSheet.create({
   listHeaderTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   listHeaderBadge: {
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
@@ -2061,14 +2064,14 @@ const styles = StyleSheet.create({
   listHeaderBadgeText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
     fontVariant: ['tabular-nums'],
   },
   logCostHeaderButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
@@ -2076,7 +2079,7 @@ const styles = StyleSheet.create({
   logCostHeaderText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // Empty state
@@ -2090,7 +2093,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.xs,
@@ -2098,11 +2101,11 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   emptyHint: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -2111,7 +2114,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
@@ -2131,7 +2134,7 @@ const styles = StyleSheet.create({
   },
   emptyBulkText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
@@ -2146,14 +2149,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.lg,
     paddingTop: SPACING.sm,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     ...SHADOWS.sm,
@@ -2174,14 +2177,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
   },
   unitSelectorLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   unitSelectorValue: {
     flexDirection: 'row',
@@ -2191,7 +2194,7 @@ const styles = StyleSheet.create({
   unitSelectorText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   stockToggle: {
     flexDirection: 'row',
@@ -2200,7 +2203,7 @@ const styles = StyleSheet.create({
   },
   stockToggleText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   stockInputWrap: {
     marginTop: SPACING.sm,
@@ -2218,7 +2221,7 @@ const styles = StyleSheet.create({
   unitModalContent: {
     width: '100%',
     maxHeight: '60%',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     ...SHADOWS.lg,
@@ -2232,7 +2235,7 @@ const styles = StyleSheet.create({
   unitModalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   unitModalList: {
     flexGrow: 0,
@@ -2247,7 +2250,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   unitModalItemSelected: {
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
   },
   unitModalItemLeft: {
     flexDirection: 'row',
@@ -2258,20 +2261,20 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
   unitModalItemIconSelected: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   unitModalItemText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   unitModalItemTextSelected: {
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   unitModalManageBtn: {
     flexDirection: 'row',
@@ -2281,11 +2284,11 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     marginTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   unitModalManageText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // Modal
@@ -2303,7 +2306,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: 20,
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.xs,
@@ -2319,14 +2322,14 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     letterSpacing: -0.3,
   },
   modalCloseBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2336,13 +2339,13 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   fieldLabelOptional: {
     fontWeight: TYPOGRAPHY.weight.regular,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'none',
     letterSpacing: 0,
   },
@@ -2353,8 +2356,8 @@ const styles = StyleSheet.create({
   modalInput: {
     ...TYPE.insight,
     lineHeight: undefined,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
+    color: C.textPrimary,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
@@ -2362,12 +2365,12 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   modalInputFocused: {
-    borderColor: withAlpha(CALM.bronze, 0.4),
-    backgroundColor: CALM.surface,
+    borderColor: withAlpha(C.bronze, 0.4),
+    backgroundColor: C.surface,
   },
   modalInputError: {
     borderColor: '#D4775C',
-    backgroundColor: withAlpha('#D4775C', 0.04),
+    backgroundColor: withAlpha('#D4775C', 0.08),
   },
   descInput: {
     minHeight: 56,
@@ -2385,7 +2388,7 @@ const styles = StyleSheet.create({
   modalCancel: {
     flex: 1,
     paddingVertical: SPACING.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     minHeight: 48,
     alignItems: 'center',
@@ -2394,12 +2397,12 @@ const styles = StyleSheet.create({
   modalCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   modalConfirm: {
     flex: 2,
     paddingVertical: SPACING.md,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.lg,
     minHeight: 48,
     alignItems: 'center',
@@ -2421,12 +2424,12 @@ const styles = StyleSheet.create({
     width: 32,
     height: 4,
     borderRadius: 2,
-    backgroundColor: withAlpha(CALM.textMuted, 0.2),
+    backgroundColor: withAlpha(C.textMuted, 0.2),
   },
 
   // Live preview card
   previewCard: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
   },
@@ -2438,7 +2441,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
@@ -2459,7 +2462,7 @@ const styles = StyleSheet.create({
   },
   changePhotoText: {
     fontSize: 11,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   imgPreviewOverlay: {
     position: 'absolute',
@@ -2483,21 +2486,21 @@ const styles = StyleSheet.create({
   previewName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   previewNamePlaceholder: {
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontStyle: 'italic',
   },
   previewPrice: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
     marginTop: 2,
   },
   previewDesc: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 2,
   },
   previewBadge: {
@@ -2518,30 +2521,30 @@ const styles = StyleSheet.create({
   currencyInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     borderWidth: 1.5,
     borderColor: 'transparent',
     paddingLeft: SPACING.md,
   },
   currencyInputRowFocused: {
-    borderColor: withAlpha(CALM.bronze, 0.4),
-    backgroundColor: CALM.surface,
+    borderColor: withAlpha(C.bronze, 0.4),
+    backgroundColor: C.surface,
   },
   currencyInputRowError: {
     borderColor: '#D4775C',
-    backgroundColor: withAlpha('#D4775C', 0.04),
+    backgroundColor: withAlpha('#D4775C', 0.08),
   },
   currencyPrefix: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
     marginRight: SPACING.xs,
   },
   currencyInput: {
     ...TYPE.insight,
     lineHeight: undefined,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
     paddingVertical: SPACING.md + 2,
     paddingRight: SPACING.md,
@@ -2568,7 +2571,7 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   marginBadgeHigh: {
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
   },
   marginBadgeText: {
     fontSize: 10,
@@ -2577,7 +2580,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   marginBadgeTextHigh: {
-    color: CALM.accent,
+    color: C.accent,
   },
 
   // Validation warning
@@ -2588,7 +2591,7 @@ const styles = StyleSheet.create({
   },
   warningText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: C.bronze,
     flex: 1,
   },
 
@@ -2609,11 +2612,11 @@ const styles = StyleSheet.create({
   justAddedTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   justAddedHint: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   quickAddCheck: {
     flexDirection: 'row',
@@ -2624,7 +2627,7 @@ const styles = StyleSheet.create({
   },
   quickAddCheckText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   quickAddActions: {
@@ -2638,14 +2641,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.xs,
     paddingVertical: SPACING.md,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     borderRadius: RADIUS.lg,
     minHeight: 48,
   },
   addAnotherText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   costDatePill: {
@@ -2653,32 +2656,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: SPACING.xs,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
   },
   costDateText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   reorderButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
   },
   reorderButtonActive: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   reorderText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   reorderTextActive: {
     color: '#fff',
@@ -2687,10 +2690,10 @@ const styles = StyleSheet.create({
   // ── Popular this month ──
   popularSection: {
     marginTop: SPACING.md,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
@@ -2699,7 +2702,7 @@ const styles = StyleSheet.create({
   popularHeader: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textMuted,
+    color: C.textMuted,
     letterSpacing: 0.8,
     marginBottom: SPACING.sm,
   },
@@ -2716,46 +2719,46 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: withAlpha(CALM.accent, 0.12),
+    backgroundColor: withAlpha(C.accent, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
   },
   popularRankText: {
     fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   popularName: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   popularQty: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
   },
   popularRank: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textMuted,
+    color: C.textMuted,
     width: 18,
   },
   popularInflow: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
   },
   popularBarTrack: {
     height: 6,
     borderRadius: 3,
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     overflow: 'hidden',
   },
   popularBarFill: {
     height: 6,
     borderRadius: 3,
-    backgroundColor: withAlpha(CALM.accent, 0.6),
+    backgroundColor: withAlpha(C.accent, 0.6),
   },
 
   // Bulk import
@@ -2763,13 +2766,13 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: RADIUS.xl,
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
   },
   bulkHint: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 20,
   },
   bulkImageRow: {
@@ -2783,15 +2786,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.xs,
     paddingVertical: SPACING.md,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.15),
+    borderColor: withAlpha(C.bronze, 0.15),
   },
   bulkImageText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   bulkDivider: {
     flexDirection: 'row',
@@ -2801,11 +2804,11 @@ const styles = StyleSheet.create({
   bulkDividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   bulkDividerText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   bulkLoadingRow: {
     flexDirection: 'row',
@@ -2816,17 +2819,17 @@ const styles = StyleSheet.create({
   },
   bulkLoadingText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontStyle: 'italic',
   },
   bulkTextArea: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     padding: SPACING.md,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     minHeight: 100,
     textAlignVertical: 'top',
   },
@@ -2836,7 +2839,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   bulkResultDeselected: {
     opacity: 0.4,
@@ -2846,22 +2849,22 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   bulkCheckboxSelected: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   bulkResultName: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   bulkResultDetail: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 2,
   },
 });

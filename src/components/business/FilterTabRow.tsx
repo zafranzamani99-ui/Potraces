@@ -1,6 +1,8 @@
-import React from 'react';
-import { ScrollView, TouchableOpacity, Text, View, StyleSheet } from 'react-native';
+import React, { useMemo } from 'react';
+import { TouchableOpacity, Text, View, StyleSheet } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 interface FilterTabRowProps {
   tabs: string[];
@@ -13,8 +15,11 @@ const FilterTabRow: React.FC<FilterTabRowProps> = ({
   tabs,
   activeTab,
   onTabPress,
-  accentColor = CALM.bronze,
+  accentColor: accentColorProp,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const accentColor = accentColorProp ?? C.bronze;
   return (
     <ScrollView
       horizontal
@@ -51,7 +56,7 @@ const FilterTabRow: React.FC<FilterTabRowProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollView: {
     maxHeight: 48,
   },
@@ -59,7 +64,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: SPACING['2xl'],
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   tab: {
     paddingVertical: SPACING.md,
@@ -70,7 +75,7 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   underline: {
     position: 'absolute',

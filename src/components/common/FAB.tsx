@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, RADIUS, SPACING } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { lightTap } from '../../services/haptics';
 
 // ─── Props ─────────────────────────────────────────────────
@@ -35,9 +36,11 @@ const ICON_SIZE = 24;
 const FAB: React.FC<FABProps> = ({
   onPress,
   icon = 'plus',
-  color = CALM.accent,
+  color: colorProp,
   style,
 }) => {
+  const C = useCalm();
+  const color = colorProp ?? C.accent;
   const opacityAnim = useRef(new Animated.Value(1)).current;
 
   // ── Interaction handlers: 150ms opacity pulse to 0.7 ──

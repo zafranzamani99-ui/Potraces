@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import RootNavigator from './src/navigation/RootNavigator';
 import { COLORS, SPACING, TYPOGRAPHY } from './src/constants';
+import { useIsDark } from './src/hooks/useCalm';
 import { ToastProvider } from './src/context/ToastContext';
 import { supabase, getAuthSession } from './src/services/supabase';
 import { syncAll, pullOrderLinkOrders, subscribeToOrderLinkOrders, getCachedProfileId, clearProfileCache } from './src/services/sellerSync';
@@ -28,6 +29,7 @@ export default function App() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const mode = useAppStore((s) => s.mode);
+  const isDark = useIsDark();
 
   React.useEffect(() => {
     let cancelled = false;
@@ -213,7 +215,7 @@ export default function App() {
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <View style={{ flex: 1 }}>
               <ToastProvider>
-                <StatusBar style="auto" />
+                <StatusBar style={isDark ? 'light' : 'dark'} />
                 <RootNavigator />
               </ToastProvider>
             </View>

@@ -1,7 +1,8 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import Button from './Button';
 
 interface EmptyStateProps {
@@ -19,6 +20,8 @@ const EmptyState: React.FC<EmptyStateProps> = ({
   actionLabel,
   onAction,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;
 
@@ -36,7 +39,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
       accessibilityLabel={`${title}. ${message}`}
     >
       <View style={styles.iconContainer}>
-        <Feather name={icon} size={64} color={CALM.border} />
+        <Feather name={icon} size={64} color={C.border} />
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
@@ -47,7 +50,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
@@ -58,9 +61,9 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: SPACING['2xl'],
@@ -68,13 +71,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold as '700',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.sm,
     textAlign: 'center',
   },
   message: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING['2xl'],
     lineHeight: 20,

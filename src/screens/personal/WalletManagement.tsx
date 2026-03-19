@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Modal,
   TextInput,
@@ -13,10 +12,13 @@ import {
   Animated,
   Easing,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { WALLET_ICONS_BY_TYPE, WALLET_COLORS, WALLET_PRESETS, WALLET_TYPE_CONFIG, FREE_TIER } from '../../constants/premium';
 import { useWalletStore } from '../../store/walletStore';
+import { usePersonalStore } from '../../store/personalStore';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { Wallet, WalletType } from '../../types';
@@ -26,8 +28,13 @@ import EmptyState from '../../components/common/EmptyState';
 import PaywallModal from '../../components/common/PaywallModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTap } from '../../services/haptics';
+import ScreenGuide from '../../components/common/ScreenGuide';
+import { useT } from '../../i18n';
 
 const WalletManagement: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const currency = useSettingsStore((s) => s.currency);
   const wallets = useWalletStore((s) => s.wallets);
@@ -230,7 +237,18 @@ const WalletManagement: React.FC = () => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => deleteWallet(walletId),
+          onPress: () => {
+              // Unlink wallet from transactions/contributions before deleting
+              const ps = usePersonalStore.getState();
+              usePersonalStore.setState({
+                transactions: ps.transactions.map((t) => t.walletId === walletId ? { ...t, walletId: undefined } : t),
+                goals: ps.goals.map((g) => ({
+                  ...g,
+                  contributions: g.contributions.map((c) => c.walletId === walletId ? { ...c, walletId: undefined } : c),
+                })),
+              });
+              deleteWallet(walletId);
+            },
         },
       ]
     );
@@ -342,6 +360,16 @@ const WalletManagement: React.FC = () => {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
+            // Unlink wallets from transactions/contributions before deleting
+            const ps = usePersonalStore.getState();
+            const idsSet = selectedIds;
+            usePersonalStore.setState({
+              transactions: ps.transactions.map((t) => t.walletId && idsSet.has(t.walletId) ? { ...t, walletId: undefined } : t),
+              goals: ps.goals.map((g) => ({
+                ...g,
+                contributions: g.contributions.map((c) => c.walletId && idsSet.has(c.walletId) ? { ...c, walletId: undefined } : c),
+              })),
+            });
             selectedIds.forEach((id) => deleteWallet(id));
             exitSelectionMode();
           },
@@ -425,7 +453,7 @@ const WalletManagement: React.FC = () => {
                 <Text style={styles.walletName}>{wallet.name}</Text>
                 {wallet.isDefault && (
                   <View style={[styles.defaultBadge, { backgroundColor: withAlpha(wallet.color, 0.1) }]}>
-                    <Text style={[styles.defaultBadgeText, { color: wallet.color }]}>Default</Text>
+                    <Text style={[styles.defaultBadgeText, { color: wallet.color }]}>{t.wallets.defaultWallet}</Text>
                   </View>
                 )}
               </View>
@@ -445,7 +473,7 @@ const WalletManagement: React.FC = () => {
                         styles.creditBarFill,
                         {
                           width: `${Math.min(usedPercent, 100)}%`,
-                          backgroundColor: usedPercent > 80 ? CALM.bronze : wallet.color,
+                          backgroundColor: usedPercent > 80 ? C.bronze : wallet.color,
                         },
                       ]}
                     />
@@ -496,7 +524,7 @@ const WalletManagement: React.FC = () => {
                     <Feather
                       name="star"
                       size={20}
-                      color={wallet.isDefault ? wallet.color : CALM.border}
+                      color={wallet.isDefault ? wallet.color : C.border}
                     />
                   </Animated.View>
                 </TouchableOpacity>
@@ -514,7 +542,7 @@ const WalletManagement: React.FC = () => {
     return (
       <View key={type} style={styles.typeSection}>
         <View style={styles.typeSectionHeader}>
-          <Feather name={config.icon as keyof typeof Feather.glyphMap} size={16} color={CALM.textSecondary} />
+          <Feather name={config.icon as keyof typeof Feather.glyphMap} size={16} color={C.textSecondary} />
           <Text style={styles.typeSectionTitle}>{config.label}</Text>
           <Text style={styles.typeSectionCount}>{walletList.length}</Text>
         </View>
@@ -533,7 +561,7 @@ const WalletManagement: React.FC = () => {
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Cash Balance</Text>
+              <Text style={styles.summaryLabel}>{t.wallets.cashBalance}</Text>
               <Text style={styles.summaryAmount}>
                 {currency} {totalBalance.toFixed(2)}
               </Text>
@@ -541,7 +569,7 @@ const WalletManagement: React.FC = () => {
             {creditWallets.length > 0 && (
               <View style={[styles.summaryItem, styles.summaryDivider]}>
                 <Text style={styles.summaryLabel}>Credit Available</Text>
-                <Text style={[styles.summaryAmount, { color: CALM.bronze }]}>
+                <Text style={[styles.summaryAmount, { color: C.bronze }]}>
                   {currency} {totalCreditAvailable.toFixed(2)}
                 </Text>
               </View>
@@ -559,8 +587,8 @@ const WalletManagement: React.FC = () => {
                   setTransferVisible(true);
                 }}
               >
-                <Feather name="repeat" size={14} color={CALM.accent} />
-                <Text style={styles.transferBtnText}>Transfer</Text>
+                <Feather name="repeat" size={14} color={C.accent} />
+                <Text style={styles.transferBtnText}>{t.wallets.transfer}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -589,7 +617,7 @@ const WalletManagement: React.FC = () => {
             <Text style={styles.transfersSectionTitle}>Recent Transfers</Text>
             {recentTransfers.map((t) => (
               <View key={t.id} style={styles.transferRow}>
-                <Feather name="repeat" size={14} color={CALM.textMuted} />
+                <Feather name="repeat" size={14} color={C.textMuted} />
                 <View style={styles.transferInfo}>
                   <Text style={styles.transferDesc}>
                     {getWalletName(t.fromWalletId)} → {getWalletName(t.toWalletId)}
@@ -609,18 +637,18 @@ const WalletManagement: React.FC = () => {
       {selectionMode ? (
         <View style={styles.selectionBar}>
           <TouchableOpacity onPress={exitSelectionMode} style={styles.selectionClose}>
-            <Feather name="x" size={20} color={CALM.textPrimary} />
+            <Feather name="x" size={20} color={C.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.selectionCount}>{selectedIds.size} selected</Text>
           <View style={styles.selectionActions}>
             {selectedIds.size === 1 && (
               <TouchableOpacity style={styles.selectionBtn} onPress={handleBulkEdit}>
-                <Feather name="edit-2" size={16} color={CALM.accent} />
+                <Feather name="edit-2" size={16} color={C.accent} />
                 <Text style={styles.selectionBtnText}>Edit</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.selectionBtnDanger} onPress={handleBulkDelete}>
-              <Feather name="trash-2" size={16} color={CALM.neutral} />
+              <Feather name="trash-2" size={16} color={C.neutral} />
               <Text style={styles.selectionBtnDangerText}>Delete</Text>
             </TouchableOpacity>
           </View>
@@ -628,7 +656,7 @@ const WalletManagement: React.FC = () => {
       ) : wallets.length > 0 ? (
         <View style={styles.addBtnContainer}>
           <Button
-            title="Add Wallet"
+            title={t.wallets.addWallet}
             onPress={handleAdd}
             icon="plus"
             size="large"
@@ -655,10 +683,10 @@ const WalletManagement: React.FC = () => {
           >
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {editingWallet ? 'Edit Wallet' : addStep === 'type' ? 'Choose Type' : addStep === 'preset' ? 'Choose Provider' : 'Wallet Details'}
+                {editingWallet ? t.wallets.editWallet : addStep === 'type' ? 'Choose Type' : addStep === 'preset' ? 'Choose Provider' : 'Wallet Details'}
               </Text>
               <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }}>
-                <Feather name="x" size={22} color={CALM.textPrimary} />
+                <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -677,21 +705,21 @@ const WalletManagement: React.FC = () => {
                         onPress={() => handleSelectType(type)}
                         activeOpacity={0.7}
                       >
-                        <View style={[styles.typeIconBg, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}>
-                          <Feather name={config.icon as keyof typeof Feather.glyphMap} size={22} color={CALM.accent} />
+                        <View style={[styles.typeIconBg, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
+                          <Feather name={config.icon as keyof typeof Feather.glyphMap} size={22} color={C.accent} />
                         </View>
                         <View style={styles.typeCardText}>
                           <Text style={styles.typeCardTitle}>{config.label}</Text>
                           <Text style={styles.typeCardDesc}>{config.description}</Text>
                         </View>
                         {tier === 'free' && (
-                          <View style={[styles.typeSlotBadge, !canAdd && { backgroundColor: withAlpha(CALM.neutral, 0.1) }]}>
-                            <Text style={[styles.typeSlotText, !canAdd && { color: CALM.neutral }]}>
+                          <View style={[styles.typeSlotBadge, !canAdd && { backgroundColor: withAlpha(C.neutral, 0.1) }]}>
+                            <Text style={[styles.typeSlotText, !canAdd && { color: C.neutral }]}>
                               {typeCount}/{FREE_TIER.maxWalletsPerType}
                             </Text>
                           </View>
                         )}
-                        <Feather name="chevron-right" size={18} color={canAdd ? CALM.textMuted : CALM.neutral} />
+                        <Feather name="chevron-right" size={18} color={canAdd ? C.textMuted : C.neutral} />
                       </TouchableOpacity>
                     );
                   })}
@@ -706,7 +734,7 @@ const WalletManagement: React.FC = () => {
                     style={styles.backBtn}
                     onPress={() => setAddStep('type')}
                   >
-                    <Feather name="arrow-left" size={18} color={CALM.textSecondary} />
+                    <Feather name="arrow-left" size={18} color={C.textSecondary} />
                     <Text style={styles.backBtnText}>Back</Text>
                   </TouchableOpacity>
 
@@ -730,8 +758,8 @@ const WalletManagement: React.FC = () => {
                       onPress={() => handleSelectPreset(null)}
                       activeOpacity={0.7}
                     >
-                      <View style={[styles.presetIcon, { backgroundColor: withAlpha(CALM.accent, 0.1) }]}>
-                        <Feather name="plus" size={20} color={CALM.accent} />
+                      <View style={[styles.presetIcon, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
+                        <Feather name="plus" size={20} color={C.accent} />
                       </View>
                       <Text style={styles.presetName}>Custom</Text>
                     </TouchableOpacity>
@@ -748,19 +776,19 @@ const WalletManagement: React.FC = () => {
                       style={styles.backBtn}
                       onPress={() => setAddStep('preset')}
                     >
-                      <Feather name="arrow-left" size={18} color={CALM.textSecondary} />
+                      <Feather name="arrow-left" size={18} color={C.textSecondary} />
                       <Text style={styles.backBtnText}>Back</Text>
                     </TouchableOpacity>
                   )}
 
                   {/* Name + Balance/Limit in a row */}
-                  <Text style={styles.formLabelCompact}>Wallet Name</Text>
+                  <Text style={styles.formLabelCompact}>{t.wallets.walletName}</Text>
                   <TextInput
                     style={styles.input}
                     value={name}
                     onChangeText={setName}
                     placeholder={`e.g. ${WALLET_TYPE_CONFIG[selectedType].label}`}
-                    placeholderTextColor={CALM.neutral}
+                    placeholderTextColor={C.neutral}
                   />
 
                   <Text style={styles.formLabelCompact}>
@@ -771,7 +799,7 @@ const WalletManagement: React.FC = () => {
                     value={selectedType === 'credit' ? creditLimit : balance}
                     onChangeText={selectedType === 'credit' ? setCreditLimit : setBalance}
                     placeholder="0.00"
-                    placeholderTextColor={CALM.neutral}
+                    placeholderTextColor={C.neutral}
                     keyboardType="decimal-pad"
                   />
 
@@ -795,7 +823,7 @@ const WalletManagement: React.FC = () => {
                             <Feather
                               name={icon as keyof typeof Feather.glyphMap}
                               size={20}
-                              color={selectedIcon === icon ? selectedColor : CALM.textSecondary}
+                              color={selectedIcon === icon ? selectedColor : C.textSecondary}
                             />
                           </TouchableOpacity>
                         ))}
@@ -852,14 +880,14 @@ const WalletManagement: React.FC = () => {
         <Pressable style={styles.modalOverlay} onPress={() => setTransferVisible(false)}>
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Transfer</Text>
+              <Text style={styles.modalTitle}>{t.wallets.transfer}</Text>
               <TouchableOpacity onPress={() => setTransferVisible(false)}>
-                <Feather name="x" size={22} color={CALM.textPrimary} />
+                <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
-              <Text style={styles.formLabel}>From</Text>
+              <Text style={styles.formLabel}>{t.wallets.from}</Text>
               <View style={styles.walletSelectGrid}>
                 {wallets.map((w) => (
                   <TouchableOpacity
@@ -867,13 +895,13 @@ const WalletManagement: React.FC = () => {
                     style={[styles.walletSelectItem, transferFrom === w.id && { borderColor: w.color, backgroundColor: withAlpha(w.color, 0.08) }]}
                     onPress={() => { lightTap(); setTransferFrom(w.id); }}
                   >
-                    <Feather name={w.icon as keyof typeof Feather.glyphMap} size={16} color={transferFrom === w.id ? w.color : CALM.textSecondary} />
+                    <Feather name={w.icon as keyof typeof Feather.glyphMap} size={16} color={transferFrom === w.id ? w.color : C.textSecondary} />
                     <Text style={[styles.walletSelectName, transferFrom === w.id && { color: w.color }]} numberOfLines={1}>{w.name}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <Text style={styles.formLabel}>To</Text>
+              <Text style={styles.formLabel}>{t.wallets.to}</Text>
               <View style={styles.walletSelectGrid}>
                 {transferToWallets.map((w) => (
                   <TouchableOpacity
@@ -881,7 +909,7 @@ const WalletManagement: React.FC = () => {
                     style={[styles.walletSelectItem, transferTo === w.id && { borderColor: w.color, backgroundColor: withAlpha(w.color, 0.08) }]}
                     onPress={() => { lightTap(); setTransferTo(w.id); }}
                   >
-                    <Feather name={w.icon as keyof typeof Feather.glyphMap} size={16} color={transferTo === w.id ? w.color : CALM.textSecondary} />
+                    <Feather name={w.icon as keyof typeof Feather.glyphMap} size={16} color={transferTo === w.id ? w.color : C.textSecondary} />
                     <Text style={[styles.walletSelectName, transferTo === w.id && { color: w.color }]} numberOfLines={1}>{w.name}</Text>
                   </TouchableOpacity>
                 ))}
@@ -893,7 +921,7 @@ const WalletManagement: React.FC = () => {
                 value={transferAmount}
                 onChangeText={setTransferAmount}
                 placeholder="0.00"
-                placeholderTextColor={CALM.neutral}
+                placeholderTextColor={C.neutral}
                 keyboardType="decimal-pad"
               />
 
@@ -903,12 +931,12 @@ const WalletManagement: React.FC = () => {
                 value={transferNote}
                 onChangeText={setTransferNote}
                 placeholder="e.g. Top up e-wallet"
-                placeholderTextColor={CALM.neutral}
+                placeholderTextColor={C.neutral}
               />
             </ScrollView>
 
             <Button
-              title="Transfer"
+              title={t.wallets.transfer}
               onPress={handleTransfer}
               size="large"
               icon="repeat"
@@ -933,7 +961,7 @@ const WalletManagement: React.FC = () => {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Repay Credit</Text>
               <TouchableOpacity onPress={() => setRepayVisible(false)}>
-                <Feather name="x" size={22} color={CALM.textPrimary} />
+                <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -962,7 +990,7 @@ const WalletManagement: React.FC = () => {
                 value={repayAmount}
                 onChangeText={setRepayAmount}
                 placeholder="0.00"
-                placeholderTextColor={CALM.neutral}
+                placeholderTextColor={C.neutral}
                 keyboardType="decimal-pad"
               />
 
@@ -974,7 +1002,7 @@ const WalletManagement: React.FC = () => {
                     style={[styles.walletSelectItem, repaySourceId === w.id && { borderColor: w.color, backgroundColor: withAlpha(w.color, 0.08) }]}
                     onPress={() => { lightTap(); setRepaySourceId(w.id); }}
                   >
-                    <Feather name={w.icon as keyof typeof Feather.glyphMap} size={16} color={repaySourceId === w.id ? w.color : CALM.textSecondary} />
+                    <Feather name={w.icon as keyof typeof Feather.glyphMap} size={16} color={repaySourceId === w.id ? w.color : C.textSecondary} />
                     <Text style={[styles.walletSelectName, repaySourceId === w.id && { color: w.color }]} numberOfLines={1}>{w.name}</Text>
                     <Text style={styles.walletSelectBal}>{currency} {w.balance.toFixed(2)}</Text>
                   </TouchableOpacity>
@@ -1001,14 +1029,24 @@ const WalletManagement: React.FC = () => {
         feature="wallet"
         currentUsage={wallets.length}
       />
+      <ScreenGuide
+        id="guide_wallets"
+        title={t.guide.yourWallets}
+        icon="credit-card"
+        tips={[
+          t.guide.tipWallet1,
+          t.guide.tipWallet2,
+          t.guide.tipWallet3,
+        ]}
+      />
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollContent: {
     padding: SPACING['2xl'],
@@ -1017,11 +1055,11 @@ const styles = StyleSheet.create({
   // Summary
   summaryCard: {
     marginBottom: SPACING.xl,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -1032,18 +1070,18 @@ const styles = StyleSheet.create({
   },
   summaryDivider: {
     borderLeftWidth: 1,
-    borderLeftColor: CALM.border,
+    borderLeftColor: C.border,
     paddingLeft: SPACING.md,
   },
   summaryLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   summaryAmount: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
     marginTop: 2,
   },
@@ -1054,12 +1092,12 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   walletCountText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   transferBtn: {
     flexDirection: 'row',
@@ -1067,13 +1105,13 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     borderRadius: RADIUS.md,
   },
   transferBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   // Wallet List
   walletList: {
@@ -1092,13 +1130,13 @@ const styles = StyleSheet.create({
   typeSectionTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     flex: 1,
   },
   typeSectionCount: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   walletCard: {
     padding: SPACING.lg,
@@ -1127,12 +1165,12 @@ const styles = StyleSheet.create({
   walletName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   walletBalance: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
     marginTop: 2,
   },
@@ -1157,16 +1195,16 @@ const styles = StyleSheet.create({
   creditLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   creditAvailable: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   creditBar: {
     height: 4,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     borderRadius: 2,
     overflow: 'hidden',
   },
@@ -1176,7 +1214,7 @@ const styles = StyleSheet.create({
   },
   creditLimit: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 2,
   },
   walletActions: {
@@ -1187,7 +1225,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1201,7 +1239,7 @@ const styles = StyleSheet.create({
   transfersSectionTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.md,
   },
   transferRow: {
@@ -1210,7 +1248,7 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   transferInfo: {
     flex: 1,
@@ -1218,17 +1256,17 @@ const styles = StyleSheet.create({
   transferDesc: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   transferNote: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 1,
   },
   transferAmt: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   // Add button
@@ -1245,7 +1283,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING.xl,
@@ -1258,12 +1296,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
   },
   floatingContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     maxHeight: '70%',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1274,7 +1312,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   // Type selection
   typeGrid: {
@@ -1283,11 +1321,11 @@ const styles = StyleSheet.create({
   typeCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     gap: SPACING.md,
   },
   typeCardDisabled: {
@@ -1306,15 +1344,15 @@ const styles = StyleSheet.create({
   typeCardTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   typeCardDesc: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 1,
   },
   typeSlotBadge: {
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.sm,
@@ -1322,7 +1360,7 @@ const styles = StyleSheet.create({
   typeSlotText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: C.accent,
   },
   // Preset selection
   backBtn: {
@@ -1333,7 +1371,7 @@ const styles = StyleSheet.create({
   },
   backBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   presetGrid: {
     flexDirection: 'row',
@@ -1342,11 +1380,11 @@ const styles = StyleSheet.create({
   },
   presetCard: {
     width: '30%',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     gap: SPACING.sm,
   },
@@ -1360,33 +1398,33 @@ const styles = StyleSheet.create({
   presetName: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     textAlign: 'center',
   },
   // Form
   formLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
   formLabelCompact: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xs,
     marginTop: SPACING.md,
   },
   input: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   pickerRow: {
     flexDirection: 'row',
@@ -1405,7 +1443,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -1421,7 +1459,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   colorSelected: {
-    borderColor: CALM.textPrimary,
+    borderColor: C.textPrimary,
   },
   saveBtn: {
     marginTop: SPACING.md,
@@ -1438,19 +1476,19 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   walletSelectName: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   walletSelectBal: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   // Repay modal
   repayHeader: {
@@ -1459,7 +1497,7 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     marginBottom: SPACING.md,
     padding: SPACING.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
   },
   repayIconBg: {
@@ -1472,31 +1510,31 @@ const styles = StyleSheet.create({
   repayName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   repayUsed: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   // Selection mode
   walletCardSelected: {
-    borderColor: CALM.accent,
+    borderColor: C.accent,
     borderWidth: 1,
-    backgroundColor: withAlpha(CALM.accent, 0.04),
+    backgroundColor: withAlpha(C.accent, 0.04),
   },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: RADIUS.sm,
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
   checkboxActive: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
   },
   selectionBar: {
     position: 'absolute' as const,
@@ -1505,12 +1543,12 @@ const styles = StyleSheet.create({
     right: SPACING.xl,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.md,
     paddingHorizontal: SPACING.lg,
     borderWidth: 1,
-    borderColor: CALM.accent,
+    borderColor: C.accent,
     gap: SPACING.md,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -1522,14 +1560,14 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
   selectionCount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   selectionActions: {
@@ -1542,13 +1580,13 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     borderRadius: RADIUS.md,
   },
   selectionBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   selectionBtnDanger: {
     flexDirection: 'row' as const,
@@ -1556,13 +1594,13 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    backgroundColor: withAlpha(CALM.neutral, 0.1),
+    backgroundColor: withAlpha(C.neutral, 0.1),
     borderRadius: RADIUS.md,
   },
   selectionBtnDangerText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.neutral,
+    color: C.neutral,
   },
 });
 

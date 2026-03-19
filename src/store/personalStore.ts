@@ -206,14 +206,16 @@ export const usePersonalStore = create<PersonalState>()(
         set((state) => ({
           goals: state.goals.map((goal) => {
             if (goal.id !== goalId) return goal;
+            const remaining = goal.targetAmount - goal.currentAmount;
+            const actualAmount = remaining > 0 ? Math.min(amount, remaining) : amount;
             const newContribution = {
               id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
-              amount,
+              amount: actualAmount,
               note,
               date: new Date(),
               walletId,
             };
-            const newCurrentAmount = Math.min(goal.currentAmount + amount, goal.targetAmount);
+            const newCurrentAmount = Math.min(goal.currentAmount + actualAmount, goal.targetAmount);
             const updatedMilestones = goal.milestones.map((m) => {
               if (!m.reached && newCurrentAmount >= (m.percentage / 100) * goal.targetAmount) {
                 return { ...m, reached: true, reachedAt: new Date() };

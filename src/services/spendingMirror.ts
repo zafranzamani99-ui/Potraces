@@ -11,9 +11,11 @@ import { useDebtStore } from '../store/debtStore';
 import { useWalletStore } from '../store/walletStore';
 import { useAIInsightsStore } from '../store/aiInsightsStore';
 import { usePremiumStore } from '../store/premiumStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { callGeminiAPI, isGeminiAvailable } from './geminiClient';
 
 function buildDataSummary(): string {
+  const currency = useSettingsStore.getState().currency;
   const { transactions, subscriptions, budgets } = usePersonalStore.getState();
   const debts = useDebtStore.getState().debts;
   const wallets = useWalletStore.getState().wallets;
@@ -59,7 +61,7 @@ function buildDataSummary(): string {
     .slice(0, 6)
     .map(([cat, data]) => {
       const pct = totalSpent > 0 ? Math.round((data.total / totalSpent) * 100) : 0;
-      return `  ${cat}: RM ${data.total.toFixed(2)} (${data.count} entries, ${pct}%)`;
+      return `  ${cat}: ${currency} ${data.total.toFixed(2)} (${data.count} entries, ${pct}%)`;
     })
     .join('\n');
 
@@ -81,7 +83,7 @@ function buildDataSummary(): string {
 
   // Wallet usage
   const walletLines = wallets
-    .map((w) => `  ${w.name} (${w.type}): RM ${(w.balance || 0).toFixed(2)}`)
+    .map((w) => `  ${w.name} (${w.type}): ${currency} ${(w.balance || 0).toFixed(2)}`)
     .join('\n');
 
   // BNPL
@@ -103,8 +105,8 @@ function buildDataSummary(): string {
     .map((b) => {
       const left = b.allocatedAmount - b.spentAmount;
       return left < 0
-        ? `  ${b.category}: went RM ${Math.abs(left).toFixed(2)} past breathing room`
-        : `  ${b.category}: RM ${left.toFixed(2)} room left`;
+        ? `  ${b.category}: went ${currency} ${Math.abs(left).toFixed(2)} past breathing room`
+        : `  ${b.category}: ${currency} ${left.toFixed(2)} room left`;
     })
     .join('\n');
 
@@ -114,25 +116,25 @@ function buildDataSummary(): string {
 
   return `Month: ${monthLabel}
 Day ${now.getDate()} (${daysLeft} days left)
-Came in: RM ${totalIncome.toFixed(2)} (${incomes.length} entries)
-Went out: RM ${totalSpent.toFixed(2)} (${expenses.length} transactions)
-Kept: RM ${kept.toFixed(2)} (last month: RM ${keptLastMonth.toFixed(2)})
+Came in: ${currency} ${totalIncome.toFixed(2)} (${incomes.length} entries)
+Went out: ${currency} ${totalSpent.toFixed(2)} (${expenses.length} transactions)
+Kept: ${currency} ${kept.toFixed(2)} (last month: ${currency} ${keptLastMonth.toFixed(2)})
 
 Categories:
 ${catLines || '  (none yet)'}
 
-Weekday avg: RM ${weekdayAvg.toFixed(2)} · Weekend avg: RM ${weekendAvg.toFixed(2)}
+Weekday avg: ${currency} ${weekdayAvg.toFixed(2)} · Weekend avg: ${currency} ${weekendAvg.toFixed(2)}
 
 Wallets:
 ${walletLines || '  (none)'}
 
-BNPL: RM ${bnplTotal.toFixed(2)}
-Debts: you owe RM ${iOwe.toFixed(2)}, owed to you RM ${theyOwe.toFixed(2)}
+BNPL: ${currency} ${bnplTotal.toFixed(2)}
+Debts: you owe ${currency} ${iOwe.toFixed(2)}, owed to you ${currency} ${theyOwe.toFixed(2)}
 
 Breathing room:
 ${budgetLines || '  (none set)'}
 
-Subscriptions: ${activeSubs.length} active, RM ${subsTotal.toFixed(2)}/month total`;
+Subscriptions: ${activeSubs.length} active, ${currency} ${subsTotal.toFixed(2)}/month total`;
 }
 
 export async function generateSpendingMirror(): Promise<string | null> {
@@ -156,6 +158,7 @@ export async function generateSpendingMirror(): Promise<string | null> {
   const premium = usePremiumStore.getState();
   if (!premium.canUseAI()) return null;
 
+  const currency = useSettingsStore.getState().currency;
   const dataSummary = buildDataSummary();
 
   store.setIsGenerating(true);
@@ -169,7 +172,7 @@ Rules:
 - Use "you" not "the user"
 - Never use words: profit, loss, revenue, ROI, inventory, budget
 - Instead use: kept, came in, went out, costs, breathing room
-- Currency is RM (Ringgit Malaysia)
+- Currency is ${currency} — use "${currency} X.XX" format
 - If kept is positive, gently acknowledge it
 - If kept is negative, normalize it without alarm
 - Reference specific categories or patterns if interesting (weekday vs weekend, top wallet, etc.)

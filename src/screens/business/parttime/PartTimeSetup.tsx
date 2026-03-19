@@ -1,23 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  ScrollView,
   Keyboard,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { usePartTimeStore } from '../../../store/partTimeStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { successNotification } from '../../../services/haptics';
 
 const PAY_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
 const PartTimeSetup: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
   const { jobDetails, setJobDetails } = usePartTimeStore();
   const currency = useSettingsStore((s) => s.currency);
@@ -58,7 +61,7 @@ const PartTimeSetup: React.FC = () => {
           value={jobName}
           onChangeText={setJobName}
           placeholder="what's your main job?"
-          placeholderTextColor={CALM.textMuted}
+          placeholderTextColor={C.textMuted}
           returnKeyType="next"
         />
 
@@ -69,7 +72,7 @@ const PartTimeSetup: React.FC = () => {
             value={expectedPay}
             onChangeText={setExpectedPay}
             placeholder="roughly how much per month?"
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             keyboardType="decimal-pad"
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
@@ -130,10 +133,10 @@ const PartTimeSetup: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -146,16 +149,16 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING['3xl'],
     marginTop: SPACING.xl,
   },
 
   input: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.lg,
     marginBottom: SPACING['2xl'],
     minHeight: 44,
@@ -165,25 +168,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     marginBottom: SPACING['2xl'],
   },
   currencyPrefix: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginRight: SPACING.sm,
   },
   amountInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.lg,
     minHeight: 44,
   },
 
   payDayButton: {
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.lg,
     marginBottom: SPACING['2xl'],
     minHeight: 44,
@@ -191,11 +194,11 @@ const styles = StyleSheet.create({
   },
   payDayText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   payDayPlaceholder: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   payDayGrid: {
@@ -210,17 +213,17 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   payDayOptionActive: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   payDayOptionText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   payDayOptionTextActive: {
@@ -229,7 +232,7 @@ const styles = StyleSheet.create({
   },
 
   saveButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',

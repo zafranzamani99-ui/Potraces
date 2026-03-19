@@ -16,14 +16,12 @@ async function prepareImage(uri: string): Promise<string> {
       { compress: 0.9, format: SaveFormat.JPEG, base64: true }
     );
     if (result.base64) {
-      console.log('[Receipt] Image prepped via manipulator, base64 length:', result.base64.length);
       return result.base64;
     }
     // base64 option didn't return data — read from file
-    console.warn('[Receipt] manipulateAsync returned no base64, reading URI');
     return readAsStringAsync(result.uri, { encoding: EncodingType.Base64 });
-  } catch (e) {
-    console.warn('[Receipt] Image prep failed, using original:', e);
+  } catch {
+    // Image prep failed — fall back to original
     return readAsStringAsync(uri, { encoding: EncodingType.Base64 });
   }
 }
@@ -56,7 +54,11 @@ Return JSON only:
   "subtotal": 61.41 or null,
   "tax": 3.69 or null,
   "total": 65.10,
-  "date": "date string or null"
+  "date": "date string or null",
+  "location": "store address/branch or null",
+  "paymentMethod": "one of: cash, debit_card, credit_card, tng, grabpay, boost, shopee_pay, mae, bigpay, duitnow_qr, fpx, other — or null",
+  "suggestedExpenseCategory": "one of: food, transport, shopping, entertainment, bills, health, education, family, subscription, other",
+  "suggestedTaxCategory": "one of: none, lifestyle, sports, medical, parents_medical, education, childcare, breastfeeding, ev_charging, sspn, insurance_epf, education_insurance, prs, domestic_travel, housing_loan"
 }
 
 Rules:
@@ -70,7 +72,26 @@ Rules:
 - vendor = store/restaurant name, usually at the top of receipt
 - date in whatever format shown on receipt
 - if unclear, guess rather than omit
-- if truly unreadable, return {"vendor": null, "items": [], "total": 0}`;
+- if truly unreadable, return {"vendor": null, "items": [], "total": 0}
+
+Tax category hints:
+- Books, phones, tablets, computers, internet bills → lifestyle
+- Gym membership, sports gear, fitness → sports
+- Clinic, hospital, dental, pharmacy, glasses, lenses → medical
+- Course fees, tuition, online learning → education
+- Hotel/resort/Airbnb in Malaysia → domestic_travel
+- Nursery, kindergarten, daycare → childcare
+- If uncertain → none
+
+Payment method hints:
+- Look for "VISA", "MASTERCARD", "DEBIT" → debit_card or credit_card
+- "Touch 'n Go", "TNG" → tng
+- "GrabPay" → grabpay
+- "Boost" → boost
+- "ShopeePay" → shopee_pay
+- "TUNAI", "CASH" → cash
+- "DuitNow" → duitnow_qr
+- If not visible → null`;
 
 export async function scanReceipt(imageUri: string): Promise<ExtractedReceipt> {
   if (!isGeminiAvailable()) {
@@ -118,22 +139,15 @@ export async function scanReceipt(imageUri: string): Promise<ExtractedReceipt> {
 
   // Debug: log raw response structure to diagnose empty results
   const candidate = data?.candidates?.[0];
-  if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
-    console.warn('[Receipt] Gemini finishReason:', candidate.finishReason);
-  }
   if (data?.promptFeedback?.blockReason) {
-    console.warn('[Receipt] Gemini BLOCKED:', data.promptFeedback.blockReason);
     throw new Error('AI could not process this image. Try a different photo.');
   }
 
   const text = candidate?.content?.parts?.[0]?.text;
 
   if (!text) {
-    console.warn('[Receipt] No text in response. Full data:', JSON.stringify(data).slice(0, 500));
     throw new Error('No response from AI. Please try a clearer photo.');
   }
-
-  console.log('[Receipt] Gemini raw response:', text.slice(0, 300));
 
   try {
     const parsed = JSON.parse(stripJsonFences(text));
@@ -150,6 +164,10 @@ export async function scanReceipt(imageUri: string): Promise<ExtractedReceipt> {
       total: Number(parsed.total) || 0,
       date: parsed.date || undefined,
       rawText: text,
+      location: parsed.location || undefined,
+      paymentMethod: parsed.paymentMethod || undefined,
+      suggestedExpenseCategory: parsed.suggestedExpenseCategory || undefined,
+      suggestedTaxCategory: parsed.suggestedTaxCategory || undefined,
     };
   } catch {
     throw new Error('Could not parse receipt data. Please try again.');

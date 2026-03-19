@@ -170,7 +170,11 @@ export function useFinancialInsights(): FinancialInsights {
     if (budgets.length > 0) {
       const adherenceScores = budgets.map((b) => {
         if (b.allocatedAmount <= 0) return 100;
-        const ratio = b.spentAmount / b.allocatedAmount;
+        // Compute spent from transactions (store spentAmount is always 0)
+        const spent = monthlyExpenses
+          .filter((t) => t.category === b.category)
+          .reduce((s, t) => s + t.amount, 0);
+        const ratio = spent / b.allocatedAmount;
         // Under budget = 100, at budget = 50, over budget = 0
         return Math.max(0, Math.min(100, (1 - (ratio - 0.5)) * 100));
       });

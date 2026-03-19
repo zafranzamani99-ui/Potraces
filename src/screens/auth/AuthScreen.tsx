@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { signUpWithPhone, signInWithPhone, requestOtp } from '../../services/supabase';
 import { ensureProfile } from '../../services/sellerSync';
 import { useAuthStore } from '../../store/authStore';
@@ -23,6 +24,8 @@ interface AuthScreenProps {
 }
 
 const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthenticated }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const [isLogin, setIsLogin] = useState(true);
   const [phone, setPhone] = useState('');
@@ -120,7 +123,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.7}>
-        <Feather name="arrow-left" size={22} color={CALM.textPrimary} />
+        <Feather name="arrow-left" size={22} color={C.textPrimary} />
       </TouchableOpacity>
       <KeyboardAwareScrollView
         contentContainerStyle={styles.scroll}
@@ -131,7 +134,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.iconCircle}>
-              <Feather name="briefcase" size={28} color={CALM.accent} />
+              <Feather name="briefcase" size={28} color={C.accent} />
             </View>
             <Text style={styles.title}>business mode</Text>
             <Text style={styles.subtitle}>
@@ -169,7 +172,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
                 <TextInput
                   style={[styles.input, styles.phoneInput, focusedField === 'phone' && styles.inputFocused]}
                   placeholder="12-345 6789"
-                  placeholderTextColor={CALM.textMuted}
+                  placeholderTextColor={C.textMuted}
                   value={phone}
                   onChangeText={setPhone}
                   keyboardType="phone-pad"
@@ -190,7 +193,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
                   ref={passwordRef}
                   style={[styles.input, styles.passwordInput, focusedField === 'password' && styles.inputFocused]}
                   placeholder="min 6 characters"
-                  placeholderTextColor={CALM.textMuted}
+                  placeholderTextColor={C.textMuted}
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
@@ -208,7 +211,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
                   style={styles.eyeBtn}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={CALM.textMuted} />
+                  <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -221,7 +224,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
                   ref={confirmRef}
                   style={[styles.input, focusedField === 'confirm' && styles.inputFocused]}
                   placeholder="re-enter password"
-                  placeholderTextColor={CALM.textMuted}
+                  placeholderTextColor={C.textMuted}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   secureTextEntry={!showPassword}
@@ -237,7 +240,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
             {/* Error */}
             {error ? (
               <View style={styles.errorBox}>
-                <Feather name="alert-circle" size={14} color={CALM.bronze} />
+                <Feather name="alert-circle" size={14} color={C.bronze} />
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             ) : null}
@@ -261,8 +264,8 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CALM.background },
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.background },
   backBtn: { marginTop: 12, marginLeft: SPACING.lg, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: SPACING.lg, paddingBottom: 80 },
@@ -279,16 +282,16 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '700' as const,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 6,
   },
   subtitle: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   toggle: {
     flexDirection: 'row',
-    backgroundColor: CALM.pillBg,
+    backgroundColor: C.pillBg,
     borderRadius: RADIUS.md,
     padding: 3,
     marginBottom: 24,
@@ -300,7 +303,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md - 2,
   },
   toggleActive: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
@@ -310,10 +313,10 @@ const styles = StyleSheet.create({
   toggleText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: '500' as const,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   toggleTextActive: {
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontWeight: '600' as const,
   },
   form: {},
@@ -321,38 +324,38 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     fontWeight: '600' as const,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textTransform: 'lowercase',
     marginBottom: 6,
     letterSpacing: 0.3,
   },
   input: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1.5,
-    borderColor: CALM.inputBorder,
+    borderColor: C.inputBorder,
     borderRadius: RADIUS.md,
     paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 16,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   inputFocused: {
-    borderColor: CALM.accent,
-    backgroundColor: '#fff',
+    borderColor: C.accent,
+    backgroundColor: C.surface,
   },
   phoneRow: { flexDirection: 'row', gap: 8 },
   prefixBox: {
-    backgroundColor: CALM.pillBg,
+    backgroundColor: C.pillBg,
     borderRadius: RADIUS.md,
     paddingHorizontal: 14,
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: CALM.inputBorder,
+    borderColor: C.inputBorder,
   },
   prefixText: {
     fontSize: 16,
     fontWeight: '500' as const,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   phoneInput: { flex: 1 },
   passwordRow: { flexDirection: 'row', alignItems: 'center' },
@@ -370,11 +373,11 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 13,
-    color: CALM.bronze,
+    color: C.bronze,
     flex: 1,
   },
   submitBtn: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.md,
     paddingVertical: 15,
     alignItems: 'center',

@@ -35,7 +35,19 @@ export type ChatActionType =
   | 'update_savings'
   | 'add_savings_account'
   | 'create_goal'
-  | 'withdraw_goal';
+  | 'withdraw_goal'
+  | 'delete_transaction'
+  | 'edit_transaction'
+  | 'add_budget'
+  | 'edit_budget'
+  | 'delete_budget'
+  | 'delete_debt'
+  | 'edit_debt'
+  | 'pause_goal'
+  | 'archive_goal'
+  | 'delete_goal'
+  | 'pause_subscription'
+  | 'add_wallet';
 
 export interface ChatAction {
   type: ChatActionType;
@@ -60,6 +72,16 @@ export interface ChatAction {
   goalDeadline?: string;   // ISO date for create_goal
   goalIcon?: string;       // for create_goal
   goalColor?: string;      // for create_goal
+  matchType?: 'expense' | 'income';  // for delete/edit — filter by type
+  newDescription?: string; // for edit_transaction
+  newCategory?: string;    // for edit_transaction
+  newDate?: string;        // for edit_transaction
+  deleteAll?: boolean;     // for delete_transaction — delete all matches
+  budgetCategory?: string; // for budget actions — category name to match
+  newPerson?: string;      // for edit_debt — rename person
+  walletType?: 'bank' | 'ewallet' | 'credit'; // for add_wallet
+  walletColor?: string;    // for add_wallet
+  walletIcon?: string;     // for add_wallet
 }
 
 export interface ActionResult {
@@ -85,7 +107,14 @@ export function parseActions(text: string): { cleanText: string; actions: ChatAc
   const cleanText = text.replace(ACTION_REGEX, (_, json) => {
     try {
       const parsed = JSON.parse(cleanJson(json));
-      if (parsed.type && typeof parsed.amount === 'number') {
+      const NO_AMOUNT_TYPES: ChatActionType[] = [
+            'delete_transaction', 'edit_transaction',
+            'delete_budget', 'edit_budget',
+            'delete_debt', 'edit_debt',
+            'pause_goal', 'archive_goal', 'delete_goal',
+            'pause_subscription', 'add_wallet',
+          ];
+      if (parsed.type && (typeof parsed.amount === 'number' || NO_AMOUNT_TYPES.includes(parsed.type))) {
         actions.push(parsed as ChatAction);
       }
     } catch (e) {
@@ -607,6 +636,294 @@ export function executeAction(action: ChatAction): ActionResult {
         };
       }
 
+      case 'delete_transaction': {
+        const { transactions } = usePersonalStore.getState();
+        const desc = (action.description || '').toLowerCase();
+        const matches = transactions.filter((t) => {
+          if (action.matchType && t.type !== action.matchType) return false;
+          if (action.amount && action.amount > 0 && Math.abs(t.amount - action.amount) > 0.01) return false;
+          if (desc && !t.description.toLowerCase().includes(desc) && !desc.includes(t.description.toLowerCase())) return false;
+          if (action.date) {
+            const target = resolveDate(action.date);
+            const td = t.date instanceof Date ? t.date : new Date(t.date);
+            if (format(target, 'yyyy-MM-dd') !== format(td, 'yyyy-MM-dd')) return false;
+          }
+          return true;
+        });
+        if (matches.length === 0) {
+          return { success: false, message: `No transaction found matching "${action.description || ''}" RM ${(action.amount || 0).toFixed(2)}.`, action };
+        }
+        const toDelete = action.deleteAll ? matches : [matches[matches.length - 1]];
+        for (const tx of toDelete) {
+          // Reverse wallet impact
+          if (tx.walletId) {
+            if (tx.type === 'expense') useWalletStore.getState().addToWallet(tx.walletId, tx.amount);
+            else if (tx.type === 'income') useWalletStore.getState().deductFromWallet(tx.walletId, tx.amount);
+          }
+          // Clean up playbook links
+          if (tx.playbookLinks?.length) {
+            try { usePlaybookStore.getState().unlinkAllFromTransaction(tx.id); } catch (_) {}
+          }
+          usePersonalStore.getState().deleteTransaction(tx.id);
+        }
+        const count = toDelete.length;
+        const totalAmt = toDelete.reduce((s, t) => s + t.amount, 0);
+        return {
+          success: true,
+          message: count === 1
+            ? `Deleted: ${toDelete[0].description} — RM ${toDelete[0].amount.toFixed(2)} (${toDelete[0].type}, ${format(toDelete[0].date instanceof Date ? toDelete[0].date : new Date(toDelete[0].date as any), 'dd MMM')})`
+            : `Deleted ${count} transactions totalling RM ${totalAmt.toFixed(2)}`,
+          action,
+        };
+      }
+
+      case 'edit_transaction': {
+        const { transactions } = usePersonalStore.getState();
+        const desc = (action.description || '').toLowerCase();
+        const matches = transactions.filter((t) => {
+          if (action.matchType && t.type !== action.matchType) return false;
+          if (action.amount && action.amount > 0 && Math.abs(t.amount - action.amount) > 0.01) return false;
+          if (desc && !t.description.toLowerCase().includes(desc) && !desc.includes(t.description.toLowerCase())) return false;
+          if (action.date) {
+            const target = resolveDate(action.date);
+            const td = t.date instanceof Date ? t.date : new Date(t.date);
+            if (format(target, 'yyyy-MM-dd') !== format(td, 'yyyy-MM-dd')) return false;
+          }
+          return true;
+        });
+        if (matches.length === 0) {
+          return { success: false, message: `No transaction found matching "${action.description || ''}" RM ${(action.amount || 0).toFixed(2)}.`, action };
+        }
+        const tx = matches[matches.length - 1]; // most recent match
+        const updates: Record<string, any> = {};
+        if (action.newAmount !== undefined && action.newAmount > 0) updates.amount = action.newAmount;
+        if (action.newDescription) updates.description = action.newDescription;
+        if (action.newCategory) updates.category = action.newCategory;
+        if (action.newDate) {
+          const nd = resolveDate(action.newDate);
+          updates.date = nd;
+        }
+        if (Object.keys(updates).length === 0) {
+          return { success: false, message: 'Nothing to change — provide newAmount, newDescription, newCategory, or newDate.', action };
+        }
+        // Adjust wallet if amount changed
+        if (updates.amount && tx.walletId) {
+          const diff = updates.amount - tx.amount;
+          if (tx.type === 'expense') {
+            if (diff > 0) useWalletStore.getState().deductFromWallet(tx.walletId, diff);
+            else if (diff < 0) useWalletStore.getState().addToWallet(tx.walletId, Math.abs(diff));
+          } else if (tx.type === 'income') {
+            if (diff > 0) useWalletStore.getState().addToWallet(tx.walletId, diff);
+            else if (diff < 0) useWalletStore.getState().deductFromWallet(tx.walletId, Math.abs(diff));
+          }
+        }
+        usePersonalStore.getState().updateTransaction(tx.id, updates);
+        const changes: string[] = [];
+        if (updates.amount) changes.push(`amount → RM ${updates.amount.toFixed(2)}`);
+        if (updates.description) changes.push(`description → "${updates.description}"`);
+        if (updates.category) changes.push(`category → ${updates.category}`);
+        if (updates.date) changes.push(`date → ${format(updates.date, 'dd MMM')}`);
+        return {
+          success: true,
+          message: `Updated "${tx.description}": ${changes.join(', ')}`,
+          action,
+        };
+      }
+
+      // ── Budget Management ────────────────────────────────
+      case 'add_budget': {
+        const cat = action.budgetCategory || action.category || action.description || 'other';
+        const now = new Date();
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        usePersonalStore.getState().addBudget({
+          category: cat,
+          allocatedAmount: action.amount || 0,
+          period: 'monthly',
+          startDate: now,
+          endDate: monthEnd,
+        });
+        return {
+          success: true,
+          message: `Budget set — RM ${(action.amount || 0).toFixed(2)} for ${cat}`,
+          action,
+        };
+      }
+
+      case 'edit_budget': {
+        const { budgets } = usePersonalStore.getState();
+        const cat = (action.budgetCategory || action.description || '').toLowerCase();
+        const budget = budgets.find((b) => b.category.toLowerCase() === cat || b.category.toLowerCase().includes(cat) || cat.includes(b.category.toLowerCase()));
+        if (!budget) {
+          const available = budgets.map((b) => b.category).join(', ');
+          return { success: false, message: `No budget matching "${cat}". You have: ${available || 'none'}`, action };
+        }
+        const updates: Record<string, any> = {};
+        if (action.amount && action.amount > 0) updates.allocatedAmount = action.amount;
+        if (action.newAmount && action.newAmount > 0) updates.allocatedAmount = action.newAmount;
+        if (Object.keys(updates).length === 0) {
+          return { success: false, message: 'Nothing to change — provide an amount.', action };
+        }
+        usePersonalStore.getState().updateBudget(budget.id, updates);
+        return {
+          success: true,
+          message: `Budget updated — ${budget.category} now RM ${(updates.allocatedAmount || budget.allocatedAmount).toFixed(2)}`,
+          action,
+        };
+      }
+
+      case 'delete_budget': {
+        const { budgets } = usePersonalStore.getState();
+        const cat = (action.budgetCategory || action.description || '').toLowerCase();
+        const budget = budgets.find((b) => b.category.toLowerCase() === cat || b.category.toLowerCase().includes(cat) || cat.includes(b.category.toLowerCase()));
+        if (!budget) {
+          return { success: false, message: `No budget matching "${cat}".`, action };
+        }
+        usePersonalStore.getState().deleteBudget(budget.id);
+        return {
+          success: true,
+          message: `Budget removed — ${budget.category}`,
+          action,
+        };
+      }
+
+      // ── Debt Management ─────────────────────────────────
+      case 'delete_debt': {
+        const personName = action.person;
+        if (!personName) {
+          return { success: false, message: 'No person specified for debt deletion.', action };
+        }
+        const debts = useDebtStore.getState().debts;
+        const matchingDebt = debts.find(
+          (d) => d.contact.name.toLowerCase() === personName.toLowerCase() && d.status !== 'settled'
+        );
+        if (!matchingDebt) {
+          return { success: false, message: `No active debt found for ${personName}.`, action };
+        }
+        useDebtStore.getState().deleteDebt(matchingDebt.id);
+        return {
+          success: true,
+          message: `Debt deleted — ${personName}'s RM ${matchingDebt.totalAmount.toFixed(2)}`,
+          action,
+        };
+      }
+
+      case 'edit_debt': {
+        const personName = action.person;
+        if (!personName) {
+          return { success: false, message: 'No person specified for debt edit.', action };
+        }
+        const debts = useDebtStore.getState().debts;
+        const matchingDebt = debts.find(
+          (d) => d.contact.name.toLowerCase() === personName.toLowerCase() && d.status !== 'settled'
+        );
+        if (!matchingDebt) {
+          return { success: false, message: `No active debt found for ${personName}.`, action };
+        }
+        const updates: Record<string, any> = {};
+        if (action.amount && action.amount > 0) updates.totalAmount = action.amount;
+        if (action.newAmount && action.newAmount > 0) updates.totalAmount = action.newAmount;
+        if (action.newPerson) {
+          updates.contact = { ...matchingDebt.contact, name: action.newPerson };
+        }
+        if (action.newDescription) updates.description = action.newDescription;
+        if (Object.keys(updates).length === 0) {
+          return { success: false, message: 'Nothing to change — provide amount, newPerson, or newDescription.', action };
+        }
+        useDebtStore.getState().updateDebt(matchingDebt.id, updates);
+        const finalName = action.newPerson || personName;
+        const finalAmt = updates.totalAmount || matchingDebt.totalAmount;
+        return {
+          success: true,
+          message: `Debt updated — ${finalName} now RM ${finalAmt.toFixed(2)}`,
+          action,
+        };
+      }
+
+      // ── Goal Lifecycle ──────────────────────────────────
+      case 'pause_goal': {
+        const goals = usePersonalStore.getState().goals;
+        const name = (action.goalName || action.description || '').toLowerCase();
+        const goal = goals.find(
+          (g) => g.name.toLowerCase().includes(name) || name.includes(g.name.toLowerCase())
+        );
+        if (!goal) {
+          const available = goals.map((g) => g.name).join(', ');
+          return { success: false, message: `No goal matching "${name}". You have: ${available || 'none'}`, action };
+        }
+        if (goal.isPaused) {
+          usePersonalStore.getState().resumeGoal(goal.id);
+          return { success: true, message: `Resumed "${goal.name}" — back on track`, action };
+        }
+        usePersonalStore.getState().pauseGoal(goal.id);
+        return { success: true, message: `Paused "${goal.name}" — you can resume anytime`, action };
+      }
+
+      case 'archive_goal': {
+        const goals = usePersonalStore.getState().goals;
+        const name = (action.goalName || action.description || '').toLowerCase();
+        const goal = goals.find(
+          (g) => g.name.toLowerCase().includes(name) || name.includes(g.name.toLowerCase())
+        );
+        if (!goal) {
+          const available = goals.map((g) => g.name).join(', ');
+          return { success: false, message: `No goal matching "${name}". You have: ${available || 'none'}`, action };
+        }
+        usePersonalStore.getState().archiveGoal(goal.id);
+        return { success: true, message: `Archived "${goal.name}" — nice work!`, action };
+      }
+
+      case 'delete_goal': {
+        const goals = usePersonalStore.getState().goals;
+        const name = (action.goalName || action.description || '').toLowerCase();
+        const goal = goals.find(
+          (g) => g.name.toLowerCase().includes(name) || name.includes(g.name.toLowerCase())
+        );
+        if (!goal) {
+          const available = goals.map((g) => g.name).join(', ');
+          return { success: false, message: `No goal matching "${name}". You have: ${available || 'none'}`, action };
+        }
+        usePersonalStore.getState().deleteGoal(goal.id);
+        return { success: true, message: `Deleted goal "${goal.name}"`, action };
+      }
+
+      // ── Subscription & Wallet ──────────────────────────
+      case 'pause_subscription': {
+        const subs = usePersonalStore.getState().subscriptions;
+        const name = (action.description || '').toLowerCase();
+        const sub = subs.find(
+          (s) => s.name.toLowerCase().includes(name) || name.includes(s.name.toLowerCase())
+        );
+        if (!sub) {
+          return { success: false, message: `No subscription matching "${action.description}".`, action };
+        }
+        usePersonalStore.getState().toggleSubscriptionPause(sub.id);
+        const wasPaused = sub.isPaused;
+        return {
+          success: true,
+          message: wasPaused
+            ? `Resumed "${sub.name}" — RM ${sub.amount.toFixed(2)}/${sub.billingCycle}`
+            : `Paused "${sub.name}" — won't count until you resume`,
+          action,
+        };
+      }
+
+      case 'add_wallet': {
+        const walletName = action.description || 'New Wallet';
+        useWalletStore.getState().addWallet({
+          name: walletName,
+          type: action.walletType || 'ewallet',
+          balance: action.amount || 0,
+          color: action.walletColor || '#4F5104',
+          icon: action.walletIcon || 'wallet',
+          isDefault: false,
+        });
+        return {
+          success: true,
+          message: `Wallet added — ${walletName}${action.amount ? ` with RM ${action.amount.toFixed(2)}` : ''}`,
+          action,
+        };
+      }
+
       default:
         return { success: false, message: `Unknown action: ${action.type}`, action };
     }
@@ -692,12 +1009,63 @@ AVAILABLE ACTIONS:
    {"type":"withdraw_goal","amount":NUMBER,"description":"GOAL_NAME","goalName":"GOAL_NAME"}
    Use when user says "take RM 500 from japan fund", "keluarkan duit dari goal", "withdraw from emergency fund".
 
+18. delete_transaction — Delete a transaction from history
+   {"type":"delete_transaction","amount":NUMBER,"description":"TEXT","matchType":"expense"|"income","date":"YYYY-MM-DD"}
+   Matches by description (fuzzy) + amount (exact) + optional date + optional matchType. Deletes the most recent match.
+   Use "deleteAll":true to delete ALL matches (e.g. duplicate entries).
+   Wallet balance is automatically reversed. Use when user says "delete", "remove", "buang", "wrong entry", "salah".
+
+19. edit_transaction — Edit/update an existing transaction
+   {"type":"edit_transaction","amount":NUMBER,"description":"TEXT","newAmount":NUMBER,"newDescription":"TEXT","newCategory":"CATEGORY","newDate":"YYYY-MM-DD"}
+   amount + description identify the transaction to edit. newAmount/newDescription/newCategory/newDate are the changes.
+   Wallet balance is automatically adjusted if amount changes. Use when user says "change", "edit", "fix", "betulkan", "tukar".
+
+20. add_budget — Set a monthly budget for a category
+   {"type":"add_budget","amount":500,"budgetCategory":"food","description":"food budget"}
+   Use when user says "set budget", "budget for", "bajet".
+
+21. edit_budget — Change a budget amount
+   {"type":"edit_budget","amount":600,"budgetCategory":"food","description":"food budget"}
+   Fuzzy matches category name. Use when user says "change budget", "increase budget", "kurangkan bajet".
+
+22. delete_budget — Remove a budget
+   {"type":"delete_budget","budgetCategory":"food","description":"food budget"}
+   Use when user says "remove budget", "buang bajet", "delete budget".
+
+23. delete_debt — Remove a debt entry entirely
+   {"type":"delete_debt","person":"ali","description":"ali's debt"}
+   Use when user says "delete debt", "wrong debt entry", "buang hutang". NOT for settling — use forgive_debt for that.
+
+24. edit_debt — Change debt amount or person
+   {"type":"edit_debt","person":"ali","amount":500,"description":"ali's debt"}
+   Use when user says "change debt amount", "actually ali owes RM 500", "betulkan hutang".
+
+25. pause_goal — Pause or resume a savings goal (toggles)
+   {"type":"pause_goal","goalName":"japan trip","description":"pause japan goal"}
+   Use when user says "pause goal", "jeda", "resume goal", "sambung simpan".
+
+26. archive_goal — Mark a goal as completed/done
+   {"type":"archive_goal","goalName":"emergency fund","description":"archive goal"}
+   Use when user says "done with goal", "archive", "siap", "goal completed".
+
+27. delete_goal — Remove a goal entirely
+   {"type":"delete_goal","goalName":"travel","description":"delete travel goal"}
+   Use when user says "delete goal", "buang goal", "remove goal".
+
+28. pause_subscription — Pause or unpause a subscription (toggles)
+   {"type":"pause_subscription","description":"netflix"}
+   Use when user says "pause subscription", "jeda netflix", "resume spotify".
+
+29. add_wallet — Create a new wallet
+   {"type":"add_wallet","description":"Emergency Fund","amount":0,"walletType":"ewallet"}
+   walletType: bank, ewallet, credit. Use when user says "add wallet", "tambah wallet", "create wallet".
+
 DATE OVERRIDE:
 Any action can include "date":"YYYY-MM-DD" to record for a past/future date.
 Example: {"type":"add_expense","amount":50,"description":"dinner yesterday","category":"food","date":"2026-03-12"}
 
 RULES:
-- Only include ACTION blocks when the user CLEARLY asks to add/record/create something
+- Only include ACTION blocks when the user CLEARLY asks to add/record/create/delete/edit something
 - NEVER include ACTION blocks when the user is just asking questions about their finances
 - wallet is optional — only include if the user mentions a specific wallet/bank
 - Always confirm what you did in your text response
@@ -712,6 +1080,12 @@ RULES:
 - For update_subscription: only include fields that are changing (newAmount and/or billingCycle).
 - For add_bnpl: the creditWallet must be a credit-type wallet (SPayLater, credit card). Records both the expense and credit usage.
 - For repay_credit: fromWallet is the bank/ewallet paying off the credit. If user doesn't mention source, omit fromWallet.
+- For delete_transaction: match using description + amount + matchType. If user wants to fix a wrong amount, prefer edit_transaction over deleting + re-adding. If there are duplicates, use deleteAll:true.
+- For edit_transaction: match the OLD values (amount, description), then provide the NEW values (newAmount, newDescription, newCategory, newDate). NEVER add correction entries — just edit directly.
+- ALWAYS prefer edit_transaction over "delete + re-add" or "add correction entry". Users want simple, direct fixes.
+- ALWAYS prefer edit_budget over "delete + re-add budget". Same for edit_debt.
+- For pause_goal / pause_subscription — if user says "unpause", "resume", "sambung", still use the same action type (it toggles automatically).
+- For delete_debt vs forgive_debt: delete_debt REMOVES the record entirely (wrong entry). forgive_debt SETTLES it (intentional write-off). Ask if unsure.
 
 EXAMPLES:
 
@@ -786,4 +1160,74 @@ Response: Created your laptop savings goal!
 Withdraw from goal:
 User: "ambil RM 500 dari emergency fund"
 Response: Withdrawing from your Emergency Fund.
-[ACTION]{"type":"withdraw_goal","amount":500,"description":"Emergency Fund","goalName":"Emergency Fund"}[/ACTION]`;
+[ACTION]{"type":"withdraw_goal","amount":500,"description":"Emergency Fund","goalName":"Emergency Fund"}[/ACTION]
+
+Delete transaction:
+User: "delete the RM 2600 salary entry"
+Response: Deleted the salary entry.
+[ACTION]{"type":"delete_transaction","amount":2600,"description":"salary","matchType":"income"}[/ACTION]
+
+Delete duplicate entries:
+User: "there are two RM 2600 salary entries, delete both"
+Response: Removing both duplicate entries.
+[ACTION]{"type":"delete_transaction","amount":2600,"description":"salary","matchType":"income","deleteAll":true}[/ACTION]
+
+Edit transaction amount:
+User: "my salary is actually RM 2900, not RM 2600"
+Response: Fixed — updated your salary to RM 2,900.00.
+[ACTION]{"type":"edit_transaction","amount":2600,"description":"salary","matchType":"income","newAmount":2900}[/ACTION]
+
+Edit transaction details:
+User: "change yesterday's grab to transport category"
+Response: Updated the category.
+[ACTION]{"type":"edit_transaction","amount":0,"description":"grab","newCategory":"transport","date":"2026-03-18"}[/ACTION]
+
+Set budget:
+User: "set food budget RM 500"
+Response: Budget set for food!
+[ACTION]{"type":"add_budget","amount":500,"budgetCategory":"food","description":"food budget"}[/ACTION]
+
+Edit budget:
+User: "change food budget to RM 600"
+Response: Updated your food budget.
+[ACTION]{"type":"edit_budget","amount":600,"budgetCategory":"food","description":"food budget"}[/ACTION]
+
+Delete budget:
+User: "buang bajet transport"
+Response: Removed your transport budget.
+[ACTION]{"type":"delete_budget","budgetCategory":"transport","description":"transport budget"}[/ACTION]
+
+Delete debt:
+User: "delete ali's debt, salah masuk"
+Response: Removed Ali's debt entry.
+[ACTION]{"type":"delete_debt","person":"ali","description":"ali's debt"}[/ACTION]
+
+Edit debt:
+User: "actually ali owes RM 500 not RM 300"
+Response: Fixed — Ali's debt updated.
+[ACTION]{"type":"edit_debt","person":"ali","amount":500,"description":"ali's debt"}[/ACTION]
+
+Pause goal:
+User: "pause japan trip goal"
+Response: Paused your Japan Trip goal.
+[ACTION]{"type":"pause_goal","goalName":"japan trip","description":"pause japan goal"}[/ACTION]
+
+Archive goal:
+User: "dah siap emergency fund goal"
+Response: Nice — archived your Emergency Fund goal!
+[ACTION]{"type":"archive_goal","goalName":"emergency fund","description":"archive goal"}[/ACTION]
+
+Delete goal:
+User: "delete travel goal"
+Response: Removed your Travel goal.
+[ACTION]{"type":"delete_goal","goalName":"travel","description":"delete travel goal"}[/ACTION]
+
+Pause subscription:
+User: "pause netflix dulu"
+Response: Paused your Netflix subscription.
+[ACTION]{"type":"pause_subscription","description":"netflix"}[/ACTION]
+
+Add wallet:
+User: "add wallet called Tabung Kecemasan"
+Response: Created your new wallet!
+[ACTION]{"type":"add_wallet","description":"Tabung Kecemasan","amount":0,"walletType":"ewallet"}[/ACTION]`;

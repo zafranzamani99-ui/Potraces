@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,12 +15,15 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, successNotification } from '../../../services/haptics';
 
 const PLATFORMS = ['Grab', 'Foodpanda', 'Lalamove', 'ShopeeFood', 'Other'];
 
 const AddEarnings: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation();
   const { showToast } = useToast();
   const currency = useSettingsStore((s) => s.currency);
@@ -108,7 +111,7 @@ const AddEarnings: React.FC = () => {
             value={amount}
             onChangeText={setAmount}
             placeholder="0"
-            placeholderTextColor={CALM.border}
+            placeholderTextColor={C.border}
             keyboardType="decimal-pad"
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
@@ -124,7 +127,7 @@ const AddEarnings: React.FC = () => {
           }}
           activeOpacity={0.7}
         >
-          <Feather name="calendar" size={18} color={CALM.textSecondary} />
+          <Feather name="calendar" size={18} color={C.textSecondary} />
           <Text style={styles.fieldText}>{getDateLabel()}</Text>
         </TouchableOpacity>
 
@@ -172,7 +175,7 @@ const AddEarnings: React.FC = () => {
               value={customPlatform}
               onChangeText={setCustomPlatform}
               placeholder="which platform?"
-              placeholderTextColor={CALM.textMuted}
+              placeholderTextColor={C.textMuted}
               returnKeyType="done"
               onSubmitEditing={Keyboard.dismiss}
               autoFocus
@@ -182,13 +185,13 @@ const AddEarnings: React.FC = () => {
 
         {/* Note */}
         <View style={styles.noteRow}>
-          <Feather name="edit-3" size={18} color={CALM.textSecondary} />
+          <Feather name="edit-3" size={18} color={C.textSecondary} />
           <TextInput
             style={styles.noteInput}
             value={note}
             onChangeText={setNote}
             placeholder="good day? slow day?"
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
           />
@@ -218,10 +221,10 @@ const AddEarnings: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -240,12 +243,12 @@ const styles = StyleSheet.create({
   },
   currencySymbol: {
     ...TYPE.amount,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginRight: SPACING.sm,
   },
   amountInput: {
     ...TYPE.amount,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     minWidth: 100,
     textAlign: 'center',
   },
@@ -256,19 +259,19 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     minHeight: 44,
   },
   fieldText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   platformSection: {
     paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   platformRow: {
     flexDirection: 'row',
@@ -279,14 +282,14 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.bar,
+    backgroundColor: C.bar,
   },
   platformPillActive: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
   },
   platformText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   platformTextActive: {
     color: '#FFFFFF',
@@ -294,10 +297,10 @@ const styles = StyleSheet.create({
   },
   customPlatformInput: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginTop: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.sm,
     minHeight: 44,
   },
@@ -308,16 +311,16 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   noteInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   saveButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',
@@ -326,7 +329,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveButtonDisabled: {
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -334,7 +337,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   saveButtonTextDisabled: {
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 });
 

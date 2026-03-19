@@ -1,5 +1,13 @@
-import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { Text, TextStyle, Animated, Easing } from 'react-native';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Text, TextStyle } from 'react-native';
+import {
+  useSharedValue,
+  withTiming,
+  withSpring,
+  useAnimatedReaction,
+  Easing,
+  runOnJS,
+} from 'react-native-reanimated';
 
 // ─── TYPES ──────────────────────────────────────────────────
 interface AnimatedNumberProps {
@@ -24,27 +32,35 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   easing = 'easeOut',
   onComplete,
 }) => {
-  const animatedValue = useRef(new Animated.Value(value)).current;
-  const prevValue = useRef(value);
+  const animatedValue = useSharedValue(value);
+  const isFirstRender = useRef(true);
   const [displayText, setDisplayText] = useState(
     `${prefix}${value.toFixed(decimals)}${suffix}`
   );
 
-  // Stabilize onComplete to avoid infinite re-render when passed inline
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
   const stableOnComplete = useCallback(() => {
     onCompleteRef.current?.();
   }, []);
 
+  const updateText = useCallback((v: number) => {
+    setDisplayText(`${prefix}${v.toFixed(decimals)}${suffix}`);
+  }, [prefix, suffix, decimals]);
+
+  useAnimatedReaction(
+    () => animatedValue.value,
+    (current) => {
+      runOnJS(updateText)(current);
+    },
+  );
+
   useEffect(() => {
-    const from = prevValue.current;
-    prevValue.current = value;
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
 
-    // Set starting point before animation
-    animatedValue.setValue(from);
-
-    // Select easing function
     const easingFunc = (() => {
       switch (easing) {
         case 'linear':
@@ -52,37 +68,20 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
         case 'easeInOut':
           return Easing.inOut(Easing.ease);
         case 'easeOut':
-          return Easing.out(Easing.ease);
         default:
           return Easing.out(Easing.ease);
       }
     })();
 
-    // Listen to animated value changes to update display text
-    const listenerId = animatedValue.addListener(({ value: v }) => {
-      setDisplayText(`${prefix}${v.toFixed(decimals)}${suffix}`);
-    });
-
-    // Animate the value change
     if (easing === 'spring') {
-      Animated.spring(animatedValue, {
-        toValue: value,
-        useNativeDriver: false,
-        speed: 12,
-        bounciness: 4,
-      }).start(stableOnComplete);
+      animatedValue.value = withSpring(value, { mass: 1, damping: 14, stiffness: 120 }, (finished) => {
+        if (finished) runOnJS(stableOnComplete)();
+      });
     } else {
-      Animated.timing(animatedValue, {
-        toValue: value,
-        duration,
-        easing: easingFunc,
-        useNativeDriver: false,
-      }).start(stableOnComplete);
+      animatedValue.value = withTiming(value, { duration, easing: easingFunc }, (finished) => {
+        if (finished) runOnJS(stableOnComplete)();
+      });
     }
-
-    return () => {
-      animatedValue.removeListener(listenerId);
-    };
   }, [value, duration, easing]);
 
   return (

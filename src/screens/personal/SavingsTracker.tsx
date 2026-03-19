@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Pressable,
   Modal,
@@ -11,7 +10,9 @@ import {
   Alert,
   Keyboard,
   Dimensions,
+  InteractionManager,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +26,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import {
   CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha,
 } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
@@ -35,6 +37,7 @@ import { useCategories } from '../../hooks/useCategories';
 import { SavingsAccount, SavingsSortBy, SnapshotType } from '../../types';
 import { CategoryOption } from '../../types';
 import { lightTap, selectionChanged } from '../../services/haptics';
+import { useT } from '../../i18n';
 
 const MAX_ACCOUNTS = 5;
 const SCREEN_W = Dimensions.get('window').width;
@@ -56,7 +59,7 @@ const TIME_RANGES: { key: TimeRange; label: string }[] = [
 const SORT_OPTIONS: { key: SavingsSortBy; label: string }[] = [
   { key: 'manual', label: 'Manual' },
   { key: 'value', label: 'Value' },
-  { key: 'return', label: 'Return' },
+  { key: 'return', label: 'Growth' },
   { key: 'updated', label: 'Updated' },
 ];
 
@@ -73,6 +76,9 @@ const MILESTONES = [
 ];
 
 const SavingsTracker: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const {
@@ -114,6 +120,13 @@ const SavingsTracker: React.FC = () => {
 
   // Stale reminder
   const [reminderDismissed, setReminderDismissed] = useState(false);
+
+  // ── Defer heavy content until nav transition completes ──
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setReady(true));
+    return () => task.cancel();
+  }, []);
 
   // ── Record open on screen blur (for "since last check") ──
   useFocusEffect(
@@ -438,6 +451,7 @@ const SavingsTracker: React.FC = () => {
     const goalName = goalNameValue.trim() || undefined;
 
     if (editingAccount) {
+      const valueChanged = cur !== editingAccount.currentValue;
       updateAccount(editingAccount.id, {
         name: name.trim(),
         type: selectedType,
@@ -446,6 +460,10 @@ const SavingsTracker: React.FC = () => {
         currentValue: cur,
         target, goalName, annualRate,
       });
+      // Add history snapshot if value changed so sparkline stays in sync
+      if (valueChanged) {
+        addSnapshot(editingAccount.id, cur, 'Edit');
+      }
       showToast('Account updated', 'success');
     } else {
       addAccount({
@@ -555,11 +573,17 @@ const SavingsTracker: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
       >
+        {!ready ? (
+          <View style={{ alignItems: 'center', paddingTop: 80 }}>
+            <Text style={styles.heroLabel}>loading...</Text>
+          </View>
+        ) : null}
         {/* ═══ HERO SECTION ═══ */}
-        {accounts.length > 0 && (
+        {ready && accounts.length > 0 && (
           <View style={styles.heroCard}>
-            <Text style={styles.heroLabel}>total savings</Text>
+            <Text style={styles.heroLabel}>{t.savings.totalSaved.toLowerCase()}</Text>
             <Text style={styles.heroAmount}>
               {fmtAmount(portfolio.totalCurrent)}
             </Text>
@@ -568,16 +592,16 @@ const SavingsTracker: React.FC = () => {
             {sinceLastCheck !== null && (
               <View style={[
                 styles.sinceLastBadge,
-                { backgroundColor: withAlpha(sinceLastCheck >= 0 ? CALM.positive : CALM.neutral, 0.08) },
+                { backgroundColor: withAlpha(sinceLastCheck >= 0 ? C.positive : C.neutral, 0.08) },
               ]}>
                 <Feather
                   name={sinceLastCheck >= 0 ? 'trending-up' : 'trending-down'}
                   size={12}
-                  color={sinceLastCheck >= 0 ? CALM.positive : CALM.neutral}
+                  color={sinceLastCheck >= 0 ? C.positive : C.neutral}
                 />
                 <Text style={[
                   styles.sinceLastText,
-                  { color: sinceLastCheck >= 0 ? CALM.positive : CALM.neutral },
+                  { color: sinceLastCheck >= 0 ? C.positive : C.neutral },
                 ]}>
                   {sinceLastCheck >= 0 ? '+' : ''}{fmtAmount(sinceLastCheck)} since last check
                 </Text>
@@ -615,7 +639,7 @@ const SavingsTracker: React.FC = () => {
               {periodChange && (
                 <Text style={[
                   styles.periodChangeText,
-                  { color: periodChange.diff >= 0 ? CALM.positive : CALM.neutral },
+                  { color: periodChange.diff >= 0 ? C.positive : C.neutral },
                 ]}>
                   {periodChange.diff >= 0 ? '+' : ''}{periodChange.pct.toFixed(1)}%
                 </Text>
@@ -631,14 +655,14 @@ const SavingsTracker: React.FC = () => {
               <View style={styles.heroStatDivider} />
               <View style={styles.heroStatItem}>
                 <Text style={styles.heroStatLabel}>growth</Text>
-                <Text style={[styles.heroStatValue, { color: portfolio.totalGain >= 0 ? CALM.positive : CALM.neutral }]}>
+                <Text style={[styles.heroStatValue, { color: portfolio.totalGain >= 0 ? C.positive : C.neutral }]}>
                   {portfolio.totalGain >= 0 ? '+' : ''}{fmtAmount(portfolio.totalGain)}
                 </Text>
               </View>
               <View style={styles.heroStatDivider} />
               <View style={styles.heroStatItem}>
-                <Text style={styles.heroStatLabel}>return</Text>
-                <Text style={[styles.heroStatValue, { color: portfolio.totalReturn >= 0 ? CALM.positive : CALM.neutral }]}>
+                <Text style={styles.heroStatLabel}>growth</Text>
+                <Text style={[styles.heroStatValue, { color: portfolio.totalReturn >= 0 ? C.positive : C.neutral }]}>
                   {portfolio.totalReturn >= 0 ? '+' : ''}{portfolio.totalReturn.toFixed(1)}%
                 </Text>
               </View>
@@ -647,12 +671,12 @@ const SavingsTracker: React.FC = () => {
         )}
 
         {/* ═══ INSIGHTS CARDS ═══ */}
-        {insights && accounts.length > 0 && (
+        {ready && insights && accounts.length > 0 && (
           <View style={styles.insightsRow}>
             {/* Projected annual earnings */}
             {insights.projectedEarnings > 0 && (
               <View style={styles.insightCard}>
-                <Feather name="sun" size={16} color={CALM.gold} />
+                <Feather name="sun" size={16} color={C.gold} />
                 <Text style={styles.insightValue}>{fmtShort(insights.projectedEarnings)}</Text>
                 <Text style={styles.insightLabel}>est. earnings{'\n'}this year</Text>
               </View>
@@ -661,7 +685,7 @@ const SavingsTracker: React.FC = () => {
             {/* Next milestone */}
             {insights.nextMilestone && insights.toMilestone !== null && (
               <View style={styles.insightCard}>
-                <Feather name="flag" size={16} color={CALM.accent} />
+                <Feather name="flag" size={16} color={C.accent} />
                 <Text style={styles.insightValue}>{fmtShort(insights.toMilestone)}</Text>
                 <Text style={styles.insightLabel}>to {fmtShort(insights.nextMilestone)}{'\n'}milestone</Text>
               </View>
@@ -670,7 +694,7 @@ const SavingsTracker: React.FC = () => {
             {/* Best performer this month */}
             {insights.bestPerformer && insights.bestPct > 0 && (
               <View style={styles.insightCard}>
-                <Feather name="award" size={16} color={CALM.bronze} />
+                <Feather name="award" size={16} color={C.bronze} />
                 <Text style={styles.insightValue} numberOfLines={1}>{insights.bestPerformer.name}</Text>
                 <Text style={styles.insightLabel}>+{insights.bestPct.toFixed(1)}%{'\n'}this month</Text>
               </View>
@@ -679,7 +703,7 @@ const SavingsTracker: React.FC = () => {
             {/* This month activity (fallback if no other insights) */}
             {portfolio.monthContributed > 0 && !insights.projectedEarnings && (
               <View style={styles.insightCard}>
-                <Feather name="plus-circle" size={16} color={CALM.positive} />
+                <Feather name="plus-circle" size={16} color={C.positive} />
                 <Text style={styles.insightValue}>{fmtShort(portfolio.monthContributed)}</Text>
                 <Text style={styles.insightLabel}>added this{'\n'}month</Text>
               </View>
@@ -688,10 +712,10 @@ const SavingsTracker: React.FC = () => {
         )}
 
         {/* ═══ STALE REMINDER ═══ */}
-        {staleAccount && (
+        {ready && staleAccount && (
           <View style={styles.reminderCard}>
             <View style={styles.reminderContent}>
-              <Feather name="clock" size={16} color={CALM.gold} />
+              <Feather name="clock" size={16} color={C.gold} />
               <Text style={styles.reminderText}>
                 {staleAccount.account.name} hasn't been updated in {staleAccount.days} days
               </Text>
@@ -708,14 +732,14 @@ const SavingsTracker: React.FC = () => {
                 onPress={() => setReminderDismissed(true)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Feather name="x" size={16} color={CALM.textMuted} />
+                <Feather name="x" size={16} color={C.textMuted} />
               </TouchableOpacity>
             </View>
           </View>
         )}
 
         {/* ═══ BREAKDOWN ═══ */}
-        {breakdown && (
+        {ready && breakdown && (
           <View style={styles.breakdownCard}>
             <Text style={styles.sectionLabel}>where your money lives</Text>
             {breakdown.map((item) => (
@@ -733,7 +757,7 @@ const SavingsTracker: React.FC = () => {
         )}
 
         {/* ═══ SORT + ACCOUNT COUNT ═══ */}
-        {accounts.length > 1 && (
+        {ready && accounts.length > 1 && (
           <View style={styles.sortRow}>
             <View style={styles.sortPills}>
               {SORT_OPTIONS.map((opt) => (
@@ -754,7 +778,7 @@ const SavingsTracker: React.FC = () => {
         )}
 
         {/* ═══ ACCOUNT CARDS ═══ */}
-        {sortedAccounts.length > 0 ? (
+        {ready && (sortedAccounts.length > 0 ? (
           sortedAccounts.map((account) => {
             const info = account.typeInfo;
             const { gain, returnPct, monthGain, goalEta, projectedAnnual } = account;
@@ -794,7 +818,7 @@ const SavingsTracker: React.FC = () => {
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityLabel={`Edit ${account.name}`}
                   >
-                    <Feather name="more-horizontal" size={18} color={CALM.textMuted} />
+                    <Feather name="more-horizontal" size={18} color={C.textMuted} />
                   </TouchableOpacity>
                 </View>
 
@@ -802,9 +826,9 @@ const SavingsTracker: React.FC = () => {
                 <View style={styles.valueRow}>
                   <Text style={styles.valueCurrent}>{fmtAmount(account.currentValue)}</Text>
                   <View style={[styles.returnBadge, {
-                    backgroundColor: withAlpha(gain >= 0 ? CALM.positive : CALM.neutral, 0.08),
+                    backgroundColor: withAlpha(gain >= 0 ? C.positive : C.neutral, 0.08),
                   }]}>
-                    <Text style={[styles.returnBadgeText, { color: gain >= 0 ? CALM.positive : CALM.neutral }]}>
+                    <Text style={[styles.returnBadgeText, { color: gain >= 0 ? C.positive : C.neutral }]}>
                       {gain >= 0 ? '+' : ''}{returnPct.toFixed(1)}%
                     </Text>
                   </View>
@@ -813,7 +837,7 @@ const SavingsTracker: React.FC = () => {
                 {/* Sub stats: invested + gain */}
                 <View style={styles.subStatsRow}>
                   <Text style={styles.subStatText}>put in {fmtAmount(account.initialInvestment)}</Text>
-                  <Text style={[styles.subStatText, { color: gain >= 0 ? CALM.positive : CALM.neutral }]}>
+                  <Text style={[styles.subStatText, { color: gain >= 0 ? C.positive : C.neutral }]}>
                     {gain >= 0 ? '+' : ''}{fmtAmount(gain)}
                   </Text>
                 </View>
@@ -834,7 +858,7 @@ const SavingsTracker: React.FC = () => {
                 {/* Projected annual earnings */}
                 {projectedAnnual !== null && projectedAnnual > 0 && (
                   <View style={styles.projectedRow}>
-                    <Feather name="sun" size={12} color={CALM.gold} />
+                    <Feather name="sun" size={12} color={C.gold} />
                     <Text style={styles.projectedText}>
                       est. {fmtAmount(projectedAnnual)} earnings this year
                     </Text>
@@ -853,7 +877,7 @@ const SavingsTracker: React.FC = () => {
                     <ProgressBar
                       current={account.currentValue}
                       total={account.target}
-                      color={CALM.accent}
+                      color={C.accent}
                       height={6}
                     />
                     {goalEta && (
@@ -867,13 +891,13 @@ const SavingsTracker: React.FC = () => {
                 {/* Footer: last updated + actions */}
                 <View style={styles.accountFooter}>
                   <View style={styles.lastUpdatedRow}>
-                    {isStale && <View style={[styles.staleDot, { backgroundColor: CALM.gold }]} />}
-                    <Feather name="clock" size={11} color={isStale ? CALM.gold : CALM.textMuted} />
-                    <Text style={[styles.lastUpdatedText, isStale && { color: CALM.gold }]}>
+                    {isStale && <View style={[styles.staleDot, { backgroundColor: C.gold }]} />}
+                    <Feather name="clock" size={11} color={isStale ? C.gold : C.textMuted} />
+                    <Text style={[styles.lastUpdatedText, isStale && { color: C.gold }]}>
                       {lastSnapshot ? formatDistanceToNow(lastDate, { addSuffix: true }) : 'no updates'}
                     </Text>
                     {lastChange !== null && (
-                      <Text style={[styles.lastChangeText, { color: lastChange >= 0 ? CALM.positive : CALM.neutral }]}>
+                      <Text style={[styles.lastChangeText, { color: lastChange >= 0 ? C.positive : C.neutral }]}>
                         {lastChange >= 0 ? '+' : ''}{fmtAmount(lastChange)}
                       </Text>
                     )}
@@ -885,7 +909,7 @@ const SavingsTracker: React.FC = () => {
                       activeOpacity={0.7}
                       accessibilityLabel={`Update value for ${account.name}`}
                     >
-                      <Feather name="refresh-cw" size={14} color={CALM.accent} />
+                      <Feather name="refresh-cw" size={14} color={C.accent} />
                       <Text style={styles.actionBtnText}>update</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -894,7 +918,7 @@ const SavingsTracker: React.FC = () => {
                       activeOpacity={0.7}
                       accessibilityLabel={`View history for ${account.name}`}
                     >
-                      <Feather name="bar-chart-2" size={14} color={CALM.textSecondary} />
+                      <Feather name="bar-chart-2" size={14} color={C.textSecondary} />
                       <Text style={styles.actionBtnSecondaryText}>history</Text>
                     </TouchableOpacity>
                   </View>
@@ -905,18 +929,18 @@ const SavingsTracker: React.FC = () => {
         ) : (
           <EmptyState
             icon="trending-up"
-            title="Track Your Savings"
-            message="Monitor TNG GO+, ASB, Tabung Haji, stocks, and more — all in one place"
-            actionLabel="Add Account"
+            title={t.savings.startBuilding}
+            message={t.savings.setAside}
+            actionLabel={t.savings.addSavings}
             onAction={openAdd}
           />
-        )}
+        ))}
       </ScrollView>
 
       {/* ═══ FAB ═══ */}
       {accounts.length < MAX_ACCOUNTS && accounts.length > 0 && (
         <Button
-          title={`Add Account (${accounts.length}/${MAX_ACCOUNTS})`}
+          title={`${t.savings.addAccount} (${accounts.length}/${MAX_ACCOUNTS})`}
           onPress={openAdd}
           icon="plus"
           size="large"
@@ -936,10 +960,10 @@ const SavingsTracker: React.FC = () => {
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {editingAccount ? 'edit account' : 'add account'}
+                {editingAccount ? t.savings.editAccount : t.savings.addAccount}
               </Text>
               <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }}>
-                <Feather name="x" size={24} color={CALM.textPrimary} />
+                <Feather name="x" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -949,13 +973,13 @@ const SavingsTracker: React.FC = () => {
               nestedScrollEnabled
               contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}
             >
-              <Text style={styles.label}>account name</Text>
+              <Text style={styles.label}>{t.savings.accountName.toLowerCase()}</Text>
               <TextInput
                 style={styles.input}
                 value={name}
                 onChangeText={setName}
                 placeholder="e.g. My TNG GO+, ASB Main"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="next"
               />
 
@@ -971,7 +995,7 @@ const SavingsTracker: React.FC = () => {
                   </View>
                   <Text style={styles.dropdownTriggerText}>{getTypeInfo(selectedType).name}</Text>
                 </View>
-                <Feather name={typeDropdownOpen ? 'chevron-up' : 'chevron-down'} size={20} color={CALM.textSecondary} />
+                <Feather name={typeDropdownOpen ? 'chevron-up' : 'chevron-down'} size={20} color={C.textSecondary} />
               </TouchableOpacity>
 
               {typeDropdownOpen && (
@@ -988,10 +1012,10 @@ const SavingsTracker: React.FC = () => {
                         <View style={[styles.dropdownItemIcon, { backgroundColor: withAlpha(type.color, 0.12) }]}>
                           <Feather name={type.icon as keyof typeof Feather.glyphMap} size={16} color={type.color} />
                         </View>
-                        <Text style={[styles.dropdownItemText, isSelected && { color: CALM.accent, fontWeight: TYPOGRAPHY.weight.bold }]}>
+                        <Text style={[styles.dropdownItemText, isSelected && { color: C.accent, fontWeight: TYPOGRAPHY.weight.bold }]}>
                           {type.name}
                         </Text>
-                        {isSelected && <Feather name="check" size={16} color={CALM.accent} />}
+                        {isSelected && <Feather name="check" size={16} color={C.accent} />}
                       </TouchableOpacity>
                     );
                   })}
@@ -1006,32 +1030,32 @@ const SavingsTracker: React.FC = () => {
                     value={description}
                     onChangeText={setDescription}
                     placeholder="e.g. Stashaway, Gold, Mutual Fund"
-                    placeholderTextColor={CALM.textMuted}
+                    placeholderTextColor={C.textMuted}
                     returnKeyType="next"
                   />
                 </>
               )}
 
-              <Text style={styles.label}>initial investment</Text>
+              <Text style={styles.label}>put in</Text>
               <TextInput
                 style={styles.input}
                 value={initialInvestment}
                 onChangeText={setInitialInvestment}
                 placeholder="0.00"
                 keyboardType="decimal-pad"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
 
-              <Text style={styles.label}>current value</Text>
+              <Text style={styles.label}>now</Text>
               <TextInput
                 style={styles.input}
                 value={currentValue}
                 onChangeText={setCurrentValue}
                 placeholder="0.00"
                 keyboardType="decimal-pad"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
@@ -1044,20 +1068,20 @@ const SavingsTracker: React.FC = () => {
                 onChangeText={setAnnualRateValue}
                 placeholder="e.g. 5.5 for ASB, 3.55 for GO+"
                 keyboardType="decimal-pad"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
 
               {/* Target + goal name */}
-              <Text style={styles.label}>target value (optional)</Text>
+              <Text style={styles.label}>{t.savings.target.toLowerCase()} ({t.common.optional.toLowerCase()})</Text>
               <TextInput
                 style={styles.input}
                 value={targetValue}
                 onChangeText={setTargetValue}
                 placeholder="e.g. 50000"
                 keyboardType="decimal-pad"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
@@ -1070,7 +1094,7 @@ const SavingsTracker: React.FC = () => {
                     value={goalNameValue}
                     onChangeText={setGoalNameValue}
                     placeholder="e.g. rumah sendiri, emergency fund"
-                    placeholderTextColor={CALM.textMuted}
+                    placeholderTextColor={C.textMuted}
                     returnKeyType="done"
                   />
                 </>
@@ -1101,7 +1125,7 @@ const SavingsTracker: React.FC = () => {
                   }}
                   activeOpacity={0.7}
                 >
-                  <Feather name="trash-2" size={14} color={CALM.neutral} />
+                  <Feather name="trash-2" size={14} color={C.neutral} />
                   <Text style={styles.deleteBtnText}>delete this account</Text>
                 </TouchableOpacity>
               )}
@@ -1123,7 +1147,7 @@ const SavingsTracker: React.FC = () => {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>update value</Text>
               <TouchableOpacity onPress={() => setUpdateModalVisible(false)}>
-                <Feather name="x" size={24} color={CALM.textPrimary} />
+                <Feather name="x" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -1152,7 +1176,7 @@ const SavingsTracker: React.FC = () => {
                     onPress={() => { setSnapshotType(st.key); selectionChanged(); }}
                     activeOpacity={0.7}
                   >
-                    <Feather name={st.icon} size={14} color={snapshotType === st.key ? '#FFF' : CALM.textSecondary} />
+                    <Feather name={st.icon} size={14} color={snapshotType === st.key ? '#FFF' : C.textSecondary} />
                     <Text style={[styles.snapshotTypeText, snapshotType === st.key && styles.snapshotTypeTextActive]}>
                       {st.label}
                     </Text>
@@ -1167,7 +1191,7 @@ const SavingsTracker: React.FC = () => {
                 onChangeText={setNewValue}
                 placeholder="0.00"
                 keyboardType="decimal-pad"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="next"
                 autoFocus
               />
@@ -1178,7 +1202,7 @@ const SavingsTracker: React.FC = () => {
                 value={updateNote}
                 onChangeText={setUpdateNote}
                 placeholder={snapshotType === 'dividend' ? 'e.g. ASB annual dividend' : snapshotType === 'withdrawal' ? 'e.g. emergency use' : 'e.g. monthly check'}
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
@@ -1195,7 +1219,7 @@ const SavingsTracker: React.FC = () => {
                         <Text style={styles.updatePreviewLabel}>
                           {snapshotType === 'dividend' ? 'dividend earned' : snapshotType === 'withdrawal' ? 'withdrawn' : 'change'}
                         </Text>
-                        <Text style={[styles.updatePreviewValue, { color: diff >= 0 ? CALM.positive : CALM.neutral }]}>
+                        <Text style={[styles.updatePreviewValue, { color: diff >= 0 ? C.positive : C.neutral }]}>
                           {diff >= 0 ? '+' : ''}{fmtAmount(diff)} ({pct >= 0 ? '+' : ''}{pct.toFixed(1)}%)
                         </Text>
                       </>
@@ -1236,7 +1260,7 @@ const SavingsTracker: React.FC = () => {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{historyAccount?.name || 'history'}</Text>
               <TouchableOpacity onPress={() => setHistoryModalVisible(false)}>
-                <Feather name="x" size={24} color={CALM.textPrimary} />
+                <Feather name="x" size={24} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -1255,7 +1279,7 @@ const SavingsTracker: React.FC = () => {
                   <View style={styles.historySummaryCol}>
                     <Text style={styles.historySummaryLabel}>return</Text>
                     <Text style={[styles.historySummaryValue, {
-                      color: historyAccount.currentValue >= historyAccount.initialInvestment ? CALM.positive : CALM.neutral,
+                      color: historyAccount.currentValue >= historyAccount.initialInvestment ? C.positive : C.neutral,
                     }]}>
                       {historyAccount.initialInvestment > 0
                         ? `${(((historyAccount.currentValue - historyAccount.initialInvestment) / historyAccount.initialInvestment) * 100).toFixed(1)}%`
@@ -1281,12 +1305,12 @@ const SavingsTracker: React.FC = () => {
                 {(historyData.bestMonth || historyData.worstMonth) && (
                   <View style={styles.historyHighlights}>
                     {historyData.bestMonth ? (
-                      <Text style={[styles.historyHighlightText, { color: CALM.positive }]}>
+                      <Text style={[styles.historyHighlightText, { color: C.positive }]}>
                         best: {historyData.bestMonth}
                       </Text>
                     ) : null}
                     {historyData.worstMonth ? (
-                      <Text style={[styles.historyHighlightText, { color: CALM.neutral }]}>
+                      <Text style={[styles.historyHighlightText, { color: C.neutral }]}>
                         worst: {historyData.worstMonth}
                       </Text>
                     ) : null}
@@ -1308,7 +1332,7 @@ const SavingsTracker: React.FC = () => {
                     return (
                       <View key={snap.id} style={styles.historyItem}>
                         <View style={styles.historyItemIcon}>
-                          <Feather name={typeIcon as keyof typeof Feather.glyphMap} size={12} color={CALM.textMuted} />
+                          <Feather name={typeIcon as keyof typeof Feather.glyphMap} size={12} color={C.textMuted} />
                         </View>
                         <View style={styles.historyItemLeft}>
                           <Text style={styles.historyItemDate}>
@@ -1322,7 +1346,7 @@ const SavingsTracker: React.FC = () => {
                         <View style={styles.historyItemRight}>
                           <Text style={styles.historyItemValue}>{fmtAmount(snap.value)}</Text>
                           {diff !== null && (
-                            <Text style={[styles.historyItemDiff, { color: diff >= 0 ? CALM.positive : CALM.neutral }]}>
+                            <Text style={[styles.historyItemDiff, { color: diff >= 0 ? C.positive : C.neutral }]}>
                               {diff >= 0 ? '+' : ''}{diff.toFixed(2)}
                             </Text>
                           )}
@@ -1341,8 +1365,8 @@ const SavingsTracker: React.FC = () => {
 };
 
 // ── STYLES ──────────────────────────────────────────────────
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CALM.background },
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.background },
   scrollView: { flex: 1 },
   scrollContent: { padding: CARD_PAD, paddingBottom: 80 },
 
@@ -1351,14 +1375,14 @@ const styles = StyleSheet.create({
     padding: CARD_PAD,
     borderRadius: RADIUS.xl,
     marginBottom: SPACING.lg,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   heroLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: SPACING.xs,
@@ -1366,7 +1390,7 @@ const styles = StyleSheet.create({
   heroAmount: {
     fontSize: TYPE.amount.fontSize,
     fontWeight: TYPE.amount.fontWeight,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   sinceLastBadge: {
@@ -1400,15 +1424,15 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
   },
   timeRangePillActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
   },
   timeRangeText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   timeRangeTextActive: {
-    color: CALM.accent,
+    color: C.accent,
   },
   periodChangeText: {
     marginLeft: 'auto',
@@ -1418,21 +1442,21 @@ const styles = StyleSheet.create({
   },
   heroStatsRow: {
     flexDirection: 'row',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
   },
   heroStatItem: { flex: 1, alignItems: 'center', gap: 2 },
-  heroStatDivider: { width: 1, backgroundColor: CALM.border },
+  heroStatDivider: { width: 1, backgroundColor: C.border },
   heroStatLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   heroStatValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1444,22 +1468,22 @@ const styles = StyleSheet.create({
   },
   insightCard: {
     flex: 1,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     gap: SPACING.xs,
   },
   insightValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   insightLabel: {
     fontSize: 10,
-    color: CALM.textMuted,
+    color: C.textMuted,
     lineHeight: 13,
   },
 
@@ -1471,7 +1495,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
     marginBottom: SPACING.lg,
-    backgroundColor: CALM.highlight,
+    backgroundColor: C.highlight,
   },
   reminderContent: {
     flex: 1,
@@ -1482,7 +1506,7 @@ const styles = StyleSheet.create({
   reminderText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   reminderActions: {
     flexDirection: 'row',
@@ -1492,29 +1516,29 @@ const styles = StyleSheet.create({
   reminderBtn: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
-    backgroundColor: withAlpha(CALM.gold, 0.15),
+    backgroundColor: withAlpha(C.gold, 0.15),
     borderRadius: RADIUS.full,
   },
   reminderBtnText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
 
   // ─── Breakdown ───
   sectionLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.md,
   },
   breakdownCard: {
     padding: CARD_PAD,
     borderRadius: RADIUS.xl,
     marginBottom: SPACING.lg,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   breakdownRow: {
     flexDirection: 'row',
@@ -1525,13 +1549,13 @@ const styles = StyleSheet.create({
   breakdownName: {
     width: 72,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   breakdownBarContainer: {
     flex: 1,
     height: 8,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.full,
     overflow: 'hidden',
   },
@@ -1540,7 +1564,7 @@ const styles = StyleSheet.create({
     width: 36,
     textAlign: 'right',
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.semibold,
     fontVariant: ['tabular-nums'],
   },
@@ -1560,22 +1584,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm + 2,
     paddingVertical: SPACING.xs + 2,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.pillBg,
+    backgroundColor: C.pillBg,
   },
   sortPillActive: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   sortPillText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   sortPillTextActive: {
     color: '#FFFFFF',
   },
   accountCount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ─── Account Card ───
@@ -1597,7 +1621,7 @@ const styles = StyleSheet.create({
   accountName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   accountTypeName: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1619,7 +1643,7 @@ const styles = StyleSheet.create({
   valueCurrent: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   returnBadge: {
@@ -1639,7 +1663,7 @@ const styles = StyleSheet.create({
   },
   subStatText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   accountSparkline: {
@@ -1651,13 +1675,13 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
-    backgroundColor: withAlpha(CALM.gold, 0.06),
+    backgroundColor: withAlpha(C.gold, 0.06),
     borderRadius: RADIUS.md,
     marginBottom: SPACING.sm,
   },
   projectedText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1673,17 +1697,17 @@ const styles = StyleSheet.create({
   },
   targetLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   targetPct: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.accent,
+    color: C.accent,
     fontVariant: ['tabular-nums'],
   },
   goalEtaText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontStyle: 'italic',
     marginTop: 2,
   },
@@ -1691,7 +1715,7 @@ const styles = StyleSheet.create({
   // Footer
   accountFooter: {
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     paddingTop: SPACING.sm,
     gap: SPACING.sm,
   },
@@ -1708,7 +1732,7 @@ const styles = StyleSheet.create({
   lastUpdatedText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   lastChangeText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1726,13 +1750,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.xs,
     paddingVertical: SPACING.sm,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
     borderRadius: RADIUS.md,
   },
   actionBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   actionBtnSecondary: {
     flex: 1,
@@ -1741,15 +1765,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.xs,
     paddingVertical: SPACING.sm,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   actionBtnSecondaryText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // ─── FAB ───
@@ -1767,7 +1791,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: CARD_PAD,
@@ -1782,24 +1806,24 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   label: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xs,
     marginTop: SPACING.md,
   },
   input: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   modalActions: {
     flexDirection: 'row',
@@ -1816,7 +1840,7 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.neutral,
+    color: C.neutral,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
@@ -1825,12 +1849,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   dropdownTriggerLeft: {
     flexDirection: 'row',
@@ -1847,14 +1871,14 @@ const styles = StyleSheet.create({
   dropdownTriggerText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   dropdownList: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     marginTop: SPACING.xs,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     overflow: 'hidden',
   },
   dropdownItem: {
@@ -1864,10 +1888,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   dropdownItemSelected: {
-    backgroundColor: withAlpha(CALM.accent, 0.06),
+    backgroundColor: withAlpha(C.accent, 0.06),
   },
   dropdownItemIcon: {
     width: 32,
@@ -1880,7 +1904,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // ─── Snapshot type pills ───
@@ -1895,19 +1919,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.xs,
     paddingVertical: SPACING.sm,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   snapshotTypePillActive: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
   },
   snapshotTypeText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   snapshotTypeTextActive: {
     color: '#FFF',
@@ -1915,7 +1939,7 @@ const styles = StyleSheet.create({
 
   // ─── Update modal ───
   updateContext: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.xs,
@@ -1923,15 +1947,15 @@ const styles = StyleSheet.create({
   updateContextName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 2,
   },
   updateContextPrev: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   updatePreview: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginTop: SPACING.md,
@@ -1939,7 +1963,7 @@ const styles = StyleSheet.create({
   },
   updatePreviewLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: 4,
   },
   updatePreviewValue: {
@@ -1951,7 +1975,7 @@ const styles = StyleSheet.create({
   // ─── History modal ───
   historySummary: {
     flexDirection: 'row',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.md,
@@ -1959,13 +1983,13 @@ const styles = StyleSheet.create({
   historySummaryCol: { flex: 1, alignItems: 'center', gap: 2 },
   historySummaryLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   historySummaryValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   historyChart: {
@@ -1984,7 +2008,7 @@ const styles = StyleSheet.create({
   historyMonthHeader: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: SPACING.md,
     marginBottom: SPACING.sm,
     textTransform: 'lowercase',
@@ -1994,14 +2018,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     gap: SPACING.sm,
   },
   historyItemIcon: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2009,18 +2033,18 @@ const styles = StyleSheet.create({
   historyItemDate: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   historyItemNote: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 1,
   },
   historyItemRight: { alignItems: 'flex-end' },
   historyItemValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   historyItemDiff: {

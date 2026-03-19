@@ -1,8 +1,9 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { COLORS, CALM, SPACING, TYPOGRAPHY, RADIUS, ANIMATION } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { selectionChanged } from '../../services/haptics';
 
 const TRACK_WIDTH = 240;
@@ -12,6 +13,8 @@ const THUMB_WIDTH = TRACK_WIDTH / 2 - THUMB_PADDING;
 const THUMB_HEIGHT = TRACK_HEIGHT - THUMB_PADDING * 2;
 
 const ModeToggle: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { mode, setMode } = useAppStore();
   const businessModeEnabled = useSettingsStore((s) => s.businessModeEnabled);
   const slideAnim = useRef(new Animated.Value(mode === 'business' ? 1 : 0)).current;
@@ -44,13 +47,13 @@ const ModeToggle: React.FC = () => {
 
   const personalTextColor = slideAnim.interpolate({
     inputRange: [0, 0.5],
-    outputRange: ['#FFFFFF', CALM.textSecondary],
+    outputRange: ['#FFFFFF', C.textSecondary],
     extrapolate: 'clamp',
   });
 
   const businessTextColor = slideAnim.interpolate({
     inputRange: [0.5, 1],
-    outputRange: [CALM.textSecondary, '#FFFFFF'],
+    outputRange: [C.textSecondary, '#FFFFFF'],
     extrapolate: 'clamp',
   });
 
@@ -95,7 +98,7 @@ const ModeToggle: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   wrapper: {
     alignSelf: 'center',
     marginVertical: SPACING.sm,
@@ -104,7 +107,7 @@ const styles = StyleSheet.create({
     width: TRACK_WIDTH,
     height: TRACK_HEIGHT,
     borderRadius: RADIUS.lg,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     flexDirection: 'row',
     position: 'relative',
   },
@@ -115,7 +118,7 @@ const styles = StyleSheet.create({
     height: THUMB_HEIGHT,
     borderRadius: RADIUS.lg - 2,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   labelButton: {
     flex: 1,

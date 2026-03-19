@@ -1,7 +1,9 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
-import { COLORS, CALM, TYPOGRAPHY } from '../constants';
+import { COLORS, TYPOGRAPHY } from '../constants';
+import { useCalm } from '../hooks/useCalm';
+import { useT } from '../i18n';
 import CustomTabBar from '../components/navigation/CustomTabBar';
 
 import PersonalDashboard from '../screens/personal/Dashboard';
@@ -14,6 +16,8 @@ import Settings from '../screens/shared/Settings';
 const Tab = createBottomTabNavigator();
 
 const PersonalNavigator: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
   return (
     <Tab.Navigator
       tabBar={(props) => (
@@ -23,6 +27,8 @@ const PersonalNavigator: React.FC = () => {
         />
       )}
       screenOptions={({ route }) => ({
+        lazy: false,
+        freezeOnBlur: true,
         tabBarIcon: ({ color, size }: { color: string; size: number }) => {
           let iconName: keyof typeof Feather.glyphMap = 'circle';
 
@@ -47,12 +53,12 @@ const PersonalNavigator: React.FC = () => {
           return <Feather name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: COLORS.personal,
-        tabBarInactiveTintColor: CALM.neutral,
+        tabBarInactiveTintColor: C.textMuted,
         tabBarShowLabel: false,
         headerStyle: {
-          backgroundColor: CALM.background,
+          backgroundColor: C.background,
         },
-        headerTintColor: CALM.textPrimary,
+        headerTintColor: C.textPrimary,
         headerTitleStyle: {
           fontWeight: TYPOGRAPHY.weight.semibold as '600',
           fontSize: TYPOGRAPHY.size.lg,
@@ -62,27 +68,27 @@ const PersonalNavigator: React.FC = () => {
       <Tab.Screen
         name="Dashboard"
         component={PersonalDashboard}
-        options={{ title: 'Home', headerShown: false }}
+        options={{ title: t.tabs.home, headerShown: false }}
       />
       <Tab.Screen
         name="BudgetPlanning"
         component={BudgetPlanning}
-        options={{ title: 'Budget' }}
+        options={{ title: t.tabs.budget }}
       />
       <Tab.Screen
         name="Notes"
         component={NotesHome}
-        options={{ title: 'Notes' }}
+        options={{ title: t.tabs.notes }}
       />
       <Tab.Screen
         name="MoneyChat"
         component={MoneyChat}
-        options={{ title: 'Echo' }}
+        options={{ title: t.tabs.echo }}
       />
       <Tab.Screen
         name="Settings"
         component={Settings}
-        options={{ title: 'Settings' }}
+        options={{ title: t.tabs.settings }}
       />
     </Tab.Navigator>
   );

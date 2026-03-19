@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, memo } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -6,13 +6,14 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
+  Pressable,
   KeyboardAvoidingView,
   Platform,
   Modal,
-  ScrollView,
   Animated,
   Image,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
@@ -25,7 +26,10 @@ import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useLearningStore } from '../../store/learningStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { AIMessage, AIMessageAction } from '../../types';
+import ScreenGuide from '../../components/common/ScreenGuide';
 import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
@@ -64,6 +68,18 @@ const ACTION_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   add_savings_account: 'plus-circle',
   create_goal: 'flag',
   withdraw_goal: 'minus-circle',
+  delete_transaction: 'trash-2',
+  edit_transaction: 'edit-3',
+  add_budget: 'target',
+  edit_budget: 'edit-3',
+  delete_budget: 'trash-2',
+  delete_debt: 'trash-2',
+  edit_debt: 'edit-3',
+  pause_goal: 'pause-circle',
+  archive_goal: 'archive',
+  delete_goal: 'trash-2',
+  pause_subscription: 'pause-circle',
+  add_wallet: 'credit-card',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -84,10 +100,24 @@ const ACTION_LABELS: Record<string, string> = {
   add_savings_account: 'New Account',
   create_goal: 'New Goal',
   withdraw_goal: 'Withdraw',
+  delete_transaction: 'Delete',
+  edit_transaction: 'Edit',
+  add_budget: 'Set Budget',
+  edit_budget: 'Edit Budget',
+  delete_budget: 'Remove Budget',
+  delete_debt: 'Delete Debt',
+  edit_debt: 'Edit Debt',
+  pause_goal: 'Pause Goal',
+  archive_goal: 'Archive Goal',
+  delete_goal: 'Delete Goal',
+  pause_subscription: 'Pause Sub',
+  add_wallet: 'Add Wallet',
 };
 
 // Typing indicator — 3 olive dots with staggered animation
 const TypingDots = memo(() => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const dots = useRef([new Animated.Value(0.3), new Animated.Value(0.3), new Animated.Value(0.3)]).current;
 
   useEffect(() => {
@@ -136,12 +166,13 @@ const AnimatedBubble = memo(({ children }: { children: React.ReactNode }) => {
 
 // Highlight RM amounts in assistant text
 const HighlightedText = memo(({ text, style }: { text: string; style: any }) => {
+  const C = useCalm();
   const parts = text.split(/(RM\s?[\d,]+\.?\d*)/gi);
   return (
     <Text style={style}>
       {parts.map((part, i) =>
         /^RM\s?[\d,]+\.?\d*$/i.test(part) ? (
-          <Text key={i} style={{ fontWeight: '700', color: CALM.deepOlive }}>{part}</Text>
+          <Text key={i} style={{ fontWeight: '700', color: C.deepOlive }}>{part}</Text>
         ) : (
           <Text key={i}>{part}</Text>
         )
@@ -152,6 +183,8 @@ const HighlightedText = memo(({ text, style }: { text: string; style: any }) => 
 
 // Confirmed/failed action card (shown in chat history)
 const ActionCard = memo(({ action }: { action: AIMessageAction }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   if (!action.message && !action.description) return null;
 
   const label = action.message
@@ -165,7 +198,7 @@ const ActionCard = memo(({ action }: { action: AIMessageAction }) => {
         <Feather
           name={action.success ? (ACTION_ICONS[action.type] || 'check') : 'x'}
           size={14}
-          color={action.success ? CALM.deepOlive : CALM.textMuted}
+          color={action.success ? C.deepOlive : C.textMuted}
         />
         <Text style={[styles.actionCardText, !action.success && styles.actionCardTextFail]}>
           {label}
@@ -183,6 +216,8 @@ const PendingChip = memo(({
   action: ChatAction;
   onPress: () => void;
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const icon = ACTION_ICONS[action.type] || 'plus';
   const typeLabel = ACTION_LABELS[action.type] || action.type;
   const personLabel = action.person ? ` · ${action.person}` : '';
@@ -190,12 +225,12 @@ const PendingChip = memo(({
   return (
     <TouchableOpacity style={styles.pendingChip} activeOpacity={0.7} onPress={onPress}>
       <View style={styles.pendingChipIconWrap}>
-        <Feather name={icon} size={12} color={CALM.bronze} />
+        <Feather name={icon} size={12} color={C.bronze} />
       </View>
       <Text style={styles.pendingChipText} numberOfLines={1}>
         {action.description}{personLabel}
       </Text>
-      <Text style={styles.pendingChipAmount}>RM {action.amount.toFixed(2)}</Text>
+      {action.amount != null && <Text style={styles.pendingChipAmount}>RM {action.amount.toFixed(2)}</Text>}
     </TouchableOpacity>
   );
 });
@@ -220,6 +255,8 @@ const ActionEditModal = ({
   onConfirm: (edited: ChatAction) => void;
   onClose: () => void;
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const [desc, setDesc] = useState('');
   const [amount, setAmount] = useState('');
   const [actionType, setActionType] = useState<ChatActionType>('add_expense');
@@ -312,7 +349,8 @@ const ActionEditModal = ({
         style={styles.modalOverlayKav}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             {/* Close — top right */}
             <TouchableOpacity
@@ -320,7 +358,7 @@ const ActionEditModal = ({
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={styles.modalClose}
             >
-              <Feather name="x" size={18} color={CALM.textMuted} />
+              <Feather name="x" size={18} color={C.textMuted} />
             </TouchableOpacity>
 
             <ScrollView
@@ -344,12 +382,12 @@ const ActionEditModal = ({
                   <Feather
                     name={SWITCHABLE_TYPES.find((t) => t.key === actionType)?.icon || 'circle'}
                     size={14}
-                    color={CALM.bronze}
+                    color={C.bronze}
                   />
                   <Text style={styles.typeSelectText}>
                     {SWITCHABLE_TYPES.find((t) => t.key === actionType)?.label || actionType}
                   </Text>
-                  <Feather name="chevron-down" size={14} color={CALM.textMuted} />
+                  <Feather name="chevron-down" size={14} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
 
@@ -362,7 +400,7 @@ const ActionEditModal = ({
                   onChangeText={setAmount}
                   keyboardType="decimal-pad"
                   placeholder="0.00"
-                  placeholderTextColor={CALM.border}
+                  placeholderTextColor={C.border}
                 />
               </View>
 
@@ -372,7 +410,7 @@ const ActionEditModal = ({
                 value={desc}
                 onChangeText={setDesc}
                 placeholder="description"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
               />
 
               {/* Category dropdown */}
@@ -407,7 +445,7 @@ const ActionEditModal = ({
                       value={person}
                       onChangeText={setPerson}
                       placeholder="name"
-                      placeholderTextColor={CALM.textMuted}
+                      placeholderTextColor={C.textMuted}
                     />
                   </View>
                   <View style={styles.debtToggleRow}>
@@ -440,7 +478,7 @@ const ActionEditModal = ({
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
 
       {/* Type picker — floating centered card */}
@@ -470,12 +508,12 @@ const ActionEditModal = ({
                   activeOpacity={0.7}
                 >
                   <View style={[styles.typePickerIcon, active && styles.typePickerIconActive]}>
-                    <Feather name={t.icon} size={18} color={active ? CALM.bronze : CALM.textMuted} />
+                    <Feather name={t.icon} size={18} color={active ? C.bronze : C.textMuted} />
                   </View>
                   <Text style={[styles.typePickerText, active && styles.typePickerTextActive]}>
                     {t.label}
                   </Text>
-                  {active && <Feather name="check" size={18} color={CALM.bronze} />}
+                  {active && <Feather name="check" size={18} color={C.bronze} />}
                 </TouchableOpacity>
               );
             })}
@@ -487,6 +525,8 @@ const ActionEditModal = ({
 };
 
 const ChatBubble = memo(({ item, onSelectText }: { item: AIMessage; onSelectText: (text: string) => void }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const isUser = item.role === 'user';
   const hasText = item.content.trim().length > 0;
   const hasImage = isUser && !!item.imageUri;
@@ -535,6 +575,9 @@ const ChatBubble = memo(({ item, onSelectText }: { item: AIMessage; onSelectText
 });
 
 const MoneyChat: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<any>();
   const navigation = useNavigation();
   const headerHeight = useHeaderHeight();
@@ -662,7 +705,7 @@ const MoneyChat: React.FC = () => {
               onPress={() => setShowHistory(true)}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Feather name="clock" size={22} color={CALM.textMuted} />
+              <Feather name="clock" size={22} color={C.textMuted} />
             </TouchableOpacity>
           )}
           {chatMessages.length > 0 && (
@@ -670,7 +713,7 @@ const MoneyChat: React.FC = () => {
               onPress={() => { archiveChat(); setPendingActions([]); }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Feather name="plus" size={24} color={CALM.textMuted} />
+              <Feather name="plus" size={24} color={C.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -713,7 +756,7 @@ const MoneyChat: React.FC = () => {
     // Add the text as a chat message
     addChatMessage({ role: 'assistant', content: cleanText, timestamp: new Date().toISOString() });
 
-    // If there are actions, show them for confirmation
+    // All actions go through confirmation chips
     if (actions.length > 0) {
       setPendingActions(actions);
     }
@@ -861,12 +904,12 @@ const MoneyChat: React.FC = () => {
       >
         {chatMessages.length === 0 && !isLoading ? (
           <View style={styles.emptyState}>
-            <Feather name="message-circle" size={48} color={CALM.border} />
-            <Text style={styles.emptyTitle}>Echo</Text>
+            <Feather name="message-circle" size={48} color={C.border} />
+            <Text style={styles.emptyTitle}>{t.chat.echo}</Text>
             <Text style={styles.emptySubtitle}>
               {isBusinessMode
-                ? 'Ask anything about your earnings'
-                : 'Ask anything about your spending — or tell me to add things'}
+                ? t.chat.askBusiness
+                : t.chat.askAnything}
             </Text>
             <View style={styles.suggestions}>
               {suggestions.map((suggestion) => (
@@ -903,7 +946,7 @@ const MoneyChat: React.FC = () => {
         {/* Scroll to bottom button */}
         {showScrollDown && chatMessages.length > 0 && (
           <TouchableOpacity style={styles.scrollDownButton} onPress={scrollToBottom} activeOpacity={0.8}>
-            <Feather name="chevron-down" size={18} color={CALM.textMuted} />
+            <Feather name="chevron-down" size={18} color={C.textMuted} />
           </TouchableOpacity>
         )}
 
@@ -942,7 +985,7 @@ const MoneyChat: React.FC = () => {
         {/* Transient error notice — not saved to chat */}
         {errorNotice && !isLoading && (
           <View style={styles.errorNotice}>
-            <Feather name="alert-circle" size={14} color={CALM.bronze} />
+            <Feather name="alert-circle" size={14} color={C.bronze} />
             <Text style={styles.errorNoticeText}>{errorNotice}</Text>
             {lastFailedSend && (
               <TouchableOpacity
@@ -950,7 +993,7 @@ const MoneyChat: React.FC = () => {
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={styles.retryButton}
               >
-                <Feather name="refresh-cw" size={12} color={CALM.bronze} />
+                <Feather name="refresh-cw" size={12} color={C.bronze} />
                 <Text style={styles.retryText}>retry</Text>
               </TouchableOpacity>
             )}
@@ -958,7 +1001,7 @@ const MoneyChat: React.FC = () => {
               onPress={() => { setErrorNotice(null); setLastFailedSend(null); }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Feather name="x" size={14} color={CALM.textMuted} />
+              <Feather name="x" size={14} color={C.textMuted} />
             </TouchableOpacity>
           </View>
         )}
@@ -1004,7 +1047,7 @@ const MoneyChat: React.FC = () => {
             <Feather
               name="camera"
               size={18}
-              color={isLoading || isRecording ? CALM.border : CALM.textSecondary}
+              color={isLoading || isRecording ? C.border : C.textSecondary}
             />
           </TouchableOpacity>
           <TouchableOpacity
@@ -1015,7 +1058,7 @@ const MoneyChat: React.FC = () => {
             <Feather
               name="image"
               size={18}
-              color={isLoading || isRecording ? CALM.border : CALM.textSecondary}
+              color={isLoading || isRecording ? C.border : C.textSecondary}
             />
           </TouchableOpacity>
 
@@ -1023,8 +1066,8 @@ const MoneyChat: React.FC = () => {
             style={styles.textInput}
             value={input}
             onChangeText={setInput}
-            placeholder={isRecording ? '' : 'Ask about your money...'}
-            placeholderTextColor={CALM.textSecondary}
+            placeholder={isRecording ? '' : t.chat.askPlaceholder}
+            placeholderTextColor={C.textSecondary}
             multiline
             editable={!isLoading && !isRecording}
           />
@@ -1036,7 +1079,7 @@ const MoneyChat: React.FC = () => {
               onPress={handleSend}
               disabled={isLoading}
             >
-              <Feather name="send" size={20} color={!isLoading ? '#fff' : CALM.textSecondary} />
+              <Feather name="send" size={20} color={!isLoading ? '#fff' : C.textSecondary} />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -1051,7 +1094,7 @@ const MoneyChat: React.FC = () => {
               <Feather
                 name={isRecording ? 'square' : 'mic'}
                 size={isRecording ? 16 : 20}
-                color={isRecording ? '#fff' : (isLoading || isTranscribing ? CALM.textSecondary : CALM.accent)}
+                color={isRecording ? '#fff' : (isLoading || isTranscribing ? C.textSecondary : C.accent)}
               />
             </TouchableOpacity>
           )}
@@ -1078,7 +1121,7 @@ const MoneyChat: React.FC = () => {
                 onPress={() => setShowHistory(false)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Feather name="x" size={18} color={CALM.textMuted} />
+                <Feather name="x" size={18} color={C.textMuted} />
               </TouchableOpacity>
             </View>
             {conversations.length === 0 ? (
@@ -1118,7 +1161,7 @@ const MoneyChat: React.FC = () => {
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={{ padding: 4 }}
                     >
-                      <Feather name="trash-2" size={14} color={CALM.textMuted} />
+                      <Feather name="trash-2" size={14} color={C.textMuted} />
                     </TouchableOpacity>
                   </TouchableOpacity>
                 )}
@@ -1148,13 +1191,13 @@ const MoneyChat: React.FC = () => {
                   onPress={copyToClipboard}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Feather name="copy" size={16} color={CALM.textMuted} />
+                  <Feather name="copy" size={16} color={C.textMuted} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setSelectTextContent(null)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Feather name="x" size={18} color={CALM.textMuted} />
+                  <Feather name="x" size={18} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1170,14 +1213,24 @@ const MoneyChat: React.FC = () => {
         </TouchableOpacity>
       </Modal>
 
+      <ScreenGuide
+        id="guide_chat"
+        title={t.guide.meetEcho}
+        icon="message-circle"
+        tips={[
+          t.guide.tipChat1,
+          t.guide.tipChat2,
+          t.guide.tipChat3,
+        ]}
+      />
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   chatContainer: {
     flex: 1,
@@ -1194,11 +1247,11 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   emptySubtitle: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.lg,
     textAlign: 'center',
   },
@@ -1209,14 +1262,14 @@ const styles = StyleSheet.create({
   suggestionChip: {
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   suggestionText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Messages
@@ -1232,18 +1285,18 @@ const styles = StyleSheet.create({
   },
   userBubble: {
     alignSelf: 'flex-end',
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   assistantBubble: {
     alignSelf: 'flex-start',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   messageText: {
     fontSize: TYPE.insight.fontSize,
     lineHeight: TYPE.insight.lineHeight,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   userMessageText: {
     color: '#fff',
@@ -1260,12 +1313,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   actionCardSuccess: {
-    backgroundColor: withAlpha(CALM.deepOlive, 0.06),
-    borderColor: withAlpha(CALM.deepOlive, 0.15),
+    backgroundColor: withAlpha(C.deepOlive, 0.06),
+    borderColor: withAlpha(C.deepOlive, 0.15),
   },
   actionCardFail: {
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
-    borderColor: withAlpha(CALM.textMuted, 0.15),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
+    borderColor: withAlpha(C.textMuted, 0.15),
   },
   actionCardRow: {
     flexDirection: 'row',
@@ -1276,10 +1329,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.deepOlive,
+    color: C.deepOlive,
   },
   actionCardTextFail: {
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // Scroll to bottom
@@ -1290,9 +1343,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
@@ -1308,7 +1361,7 @@ const styles = StyleSheet.create({
   },
   pendingSectionLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
     paddingHorizontal: SPACING.lg,
   },
@@ -1320,10 +1373,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.2),
+    borderColor: withAlpha(C.bronze, 0.2),
     paddingHorizontal: SPACING.md,
     paddingVertical: 8,
   },
@@ -1331,19 +1384,19 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },
   pendingChipText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     maxWidth: 120,
   },
   pendingChipAmount: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
     fontVariant: ['tabular-nums'] as any,
   },
 
@@ -1360,7 +1413,7 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '88%',
     maxHeight: '80%',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     paddingTop: SPACING.xl,
@@ -1390,7 +1443,7 @@ const styles = StyleSheet.create({
   },
   editLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   typeSelect: {
     flexDirection: 'row',
@@ -1399,13 +1452,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: SPACING.sm,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.md,
   },
   typeSelectText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   typePickerOverlay: {
@@ -1416,7 +1469,7 @@ const styles = StyleSheet.create({
   },
   typePickerCard: {
     width: '75%',
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     gap: 2,
@@ -1432,7 +1485,7 @@ const styles = StyleSheet.create({
   },
   typePickerTitle: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginBottom: SPACING.sm,
   },
   typePickerOption: {
@@ -1444,26 +1497,26 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
   },
   typePickerOptionActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
   },
   typePickerIcon: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     justifyContent: 'center',
     alignItems: 'center',
   },
   typePickerIconActive: {
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
   },
   typePickerText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   typePickerTextActive: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   amountSection: {
@@ -1475,25 +1528,25 @@ const styles = StyleSheet.create({
   amountPrefix: {
     fontSize: 18,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   amountInput: {
     flex: 1,
     fontSize: 28,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     padding: 0,
   },
   descInput: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.sm,
   },
   modalDivider: {
     height: 1,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   debtToggleRow: {
     flexDirection: 'row',
@@ -1504,21 +1557,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   debtToggleTheyOwe: {
-    backgroundColor: withAlpha(CALM.deepOlive, 0.12),
+    backgroundColor: withAlpha(C.deepOlive, 0.12),
   },
   debtToggleIOwe: {
     backgroundColor: withAlpha('#C1694F', 0.12),
   },
   debtToggleText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   debtToggleTextTheyOwe: {
-    color: CALM.deepOlive,
+    color: C.deepOlive,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   debtToggleTextIOwe: {
@@ -1530,7 +1583,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.md,
     marginTop: SPACING.xs,
@@ -1550,13 +1603,13 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     borderRadius: RADIUS.lg,
   },
   errorNoticeText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   retryButton: {
     flexDirection: 'row',
@@ -1565,12 +1618,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
     borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(CALM.bronze, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
   },
   retryText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // Typing dots
@@ -1588,7 +1641,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
 
   // Input bar
@@ -1598,9 +1651,9 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   inputIconButton: {
     width: 44,
@@ -1612,8 +1665,8 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
-    backgroundColor: CALM.background,
+    color: C.textPrimary,
+    backgroundColor: C.background,
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
@@ -1623,17 +1676,17 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   micButton: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   micButtonActive: {
     backgroundColor: '#C1694F',
@@ -1644,8 +1697,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
-    backgroundColor: CALM.surface,
+    borderTopColor: C.border,
+    backgroundColor: C.surface,
   },
   previewThumb: {
     width: 60,
@@ -1681,7 +1734,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     paddingVertical: 6,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
   },
   recordingDot: {
     width: 8,
@@ -1705,7 +1758,7 @@ const styles = StyleSheet.create({
   historyCard: {
     width: '88%',
     maxHeight: '70%',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     ...Platform.select({
@@ -1727,14 +1780,14 @@ const styles = StyleSheet.create({
   historyTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   historyList: {
     maxHeight: 400,
   },
   historyEmpty: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
     paddingVertical: SPACING.xl,
   },
@@ -1743,7 +1796,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   historyItemContent: {
     flex: 1,
@@ -1752,11 +1805,11 @@ const styles = StyleSheet.create({
   historyItemTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   historyItemMeta: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // Select text modal
@@ -1769,7 +1822,7 @@ const styles = StyleSheet.create({
   selectTextCard: {
     width: '88%',
     maxHeight: '70%',
-    backgroundColor: '#F5F4F0',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     ...Platform.select({
@@ -1791,12 +1844,12 @@ const styles = StyleSheet.create({
   selectTextTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   selectTextBody: {
     fontSize: TYPE.insight.fontSize,
     lineHeight: (TYPE.insight.lineHeight || 22) + 4,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     maxHeight: 400,
     padding: 0,
   },

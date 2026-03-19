@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,20 +7,26 @@ import {
   TouchableOpacity,
   Keyboard,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+// Lazy-loaded: native module crashes Expo Go if imported at top level
+const getDocumentScanner = () => require('react-native-document-scanner-plugin').default as typeof import('react-native-document-scanner-plugin').default;
 import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
 
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import Button from '../../components/common/Button';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import Card from '../../components/common/Card';
+import ScreenGuide from '../../components/common/ScreenGuide';
 
 import { useWalletStore } from '../../store/walletStore';
 import { useToast } from '../../context/ToastContext';
@@ -36,6 +42,9 @@ import { computePlaybookStats } from '../../utils/playbookStats';
 type InputMode = 'text' | 'photo' | 'voice';
 
 const ExpenseEntry: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
   const { addTransaction, transactions } = usePersonalStore();
   const currency = useSettingsStore(state => state.currency);
@@ -104,40 +113,43 @@ const ExpenseEntry: React.FC = () => {
     if (parsed) {
       applyParsed(parsed);
     } else {
-      showToast('Could not parse — enter details manually', 'info');
+      showToast(t.expense.parseFailed, 'info');
     }
     setIsProcessing(false);
   };
 
   // Photo mode: camera → OCR → parse
   const handlePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      showToast('Camera permission needed', 'error');
-      return;
+    let imageUri: string | null = null;
+    try {
+      const scanResult = await getDocumentScanner().scanDocument({ maxNumDocuments: 1 });
+      if (scanResult.scannedImages?.length) imageUri = scanResult.scannedImages[0];
+    } catch {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        showToast(t.expense.cameraNeeded, 'error');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({ quality: 0.8, base64: false });
+      if (!result.canceled && result.assets?.[0]) imageUri = result.assets[0].uri;
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.8,
-      base64: false,
-    });
-
-    if (result.canceled || !result.assets?.[0]) return;
+    if (!imageUri) return;
 
     setIsProcessing(true);
     setInputMethod('photo');
 
-    const ocrText = await recognizeText(result.assets[0].uri);
+    const ocrText = await recognizeText(imageUri);
     if (ocrText) {
       setRawInput(ocrText);
       const parsed = await parseReceiptText(ocrText);
       if (parsed) {
         applyParsed(parsed);
       } else {
-        showToast('Could not parse receipt — enter details manually', 'info');
+        showToast(t.expense.parseFailed, 'info');
       }
     } else {
-      showToast('Could not read receipt — enter details manually', 'info');
+      showToast(t.expense.receiptFailed, 'info');
     }
     setIsProcessing(false);
   };
@@ -147,7 +159,7 @@ const ExpenseEntry: React.FC = () => {
     try {
       const permStatus = await AudioModule.requestRecordingPermissionsAsync();
       if (!permStatus.granted) {
-        showToast('Microphone permission needed', 'error');
+        showToast(t.expense.micNeeded, 'error');
         return;
       }
 
@@ -160,7 +172,7 @@ const ExpenseEntry: React.FC = () => {
       audioRecorder.record();
       setIsRecording(true);
     } catch {
-      showToast('Could not start recording', 'error');
+      showToast(t.expense.recordingFailed, 'error');
     }
   };
 
@@ -183,26 +195,27 @@ const ExpenseEntry: React.FC = () => {
           if (parsed) {
             applyParsed(parsed);
           } else {
-            showToast('Could not parse — enter details manually', 'info');
+            showToast(t.expense.parseFailed, 'info');
           }
         } else {
-          showToast('Could not transcribe — enter details manually', 'info');
+          showToast(t.expense.parseFailed, 'info');
         }
       }
     } catch {
-      showToast('Recording error — enter details manually', 'info');
+      showToast(t.expense.recordingError, 'info');
     }
     setIsProcessing(false);
   };
 
   const handleSubmit = useCallback(() => {
-    if (!amount || parseFloat(amount) <= 0) {
-      showToast('Please enter a valid amount', 'error');
+    const parsedAmt = parseFloat(amount);
+    if (!amount || isNaN(parsedAmt) || parsedAmt <= 0) {
+      showToast(t.expense.invalidAmount, 'error');
       return;
     }
 
     if (!description.trim()) {
-      showToast('Please add a description', 'error');
+      showToast(t.expense.noDescription, 'error');
       return;
     }
 
@@ -240,20 +253,30 @@ const ExpenseEntry: React.FC = () => {
 
     // Playbook linking
     const activePlaybooks = usePlaybookStore.getState().getActivePlaybooks();
-    if (type === 'expense' && activePlaybooks.length === 1) {
-      const pb = activePlaybooks[0];
-      usePlaybookStore.getState().linkExpense(pb.id, txId);
-      usePersonalStore.getState().updateTransaction(txId, {
-        playbookLinks: [{ playbookId: pb.id, amount: parsedAmount }],
+    const linkToPlaybook = (pbId: string, tid: string, amt: number) => {
+      usePlaybookStore.getState().linkExpense(pbId, tid);
+      usePersonalStore.getState().updateTransaction(tid, {
+        playbookLinks: [{ playbookId: pbId, amount: amt }],
       });
+    };
+
+    if (type === 'expense' && activePlaybooks.length === 1) {
+      linkToPlaybook(activePlaybooks[0].id, txId, parsedAmount);
+    } else if (type === 'expense' && activePlaybooks.length > 1) {
+      Alert.alert(t.expense.linkPlaybook, t.expense.whichPlaybook, [
+        ...activePlaybooks.map((pb) => ({
+          text: pb.name,
+          onPress: () => linkToPlaybook(pb.id, txId, parsedAmount),
+        })),
+        { text: t.common.skip, style: 'cancel' as const },
+      ]);
     }
-    // For 2 active playbooks, user should link via Budget Planning
 
     // Reset
     setAmount('');
     setDescription('');
     setTags('');
-    setCategory(categories[0].id);
+    setCategory(categories[0]?.id || 'other');
     setTextInput('');
     setRawInput('');
     setConfidence(null);
@@ -263,13 +286,18 @@ const ExpenseEntry: React.FC = () => {
     const pbNote = type === 'expense' && activePlaybooks.length === 1
       ? ` (linked to ${activePlaybooks[0].name})`
       : '';
-    showToast(`${type === 'expense' ? 'Expense' : 'Income'} added.${pbNote}`, 'success');
-  }, [amount, description, category, type, tags, selectedWalletId, rawInput, inputMethod, confidence, transactions, addTransaction, deductFromWallet, addToWallet, showToast]);
+    const txCount = usePersonalStore.getState().transactions.length;
+    if (txCount === 1) {
+      showToast(t.expense.firstTracked, 'success');
+    } else {
+      showToast(`${type === 'expense' ? t.expense.expenseAdded : t.expense.incomeAdded}${pbNote}`, 'success');
+    }
+  }, [amount, description, category, type, tags, selectedWalletId, rawInput, inputMethod, confidence, transactions, addTransaction, deductFromWallet, addToWallet, showToast, t]);
 
   const handleTypeChange = useCallback((newType: 'expense' | 'income') => {
     setType(newType);
     const newCategories = newType === 'expense' ? expenseCategories : incomeCategories;
-    setCategory(newCategories[0].id);
+    setCategory(newCategories[0]?.id || 'other');
   }, [expenseCategories, incomeCategories]);
 
   return (
@@ -279,6 +307,7 @@ const ExpenseEntry: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
       >
         {/* Mode Selector Pills */}
         <View style={styles.modeSelector}>
@@ -291,7 +320,7 @@ const ExpenseEntry: React.FC = () => {
               <Feather
                 name={mode === 'text' ? 'type' : mode === 'photo' ? 'camera' : 'mic'}
                 size={16}
-                color={inputMode === mode ? '#fff' : CALM.textSecondary}
+                color={inputMode === mode ? '#fff' : C.textSecondary}
               />
               <Text style={[styles.modePillText, inputMode === mode && styles.modePillTextActive]}>
                 {mode.charAt(0).toUpperCase() + mode.slice(1)}
@@ -307,8 +336,8 @@ const ExpenseEntry: React.FC = () => {
               style={styles.nlpInput}
               value={textInput}
               onChangeText={setTextInput}
-              placeholder='nasi lemak 8.50 or "grab 15"'
-              placeholderTextColor={CALM.textSecondary}
+              placeholder={t.expense.placeholder}
+              placeholderTextColor={C.textSecondary}
               returnKeyType="go"
               onSubmitEditing={handleTextSubmit}
               multiline
@@ -316,9 +345,9 @@ const ExpenseEntry: React.FC = () => {
             />
             <TouchableOpacity style={styles.parseButton} onPress={handleTextSubmit} disabled={isProcessing}>
               {isProcessing ? (
-                <ActivityIndicator size="small" color={CALM.accent} />
+                <ActivityIndicator size="small" color={C.accent} />
               ) : (
-                <Feather name="arrow-right" size={20} color={CALM.accent} />
+                <Feather name="arrow-right" size={20} color={C.accent} />
               )}
             </TouchableOpacity>
           </Card>
@@ -327,11 +356,11 @@ const ExpenseEntry: React.FC = () => {
         {inputMode === 'photo' && (
           <TouchableOpacity style={styles.photoButton} onPress={handlePhoto} disabled={isProcessing}>
             {isProcessing ? (
-              <ActivityIndicator size="large" color={CALM.accent} />
+              <ActivityIndicator size="large" color={C.accent} />
             ) : (
               <>
-                <Feather name="camera" size={32} color={CALM.accent} />
-                <Text style={styles.photoText}>Tap to scan receipt</Text>
+                <Feather name="camera" size={32} color={C.accent} />
+                <Text style={styles.photoText}>{t.expense.scanReceipt}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -345,12 +374,12 @@ const ExpenseEntry: React.FC = () => {
             disabled={isProcessing}
           >
             {isProcessing ? (
-              <ActivityIndicator size="large" color={CALM.accent} />
+              <ActivityIndicator size="large" color={C.accent} />
             ) : (
               <>
-                <Feather name="mic" size={32} color={isRecording ? '#fff' : CALM.accent} />
+                <Feather name="mic" size={32} color={isRecording ? '#fff' : C.accent} />
                 <Text style={[styles.voiceText, isRecording && styles.voiceTextRecording]}>
-                  {isRecording ? 'Listening...' : 'Hold to speak'}
+                  {isRecording ? t.expense.listening : t.expense.holdToSpeak}
                 </Text>
               </>
             )}
@@ -359,7 +388,7 @@ const ExpenseEntry: React.FC = () => {
 
         {/* Processing indicator */}
         {isProcessing && (
-          <Text style={styles.processingText}>Processing...</Text>
+          <Text style={styles.processingText}>{t.expense.processing}</Text>
         )}
 
         {/* Parsed Fields */}
@@ -373,7 +402,7 @@ const ExpenseEntry: React.FC = () => {
               onChangeText={setAmount}
               placeholder="0.00"
               keyboardType="decimal-pad"
-              placeholderTextColor={CALM.border}
+              placeholderTextColor={C.border}
               returnKeyType="done"
               onSubmitEditing={Keyboard.dismiss}
             />
@@ -381,7 +410,7 @@ const ExpenseEntry: React.FC = () => {
 
           {/* Confidence indicator */}
           {confidence === 'low' && (
-            <Text style={styles.confidenceWarning}>AI unsure — please verify</Text>
+            <Text style={styles.confidenceWarning}>{t.expense.aiUnsure}</Text>
           )}
 
           {/* Type toggle */}
@@ -394,7 +423,7 @@ const ExpenseEntry: React.FC = () => {
               onPress={() => handleTypeChange('expense')}
             >
               <Text style={[styles.typeText, type === 'expense' && styles.typeTextActive]}>
-                Expense
+                {t.transaction.expense}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -405,7 +434,7 @@ const ExpenseEntry: React.FC = () => {
               onPress={() => handleTypeChange('income')}
             >
               <Text style={[styles.typeText, type === 'income' && styles.typeTextActive]}>
-                Income
+                {t.transaction.income}
               </Text>
             </TouchableOpacity>
           </View>
@@ -415,7 +444,7 @@ const ExpenseEntry: React.FC = () => {
             categories={categories}
             selectedId={category}
             onSelect={setCategory}
-            label="Category"
+            label={t.transaction.category}
             layout="dropdown"
           />
 
@@ -424,18 +453,18 @@ const ExpenseEntry: React.FC = () => {
             wallets={wallets}
             selectedId={selectedWalletId}
             onSelect={setSelectedWalletId}
-            label="Wallet"
+            label={t.transaction.wallet}
           />
 
           {/* Description */}
           <Card>
-            <Text style={styles.label}>Description</Text>
+            <Text style={styles.label}>{t.transaction.description}</Text>
             <TextInput
               style={styles.input}
               value={description}
               onChangeText={setDescription}
-              placeholder="What was this for?"
-              placeholderTextColor={CALM.textSecondary}
+              placeholder={t.expense.whatWasThis}
+              placeholderTextColor={C.textSecondary}
               multiline
               numberOfLines={2}
             />
@@ -443,13 +472,13 @@ const ExpenseEntry: React.FC = () => {
 
           {/* Tags */}
           <Card>
-            <Text style={styles.label}>Tags (optional)</Text>
+            <Text style={styles.label}>{t.expense.tagsOptional}</Text>
             <TextInput
               style={styles.input}
               value={tags}
               onChangeText={setTags}
-              placeholder="personal, family, work"
-              placeholderTextColor={CALM.textSecondary}
+              placeholder={t.expense.tagsPlaceholder}
+              placeholderTextColor={C.textSecondary}
               returnKeyType="done"
               onSubmitEditing={Keyboard.dismiss}
             />
@@ -457,7 +486,7 @@ const ExpenseEntry: React.FC = () => {
 
           {/* Submit */}
           <Button
-            title={`Add ${type === 'expense' ? 'Expense' : 'Income'}`}
+            title={type === 'expense' ? t.expense.addExpense : t.expense.addIncome}
             onPress={handleSubmit}
             icon="check"
             size="large"
@@ -465,14 +494,24 @@ const ExpenseEntry: React.FC = () => {
           />
         </View>
       </KeyboardAwareScrollView>
+      <ScreenGuide
+        id="guide_expense"
+        title={t.guide.addMoneyInOut}
+        icon="plus-circle"
+        tips={[
+          t.guide.tipExpense1,
+          t.guide.tipExpense2,
+          t.guide.tipExpense3,
+        ]}
+      />
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -495,19 +534,19 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     minHeight: 44,
   },
   modePillActive: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
   },
   modePillText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   modePillTextActive: {
     color: '#fff',
@@ -523,7 +562,7 @@ const styles = StyleSheet.create({
   nlpInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.lg,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     minHeight: 48,
   },
   parseButton: {
@@ -536,16 +575,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: SPACING['4xl'],
     marginBottom: SPACING.lg,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderStyle: 'dashed',
     gap: SPACING.sm,
   },
   photoText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Voice input
@@ -554,19 +593,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: SPACING['4xl'],
     marginBottom: SPACING.lg,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 2,
-    borderColor: CALM.border,
+    borderColor: C.border,
     gap: SPACING.sm,
   },
   voiceButtonRecording: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
   },
   voiceText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   voiceTextRecording: {
     color: '#fff',
@@ -574,7 +613,7 @@ const styles = StyleSheet.create({
 
   processingText: {
     ...TYPE.muted,
-    color: CALM.accent,
+    color: C.accent,
     textAlign: 'center',
     marginBottom: SPACING.md,
   },
@@ -591,19 +630,19 @@ const styles = StyleSheet.create({
   currencySymbol: {
     fontSize: TYPE.amount.fontSize,
     fontWeight: TYPE.amount.fontWeight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginRight: SPACING.sm,
   },
   amountInput: {
     flex: 1,
     fontSize: TYPE.amount.fontSize,
     fontWeight: TYPE.amount.fontWeight,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.sm,
   },
   confidenceWarning: {
     ...TYPE.muted,
-    color: CALM.neutral,
+    color: C.neutral,
     marginBottom: SPACING.md,
   },
 
@@ -619,21 +658,21 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.md,
     borderWidth: 2,
-    borderColor: CALM.border,
-    backgroundColor: CALM.surface,
+    borderColor: C.border,
+    backgroundColor: C.surface,
   },
   typeButtonExpenseActive: {
-    borderColor: CALM.accent,
-    backgroundColor: CALM.accent,
+    borderColor: C.accent,
+    backgroundColor: C.accent,
   },
   typeButtonIncomeActive: {
-    borderColor: CALM.positive,
-    backgroundColor: CALM.positive,
+    borderColor: C.positive,
+    backgroundColor: C.positive,
   },
   typeText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   typeTextActive: {
     color: '#fff',
@@ -642,16 +681,16 @@ const styles = StyleSheet.create({
   label: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.md,
   },
   input: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   submitButton: {
     marginTop: SPACING.md,

@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  InteractionManager,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import {
   format,
@@ -20,36 +21,47 @@ import {
   isValid,
 } from 'date-fns';
 
+import { useFocusEffect } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import Card from '../../components/common/Card';
+import ScreenGuide from '../../components/common/ScreenGuide';
 import EmptyState from '../../components/common/EmptyState';
+import SkeletonLoader from '../../components/common/SkeletonLoader';
 
 // ─── HELPER: Wellness label based on score ────────────────
-const getWellnessLabel = (score: number): string => {
-  if (score >= 80) return 'Strong position';
-  if (score >= 60) return 'Solid foundation';
-  if (score >= 40) return 'Steady progress';
-  if (score >= 20) return 'Getting started';
-  return 'Building momentum';
+const getWellnessLabel = (score: number, pulse: any): string => {
+  if (score >= 80) return pulse.feelingGood;
+  if (score >= 60) return pulse.steadyGround;
+  if (score >= 40) return pulse.buildingUp;
+  if (score >= 20) return pulse.justStarting;
+  return pulse.findingRhythm;
 };
 
 // ─── HELPER: Velocity message ─────────────────────────────
-const getVelocityMessage = (velocity: number): string => {
-  if (velocity <= 80) return 'Below your usual pace';
-  if (velocity <= 100) return 'On track';
-  if (velocity <= 120) return 'Slightly above your usual pace';
-  return 'Spending faster than usual';
+const getVelocityMessage = (velocity: number, pulse: any): string => {
+  if (velocity <= 80) return pulse.quieterThanUsual;
+  if (velocity <= 100) return pulse.rightOnRhythm;
+  if (velocity <= 120) return pulse.bitAhead;
+  return pulse.movingFaster;
 };
 
 const FinancialPulse: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { transactions, subscriptions, budgets, goals } = usePersonalStore();
   const currency = useSettingsStore((state) => state.currency);
   const expenseCategories = useCategories('expense');
 
-  // ─── TIME BOUNDARIES (stable across renders) ──────────────
+  // ─── TIME BOUNDARIES (recompute on focus to handle midnight/month crossover) ──
+  const [focusKey, setFocusKey] = useState(0);
+  useFocusEffect(useCallback(() => { setFocusKey((k) => k + 1); }, []));
+
   const dateBounds = useMemo(() => {
     const now = new Date();
     return {
@@ -62,7 +74,7 @@ const FinancialPulse: React.FC = () => {
       daysInCurrentMonth: getDaysInMonth(now),
       daysInLastMonth: getDaysInMonth(subMonths(now, 1)),
     };
-  }, []);
+  }, [focusKey]);
 
   const {
     now,
@@ -118,8 +130,14 @@ const FinancialPulse: React.FC = () => {
     let score = 0;
 
     // Budget adherence (30 pts): how well are you staying within budget
+    // Compute spent from transactions (store spentAmount is always 0)
     const totalBudget = budgets.reduce((sum, b) => sum + b.allocatedAmount, 0);
-    const totalBudgetSpent = budgets.reduce((sum, b) => sum + b.spentAmount, 0);
+    const totalBudgetSpent = budgets.reduce((sum, b) => {
+      const spent = thisMonth
+        .filter((t) => t.type === 'expense' && t.category === b.category)
+        .reduce((s, t) => s + t.amount, 0);
+      return sum + spent;
+    }, 0);
     if (totalBudget > 0) {
       const adherence = Math.max(0, 1 - totalBudgetSpent / totalBudget);
       score += Math.round(adherence * 30);
@@ -160,10 +178,10 @@ const FinancialPulse: React.FC = () => {
 
   const wellnessColor =
     wellnessScore >= 70
-      ? CALM.positive
+      ? C.positive
       : wellnessScore >= 40
-      ? CALM.accent
-      : CALM.neutral;
+      ? C.accent
+      : C.neutral;
 
   // ─── 3. SPENDING VELOCITY ─────────────────────────────────
   const velocity = useMemo(() => {
@@ -172,17 +190,18 @@ const FinancialPulse: React.FC = () => {
       (monthlyStats.expenses / monthlyStats.lastMonthExpenses) * 100;
     // Pro-rate: if day 15 of 30, and spent 40% of last month = velocity 80%
     const monthProgress = dayOfMonth / daysInCurrentMonth;
+    // Avoid extreme percentages on day 1-2 (tiny monthProgress = huge proRated)
     const proRated =
-      monthProgress > 0 ? rawPercent / monthProgress : 0;
+      dayOfMonth <= 2 ? rawPercent : (monthProgress > 0 ? rawPercent / monthProgress : 0);
     return { percent: Math.round(rawPercent), proRated: Math.round(proRated) };
   }, [monthlyStats, dayOfMonth, daysInCurrentMonth]);
 
   const velocityColor =
     velocity.proRated <= 90
-      ? CALM.positive
+      ? C.positive
       : velocity.proRated <= 110
-      ? CALM.accent
-      : CALM.neutral;
+      ? C.accent
+      : C.neutral;
 
   // ─── 4. CATEGORY BREAKDOWN ────────────────────────────────
   const categoryBreakdown = useMemo(() => {
@@ -201,14 +220,14 @@ const FinancialPulse: React.FC = () => {
         return {
           id: categoryId,
           name: cat?.name || categoryId,
-          color: cat?.color || CALM.accent,
+          color: cat?.color || C.accent,
           amount,
           percentage: (amount / totalExpenses) * 100,
         };
       })
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5);
-  }, [thisMonth, monthlyStats.expenses, expenseCategories]);
+  }, [thisMonth, monthlyStats.expenses, expenseCategories, C]);
 
   // ─── 5. NO-SPEND STREAK ───────────────────────────────────
   const streakData = useMemo(() => {
@@ -305,14 +324,29 @@ const FinancialPulse: React.FC = () => {
     return { list: upcoming, total };
   }, [subscriptions, now]); // now is stable from dateBounds memo
 
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setReady(true));
+    return () => task.cancel();
+  }, []);
+
+  if (!ready) {
+    return (
+      <View style={styles.container}>
+        <SkeletonLoader />
+        <SkeletonLoader style={{ marginTop: SPACING.md }} />
+      </View>
+    );
+  }
+
   // ─── EMPTY STATE ──────────────────────────────────────────
   if (transactions.length === 0) {
     return (
       <View style={styles.container}>
         <EmptyState
           icon="activity"
-          title="No Data Yet"
-          message="Start adding transactions to see your financial pulse"
+          title={t.pulse.notEnoughData}
+          message={t.pulse.addFewTransactions}
         />
       </View>
     );
@@ -340,27 +374,27 @@ const FinancialPulse: React.FC = () => {
             </Text>
             <Text style={styles.scoreOutOf}>/ 100</Text>
           </View>
-          <Text style={styles.wellnessLabel}>{getWellnessLabel(wellnessScore)}</Text>
+          <Text style={styles.wellnessLabel}>{getWellnessLabel(wellnessScore, t.pulse)}</Text>
           <Text style={styles.heroSubtitle}>
-            Financial Wellness Score
+            {t.pulse.yourMoneyPulse}
           </Text>
         </View>
 
         {/* ── 2. MONTHLY CASH FLOW ────────────────────────── */}
-        <Text style={styles.sectionLabel}>CASH FLOW</Text>
+        <Text style={styles.sectionLabel}>{t.pulse.inAndOut}</Text>
         <Card style={styles.card}>
           {/* Income bar */}
           <View style={styles.cashFlowRow}>
             <View style={styles.cashFlowLabelCol}>
-              <Feather name="arrow-down-left" size={14} color={CALM.positive} />
-              <Text style={styles.cashFlowLabel}>In</Text>
+              <Feather name="arrow-down-left" size={14} color={C.positive} />
+              <Text style={styles.cashFlowLabel}>{t.pulse.cameIn}</Text>
             </View>
             <View style={styles.cashFlowBarContainer}>
               <View
                 style={[
                   styles.cashFlowBar,
                   {
-                    backgroundColor: withAlpha(CALM.positive, 0.2),
+                    backgroundColor: withAlpha(C.positive, 0.2),
                     width: '100%',
                   },
                 ]}
@@ -369,7 +403,7 @@ const FinancialPulse: React.FC = () => {
                   style={[
                     styles.cashFlowBarFill,
                     {
-                      backgroundColor: CALM.positive,
+                      backgroundColor: C.positive,
                       width:
                         monthlyStats.income > 0 && (monthlyStats.income + monthlyStats.expenses) > 0
                           ? `${(monthlyStats.income / Math.max(monthlyStats.income, monthlyStats.expenses)) * 100}%`
@@ -387,15 +421,15 @@ const FinancialPulse: React.FC = () => {
           {/* Expense bar */}
           <View style={styles.cashFlowRow}>
             <View style={styles.cashFlowLabelCol}>
-              <Feather name="arrow-up-right" size={14} color={CALM.accent} />
-              <Text style={styles.cashFlowLabel}>Out</Text>
+              <Feather name="arrow-up-right" size={14} color={C.accent} />
+              <Text style={styles.cashFlowLabel}>{t.pulse.wentOut}</Text>
             </View>
             <View style={styles.cashFlowBarContainer}>
               <View
                 style={[
                   styles.cashFlowBar,
                   {
-                    backgroundColor: withAlpha(CALM.accent, 0.15),
+                    backgroundColor: withAlpha(C.accent, 0.15),
                     width: '100%',
                   },
                 ]}
@@ -404,7 +438,7 @@ const FinancialPulse: React.FC = () => {
                   style={[
                     styles.cashFlowBarFill,
                     {
-                      backgroundColor: CALM.accent,
+                      backgroundColor: C.accent,
                       width:
                         monthlyStats.expenses > 0 && (monthlyStats.income + monthlyStats.expenses) > 0
                           ? `${(monthlyStats.expenses / Math.max(monthlyStats.income, monthlyStats.expenses)) * 100}%`
@@ -421,11 +455,11 @@ const FinancialPulse: React.FC = () => {
 
           {/* Net */}
           <View style={styles.cashFlowNet}>
-            <Text style={styles.cashFlowNetLabel}>Kept this month</Text>
+            <Text style={styles.cashFlowNetLabel}>{t.pulse.youKept}</Text>
             <Text
               style={[
                 styles.cashFlowNetAmount,
-                { color: monthlyStats.net >= 0 ? CALM.positive : CALM.neutral },
+                { color: monthlyStats.net >= 0 ? C.positive : C.neutral },
               ]}
             >
               {currency} {Math.abs(monthlyStats.net).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -434,14 +468,14 @@ const FinancialPulse: React.FC = () => {
         </Card>
 
         {/* ── 3. SPENDING VELOCITY ────────────────────────── */}
-        <Text style={styles.sectionLabel}>SPENDING PACE</Text>
+        <Text style={styles.sectionLabel}>{t.pulse.yourPace}</Text>
         <Card style={styles.card}>
           <View style={styles.velocityHeader}>
             <Feather name="activity" size={16} color={velocityColor} />
             <Text style={styles.velocityTitle}>
               {monthlyStats.lastMonthExpenses > 0
                 ? `You've used ${velocity.percent}% of last month's spending`
-                : 'No comparison data yet'}
+                : t.pulse.noComparison}
             </Text>
           </View>
           {monthlyStats.lastMonthExpenses > 0 && (
@@ -458,7 +492,7 @@ const FinancialPulse: React.FC = () => {
                 />
               </View>
               <Text style={[styles.velocityMessage, { color: velocityColor }]}>
-                {getVelocityMessage(velocity.proRated)}
+                {getVelocityMessage(velocity.proRated, t.pulse)}
                 {' \u2014 '}
                 {velocity.proRated}% pro-rated pace
               </Text>
@@ -469,7 +503,7 @@ const FinancialPulse: React.FC = () => {
         {/* ── 4. CATEGORY BREAKDOWN ───────────────────────── */}
         {categoryBreakdown.length > 0 && (
           <>
-            <Text style={styles.sectionLabel}>WHERE IT GOES</Text>
+            <Text style={styles.sectionLabel}>{t.pulse.whereItWent}</Text>
             <Card style={styles.card}>
               {categoryBreakdown.map((cat) => (
                 <View key={cat.id} style={styles.categoryRow}>
@@ -504,25 +538,25 @@ const FinancialPulse: React.FC = () => {
         )}
 
         {/* ── 5. NO-SPEND STREAK ──────────────────────────── */}
-        <Text style={styles.sectionLabel}>QUIET DAYS</Text>
+        <Text style={styles.sectionLabel}>{t.pulse.quietDays}</Text>
         <Card style={styles.card}>
           <View style={styles.streakRow}>
             <View style={styles.streakHero}>
               <Feather
                 name={streakData.currentStreak > 0 ? 'zap' : 'sun'}
                 size={20}
-                color={streakData.currentStreak > 0 ? CALM.accent : CALM.neutral}
+                color={streakData.currentStreak > 0 ? C.accent : C.neutral}
               />
               <Text style={styles.streakNumber}>{streakData.currentStreak}</Text>
               <Text style={styles.streakUnit}>
-                {streakData.currentStreak === 1 ? 'day' : 'days'} current streak
+                {streakData.currentStreak === 1 ? t.pulse.day : t.pulse.days} {t.pulse.currentStreak}
               </Text>
             </View>
           </View>
           <View style={styles.streakStatsRow}>
             <View style={styles.streakStat}>
               <Text style={styles.streakStatValue}>{streakData.bestStreak}</Text>
-              <Text style={styles.streakStatLabel}>Best streak</Text>
+              <Text style={styles.streakStatLabel}>{t.pulse.bestStreak}</Text>
             </View>
             <View style={styles.streakDivider} />
             <View style={styles.streakStat}>
@@ -530,14 +564,14 @@ const FinancialPulse: React.FC = () => {
                 {streakData.noSpendDays}
               </Text>
               <Text style={styles.streakStatLabel}>
-                quiet days out of {streakData.daysElapsed}
+                {t.pulse.quietDays} / {streakData.daysElapsed}
               </Text>
             </View>
           </View>
         </Card>
 
         {/* ── 6. WEEKLY PATTERN ───────────────────────────── */}
-        <Text style={styles.sectionLabel}>WEEKLY PATTERN</Text>
+        <Text style={styles.sectionLabel}>{t.pulse.yourWeek}</Text>
         <Card style={styles.card}>
           <View style={styles.weeklyChart}>
             {weeklyPattern.days.map((day, idx) => {
@@ -555,7 +589,7 @@ const FinancialPulse: React.FC = () => {
                   <Text
                     style={[
                       styles.weeklyAmount,
-                      isHeaviest && { color: CALM.accent, fontWeight: TYPOGRAPHY.weight.bold },
+                      isHeaviest && { color: C.accent, fontWeight: TYPOGRAPHY.weight.bold },
                     ]}
                   >
                     {day.amount > 0
@@ -571,8 +605,8 @@ const FinancialPulse: React.FC = () => {
                         {
                           height: Math.max(barHeight, day.amount > 0 ? 4 : 0),
                           backgroundColor: isHeaviest
-                            ? CALM.accent
-                            : withAlpha(CALM.accent, 0.3),
+                            ? C.accent
+                            : withAlpha(C.accent, 0.3),
                         },
                       ]}
                     />
@@ -580,7 +614,7 @@ const FinancialPulse: React.FC = () => {
                   <Text
                     style={[
                       styles.weeklyLabel,
-                      isHeaviest && { color: CALM.accent, fontWeight: TYPOGRAPHY.weight.bold },
+                      isHeaviest && { color: C.accent, fontWeight: TYPOGRAPHY.weight.bold },
                     ]}
                   >
                     {day.label}
@@ -600,7 +634,7 @@ const FinancialPulse: React.FC = () => {
         {/* ── 7. UPCOMING BILLS ───────────────────────────── */}
         {upcomingBills.list.length > 0 && (
           <>
-            <Text style={styles.sectionLabel}>UPCOMING BILLS</Text>
+            <Text style={styles.sectionLabel}>{t.pulse.comingUp}</Text>
             <Card style={styles.card}>
               {upcomingBills.list.slice(0, 5).map((sub) => {
                 const daysUntil = differenceInDays(
@@ -613,10 +647,10 @@ const FinancialPulse: React.FC = () => {
                       <View
                         style={[
                           styles.billIconBg,
-                          { backgroundColor: withAlpha(CALM.accent, 0.1) },
+                          { backgroundColor: withAlpha(C.accent, 0.1) },
                         ]}
                       >
-                        <Feather name="repeat" size={14} color={CALM.accent} />
+                        <Feather name="repeat" size={14} color={C.accent} />
                       </View>
                       <View style={styles.billInfo}>
                         <Text style={styles.billName} numberOfLines={1}>
@@ -624,10 +658,10 @@ const FinancialPulse: React.FC = () => {
                         </Text>
                         <Text style={styles.billDue}>
                           {daysUntil <= 0
-                            ? 'Due today'
+                            ? t.pulse.dueToday
                             : daysUntil === 1
-                            ? 'Tomorrow'
-                            : `in ${daysUntil} days`}
+                            ? t.pulse.tomorrow
+                            : `${daysUntil} ${t.pulse.days}`}
                         </Text>
                       </View>
                     </View>
@@ -650,15 +684,25 @@ const FinancialPulse: React.FC = () => {
         {/* Bottom spacing */}
         <View style={{ height: SPACING['3xl'] }} />
       </ScrollView>
+      <ScreenGuide
+        id="guide_pulse"
+        title={t.guide.yourMoneyHealth}
+        icon="activity"
+        tips={[
+          t.guide.tipPulse1,
+          t.guide.tipPulse2,
+          t.guide.tipPulse3,
+        ]}
+      />
     </View>
   );
 };
 
 // ─── STYLES ──────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -694,7 +738,7 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     marginBottom: SPACING.lg,
   },
   scoreNumber: {
@@ -704,13 +748,13 @@ const styles = StyleSheet.create({
   },
   scoreOutOf: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: -SPACING.xs,
   },
   wellnessLabel: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   heroSubtitle: {
@@ -727,12 +771,12 @@ const styles = StyleSheet.create({
   cashFlowLabelCol: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: 42,
+    width: 72,
     gap: SPACING.xs,
   },
   cashFlowLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   cashFlowBarContainer: {
     flex: 1,
@@ -749,7 +793,7 @@ const styles = StyleSheet.create({
   cashFlowAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
     width: 100,
     textAlign: 'right',
@@ -760,12 +804,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   cashFlowNetLabel: {
     fontSize: TYPE.insight.fontSize,
     lineHeight: TYPE.insight.lineHeight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   cashFlowNetAmount: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -783,12 +827,12 @@ const styles = StyleSheet.create({
   velocityTitle: {
     fontSize: TYPE.insight.fontSize,
     lineHeight: TYPE.insight.lineHeight,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   progressBarContainer: {
     height: 8,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     borderRadius: RADIUS.xs,
     overflow: 'hidden',
     marginBottom: SPACING.sm,
@@ -809,7 +853,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   categoryLeft: {
     flexDirection: 'row',
@@ -825,7 +869,7 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   categoryRight: {
@@ -836,7 +880,7 @@ const styles = StyleSheet.create({
   categoryBarContainer: {
     width: 60,
     height: 6,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     borderRadius: RADIUS.xs,
     overflow: 'hidden',
   },
@@ -847,7 +891,7 @@ const styles = StyleSheet.create({
   categoryAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
     minWidth: 80,
     textAlign: 'right',
@@ -866,20 +910,20 @@ const styles = StyleSheet.create({
   streakNumber: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   streakUnit: {
     fontSize: TYPE.insight.fontSize,
     lineHeight: TYPE.insight.lineHeight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   streakStatsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   streakStat: {
     flex: 1,
@@ -888,19 +932,19 @@ const styles = StyleSheet.create({
   streakStatValue: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
     marginBottom: SPACING.xs,
   },
   streakStatLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
   },
   streakDivider: {
     width: 1,
     height: 36,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginHorizontal: SPACING.lg,
   },
 
@@ -920,7 +964,7 @@ const styles = StyleSheet.create({
   },
   weeklyAmount: {
     fontSize: 10,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
     marginBottom: SPACING.xs,
   },
@@ -937,13 +981,13 @@ const styles = StyleSheet.create({
   },
   weeklyLabel: {
     fontSize: 10,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: SPACING.sm,
   },
   weeklyInsight: {
     fontSize: TYPE.insight.fontSize,
     lineHeight: TYPE.insight.lineHeight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     marginTop: SPACING.lg,
   },
@@ -955,7 +999,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   billLeft: {
     flexDirection: 'row',
@@ -976,17 +1020,17 @@ const styles = StyleSheet.create({
   billName: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   billDue: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 2,
   },
   billAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   billFooter: {
@@ -997,7 +1041,7 @@ const styles = StyleSheet.create({
   billFooterText: {
     fontSize: TYPE.insight.fontSize,
     lineHeight: TYPE.insight.lineHeight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
   },
 });

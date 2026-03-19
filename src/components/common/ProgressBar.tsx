@@ -1,6 +1,7 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { CALM, RADIUS, TYPOGRAPHY, SPACING } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { useSettingsStore } from '../../store/settingsStore';
 
 interface ProgressBarProps {
@@ -20,10 +21,13 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   label,
   showPercentage = true,
   showTicks = false,
-  color = CALM.accent,
+  color: colorProp,
   height = 8,
   animated = true,
 }) => {
+  const C = useCalm();
+  const color = colorProp ?? C.accent;
+  const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore(state => state.currency);
   const percentage = total > 0 ? Math.min((current / total) * 100, 100) : 0;
   const isOverBudget = current > total;
@@ -120,7 +124,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     width: '100%',
   },
@@ -133,19 +137,19 @@ const styles = StyleSheet.create({
   label: {
     fontSize: TYPOGRAPHY.size.sm, // 13
     fontWeight: TYPOGRAPHY.weight.semibold, // '600'
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   percentage: {
     fontSize: TYPOGRAPHY.size.sm, // 13
     fontWeight: TYPOGRAPHY.weight.semibold, // '600'
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   overBudget: {
-    color: CALM.neutral,
+    color: C.neutral,
   },
   track: {
     width: '100%',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -161,7 +165,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 2,
     height: '100%',
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     transform: [{ translateX: -1 }],
   },
   fill: {
@@ -183,12 +187,12 @@ const styles = StyleSheet.create({
   amount: {
     fontSize: TYPOGRAPHY.size.xs, // 11
     fontWeight: TYPOGRAPHY.weight.semibold, // '600'
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   total: {
     fontSize: TYPOGRAPHY.size.xs, // 11
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
 });

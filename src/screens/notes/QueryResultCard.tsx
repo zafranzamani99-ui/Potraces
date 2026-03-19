@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { QueryAnswer } from '../../services/queryEngine';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { useFadeSlide } from '../../utils/fadeSlide';
 
 interface QueryResultCardProps {
@@ -10,6 +11,8 @@ interface QueryResultCardProps {
 }
 
 const QueryResultCard: React.FC<QueryResultCardProps> = ({ answer }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const fadeSlide = useFadeSlide(50);
 
   return (
@@ -18,7 +21,7 @@ const QueryResultCard: React.FC<QueryResultCardProps> = ({ answer }) => {
         <Feather
           name={answer.icon as any}
           size={16}
-          color={CALM.bronze}
+          color={C.bronze}
         />
       </View>
       <View style={styles.content}>
@@ -34,13 +37,13 @@ const QueryResultCard: React.FC<QueryResultCardProps> = ({ answer }) => {
 
 export default React.memo(QueryResultCard);
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
     borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.12),
+    borderColor: withAlpha(C.bronze, 0.12),
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -50,7 +53,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
@@ -61,17 +64,17 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   value: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
   detail: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 2,
   },
 });

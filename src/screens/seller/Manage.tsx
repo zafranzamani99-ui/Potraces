@@ -1,14 +1,18 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { useFadeSlide } from '../../utils/fadeSlide';
 
 // ─── Component ───────────────────────────────────────────────
 const SellerManage: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { products, seasons, ingredientCosts, orders } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
@@ -52,15 +56,15 @@ const SellerManage: React.FC = () => {
           accessibilityLabel={`Products. ${products.length} products. Navigate to product catalog.`}
           onPress={() => navigation.getParent()?.navigate('SellerProducts')}
         >
-          <View style={[styles.iconBox, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
-            <Feather name="package" size={24} color={CALM.accent} />
+          <View style={[styles.iconBox, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
+            <Feather name="package" size={24} color={C.accent} />
           </View>
           <View style={styles.cardContent}>
             <Text style={styles.cardTitle}>Products</Text>
             <Text style={styles.cardSubtitle}>catalog and pricing</Text>
             <Text style={styles.cardBadge}>{products.length} products</Text>
           </View>
-          <Feather name="chevron-right" size={20} color={CALM.textMuted} />
+          <Feather name="chevron-right" size={20} color={C.textMuted} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -81,7 +85,7 @@ const SellerManage: React.FC = () => {
             <Text style={styles.cardSubtitle}>all payments received</Text>
             <Text style={styles.cardBadge}>{paidOrders.length} paid orders</Text>
           </View>
-          <Feather name="chevron-right" size={20} color={CALM.textMuted} />
+          <Feather name="chevron-right" size={20} color={C.textMuted} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -95,7 +99,7 @@ const SellerManage: React.FC = () => {
           onPress={() => navigation.getParent()?.navigate('SellerCosts')}
         >
           <View style={styles.iconBox}>
-            <Feather name="shopping-bag" size={24} color={CALM.bronze} />
+            <Feather name="shopping-bag" size={24} color={C.bronze} />
           </View>
           <View style={styles.cardContent}>
             <Text style={styles.cardTitle}>Costs</Text>
@@ -107,7 +111,7 @@ const SellerManage: React.FC = () => {
               )}
             </View>
           </View>
-          <Feather name="chevron-right" size={20} color={CALM.textMuted} />
+          <Feather name="chevron-right" size={20} color={C.textMuted} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -120,8 +124,8 @@ const SellerManage: React.FC = () => {
           accessibilityLabel={`Seasons. ${seasons.length} seasons.${activeSeason ? ` Active season: ${activeSeason.name}.` : ''} Navigate to season history.`}
           onPress={() => navigation.getParent()?.navigate('PastSeasons')}
         >
-          <View style={[styles.iconBox, { backgroundColor: withAlpha(CALM.gold, 0.12) }]}>
-            <Feather name="calendar" size={24} color={CALM.gold} />
+          <View style={[styles.iconBox, { backgroundColor: withAlpha(C.gold, 0.12) }]}>
+            <Feather name="calendar" size={24} color={C.gold} />
           </View>
           <View style={styles.cardContent}>
             <Text style={styles.cardTitle}>Seasons</Text>
@@ -133,7 +137,7 @@ const SellerManage: React.FC = () => {
               )}
             </View>
           </View>
-          <Feather name="chevron-right" size={20} color={CALM.textMuted} />
+          <Feather name="chevron-right" size={20} color={C.textMuted} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -146,14 +150,14 @@ const SellerManage: React.FC = () => {
           accessibilityLabel="Settings. Currency, preferences, and data. Navigate to settings."
           onPress={() => navigation.getParent()?.navigate('SellerSettings')}
         >
-          <View style={[styles.iconBox, { backgroundColor: withAlpha(CALM.lavender, 0.15) }]}>
-            <Feather name="settings" size={24} color={CALM.lavender} />
+          <View style={[styles.iconBox, { backgroundColor: withAlpha(C.lavender, 0.15) }]}>
+            <Feather name="settings" size={24} color={C.lavender} />
           </View>
           <View style={styles.cardContent}>
             <Text style={styles.cardTitle}>Settings</Text>
             <Text style={styles.cardSubtitle}>currency, preferences, data</Text>
           </View>
-          <Feather name="chevron-right" size={20} color={CALM.textMuted} />
+          <Feather name="chevron-right" size={20} color={C.textMuted} />
         </TouchableOpacity>
       </Animated.View>
     </ScrollView>
@@ -161,10 +165,10 @@ const SellerManage: React.FC = () => {
 };
 
 // ─── Styles ──────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   content: {
     paddingHorizontal: SPACING.xl,
@@ -186,9 +190,9 @@ const styles = StyleSheet.create({
 
   // Card
   card: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     marginBottom: SPACING.sm,
@@ -202,7 +206,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
@@ -216,16 +220,16 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   cardSubtitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: 2,
   },
   cardBadge: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: SPACING.xs,
   },
 
@@ -238,16 +242,16 @@ const styles = StyleSheet.create({
   },
   activeBadge: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   costBadge: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   cardHighlighted: {
-    borderColor: withAlpha(CALM.gold, 0.3),
-    backgroundColor: withAlpha(CALM.gold, 0.03),
+    borderColor: withAlpha(C.gold, 0.3),
+    backgroundColor: withAlpha(C.gold, 0.03),
   },
 });
 

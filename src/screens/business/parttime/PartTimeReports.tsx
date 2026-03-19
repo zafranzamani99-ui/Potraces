@@ -1,18 +1,22 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { StackedBarChart, LineChart } from 'react-native-chart-kit';
+import { format } from 'date-fns';
 import { useBusinessStore } from '../../../store/businessStore';
 import { usePartTimeStore } from '../../../store/partTimeStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { askPartTimeQuestion } from '../../../services/aiService';
+import { generateReportNarrative, ReportMonthData } from '../../../services/reportNarrative';
+import { useAIInsightsStore } from '../../../store/aiInsightsStore';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -29,6 +33,8 @@ function toDate(d: Date | string): Date {
 }
 
 const PartTimeReports: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
   const { businessTransactions } = useBusinessStore();
   const {
@@ -52,7 +58,7 @@ const PartTimeReports: React.FC = () => {
       labels: monthlyData.map((m) => m.month),
       legend: ['main job', 'side income'],
       data: monthlyData.map((m) => [m.main, m.side]),
-      barColors: [CALM.bronze, withAlpha(CALM.bronze, 0.4)],
+      barColors: [C.bronze, withAlpha(C.bronze, 0.4)],
     };
   }, [monthlyData]);
 
@@ -101,14 +107,56 @@ const PartTimeReports: React.FC = () => {
     ? Math.max(...sideBreakdown.map((b) => b.amount), 1)
     : 1;
 
+  // Report narrative
+  const reportNarratives = useAIInsightsStore((s) => s.reportNarratives);
+  const monthKey = format(new Date(), 'yyyy-MM');
+  const narrativeEntry = reportNarratives[`parttime_${monthKey}`];
+
+  const currentMonthNarrative = useMemo(() => {
+    const currentMonth = monthlyData.length > 0 ? monthlyData[monthlyData.length - 1] : null;
+    const mainIncome = currentMonth?.main || 0;
+    const sideIncome = currentMonth?.side || 0;
+    const totalIncome = mainIncome + sideIncome;
+
+    const topCategories = [
+      { name: 'main job', amount: mainIncome, percent: totalIncome > 0 ? Math.round((mainIncome / totalIncome) * 100) : 0 },
+      { name: 'side income', amount: sideIncome, percent: totalIncome > 0 ? Math.round((sideIncome / totalIncome) * 100) : 0 },
+    ].filter((c) => c.amount > 0);
+
+    // Previous month
+    const prevMonth = monthlyData.length > 1 ? monthlyData[monthlyData.length - 2] : null;
+    const prevIncome = prevMonth ? prevMonth.main + prevMonth.side : 0;
+
+    // Count current month transactions
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const count = businessTransactions.filter((t) => toDate(t.date).getTime() >= monthStart.getTime()).length;
+
+    return { income: totalIncome, topCategories, prevIncome, count };
+  }, [monthlyData, businessTransactions]);
+
+  useEffect(() => {
+    if (businessTransactions.length === 0) return;
+    const data: ReportMonthData = {
+      mode: 'parttime',
+      income: currentMonthNarrative.income,
+      expenses: 0,
+      kept: currentMonthNarrative.income,
+      topCategories: currentMonthNarrative.topCategories,
+      prevMonthIncome: currentMonthNarrative.prevIncome,
+      transactionCount: currentMonthNarrative.count,
+    };
+    generateReportNarrative(data);
+  }, [currentMonthNarrative]);
+
   const chartConfig = {
-    backgroundGradientFrom: CALM.background,
-    backgroundGradientTo: CALM.background,
-    color: () => withAlpha(CALM.bronze, 0.6),
-    labelColor: () => CALM.textSecondary,
+    backgroundGradientFrom: C.background,
+    backgroundGradientTo: C.background,
+    color: () => withAlpha(C.bronze, 0.6),
+    labelColor: () => C.textSecondary,
     barPercentage: 0.6,
     propsForBackgroundLines: {
-      stroke: CALM.border,
+      stroke: C.border,
       strokeDasharray: '4 4',
     },
     decimalPlaces: 0,
@@ -116,11 +164,11 @@ const PartTimeReports: React.FC = () => {
 
   const lineChartConfig = {
     ...chartConfig,
-    color: () => withAlpha(CALM.bronze, 0.6),
+    color: () => withAlpha(C.bronze, 0.6),
     propsForDots: {
       r: '3',
       strokeWidth: '1',
-      stroke: CALM.bronze,
+      stroke: C.bronze,
     },
   };
 
@@ -154,6 +202,12 @@ const PartTimeReports: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {narrativeEntry?.text ? (
+          <Text style={[{ ...TYPE.narrative }, { color: C.textSecondary, marginBottom: SPACING.md }]}>
+            {narrativeEntry.text}
+          </Text>
+        ) : null}
+
         {/* Section 1 — Income Over Time */}
         <Text style={styles.sectionLabel}>income over time</Text>
         {hasMonthlyData ? (
@@ -234,7 +288,7 @@ const PartTimeReports: React.FC = () => {
                         styles.breakdownBar,
                         {
                           width: Math.max(barWidth, 4),
-                          backgroundColor: withAlpha(CALM.bronze, Math.max(opacity, 0.2)),
+                          backgroundColor: withAlpha(C.bronze, Math.max(opacity, 0.2)),
                         },
                       ]}
                     />
@@ -273,10 +327,10 @@ const PartTimeReports: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -318,21 +372,21 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     minHeight: 44,
     minWidth: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
   periodOptionActive: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   periodText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   periodTextActive: {
     color: '#FFFFFF',
@@ -348,7 +402,7 @@ const styles = StyleSheet.create({
   },
   breakdownLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
     maxWidth: 160,
   },
@@ -363,7 +417,7 @@ const styles = StyleSheet.create({
   },
   breakdownAmount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -372,11 +426,11 @@ const styles = StyleSheet.create({
     marginTop: SPACING['2xl'],
     paddingTop: SPACING.xl,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   aiSummaryText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 22,
   },
   aiLoadingText: {
@@ -389,7 +443,7 @@ const styles = StyleSheet.create({
   },
   showSummaryText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 });
 

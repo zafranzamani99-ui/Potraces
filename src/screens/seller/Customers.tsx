@@ -1,8 +1,9 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, FlatList, TouchableOpacity,
-  TextInput, Animated, Linking, Platform, Alert, Modal, RefreshControl,
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  TextInput, Animated, Linking, Platform, Alert, Modal, RefreshControl, Keyboard,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView, KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
@@ -16,6 +17,7 @@ import { syncAll, pullOrderLinkOrders } from '../../services/sellerSync';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { SellerOrder, SellerCustomer } from '../../types';
 
 // ─── Smart date label ─────────────────────────────────────────
@@ -65,7 +67,9 @@ const StatsSummary: React.FC<{
   onTapAll: () => void;
   onTapOwes: () => void;
   onTapRepeat: () => void;
-}> = React.memo(({ customers, currency, onTapAll, onTapOwes, onTapRepeat }) => {
+  styles: ReturnType<typeof makeStyles>;
+}> = React.memo(({ customers, currency, onTapAll, onTapOwes, onTapRepeat, styles }) => {
+  const C = useCalm();
   const stats = useMemo(() => {
     let outstanding = 0;
     let repeatCount = 0;
@@ -107,14 +111,14 @@ const StatsSummary: React.FC<{
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.statChip, { backgroundColor: withAlpha(CALM.accent, 0.05) }]}
+        style={[styles.statChip, { backgroundColor: withAlpha(C.accent, 0.05) }]}
         activeOpacity={0.7}
         onPress={() => { lightTap(); onTapRepeat(); }}
         accessibilityRole="button"
         accessibilityLabel={`${stats.repeatCount} returning customers`}
       >
         <View style={styles.statIconRow}>
-          <Feather name="repeat" size={14} color={CALM.accent} />
+          <Feather name="repeat" size={14} color={C.accent} />
           <Text style={styles.statValue}>{stats.repeatCount}</Text>
         </View>
         <Text style={styles.statLabel}>returning</Text>
@@ -129,6 +133,7 @@ interface CustomerCardProps {
   currency: string;
   onPress: (customer: DerivedCustomer) => void;
   index: number;
+  styles: ReturnType<typeof makeStyles>;
 }
 
 const CustomerCard: React.FC<CustomerCardProps> = React.memo(({
@@ -136,7 +141,9 @@ const CustomerCard: React.FC<CustomerCardProps> = React.memo(({
   currency,
   onPress,
   index,
+  styles,
 }) => {
+  const C = useCalm();
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -179,7 +186,7 @@ const CustomerCard: React.FC<CustomerCardProps> = React.memo(({
             </Text>
             {customer.isVip && (
               <View style={styles.vipBadge}>
-                <Feather name="star" size={10} color={CALM.gold} />
+                <Feather name="star" size={10} color={C.gold} />
                 <Text style={styles.vipBadgeText}>VIP</Text>
               </View>
             )}
@@ -197,7 +204,7 @@ const CustomerCard: React.FC<CustomerCardProps> = React.memo(({
         </View>
 
         {/* Arrow */}
-        <Feather name="chevron-right" size={18} color={CALM.textMuted} />
+        <Feather name="chevron-right" size={18} color={C.textMuted} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -217,6 +224,7 @@ interface DetailModalProps {
   onViewOrders: () => void;
   onDeleteCustomer: () => void;
   onNewOrder: () => void;
+  styles: ReturnType<typeof makeStyles>;
 }
 
 const CustomerDetailModal: React.FC<DetailModalProps> = ({
@@ -232,7 +240,9 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
   onViewOrders,
   onDeleteCustomer,
   onNewOrder,
+  styles,
 }) => {
+  const C = useCalm();
   const insets = useSafeAreaInsets();
 
   const recentOrders = useMemo(() => {
@@ -305,7 +315,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                 accessibilityRole="button"
                 accessibilityLabel="Close"
               >
-                <Feather name="x" size={22} color={CALM.textMuted} />
+                <Feather name="x" size={22} color={C.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -363,7 +373,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                 accessibilityRole="button"
                 accessibilityLabel={`Navigate to ${customer.address}`}
               >
-                <Feather name="map-pin" size={15} color={CALM.gold} />
+                <Feather name="map-pin" size={15} color={C.gold} />
                 <Text style={styles.addressButtonText} numberOfLines={2}>
                   {customer.address}
                 </Text>
@@ -373,7 +383,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
             {/* Note */}
             {customer.note ? (
               <View style={styles.noteRow}>
-                <Feather name="file-text" size={14} color={CALM.textMuted} />
+                <Feather name="file-text" size={14} color={C.textMuted} />
                 <Text style={styles.noteText}>{customer.note}</Text>
               </View>
             ) : null}
@@ -453,7 +463,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                 accessibilityRole="button"
                 accessibilityLabel="View orders"
               >
-                <Feather name="list" size={16} color={CALM.bronze} />
+                <Feather name="list" size={16} color={C.bronze} />
                 <Text style={styles.gridActionText}>orders</Text>
               </TouchableOpacity>
 
@@ -464,7 +474,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                 accessibilityRole="button"
                 accessibilityLabel="Copy info"
               >
-                <Feather name="copy" size={16} color={CALM.bronze} />
+                <Feather name="copy" size={16} color={C.bronze} />
                 <Text style={styles.gridActionText}>copy info</Text>
               </TouchableOpacity>
 
@@ -475,7 +485,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                 accessibilityRole="button"
                 accessibilityLabel="Edit details"
               >
-                <Feather name="edit-2" size={16} color={CALM.bronze} />
+                <Feather name="edit-2" size={16} color={C.bronze} />
                 <Text style={styles.gridActionText}>edit</Text>
               </TouchableOpacity>
             </View>
@@ -501,6 +511,8 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
 
 // ─── Main Component ──────────────────────────────────────────
 const SellerCustomers: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { orders, sellerCustomers, addSellerCustomer, updateSellerCustomer, deleteSellerCustomer, deleteOrder, deleteOrders, updateOrder } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
@@ -975,9 +987,10 @@ const SellerCustomers: React.FC = () => {
         currency={currency}
         onPress={handleSelectCustomer}
         index={index}
+        styles={styles}
       />
     ),
-    [currency, handleSelectCustomer]
+    [currency, handleSelectCustomer, styles]
   );
 
   const customerKeyExtractor = useCallback(
@@ -991,11 +1004,11 @@ const SellerCustomers: React.FC = () => {
       {/* Search bar + sort */}
       <View style={styles.searchRow}>
         <View style={styles.searchContainer}>
-          <Feather name="search" size={16} color={CALM.textMuted} style={styles.searchIcon} />
+          <Feather name="search" size={16} color={C.textMuted} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="search name, phone, address"
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             value={search}
             onChangeText={setSearch}
             returnKeyType="search"
@@ -1009,7 +1022,7 @@ const SellerCustomers: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Clear search"
             >
-              <Feather name="x" size={16} color={CALM.textMuted} />
+              <Feather name="x" size={16} color={C.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -1091,7 +1104,7 @@ const SellerCustomers: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Import from contacts"
         >
-          <Feather name="book" size={16} color={CALM.bronze} />
+          <Feather name="book" size={16} color={C.bronze} />
           <Text style={styles.fromContactsButtonText}>from contacts</Text>
         </TouchableOpacity>
       </View>
@@ -1104,7 +1117,7 @@ const SellerCustomers: React.FC = () => {
         <>
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconCircle}>
-              <Feather name="users" size={32} color={CALM.textMuted} />
+              <Feather name="users" size={32} color={C.textMuted} />
             </View>
             <Text style={styles.emptyTitle}>no customers yet</Text>
             <Text style={styles.emptySubtitle}>
@@ -1127,7 +1140,7 @@ const SellerCustomers: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Import from contacts"
             >
-              <Feather name="book" size={16} color={CALM.bronze} />
+              <Feather name="book" size={16} color={C.bronze} />
               <Text style={styles.emptyContactsButtonText}>from contacts</Text>
             </TouchableOpacity>
           </View>
@@ -1141,6 +1154,7 @@ const SellerCustomers: React.FC = () => {
         onTapAll={() => setFilter('all')}
         onTapOwes={() => setFilter('owes')}
         onTapRepeat={() => setFilter('repeat')}
+        styles={styles}
       />
 
       <FlatList
@@ -1151,7 +1165,7 @@ const SellerCustomers: React.FC = () => {
         ListEmptyComponent={
           <View style={styles.noResultsContainer}>
             <View style={styles.noResultsIconCircle}>
-              <Feather name="search" size={24} color={CALM.textMuted} />
+              <Feather name="search" size={24} color={C.textMuted} />
             </View>
             <Text style={styles.noResultsText}>no matching customers.</Text>
             {hasActiveFilters && (
@@ -1168,11 +1182,12 @@ const SellerCustomers: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
         initialNumToRender={10}
         maxToRenderPerBatch={10}
         windowSize={5}
         removeClippedSubviews
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CALM.bronze} colors={[CALM.bronze]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze} colors={[C.bronze]} />}
       />
       </>
       )}
@@ -1191,6 +1206,7 @@ const SellerCustomers: React.FC = () => {
         onViewOrders={() => selectedCustomer && handleViewOrders(selectedCustomer.name)}
         onDeleteCustomer={() => selectedCustomer && handleDeleteCustomer(selectedCustomer)}
         onNewOrder={() => selectedCustomer && handleNewOrder(selectedCustomer)}
+        styles={styles}
       />
 
       {/* ─── Sort menu modal ─── */}
@@ -1224,7 +1240,7 @@ const SellerCustomers: React.FC = () => {
                   accessibilityState={{ selected: isActive }}
                 >
                   <View style={styles.sortOptionLeft}>
-                    <Feather name={opt.icon} size={16} color={isActive ? BIZ.success : CALM.textMuted} />
+                    <Feather name={opt.icon} size={16} color={isActive ? BIZ.success : C.textMuted} />
                     <Text style={[styles.sortOptionText, isActive && styles.sortOptionTextActive]}>
                       {opt.label}
                     </Text>
@@ -1277,7 +1293,7 @@ const SellerCustomers: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Close modal"
                 >
-                  <Feather name="x" size={22} color={CALM.textMuted} />
+                  <Feather name="x" size={22} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
 
@@ -1292,7 +1308,7 @@ const SellerCustomers: React.FC = () => {
                     handleImportFromContacts();
                   }}
                 >
-                  <Feather name="book" size={14} color={CALM.bronze} />
+                  <Feather name="book" size={14} color={C.bronze} />
                   <Text style={styles.modalContactsBtnText}>pick from contacts</Text>
                 </TouchableOpacity>
               )}
@@ -1303,7 +1319,7 @@ const SellerCustomers: React.FC = () => {
                 value={editName}
                 onChangeText={setEditName}
                 placeholder="customer name"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 autoFocus={!editingCustomer?.name}
                 accessibilityLabel="Customer name"
               />
@@ -1314,7 +1330,7 @@ const SellerCustomers: React.FC = () => {
                 value={editPhone}
                 onChangeText={setEditPhone}
                 placeholder="phone number"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 keyboardType="phone-pad"
                 accessibilityLabel="Phone number"
               />
@@ -1325,7 +1341,7 @@ const SellerCustomers: React.FC = () => {
                 value={editAddress}
                 onChangeText={setEditAddress}
                 placeholder="delivery address"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
@@ -1338,7 +1354,7 @@ const SellerCustomers: React.FC = () => {
                 value={editNote}
                 onChangeText={setEditNote}
                 placeholder="allergies, delivery notes, preferences..."
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 accessibilityLabel="Customer note"
               />
 
@@ -1388,24 +1404,24 @@ const SellerCustomers: React.FC = () => {
                 onPress={() => setShowContactPicker(false)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Feather name="x" size={22} color={CALM.textMuted} />
+                <Feather name="x" size={22} color={C.textMuted} />
               </TouchableOpacity>
             </View>
 
             {/* Contact search */}
             <View style={styles.contactSearchBar}>
-              <Feather name="search" size={14} color={CALM.textMuted} />
+              <Feather name="search" size={14} color={C.textMuted} />
               <TextInput
                 style={styles.contactSearchInput}
                 placeholder="search contacts..."
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 value={contactSearch}
                 onChangeText={setContactSearch}
                 autoFocus
               />
               {contactSearch.length > 0 && (
                 <TouchableOpacity onPress={() => setContactSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Feather name="x" size={14} color={CALM.textMuted} />
+                  <Feather name="x" size={14} color={C.textMuted} />
                 </TouchableOpacity>
               )}
             </View>
@@ -1468,7 +1484,7 @@ const SellerCustomers: React.FC = () => {
                     {alreadyExists ? (
                       <Text style={styles.contactExistsLabel}>exists</Text>
                     ) : (
-                      <Feather name="plus" size={16} color={CALM.bronze} />
+                      <Feather name="plus" size={16} color={C.bronze} />
                     )}
                   </TouchableOpacity>
                 );
@@ -1487,10 +1503,10 @@ const SellerCustomers: React.FC = () => {
 };
 
 // ─── Styles ──────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -1526,12 +1542,12 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   statLabel: {
     fontSize: 10,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 2,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -1548,10 +1564,10 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     paddingHorizontal: SPACING.md,
     minHeight: 44,
   },
@@ -1561,7 +1577,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.sm,
   },
   sortButton: {
@@ -1589,7 +1605,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     minHeight: 36,
     justifyContent: 'center',
   },
@@ -1599,7 +1615,7 @@ const styles = StyleSheet.create({
   filterPillText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   filterPillTextActive: {
     color: BIZ.success,
@@ -1607,7 +1623,7 @@ const styles = StyleSheet.create({
   },
   filterPillCount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
   filterPillCountActive: {
@@ -1623,7 +1639,7 @@ const styles = StyleSheet.create({
   },
   resultText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
   clearFiltersText: {
@@ -1642,14 +1658,14 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.xs,
   },
   noResultsText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   noResultsClearButton: {
     paddingVertical: SPACING.sm,
@@ -1665,10 +1681,10 @@ const styles = StyleSheet.create({
 
   // ── Card (simplified) ──
   card: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     marginBottom: SPACING.sm,
   },
   cardUnpaid: {
@@ -1702,12 +1718,12 @@ const styles = StyleSheet.create({
   customerName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 2,
   },
   customerStats: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
   unpaidBadge: {
@@ -1732,7 +1748,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   detailSheet: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     paddingHorizontal: SPACING['2xl'],
@@ -1768,12 +1784,12 @@ const styles = StyleSheet.create({
   detailName: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 2,
   },
   detailSub: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1785,7 +1801,7 @@ const styles = StyleSheet.create({
   },
   insightChip: {
     flex: 1,
-    backgroundColor: withAlpha(CALM.textMuted, 0.04),
+    backgroundColor: withAlpha(C.textMuted, 0.04),
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
@@ -1796,7 +1812,7 @@ const styles = StyleSheet.create({
   },
   insightLabel: {
     fontSize: 10,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
     marginBottom: 2,
@@ -1804,7 +1820,7 @@ const styles = StyleSheet.create({
   insightValue: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   insightValueDebt: {
@@ -1848,7 +1864,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: withAlpha(CALM.gold, 0.06),
+    backgroundColor: withAlpha(C.gold, 0.06),
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
@@ -1858,7 +1874,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.gold,
+    color: C.gold,
     lineHeight: 20,
   },
 
@@ -1867,17 +1883,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: withAlpha(CALM.gold, 0.12),
+    backgroundColor: withAlpha(C.gold, 0.12),
     borderRadius: 4,
     paddingHorizontal: 5,
     paddingVertical: 2,
     borderWidth: 1,
-    borderColor: withAlpha(CALM.gold, 0.3),
+    borderColor: withAlpha(C.gold, 0.3),
   },
   vipBadgeText: {
     fontSize: 9,
     fontWeight: '700' as '700',
-    color: CALM.gold,
+    color: C.gold,
     letterSpacing: 0.5,
   },
   vipToggle: {
@@ -1892,20 +1908,20 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   vipCheckboxActive: {
-    backgroundColor: CALM.gold,
-    borderColor: CALM.gold,
+    backgroundColor: C.gold,
+    borderColor: C.gold,
   },
   vipLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   vipLabelActive: {
-    color: CALM.gold,
+    color: C.gold,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
   },
 
@@ -1919,7 +1935,7 @@ const styles = StyleSheet.create({
   },
   noteText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontStyle: 'italic',
     flex: 1,
     lineHeight: 20,
@@ -1950,7 +1966,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     minHeight: 44,
   },
   orderHistoryLeft: {
@@ -1960,12 +1976,12 @@ const styles = StyleSheet.create({
   orderHistoryDate: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: 2,
   },
   orderHistorySummary: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   orderHistoryRight: {
     alignItems: 'flex-end',
@@ -1974,14 +1990,14 @@ const styles = StyleSheet.create({
   orderHistoryAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   statusPill: {
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.lavender, 0.15),
+    backgroundColor: withAlpha(C.lavender, 0.15),
   },
   statusPillPaid: {
     backgroundColor: withAlpha(BIZ.success, 0.1),
@@ -1992,7 +2008,7 @@ const styles = StyleSheet.create({
   statusPillText: {
     fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.lavender,
+    color: C.lavender,
   },
   statusPillTextPaid: {
     color: BIZ.success,
@@ -2014,7 +2030,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     minHeight: 44,
@@ -2025,7 +2041,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.xs,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     minHeight: 44,
@@ -2038,7 +2054,7 @@ const styles = StyleSheet.create({
   gridActionText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // ── Delete ──
@@ -2051,7 +2067,7 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.regular,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Empty state ──
@@ -2065,7 +2081,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.lg,
@@ -2073,12 +2089,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.sm,
   },
   emptySubtitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -2106,13 +2122,13 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     minHeight: 44,
   },
   emptyContactsButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // ── Sort modal ──
@@ -2123,7 +2139,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sortSheet: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING['2xl'],
@@ -2149,7 +2165,7 @@ const styles = StyleSheet.create({
   },
   sortOptionText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   sortOptionTextActive: {
     color: BIZ.success,
@@ -2185,14 +2201,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.sm,
     paddingVertical: SPACING.md,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     borderRadius: RADIUS.lg,
     minHeight: 48,
   },
   fromContactsButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // ── Edit modal ──
@@ -2202,7 +2218,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     paddingHorizontal: SPACING['2xl'],
@@ -2212,7 +2228,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     alignSelf: 'center',
     marginTop: SPACING.md,
     marginBottom: SPACING.lg,
@@ -2226,12 +2242,12 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   modalCustomerName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.lg,
   },
   modalLabel: {
@@ -2240,14 +2256,14 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   modalInput: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     minHeight: 44,
   },
   modalInputMultiline: {
@@ -2258,7 +2274,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.md,
     marginTop: SPACING['2xl'],
@@ -2279,19 +2295,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.xs,
     paddingVertical: SPACING.sm,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
     borderRadius: RADIUS.md,
     marginBottom: SPACING.xs,
   },
   modalContactsBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
   // ── Contact picker modal ──
   contactPickerSheet: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '80%',
@@ -2301,7 +2317,7 @@ const styles = StyleSheet.create({
   contactSearchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
@@ -2311,7 +2327,7 @@ const styles = StyleSheet.create({
   contactSearchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
   contactList: {
@@ -2323,7 +2339,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm + 2,
     gap: SPACING.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   contactItemExisting: {
     opacity: 0.4,
@@ -2332,14 +2348,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },
   contactAvatarText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   contactInfo: {
     flex: 1,
@@ -2348,15 +2364,15 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   contactPhone: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   contactExistsLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontStyle: 'italic',
   },
   contactEmptyState: {
@@ -2365,7 +2381,7 @@ const styles = StyleSheet.create({
   },
   contactEmptyText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 });
 

@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   Dimensions,
@@ -12,11 +11,13 @@ import {
   Pressable,
   Keyboard,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 import { successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
@@ -33,6 +34,8 @@ interface CartItem {
 }
 
 const SellScreen: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
   const { products, getActiveSession, addSale } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
@@ -205,7 +208,7 @@ const SellScreen: React.FC = () => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.emptyContainer}>
-          <Feather name="pause-circle" size={40} color={CALM.border} />
+          <Feather name="pause-circle" size={40} color={C.border} />
           <Text style={styles.emptyTitle}>no active session</Text>
           <Text style={styles.emptyHint}>
             start a session from the dashboard to begin selling.
@@ -229,7 +232,7 @@ const SellScreen: React.FC = () => {
           </Text>
         </View>
         <View style={styles.emptyContainer}>
-          <Feather name="package" size={40} color={CALM.border} />
+          <Feather name="package" size={40} color={C.border} />
           <Text style={styles.emptyTitle}>add your products first</Text>
           <Text style={styles.emptyHint}>you need products to start selling.</Text>
           <TouchableOpacity
@@ -237,7 +240,7 @@ const SellScreen: React.FC = () => {
             onPress={() => navigation.getParent()?.navigate('StallProducts')}
             accessibilityLabel="Go to products management"
           >
-            <Feather name="plus" size={16} color={CALM.bronze} />
+            <Feather name="plus" size={16} color={C.bronze} />
             <Text style={styles.addProductsText}>manage products</Text>
           </TouchableOpacity>
         </View>
@@ -286,19 +289,19 @@ const SellScreen: React.FC = () => {
 
           {/* Search */}
           <View style={styles.searchContainer}>
-            <Feather name="search" size={20} color={CALM.textSecondary} />
+            <Feather name="search" size={20} color={C.textSecondary} />
             <TextInput
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Search products..."
-              placeholderTextColor={CALM.neutral}
+              placeholderTextColor={C.neutral}
               returnKeyType="search"
               onSubmitEditing={Keyboard.dismiss}
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Feather name="x" size={20} color={CALM.textSecondary} />
+                <Feather name="x" size={20} color={C.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
@@ -342,7 +345,7 @@ const SellScreen: React.FC = () => {
                       {/* Remaining qty */}
                       {hasQty && !isSoldOut && (
                         <View style={styles.productStock}>
-                          <Feather name="package" size={12} color={CALM.textSecondary} />
+                          <Feather name="package" size={12} color={C.textSecondary} />
                           <Text style={styles.productStockText}>
                             {snap.remainingQty}
                           </Text>
@@ -382,7 +385,7 @@ const SellScreen: React.FC = () => {
               <Feather
                 name={cartExpanded ? 'chevron-right' : 'chevron-left'}
                 size={18}
-                color={CALM.bronze}
+                color={C.bronze}
               />
               <Text style={styles.cartTitle}>
                 {cartExpanded ? 'Review Order' : `Cart (${cart.length})`}
@@ -419,7 +422,7 @@ const SellScreen: React.FC = () => {
                           {item.productName}
                         </Text>
                         <TouchableOpacity onPress={() => removeFromCart(item.productId)}>
-                          <Feather name="trash-2" size={18} color={CALM.neutral} />
+                          <Feather name="trash-2" size={18} color={C.neutral} />
                         </TouchableOpacity>
                       </View>
                       <View style={styles.cartItemExpandedBottom}>
@@ -431,14 +434,14 @@ const SellScreen: React.FC = () => {
                             style={styles.quantityButtonExpanded}
                             onPress={() => updateQuantity(item.productId, item.quantity - 1)}
                           >
-                            <Feather name="minus" size={16} color={CALM.textPrimary} />
+                            <Feather name="minus" size={16} color={C.textPrimary} />
                           </TouchableOpacity>
                           <Text style={styles.quantityTextExpanded}>{item.quantity}</Text>
                           <TouchableOpacity
                             style={styles.quantityButtonExpanded}
                             onPress={() => updateQuantity(item.productId, item.quantity + 1)}
                           >
-                            <Feather name="plus" size={16} color={CALM.textPrimary} />
+                            <Feather name="plus" size={16} color={C.textPrimary} />
                           </TouchableOpacity>
                         </View>
                         <Text style={styles.cartItemTotalExpanded}>
@@ -462,14 +465,14 @@ const SellScreen: React.FC = () => {
                           style={styles.quantityButton}
                           onPress={() => updateQuantity(item.productId, item.quantity - 1)}
                         >
-                          <Feather name="minus" size={16} color={CALM.textPrimary} />
+                          <Feather name="minus" size={16} color={C.textPrimary} />
                         </TouchableOpacity>
                         <Text style={styles.quantityText}>{item.quantity}</Text>
                         <TouchableOpacity
                           style={styles.quantityButton}
                           onPress={() => updateQuantity(item.productId, item.quantity + 1)}
                         >
-                          <Feather name="plus" size={16} color={CALM.textPrimary} />
+                          <Feather name="plus" size={16} color={C.textPrimary} />
                         </TouchableOpacity>
                       </View>
                       <View style={styles.cartItemTotal}>
@@ -477,7 +480,7 @@ const SellScreen: React.FC = () => {
                           {currency} {(item.unitPrice * item.quantity).toFixed(2)}
                         </Text>
                         <TouchableOpacity onPress={() => removeFromCart(item.productId)}>
-                          <Feather name="trash-2" size={16} color={CALM.neutral} />
+                          <Feather name="trash-2" size={16} color={C.neutral} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -490,7 +493,7 @@ const SellScreen: React.FC = () => {
                   activeOpacity={0.7}
                   accessibilityLabel="Tap to expand cart"
                 >
-                  <Feather name="shopping-cart" size={48} color={CALM.textSecondary} />
+                  <Feather name="shopping-cart" size={48} color={C.textSecondary} />
                   <Text style={styles.emptyCartText}>Cart is empty</Text>
                 </TouchableOpacity>
               )}
@@ -519,7 +522,7 @@ const SellScreen: React.FC = () => {
                       <Feather
                         name="percent"
                         size={14}
-                        color={discountType === 'percentage' ? '#fff' : CALM.textSecondary}
+                        color={discountType === 'percentage' ? '#fff' : C.textSecondary}
                       />
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -533,7 +536,7 @@ const SellScreen: React.FC = () => {
                         style={{
                           fontSize: TYPOGRAPHY.size.xs,
                           fontWeight: TYPOGRAPHY.weight.bold,
-                          color: discountType === 'fixed' ? '#fff' : CALM.textSecondary,
+                          color: discountType === 'fixed' ? '#fff' : C.textSecondary,
                         }}
                       >
                         {currency}
@@ -546,7 +549,7 @@ const SellScreen: React.FC = () => {
                   value={discountValue}
                   onChangeText={setDiscountValue}
                   placeholder={discountType === 'percentage' ? '0%' : '0.00'}
-                  placeholderTextColor={CALM.neutral}
+                  placeholderTextColor={C.neutral}
                   keyboardType="decimal-pad"
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
@@ -566,10 +569,10 @@ const SellScreen: React.FC = () => {
               )}
               {discountAmount > 0 && (
                 <View style={styles.totalRow}>
-                  <Text style={[styles.totalRowLabel, { color: CALM.positive }]}>
+                  <Text style={[styles.totalRowLabel, { color: C.positive }]}>
                     Discount{discountType === 'percentage' ? ` (${discountValue}%)` : ''}
                   </Text>
-                  <Text style={[styles.totalRowValue, { color: CALM.positive }]}>
+                  <Text style={[styles.totalRowValue, { color: C.positive }]}>
                     -{currency} {discountAmount.toFixed(0)}
                   </Text>
                 </View>
@@ -597,8 +600,8 @@ const SellScreen: React.FC = () => {
                 accessibilityLabel={`Pay cash, ${currency} ${totalAmount.toFixed(2)}`}
                 accessibilityRole="button"
               >
-                <Feather name="dollar-sign" size={18} color={cart.length > 0 ? CALM.textPrimary : CALM.neutral} />
-                <Text style={[styles.cashButtonText, cart.length === 0 && { color: CALM.neutral }]}>
+                <Feather name="dollar-sign" size={18} color={cart.length > 0 ? C.textPrimary : C.neutral} />
+                <Text style={[styles.cashButtonText, cart.length === 0 && { color: C.neutral }]}>
                   Cash
                 </Text>
               </TouchableOpacity>
@@ -611,8 +614,8 @@ const SellScreen: React.FC = () => {
                 accessibilityLabel={`Pay QR, ${currency} ${totalAmount.toFixed(2)}`}
                 accessibilityRole="button"
               >
-                <Feather name="smartphone" size={18} color={cart.length > 0 ? '#FFFFFF' : CALM.neutral} />
-                <Text style={[styles.qrButtonText, cart.length === 0 && { color: CALM.neutral }]}>
+                <Feather name="smartphone" size={18} color={cart.length > 0 ? '#FFFFFF' : C.neutral} />
+                <Text style={[styles.qrButtonText, cart.length === 0 && { color: C.neutral }]}>
                   QR
                 </Text>
               </TouchableOpacity>
@@ -624,10 +627,10 @@ const SellScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
 
   // ─── Session header ────────────────────────────────────
@@ -635,9 +638,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
-    backgroundColor: withAlpha(CALM.bronze, 0.04),
+    backgroundColor: withAlpha(C.bronze, 0.04),
     borderBottomWidth: 1,
-    borderBottomColor: withAlpha(CALM.bronze, 0.12),
+    borderBottomColor: withAlpha(C.bronze, 0.12),
   },
   sessionHeaderRow: {
     flexDirection: 'row',
@@ -647,7 +650,7 @@ const styles = StyleSheet.create({
   sessionTotal: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   sessionSplit: {
@@ -658,8 +661,8 @@ const styles = StyleSheet.create({
   sessionSaleCount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
-    backgroundColor: withAlpha(CALM.bronze, 0.10),
+    color: C.bronze,
+    backgroundColor: withAlpha(C.bronze, 0.10),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.full,
@@ -691,19 +694,19 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     marginBottom: SPACING.md,
     gap: SPACING.sm,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   searchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // Product grid
@@ -723,15 +726,15 @@ const styles = StyleSheet.create({
   },
   productButton: {
     flex: 1,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   productInCart: {
-    borderColor: withAlpha(CALM.bronze, 0.3),
-    backgroundColor: withAlpha(CALM.bronze, 0.04),
+    borderColor: withAlpha(C.bronze, 0.3),
+    backgroundColor: withAlpha(C.bronze, 0.04),
   },
   productInner: {
     flex: 1,
@@ -744,13 +747,13 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.sm,
   },
   productPrice: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   productStock: {
     flexDirection: 'row',
@@ -760,13 +763,13 @@ const styles = StyleSheet.create({
   },
   productStockText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   soldOutLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.neutral,
+    color: C.neutral,
     marginTop: SPACING.xs,
   },
   cartBadge: {
@@ -776,7 +779,7 @@ const styles = StyleSheet.create({
     minWidth: 22,
     height: 22,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
@@ -794,14 +797,14 @@ const styles = StyleSheet.create({
   },
   noResultsText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // ─── Cart panel ────────────────────────────────────────
   cartSection: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderLeftWidth: 1,
-    borderLeftColor: CALM.border,
+    borderLeftColor: C.border,
   },
   cartHeader: {
     flexDirection: 'row',
@@ -809,8 +812,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
-    backgroundColor: withAlpha(CALM.bronze, 0.03),
+    borderBottomColor: C.border,
+    backgroundColor: withAlpha(C.bronze, 0.03),
   },
   cartHeaderLeft: {
     flexDirection: 'row',
@@ -821,11 +824,11 @@ const styles = StyleSheet.create({
   cartTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   clearCart: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.neutral,
+    color: C.neutral,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   cartScroll: {
@@ -842,7 +845,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   cartItemInfo: {
     flex: 1,
@@ -850,12 +853,12 @@ const styles = StyleSheet.create({
   cartItemName: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 2,
   },
   cartItemPrice: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   quantityControls: {
     flexDirection: 'row',
@@ -867,16 +870,16 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   quantityText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     minWidth: SPACING['2xl'],
     textAlign: 'center',
   },
@@ -887,7 +890,7 @@ const styles = StyleSheet.create({
   cartItemTotalText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -895,7 +898,7 @@ const styles = StyleSheet.create({
   cartItemExpanded: {
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   cartItemExpandedTop: {
     flexDirection: 'row',
@@ -907,7 +910,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginRight: SPACING.md,
   },
   cartItemExpandedBottom: {
@@ -917,7 +920,7 @@ const styles = StyleSheet.create({
   },
   cartItemPriceExpanded: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   quantityControlsExpanded: {
     flexDirection: 'row',
@@ -928,23 +931,23 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   quantityTextExpanded: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     minWidth: 30,
     textAlign: 'center',
   },
   cartItemTotalExpanded: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.bronze,
+    color: C.bronze,
     fontVariant: ['tabular-nums'],
   },
 
@@ -957,7 +960,7 @@ const styles = StyleSheet.create({
   },
   emptyCartText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: SPACING.md,
   },
 
@@ -965,7 +968,7 @@ const styles = StyleSheet.create({
   cartFooter: {
     padding: SPACING.lg,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     gap: SPACING.md,
   },
 
@@ -973,7 +976,7 @@ const styles = StyleSheet.create({
   discountSection: {
     paddingBottom: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   discountHeader: {
     flexDirection: 'row',
@@ -984,15 +987,15 @@ const styles = StyleSheet.create({
   discountLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   discountTypeToggle: {
     flexDirection: 'row',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   discountTypeButton: {
     paddingHorizontal: SPACING.md,
@@ -1001,18 +1004,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   discountTypeActive: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.md,
   },
   discountInput: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
 
   // Totals
@@ -1026,29 +1029,29 @@ const styles = StyleSheet.create({
   },
   totalRowLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   totalRowValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   totalRowFinal: {
     marginTop: SPACING.xs,
     paddingTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   totalLabel: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   totalAmount: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.bronze,
+    color: C.bronze,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1064,15 +1067,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.sm,
     minHeight: 52,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   cashButtonText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   qrButton: {
     flex: 1,
@@ -1081,11 +1084,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: SPACING.sm,
     minHeight: 52,
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
   },
   qrButtonDisabled: {
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   qrButtonText: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -1104,7 +1107,7 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   emptyHint: {
     ...TYPE.muted,
@@ -1119,13 +1122,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.bronze,
+    borderColor: C.bronze,
     minHeight: 44,
   },
   addProductsText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 });
 

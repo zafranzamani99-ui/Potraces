@@ -3,6 +3,7 @@ import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { startOfWeek, addDays, isSameDay } from 'date-fns';
 import { Transaction } from '../../types';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { useSettingsStore } from '../../store/settingsStore';
 import { lightTap } from '../../services/haptics';
 
@@ -14,6 +15,8 @@ const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const BAR_MAX_HEIGHT = 72;
 
 function WeekBar({ transactions }: WeekBarProps) {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
@@ -69,7 +72,7 @@ function WeekBar({ transactions }: WeekBarProps) {
                     styles.barFill,
                     {
                       height: Math.max(height, 4),
-                      backgroundColor: isActive ? CALM.accent : withAlpha(CALM.textPrimary, 0.08),
+                      backgroundColor: isActive ? C.accent : withAlpha(C.textPrimary, 0.08),
                     },
                   ]}
                 />
@@ -89,7 +92,7 @@ function WeekBar({ transactions }: WeekBarProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     paddingVertical: SPACING.md,
   },
@@ -115,24 +118,24 @@ const styles = StyleSheet.create({
   dayLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 6,
   },
   dayLabelActive: {
-    color: CALM.accent,
+    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   todayDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     marginTop: 3,
   },
   amountLabel: {
     fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
     marginBottom: 4,
     fontVariant: ['tabular-nums'] as any,
   },

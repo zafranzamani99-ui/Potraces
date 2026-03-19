@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  ScrollView,
   TextInput,
   Modal,
   TouchableOpacity,
@@ -12,12 +11,14 @@ import {
   ListRenderItemInfo,
   Alert,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import Button from '../../components/common/Button';
 import FAB from '../../components/common/FAB';
 import Card from '../../components/common/Card';
@@ -26,6 +27,8 @@ import CategoryPicker from '../../components/common/CategoryPicker';
 import { useToast } from '../../context/ToastContext';
 
 const Inventory: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { products, addProduct, updateProduct, deleteProduct } = useBusinessStore();
@@ -193,16 +196,16 @@ const Inventory: React.FC = () => {
           <Card style={styles.alertCard}>
             {outOfStockProducts.length > 0 && (
               <View style={styles.alertRow}>
-                <Feather name="alert-circle" size={20} color={CALM.neutral} />
-                <Text style={[styles.alertText, { color: CALM.neutral }]}>
+                <Feather name="alert-circle" size={20} color={C.neutral} />
+                <Text style={[styles.alertText, { color: C.neutral }]}>
                   {outOfStockProducts.length} {outOfStockProducts.length === 1 ? 'product' : 'products'} out of stock
                 </Text>
               </View>
             )}
             {lowStockProducts.length > 0 && (
               <View style={styles.alertRow}>
-                <Feather name="alert-triangle" size={20} color={CALM.neutral} />
-                <Text style={[styles.alertText, { color: CALM.neutral }]}>
+                <Feather name="alert-triangle" size={20} color={C.neutral} />
+                <Text style={[styles.alertText, { color: C.neutral }]}>
                   {lowStockProducts.length} {lowStockProducts.length === 1 ? 'product' : 'products'} running low
                 </Text>
               </View>
@@ -225,7 +228,7 @@ const Inventory: React.FC = () => {
               <Feather
                 name="grid"
                 size={14}
-                color={selectedCategory === null ? '#fff' : CALM.textSecondary}
+                color={selectedCategory === null ? '#fff' : C.textSecondary}
               />
               <Text
                 style={[styles.categoryTabText, selectedCategory === null && styles.categoryTabTextActive]}
@@ -242,7 +245,7 @@ const Inventory: React.FC = () => {
                 <Feather
                   name={cat.icon as keyof typeof Feather.glyphMap}
                   size={14}
-                  color={selectedCategory === cat.id ? '#fff' : CALM.textSecondary}
+                  color={selectedCategory === cat.id ? '#fff' : C.textSecondary}
                 />
                 <Text
                   style={[styles.categoryTabText, selectedCategory === cat.id && styles.categoryTabTextActive]}
@@ -257,19 +260,19 @@ const Inventory: React.FC = () => {
         {/* Search bar */}
         {products.length > 0 && (
           <View style={styles.searchContainer}>
-            <Feather name="search" size={18} color={CALM.textSecondary} />
+            <Feather name="search" size={18} color={C.textSecondary} />
             <TextInput
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Search products..."
-              placeholderTextColor={CALM.textSecondary}
+              placeholderTextColor={C.textSecondary}
               returnKeyType="search"
               onSubmitEditing={Keyboard.dismiss}
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Feather name="x" size={18} color={CALM.textSecondary} />
+                <Feather name="x" size={18} color={C.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
@@ -286,7 +289,7 @@ const Inventory: React.FC = () => {
             return (
               <Card key={product.id} style={styles.productCard}>
                 <View style={styles.productHeader}>
-                  <View style={[styles.iconContainer, { backgroundColor: cat?.color ? withAlpha(cat.color, 0.12) : CALM.background }]}>
+                  <View style={[styles.iconContainer, { backgroundColor: cat?.color ? withAlpha(cat.color, 0.12) : C.background }]}>
                     <Feather name={(cat?.icon as keyof typeof Feather.glyphMap) || 'package'} size={20} color={cat?.color} />
                   </View>
                   <View style={styles.productInfo}>
@@ -297,13 +300,13 @@ const Inventory: React.FC = () => {
                     style={styles.editButton}
                     onPress={() => handleEdit(product.id)}
                   >
-                    <Feather name="edit-2" size={18} color={CALM.bronze} />
+                    <Feather name="edit-2" size={18} color={C.bronze} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.editButton}
                     onPress={() => handleDelete(product.id)}
                   >
-                    <Feather name="trash-2" size={18} color={CALM.neutral} />
+                    <Feather name="trash-2" size={18} color={C.neutral} />
                   </TouchableOpacity>
                 </View>
 
@@ -323,7 +326,7 @@ const Inventory: React.FC = () => {
                     <Text
                       style={[
                         styles.detailValue,
-                        { color: margin > 0 ? CALM.positive : CALM.textPrimary },
+                        { color: margin > 0 ? C.positive : C.textPrimary },
                       ]}
                     >
                       {currency} {margin.toFixed(2)} ({marginPercent.toFixed(0)}%)
@@ -339,8 +342,8 @@ const Inventory: React.FC = () => {
                     <Text
                       style={[
                         styles.stockValue,
-                        isOutOfStock && { color: CALM.neutral },
-                        isLowStock && { color: CALM.neutral },
+                        isOutOfStock && { color: C.neutral },
+                        isLowStock && { color: C.neutral },
                       ]}
                     >
                       {product.stock} units
@@ -365,7 +368,7 @@ const Inventory: React.FC = () => {
           })
         ) : products.length > 0 ? (
           <View style={styles.noResults}>
-            <Feather name="search" size={40} color={CALM.textSecondary} />
+            <Feather name="search" size={40} color={C.textSecondary} />
             <Text style={styles.noResultsTitle}>No results found</Text>
             <Text style={styles.noResultsText}>
               Try a different search term or category
@@ -388,7 +391,7 @@ const Inventory: React.FC = () => {
           setModalVisible(true);
         }}
         icon="plus"
-        color={CALM.positive}
+        color={C.positive}
         style={{ right: undefined, left: SPACING['2xl'] }}
       />
 
@@ -412,7 +415,7 @@ const Inventory: React.FC = () => {
                     resetForm();
                   }}
                 >
-                  <Feather name="x" size={24} color={CALM.textPrimary} />
+                  <Feather name="x" size={24} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -425,7 +428,7 @@ const Inventory: React.FC = () => {
                   value={name}
                   onChangeText={setName}
                   placeholder="Coca Cola 500ml"
-                  placeholderTextColor={CALM.textSecondary}
+                  placeholderTextColor={C.textSecondary}
                   returnKeyType="next"
                 />
 
@@ -448,7 +451,7 @@ const Inventory: React.FC = () => {
                       onChangeText={setPrice}
                       placeholder="0.00"
                       keyboardType="decimal-pad"
-                      placeholderTextColor={CALM.textSecondary}
+                      placeholderTextColor={C.textSecondary}
                       returnKeyType="done"
                       onSubmitEditing={Keyboard.dismiss}
                     />
@@ -462,7 +465,7 @@ const Inventory: React.FC = () => {
                       onChangeText={setCost}
                       placeholder="0.00"
                       keyboardType="decimal-pad"
-                      placeholderTextColor={CALM.textSecondary}
+                      placeholderTextColor={C.textSecondary}
                       returnKeyType="done"
                       onSubmitEditing={Keyboard.dismiss}
                     />
@@ -480,7 +483,7 @@ const Inventory: React.FC = () => {
                       onChangeText={setStock}
                       placeholder="0"
                       keyboardType="number-pad"
-                      placeholderTextColor={CALM.textSecondary}
+                      placeholderTextColor={C.textSecondary}
                       returnKeyType="done"
                       onSubmitEditing={Keyboard.dismiss}
                     />
@@ -494,7 +497,7 @@ const Inventory: React.FC = () => {
                       onChangeText={setLowStockThreshold}
                       placeholder="10"
                       keyboardType="number-pad"
-                      placeholderTextColor={CALM.textSecondary}
+                      placeholderTextColor={C.textSecondary}
                       returnKeyType="done"
                       onSubmitEditing={Keyboard.dismiss}
                     />
@@ -537,7 +540,7 @@ const Inventory: React.FC = () => {
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Add Stock</Text>
                 <TouchableOpacity onPress={() => setStockModalVisible(false)}>
-                  <Feather name="x" size={24} color={CALM.textPrimary} />
+                  <Feather name="x" size={24} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -550,7 +553,7 @@ const Inventory: React.FC = () => {
                 onChangeText={setStockQuantity}
                 placeholder="Enter quantity"
                 keyboardType="number-pad"
-                placeholderTextColor={CALM.textSecondary}
+                placeholderTextColor={C.textSecondary}
                 autoFocus
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
@@ -579,10 +582,10 @@ const Inventory: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -608,18 +611,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   categoryTabActive: {
-    backgroundColor: CALM.bronze,
-    borderColor: CALM.bronze,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   categoryTabText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   categoryTabTextActive: {
     color: '#fff',
@@ -630,26 +633,26 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
     gap: SPACING.sm,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   searchInput: {
     flex: 1,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // Alerts
   alertCard: {
-    backgroundColor: withAlpha(CALM.neutral, 0.06),
+    backgroundColor: withAlpha(C.neutral, 0.06),
     borderLeftWidth: 4,
-    borderLeftColor: CALM.neutral,
+    borderLeftColor: C.neutral,
     marginBottom: SPACING.md,
     gap: SPACING.sm,
   },
@@ -686,19 +689,19 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 2,
   },
   productCategory: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   editButton: {
     padding: SPACING.sm,
   },
   divider: {
     height: 1,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginVertical: SPACING.md,
   },
   productDetails: {
@@ -711,12 +714,12 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   detailValue: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // Stock
@@ -727,22 +730,22 @@ const styles = StyleSheet.create({
   },
   stockLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xs,
   },
   stockValue: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   stockWarning: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.neutral,
+    color: C.neutral,
     marginTop: 2,
   },
   stockOutOfStock: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.neutral,
+    color: C.neutral,
     fontWeight: TYPOGRAPHY.weight.semibold,
     marginTop: 2,
   },
@@ -757,12 +760,12 @@ const styles = StyleSheet.create({
   noResultsTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginTop: SPACING.sm,
   },
   noResultsText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Modal
@@ -772,7 +775,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderTopLeftRadius: RADIUS['2xl'],
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
@@ -787,27 +790,27 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   label: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.sm,
     marginTop: SPACING.lg,
   },
   required: {
-    color: CALM.neutral,
+    color: C.neutral,
   },
   input: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   row: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-import { Playbook, PlaybookStats, Transaction } from '../types';
+import { Playbook, PlaybookLineItem, PlaybookStats, Transaction } from '../types';
 import { differenceInCalendarDays } from 'date-fns';
 
 export function computePlaybookStats(
@@ -27,17 +27,21 @@ export function computePlaybookStats(
     ? (totalSpent / playbook.sourceAmount) * 100
     : 0;
 
+  // Merged allocation map: line items with categories take precedence
+  const catAllocMap: Record<string, number> = {};
+  for (const a of playbook.allocations) catAllocMap[a.category] = a.allocatedAmount;
+  for (const li of (playbook.lineItems || [])) {
+    if (li.category) catAllocMap[li.category] = (catAllocMap[li.category] || 0) + li.plannedAmount;
+  }
+
   const categoryBreakdown = Object.entries(catMap)
     .sort((a, b) => b[1] - a[1])
-    .map(([category, spent]) => {
-      const alloc = playbook.allocations.find((a) => a.category === category);
-      return {
-        category,
-        spent,
-        allocated: alloc?.allocatedAmount,
-        percentOfTotal: totalSpent > 0 ? (spent / totalSpent) * 100 : 0,
-      };
-    });
+    .map(([category, spent]) => ({
+      category,
+      spent,
+      allocated: catAllocMap[category],
+      percentOfTotal: totalSpent > 0 ? (spent / totalSpent) * 100 : 0,
+    }));
 
   const startDate = playbook.startDate instanceof Date
     ? playbook.startDate
@@ -81,6 +85,127 @@ export function isPlaybookStale(playbook: Playbook): boolean {
     ? playbook.suggestedEndDate
     : new Date(playbook.suggestedEndDate);
   return new Date() > suggested;
+}
+
+/** Compute summary stats for notebook line items. */
+export function computeNotebookStats(lineItems: PlaybookLineItem[]): {
+  totalPlanned: number;
+  totalPaid: number;
+  totalUnpaid: number;
+  paidCount: number;
+  totalCount: number;
+} {
+  let totalPlanned = 0;
+  let totalPaid = 0;
+  let paidCount = 0;
+  for (const li of lineItems) {
+    totalPlanned += li.plannedAmount;
+    if (li.isPaid) {
+      totalPaid += li.actualAmount ?? li.plannedAmount;
+      paidCount++;
+    }
+  }
+  return {
+    totalPlanned,
+    totalPaid,
+    totalUnpaid: totalPlanned - totalPaid,
+    paidCount,
+    totalCount: lineItems.length,
+  };
+}
+
+// ─── Live Stats (time-aware dashboard metrics) ─────────────
+
+export interface LiveStatsData {
+  remaining: number;
+  burnRate: number;
+  daysLeft: number;
+  daysElapsed: number;
+  totalDays: number;
+  paceRatio: number;       // >1 = spending faster than time passing
+  projectedRemaining: number;
+}
+
+export function computeLiveStats(playbook: Playbook, stats: PlaybookStats): LiveStatsData {
+  const now = new Date();
+  const startDate = playbook.startDate instanceof Date ? playbook.startDate : new Date(playbook.startDate);
+  const endDate = playbook.endDate
+    ? (playbook.endDate instanceof Date ? playbook.endDate : new Date(playbook.endDate))
+    : (playbook.suggestedEndDate instanceof Date ? playbook.suggestedEndDate : new Date(playbook.suggestedEndDate));
+
+  const totalDays = Math.max(1, differenceInCalendarDays(endDate, startDate) + 1);
+  const daysElapsed = Math.max(1, Math.min(differenceInCalendarDays(now, startDate) + 1, totalDays));
+  const daysLeft = Math.max(0, differenceInCalendarDays(endDate, now));
+
+  const remaining = playbook.sourceAmount - stats.totalSpent;
+  const burnRate = stats.dailyBurnRate;
+
+  const timeRatio = daysElapsed / totalDays;
+  const spendRatio = stats.percentSpent / 100;
+  const paceRatio = timeRatio > 0 ? spendRatio / timeRatio : 0;
+
+  const projectedRemaining = playbook.sourceAmount - (burnRate * totalDays);
+
+  return { remaining, burnRate, daysLeft, daysElapsed, totalDays, paceRatio, projectedRemaining };
+}
+
+// ─── Spending Reality (category breakdown from linked transactions) ──
+
+export interface SpendingCategoryItem {
+  category: string;
+  spent: number;
+  percentOfTotal: number;
+  isPlanned: boolean;
+  transactionCount: number;
+  allocatedAmount?: number;
+}
+
+export function computeSpendingReality(
+  playbook: Playbook,
+  allTransactions: Transaction[],
+): SpendingCategoryItem[] {
+  const linkedSet = new Set(playbook.linkedExpenseIds);
+  const linkedTxns = allTransactions.filter((t) => linkedSet.has(t.id) && t.playbookLinks);
+
+  const catMap: Record<string, { spent: number; count: number }> = {};
+  let totalSpent = 0;
+
+  for (const tx of linkedTxns) {
+    const link = tx.playbookLinks?.find((l) => l.playbookId === playbook.id);
+    if (!link) continue;
+    totalSpent += link.amount;
+    if (!catMap[tx.category]) catMap[tx.category] = { spent: 0, count: 0 };
+    catMap[tx.category].spent += link.amount;
+    catMap[tx.category].count++;
+  }
+
+  // Build set of "planned" categories from allocations + line items
+  const plannedCategories = new Set<string>();
+  for (const a of playbook.allocations) plannedCategories.add(a.category.toLowerCase());
+  for (const li of (playbook.lineItems || [])) {
+    plannedCategories.add(li.label.toLowerCase());
+    if (li.category) plannedCategories.add(li.category.toLowerCase());
+  }
+
+  // Category allocation map from line items (sum if multiple) + fallback to allocations
+  const spendAllocMap: Record<string, number> = {};
+  for (const a of playbook.allocations) {
+    if (!spendAllocMap[a.category]) spendAllocMap[a.category] = a.allocatedAmount;
+  }
+  for (const li of (playbook.lineItems || [])) {
+    if (li.category) spendAllocMap[li.category] = (spendAllocMap[li.category] || 0) + li.plannedAmount;
+  }
+
+  return Object.entries(catMap)
+    .sort((a, b) => b[1].spent - a[1].spent)
+    .map(([category, data]) => ({
+      category,
+      spent: data.spent,
+      percentOfTotal: totalSpent > 0 ? (data.spent / totalSpent) * 100 : 0,
+      isPlanned: plannedCategories.has(category.toLowerCase()),
+      transactionCount: data.count,
+      allocatedAmount: spendAllocMap[category],
+    }));
 }
 
 /** Remove playbookLinks entries that reference deleted playbooks. */

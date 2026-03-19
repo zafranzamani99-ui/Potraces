@@ -1,12 +1,15 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { Text, Animated, StyleSheet } from 'react-native';
 import { CALM, TYPE, SPACING } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 
 interface BusinessInsightLineProps {
   text: string | null;
 }
 
 const BusinessInsightLine: React.FC<BusinessInsightLineProps> = ({ text }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -29,10 +32,10 @@ const BusinessInsightLine: React.FC<BusinessInsightLineProps> = ({ text }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   text: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.lg,
   },
 });

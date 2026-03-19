@@ -18,6 +18,7 @@ import { useFreelancerStore } from '../../../store/freelancerStore';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, successNotification } from '../../../services/haptics';
 
@@ -26,6 +27,8 @@ function toDate(d: Date | string): Date {
 }
 
 const AddPayment: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation();
   const { showToast } = useToast();
   const currency = useSettingsStore((s) => s.currency);
@@ -202,7 +205,7 @@ const AddPayment: React.FC = () => {
             value={amount}
             onChangeText={setAmount}
             placeholder="0"
-            placeholderTextColor={CALM.border}
+            placeholderTextColor={C.border}
             keyboardType="decimal-pad"
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
@@ -218,7 +221,7 @@ const AddPayment: React.FC = () => {
           }}
           activeOpacity={0.7}
         >
-          <Feather name="user" size={18} color={CALM.textSecondary} />
+          <Feather name="user" size={18} color={C.textSecondary} />
           <Text
             style={[
               styles.fieldText,
@@ -230,7 +233,7 @@ const AddPayment: React.FC = () => {
           <Feather
             name={showClientPicker ? 'chevron-up' : 'chevron-down'}
             size={18}
-            color={CALM.textMuted}
+            color={C.textMuted}
           />
         </TouchableOpacity>
 
@@ -253,7 +256,7 @@ const AddPayment: React.FC = () => {
                   {client.name}
                 </Text>
                 {selectedClientId === client.id && (
-                  <Feather name="check" size={16} color={CALM.bronze} />
+                  <Feather name="check" size={16} color={C.bronze} />
                 )}
               </TouchableOpacity>
             ))}
@@ -274,7 +277,7 @@ const AddPayment: React.FC = () => {
             value={newClientName}
             onChangeText={setNewClientName}
             placeholder="client name"
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             autoFocus
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
@@ -290,7 +293,7 @@ const AddPayment: React.FC = () => {
           }}
           activeOpacity={0.7}
         >
-          <Feather name="calendar" size={18} color={CALM.textSecondary} />
+          <Feather name="calendar" size={18} color={C.textSecondary} />
           <Text style={styles.fieldText}>{getDateLabel()}</Text>
         </TouchableOpacity>
 
@@ -309,13 +312,13 @@ const AddPayment: React.FC = () => {
 
         {/* Note */}
         <View style={styles.noteRow}>
-          <Feather name="edit-3" size={18} color={CALM.textSecondary} />
+          <Feather name="edit-3" size={18} color={C.textSecondary} />
           <TextInput
             style={styles.noteInput}
             value={note}
             onChangeText={setNote}
             placeholder="what was this for?"
-            placeholderTextColor={CALM.textMuted}
+            placeholderTextColor={C.textMuted}
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
           />
@@ -357,10 +360,10 @@ const AddPayment: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -380,12 +383,12 @@ const styles = StyleSheet.create({
   },
   currencySymbol: {
     ...TYPE.amount,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginRight: SPACING.sm,
   },
   amountInput: {
     ...TYPE.amount,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     minWidth: 100,
     textAlign: 'center',
   },
@@ -397,26 +400,26 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     minHeight: 44,
   },
   fieldText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   fieldPlaceholder: {
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // Client picker
   clientPickerList: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.md,
     marginTop: SPACING.xs,
     marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   clientPickerItem: {
     flexDirection: 'row',
@@ -425,28 +428,28 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     minHeight: 44,
   },
   clientPickerText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   clientPickerTextActive: {
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
   newClientText: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Inline input
   inlineInput: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.bronze,
+    borderBottomColor: C.bronze,
     paddingVertical: SPACING.md,
     marginBottom: SPACING.sm,
   },
@@ -458,17 +461,17 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   noteInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // Save
   saveButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',
@@ -477,7 +480,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveButtonDisabled: {
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -485,7 +488,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   saveButtonTextDisabled: {
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // Auto-detect prompt
@@ -497,11 +500,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   autoDetectText: {
     ...TYPE.muted,
@@ -510,7 +513,7 @@ const styles = StyleSheet.create({
   autoDetectAction: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 });
 

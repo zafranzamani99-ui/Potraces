@@ -15,7 +15,7 @@ export const useWalletStore = create<WalletState>()(
           wallets: [
             {
               ...wallet,
-              id: Date.now().toString(),
+              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
               createdAt: new Date(),
               updatedAt: new Date(),
             },
@@ -150,12 +150,13 @@ export const useWalletStore = create<WalletState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
+          const sd = (v: any) => { if (!v) return new Date(); const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? new Date() : d; };
           // Migrate wallets: add type field for old wallets
           state.wallets = state.wallets.map((w: any) => ({
             ...w,
             type: w.type || 'bank',
-            createdAt: new Date(w.createdAt),
-            updatedAt: new Date(w.updatedAt),
+            createdAt: sd(w.createdAt),
+            updatedAt: sd(w.updatedAt),
           }));
           // Migrate transfers array if missing
           if (!state.transfers) {
@@ -163,8 +164,8 @@ export const useWalletStore = create<WalletState>()(
           } else {
             state.transfers = state.transfers.map((t: any) => ({
               ...t,
-              date: new Date(t.date),
-              createdAt: new Date(t.createdAt),
+              date: sd(t.date),
+              createdAt: sd(t.createdAt),
             }));
           }
         }

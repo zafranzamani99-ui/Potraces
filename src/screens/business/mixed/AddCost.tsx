@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CostCategory } from '../../../types';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, successNotification } from '../../../services/haptics';
 
@@ -30,6 +31,8 @@ const CATEGORIES: { type: CostCategory; emoji: string; label: string; placeholde
 ];
 
 const AddCost: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation();
   const { showToast } = useToast();
   const currency = useSettingsStore((s) => s.currency);
@@ -149,7 +152,7 @@ const AddCost: React.FC = () => {
               onPress={() => setSelectedCategory(null)}
               activeOpacity={0.7}
             >
-              <Feather name="chevron-left" size={16} color={CALM.textSecondary} />
+              <Feather name="chevron-left" size={16} color={C.textSecondary} />
               <Text style={styles.backText}>
                 {CATEGORIES.find((c) => c.type === selectedCategory)?.emoji}{' '}
                 {CATEGORIES.find((c) => c.type === selectedCategory)?.label}
@@ -162,7 +165,7 @@ const AddCost: React.FC = () => {
                 value={customCategoryName}
                 onChangeText={setCustomCategoryName}
                 placeholder="what kind of cost?"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="next"
               />
             )}
@@ -176,7 +179,7 @@ const AddCost: React.FC = () => {
                 value={amount}
                 onChangeText={setAmount}
                 placeholder="0"
-                placeholderTextColor={CALM.border}
+                placeholderTextColor={C.border}
                 keyboardType="decimal-pad"
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
@@ -192,7 +195,7 @@ const AddCost: React.FC = () => {
               }}
               activeOpacity={0.7}
             >
-              <Feather name="calendar" size={18} color={CALM.textSecondary} />
+              <Feather name="calendar" size={18} color={C.textSecondary} />
               <Text style={styles.fieldText}>{getDateLabel()}</Text>
             </TouchableOpacity>
 
@@ -211,13 +214,13 @@ const AddCost: React.FC = () => {
 
             {/* Note */}
             <View style={styles.noteRow}>
-              <Feather name="edit-3" size={18} color={CALM.textSecondary} />
+              <Feather name="edit-3" size={18} color={C.textSecondary} />
               <TextInput
                 style={styles.noteInput}
                 value={note}
                 onChangeText={setNote}
                 placeholder={getPlaceholder()}
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
@@ -249,10 +252,10 @@ const AddCost: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -265,7 +268,7 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING['2xl'],
     marginTop: SPACING.md,
   },
@@ -279,7 +282,7 @@ const styles = StyleSheet.create({
   },
   savedText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   doneLink: {
     paddingVertical: SPACING.xs,
@@ -287,7 +290,7 @@ const styles = StyleSheet.create({
   },
   doneLinkText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
@@ -302,9 +305,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: SPACING.lg,
     borderRadius: RADIUS.lg,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.bar,
+    borderColor: C.bar,
     minHeight: 80,
   },
   categoryEmoji: {
@@ -313,7 +316,7 @@ const styles = StyleSheet.create({
   },
   categoryLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   backToCategories: {
@@ -325,14 +328,14 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   customCategoryInput: {
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     paddingVertical: SPACING.lg,
     marginBottom: SPACING.lg,
     minHeight: 44,
@@ -346,12 +349,12 @@ const styles = StyleSheet.create({
   },
   currencySymbol: {
     ...TYPE.amount,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginRight: SPACING.sm,
   },
   amountInput: {
     ...TYPE.amount,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     minWidth: 100,
     textAlign: 'center',
   },
@@ -362,13 +365,13 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     minHeight: 44,
   },
   fieldText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   noteRow: {
@@ -377,16 +380,16 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   noteInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   saveButton: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
     alignItems: 'center',
@@ -395,7 +398,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveButtonDisabled: {
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -403,7 +406,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   saveButtonTextDisabled: {
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 });
 

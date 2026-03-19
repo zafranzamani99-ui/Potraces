@@ -8,10 +8,11 @@ import {
   Animated,
   Dimensions,
   Platform,
-  ScrollView,
   PanResponder,
   TouchableWithoutFeedback,
+  Alert,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +22,7 @@ import { useCategoryStore } from '../../store/categoryStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePlaybookStore } from '../../store/playbookStore';
 import { CALM, SHADOWS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { lightTap, successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 import { useLearningStore } from '../../store/learningStore';
@@ -44,17 +46,23 @@ export function openQuickAdd() {
 
 // ─── Numpad Key ──────────────────────────────────────────────
 const NumpadKey = React.memo(
-  ({ label, onPress }: { label: string; onPress: (k: string) => void }) => (
+  ({ label, onPress, mutedColor, keyStyle, keyTextStyle }: {
+    label: string;
+    onPress: (k: string) => void;
+    mutedColor: string;
+    keyStyle: any;
+    keyTextStyle: any;
+  }) => (
     <TouchableOpacity
-      style={styles.numKey}
+      style={keyStyle}
       onPress={() => { lightTap(); onPress(label); }}
       activeOpacity={0.5}
       accessibilityLabel={label === '⌫' ? 'backspace' : label}
     >
       {label === '⌫' ? (
-        <Feather name="delete" size={20} color={CALM.textMuted} />
+        <Feather name="delete" size={20} color={mutedColor} />
       ) : (
-        <Text style={styles.numKeyText}>{label}</Text>
+        <Text style={keyTextStyle}>{label}</Text>
       )}
     </TouchableOpacity>
   ),
@@ -62,6 +70,8 @@ const NumpadKey = React.memo(
 
 // ─── Main Component ──────────────────────────────────────────
 const QuickAddExpense: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const currency = useSettingsStore((s) => s.currency);
@@ -163,25 +173,34 @@ const QuickAddExpense: React.FC = () => {
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8,
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: () => {
-          isDragging.current = true;
+          isDragging.current = false;
           fabPos.setOffset(lastPos.current);
           fabPos.setValue({ x: 0, y: 0 });
         },
         onPanResponderMove: (_, g) => {
+          if (Math.abs(g.dx) > 5 || Math.abs(g.dy) > 5) {
+            isDragging.current = true;
+          }
           fabPos.setValue({ x: g.dx, y: g.dy });
         },
         onPanResponderRelease: (_, g) => {
           fabPos.flattenOffset();
-          const currentX = lastPos.current.x + g.dx;
-          const currentY = lastPos.current.y + g.dy;
-          snapToEdge(currentX, currentY);
+          if (!isDragging.current) {
+            // Tap — restore position & open
+            fabPos.setValue(lastPos.current);
+            handleOpen();
+          } else {
+            const currentX = lastPos.current.x + g.dx;
+            const currentY = lastPos.current.y + g.dy;
+            snapToEdge(currentX, currentY);
+          }
           isDragging.current = false;
         },
       }),
-    [fabPos, snapToEdge],
+    [fabPos, snapToEdge, handleOpen],
   );
 
   const categories = useMemo(
@@ -311,12 +330,22 @@ const QuickAddExpense: React.FC = () => {
       // Playbook auto-link for expenses
       if (txType === 'expense') {
         const activePbs = usePlaybookStore.getState().getActivePlaybooks();
-        if (activePbs.length === 1) {
-          const pb = activePbs[0];
-          usePlaybookStore.getState().linkExpense(pb.id, txId);
+        const linkToPb = (pbId: string) => {
+          usePlaybookStore.getState().linkExpense(pbId, txId);
           updateTransaction(txId, {
-            playbookLinks: [{ playbookId: pb.id, amount: parsed }],
+            playbookLinks: [{ playbookId: pbId, amount: parsed }],
           });
+        };
+        if (activePbs.length === 1) {
+          linkToPb(activePbs[0].id);
+        } else if (activePbs.length > 1) {
+          Alert.alert('link to playbook', 'which playbook?', [
+            ...activePbs.map((pb) => ({
+              text: pb.name,
+              onPress: () => linkToPb(pb.id),
+            })),
+            { text: 'skip', style: 'cancel' as const },
+          ]);
         }
       }
 
@@ -373,15 +402,9 @@ const QuickAddExpense: React.FC = () => {
         ]}
         {...panResponder.panHandlers}
       >
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={handleOpen}
-          activeOpacity={0.8}
-          accessibilityLabel="Quick add"
-          accessibilityRole="button"
-        >
+        <View style={styles.fab} accessibilityLabel="Quick add" accessibilityRole="button">
           <Feather name="plus" size={26} color="#fff" />
-        </TouchableOpacity>
+        </View>
         {showHint && (
           <Animated.View style={[styles.hint, { opacity: hintOpacity }]} pointerEvents="none">
             <Text style={styles.hintText}>hold & drag to move</Text>
@@ -409,13 +432,13 @@ const QuickAddExpense: React.FC = () => {
             <View style={styles.hdr}>
               {currentStepIdx > 0 ? (
                 <TouchableOpacity onPress={goBack} style={styles.hdrBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                  <Feather name="chevron-left" size={20} color={CALM.textSecondary} />
+                  <Feather name="chevron-left" size={20} color={C.textSecondary} />
                 </TouchableOpacity>
               ) : (
                 <View style={styles.hdrBtn} />
               )}
               <TouchableOpacity onPress={handleClose} style={styles.hdrBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Feather name="x" size={18} color={CALM.textMuted} />
+                <Feather name="x" size={18} color={C.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -433,7 +456,7 @@ const QuickAddExpense: React.FC = () => {
                 <View style={[styles.step, { width: CARD_WIDTH }]}>
                   {/* Amount display */}
                   <View style={styles.amountWrap}>
-                    <Text style={[styles.amountDisplay, !amount && { color: '#D4D4D4' }]}>
+                    <Text style={[styles.amountDisplay, !amount && { color: C.neutral }]}>
                       <Text style={styles.amountCurrency}>{currency} </Text>
                       {displayAmount}
                     </Text>
@@ -446,7 +469,7 @@ const QuickAddExpense: React.FC = () => {
                       onPress={() => { lightTap(); setTxType('expense'); }}
                       activeOpacity={0.7}
                     >
-                      <Feather name="arrow-up-right" size={14} color={txType === 'expense' ? '#fff' : CALM.textMuted} />
+                      <Feather name="arrow-up-right" size={14} color={txType === 'expense' ? '#fff' : C.textMuted} />
                       <Text style={[styles.typePillText, txType === 'expense' && styles.typePillTextActive]}>went out</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -454,7 +477,7 @@ const QuickAddExpense: React.FC = () => {
                       onPress={() => { lightTap(); setTxType('income'); }}
                       activeOpacity={0.7}
                     >
-                      <Feather name="arrow-down-left" size={14} color={txType === 'income' ? '#fff' : CALM.textMuted} />
+                      <Feather name="arrow-down-left" size={14} color={txType === 'income' ? '#fff' : C.textMuted} />
                       <Text style={[styles.typePillText, txType === 'income' && styles.typePillTextActive]}>came in</Text>
                     </TouchableOpacity>
                   </View>
@@ -463,7 +486,7 @@ const QuickAddExpense: React.FC = () => {
                   <View style={styles.pad}>
                     {[['1','2','3'],['4','5','6'],['7','8','9'],['.','0','⌫']].map((row, ri) => (
                       <View key={ri} style={styles.padRow}>
-                        {row.map((k) => <NumpadKey key={k} label={k} onPress={handleNumpad} />)}
+                        {row.map((k) => <NumpadKey key={k} label={k} onPress={handleNumpad} mutedColor={C.textMuted} keyStyle={styles.numKey} keyTextStyle={styles.numKeyText} />)}
                       </View>
                     ))}
                   </View>
@@ -511,7 +534,7 @@ const QuickAddExpense: React.FC = () => {
                       <Text style={styles.badgeText}>
                         {currency} {parsedAmount.toFixed(2)}
                         {'  ·  '}
-                        <Text style={{ fontWeight: '400', color: CALM.textMuted }}>
+                        <Text style={{ fontWeight: '400', color: C.textMuted }}>
                           {categories.find((c) => c.id === categoryId)?.name || ''}
                         </Text>
                       </Text>
@@ -525,15 +548,15 @@ const QuickAddExpense: React.FC = () => {
                           onPress={() => handleWalletSelect(w.id)}
                           activeOpacity={0.55}
                         >
-                          <View style={[styles.walletIco, { backgroundColor: withAlpha(w.color || CALM.accent, 0.08) }]}>
-                            <Feather name={(w.icon as any) || 'credit-card'} size={20} color={w.color || CALM.accent} />
+                          <View style={[styles.walletIco, { backgroundColor: withAlpha(w.color || C.accent, 0.08) }]}>
+                            <Feather name={(w.icon as any) || 'credit-card'} size={20} color={w.color || C.accent} />
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.walletName}>{w.name}</Text>
                             <Text style={styles.walletBal}>{currency} {w.balance.toFixed(2)}</Text>
                           </View>
                           {w.isDefault && (
-                            <Feather name="star" size={16} color={w.color || CALM.accent} />
+                            <Feather name="star" size={16} color={w.color || C.accent} />
                           )}
                           <Feather name="chevron-right" size={16} color="#D4D4D4" />
                         </TouchableOpacity>
@@ -556,7 +579,7 @@ const QuickAddExpense: React.FC = () => {
             </TouchableWithoutFeedback>
             <Animated.View style={[styles.pbPromptCard, { transform: [{ scale: pbPromptScale }], opacity: pbPromptOpacity }]} onStartShouldSetResponder={() => true}>
               <View style={styles.pbPromptIcon}>
-                <Feather name="book-open" size={28} color={CALM.accent} />
+                <Feather name="book-open" size={28} color={C.accent} />
               </View>
               <Text style={styles.pbPromptTitle}>create a playbook?</Text>
               <Text style={styles.pbPromptSub}>
@@ -582,12 +605,12 @@ const QuickAddExpense: React.FC = () => {
 export default React.memo(QuickAddExpense);
 
 // ─── Styles ──────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   /* ── FAB ─────────────────────────────────── */
   fabWrap: { position: 'absolute', zIndex: 999, elevation: 10 },
   fab: {
     width: 56, height: 56, borderRadius: 28,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     alignItems: 'center', justifyContent: 'center',
     ...SHADOWS.md,
   },
@@ -596,18 +619,18 @@ const styles = StyleSheet.create({
     top: FAB_SIZE + 8,
     alignSelf: 'center',
     left: -26,
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.08)',
+    borderColor: withAlpha(C.textPrimary, 0.08),
     ...SHADOWS.sm,
   },
   hintText: {
     fontSize: 11,
     fontWeight: '500',
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
   },
 
@@ -621,11 +644,11 @@ const styles = StyleSheet.create({
   /* ── Card ─────────────────────────────────── */
   card: {
     width: CARD_WIDTH,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: C.surface,
     borderRadius: 28,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: withAlpha(C.textPrimary, 0.06),
     ...SHADOWS.lg,
   },
 
@@ -649,10 +672,10 @@ const styles = StyleSheet.create({
   },
   dot: {
     width: 6, height: 6, borderRadius: 3,
-    backgroundColor: '#EBEBEB',
+    backgroundColor: C.border,
   },
   dotFilled: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
 
   /* ── Steps container ─────────────────────── */
@@ -670,13 +693,13 @@ const styles = StyleSheet.create({
     fontSize: 42,
     fontWeight: '200',
     fontVariant: ['tabular-nums'],
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     letterSpacing: -1.5,
   },
   amountCurrency: {
     fontSize: 18,
     fontWeight: '400',
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   /* ── Type toggle ────────────────────────── */
@@ -694,21 +717,21 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E8E8E6',
+    borderColor: C.border,
     backgroundColor: 'transparent',
   },
   typePillActive: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
   },
   typePillActiveIncome: {
-    backgroundColor: CALM.positive,
-    borderColor: CALM.positive,
+    backgroundColor: C.positive,
+    borderColor: C.positive,
   },
   typePillText: {
     fontSize: 13,
     fontWeight: '500',
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   typePillTextActive: {
     color: '#fff',
@@ -719,12 +742,12 @@ const styles = StyleSheet.create({
   padRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   numKey: {
     width: 70, height: 50, borderRadius: 25,
-    backgroundColor: '#F5F5F3',
+    backgroundColor: C.background,
     alignItems: 'center', justifyContent: 'center',
   },
   numKeyText: {
     fontSize: 22, fontWeight: '400',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -733,7 +756,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center',
     gap: 8,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     paddingVertical: 14,
     borderRadius: 14,
   },
@@ -742,14 +765,14 @@ const styles = StyleSheet.create({
   /* ── Summary badge ───────────────────────── */
   badge: {
     alignSelf: 'center',
-    backgroundColor: withAlpha(CALM.accent, 0.07),
+    backgroundColor: withAlpha(C.accent, 0.07),
     paddingHorizontal: 16, paddingVertical: 7,
     borderRadius: 20,
     marginBottom: 14, marginTop: 4,
   },
   badgeText: {
     fontSize: 14, fontWeight: '600',
-    color: CALM.accent,
+    color: C.accent,
     fontVariant: ['tabular-nums'],
   },
 
@@ -767,7 +790,7 @@ const styles = StyleSheet.create({
   },
   catLabel: {
     fontSize: 11, fontWeight: '500',
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center', lineHeight: 14,
     paddingHorizontal: 2,
   },
@@ -777,37 +800,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 13, paddingHorizontal: 14,
     borderRadius: 16, gap: 12, marginBottom: 4,
-    backgroundColor: '#FAFAF8',
+    backgroundColor: C.background,
   },
   walletIco: {
     width: 44, height: 44, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
   },
-  walletName: { fontSize: 15, fontWeight: '500', color: CALM.textPrimary },
-  walletBal: { fontSize: 12, color: CALM.textMuted, marginTop: 2, fontVariant: ['tabular-nums'] },
+  walletName: { fontSize: 15, fontWeight: '500', color: C.textPrimary },
+  walletBal: { fontSize: 12, color: C.textMuted, marginTop: 2, fontVariant: ['tabular-nums'] },
   defBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: withAlpha(CALM.accent, 0.07),
+    backgroundColor: withAlpha(C.accent, 0.07),
     paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20,
   },
-  defBadgeText: { fontSize: 10, fontWeight: '600', color: CALM.accent, letterSpacing: 0.3 },
+  defBadgeText: { fontSize: 10, fontWeight: '600', color: C.accent, letterSpacing: 0.3 },
 
   /* ── Playbook prompt ───────────────────── */
   pbPromptCard: {
     width: CARD_WIDTH - 32,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: C.surface,
     borderRadius: 24,
     padding: 28,
     alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: withAlpha(C.textPrimary, 0.06),
     ...SHADOWS.lg,
   },
   pbPromptIcon: {
     width: 56,
     height: 56,
     borderRadius: 18,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -815,12 +838,12 @@ const styles = StyleSheet.create({
   pbPromptTitle: {
     fontSize: 17,
     fontWeight: '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 6,
   },
   pbPromptSub: {
     fontSize: 14,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 24,
@@ -835,12 +858,12 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     borderRadius: 14,
     alignItems: 'center',
-    backgroundColor: '#F5F5F3',
+    backgroundColor: C.background,
   },
   pbPromptSkipText: {
     fontSize: 14,
     fontWeight: '500',
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   pbPromptCreate: {
     flex: 1,
@@ -850,7 +873,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   pbPromptCreateText: {
     fontSize: 14,

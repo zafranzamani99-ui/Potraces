@@ -14,14 +14,16 @@ import {
   Modal,
   Platform,
   KeyboardAvoidingView,
-  ScrollView,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { useAIInsightsStore } from '../../store/aiInsightsStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useCategories } from '../../hooks/useCategories';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { lightTap, mediumTap } from '../../services/haptics';
 
 interface FreshStartProps {
@@ -29,6 +31,9 @@ interface FreshStartProps {
 }
 
 const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const currency = useSettingsStore((s) => s.currency);
   const now = new Date();
   const monthKey = format(now, 'yyyy-MM');
   const monthLabel = format(now, 'MMMM');
@@ -107,7 +112,7 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
       >
         <View style={styles.bannerContent}>
           <View style={styles.iconWrap}>
-            <Feather name="sunrise" size={18} color={CALM.bronze} />
+            <Feather name="sunrise" size={18} color={C.bronze} />
           </View>
           <View style={styles.bannerText}>
             <Text style={styles.bannerTitle}>fresh start — {monthLabel}</Text>
@@ -117,7 +122,7 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
             onPress={handleDismiss}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Feather name="x" size={16} color={CALM.textMuted} />
+            <Feather name="x" size={16} color={C.textMuted} />
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -135,7 +140,7 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <View style={styles.modalIconWrap}>
-                <Feather name="sunrise" size={20} color={CALM.bronze} />
+                <Feather name="sunrise" size={20} color={C.bronze} />
               </View>
               <Text style={styles.modalTitle}>breathing room for {monthLabel}</Text>
               <TouchableOpacity
@@ -143,7 +148,7 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
                 onPress={() => setModalVisible(false)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Feather name="x" size={18} color={CALM.textMuted} />
+                <Feather name="x" size={18} color={C.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -164,18 +169,18 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
                     <View style={styles.categoryInfo}>
                       <Text style={styles.categoryLabel}>{cat.name}</Text>
                       {lastSpent ? (
-                        <Text style={styles.categoryHint}>RM {lastSpent.toFixed(0)} last month</Text>
+                        <Text style={styles.categoryHint}>{currency} {lastSpent.toFixed(0)} last month</Text>
                       ) : null}
                     </View>
                     <View style={styles.inputWrap}>
-                      <Text style={styles.rmPrefix}>RM</Text>
+                      <Text style={styles.rmPrefix}>{currency}</Text>
                       <TextInput
                         style={styles.amountInput}
                         value={drafts[cat.id] || ''}
                         onChangeText={(val) => handleDraftChange(cat.id, val)}
                         keyboardType="numeric"
                         placeholder={lastSpent ? lastSpent.toFixed(0) : '—'}
-                        placeholderTextColor={CALM.textMuted}
+                        placeholderTextColor={C.textMuted}
                       />
                     </View>
                   </View>
@@ -207,13 +212,13 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
 
 export default React.memo(FreshStart);
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   banner: {
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.md,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
     borderWidth: 1,
-    borderColor: withAlpha(CALM.bronze, 0.12),
+    borderColor: withAlpha(C.bronze, 0.12),
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
   },
@@ -226,7 +231,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -236,11 +241,11 @@ const styles = StyleSheet.create({
   bannerTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   bannerSubtitle: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 1,
   },
 
@@ -255,7 +260,7 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxHeight: '80%',
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     gap: SPACING.md,
@@ -269,7 +274,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: withAlpha(CALM.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -277,19 +282,19 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   closeBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalDesc: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     lineHeight: 20,
   },
   categoryList: {
@@ -301,7 +306,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: SPACING.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   categoryInfo: {
     flex: 1,
@@ -309,18 +314,18 @@ const styles = StyleSheet.create({
   },
   categoryLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   categoryHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
   },
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 6,
@@ -328,11 +333,11 @@ const styles = StyleSheet.create({
   },
   rmPrefix: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   amountInput: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
     minWidth: 60,
     padding: 0,
@@ -351,10 +356,10 @@ const styles = StyleSheet.create({
   },
   skipText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   saveBtn: {
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     paddingHorizontal: SPACING.lg,
     paddingVertical: 10,
     borderRadius: RADIUS.full,

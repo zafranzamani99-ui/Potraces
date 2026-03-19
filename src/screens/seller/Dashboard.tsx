@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Animated,
   Easing,
@@ -19,6 +18,7 @@ import {
   StatusBar,
   Dimensions,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, subMonths, subDays, isWithinInterval, isToday, isTomorrow, isPast, startOfDay, differenceInDays, format, isSameDay } from 'date-fns';
@@ -26,6 +26,7 @@ import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { explainSellerMonth } from '../../utils/explainSellerMonth';
 import { lightTap, mediumTap } from '../../services/haptics';
 import ModeToggle from '../../components/common/ModeToggle';
@@ -38,6 +39,8 @@ import { useFadeSlide } from '../../utils/fadeSlide';
 
 // ─── Component ───────────────────────────────────────────────
 const SellerDashboard: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { orders, products, ingredientCosts, seasons, sellerCustomers, skippedOnboardingSteps, skipOnboardingStep } = useSellerStore();
   const { businessSetupComplete, incomeType } = useBusinessStore();
@@ -520,7 +523,7 @@ const SellerDashboard: React.FC = () => {
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CALM.bronze} colors={[CALM.bronze]} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze} colors={[C.bronze]} />
         }
       >
         <ModeToggle />
@@ -539,10 +542,10 @@ const SellerDashboard: React.FC = () => {
                 accessibilityLabel={`Active season: ${activeSeason.name}. Tap to view summary.`}
               >
                 <Animated.View style={{ opacity: seasonBreathAnim }}>
-                  <Feather name="calendar" size={20} color={CALM.accent} />
+                  <Feather name="calendar" size={20} color={C.accent} />
                 </Animated.View>
                 <Text style={styles.seasonPillText}>{activeSeason.name}</Text>
-                <Feather name="chevron-right" size={14} color={CALM.textMuted} />
+                <Feather name="chevron-right" size={14} color={C.textMuted} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={goToPastSeasons}
@@ -562,7 +565,7 @@ const SellerDashboard: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="No active season. Tap to manage seasons."
             >
-              <Feather name="calendar" size={13} color={CALM.textMuted} />
+              <Feather name="calendar" size={13} color={C.textMuted} />
               <Text style={styles.seasonPillEmptyText}>no active season</Text>
             </TouchableOpacity>
           )}
@@ -608,7 +611,7 @@ const SellerDashboard: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Show payment QR"
             >
-              <Feather name="maximize" size={20} color={paymentQrs.length > 0 ? CALM.accent : CALM.textMuted} />
+              <Feather name="maximize" size={20} color={paymentQrs.length > 0 ? C.accent : C.textMuted} />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.shopLinkBtn}
@@ -625,7 +628,7 @@ const SellerDashboard: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="My shop link"
             >
-              <Feather name="link-2" size={22} color={shopLinkUrl ? BIZ.success : CALM.textMuted} />
+              <Feather name="link-2" size={22} color={shopLinkUrl ? BIZ.success : C.textMuted} />
             </TouchableOpacity>
           </View>
           <Text
@@ -708,14 +711,14 @@ const SellerDashboard: React.FC = () => {
         <Animated.View style={quickActionsAnim}>
           <View style={styles.quickActionsRow}>
             <TouchableOpacity
-              style={[styles.quickActionButton, { borderColor: withAlpha(CALM.accent, 0.25), backgroundColor: withAlpha(CALM.accent, 0.08) }]}
+              style={[styles.quickActionButton, { borderColor: withAlpha(C.accent, 0.25), backgroundColor: withAlpha(C.accent, 0.08) }]}
               activeOpacity={0.7}
               onPress={goToProducts}
               accessibilityRole="button"
               accessibilityLabel="View products"
             >
-              <Feather name="package" size={16} color={CALM.accent} />
-              <Text style={[styles.quickActionLabel, { color: CALM.accent }]}>products</Text>
+              <Feather name="package" size={16} color={C.accent} />
+              <Text style={[styles.quickActionLabel, { color: C.accent }]}>products</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.quickActionButton}
@@ -724,7 +727,7 @@ const SellerDashboard: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Manage costs"
             >
-              <Feather name="shopping-bag" size={16} color={CALM.bronze} />
+              <Feather name="shopping-bag" size={16} color={C.bronze} />
               <Text style={styles.quickActionLabel}>costs</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -756,12 +759,12 @@ const SellerDashboard: React.FC = () => {
               {/* Header */}
               <View style={styles.productionHeader}>
                 <View style={styles.productionHeaderLeft}>
-                  <Feather name="list" size={16} color={CALM.accent} />
+                  <Feather name="list" size={16} color={C.accent} />
                   <Text style={styles.productionHeaderText}>TO MAKE</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
                   <Text style={styles.productionCount}>{checkedCount}/{productionList.length} done</Text>
-                  <Feather name="chevron-right" size={14} color={CALM.textMuted} />
+                  <Feather name="chevron-right" size={14} color={C.textMuted} />
                 </View>
               </View>
               {/* Progress bar */}
@@ -781,7 +784,7 @@ const SellerDashboard: React.FC = () => {
                   >
                     <View style={styles.productionItemLeft}>
                       <View style={[styles.productionCheckbox, done && styles.productionCheckboxDone]}>
-                        {done && <Feather name="check" size={12} color={CALM.surface} />}
+                        {done && <Feather name="check" size={12} color={C.surface} />}
                       </View>
                       <Text style={[styles.productionItemName, done && styles.productionItemNameDone]} numberOfLines={1}>
                         {item.name}
@@ -808,9 +811,9 @@ const SellerDashboard: React.FC = () => {
             <Feather
               name={kept >= 0 ? 'check-circle' : 'target'}
               size={14}
-              color={kept >= 0 ? BIZ.profit : CALM.bronze}
+              color={kept >= 0 ? BIZ.profit : C.bronze}
             />
-            <Text style={[styles.breakEvenText, { color: kept >= 0 ? BIZ.profit : CALM.bronze }]}>
+            <Text style={[styles.breakEvenText, { color: kept >= 0 ? BIZ.profit : C.bronze }]}>
               {kept >= 0
                 ? `costs covered · ${currency} ${kept.toFixed(0)} above break-even`
                 : `need ${currency} ${Math.abs(kept).toFixed(0)} more to cover costs`}
@@ -839,12 +842,12 @@ const SellerDashboard: React.FC = () => {
                 <View style={styles.stepNumber}>
                   <Text style={styles.stepNumberText}>1</Text>
                 </View>
-                <Feather name="calendar" size={18} color={CALM.textPrimary} style={styles.stepIcon} />
+                <Feather name="calendar" size={18} color={C.textPrimary} style={styles.stepIcon} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.stepText}>start a season</Text>
                   <Text style={styles.stepHint}>e.g. Raya 2025, CNY, or any event</Text>
                 </View>
-                <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+                <Feather name="chevron-right" size={16} color={C.textMuted} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.skipBtn}
@@ -870,12 +873,12 @@ const SellerDashboard: React.FC = () => {
                 <View style={styles.stepNumber}>
                   <Text style={styles.stepNumberText}>2</Text>
                 </View>
-                <Feather name="package" size={18} color={CALM.textPrimary} style={styles.stepIcon} />
+                <Feather name="package" size={18} color={C.textPrimary} style={styles.stepIcon} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.stepText}>add your products</Text>
                   <Text style={styles.stepHint}>name, price, and unit</Text>
                 </View>
-                <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+                <Feather name="chevron-right" size={16} color={C.textMuted} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.skipBtn}
@@ -901,12 +904,12 @@ const SellerDashboard: React.FC = () => {
                 <View style={styles.stepNumber}>
                   <Text style={styles.stepNumberText}>3</Text>
                 </View>
-                <Feather name="clipboard" size={18} color={CALM.textPrimary} style={styles.stepIcon} />
+                <Feather name="clipboard" size={18} color={C.textPrimary} style={styles.stepIcon} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.stepText}>record your first order</Text>
                   <Text style={styles.stepHint}>customer name, product, quantity</Text>
                 </View>
-                <Feather name="chevron-right" size={16} color={CALM.textMuted} />
+                <Feather name="chevron-right" size={16} color={C.textMuted} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.skipBtn}
@@ -924,7 +927,7 @@ const SellerDashboard: React.FC = () => {
             {/* ── Empty state (no orders this month) ────── */}
             {currentOrders.length === 0 && (
               <Animated.View style={[styles.emptyStateCard, emptyStateAnim]}>
-                <Feather name="calendar" size={32} color={CALM.textMuted} />
+                <Feather name="calendar" size={32} color={C.textMuted} />
                 <Text style={styles.emptyStateTitle}>no orders this month yet.</Text>
                 <Text style={styles.emptyStateSubtitle}>tap + to record a new order.</Text>
                 <TouchableOpacity
@@ -934,7 +937,7 @@ const SellerDashboard: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Create new order"
                 >
-                  <Feather name="plus" size={16} color={CALM.bronze} />
+                  <Feather name="plus" size={16} color={C.bronze} />
                   <Text style={styles.emptyStateCtaText}>new order</Text>
                 </TouchableOpacity>
               </Animated.View>
@@ -952,8 +955,8 @@ const SellerDashboard: React.FC = () => {
               >
                 <View style={styles.actionCardInner}>
                   <View style={styles.actionCardTop}>
-                    <Feather name="clipboard" size={18} color={pendingOrders.length > 0 ? BIZ.pending : CALM.textSecondary} />
-                    <Feather name="chevron-right" size={14} color={CALM.textMuted} />
+                    <Feather name="clipboard" size={18} color={pendingOrders.length > 0 ? BIZ.pending : C.textSecondary} />
+                    <Feather name="chevron-right" size={14} color={C.textMuted} />
                   </View>
                   <Text style={[styles.actionCardNumber, pendingOrders.length > 0 && { color: BIZ.pending }]}>{pendingOrders.length}</Text>
                   <Text style={styles.actionCardLabel}>pending</Text>
@@ -962,7 +965,7 @@ const SellerDashboard: React.FC = () => {
 
               {/* To make card */}
               <TouchableOpacity
-                style={[styles.actionCard, confirmedOrders.length > 0 && { borderLeftWidth: 3, borderLeftColor: CALM.accent, backgroundColor: withAlpha(CALM.accent, 0.04) }]}
+                style={[styles.actionCard, confirmedOrders.length > 0 && { borderLeftWidth: 3, borderLeftColor: C.accent, backgroundColor: withAlpha(C.accent, 0.04) }]}
                 activeOpacity={0.7}
                 onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'confirmed' }); }}
                 accessibilityRole="button"
@@ -970,10 +973,10 @@ const SellerDashboard: React.FC = () => {
               >
                 <View style={styles.actionCardInner}>
                   <View style={styles.actionCardTop}>
-                    <Feather name="clock" size={18} color={confirmedOrders.length > 0 ? CALM.accent : CALM.textSecondary} />
-                    <Feather name="chevron-right" size={14} color={CALM.textMuted} />
+                    <Feather name="clock" size={18} color={confirmedOrders.length > 0 ? C.accent : C.textSecondary} />
+                    <Feather name="chevron-right" size={14} color={C.textMuted} />
                   </View>
-                  <Text style={[styles.actionCardNumber, confirmedOrders.length > 0 && { color: CALM.accent }]}>{confirmedOrders.length}</Text>
+                  <Text style={[styles.actionCardNumber, confirmedOrders.length > 0 && { color: C.accent }]}>{confirmedOrders.length}</Text>
                   <Text style={styles.actionCardLabel}>to make</Text>
                 </View>
               </TouchableOpacity>
@@ -994,9 +997,9 @@ const SellerDashboard: React.FC = () => {
                     <Feather
                       name="alert-circle"
                       size={18}
-                      color={unpaidOrders.length > 0 ? BIZ.unpaid : CALM.textSecondary}
+                      color={unpaidOrders.length > 0 ? BIZ.unpaid : C.textSecondary}
                     />
-                    <Feather name="chevron-right" size={14} color={CALM.textMuted} />
+                    <Feather name="chevron-right" size={14} color={C.textMuted} />
                   </View>
                   <Text
                     style={[
@@ -1022,7 +1025,7 @@ const SellerDashboard: React.FC = () => {
               <Animated.View style={[styles.deliveryRouteCard, deliveryRouteAnim]}>
                 <View style={styles.deliveryRouteHeader}>
                   <View style={styles.deliveryRouteHeaderLeft}>
-                    <Feather name="truck" size={16} color={CALM.gold} />
+                    <Feather name="truck" size={16} color={C.gold} />
                     <Text style={styles.deliveryRouteHeaderText}>DELIVER TODAY</Text>
                   </View>
                   <Text style={styles.deliveryRouteCount}>
@@ -1068,7 +1071,7 @@ const SellerDashboard: React.FC = () => {
                           accessibilityRole="button"
                           accessibilityLabel={`Call ${delivery.customerName}`}
                         >
-                          <Feather name="phone" size={16} color={CALM.gold} />
+                          <Feather name="phone" size={16} color={C.gold} />
                         </TouchableOpacity>
                       )}
                       {delivery.customerPhone && (
@@ -1079,7 +1082,7 @@ const SellerDashboard: React.FC = () => {
                           accessibilityRole="button"
                           accessibilityLabel={`WhatsApp ${delivery.customerName}`}
                         >
-                          <Feather name="message-circle" size={16} color={CALM.gold} />
+                          <Feather name="message-circle" size={16} color={C.gold} />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1107,7 +1110,7 @@ const SellerDashboard: React.FC = () => {
               {/* Costs row */}
               <View style={styles.revenueRow}>
                 <View style={styles.revenueRowLeft}>
-                  <Feather name="shopping-bag" size={15} color={CALM.bronze} />
+                  <Feather name="shopping-bag" size={15} color={C.bronze} />
                   <Text style={styles.revenueRowLabel}>costs</Text>
                 </View>
                 <Text style={styles.revenueRowAmount}>{currency} {totalCosts.toFixed(2)}</Text>
@@ -1170,7 +1173,7 @@ const SellerDashboard: React.FC = () => {
                 <Text style={styles.shopModalSubtitle}>set up your online order page</Text>
               </View>
               <TouchableOpacity onPress={() => setShowShopModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Feather name="x" size={18} color={CALM.textMuted} />
+                <Feather name="x" size={18} color={C.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -1178,7 +1181,7 @@ const SellerDashboard: React.FC = () => {
             {shopModalSlug.length > 0 && shopSlug && (
               <>
                 <View style={styles.slmSectionHeader}>
-                  <Feather name="globe" size={14} color={CALM.textMuted} />
+                  <Feather name="globe" size={14} color={C.textMuted} />
                   <Text style={styles.slmSectionLabel}>your link</Text>
                 </View>
                 <TouchableOpacity
@@ -1197,8 +1200,8 @@ const SellerDashboard: React.FC = () => {
                     </Text>
                   </View>
                   <View style={styles.slmCopyPill}>
-                    <Feather name={shopLinkCopied ? 'check' : 'copy'} size={13} color={shopLinkCopied ? CALM.textMuted : BIZ.success} />
-                    <Text style={[styles.slmCopyPillText, shopLinkCopied && { color: CALM.textMuted }]}>
+                    <Feather name={shopLinkCopied ? 'check' : 'copy'} size={13} color={shopLinkCopied ? C.textMuted : BIZ.success} />
+                    <Text style={[styles.slmCopyPillText, shopLinkCopied && { color: C.textMuted }]}>
                       {shopLinkCopied ? 'copied' : 'copy'}
                     </Text>
                   </View>
@@ -1216,11 +1219,11 @@ const SellerDashboard: React.FC = () => {
                   activeOpacity={0.7}
                 >
                   {shopLogoUploading ? (
-                    <Feather name="loader" size={20} color={CALM.textMuted} />
+                    <Feather name="loader" size={20} color={C.textMuted} />
                   ) : shopLogoUrl ? (
                     <Image source={{ uri: shopLogoUrl }} style={styles.logoImage} />
                   ) : (
-                    <Feather name="shopping-bag" size={22} color={CALM.textMuted} />
+                    <Feather name="shopping-bag" size={22} color={C.textMuted} />
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -1241,7 +1244,7 @@ const SellerDashboard: React.FC = () => {
 
             {/* ── Section: Shop Details ── */}
             <View style={styles.slmSectionHeader}>
-              <Feather name="settings" size={14} color={CALM.textMuted} />
+              <Feather name="settings" size={14} color={C.textMuted} />
               <Text style={styles.slmSectionLabel}>shop details</Text>
             </View>
             <View style={styles.slmGroupCard}>
@@ -1252,7 +1255,7 @@ const SellerDashboard: React.FC = () => {
                   value={shopModalName}
                   onChangeText={setShopModalName}
                   placeholder="e.g. Kuih Raya Mak Cik Ton"
-                  placeholderTextColor={CALM.textMuted}
+                  placeholderTextColor={C.textMuted}
                   autoCapitalize="words"
                 />
               </View>
@@ -1263,16 +1266,16 @@ const SellerDashboard: React.FC = () => {
                   {!shopSlug && <Text style={styles.shopModalFieldHint}>(lowercase, numbers, -)</Text>}
                 </Text>
                 <TextInput
-                  style={[styles.slmGroupInput, !!shopSlug && { color: CALM.textMuted }]}
+                  style={[styles.slmGroupInput, !!shopSlug && { color: C.textMuted }]}
                   value={shopModalSlug}
                   onChangeText={(t) => setShopModalSlug(t.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                   placeholder="e.g. kuih-raya-ton"
-                  placeholderTextColor={CALM.textMuted}
+                  placeholderTextColor={C.textMuted}
                   autoCapitalize="none"
                   autoCorrect={false}
                   editable={!shopSlug}
                 />
-                <Text style={[styles.shopModalFieldHint, { marginTop: 3, color: shopSlug ? CALM.textMuted : CALM.bronze }]}>
+                <Text style={[styles.shopModalFieldHint, { marginTop: 3, color: shopSlug ? C.textMuted : C.bronze }]}>
                   {shopSlug ? 'link cannot be changed' : 'choose carefully — this is permanent'}
                 </Text>
               </View>
@@ -1280,7 +1283,7 @@ const SellerDashboard: React.FC = () => {
 
             {/* ── Section: Customer Notice ── */}
             <View style={styles.slmSectionHeader}>
-              <Feather name="message-circle" size={14} color={CALM.textMuted} />
+              <Feather name="message-circle" size={14} color={C.textMuted} />
               <Text style={styles.slmSectionLabel}>customer notice</Text>
               <Text style={[styles.shopModalFieldHint, { marginLeft: 4 }]}>optional</Text>
             </View>
@@ -1291,7 +1294,7 @@ const SellerDashboard: React.FC = () => {
                   value={shopModalNotice}
                   onChangeText={setShopModalNotice}
                   placeholder="e.g. COD Ipoh only. Luar kawasan sila WhatsApp kami"
-                  placeholderTextColor={CALM.textMuted}
+                  placeholderTextColor={C.textMuted}
                   multiline
                   maxLength={200}
                 />
@@ -1349,7 +1352,7 @@ const SellerDashboard: React.FC = () => {
               <Text style={[styles.shopModalTitle, { fontSize: TYPOGRAPHY.size.base }]}>confirm shop link</Text>
             </View>
 
-            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.textMuted, textAlign: 'center', marginBottom: SPACING.sm }}>
+            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, textAlign: 'center', marginBottom: SPACING.sm }}>
               your shop url will be
             </Text>
             <View style={[styles.slmLinkCard, { marginBottom: SPACING.md }]}>
@@ -1357,7 +1360,7 @@ const SellerDashboard: React.FC = () => {
                 {ORDER_PAGE_BASE}/?slug={shopModalSlug}
               </Text>
             </View>
-            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: CALM.bronze, textAlign: 'center', marginBottom: SPACING.lg, fontWeight: TYPOGRAPHY.weight.medium as any }}>
+            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.bronze, textAlign: 'center', marginBottom: SPACING.lg, fontWeight: TYPOGRAPHY.weight.medium as any }}>
               this cannot be changed later
             </Text>
 
@@ -1400,13 +1403,13 @@ const SellerDashboard: React.FC = () => {
             <View style={styles.itemsModalCard} onStartShouldSetResponder={() => true}>
               <View style={styles.itemsModalHeader}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-                  <Feather name="list" size={16} color={CALM.accent} />
+                  <Feather name="list" size={16} color={C.accent} />
                   <Text style={styles.itemsModalTitle}>to make</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                   <Text style={styles.productionCount}>{checkedCount}/{productionList.length} done</Text>
                   <TouchableOpacity onPress={() => setShowItemsModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                    <Feather name="x" size={18} color={CALM.textMuted} />
+                    <Feather name="x" size={18} color={C.textMuted} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1425,7 +1428,7 @@ const SellerDashboard: React.FC = () => {
                     >
                       <View style={styles.productionItemLeft}>
                         <View style={[styles.productionCheckbox, done && styles.productionCheckboxDone]}>
-                          {done && <Feather name="check" size={12} color={CALM.surface} />}
+                          {done && <Feather name="check" size={12} color={C.surface} />}
                         </View>
                         <Text style={[styles.productionItemName, done && styles.productionItemNameDone]}>
                           {item.name}
@@ -1503,10 +1506,10 @@ const SellerDashboard: React.FC = () => {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─── Styles ──────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -1535,7 +1538,7 @@ const styles = StyleSheet.create({
   seasonPillText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   seasonPillEmpty: {
     flexDirection: 'row',
@@ -1548,21 +1551,21 @@ const styles = StyleSheet.create({
   },
   seasonPillEmptyText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.regular as '400',
   },
   viewAllSeasonsText: {
     fontSize: TYPOGRAPHY.size.sm, // 13
-    color: CALM.bronze, // #B2780A
+    color: C.bronze, // #B2780A
     fontWeight: TYPOGRAPHY.weight.medium, // 500
     textDecorationLine: 'underline',
   },
 
   // ── Urgency section ──────────────────────────────────────
   urgencyCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     marginBottom: SPACING.sm,
@@ -1576,7 +1579,7 @@ const styles = StyleSheet.create({
     minHeight: 36,
     paddingVertical: SPACING.xs,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   urgencyRowLast: {
     borderBottomWidth: 0,
@@ -1590,13 +1593,13 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: CALM.textMuted,
+    backgroundColor: C.textMuted,
   },
   urgencyDotOverdue: {
     backgroundColor: BIZ.overdue,
   },
   urgencyDotToday: {
-    backgroundColor: CALM.gold,
+    backgroundColor: C.gold,
   },
   urgencyTextOverdue: {
     fontSize: TYPOGRAPHY.size.base,
@@ -1606,12 +1609,12 @@ const styles = StyleSheet.create({
   urgencyTextToday: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   urgencyTextTomorrow: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.regular as '400',
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   urgencyNames: {
     flex: 1,
@@ -1620,15 +1623,15 @@ const styles = StyleSheet.create({
   },
   urgencyNamesText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.regular as '400',
   },
 
   // ── Unpaid aging card ──────────────────────────────────
   unpaidAgingCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderLeftWidth: 3,
     borderLeftColor: BIZ.overdue,
     borderRadius: RADIUS.lg,
@@ -1662,7 +1665,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     minHeight: 52,
     borderRadius: RADIUS.xl,
-    backgroundColor: CALM.deepOlive,
+    backgroundColor: C.deepOlive,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
     marginBottom: SPACING.sm,
@@ -1688,15 +1691,15 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
-    backgroundColor: CALM.surface,
+    borderColor: C.border,
+    backgroundColor: C.surface,
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
   },
   quickActionLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   notiBadge: {
     position: 'absolute',
@@ -1748,7 +1751,7 @@ const styles = StyleSheet.create({
     ...TYPE.amount, // tabular-nums
     fontSize: 44,
     fontWeight: '300' as const,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
     letterSpacing: -1,
   },
@@ -1762,7 +1765,7 @@ const styles = StyleSheet.create({
   },
   heroTodayInline: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
@@ -1795,17 +1798,17 @@ const styles = StyleSheet.create({
   },
   heroSparklineLabel: {
     fontSize: 9,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 3,
     textTransform: 'lowercase' as const,
   },
   heroSparklineLabelActive: {
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   heroSparklineHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: SPACING.xs,
   },
 
@@ -1825,8 +1828,8 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(BIZ.profit, 0.25),
   },
   breakEvenCardShort: {
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
-    borderColor: withAlpha(CALM.bronze, 0.25),
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    borderColor: withAlpha(C.bronze, 0.25),
   },
   breakEvenText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1836,20 +1839,20 @@ const styles = StyleSheet.create({
   // ── AI insight ────────────────────────────────────────────
   insightContainer: {
     borderLeftWidth: 3,
-    borderLeftColor: CALM.accent, // olive — intelligence
+    borderLeftColor: C.accent, // olive — intelligence
     paddingLeft: SPACING.lg, // 16pt
     marginBottom: SPACING.sm,
   },
   insightText: {
     ...TYPE.insight, // fontSize 14, lineHeight 22
-    color: CALM.textSecondary, // #6B6B6B
+    color: C.textSecondary, // #6B6B6B
   },
 
   // ── Getting started card ──────────────────────────────────
   gettingStartedCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     marginBottom: SPACING.xl,
@@ -1869,7 +1872,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingVertical: SPACING.sm, // 8pt
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border, // #EBEBEB
+    borderBottomColor: C.border, // #EBEBEB
   },
   gettingStartedStepLast: {
     borderBottomWidth: 0,
@@ -1883,18 +1886,18 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: CALM.border, // #EBEBEB
+    backgroundColor: C.border, // #EBEBEB
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.sm, // 8pt
   },
   stepNumberDone: {
-    backgroundColor: CALM.accent, // olive — progress
+    backgroundColor: C.accent, // olive — progress
   },
   stepNumberText: {
     fontSize: TYPOGRAPHY.size.xs, // 11
     fontWeight: TYPOGRAPHY.weight.bold, // 700
-    color: CALM.textSecondary, // #6B6B6B
+    color: C.textSecondary, // #6B6B6B
     fontVariant: ['tabular-nums'],
   },
   stepIcon: {
@@ -1903,15 +1906,15 @@ const styles = StyleSheet.create({
   stepText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   stepTextDone: {
-    color: CALM.textMuted,
+    color: C.textMuted,
     textDecorationLine: 'line-through',
   },
   stepHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 1,
   },
   skipBtn: {
@@ -1920,7 +1923,7 @@ const styles = StyleSheet.create({
   },
   skipText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Action cards (pipeline replacement) ───────────────────
@@ -1931,9 +1934,9 @@ const styles = StyleSheet.create({
   },
   actionCard: {
     flex: 1,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     minHeight: 44,
   },
@@ -1954,7 +1957,7 @@ const styles = StyleSheet.create({
   actionCardNumber: {
     fontSize: 28, // bigger than 2xl (24) for visual weight
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: CALM.textPrimary, // #1A1A1A
+    color: C.textPrimary, // #1A1A1A
     fontVariant: ['tabular-nums'],
   },
   actionCardNumberHighlight: {
@@ -1974,9 +1977,9 @@ const styles = StyleSheet.create({
 
   // ── Production list (to make) ────────────────────────────
   productionCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     marginBottom: SPACING.xl,
@@ -1995,11 +1998,11 @@ const styles = StyleSheet.create({
   },
   productionHeaderText: {
     ...TYPE.label,
-    color: CALM.accent,
+    color: C.accent,
   },
   productionCount: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   productionRow: {
@@ -2008,7 +2011,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: SPACING.xs + 2,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   productionRowLast: {
     borderBottomWidth: 0,
@@ -2023,20 +2026,20 @@ const styles = StyleSheet.create({
   productionItemName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   productionItemQty: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
   // ── Revenue breakdown ─────────────────────────────────────
   revenueCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
@@ -2057,12 +2060,12 @@ const styles = StyleSheet.create({
   revenueRowLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.regular as '400',
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   revenueRowAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   revenueRowNote: {
@@ -2073,14 +2076,14 @@ const styles = StyleSheet.create({
   },
   revenueDivider: {
     height: 1,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginVertical: SPACING.xs + 2,
   },
   revenueProfitSection: {},
   revenueKeptLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold as '600',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   revenueKeptAmount: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -2108,7 +2111,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: CALM.bronze, // #B2780A
+    backgroundColor: C.bronze, // #B2780A
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md, // 16pt
@@ -2116,11 +2119,11 @@ const styles = StyleSheet.create({
   rankBadgeText: {
     fontSize: 12,
     fontWeight: TYPOGRAPHY.weight.bold, // 700
-    color: CALM.surface,
+    color: C.surface,
   },
   topProductName: {
     ...TYPE.insight, // fontSize 14, lineHeight 22
-    color: CALM.textPrimary, // #1A1A1A
+    color: C.textPrimary, // #1A1A1A
     flex: 1,
   },
   topProductQty: {
@@ -2129,13 +2132,13 @@ const styles = StyleSheet.create({
   },
   barTrack: {
     height: 6,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     borderRadius: 3,
     marginLeft: 24 + SPACING.md, // aligned with product name (past rank badge)
   },
   barFill: {
     height: 6,
-    backgroundColor: withAlpha(CALM.bronze, 0.20),
+    backgroundColor: withAlpha(C.bronze, 0.20),
     borderRadius: 3,
   },
 
@@ -2146,9 +2149,9 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     marginBottom: SPACING.sm,
     minHeight: 44,
@@ -2161,7 +2164,7 @@ const styles = StyleSheet.create({
   earningsLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   earningsValue: {
     fontSize: TYPOGRAPHY.size.base,
@@ -2172,20 +2175,20 @@ const styles = StyleSheet.create({
   },
   earningsCount: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
   // ── Production checklist additions ─────────────────────
   productionProgressTrack: {
     height: 5,
-    backgroundColor: withAlpha(CALM.accent, 0.15),
+    backgroundColor: withAlpha(C.accent, 0.15),
     borderRadius: 3,
     marginBottom: SPACING.sm,
   },
   productionProgressFill: {
     height: 5,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: 3,
   },
   productionCheckbox: {
@@ -2193,27 +2196,27 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
   productionCheckboxDone: {
-    backgroundColor: CALM.accent,
-    borderColor: CALM.accent,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
   },
   productionItemNameDone: {
     textDecorationLine: 'line-through' as const,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   productionItemQtyDone: {
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Delivery route card ────────────────────────────────
   deliveryRouteCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     marginBottom: SPACING.xl,
@@ -2231,7 +2234,7 @@ const styles = StyleSheet.create({
   },
   deliveryRouteHeaderText: {
     ...TYPE.label,
-    color: CALM.gold,
+    color: C.gold,
   },
   deliveryRouteCount: {
     ...TYPE.muted,
@@ -2242,7 +2245,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     minHeight: 44,
   },
   deliveryRouteRowLast: {
@@ -2254,22 +2257,22 @@ const styles = StyleSheet.create({
   deliveryRouteName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium as '500',
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 2,
   },
   deliveryRouteItems: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginBottom: 2,
   },
   deliveryRouteAddress: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.gold,
+    color: C.gold,
     textDecorationLine: 'underline' as const,
   },
   deliveryRouteNoAddress: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontStyle: 'italic' as const,
   },
   deliveryRouteActions: {
@@ -2281,16 +2284,16 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: withAlpha(CALM.gold, 0.1),
+    backgroundColor: withAlpha(C.gold, 0.1),
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
 
   // ── 7-day sparkline ──────────────────────────────────────
   sparklineCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     marginBottom: SPACING.sm,
@@ -2303,7 +2306,7 @@ const styles = StyleSheet.create({
   },
   sparklineTitle: {
     ...TYPE.label,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   sparklineTotal: {
     ...TYPE.muted,
@@ -2332,7 +2335,7 @@ const styles = StyleSheet.create({
   },
   sparklineDayLabel: {
     fontSize: 10,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.regular,
     marginTop: SPACING.xs,
     textTransform: 'lowercase' as const,
@@ -2343,7 +2346,7 @@ const styles = StyleSheet.create({
   },
   sparklineCount: {
     fontSize: 9,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     marginTop: 1,
   },
@@ -2392,21 +2395,21 @@ const styles = StyleSheet.create({
   },
   collectionBarLabelText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   // kept for legacy (unused now but avoids TS error if referenced)
   collectionRateLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
   // ── Top customer ───────────────────────────────────────
   topCustomerCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     marginBottom: SPACING.xl,
@@ -2429,7 +2432,7 @@ const styles = StyleSheet.create({
   topCustomerName: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   topCustomerStats: {
@@ -2439,19 +2442,19 @@ const styles = StyleSheet.create({
   },
   topCustomerStat: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   topCustomerDot: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Empty state ────────────────────────────────────────
   emptyStateCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING['3xl'],
     marginBottom: SPACING.xl,
@@ -2460,7 +2463,7 @@ const styles = StyleSheet.create({
   emptyStateTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginTop: SPACING.md,
     marginBottom: SPACING.xs,
   },
@@ -2475,13 +2478,13 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     minHeight: 44,
   },
   emptyStateCtaText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
   },
 
   // ── Change setup ──────────────────────────────────────────
@@ -2511,7 +2514,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   shopModalCard: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     width: '100%',
@@ -2534,11 +2537,11 @@ const styles = StyleSheet.create({
   shopModalTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   shopModalSubtitle: {
     fontSize: 11,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 1,
   },
   shopModalFieldHint: {
@@ -2546,7 +2549,7 @@ const styles = StyleSheet.create({
     fontWeight: '400' as any,
     textTransform: 'none' as const,
     letterSpacing: 0,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   shopModalError: {
     fontSize: 12,
@@ -2584,9 +2587,9 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: withAlpha(CALM.accent, 0.06),
+    backgroundColor: withAlpha(C.accent, 0.06),
     borderWidth: 1.5,
-    borderColor: CALM.border,
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -2603,7 +2606,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -2611,7 +2614,7 @@ const styles = StyleSheet.create({
   },
   logoLabel: {
     fontSize: 11,
-    color: CALM.textMuted,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium as any,
   },
   logoPreviewOverlay: {
@@ -2643,14 +2646,14 @@ const styles = StyleSheet.create({
   slmSectionLabel: {
     fontSize: 11,
     fontWeight: TYPOGRAPHY.weight.semibold as any,
-    color: CALM.textMuted,
+    color: C.textMuted,
     letterSpacing: 0.3,
   },
   slmGroupCard: {
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     overflow: 'hidden',
   },
   slmGroupField: {
@@ -2662,24 +2665,24 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold as any,
     letterSpacing: 0.6,
     textTransform: 'uppercase' as const,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginBottom: 4,
   },
   slmGroupInput: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: 2,
     paddingHorizontal: 0,
   },
   slmGroupDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginHorizontal: SPACING.md,
   },
   slmLinkCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: withAlpha(BIZ.success, 0.3),
@@ -2714,7 +2717,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
   },
   slmConfirmCard: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     width: '100%',
@@ -2727,12 +2730,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm + 2,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   slmConfirmCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium as any,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   slmConfirmBtn: {
     flex: 2,
@@ -2746,16 +2749,16 @@ const styles = StyleSheet.create({
   },
   changeSetupText: {
     ...TYPE.muted, // fontSize 12, color #A0A0A0
-    color: CALM.textSecondary, // #6B6B6B
+    color: C.textSecondary, // #6B6B6B
     textDecorationLine: 'underline' as const,
   },
 
   // ── Item stats card ──
   itemStatsCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
     marginBottom: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     overflow: 'hidden',
@@ -2767,13 +2770,13 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     marginBottom: SPACING.xs,
   },
   itemStatsHeaderTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     letterSpacing: 0.3,
   },
   itemStatsHeaderRight: {
@@ -2783,7 +2786,7 @@ const styles = StyleSheet.create({
   },
   itemStatsHeaderSub: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   itemStatsRow: {
     flexDirection: 'row',
@@ -2793,16 +2796,16 @@ const styles = StyleSheet.create({
   },
   itemStatsRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: withAlpha(CALM.border, 0.5),
+    borderBottomColor: withAlpha(C.border, 0.5),
   },
   itemStatsName: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   itemStatsCountBadge: {
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 3,
@@ -2812,19 +2815,19 @@ const styles = StyleSheet.create({
   itemStatsCountText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
     fontVariant: ['tabular-nums'] as any,
   },
   itemStatsMore: {
     alignItems: 'center',
     paddingVertical: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: withAlpha(CALM.border, 0.5),
+    borderTopColor: withAlpha(C.border, 0.5),
     marginTop: 2,
   },
   itemStatsMoreText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
 
   // ── Items modal ──
@@ -2836,7 +2839,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   itemsModalCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     width: '100%',
     maxHeight: '65%',
@@ -2851,13 +2854,13 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.md,
     paddingBottom: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     marginBottom: SPACING.xs,
   },
   itemsModalTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
 
   // ── QR modal ──
@@ -2865,7 +2868,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },

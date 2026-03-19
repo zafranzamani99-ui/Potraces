@@ -1,17 +1,14 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { selectionChanged } from '../../services/haptics';
 
 // CIMB-style: full-width bar matching app bg, labels always visible,
 // big colored circle popping out with a border ring
-
-const BAR_BG = CALM.surface;
-const INACTIVE_COLOR = CALM.textMuted;
-const ACTIVE_COLOR = CALM.textPrimary;
 
 interface CustomTabBarProps extends BottomTabBarProps {
   accentColor: string;
@@ -23,6 +20,10 @@ interface TabItemProps {
   isFocused: boolean;
   iconName: React.ComponentProps<typeof Feather>['name'];
   accentColor: string;
+  activeColor: string;
+  inactiveColor: string;
+  tabButtonStyle: any;
+  tabLabelStyle: any;
   accessibilityLabel?: string;
   onPress: () => void;
   onLongPress: () => void;
@@ -32,6 +33,10 @@ const TabItem = React.memo<TabItemProps>(({
   label,
   isFocused,
   iconName,
+  activeColor,
+  inactiveColor,
+  tabButtonStyle,
+  tabLabelStyle,
   accessibilityLabel,
   onPress,
   onLongPress,
@@ -42,18 +47,18 @@ const TabItem = React.memo<TabItemProps>(({
     accessibilityLabel={accessibilityLabel}
     onPress={onPress}
     onLongPress={onLongPress}
-    style={styles.tabButton}
+    style={tabButtonStyle}
     activeOpacity={0.7}
   >
     <Feather
       name={iconName}
       size={24}
-      color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR}
+      color={isFocused ? activeColor : inactiveColor}
     />
     <Text
       style={[
-        styles.tabLabel,
-        { color: isFocused ? ACTIVE_COLOR : INACTIVE_COLOR },
+        tabLabelStyle,
+        { color: isFocused ? activeColor : inactiveColor },
       ]}
       numberOfLines={1}
     >
@@ -62,31 +67,44 @@ const TabItem = React.memo<TabItemProps>(({
   </TouchableOpacity>
 ));
 
-const CenterTabItem = React.memo<TabItemProps>(({
+interface CenterTabItemProps extends TabItemProps {
+  centerContainerStyle: any;
+  centerTouchableStyle: any;
+  centerRingStyle: any;
+  centerButtonStyle: any;
+  centerLabelStyle: any;
+}
+
+const CenterTabItem = React.memo<CenterTabItemProps>(({
   label,
   isFocused,
   iconName,
   accentColor,
+  centerContainerStyle,
+  centerTouchableStyle,
+  centerRingStyle,
+  centerButtonStyle,
+  centerLabelStyle,
   accessibilityLabel,
   onPress,
   onLongPress,
 }) => (
-  <View style={styles.centerButtonContainer}>
+  <View style={centerContainerStyle}>
     <TouchableOpacity
       accessibilityRole="button"
       accessibilityState={isFocused ? { selected: true } : {}}
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       onLongPress={onLongPress}
-      style={styles.centerButtonTouchable}
+      style={centerTouchableStyle}
       activeOpacity={0.8}
     >
-      <View style={styles.centerRing}>
-        <View style={[styles.centerButton, { backgroundColor: accentColor }]}>
+      <View style={centerRingStyle}>
+        <View style={[centerButtonStyle, { backgroundColor: accentColor }]}>
           <Feather name={iconName} size={28} color="#FFFFFF" />
         </View>
       </View>
-      <Text style={styles.centerLabel}>{label}</Text>
+      <Text style={centerLabelStyle}>{label}</Text>
     </TouchableOpacity>
   </View>
 ));
@@ -97,6 +115,10 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
   navigation,
   accentColor,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const ACTIVE_COLOR = C.textPrimary;
+  const INACTIVE_COLOR = C.textMuted;
   const insets = useSafeAreaInsets();
   const centerIndex = Math.floor(state.routes.length / 2);
 
@@ -143,15 +165,41 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
               .props.name
           : 'circle';
 
-        const Component = isCenterButton ? CenterTabItem : TabItem;
+        if (isCenterButton) {
+          return (
+            <CenterTabItem
+              key={route.key}
+              label={label}
+              isFocused={isFocused}
+              iconName={iconName}
+              accentColor={accentColor}
+              activeColor={ACTIVE_COLOR}
+              inactiveColor={INACTIVE_COLOR}
+              tabButtonStyle={styles.tabButton}
+              tabLabelStyle={styles.tabLabel}
+              centerContainerStyle={styles.centerButtonContainer}
+              centerTouchableStyle={styles.centerButtonTouchable}
+              centerRingStyle={styles.centerRing}
+              centerButtonStyle={styles.centerButton}
+              centerLabelStyle={styles.centerLabel}
+              accessibilityLabel={options.tabBarAccessibilityLabel}
+              onPress={() => handlePress(route.key, route.name, isFocused)}
+              onLongPress={() => handleLongPress(route.key)}
+            />
+          );
+        }
 
         return (
-          <Component
+          <TabItem
             key={route.key}
             label={label}
             isFocused={isFocused}
             iconName={iconName}
             accentColor={accentColor}
+            activeColor={ACTIVE_COLOR}
+            inactiveColor={INACTIVE_COLOR}
+            tabButtonStyle={styles.tabButton}
+            tabLabelStyle={styles.tabLabel}
             accessibilityLabel={options.tabBarAccessibilityLabel}
             onPress={() => handlePress(route.key, route.name, isFocused)}
             onLongPress={() => handleLongPress(route.key)}
@@ -162,13 +210,13 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-around',
     overflow: 'visible',
-    backgroundColor: BAR_BG,
+    backgroundColor: C.surface,
   },
   background: {
     position: 'absolute',
@@ -176,12 +224,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: BAR_BG,
+    backgroundColor: C.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
     borderBottomWidth: 0,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   tabButton: {
     flex: 1,
@@ -212,11 +260,11 @@ const styles = StyleSheet.create({
     width: 74,
     height: 74,
     borderRadius: RADIUS.full,
-    backgroundColor: BAR_BG,
+    backgroundColor: C.surface,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 4,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   centerButton: {
     width: 64,
@@ -228,7 +276,7 @@ const styles = StyleSheet.create({
   centerLabel: {
     fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginTop: 4,
     textAlign: 'center',
     letterSpacing: 0.2,

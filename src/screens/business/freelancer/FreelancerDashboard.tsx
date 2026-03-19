@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval, differenceInDays, formatDistanceToNow } from 'date-fns';
@@ -8,6 +9,7 @@ import { useFreelancerStore } from '../../../store/freelancerStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm } from '../../../hooks/useCalm';
 import { explainFreelancerMonth } from '../../../utils/explainFreelancerMonth';
 import WeekBar from '../../../components/common/WeekBar';
 import ModeToggle from '../../../components/common/ModeToggle';
@@ -17,6 +19,8 @@ function toDate(d: Date | string): Date {
 }
 
 const FreelancerDashboard: React.FC = () => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const { businessTransactions } = useBusinessStore();
   const {
     clients,
@@ -203,7 +207,7 @@ const FreelancerDashboard: React.FC = () => {
           onPress={() => navigation.getParent()?.navigate('FreelancerReports')}
           activeOpacity={0.7}
         >
-          <Feather name="bar-chart-2" size={16} color={CALM.textSecondary} />
+          <Feather name="bar-chart-2" size={16} color={C.textSecondary} />
           <Text style={styles.reportsLinkText}>view reports</Text>
         </TouchableOpacity>
 
@@ -230,10 +234,10 @@ const FreelancerDashboard: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -246,7 +250,7 @@ const styles = StyleSheet.create({
   // Zone 1 — Hero
   heroAmount: {
     ...TYPE.hero,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     textAlign: 'center',
   },
   heroLabel: {
@@ -269,7 +273,7 @@ const styles = StyleSheet.create({
   // Zone 3
   insightText: {
     ...TYPE.insight,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xl,
   },
 
@@ -287,7 +291,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   clientInfo: {
     flex: 1,
@@ -295,7 +299,7 @@ const styles = StyleSheet.create({
   clientName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   clientTotal: {
     ...TYPE.muted,
@@ -303,14 +307,14 @@ const styles = StyleSheet.create({
   },
   clientLastPaid: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   seeAllLink: {
     paddingVertical: SPACING.md,
   },
   seeAllText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Zone 5
@@ -329,7 +333,7 @@ const styles = StyleSheet.create({
   },
   reportsLinkText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // Change setup
@@ -339,7 +343,7 @@ const styles = StyleSheet.create({
   },
   changeSetupText: {
     ...TYPE.muted,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
   // FAB
@@ -347,7 +351,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: SPACING['2xl'],
     right: SPACING['2xl'],
-    backgroundColor: CALM.bronze,
+    backgroundColor: C.bronze,
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,

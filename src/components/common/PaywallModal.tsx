@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { FREE_TIER, PREMIUM_CONFIG } from '../../constants/premium';
 import { usePremiumStore } from '../../store/premiumStore';
 
@@ -54,8 +55,36 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
   feature,
   currentUsage,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const subscribe = usePremiumStore((s) => s.subscribe);
   const config = FEATURE_CONFIG[feature];
+
+  // Helper component for tier comparison rows
+  const TierRow = ({ icon, text, check, cross, soon }: {
+    icon: keyof typeof Feather.glyphMap;
+    text: string;
+    check?: boolean;
+    cross?: boolean;
+    soon?: boolean;
+  }) => (
+    <View style={styles.tierRow}>
+      <Feather
+        name={check ? 'check-circle' : cross ? 'x-circle' : icon}
+        size={14}
+        color={check ? C.positive : cross ? C.neutral : C.textSecondary}
+      />
+      <Text
+        style={[
+          styles.tierRowText,
+          cross && { color: C.neutral, textDecorationLine: 'line-through' as const },
+        ]}
+      >
+        {text}
+        {soon ? ' (soon)' : ''}
+      </Text>
+    </View>
+  );
 
   const handleSubscribe = () => {
     subscribe();
@@ -136,33 +165,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
   );
 };
 
-// Helper component for tier comparison rows
-const TierRow: React.FC<{
-  icon: keyof typeof Feather.glyphMap;
-  text: string;
-  check?: boolean;
-  cross?: boolean;
-  soon?: boolean;
-}> = ({ icon, text, check, cross, soon }) => (
-  <View style={styles.tierRow}>
-    <Feather
-      name={check ? 'check-circle' : cross ? 'x-circle' : icon}
-      size={14}
-      color={check ? CALM.positive : cross ? CALM.neutral : CALM.textSecondary}
-    />
-    <Text
-      style={[
-        styles.tierRowText,
-        cross && { color: CALM.neutral, textDecorationLine: 'line-through' },
-      ]}
-    >
-      {text}
-      {soon ? ' (soon)' : ''}
-    </Text>
-  </View>
-);
-
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -170,17 +173,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   modal: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   header: {
     alignItems: 'center',
     paddingVertical: SPACING['2xl'],
     paddingHorizontal: SPACING.xl,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   crownCircle: {
     width: 56,
@@ -213,11 +216,11 @@ const styles = StyleSheet.create({
   },
   tierCard: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   premiumTierCard: {
     borderColor: '#FFB347',
@@ -226,7 +229,7 @@ const styles = StyleSheet.create({
   tierLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.sm,
     textAlign: 'center',
   },
@@ -236,7 +239,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: RADIUS.sm,
     marginBottom: SPACING.sm,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   premiumBadgeText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -254,7 +257,7 @@ const styles = StyleSheet.create({
   tierRowText: {
     fontSize: 11,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
   },
   subscribeButton: {
@@ -262,7 +265,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     paddingVertical: SPACING.lg,
     borderRadius: RADIUS.md,
   },
@@ -279,7 +282,7 @@ const styles = StyleSheet.create({
   dismissText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.neutral,
+    color: C.neutral,
   },
 });
 

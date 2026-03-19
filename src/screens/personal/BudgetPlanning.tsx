@@ -1,9 +1,8 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   Alert,
   Modal,
@@ -14,7 +13,9 @@ import {
   Switch,
   KeyboardAvoidingView,
   FlatList,
+  InteractionManager,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import {
   startOfMonth, endOfMonth,
@@ -28,6 +29,8 @@ import {
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, SHADOWS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import { FREE_TIER } from '../../constants/premium';
 import CategoryPicker from '../../components/common/CategoryPicker';
@@ -35,10 +38,14 @@ import PaywallModal from '../../components/common/PaywallModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
-import { Budget, CategoryOption, Playbook, PlaybookAllocation } from '../../types';
+import { Budget, CategoryOption, Playbook } from '../../types';
+import { useNavigation } from '@react-navigation/native';
 import { lightTap, mediumTap } from '../../services/haptics';
+import ScreenGuide from '../../components/common/ScreenGuide';
 import { usePlaybookStore } from '../../store/playbookStore';
 import { computePlaybookStats, isOverspent, getOverspentAmount, isPlaybookStale } from '../../utils/playbookStats';
+import PlaybookNotebook from '../../components/playbook/PlaybookNotebook';
+import SkeletonLoader from '../../components/common/SkeletonLoader';
 import { format } from 'date-fns';
 
 // ─── Pace helpers ──────────────────────────────────────────
@@ -81,6 +88,9 @@ const getPeriodDates = (period: 'weekly' | 'monthly' | 'yearly', now: Date) => {
 
 // ─── Component ─────────────────────────────────────────────
 const BudgetPlanning: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { budgets, addBudget, updateBudget, deleteBudget, transactions } = usePersonalStore();
@@ -104,16 +114,51 @@ const BudgetPlanning: React.FC = () => {
   const [viewMode, setViewMode] = useState<'budget' | 'playbook'>('budget');
   const [playbookTab, setPlaybookTab] = useState<'active' | 'past'>('active');
   const [createPlaybookVisible, setCreatePlaybookVisible] = useState(false);
-  const [viewingPlaybook, setViewingPlaybook] = useState<Playbook | null>(null);
-  const [txModalVisible, setTxModalVisible] = useState(false);
   const [editingPlaybook, setEditingPlaybook] = useState<Playbook | null>(null);
   const [dismissedNudges, setDismissedNudges] = useState<Set<string>>(new Set());
+  // expandedPbId removed — cards now tap-to-open notebook directly
+  const [notebookPb, setNotebookPb] = useState<Playbook | null>(null);
+  const navigation = useNavigation<any>();
+  const pendingNavRef = useRef<string | null>(null);
+  const pendingNavParamsRef = useRef<Record<string, any> | undefined>(undefined);
+  const reopenPlaybookRef = useRef<string | null>(null);
+  const [notebookOblExpanded, setNotebookOblExpanded] = useState(false);
+
+  // Reopen notebook modal when returning from obligation screen
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (reopenPlaybookRef.current) {
+        const pbId = reopenPlaybookRef.current;
+        reopenPlaybookRef.current = null;
+        const pb = usePlaybookStore.getState().playbooks.find((p) => p.id === pbId);
+        if (pb) {
+          setNotebookOblExpanded(true);
+          setTimeout(() => setNotebookPb(pb), 150);
+        }
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
+
+  const handleNotebookNavigate = useCallback((screen: string, params?: Record<string, any>) => {
+    // Store which playbook to reopen on return
+    if (notebookPb) reopenPlaybookRef.current = notebookPb.id;
+    pendingNavRef.current = screen;
+    pendingNavParamsRef.current = params;
+    setNotebookPb(null); // close notebook modal
+    // Navigate after modal dismisses
+    setTimeout(() => {
+      if (pendingNavRef.current) {
+        navigation.navigate(pendingNavRef.current, pendingNavParamsRef.current);
+        pendingNavRef.current = null;
+        pendingNavParamsRef.current = undefined;
+      }
+    }, 100);
+  }, [navigation, notebookPb]);
 
   // Create/edit playbook form
   const [pbName, setPbName] = useState('');
   const [pbAmount, setPbAmount] = useState('');
-  const [pbAllocations, setPbAllocations] = useState<PlaybookAllocation[]>([]);
-  const [showAllocations, setShowAllocations] = useState(false);
 
   // Playbook store
   const playbooks = usePlaybookStore((s) => s.playbooks);
@@ -197,7 +242,7 @@ const BudgetPlanning: React.FC = () => {
 
   // ─── Handlers ────────────────────────────────────────────
   const handleAdd = useCallback(() => {
-    if (!amount || parseFloat(amount) <= 0) {
+    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
       showToast('enter a valid amount', 'error');
       return;
     }
@@ -257,12 +302,12 @@ const BudgetPlanning: React.FC = () => {
 
   const handleDelete = useCallback((budget: Budget) => {
     Alert.alert(
-      'delete budget',
+      t.common.delete.toLowerCase(),
       'are you sure you want to remove this budget?',
       [
-        { text: 'cancel', style: 'cancel' },
+        { text: t.common.cancel.toLowerCase(), style: 'cancel' },
         {
-          text: 'delete',
+          text: t.common.delete.toLowerCase(),
           style: 'destructive',
           onPress: () => {
             mediumTap();
@@ -301,6 +346,8 @@ const BudgetPlanning: React.FC = () => {
     lightTap();
     setExpandedId((prev) => (prev === id ? null : id));
   }, []);
+
+  // togglePbExpand removed — cards tap-to-open notebook directly
 
   // ─── Budget row helper ───────────────────────────────────
   const getBudgetMeta = useCallback((budget: Budget & { spentAmount: number }) => {
@@ -360,8 +407,6 @@ const BudgetPlanning: React.FC = () => {
   const resetPlaybookForm = useCallback(() => {
     setPbName('');
     setPbAmount('');
-    setPbAllocations([]);
-    setShowAllocations(false);
     setEditingPlaybook(null);
   }, []);
 
@@ -383,7 +428,6 @@ const BudgetPlanning: React.FC = () => {
       mediumTap();
       updatePlaybookAction(editingPlaybook.id, {
         name: trimmed,
-        allocations: pbAllocations.filter((a) => a.allocatedAmount > 0),
       });
       closePlaybookModal();
       showToast('playbook updated', 'success');
@@ -399,7 +443,6 @@ const BudgetPlanning: React.FC = () => {
     const id = createPlaybook({
       name: trimmed,
       sourceAmount: parsed,
-      allocations: pbAllocations.filter((a) => a.allocatedAmount > 0),
     });
     if (id) {
       closePlaybookModal();
@@ -407,15 +450,13 @@ const BudgetPlanning: React.FC = () => {
     } else {
       showToast('you already have 2 active playbooks', 'error');
     }
-  }, [pbName, pbAmount, pbAllocations, editingPlaybook, canCreatePb, createPlaybook, updatePlaybookAction, closePlaybookModal, showToast]);
+  }, [pbName, pbAmount, editingPlaybook, canCreatePb, createPlaybook, updatePlaybookAction, closePlaybookModal, showToast]);
 
   const handleEditPlaybook = useCallback((pb: Playbook) => {
     lightTap();
     setEditingPlaybook(pb);
     setPbName(pb.name);
     setPbAmount(pb.sourceAmount.toString());
-    setPbAllocations(pb.allocations.length > 0 ? [...pb.allocations] : []);
-    setShowAllocations(pb.allocations.length > 0);
     setCreatePlaybookVisible(true);
   }, []);
 
@@ -472,22 +513,20 @@ const BudgetPlanning: React.FC = () => {
     }
   }, [reopenPlaybookAction, showToast]);
 
-  const handleViewTransactions = useCallback((pb: Playbook) => {
-    setViewingPlaybook(pb);
-    setTxModalVisible(true);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setReady(true));
+    return () => task.cancel();
   }, []);
 
-  const getCategoryInfo = useCallback((catId: string) => {
-    return expenseCategories.find((c) => c.id === catId);
-  }, [expenseCategories]);
-
-  // Linked transactions for the viewing playbook
-  const viewingLinkedTxns = useMemo(() => {
-    if (!viewingPlaybook) return [];
-    return transactions
-      .filter((t) => viewingPlaybook.linkedExpenseIds.includes(t.id))
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [viewingPlaybook, transactions]);
+  if (!ready) {
+    return (
+      <View style={styles.container}>
+        <SkeletonLoader />
+        <SkeletonLoader style={{ marginTop: SPACING.md }} />
+      </View>
+    );
+  }
 
   // ─── Render ──────────────────────────────────────────────
   const hasBudgets = budgetsWithSpent.length > 0;
@@ -508,7 +547,7 @@ const BudgetPlanning: React.FC = () => {
             activeOpacity={0.7}
           >
             <Text style={[styles.segmentText, viewMode === 'budget' && styles.segmentTextActive]}>
-              regular budget
+              {t.budget.regularBudget}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -558,7 +597,7 @@ const BudgetPlanning: React.FC = () => {
         {/* ── Over-limit banner ── */}
         {tier === 'free' && budgets.length > FREE_TIER.maxBudgets && (
           <View style={styles.bannerCard}>
-            <Feather name="info" size={16} color={CALM.bronze} />
+            <Feather name="info" size={16} color={C.bronze} />
             <Text style={styles.bannerText}>
               you have {budgets.length} budgets (free limit: {FREE_TIER.maxBudgets}).{' '}
               <Text
@@ -593,14 +632,14 @@ const BudgetPlanning: React.FC = () => {
                         {
                           backgroundColor: meta.cat?.color
                             ? withAlpha(meta.cat.color, 0.08)
-                            : withAlpha(CALM.accent, 0.08),
+                            : withAlpha(C.accent, 0.08),
                         },
                       ]}
                     >
                       <Feather
                         name={(meta.cat?.icon as keyof typeof Feather.glyphMap) || 'pie-chart'}
                         size={18}
-                        color={meta.cat?.color || CALM.accent}
+                        color={meta.cat?.color || C.accent}
                       />
                     </View>
 
@@ -647,6 +686,19 @@ const BudgetPlanning: React.FC = () => {
                         </Text>
                       </View>
 
+                      {/* Warm context label */}
+                      <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: meta.percentSpent > 1 ? C.bronze : C.textMuted, marginTop: 2 }}>
+                        {meta.percentSpent > 1
+                          ? `went past — by ${currency} ${(budget.spentAmount - budget.allocatedAmount).toFixed(0)}`
+                          : meta.percentSpent >= 0.95
+                          ? 'almost there'
+                          : meta.percentSpent >= 0.8
+                          ? 'getting close'
+                          : meta.percentSpent >= 0.5
+                          ? 'on track'
+                          : 'plenty of room'}
+                      </Text>
+
                       {/* Rollover info */}
                       {budget.rollover && budget.rolloverAmount != null && budget.rolloverAmount !== 0 && (
                         <Text style={styles.rolloverText}>
@@ -666,16 +718,16 @@ const BudgetPlanning: React.FC = () => {
                         onPress={() => handleEdit(budget)}
                         activeOpacity={0.7}
                       >
-                        <Feather name="edit-2" size={16} color={CALM.accent} />
-                        <Text style={[styles.actionText, { color: CALM.accent }]}>edit</Text>
+                        <Feather name="edit-2" size={16} color={C.accent} />
+                        <Text style={[styles.actionText, { color: C.accent }]}>{t.common.edit.toLowerCase()}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.actionButton}
                         onPress={() => handleDelete(budget)}
                         activeOpacity={0.7}
                       >
-                        <Feather name="trash-2" size={16} color={CALM.neutral} />
-                        <Text style={[styles.actionText, { color: CALM.neutral }]}>delete</Text>
+                        <Feather name="trash-2" size={16} color={C.neutral} />
+                        <Text style={[styles.actionText, { color: C.neutral }]}>{t.common.delete.toLowerCase()}</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -689,11 +741,11 @@ const BudgetPlanning: React.FC = () => {
           /* ── Empty state ── */
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconCircle}>
-              <Feather name="pie-chart" size={48} color={CALM.textMuted} />
+              <Feather name="pie-chart" size={48} color={C.textMuted} />
             </View>
-            <Text style={styles.emptyTitle}>set your spending targets</Text>
+            <Text style={styles.emptyTitle}>{t.budget.noBudgets}</Text>
             <Text style={styles.emptyMessage}>
-              track how much you want to spend per category
+              {t.budget.setBudget}
             </Text>
             <TouchableOpacity
               style={styles.emptyButton}
@@ -701,7 +753,7 @@ const BudgetPlanning: React.FC = () => {
               activeOpacity={0.8}
             >
               <Feather name="plus" size={18} color="#fff" />
-              <Text style={styles.emptyButtonText}>add budget</Text>
+              <Text style={styles.emptyButtonText}>{t.budget.addBudget.toLowerCase()}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -760,172 +812,100 @@ const BudgetPlanning: React.FC = () => {
 
           {/* ── Active tab ── */}
           {playbookTab === 'active' && (<>
-            {activePlaybooks.map((pb) => {
-              const stats = playbookStatsMap[pb.id];
-              if (!stats) return null;
-              const over = isOverspent(pb, stats);
-              const overAmount = getOverspentAmount(pb, stats);
-              const rawRemaining = pb.sourceAmount - stats.totalSpent;
+            {activePlaybooks.length > 0 ? (
+              <View style={styles.groupCard}>
+                {activePlaybooks.map((pb, index) => {
+                  const stats = playbookStatsMap[pb.id];
+                  if (!stats) return null;
+                  const over = isOverspent(pb, stats);
+                  const overAmount = getOverspentAmount(pb, stats);
+                  const rawRemaining = pb.sourceAmount - stats.totalSpent;
+                  const isLast = index === activePlaybooks.length - 1;
+                  const percentage = stats.percentSpent;
+                  const paceColor = over ? C.neutral : C.accent;
 
-              return (
-                <View key={pb.id} style={styles.pbCard}>
-                  {/* Header — wallet-style row */}
-                  <View style={styles.pbCardHeaderRow}>
-                    <View style={[styles.pbIconCircle, { backgroundColor: withAlpha(CALM.accent, 0.12) }]}>
-                      <Feather name="book-open" size={20} color={CALM.accent} />
-                    </View>
-                    <View style={styles.pbCardInfo}>
-                      <View style={styles.pbCardNameRow}>
-                        <Text style={styles.pbCardTitle} numberOfLines={1}>{pb.name}</Text>
-                        <View style={styles.pbStatusBadge}>
-                          <Text style={styles.pbStatusText}>active</Text>
+                  return (
+                    <View key={pb.id}>
+                      <Pressable
+                        onPress={() => { lightTap(); setNotebookPb(pb); }}
+                        onLongPress={() => {
+                          mediumTap();
+                          Alert.alert(pb.name, undefined, [
+                            { text: 'Edit', onPress: () => handleEditPlaybook(pb) },
+                            { text: 'Close Playbook', style: 'destructive', onPress: () => handleClosePlaybook(pb) },
+                            { text: 'Delete', style: 'destructive', onPress: () => handleDeletePlaybook(pb) },
+                            { text: 'Cancel', style: 'cancel' },
+                          ]);
+                        }}
+                        style={({ pressed }) => [styles.budgetRow, pressed && { opacity: 0.7 }]}
+                      >
+                        {/* Icon */}
+                        <View
+                          style={[styles.iconCircle, { backgroundColor: withAlpha(C.accent, 0.08) }]}
+                        >
+                          <Feather name="book-open" size={18} color={C.accent} />
                         </View>
-                      </View>
-                      <Text style={styles.pbCardAmount}>
-                        {currency} {pb.sourceAmount.toFixed(2)}
-                      </Text>
-                    </View>
-                  </View>
 
-                  {/* Waterfall */}
-                  {stats.categoryBreakdown.length > 0 && (
-                    <View style={styles.pbWaterfall}>
-                      <Text style={styles.pbSectionLabel}>where it went</Text>
-                      {stats.categoryBreakdown.map((cat, catIdx) => {
-                        const catInfo = getCategoryInfo(cat.category);
-                        const barWidth = pb.sourceAmount > 0 ? (cat.spent / pb.sourceAmount) * 100 : 0;
-                        const catColor = catInfo?.color || CALM.neutral;
-                        return (
-                          <View key={`${cat.category}-${catIdx}`} style={styles.pbWaterfallRow}>
-                            <Text style={styles.pbWaterfallLabel} numberOfLines={1}>
-                              {catInfo?.name || cat.category}
-                            </Text>
-                            <View style={styles.pbWaterfallBarTrack}>
-                              <View
-                                style={[
-                                  styles.pbWaterfallBarFill,
-                                  {
-                                    width: `${Math.min(barWidth, 100)}%`,
-                                    backgroundColor: withAlpha(catColor, 0.6),
-                                  },
-                                ]}
-                              />
-                            </View>
-                            <Text style={styles.pbWaterfallAmount}>
-                              {currency} {cat.spent.toFixed(0)}
-                            </Text>
-                            <Text style={styles.pbWaterfallPercent}>
-                              {cat.percentOfTotal.toFixed(0)}%
+                        {/* Content */}
+                        <View style={styles.budgetContent}>
+                          <View style={styles.budgetNameRow}>
+                            <Text style={styles.budgetName} numberOfLines={1}>{pb.name}</Text>
+                            <Text style={styles.budgetAmounts}>
+                              <Text style={{ fontWeight: TYPOGRAPHY.weight.semibold }}>
+                                {currency} {stats.totalSpent.toFixed(0)}
+                              </Text>
+                              {' / '}
+                              {pb.sourceAmount.toFixed(0)}
                             </Text>
                           </View>
-                        );
-                      })}
-                      {/* Remaining */}
-                      <View style={[styles.pbWaterfallRow, { marginTop: SPACING.sm }]}>
-                        <Text style={[styles.pbWaterfallLabel, { color: over ? CALM.neutral : CALM.accent, fontWeight: TYPOGRAPHY.weight.semibold }]}>
-                          {over ? 'overspent' : 'remaining'}
-                        </Text>
-                        <View style={{ flex: 1 }} />
-                        <Text style={[styles.pbWaterfallAmount, { color: over ? CALM.neutral : CALM.accent, fontWeight: TYPOGRAPHY.weight.semibold }]}>
-                          {over
-                            ? `${currency} ${overAmount.toFixed(0)} over`
-                            : `${currency} ${rawRemaining.toFixed(0)}`}
-                        </Text>
-                        <Text style={[styles.pbWaterfallPercent, { color: over ? CALM.neutral : CALM.accent }]}>
-                          {over ? '' : `${(100 - stats.percentSpent).toFixed(0)}%`}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
 
-                  {/* Summary row — wallet-style */}
-                  <View style={styles.pbSummaryRow}>
-                    <View style={styles.pbSummaryItem}>
-                      <Text style={styles.pbSummaryLabel}>{stats.linkedTransactionCount} txns</Text>
-                      <Text style={styles.pbSummaryValue}>
-                        ~{currency} {stats.dailyBurnRate.toFixed(0)}/day
-                      </Text>
-                    </View>
-                    <View style={[styles.pbSummaryItem, styles.pbSummaryDivider]}>
-                      <Text style={styles.pbSummaryLabel}>{stats.daysActive} days</Text>
-                      <Text style={styles.pbSummaryValue}>
-                        {stats.daysUntilEmpty != null ? `~${stats.daysUntilEmpty}d left` : '—'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Allocation progress bars */}
-                  {pb.allocations.length > 0 && (
-                    <View style={styles.pbAllocSection}>
-                      <Text style={styles.pbSectionLabel}>category limits</Text>
-                      {pb.allocations.map((alloc, allocIdx) => {
-                        const catInfo = getCategoryInfo(alloc.category);
-                        const catBreakdown = stats.categoryBreakdown.find((c) => c.category === alloc.category);
-                        const spent = catBreakdown?.spent || 0;
-                        const pct = alloc.allocatedAmount > 0 ? (spent / alloc.allocatedAmount) * 100 : 0;
-                        const allocOver = spent > alloc.allocatedAmount;
-                        return (
-                          <View key={`${alloc.category}-${allocIdx}`} style={styles.pbAllocRow}>
-                            <Text style={styles.pbAllocLabel} numberOfLines={1}>
-                              {catInfo?.name || alloc.category}
-                            </Text>
-                            <Text style={styles.pbAllocAmounts}>
-                              {currency} {spent.toFixed(0)}/{alloc.allocatedAmount.toFixed(0)}
-                            </Text>
-                            <View style={styles.pbAllocBarTrack}>
-                              <View
-                                style={[
-                                  styles.pbAllocBarFill,
-                                  {
-                                    width: `${Math.min(pct, 100)}%`,
-                                    backgroundColor: allocOver ? CALM.bronze : (catInfo?.color || CALM.accent),
-                                  },
-                                ]}
-                              />
-                            </View>
+                          {/* Progress bar */}
+                          <View style={styles.barTrack}>
+                            <View
+                              style={[
+                                styles.barFill,
+                                {
+                                  width: `${Math.min(percentage, 100)}%`,
+                                  backgroundColor: paceColor,
+                                },
+                              ]}
+                            />
                           </View>
-                        );
-                      })}
-                    </View>
-                  )}
 
-                  {/* Actions */}
-                  <View style={styles.pbCardActions}>
-                    <TouchableOpacity
-                      style={styles.pbActionBtn}
-                      onPress={() => handleViewTransactions(pb)}
-                      activeOpacity={0.7}
-                    >
-                      <Feather name="list" size={14} color={CALM.accent} />
-                      <Text style={[styles.pbActionText, { color: CALM.accent }]}>transactions</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.pbActionBtn}
-                      onPress={() => handleEditPlaybook(pb)}
-                      activeOpacity={0.7}
-                    >
-                      <Feather name="edit-2" size={14} color={CALM.textSecondary} />
-                      <Text style={[styles.pbActionText, { color: CALM.textSecondary }]}>edit</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.pbActionBtn}
-                      onPress={() => handleClosePlaybook(pb)}
-                      activeOpacity={0.7}
-                    >
-                      <Feather name="check-circle" size={14} color={CALM.bronze} />
-                      <Text style={[styles.pbActionText, { color: CALM.bronze }]}>close</Text>
-                    </TouchableOpacity>
-                  </View>
+                          {/* Pace row */}
+                          <View style={styles.paceRow}>
+                            <Text style={styles.paceText}>
+                              {stats.linkedTransactionCount} txns
+                              {'  ·  '}
+                              ~{currency} {stats.dailyBurnRate.toFixed(0)}/day
+                              {'  ·  '}
+                              <Text style={{ color: paceColor }}>
+                                {over
+                                  ? `${currency} ${overAmount.toFixed(0)} over`
+                                  : stats.daysUntilEmpty != null ? `~${stats.daysUntilEmpty}d left` : `${currency} ${rawRemaining.toFixed(0)} left`}
+                              </Text>
+                            </Text>
+                            <Text style={[styles.percentLabel, { color: paceColor }]}>
+                              {percentage.toFixed(0)}%
+                            </Text>
+                          </View>
+                        </View>
+
+                        <Feather name="chevron-right" size={16} color={withAlpha(C.accent, 0.4)} />
+                      </Pressable>
+
+                      {!isLast && <View style={styles.divider} />}
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <View style={styles.emptyIconCircle}>
+                  <Feather name="book-open" size={48} color={C.textMuted} />
                 </View>
-              );
-            })}
-
-            {/* Empty active state */}
-            {activePlaybooks.length === 0 && (
-              <View style={styles.pbEmptyState}>
-                <Feather name="book-open" size={40} color={CALM.textMuted} />
-                <Text style={styles.pbEmptyTitle}>no active playbooks</Text>
-                <Text style={styles.pbEmptyMessage}>
+                <Text style={styles.emptyTitle}>no active playbooks</Text>
+                <Text style={styles.emptyMessage}>
                   create one when income arrives to track where every ringgit goes
                 </Text>
               </View>
@@ -934,69 +914,89 @@ const BudgetPlanning: React.FC = () => {
 
           {/* ── Past tab ── */}
           {playbookTab === 'past' && (<>
-            {closedPlaybooks.map((pb) => {
-              const stats = playbookStatsMap[pb.id];
-              if (!stats) return null;
-              const startStr = format(pb.startDate instanceof Date ? pb.startDate : new Date(pb.startDate), 'MMM d');
-              const endStr = pb.endDate ? format(pb.endDate instanceof Date ? pb.endDate : new Date(pb.endDate), 'MMM d') : '—';
+            {closedPlaybooks.length > 0 ? (
+              <View style={styles.groupCard}>
+                {closedPlaybooks.map((pb, index) => {
+                  const stats = playbookStatsMap[pb.id];
+                  if (!stats) return null;
+                  const startStr = format(pb.startDate instanceof Date ? pb.startDate : new Date(pb.startDate), 'MMM d');
+                  const endStr = pb.endDate ? format(pb.endDate instanceof Date ? pb.endDate : new Date(pb.endDate), 'MMM d') : '—';
+                  const isLast = index === closedPlaybooks.length - 1;
 
-              return (
-                <View key={pb.id} style={styles.pbCard}>
-                  <View style={styles.pbCardHeaderRow}>
-                    <View style={[styles.pbIconCircle, { backgroundColor: withAlpha(CALM.neutral, 0.08) }]}>
-                      <Feather name="book-open" size={20} color={CALM.neutral} />
-                    </View>
-                    <View style={styles.pbCardInfo}>
-                      <View style={styles.pbCardNameRow}>
-                        <Text style={[styles.pbCardTitle, { color: CALM.textSecondary }]} numberOfLines={1}>{pb.name}</Text>
-                        <View style={[styles.pbStatusBadge, { backgroundColor: withAlpha(CALM.neutral, 0.08) }]}>
-                          <Text style={[styles.pbStatusText, { color: CALM.neutral }]}>ended</Text>
+                  return (
+                    <View key={pb.id}>
+                      <Pressable
+                        onPress={() => { lightTap(); setNotebookPb(pb); }}
+                        onLongPress={() => {
+                          mediumTap();
+                          Alert.alert(pb.name, undefined, [
+                            { text: 'Reopen', onPress: () => handleReopenPlaybook(pb) },
+                            { text: 'Delete', style: 'destructive', onPress: () => handleDeletePlaybook(pb) },
+                            { text: 'Cancel', style: 'cancel' },
+                          ]);
+                        }}
+                        style={({ pressed }) => [styles.budgetRow, pressed && { opacity: 0.7 }]}
+                      >
+                        {/* Icon */}
+                        <View
+                          style={[styles.iconCircle, { backgroundColor: withAlpha(C.neutral, 0.08) }]}
+                        >
+                          <Feather name="book-open" size={18} color={C.neutral} />
                         </View>
-                      </View>
-                      <Text style={styles.pbCardAmount}>
-                        {currency} {pb.sourceAmount.toFixed(2)} → {stats.totalSpent.toFixed(0)} spent ({stats.percentSpent.toFixed(0)}%)
-                      </Text>
+
+                        {/* Content */}
+                        <View style={styles.budgetContent}>
+                          <View style={styles.budgetNameRow}>
+                            <Text style={[styles.budgetName, { color: C.textSecondary }]} numberOfLines={1}>{pb.name}</Text>
+                            <Text style={styles.budgetAmounts}>
+                              <Text style={{ fontWeight: TYPOGRAPHY.weight.semibold }}>
+                                {stats.totalSpent.toFixed(0)}
+                              </Text>
+                              {' / '}
+                              {pb.sourceAmount.toFixed(0)}
+                            </Text>
+                          </View>
+
+                          {/* Progress bar */}
+                          <View style={styles.barTrack}>
+                            <View
+                              style={[
+                                styles.barFill,
+                                {
+                                  width: `${Math.min(stats.percentSpent, 100)}%`,
+                                  backgroundColor: C.neutral,
+                                },
+                              ]}
+                            />
+                          </View>
+
+                          {/* Stats row */}
+                          <View style={styles.paceRow}>
+                            <Text style={styles.paceText}>
+                              {startStr} – {endStr}
+                              {'  ·  '}
+                              {stats.daysActive} days
+                              {'  ·  '}
+                              {stats.linkedTransactionCount} txns
+                            </Text>
+                            <Text style={[styles.percentLabel, { color: C.neutral }]}>
+                              {stats.percentSpent.toFixed(0)}%
+                            </Text>
+                          </View>
+                        </View>
+
+                        <Feather name="chevron-right" size={16} color={withAlpha(C.neutral, 0.4)} />
+                      </Pressable>
+
+                      {!isLast && <View style={styles.divider} />}
                     </View>
-                  </View>
-                  <Text style={styles.pbStatsLine}>
-                    {startStr} – {endStr} · {stats.daysActive} days · {stats.linkedTransactionCount} txns
-                  </Text>
-
-                  <View style={styles.pbCardActions}>
-                    <TouchableOpacity
-                      style={styles.pbActionBtn}
-                      onPress={() => handleViewTransactions(pb)}
-                      activeOpacity={0.7}
-                    >
-                      <Feather name="eye" size={14} color={CALM.accent} />
-                      <Text style={[styles.pbActionText, { color: CALM.accent }]}>view summary</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.pbActionBtn}
-                      onPress={() => handleReopenPlaybook(pb)}
-                      activeOpacity={0.7}
-                    >
-                      <Feather name="rotate-ccw" size={14} color={CALM.bronze} />
-                      <Text style={[styles.pbActionText, { color: CALM.bronze }]}>reopen</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.pbActionBtn}
-                      onPress={() => handleDeletePlaybook(pb)}
-                      activeOpacity={0.7}
-                    >
-                      <Feather name="trash-2" size={14} color={CALM.neutral} />
-                      <Text style={[styles.pbActionText, { color: CALM.neutral }]}>delete</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })}
-
-            {/* Empty past state */}
-            {closedPlaybooks.length === 0 && (
-              <View style={styles.pbEmptyState}>
-                <Text style={styles.pbEmptyTitle}>no past playbooks</Text>
-                <Text style={styles.pbEmptyMessage}>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyTitle}>no past playbooks</Text>
+                <Text style={styles.emptyMessage}>
                   closed playbooks will appear here
                 </Text>
               </View>
@@ -1033,7 +1033,8 @@ const BudgetPlanning: React.FC = () => {
         statusBarTranslucent
         onRequestClose={closeModal}
       >
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeModal}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeModal} />
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.modalKAV}
@@ -1042,13 +1043,13 @@ const BudgetPlanning: React.FC = () => {
               {/* Header */}
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
-                  {editingBudget ? 'edit budget' : 'add budget'}
+                  {editingBudget ? t.budget.editBudget.toLowerCase() : t.budget.addBudget.toLowerCase()}
                 </Text>
                 <TouchableOpacity
                   onPress={closeModal}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
-                  <Feather name="x" size={22} color={CALM.textPrimary} />
+                  <Feather name="x" size={22} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -1063,12 +1064,12 @@ const BudgetPlanning: React.FC = () => {
                   categories={expenseCategories}
                   selectedId={category}
                   onSelect={setCategory}
-                  label="category"
+                  label={t.budget.category.toLowerCase()}
                   layout="dropdown"
                 />
 
                 {/* Amount */}
-                <Text style={styles.label}>amount</Text>
+                <Text style={styles.label}>{t.budget.amount.toLowerCase()}</Text>
                 <View style={styles.amountRow}>
                   <Text style={styles.currencyPrefix}>{currency}</Text>
                   <TextInput
@@ -1077,14 +1078,14 @@ const BudgetPlanning: React.FC = () => {
                     onChangeText={setAmount}
                     placeholder="0.00"
                     keyboardType="decimal-pad"
-                    placeholderTextColor={CALM.textMuted}
+                    placeholderTextColor={C.textMuted}
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
                   />
                 </View>
 
                 {/* Period — inline picker */}
-                <Text style={styles.label}>period</Text>
+                <Text style={styles.label}>{t.budget.period.toLowerCase()}</Text>
                 <View style={styles.periodRow}>
                   {BUDGET_PERIODS.map((p) => {
                     const isActive = period === p.value;
@@ -1106,7 +1107,7 @@ const BudgetPlanning: React.FC = () => {
                 {/* Rollover toggle */}
                 <View style={styles.rolloverRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.rolloverLabel}>roll over unused amount</Text>
+                    <Text style={styles.rolloverLabel}>{t.budget.rollover}</Text>
                     <Text style={styles.rolloverHint}>
                       carry leftover to next period
                     </Text>
@@ -1114,25 +1115,25 @@ const BudgetPlanning: React.FC = () => {
                   <Switch
                     value={rollover}
                     onValueChange={setRollover}
-                    trackColor={{ false: CALM.border, true: withAlpha(CALM.accent, 0.3) }}
-                    thumbColor={rollover ? CALM.accent : CALM.textMuted}
+                    trackColor={{ false: C.border, true: withAlpha(C.accent, 0.3) }}
+                    thumbColor={rollover ? C.accent : C.textMuted}
                   />
                 </View>
-
-                {/* Confirm */}
-                <TouchableOpacity
-                  style={styles.confirmButton}
-                  onPress={handleAdd}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.confirmButtonText}>
-                    {editingBudget ? 'update' : 'add budget'}
-                  </Text>
-                </TouchableOpacity>
               </ScrollView>
+
+              {/* Confirm — pinned outside scroll so it's always visible */}
+              <TouchableOpacity
+                style={[styles.confirmButton, { marginTop: SPACING.md }]}
+                onPress={handleAdd}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.confirmButtonText}>
+                  {editingBudget ? t.common.save.toLowerCase() : t.budget.addBudget.toLowerCase()}
+                </Text>
+              </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       <PaywallModal
@@ -1169,12 +1170,13 @@ const BudgetPlanning: React.FC = () => {
           statusBarTranslucent
           onRequestClose={closePlaybookModal}
         >
-          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closePlaybookModal}>
+          <View style={styles.modalOverlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closePlaybookModal} />
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               style={styles.modalKAV}
             >
-              <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
+              <View style={[styles.modalCard, { maxHeight: undefined }]} onStartShouldSetResponder={() => true}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>
                     {editingPlaybook ? 'edit playbook' : 'create playbook'}
@@ -1183,18 +1185,18 @@ const BudgetPlanning: React.FC = () => {
                     onPress={closePlaybookModal}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   >
-                    <Feather name="x" size={22} color={CALM.textPrimary} />
+                    <Feather name="x" size={22} color={C.textPrimary} />
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled scrollEnabled={false}>
                   <Text style={styles.label}>name</Text>
                   <TextInput
                     style={styles.pbInput}
                     value={pbName}
                     onChangeText={setPbName}
                     placeholder="e.g. March Salary"
-                    placeholderTextColor={CALM.textMuted}
+                    placeholderTextColor={C.textMuted}
                     autoFocus={!editingPlaybook}
                   />
 
@@ -1207,7 +1209,7 @@ const BudgetPlanning: React.FC = () => {
                       onChangeText={setPbAmount}
                       placeholder="0.00"
                       keyboardType="decimal-pad"
-                      placeholderTextColor={CALM.textMuted}
+                      placeholderTextColor={C.textMuted}
                       returnKeyType="done"
                       onSubmitEditing={Keyboard.dismiss}
                       editable={!editingPlaybook}
@@ -1216,192 +1218,52 @@ const BudgetPlanning: React.FC = () => {
                   {editingPlaybook && (
                     <Text style={styles.pbEditHint}>amount cannot be changed after creation</Text>
                   )}
-
-                  {/* Optional category limits */}
-                  <TouchableOpacity
-                    style={styles.pbToggleAllocRow}
-                    onPress={() => setShowAllocations(!showAllocations)}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name={showAllocations ? 'chevron-down' : 'chevron-right'} size={16} color={CALM.textSecondary} />
-                    <Text style={styles.pbToggleAllocText}>set category limits (optional)</Text>
-                  </TouchableOpacity>
-
-                  {showAllocations && (
-                    <View style={styles.pbAllocForm}>
-                      {pbAllocations.map((alloc, idx) => {
-                        const catInfo = getCategoryInfo(alloc.category);
-                        const usedIds = pbAllocations.map((a) => a.category);
-                        const availableCats = expenseCategories.filter(
-                          (c) => c.id === alloc.category || !usedIds.includes(c.id),
-                        );
-                        return (
-                          <View key={`${alloc.category}-${idx}`} style={styles.pbAllocFormRow}>
-                            <TouchableOpacity
-                              style={styles.pbAllocCatPicker}
-                              onPress={() => {
-                                // Cycle to next available category
-                                const currentIdx = availableCats.findIndex((c) => c.id === alloc.category);
-                                const next = availableCats[(currentIdx + 1) % availableCats.length];
-                                if (next) {
-                                  const updated = [...pbAllocations];
-                                  updated[idx] = { ...alloc, category: next.id };
-                                  setPbAllocations(updated);
-                                }
-                              }}
-                              activeOpacity={0.7}
-                            >
-                              <View style={[styles.pbAllocCatDot, { backgroundColor: catInfo?.color || CALM.accent }]} />
-                              <Text style={styles.pbAllocFormLabel} numberOfLines={1}>
-                                {catInfo?.name || alloc.category}
-                              </Text>
-                              <Feather name="chevron-down" size={12} color={CALM.textMuted} />
-                            </TouchableOpacity>
-                            <Text style={styles.pbAllocFormCurrency}>{currency}</Text>
-                            <TextInput
-                              style={styles.pbAllocFormInput}
-                              value={alloc.allocatedAmount > 0 ? alloc.allocatedAmount.toString() : ''}
-                              onChangeText={(v) => {
-                                const updated = [...pbAllocations];
-                                updated[idx] = { ...alloc, allocatedAmount: parseFloat(v) || 0 };
-                                setPbAllocations(updated);
-                              }}
-                              keyboardType="decimal-pad"
-                              placeholder="0"
-                              placeholderTextColor={CALM.textMuted}
-                            />
-                            <TouchableOpacity
-                              onPress={() => setPbAllocations(pbAllocations.filter((_, i) => i !== idx))}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <Feather name="x" size={16} color={CALM.neutral} />
-                            </TouchableOpacity>
-                          </View>
-                        );
-                      })}
-                      <TouchableOpacity
-                        style={styles.pbAddAllocBtn}
-                        onPress={() => {
-                          const usedIds = pbAllocations.map((a) => a.category);
-                          const next = expenseCategories.find((c) => !usedIds.includes(c.id));
-                          if (next) {
-                            setPbAllocations([...pbAllocations, { category: next.id, allocatedAmount: 0 }]);
-                          } else {
-                            showToast('all categories added', 'info');
-                          }
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Feather name="plus" size={14} color={CALM.accent} />
-                        <Text style={styles.pbAddAllocText}>add limit</Text>
-                      </TouchableOpacity>
-
-                      {/* Allocation total vs source amount */}
-                      {pbAllocations.length > 0 && (
-                        <View style={styles.pbAllocTotal}>
-                          <Text style={styles.pbAllocTotalLabel}>total allocated</Text>
-                          <Text style={[
-                            styles.pbAllocTotalAmount,
-                            {
-                              color: pbAllocations.reduce((s, a) => s + a.allocatedAmount, 0) > (parseFloat(pbAmount) || 0)
-                                ? CALM.bronze
-                                : CALM.textSecondary,
-                            },
-                          ]}>
-                            {currency} {pbAllocations.reduce((s, a) => s + a.allocatedAmount, 0).toFixed(0)}
-                            {parseFloat(pbAmount) > 0 ? ` / ${parseFloat(pbAmount).toFixed(0)}` : ''}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  )}
-
-                  <TouchableOpacity
-                    style={styles.confirmButton}
-                    onPress={handleCreatePlaybook}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.confirmButtonText}>
-                      {editingPlaybook ? 'save changes' : 'create playbook'}
-                    </Text>
-                  </TouchableOpacity>
                 </ScrollView>
-              </View>
-            </KeyboardAvoidingView>
-          </TouchableOpacity>
-        </Modal>
-      )}
 
-      {/* ── View Transactions Modal ── */}
-      {txModalVisible && viewingPlaybook && (
-        <Modal
-          visible={txModalVisible}
-          animationType="fade"
-          transparent
-          statusBarTranslucent
-          onRequestClose={() => setTxModalVisible(false)}
-        >
-          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setTxModalVisible(false)}>
-            <View style={[styles.modalCard, { maxHeight: '80%' }]} onStartShouldSetResponder={() => true}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle} numberOfLines={1}>{viewingPlaybook.name}</Text>
                 <TouchableOpacity
-                  onPress={() => setTxModalVisible(false)}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={[styles.confirmButton, { marginTop: SPACING.lg }]}
+                  onPress={handleCreatePlaybook}
+                  activeOpacity={0.85}
                 >
-                  <Feather name="x" size={22} color={CALM.textPrimary} />
+                  <Text style={styles.confirmButtonText}>
+                    {editingPlaybook ? 'save changes' : 'create playbook'}
+                  </Text>
                 </TouchableOpacity>
               </View>
-              <Text style={styles.pbTxModalSummary}>
-                {viewingLinkedTxns.length} transactions · {currency} {
-                  viewingLinkedTxns.reduce((sum, t) => {
-                    const link = t.playbookLinks?.find((l) => l.playbookId === viewingPlaybook.id);
-                    return sum + (link?.amount || t.amount);
-                  }, 0).toFixed(2)
-                } total
-              </Text>
-              <FlatList
-                data={viewingLinkedTxns}
-                keyExtractor={(tx) => tx.id}
-                style={{ marginTop: SPACING.md }}
-                showsVerticalScrollIndicator={false}
-                initialNumToRender={10}
-                ListEmptyComponent={
-                  <Text style={styles.pbEmptyMessage}>no expenses linked yet</Text>
-                }
-                renderItem={({ item: tx }) => {
-                  const link = tx.playbookLinks?.find((l) => l.playbookId === viewingPlaybook!.id);
-                  const displayAmount = link?.amount || tx.amount;
-                  const catInfo = getCategoryInfo(tx.category);
-                  return (
-                    <View style={styles.pbTxRow}>
-                      <Text style={styles.pbTxDate}>
-                        {format(tx.date instanceof Date ? tx.date : new Date(tx.date), 'MMM d')}
-                      </Text>
-                      <View style={styles.pbTxInfo}>
-                        <Text style={styles.pbTxDesc} numberOfLines={1}>{tx.description}</Text>
-                        <Text style={styles.pbTxCat}>{catInfo?.name || tx.category}</Text>
-                      </View>
-                      <Text style={styles.pbTxAmount}>
-                        {currency} {displayAmount.toFixed(2)}
-                      </Text>
-                    </View>
-                  );
-                }}
-              />
-            </View>
-          </TouchableOpacity>
+            </KeyboardAvoidingView>
+          </View>
         </Modal>
       )}
+
+      {/* ── Playbook Notebook ── */}
+      {notebookPb && (
+        <PlaybookNotebook
+          playbook={notebookPb}
+          readOnly={notebookPb.isClosed}
+          onClose={() => { setNotebookPb(null); setNotebookOblExpanded(false); }}
+          initialOblExpanded={notebookOblExpanded}
+          onNavigate={handleNotebookNavigate}
+        />
+      )}
+      <ScreenGuide
+        id="guide_budget"
+        title={t.guide.spendingLimits}
+        icon="sliders"
+        tips={[
+          t.guide.tipBudget1,
+          t.guide.tipBudget2,
+          t.guide.tipBudget3,
+        ]}
+      />
     </View>
   );
 };
 
 // ─── Styles ────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   scrollView: {
     flex: 1,
@@ -1412,7 +1274,7 @@ const styles = StyleSheet.create({
 
   // Hero
   heroCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     marginBottom: SPACING.lg,
@@ -1420,31 +1282,31 @@ const styles = StyleSheet.create({
   },
   heroLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xs,
     textTransform: 'lowercase',
   },
   heroAmount: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 2,
     fontVariant: ['tabular-nums'] as any,
   },
   heroAmountSub: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.regular,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   heroDailyText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.md,
     fontVariant: ['tabular-nums'] as any,
   },
   heroBarTrack: {
     height: 6,
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     borderRadius: RADIUS.full,
     overflow: 'hidden',
     marginBottom: SPACING.xs,
@@ -1464,7 +1326,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: withAlpha(CALM.bronze, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.06),
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     marginBottom: SPACING.lg,
@@ -1472,17 +1334,17 @@ const styles = StyleSheet.create({
   bannerText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     lineHeight: 20,
   },
   bannerLink: {
-    color: CALM.bronze,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
   // Grouped card
   groupCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
     ...SHADOWS.xs,
@@ -1516,20 +1378,20 @@ const styles = StyleSheet.create({
   budgetName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     flex: 1,
     marginRight: SPACING.sm,
   },
   budgetAmounts: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as any,
   },
 
   // Progress bar (thin)
   barTrack: {
     height: 3,
-    backgroundColor: withAlpha(CALM.accent, 0.1),
+    backgroundColor: withAlpha(C.accent, 0.1),
     borderRadius: RADIUS.full,
     overflow: 'hidden',
     marginBottom: SPACING.xs,
@@ -1547,7 +1409,7 @@ const styles = StyleSheet.create({
   },
   paceText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     flex: 1,
     fontVariant: ['tabular-nums'] as any,
   },
@@ -1561,14 +1423,14 @@ const styles = StyleSheet.create({
   // Rollover hint on card
   rolloverText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.bronze,
+    color: C.bronze,
     marginTop: 2,
   },
 
   // Divider
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
     marginLeft: 36 + SPACING.md + SPACING.md, // icon width + margins
   },
 
@@ -1587,7 +1449,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   actionText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1606,12 +1468,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.xs,
   },
   emptyMessage: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING.xl,
     lineHeight: 20,
@@ -1620,7 +1482,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.full,
@@ -1638,7 +1500,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOWS.md,
@@ -1657,11 +1519,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalCard: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     width: '88%',
     maxHeight: '85%',
+    overflow: 'hidden',
     ...SHADOWS.lg,
   },
   modalHeader: {
@@ -1673,35 +1536,35 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   label: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.xs,
     marginTop: SPACING.lg,
   },
   amountRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: CALM.inputBorder,
+    borderColor: C.inputBorder,
     paddingHorizontal: SPACING.md,
   },
   currencyPrefix: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginRight: SPACING.sm,
   },
   amountInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.light,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: SPACING.md,
     fontVariant: ['tabular-nums'],
   },
@@ -1716,21 +1579,21 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     alignItems: 'center',
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   periodChipActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.08),
-    borderColor: CALM.accent,
+    backgroundColor: withAlpha(C.accent, 0.08),
+    borderColor: C.accent,
   },
   periodChipText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   periodChipTextActive: {
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
 
   // Rollover
@@ -1743,17 +1606,17 @@ const styles = StyleSheet.create({
   rolloverLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   rolloverHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: 2,
   },
 
   // Confirm button
   confirmButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -1776,21 +1639,21 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     alignItems: 'center',
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   segmentChipActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.08),
-    borderColor: CALM.accent,
+    backgroundColor: withAlpha(C.accent, 0.08),
+    borderColor: C.accent,
   },
   segmentText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   segmentTextActive: {
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
 
   // ─── Playbook Tabs ────────────────────────────────────────
@@ -1803,23 +1666,23 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.pillBg,
+    backgroundColor: C.pillBg,
   },
   pbTabActive: {
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
   },
   pbTabText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   pbTabTextActive: {
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
 
   // ─── Nudge Card ───────────────────────────────────────────
   nudgeCard: {
-    backgroundColor: CALM.highlight,
+    backgroundColor: C.highlight,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     marginBottom: SPACING.md,
@@ -1827,12 +1690,12 @@ const styles = StyleSheet.create({
   nudgeText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: 2,
   },
   nudgeSubtext: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     marginBottom: SPACING.sm,
   },
   nudgeActions: {
@@ -1841,7 +1704,7 @@ const styles = StyleSheet.create({
     gap: SPACING.lg,
   },
   nudgeButton: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
@@ -1853,333 +1716,96 @@ const styles = StyleSheet.create({
   },
   nudgeDismissText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
 
-  // ─── Playbook Card (wallet-style) ─────────────────────────
-  pbCard: {
-    backgroundColor: CALM.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: CALM.border,
+  // ─── Playbook expanded ──────────────────────────────────
+  pbExpandedWrap: {
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.md,
+    gap: SPACING.sm,
   },
-  pbCardHeaderRow: {
+  pbNotebookBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
-    marginBottom: SPACING.md,
-  },
-  pbIconCircle: {
-    width: 44,
-    height: 44,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  pbCardInfo: {
-    flex: 1,
-  },
-  pbCardNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  pbCardTitle: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
-    flex: 1,
-  },
-  pbStatusBadge: {
-    backgroundColor: withAlpha(CALM.accent, 0.08),
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: RADIUS.full,
-  },
-  pbStatusText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
-  },
-  pbCardAmount: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
-    fontVariant: ['tabular-nums'] as any,
-    marginTop: 2,
-  },
-
-  // ─── Waterfall ────────────────────────────────────────────
-  pbWaterfall: {
-    marginBottom: SPACING.md,
-  },
-  pbSectionLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
-    textTransform: 'lowercase',
-    marginBottom: SPACING.sm,
-  },
-  pbWaterfallRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.xs,
-    gap: SPACING.sm,
-  },
-  pbWaterfallLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
-    width: 80,
-  },
-  pbWaterfallBarTrack: {
-    flex: 1,
-    height: 6,
-    backgroundColor: withAlpha(CALM.accent, 0.06),
-    borderRadius: RADIUS.full,
-    overflow: 'hidden',
-  },
-  pbWaterfallBarFill: {
-    height: '100%',
-    borderRadius: RADIUS.full,
-  },
-  pbWaterfallAmount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
-    fontVariant: ['tabular-nums'] as any,
-    width: 70,
-    textAlign: 'right',
-  },
-  pbWaterfallPercent: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
-    width: 32,
-    textAlign: 'right',
-    fontVariant: ['tabular-nums'] as any,
-  },
-
-  // ─── Summary row (wallet-style) ──────────────────────────
-  pbSummaryRow: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  pbSummaryItem: {
-    flex: 1,
-  },
-  pbSummaryDivider: {
-    borderLeftWidth: 1,
-    borderLeftColor: CALM.border,
-    paddingLeft: SPACING.md,
-  },
-  pbSummaryLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
-  },
-  pbSummaryValue: {
+  pbNotebookBtnTitle: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
-    fontVariant: ['tabular-nums'] as any,
+  },
+  pbNotebookBtnSub: {
+    fontSize: TYPOGRAPHY.size.xs,
     marginTop: 1,
   },
-  pbStatsLine: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
-    fontVariant: ['tabular-nums'] as any,
-    marginBottom: 2,
-  },
-
-  // ─── Allocation progress ─────────────────────────────────
-  pbAllocSection: {
-    marginTop: SPACING.md,
-    paddingTop: SPACING.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
-  },
-  pbAllocRow: {
-    marginBottom: SPACING.sm,
-  },
-  pbAllocLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
-    marginBottom: 2,
-  },
-  pbAllocAmounts: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
-    fontVariant: ['tabular-nums'] as any,
-    marginBottom: 4,
-  },
-  pbAllocBarTrack: {
-    height: 4,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
-    borderRadius: RADIUS.full,
-    overflow: 'hidden',
-  },
-  pbAllocBarFill: {
-    height: '100%',
-    borderRadius: RADIUS.full,
-  },
-
-  // ─── Card actions ─────────────────────────────────────────
-  pbCardActions: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING.md,
-    paddingTop: SPACING.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
-  },
-  pbActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.xs,
+  pbQuickBreakdown: {
     paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.md,
-    backgroundColor: CALM.background,
+    gap: SPACING.xs,
   },
-  pbActionText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
+  pbQuickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  pbQuickDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  pbQuickLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    flex: 1,
+  },
+  pbQuickAmount: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  pbQuickMore: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    paddingLeft: 6 + SPACING.sm,
   },
 
-  // ─── Empty state ──────────────────────────────────────────
-  pbEmptyState: {
-    alignItems: 'center',
-    paddingVertical: SPACING['4xl'],
-  },
-  pbEmptyTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.xs,
-  },
+  //
   pbEmptyMessage: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
   },
   pbTierCounter: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     textAlign: 'center',
     marginTop: SPACING.md,
   },
 
   // ─── Create Playbook form ─────────────────────────────────
   pbInput: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: CALM.inputBorder,
+    borderColor: C.inputBorder,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
-  },
-  pbToggleAllocRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    marginTop: SPACING.lg,
-    paddingVertical: SPACING.sm,
-  },
-  pbToggleAllocText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
-  },
-  pbAllocForm: {
-    marginTop: SPACING.sm,
-  },
-  pbAllocFormRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  pbAllocCatPicker: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    backgroundColor: CALM.background,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderWidth: 1,
-    borderColor: CALM.border,
-    minWidth: 100,
-  },
-  pbAllocCatDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  pbAllocFormLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
-    flex: 1,
+    color: C.textPrimary,
   },
   pbEditHint: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: SPACING.xs,
-  },
-  pbAllocTotal: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: SPACING.sm,
-    marginTop: SPACING.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
-  },
-  pbAllocTotalLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
-  },
-  pbAllocTotalAmount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  pbAllocFormCurrency: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
-  },
-  pbAllocFormInput: {
-    flex: 1,
-    backgroundColor: CALM.background,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: CALM.inputBorder,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  pbAddAllocBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.sm,
-  },
-  pbAddAllocText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.accent,
-    fontWeight: TYPOGRAPHY.weight.medium,
   },
 
   // ─── Transaction modal ────────────────────────────────────
   pbTxModalSummary: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as any,
   },
   pbTxRow: {
@@ -2187,12 +1813,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
     gap: SPACING.sm,
   },
   pbTxDate: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
     width: 44,
   },
   pbTxInfo: {
@@ -2200,16 +1826,16 @@ const styles = StyleSheet.create({
   },
   pbTxDesc: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   pbTxCat: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   pbTxAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
 });

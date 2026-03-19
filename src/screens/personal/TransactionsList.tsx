@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,15 +9,19 @@ import {
   SectionList,
   Modal,
   Alert,
-  ScrollView,
   Keyboard,
+  InteractionManager,
+  RefreshControl,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { format, isValid, startOfMonth, endOfMonth, subMonths, isWithinInterval, startOfYear } from 'date-fns';
+import { format, isValid, startOfMonth, endOfMonth, subMonths, isWithinInterval, startOfYear, getDay, getDaysInMonth } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import TransactionItem from '../../components/common/TransactionItem';
 import EmptyState from '../../components/common/EmptyState';
@@ -34,25 +38,16 @@ import { useDebtStore } from '../../store/debtStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, selectionChanged } from '../../services/haptics';
+import { formatAmount } from '../../utils/formatters';
+import SkeletonLoader from '../../components/common/SkeletonLoader';
 
 type FilterType = 'all' | 'expense' | 'income';
 type DateRange = 'this_month' | 'last_month' | 'last_3_months' | 'this_year' | 'all_time';
 type SortBy = 'date' | 'amount';
 type SortOrder = 'asc' | 'desc';
 
-const TYPE_FILTERS: { key: FilterType; label: string }[] = [
-  { key: 'all', label: 'all' },
-  { key: 'expense', label: 'expenses' },
-  { key: 'income', label: 'income' },
-];
-
-const DATE_RANGES: { key: DateRange; label: string }[] = [
-  { key: 'this_month', label: 'this month' },
-  { key: 'last_month', label: 'last month' },
-  { key: 'last_3_months', label: 'last 3 months' },
-  { key: 'this_year', label: 'this year' },
-  { key: 'all_time', label: 'all time' },
-];
+const TYPE_FILTER_KEYS: FilterType[] = ['all', 'expense', 'income'];
+const DATE_RANGE_KEYS: DateRange[] = ['this_month', 'last_month', 'last_3_months', 'this_year', 'all_time'];
 
 function getDateInterval(range: DateRange): { start: Date; end: Date } | null {
   const now = new Date();
@@ -73,7 +68,24 @@ function getDateInterval(range: DateRange): { start: Date; end: Date } | null {
 }
 
 const TransactionsList: React.FC = () => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
+
+  const TYPE_FILTERS = useMemo(() => [
+    { key: 'all' as FilterType, label: t.transactionList.all.toLowerCase() },
+    { key: 'expense' as FilterType, label: t.transactionList.expenses.toLowerCase() },
+    { key: 'income' as FilterType, label: t.transactionList.income.toLowerCase() },
+  ], [t]);
+
+  const DATE_RANGES = useMemo(() => [
+    { key: 'this_month' as DateRange, label: t.transactionList.thisMonth.toLowerCase() },
+    { key: 'last_month' as DateRange, label: t.transactionList.lastMonth.toLowerCase() },
+    { key: 'last_3_months' as DateRange, label: t.transactionList.last3Months.toLowerCase() },
+    { key: 'this_year' as DateRange, label: t.transactionList.thisYear.toLowerCase() },
+    { key: 'all_time' as DateRange, label: t.transactionList.all.toLowerCase() },
+  ], [t]);
   const { transactions, updateTransaction, deleteTransaction } = usePersonalStore();
   const currency = useSettingsStore(state => state.currency);
   const wallets = useWalletStore((s) => s.wallets);
@@ -132,6 +144,24 @@ const TransactionsList: React.FC = () => {
   const [editTags, setEditTags] = useState('');
   const [editWalletId, setEditWalletId] = useState<string | null>(null);
 
+  // ── Pull-to-refresh ────────────────────────────────────────
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 300);
+  }, []);
+
+  // ── Swipe-to-delete with undo ─────────────────────────────
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set());
+  const pendingDeleteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      pendingDeleteTimers.current.forEach((timer) => clearTimeout(timer));
+    };
+  }, []);
+
   // ── Derived: has advanced filters active ─────────────────────
   const hasAdvancedFilters = dateRange !== 'all_time' || selectedCategories.size > 0 || selectedWalletId !== null;
 
@@ -185,8 +215,25 @@ const TransactionsList: React.FC = () => {
       return sortOrder === 'asc' ? cmp : -cmp;
     });
 
+    // Hide pending deletes
+    if (pendingDeleteIds.size > 0) {
+      result = result.filter((t) => !pendingDeleteIds.has(t.id));
+    }
+
     return result;
-  }, [transactions, typeFilter, dateRange, selectedCategories, selectedWalletId, searchQuery, sortBy, sortOrder]);
+  }, [transactions, typeFilter, dateRange, selectedCategories, selectedWalletId, searchQuery, sortBy, sortOrder, pendingDeleteIds]);
+
+  // ── Average daily expense for micro-insights ────────────────
+  const avgDailyExpense = useMemo(() => {
+    const now = new Date();
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+    const daysSoFar = Math.max(1, now.getDate());
+    const monthExpenses = transactions
+      .filter((t) => t.type === 'expense' && isValid(t.date) && isWithinInterval(t.date, { start: monthStart, end: monthEnd }))
+      .reduce((sum, t) => sum + t.amount, 0);
+    return monthExpenses / daysSoFar;
+  }, [transactions]);
 
   // ── Sections ─────────────────────────────────────────────────
   const sections = useMemo(() => {
@@ -197,6 +244,7 @@ const TransactionsList: React.FC = () => {
         titleDate: null as Date | null,
         data: filteredTransactions,
         dailyNet: 0,
+        microInsight: '',
       }];
     }
 
@@ -223,9 +271,26 @@ const TransactionsList: React.FC = () => {
             title = 'unknown date';
           }
         }
-        return { title, titleDate, data, dailyNet };
+
+        // Micro-insight
+        let microInsight = '';
+        if (titleDate && isValid(titleDate)) {
+          const dayOfWeek = getDay(titleDate);
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+          const dayExpenses = data.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+
+          if (avgDailyExpense > 0 && dayExpenses > avgDailyExpense * 2) {
+            microInsight = 'busier than usual';
+          } else if (avgDailyExpense > 0 && dayExpenses > 0 && dayExpenses < avgDailyExpense * 0.5) {
+            microInsight = 'quiet day';
+          } else if (isWeekend) {
+            microInsight = 'weekend';
+          }
+        }
+
+        return { title, titleDate, data, dailyNet, microInsight };
       });
-  }, [filteredTransactions, sortBy, sortOrder]);
+  }, [filteredTransactions, sortBy, sortOrder, avgDailyExpense]);
 
   // ── Totals ───────────────────────────────────────────────────
   const totals = useMemo(() => {
@@ -311,9 +376,9 @@ const TransactionsList: React.FC = () => {
       `Delete ${selectedIds.size} transaction${selectedIds.size > 1 ? 's' : ''}?`,
       'This cannot be undone. Wallet balances will be adjusted.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: t.common.delete,
           style: 'destructive',
           onPress: () => {
             const currentWallets = useWalletStore.getState().wallets;
@@ -349,7 +414,7 @@ const TransactionsList: React.FC = () => {
         },
       ]
     );
-  }, [selectedIds, transactions, addToWallet, deductFromWallet, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, exitSelectMode, showToast]);
+  }, [selectedIds, transactions, addToWallet, deductFromWallet, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, exitSelectMode, showToast, t]);
 
   // ── Edit handlers ────────────────────────────────────────────
   const handleEditTransaction = useCallback((transaction: Transaction) => {
@@ -367,16 +432,68 @@ const TransactionsList: React.FC = () => {
     setEditModalVisible(true);
   }, [selectMode, toggleSelect]);
 
+  const handleSwipeDelete = useCallback((id: string) => {
+    const txn = transactions.find((t) => t.id === id);
+    if (!txn) return;
+
+    // Linked transactions need confirmation — open edit modal instead
+    if (txn.linkedDebtId || txn.id.startsWith('transfer-')) {
+      handleEditTransaction(txn);
+      return;
+    }
+
+    lightTap();
+    // Soft-delete: hide from list
+    setPendingDeleteIds((prev) => new Set(prev).add(id));
+
+    // Set timer for hard delete
+    const timerId = setTimeout(() => {
+      if (txn.walletId) {
+        const currentWallets = useWalletStore.getState().wallets;
+        if (currentWallets.some((w) => w.id === txn.walletId)) {
+          if (txn.type === 'expense') addToWallet(txn.walletId, txn.amount);
+          else deductFromWallet(txn.walletId, txn.amount);
+        }
+      }
+      usePlaybookStore.getState().unlinkAllFromTransaction(id);
+      deleteTransaction(id);
+      setPendingDeleteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      pendingDeleteTimers.current.delete(id);
+    }, 4200);
+
+    pendingDeleteTimers.current.set(id, timerId);
+
+    showToast(t.transactionList.deleted, 'info', {
+      label: t.transactionList.undo,
+      onPress: () => {
+        const timer = pendingDeleteTimers.current.get(id);
+        if (timer) {
+          clearTimeout(timer);
+          pendingDeleteTimers.current.delete(id);
+        }
+        setPendingDeleteIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      },
+    });
+  }, [transactions, handleEditTransaction, addToWallet, deductFromWallet, deleteTransaction, showToast, t]);
+
   const handleUpdateTransaction = useCallback(() => {
     if (!editingTransaction) return;
 
     if (!editAmount || parseFloat(editAmount) <= 0) {
-      showToast('Please enter a valid amount', 'error');
+      showToast(t.expense.invalidAmount, 'error');
       return;
     }
 
     if (!editDescription.trim()) {
-      showToast('Please add a description', 'error');
+      showToast(t.expense.noDescription, 'error');
       return;
     }
 
@@ -455,7 +572,7 @@ const TransactionsList: React.FC = () => {
     setEditModalVisible(false);
     setEditingTransaction(null);
     showToast('transaction updated.', 'success');
-  }, [editingTransaction, editAmount, editDescription, editCategory, editType, editTags, editWalletId, updateTransaction, addToWallet, deductFromWallet, updateIngredientCost, showToast]);
+  }, [editingTransaction, editAmount, editDescription, editCategory, editType, editTags, editWalletId, updateTransaction, addToWallet, deductFromWallet, updateIngredientCost, showToast, t]);
 
   const handleDeleteTransaction = useCallback(() => {
     if (!editingTransaction) return;
@@ -492,32 +609,32 @@ const TransactionsList: React.FC = () => {
       deleteTransaction(editingTransaction.id);
       setEditModalVisible(false);
       setEditingTransaction(null);
-      showToast('Transaction deleted', 'success');
+      showToast(t.transactionList.deleted, 'success');
     };
 
     if (linkedDebtId) {
       Alert.alert(
-        'Delete Transaction?',
+        t.transaction.deleteConfirm,
         'This will also remove the linked debt payment record.',
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete Both', style: 'destructive', onPress: doDelete },
+          { text: t.common.cancel, style: 'cancel' },
+          { text: t.transaction.deleteBoth, style: 'destructive', onPress: doDelete },
         ]
       );
       return;
     }
 
     Alert.alert(
-      'Delete Transaction',
+      t.transaction.deleteConfirm,
       isTransferLinked
         ? 'This income was transferred from seller mode. Deleting it will allow you to re-transfer those orders.\n\nDelete anyway?'
         : 'Are you sure you want to delete this transaction?',
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: doDelete },
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.common.delete, style: 'destructive', onPress: doDelete },
       ]
     );
-  }, [editingTransaction, addToWallet, deductFromWallet, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, showToast]);
+  }, [editingTransaction, addToWallet, deductFromWallet, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, showToast, t]);
 
   const handleEditTypeChange = (newType: 'expense' | 'income') => {
     setEditType(newType);
@@ -545,19 +662,27 @@ const TransactionsList: React.FC = () => {
       wallet={item.walletId ? walletMap.get(item.walletId) : undefined}
       onPress={handleItemPress}
       onLongPress={handleItemLongPress}
+      onSwipeDelete={handleSwipeDelete}
       isSelected={selectedIds.has(item.id)}
       selectMode={selectMode}
       isFirst={index === 0}
       isLast={index === section.data.length - 1}
     />
-  ), [currency, categoryMap, walletMap, handleItemPress, handleItemLongPress, selectMode, selectedIds]);
+  ), [currency, categoryMap, walletMap, handleItemPress, handleItemLongPress, handleSwipeDelete, selectMode, selectedIds]);
 
-  const renderSectionHeader = useCallback(({ section }: { section: { title: string; dailyNet: number } }) => (
+  const renderSectionHeader = useCallback(({ section }: { section: { title: string; dailyNet: number; microInsight: string } }) => (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionHeaderText}>{section.title}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+        <Text style={styles.sectionHeaderText}>{section.title}</Text>
+        {section.microInsight !== '' && sortBy === 'date' && (
+          <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginLeft: 4 }}>
+            {' \u00B7 '}{section.microInsight}
+          </Text>
+        )}
+      </View>
       {section.dailyNet !== 0 && sortBy === 'date' && (
-        <Text style={[styles.sectionHeaderNet, section.dailyNet > 0 && { color: CALM.accent }]}>
-          {section.dailyNet > 0 ? '+' : ''}{currency} {section.dailyNet.toFixed(0)}
+        <Text style={[styles.sectionHeaderNet, section.dailyNet > 0 && { color: C.accent }]}>
+          {section.dailyNet > 0 ? '+' : '-'}{formatAmount(section.dailyNet, currency, 0)}
         </Text>
       )}
     </View>
@@ -571,35 +696,50 @@ const TransactionsList: React.FC = () => {
     return cats.filter((c) => { if (seen.has(c.id)) return false; seen.add(c.id); return true; });
   }, [typeFilter, expenseCategories, incomeCategories, allCategories]);
 
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setReady(true));
+    return () => task.cancel();
+  }, []);
+
+  if (!ready) {
+    return (
+      <View style={styles.container}>
+        <SkeletonLoader />
+        <SkeletonLoader style={{ marginTop: SPACING.md }} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Select mode header */}
       {selectMode ? (
         <View style={styles.selectHeader}>
           <TouchableOpacity onPress={exitSelectMode} style={styles.selectHeaderBtn}>
-            <Text style={styles.selectHeaderBtnText}>done</Text>
+            <Text style={styles.selectHeaderBtnText}>{t.common.done.toLowerCase()}</Text>
           </TouchableOpacity>
           <Text style={styles.selectHeaderTitle}>{selectedIds.size} selected</Text>
           <TouchableOpacity onPress={selectAll} style={styles.selectHeaderBtn}>
-            <Text style={styles.selectHeaderBtnText}>select all</Text>
+            <Text style={styles.selectHeaderBtnText}>{t.transactionList.selectAll.toLowerCase()}</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <>
           {/* Search Bar */}
           <View style={styles.searchContainer}>
-            <Feather name="search" size={18} color={CALM.textMuted} />
+            <Feather name="search" size={18} color={C.textMuted} />
             <TextInput
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="search transactions..."
-              placeholderTextColor={CALM.textMuted}
+              placeholderTextColor={C.textMuted}
               returnKeyType="search"
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Feather name="x-circle" size={16} color={CALM.textMuted} />
+                <Feather name="x-circle" size={16} color={C.textMuted} />
               </TouchableOpacity>
             )}
           </View>
@@ -621,7 +761,7 @@ const TransactionsList: React.FC = () => {
 
             {/* Filter button */}
             <TouchableOpacity style={styles.filterButton} onPress={openFilterModal} activeOpacity={0.7}>
-              <Feather name="sliders" size={16} color={hasAdvancedFilters ? CALM.accent : CALM.textMuted} />
+              <Feather name="sliders" size={16} color={hasAdvancedFilters ? C.accent : C.textMuted} />
               {hasAdvancedFilters && <View style={styles.filterDot} />}
             </TouchableOpacity>
 
@@ -642,7 +782,7 @@ const TransactionsList: React.FC = () => {
                   <Text style={styles.activeFilterText}>
                     {DATE_RANGES.find((d) => d.key === dateRange)?.label}
                   </Text>
-                  <Feather name="x" size={12} color={CALM.accent} />
+                  <Feather name="x" size={12} color={C.accent} />
                 </TouchableOpacity>
               )}
               {selectedCategories.size > 0 && (
@@ -653,7 +793,7 @@ const TransactionsList: React.FC = () => {
                   <Text style={styles.activeFilterText}>
                     {selectedCategories.size} categor{selectedCategories.size === 1 ? 'y' : 'ies'}
                   </Text>
-                  <Feather name="x" size={12} color={CALM.accent} />
+                  <Feather name="x" size={12} color={C.accent} />
                 </TouchableOpacity>
               )}
               {selectedWalletId && (
@@ -664,7 +804,7 @@ const TransactionsList: React.FC = () => {
                   <Text style={styles.activeFilterText}>
                     {wallets.find((w) => w.id === selectedWalletId)?.name || 'wallet'}
                   </Text>
-                  <Feather name="x" size={12} color={CALM.accent} />
+                  <Feather name="x" size={12} color={C.accent} />
                 </TouchableOpacity>
               )}
             </ScrollView>
@@ -675,16 +815,16 @@ const TransactionsList: React.FC = () => {
       {/* Totals Bar */}
       <View style={styles.totalsBar}>
         <View style={styles.totalItem}>
-          <Text style={styles.totalLabel}>came in</Text>
-          <Text style={[styles.totalValue, { color: CALM.accent }]}>
-            +{currency} {totals.income.toFixed(0)}
+          <Text style={styles.totalLabel}>{t.pulse.cameIn}</Text>
+          <Text style={[styles.totalValue, { color: C.accent }]}>
+            +{formatAmount(totals.income, currency, 0)}
           </Text>
         </View>
         <View style={styles.totalDivider} />
         <View style={styles.totalItem}>
-          <Text style={styles.totalLabel}>went out</Text>
-          <Text style={[styles.totalValue, { color: CALM.textPrimary }]}>
-            -{currency} {totals.expenses.toFixed(0)}
+          <Text style={styles.totalLabel}>{t.pulse.wentOut}</Text>
+          <Text style={[styles.totalValue, { color: C.textPrimary }]}>
+            -{formatAmount(totals.expenses, currency, 0)}
           </Text>
         </View>
         <View style={styles.totalDivider} />
@@ -693,10 +833,10 @@ const TransactionsList: React.FC = () => {
           <Text
             style={[
               styles.totalValue,
-              { color: totals.net >= 0 ? CALM.accent : CALM.neutral },
+              { color: totals.net >= 0 ? C.accent : C.neutral },
             ]}
           >
-            {totals.net >= 0 ? '+' : ''}{currency} {totals.net.toFixed(0)}
+            {totals.net >= 0 ? '+' : '-'}{formatAmount(totals.net, currency, 0)}
           </Text>
         </View>
       </View>
@@ -718,18 +858,21 @@ const TransactionsList: React.FC = () => {
           updateCellsBatchingPeriod={50}
           keyboardShouldPersistTaps="handled"
           onScrollBeginDrag={Keyboard.dismiss}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
         />
       ) : (
         <View style={styles.emptyContainer}>
           <EmptyState
             icon="inbox"
-            title={searchQuery || hasAdvancedFilters ? 'no matches' : 'no transactions'}
+            title={searchQuery || hasAdvancedFilters ? t.transactionList.noResults : t.dashboard.noTransactions}
             message={
               searchQuery
                 ? `nothing matching "${searchQuery}"`
                 : hasAdvancedFilters
-                ? 'try adjusting your filters'
-                : 'your transactions will appear here'
+                ? t.transactionList.noResults
+                : t.dashboard.addFirst
             }
           />
           {hasAdvancedFilters && (
@@ -781,20 +924,20 @@ const TransactionsList: React.FC = () => {
         <Pressable style={styles.modalOverlay} onPress={() => setFilterModalVisible(false)}>
           <View style={styles.filterModalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.filterModalHeader}>
-              <Text style={styles.filterModalTitle}>filters</Text>
+              <Text style={styles.filterModalTitle}>{t.transactionList.filter.toLowerCase()}</Text>
               <TouchableOpacity
                 onPress={() => setFilterModalVisible(false)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
                 <View style={styles.closeCircle}>
-                  <Feather name="x" size={16} color={CALM.textSecondary} />
+                  <Feather name="x" size={16} color={C.textSecondary} />
                 </View>
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: SPACING.lg }}>
               {/* Date range */}
-              <Text style={styles.filterSectionLabel}>date range</Text>
+              <Text style={styles.filterSectionLabel}>{t.transaction.date.toLowerCase()}</Text>
               <View style={styles.filterChipGrid}>
                 {DATE_RANGES.map((d) => (
                   <TouchableOpacity
@@ -811,7 +954,7 @@ const TransactionsList: React.FC = () => {
               </View>
 
               {/* Categories */}
-              <Text style={styles.filterSectionLabel}>category</Text>
+              <Text style={styles.filterSectionLabel}>{t.transaction.category.toLowerCase()}</Text>
               <View style={styles.filterChipGrid}>
                 {filterCategories.map((cat) => (
                   <TouchableOpacity
@@ -823,7 +966,7 @@ const TransactionsList: React.FC = () => {
                     <Feather
                       name={(cat.icon as keyof typeof Feather.glyphMap) || 'tag'}
                       size={14}
-                      color={tempCategories.has(cat.id) ? '#fff' : cat.color || CALM.textSecondary}
+                      color={tempCategories.has(cat.id) ? '#fff' : cat.color || C.textSecondary}
                     />
                     <Text style={[styles.filterOptionText, tempCategories.has(cat.id) && styles.filterOptionTextActive]}>
                       {cat.name}
@@ -835,14 +978,14 @@ const TransactionsList: React.FC = () => {
               {/* Wallet */}
               {wallets.length > 1 && (
                 <>
-                  <Text style={styles.filterSectionLabel}>wallet</Text>
+                  <Text style={styles.filterSectionLabel}>{t.transaction.wallet.toLowerCase()}</Text>
                   <View style={styles.filterChipGrid}>
                     <TouchableOpacity
                       style={[styles.filterOptionChip, !tempWalletId && styles.filterOptionChipActive]}
                       onPress={() => { lightTap(); setTempWalletId(null); }}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.filterOptionText, !tempWalletId && styles.filterOptionTextActive]}>all</Text>
+                      <Text style={[styles.filterOptionText, !tempWalletId && styles.filterOptionTextActive]}>{t.transactionList.all.toLowerCase()}</Text>
                     </TouchableOpacity>
                     {wallets.map((w) => (
                       <TouchableOpacity
@@ -854,7 +997,7 @@ const TransactionsList: React.FC = () => {
                         <Feather
                           name={(w.icon as keyof typeof Feather.glyphMap) || 'credit-card'}
                           size={14}
-                          color={tempWalletId === w.id ? '#fff' : w.color || CALM.textSecondary}
+                          color={tempWalletId === w.id ? '#fff' : w.color || C.textSecondary}
                         />
                         <Text style={[styles.filterOptionText, tempWalletId === w.id && styles.filterOptionTextActive]}>
                           {w.name}
@@ -866,7 +1009,7 @@ const TransactionsList: React.FC = () => {
               )}
 
               {/* Sort */}
-              <Text style={styles.filterSectionLabel}>sort by</Text>
+              <Text style={styles.filterSectionLabel}>{t.transactionList.sort.toLowerCase()}</Text>
               <View style={styles.filterChipGrid}>
                 {(['date', 'amount'] as const).map((s) => (
                   <TouchableOpacity
@@ -893,10 +1036,10 @@ const TransactionsList: React.FC = () => {
             {/* Bottom actions */}
             <View style={styles.filterModalActions}>
               <TouchableOpacity style={styles.clearAllBtn} onPress={clearAllFilters} activeOpacity={0.7}>
-                <Text style={styles.clearAllText}>clear all</Text>
+                <Text style={styles.clearAllText}>{t.common.clear.toLowerCase()}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.applyBtn} onPress={applyFilters} activeOpacity={0.7}>
-                <Text style={styles.applyText}>apply</Text>
+                <Text style={styles.applyText}>{t.common.confirm.toLowerCase()}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -919,13 +1062,13 @@ const TransactionsList: React.FC = () => {
         <Pressable style={styles.editModalOverlay} onPress={() => { Keyboard.dismiss(); setEditModalVisible(false); setEditingTransaction(null); }}>
           <View style={styles.editModalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.editModalHeader}>
-              <Text style={styles.editModalTitle}>edit transaction</Text>
+              <Text style={styles.editModalTitle}>{t.transaction.editTransaction.toLowerCase()}</Text>
               <TouchableOpacity onPress={() => {
                 setEditModalVisible(false);
                 setEditingTransaction(null);
               }}>
                 <View style={styles.closeCircle}>
-                  <Feather name="x" size={16} color={CALM.textSecondary} />
+                  <Feather name="x" size={16} color={C.textSecondary} />
                 </View>
               </TouchableOpacity>
             </View>
@@ -936,8 +1079,8 @@ const TransactionsList: React.FC = () => {
                 <TouchableOpacity
                   style={[
                     styles.typeButton,
-                    editType === 'expense' && [styles.typeButtonActive, { backgroundColor: CALM.accent }],
-                    { borderColor: CALM.accent },
+                    editType === 'expense' && [styles.typeButtonActive, { backgroundColor: C.accent }],
+                    { borderColor: C.accent },
                   ]}
                   onPress={() => !editingTransaction?.linkedDebtId && handleEditTypeChange('expense')}
                   activeOpacity={editingTransaction?.linkedDebtId ? 1 : 0.7}
@@ -945,18 +1088,18 @@ const TransactionsList: React.FC = () => {
                   <Feather
                     name="arrow-down-circle"
                     size={18}
-                    color={editType === 'expense' ? '#FFFFFF' : CALM.accent}
+                    color={editType === 'expense' ? '#FFFFFF' : C.accent}
                   />
                   <Text style={[styles.typeText, editType === 'expense' && styles.typeTextActive]}>
-                    expense
+                    {t.transaction.expense.toLowerCase()}
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   style={[
                     styles.typeButton,
-                    editType === 'income' && [styles.typeButtonActive, { backgroundColor: CALM.accent }],
-                    { borderColor: CALM.accent },
+                    editType === 'income' && [styles.typeButtonActive, { backgroundColor: C.accent }],
+                    { borderColor: C.accent },
                   ]}
                   onPress={() => !editingTransaction?.linkedDebtId && handleEditTypeChange('income')}
                   activeOpacity={editingTransaction?.linkedDebtId ? 1 : 0.7}
@@ -964,28 +1107,28 @@ const TransactionsList: React.FC = () => {
                   <Feather
                     name="arrow-up-circle"
                     size={18}
-                    color={editType === 'income' ? '#FFFFFF' : CALM.accent}
+                    color={editType === 'income' ? '#FFFFFF' : C.accent}
                   />
                   <Text style={[styles.typeText, editType === 'income' && styles.typeTextActive]}>
-                    income
+                    {t.transaction.income.toLowerCase()}
                   </Text>
                 </TouchableOpacity>
               </View>
               {editingTransaction?.linkedDebtId && (
                 <View style={styles.typeLockedCaption}>
-                  <Feather name="lock" size={10} color={CALM.textMuted} />
+                  <Feather name="lock" size={10} color={C.textMuted} />
                   <Text style={styles.typeLockedCaptionText}>locked · determined by debt direction</Text>
                 </View>
               )}
 
-              <Text style={styles.editLabel}>amount</Text>
+              <Text style={styles.editLabel}>{t.transaction.amount.toLowerCase()}</Text>
               <TextInput
                 style={styles.editInput}
                 value={editAmount}
                 onChangeText={setEditAmount}
                 placeholder="0.00"
                 keyboardType="decimal-pad"
-                placeholderTextColor={CALM.textMuted}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
@@ -994,7 +1137,7 @@ const TransactionsList: React.FC = () => {
                 categories={editCategories}
                 selectedId={editCategory}
                 onSelect={setEditCategory}
-                label="category"
+                label={t.transaction.category.toLowerCase()}
                 layout="dropdown"
               />
 
@@ -1002,46 +1145,46 @@ const TransactionsList: React.FC = () => {
                 wallets={wallets}
                 selectedId={editWalletId}
                 onSelect={setEditWalletId}
-                label="wallet"
+                label={t.transaction.wallet.toLowerCase()}
               />
 
-              <Text style={styles.editLabel}>description</Text>
+              <Text style={styles.editLabel}>{t.transaction.description.toLowerCase()}</Text>
               <TextInput
                 style={styles.editInput}
                 value={editDescription}
                 onChangeText={setEditDescription}
-                placeholder="what was this for?"
-                placeholderTextColor={CALM.textMuted}
+                placeholder={t.expense.whatWasThis.toLowerCase()}
+                placeholderTextColor={C.textMuted}
               />
 
-              <Text style={styles.editLabel}>tags (optional)</Text>
+              <Text style={styles.editLabel}>{t.expense.tagsOptional.toLowerCase()}</Text>
               <TextInput
                 style={styles.editInput}
                 value={editTags}
                 onChangeText={setEditTags}
-                placeholder="personal, family, work"
-                placeholderTextColor={CALM.textMuted}
+                placeholder={t.expense.tagsPlaceholder}
+                placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
               />
 
               {editingTransaction?.linkedDebtId && (
                 <View style={styles.linkedNotice}>
-                  <Feather name="link" size={12} color={CALM.bronze} />
+                  <Feather name="link" size={12} color={C.bronze} />
                   <Text style={styles.linkedNoticeText}>amount syncs to the linked debt payment</Text>
                 </View>
               )}
 
               <View style={styles.modalActions}>
                 <Button
-                  title="delete"
+                  title={t.common.delete.toLowerCase()}
                   onPress={handleDeleteTransaction}
                   variant="danger"
                   icon="trash-2"
                   style={styles.deleteButton}
                 />
                 <Button
-                  title="update"
+                  title={t.common.save.toLowerCase()}
                   onPress={handleUpdateTransaction}
                   icon="check"
                   style={{ flex: 1 }}
@@ -1056,17 +1199,17 @@ const TransactionsList: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
 
   // ── Search ───────────────────────────────────────────────────
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(CALM.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     marginHorizontal: SPACING['2xl'],
     marginTop: SPACING.md,
     paddingHorizontal: SPACING.md,
@@ -1076,7 +1219,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     paddingVertical: 12,
   },
 
@@ -1092,15 +1235,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
   },
   filterChipActive: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   filterChipText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   filterChipTextActive: {
     color: '#FFFFFF',
@@ -1109,7 +1252,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 'auto',
@@ -1121,18 +1264,18 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   summaryPill: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
   },
   summaryText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1149,12 +1292,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
   },
   activeFilterText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: C.accent,
   },
 
   // ── Totals bar ───────────────────────────────────────────────
@@ -1165,10 +1308,10 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     marginBottom: SPACING.sm,
     padding: SPACING.md,
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   totalItem: {
     flex: 1,
@@ -1177,7 +1320,7 @@ const styles = StyleSheet.create({
   totalLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginBottom: 2,
   },
   totalValue: {
@@ -1188,7 +1331,7 @@ const styles = StyleSheet.create({
   totalDivider: {
     width: StyleSheet.hairlineWidth,
     height: 28,
-    backgroundColor: CALM.border,
+    backgroundColor: C.border,
   },
 
   // ── Section headers ──────────────────────────────────────────
@@ -1199,17 +1342,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.sm,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   sectionHeaderText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   sectionHeaderNet: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1229,12 +1372,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
   },
   clearFiltersBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: C.accent,
   },
 
   // ── Select mode ──────────────────────────────────────────────
@@ -1248,25 +1391,25 @@ const styles = StyleSheet.create({
   selectHeaderTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   selectHeaderBtn: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(CALM.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.08),
   },
   selectHeaderBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: C.accent,
   },
   selectBottomBar: {
     paddingHorizontal: SPACING['2xl'],
     paddingTop: SPACING.md,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   bulkDeleteBtn: {
     flexDirection: 'row',
@@ -1286,7 +1429,7 @@ const styles = StyleSheet.create({
   // ── Modal shared ─────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(CALM.textPrimary, 0.5),
+    backgroundColor: withAlpha(C.textPrimary, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1294,7 +1437,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: withAlpha(CALM.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1303,7 +1446,7 @@ const styles = StyleSheet.create({
   filterModalContent: {
     width: '88%',
     maxHeight: '80%',
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING['2xl'],
   },
@@ -1316,12 +1459,12 @@ const styles = StyleSheet.create({
   filterModalTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   filterSectionLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginTop: SPACING.lg,
     marginBottom: SPACING.sm,
   },
@@ -1337,15 +1480,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: RADIUS.full,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   filterOptionChipActive: {
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   filterOptionText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   filterOptionTextActive: {
     color: '#fff',
@@ -1355,7 +1498,7 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     marginTop: SPACING.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
     paddingTop: SPACING.lg,
   },
   clearAllBtn: {
@@ -1364,12 +1507,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     borderRadius: RADIUS.lg,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
   },
   clearAllText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textSecondary,
+    color: C.textSecondary,
   },
   applyBtn: {
     flex: 1,
@@ -1377,7 +1520,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     borderRadius: RADIUS.lg,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   applyText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -1388,14 +1531,14 @@ const styles = StyleSheet.create({
   // ── Edit modal ───────────────────────────────────────────────
   editModalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(CALM.textPrimary, 0.5),
+    backgroundColor: withAlpha(C.textPrimary, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
   },
   editModalContent: {
     width: '90%',
     maxHeight: '85%',
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING['2xl'],
   },
@@ -1408,22 +1551,22 @@ const styles = StyleSheet.create({
   editModalTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   editLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textMuted,
+    color: C.textMuted,
     marginBottom: 4,
     marginTop: SPACING.sm,
   },
   editInput: {
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: 12,
     fontSize: TYPOGRAPHY.size.base,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   typeContainer: {
     flexDirection: 'row',
@@ -1438,14 +1581,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.lg,
     borderWidth: 1.5,
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     gap: SPACING.sm,
   },
   typeButtonActive: {},
   typeText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   typeTextActive: {
     color: '#FFFFFF',
@@ -1457,7 +1600,7 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     flex: 1,
-    borderColor: CALM.neutral,
+    borderColor: C.neutral,
   },
   typeLockedCaption: {
     flexDirection: 'row',
@@ -1468,13 +1611,13 @@ const styles = StyleSheet.create({
   },
   typeLockedCaptionText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   linkedNotice: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: withAlpha(CALM.bronze, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 8,
@@ -1483,7 +1626,7 @@ const styles = StyleSheet.create({
   linkedNoticeText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.bronze,
+    color: C.bronze,
     flex: 1,
   },
 });

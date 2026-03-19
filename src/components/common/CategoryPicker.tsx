@@ -4,13 +4,14 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Modal,
   FlatList,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { CategoryOption } from '../../types';
 import { lightTap } from '../../services/haptics';
 
@@ -31,6 +32,8 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
   layout = 'horizontal',
   onNavigateToSettings,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dropdownAnimation, setDropdownAnimation] = useState<'fade' | 'none'>('fade');
@@ -45,7 +48,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
     >
       <Text style={styles.settingsHintText}>Can't find yours?</Text>
       <Text style={styles.settingsHintLink}>Manage in Settings</Text>
-      <Feather name="arrow-right" size={12} color={CALM.accent} />
+      <Feather name="arrow-right" size={12} color={C.accent} />
     </TouchableOpacity>
   );
 
@@ -109,7 +112,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
         {
           borderColor: category.color,
           backgroundColor:
-            selectedId === category.id ? category.color : CALM.background,
+            selectedId === category.id ? category.color : C.background,
         },
         layout === 'grid' && styles.gridItem,
       ]}
@@ -125,7 +128,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
         style={[
           styles.categoryText,
           {
-            color: selectedId === category.id ? '#fff' : CALM.textPrimary,
+            color: selectedId === category.id ? '#fff' : C.textPrimary,
           },
         ]}
       >
@@ -168,7 +171,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
               {selectedCategory?.name || 'Select category'}
             </Text>
           </View>
-          <Feather name="chevron-down" size={20} color={CALM.textSecondary} />
+          <Feather name="chevron-down" size={20} color={C.textSecondary} />
         </TouchableOpacity>
 
         {/* Dropdown modal */}
@@ -190,7 +193,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
                   {label || 'Select Category'}
                 </Text>
                 <TouchableOpacity onPress={() => setDropdownOpen(false)}>
-                  <Feather name="x" size={22} color={CALM.textPrimary} />
+                  <Feather name="x" size={22} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
               <FlatList
@@ -218,7 +221,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
                     }}
                     activeOpacity={0.6}
                   >
-                    <Feather name="settings" size={14} color={CALM.accent} />
+                    <Feather name="settings" size={14} color={C.accent} />
                     <Text style={styles.dropdownFooterText}>Manage categories in Settings</Text>
                   </TouchableOpacity>
                 }
@@ -251,14 +254,14 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     marginBottom: SPACING.lg,
   },
   label: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
     marginBottom: SPACING.md,
   },
   scrollContent: {
@@ -295,12 +298,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: CALM.background,
+    backgroundColor: C.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   dropdownSelected: {
     flexDirection: 'row',
@@ -318,7 +321,7 @@ const styles = StyleSheet.create({
   dropdownText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   dropdownOverlay: {
     flex: 1,
@@ -327,11 +330,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
   },
   dropdownModal: {
-    backgroundColor: CALM.surface,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     maxHeight: '60%',
     borderWidth: 1,
-    borderColor: CALM.border,
+    borderColor: C.border,
   },
   dropdownHeader: {
     flexDirection: 'row',
@@ -339,12 +342,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: CALM.border,
+    borderBottomColor: C.border,
   },
   dropdownTitle: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   dropdownItem: {
     flexDirection: 'row',
@@ -364,7 +367,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.textPrimary,
+    color: C.textPrimary,
   },
   // Settings hint
   settingsHint: {
@@ -376,12 +379,12 @@ const styles = StyleSheet.create({
   },
   settingsHintText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: CALM.textMuted,
+    color: C.textMuted,
   },
   settingsHintLink: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: CALM.accent,
+    color: C.accent,
   },
   dropdownFooter: {
     flexDirection: 'row',
@@ -390,12 +393,12 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingVertical: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: CALM.border,
+    borderTopColor: C.border,
   },
   dropdownFooterText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: CALM.accent,
+    color: C.accent,
   },
 });
 

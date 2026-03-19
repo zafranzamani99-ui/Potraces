@@ -20,9 +20,11 @@ import { usePlaybookStore } from '../store/playbookStore';
 import { computePlaybookStats } from '../utils/playbookStats';
 import { AIMessage } from '../types';
 import { ACTION_PROMPT } from './chatActions';
+import { useSettingsStore } from '../store/settingsStore';
 import { useLearningStore } from '../store/learningStore';
 
-const SYSTEM_PROMPT = `You are Echo, the AI inside Potraces, a Malaysian personal finance app built for young adults.
+function buildSystemPrompt(currency: string): string {
+  return `You are Echo, the AI inside Potraces, a Malaysian personal finance app built for young adults.
 
 WHO YOU ARE:
 - A calm, warm, honest Malaysian friend who knows all their financial data
@@ -33,12 +35,12 @@ WHO YOU ARE:
 ABSOLUTE RULES (NEVER BREAK THESE):
 1. NEVER say "you should", "you need to", "I recommend", "consider", "try to"
 2. NEVER use words: "profit", "loss", "revenue", "ROI", "budget" (use "kept", "went out", "came in", "breathing room")
-3. NEVER judge spending. "RM 400 went to Shopee" is observation. "That's a lot" is judgment. Only observe.
+3. NEVER judge spending. "${currency} 400 went to Shopee" is observation. "That's a lot" is judgment. Only observe.
 4. NEVER compare the user to others or averages. Their money story is only theirs.
 5. NEVER use red/alarm/danger language. Even bad news is stated calmly.
 6. If asked "should I buy X?" — present the numbers honestly, never say yes or no. Let them decide.
 7. Keep responses SHORT. 2-5 sentences for simple questions. Max 3 short paragraphs for complex ones.
-8. Use "RM X.XX" format for amounts.
+8. Use "${currency} X.XX" format for amounts.
 
 HOW TO THINK (step by step):
 - Be CURIOUS. Ask questions like a real friend would — one thing at a time.
@@ -65,31 +67,31 @@ CONVERSATION STYLE:
 CONVERSATION EXAMPLES:
 
 User: "where does my money go eh?"
-Good: "Most of it goes to makan — RM 890 this month, about 34% of everything. Transport is second at RM 420."
+Good: "Most of it goes to makan — ${currency} 890 this month, about 34% of everything. Transport is second at ${currency} 420."
 Bad: "You're spending too much on food." (judgment)
 
 User: "i feel like i'm always broke"
-Good: "Looking at the numbers: RM 3,200 came in, RM 2,620 went out. You kept RM 580. The feeling makes sense — a lot is going out."
+Good: "Looking at the numbers: ${currency} 3,200 came in, ${currency} 2,620 went out. You kept ${currency} 580. The feeling makes sense — a lot is going out."
 Bad: "You should reduce your spending." (advice)
 
 User: "can i buy airpods rm999?"
-Good: "Right now your Maybank has RM 1,540 and you've kept RM 580 this month with 12 days left. Just showing you where things stand so you can decide."
+Good: "Right now your Maybank has ${currency} 1,540 and you've kept ${currency} 580 this month with 12 days left. Just showing you where things stand so you can decide."
 Bad: "I wouldn't recommend that." (advice)
 
 User: "i just subs netflix rm75, share with 5 people"
-Good: "RM 75.00 for Netflix — nice. So that's 6 people including you, RM 12.50 each. Did you pay the full RM 75 first? And who are the 5 people? Give me their names and I'll track who owes you."
-Bad: "Okay, I've recorded your Netflix subscription for RM 75.00 and split it with 5 people." (didn't ask who they are, didn't ask who paid, just assumed and acted)
+Good: "${currency} 75.00 for Netflix — nice. So that's 6 people including you, ${currency} 12.50 each. Did you pay the full ${currency} 75 first? And who are the 5 people? Give me their names and I'll track who owes you."
+Bad: "Okay, I've recorded your Netflix subscription for ${currency} 75.00 and split it with 5 people." (didn't ask who they are, didn't ask who paid, just assumed and acted)
 
 User: "yeah i paid first. its ali, abu, siti, maya, zaref"
-Good: [creates subscription action + 5 debt actions] "Got it! Added Netflix RM 75.00/month as your subscription. And tracked that Ali, Abu, Siti, Maya, and Zaref each owe you RM 12.50."
+Good: [creates subscription action + 5 debt actions] "Got it! Added Netflix ${currency} 75.00/month as your subscription. And tracked that Ali, Abu, Siti, Maya, and Zaref each owe you ${currency} 12.50."
 Bad: "I've recorded the subscription." (incomplete — forgot the debts)
 
 User: "i lent ali rm200"
-Good: [adds debt action for Ali RM 200, type they_owe] "Tracked — Ali owes you RM 200.00. What was it for?"
-Bad: "I've noted the RM 200 transaction." (vague, no debt record, not curious)
+Good: [adds debt action for Ali ${currency} 200, type they_owe] "Tracked — Ali owes you ${currency} 200.00. What was it for?"
+Bad: "I've noted the ${currency} 200 transaction." (vague, no debt record, not curious)
 
 User: [sends photo of a list: "230-uniqlo jacket, 270-kasut nike, 120-servis minyak hitam, 100-rantai, 230-tayar+fork+brake"]
-Good: [creates 5 expense actions with auto categories] "Got all 5 — RM 950 total. Tap each one to review before confirming."
+Good: [creates 5 expense actions with auto categories] "Got all 5 — ${currency} 950 total. Tap each one to review before confirming."
   (uniqlo jacket → shopping, kasut nike → shopping, servis minyak → transport, rantai → transport, tayar+fork+brake → transport)
 Bad: "What category for uniqlo jacket? Which wallet?" (asking unnecessary questions — just auto-pick and let them edit)
 
@@ -97,8 +99,8 @@ SCENARIO HANDLING:
 
 Playbook awareness — when user has active playbooks:
 - When user asks "macam mana gaji aku?" or "where did my salary go?": Show the playbook waterfall — list each category and how much went there
-- When discussing spending, reference the playbook: "From your March Salary, RM 890 went to food — that's 28% of the total"
-- If a playbook is running low, state calmly: "Your March Salary has RM 340 left with 8 days to go — about RM 42/day"
+- When discussing spending, reference the playbook: "From your March Salary, ${currency} 890 went to food — that's 28% of the total"
+- If a playbook is running low, state calmly: "Your March Salary has ${currency} 340 left with 8 days to go — about ${currency} 42/day"
 - After recording expenses via chat: mention which playbook it was linked to and the remaining balance
 - Never say "you're running out" or "you should stop spending" — just show the numbers
 
@@ -106,28 +108,28 @@ Budget stress — when user says "i'm over budget" or "habis duit":
 - Show the numbers calmly: which categories still have breathing room, which don't
 - Mention where money went, not what to cut
 - Never say "cut back", "reduce", "spend less". Just observe.
-- If some categories are fine, mention them: "food's at RM 480/500 but entertainment still has RM 150 left"
+- If some categories are fine, mention them: "food's at ${currency} 480/500 but entertainment still has ${currency} 150 left"
 
 Goal coaching — when user asks "how's my goals?" or mentions saving for something:
 - Show each goal: name, current/target, percentage, deadline pace
-- Mention contribution momentum: "You've added RM 800 to goals this month"
-- If behind pace, state calmly: "You'd need about RM 46/day to hit Japan Trip by June"
+- Mention contribution momentum: "You've added ${currency} 800 to goals this month"
+- If behind pace, state calmly: "You'd need about ${currency} 46/day to hit Japan Trip by June"
 - If ahead of pace, observe it: "At this rate, you could hit it 2 weeks early"
 - Celebrate milestones quietly: "Emergency Fund just crossed 50%"
 - If user hasn't contributed in a while: "Japan Trip hasn't had a contribution in 18 days"
 - If user asks "should I save for X?": Help them create a goal — ask for target amount and optional deadline
-- If user asks projection: Calculate "At RM 200/month, you'd reach RM 10,000 by March 2027"
+- If user asks projection: Calculate "At ${currency} 200/month, you'd reach ${currency} 10,000 by March 2027"
 - Never say "save more" or "you need to save" — just show the math
 
 Debt awareness — when user asks "who owes me?" or "siapa hutang aku?":
 - List each person, their remaining amount, and due date if set
-- If someone is overdue, mention it without pressure: "Ali's RM 200 was due 5 days ago"
+- If someone is overdue, mention it without pressure: "Ali's ${currency} 200 was due 5 days ago"
 - Never suggest how to collect or pressure people
 
 Post-action observation — after recording any transaction:
 - Add ONE short context line showing the impact
-- Expense: "That puts food at RM 480/500 this month" or "food is past breathing room now"
-- Debt payment: "Ali's down to RM 150 left" or "Ali's all settled!"
+- Expense: "That puts food at ${currency} 480/500 this month" or "food is past breathing room now"
+- Debt payment: "Ali's down to ${currency} 150 left" or "Ali's all settled!"
 - Goal: "Japan Trip is at 52% now"
 - Don't over-explain — one line is enough
 
@@ -139,27 +141,136 @@ Savings & Investment coaching — when user asks "how's my investment?" or "maca
   - ASB: typical dividend rate ~4-5% for comparison
   - Tabung Haji: for Hajj savings, typical hibah rate ~3-4%
   - TNG GO+: money market fund with daily returns
-- Celebrate milestones: "Your ASB just crossed RM 50,000!"
+- Celebrate milestones: "Your ASB just crossed ${currency} 50,000!"
 - Never say "invest more" or "you should save" — just observe
 - If they ask "which one is doing best?" — show the numbers, let them decide
 
 Emotional support — when user sounds stressed about money:
 - Acknowledge the feeling first, then show numbers
-- Frame positively where possible: "you've kept RM 580 this month — that's real"
+- Frame positively where possible: "you've kept ${currency} 580 this month — that's real"
 - Never minimize their feelings or give generic advice`;
+}
 
 let _cachedContext: string | null = null;
 let _cachedAt = 0;
 const CONTEXT_CACHE_MS = 2000; // reuse for 2s
 
-function buildFinancialContext(): string {
+// ─── Intent-driven context scope ────────────────────────────
+
+type ContextScope = {
+  recentTxns: boolean;
+  lastMonthCats: boolean;
+  debtDetail: boolean;
+  goalDetail: boolean;
+  subscriptions: boolean;
+  merchants: boolean;
+  goalContribs: boolean;
+  investments: boolean;
+  budgets: boolean;
+  business: boolean;
+};
+
+const ALL_SCOPE: ContextScope = {
+  recentTxns: true, lastMonthCats: true, debtDetail: true,
+  goalDetail: true, subscriptions: true, merchants: true,
+  goalContribs: true, investments: true, budgets: true, business: true,
+};
+
+const MIN_SCOPE: ContextScope = {
+  recentTxns: false, lastMonthCats: false, debtDetail: false,
+  goalDetail: false, subscriptions: false, merchants: false,
+  goalContribs: false, investments: false, budgets: false, business: false,
+};
+
+function classifyScope(message?: string, debtNames?: string[]): ContextScope {
+  if (!message) return ALL_SCOPE;
+  const m = message.toLowerCase();
+
+  // Short, general, or greeting → full context
+  if (m.length < 15 || /how.*doing|macam mana|overall|summary|everything|semua|apa jadi|hi|hello|hey/.test(m)) return ALL_SCOPE;
+
+  // Merge ALL matching intents (not first-match-wins)
+  const scope = { ...MIN_SCOPE };
+  let matched = false;
+
+  // Debt
+  if (/hutang|owe|lend|borrow|debt|bayar balik|pinjam|settle|tangguh/.test(m)) {
+    scope.debtDetail = true;
+    matched = true;
+  }
+
+  // Person name from debt records → auto-include debt detail
+  if (debtNames?.some((name) => m.includes(name))) {
+    scope.debtDetail = true;
+    matched = true;
+  }
+
+  // Goals / savings
+  if (/goal|target|save|simpan|emergency|kecemasan/.test(m)) {
+    scope.goalDetail = true;
+    scope.goalContribs = true;
+    matched = true;
+  }
+
+  // Investment
+  if (/invest|asb|tabung haji|portfolio|tng go|wahed|stashaway|dividen/.test(m)) {
+    scope.investments = true;
+    matched = true;
+  }
+
+  // Budget
+  if (/budget|breathing|over budget|habis|limit|bajet/.test(m)) {
+    scope.budgets = true;
+    scope.lastMonthCats = true;
+    matched = true;
+  }
+
+  // Spending
+  if (/spend|makan|grab|shop|where.*money|duit.*mana|buy|beli|belanja|kedai|food|transport/.test(m)) {
+    scope.recentTxns = true;
+    scope.lastMonthCats = true;
+    scope.merchants = true;
+    scope.subscriptions = true;
+    matched = true;
+  }
+
+  // Subscription specific
+  if (/subscri|subs|netflix|spotify|bil|renew|langganan/.test(m)) {
+    scope.subscriptions = true;
+    matched = true;
+  }
+
+  // Business
+  if (/sell|order|season|product|customer|bisnes|stall|jualan/.test(m)) {
+    scope.business = true;
+    matched = true;
+  }
+
+  // Action-oriented (recording expenses/debts)
+  if (/rm\s?\d|add|record|log|catat/.test(m)) {
+    scope.debtDetail = true;
+    scope.recentTxns = true;
+    matched = true;
+  }
+
+  return matched ? scope : ALL_SCOPE;
+}
+
+function buildFinancialContext(userMessage?: string): string {
   const ts = Date.now();
   if (_cachedContext && ts - _cachedAt < CONTEXT_CACHE_MS) return _cachedContext;
 
+  const currency = useSettingsStore.getState().currency;
   const mode = useAppStore.getState().mode;
   const { transactions, subscriptions, budgets, goals } = usePersonalStore.getState();
   const wallets = useWalletStore.getState().wallets;
   const debts = useDebtStore.getState().debts;
+
+  // Extract contact names from debt records for person-name detection
+  const debtNames = debts
+    .filter((d) => d.status !== 'settled' && d.contact?.name)
+    .map((d) => d.contact.name.toLowerCase());
+  const scope = classifyScope(userMessage, debtNames);
 
   const now = new Date();
   const monthStart = startOfMonth(now);
@@ -200,7 +311,7 @@ function buildFinancialContext(): string {
   const lastCatLines = Object.entries(lastMonthByCategory)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map(([cat, amt]) => `  ${cat}: RM ${amt.toFixed(2)}`)
+    .map(([cat, amt]) => `  ${cat}: ${currency} ${amt.toFixed(2)}`)
     .join('\n');
 
   // Category breakdown
@@ -211,7 +322,7 @@ function buildFinancialContext(): string {
   const catLines = Object.entries(byCategory)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
-    .map(([cat, amt]) => `  ${cat}: RM ${amt.toFixed(2)}`)
+    .map(([cat, amt]) => `  ${cat}: ${currency} ${amt.toFixed(2)}`)
     .join('\n');
 
   // Recent 10 transactions
@@ -224,13 +335,13 @@ function buildFinancialContext(): string {
     .slice(0, 20)
     .map((t) => {
       const d = t.date instanceof Date ? t.date : new Date(t.date);
-      return `  ${format(d, 'dd MMM')} | ${t.type === 'income' ? '+' : '-'}RM ${t.amount.toFixed(2)} | ${t.category} | ${t.description}`;
+      return `  ${format(d, 'dd MMM')} | ${t.type === 'income' ? '+' : '-'}${currency} ${t.amount.toFixed(2)} | ${t.category} | ${t.description}`;
     })
     .join('\n');
 
   // Wallets
   const walletLines = wallets
-    .map((w) => `  ${w.name} (${w.type}): RM ${(w.balance || 0).toFixed(2)}`)
+    .map((w) => `  ${w.name} (${w.type}): ${currency} ${(w.balance || 0).toFixed(2)}`)
     .join('\n');
 
   // BNPL (credit wallet used credit)
@@ -253,7 +364,7 @@ function buildFinancialContext(): string {
     .map((d) => {
       const remaining = d.totalAmount - d.paidAmount;
       const due = d.dueDate ? ` (due ${format(d.dueDate instanceof Date ? d.dueDate : new Date(d.dueDate), 'dd MMM')})` : '';
-      return `  ${d.contact.name}: RM ${remaining.toFixed(2)}${due}`;
+      return `  ${d.contact.name}: ${currency} ${remaining.toFixed(2)}${due}`;
     })
     .join('\n');
 
@@ -263,7 +374,7 @@ function buildFinancialContext(): string {
     .map((d) => {
       const remaining = d.totalAmount - d.paidAmount;
       const due = d.dueDate ? ` (due ${format(d.dueDate instanceof Date ? d.dueDate : new Date(d.dueDate), 'dd MMM')})` : '';
-      return `  ${d.contact.name}: RM ${remaining.toFixed(2)}${due}`;
+      return `  ${d.contact.name}: ${currency} ${remaining.toFixed(2)}${due}`;
     })
     .join('\n');
 
@@ -271,7 +382,7 @@ function buildFinancialContext(): string {
   const budgetLines = budgets
     .map(
       (b) =>
-        `  ${b.category}: RM ${b.spentAmount.toFixed(2)} / RM ${b.allocatedAmount.toFixed(2)} (RM ${(b.allocatedAmount - b.spentAmount).toFixed(2)} left)`
+        `  ${b.category}: ${currency} ${b.spentAmount.toFixed(2)} / ${currency} ${b.allocatedAmount.toFixed(2)} (${currency} ${(b.allocatedAmount - b.spentAmount).toFixed(2)} left)`
     )
     .join('\n');
 
@@ -279,7 +390,7 @@ function buildFinancialContext(): string {
   const goalLines = goals
     .map((g) => {
       const pct = g.targetAmount > 0 ? Math.round((g.currentAmount / g.targetAmount) * 100) : 0;
-      let info = `  ${g.name}: RM ${g.currentAmount.toFixed(2)} / RM ${g.targetAmount.toFixed(2)} (${pct}%)`;
+      let info = `  ${g.name}: ${currency} ${g.currentAmount.toFixed(2)} / ${currency} ${g.targetAmount.toFixed(2)} (${pct}%)`;
       if (g.isPaused) info += ' [PAUSED]';
       if (g.isArchived) info += ' [ARCHIVED]';
       if (g.deadline) {
@@ -289,7 +400,7 @@ function buildFinancialContext(): string {
           const remaining = g.targetAmount - g.currentAmount;
           info += ` — deadline ${format(dl, 'dd MMM yyyy')}`;
           if (daysToDeadline > 0 && remaining > 0) {
-            info += `, ${daysToDeadline}d left, ~RM ${Math.ceil(remaining / daysToDeadline)}/day needed`;
+            info += `, ${daysToDeadline}d left, ~${currency} ${Math.ceil(remaining / daysToDeadline)}/day needed`;
           }
         }
       }
@@ -307,7 +418,7 @@ function buildFinancialContext(): string {
       });
       if (monthContribs.length > 0) {
         const monthTotal = monthContribs.reduce((s, c) => s + c.amount, 0);
-        info += `, +RM ${monthTotal.toFixed(0)} this month`;
+        info += `, +${currency} ${monthTotal.toFixed(0)} this month`;
       }
       return info;
     })
@@ -319,7 +430,7 @@ function buildFinancialContext(): string {
     .map((s) => {
       const next = s.nextBillingDate instanceof Date ? s.nextBillingDate : new Date(s.nextBillingDate);
       const nextLabel = !isNaN(next.getTime()) ? ` — next ${format(next, 'dd MMM')}` : '';
-      return `  ${s.name}: RM ${s.amount.toFixed(2)} (${s.billingCycle})${nextLabel}`;
+      return `  ${s.name}: ${currency} ${s.amount.toFixed(2)} (${s.billingCycle})${nextLabel}`;
     })
     .join('\n');
 
@@ -344,7 +455,7 @@ function buildFinancialContext(): string {
     .filter(([, v]) => v.count >= 2)
     .sort((a, b) => b[1].total - a[1].total)
     .slice(0, 5)
-    .map(([name, v]) => `  ${name}: ${v.count}x, RM ${v.total.toFixed(2)}`)
+    .map(([name, v]) => `  ${name}: ${v.count}x, ${currency} ${v.total.toFixed(2)}`)
     .join('\n');
 
   // Recent goal contributions (#85)
@@ -355,7 +466,7 @@ function buildFinancialContext(): string {
         .slice(-3)
         .map((c) => {
           const d = c.date instanceof Date ? c.date : new Date(c.date);
-          return `RM ${c.amount.toFixed(0)} (${!isNaN(d.getTime()) ? format(d, 'dd MMM') : '?'})`;
+          return `${currency} ${c.amount.toFixed(0)} (${!isNaN(d.getTime()) ? format(d, 'dd MMM') : '?'})`;
         })
         .join(', ');
       return `  ${g.name}: ${recent}`;
@@ -365,92 +476,119 @@ function buildFinancialContext(): string {
   // Credit wallet details
   const creditLines = wallets
     .filter((w) => w.type === 'credit' && (w.creditLimit || 0) > 0)
-    .map((w) => `  ${w.name}: RM ${(w.usedCredit || 0).toFixed(2)} used / RM ${(w.creditLimit || 0).toFixed(2)} limit (RM ${((w.creditLimit || 0) - (w.usedCredit || 0)).toFixed(2)} available)`)
+    .map((w) => `  ${w.name}: ${currency} ${(w.usedCredit || 0).toFixed(2)} used / ${currency} ${(w.creditLimit || 0).toFixed(2)} limit (${currency} ${((w.creditLimit || 0) - (w.usedCredit || 0)).toFixed(2)} available)`)
     .join('\n');
 
+  // ── Core overview (always included) ──
   let ctx = `Month: ${monthLabel} (${daysLeft} days left)
-Came in: RM ${totalIncome.toFixed(2)}
-Went out: RM ${totalExpenses.toFixed(2)}
-Kept: RM ${kept.toFixed(2)} (last month: RM ${keptLastMonth.toFixed(2)})
-Pace: RM ${spendPerDay.toFixed(0)}/day — projected RM ${projectedMonthEnd.toFixed(0)} by month end
+Came in: ${currency} ${totalIncome.toFixed(2)}
+Went out: ${currency} ${totalExpenses.toFixed(2)}
+Kept: ${currency} ${kept.toFixed(2)} (last month: ${currency} ${keptLastMonth.toFixed(2)})
+Pace: ${currency} ${spendPerDay.toFixed(0)}/day — projected ${currency} ${projectedMonthEnd.toFixed(0)} by month end
 
 Category breakdown (this month):
 ${catLines || '  (none yet)'}
 
-Last month top categories:
-${lastCatLines || '  (none)'}
-
-Recent transactions:
-${recentTxns || '  (none yet)'}
-
 Wallets:
 ${walletLines || '  (none)'}
-${creditLines ? `\nCredit/BNPL:\n${creditLines}` : `\nFuture You Owes (BNPL): RM ${bnplTotal.toFixed(2)}`}
+${creditLines ? `\nCredit/BNPL:\n${creditLines}` : `\nFuture You Owes (BNPL): ${currency} ${bnplTotal.toFixed(2)}`}
 
-Net position: RM ${netWorth.toFixed(2)} (wallets RM ${totalWalletBalance.toFixed(2)} − debts RM ${iOweTotal.toFixed(2)} − BNPL RM ${bnplTotal.toFixed(2)})
+Net position: ${currency} ${netWorth.toFixed(2)} (wallets ${currency} ${totalWalletBalance.toFixed(2)} − debts ${currency} ${iOweTotal.toFixed(2)} − BNPL ${currency} ${bnplTotal.toFixed(2)})`;
 
-Debts — you owe (total RM ${iOweTotal.toFixed(2)}):
-${iOweLines || '  (none)'}
-Debts — owed to you (total RM ${theyOweTotal.toFixed(2)}):
-${theyOweLines || '  (none)'}
+  // ── Conditional sections based on user intent ──
 
-Breathing room:
-${budgetLines || '  (none set)'}
-
-Savings goals:
-${goalLines || '  (none)'}
-
-Subscriptions:
-${subLines || '  (none)'}
-${merchantLines ? `\nFrequent spending (2+ times this month):\n${merchantLines}` : ''}
-${contribLines ? `\nRecent goal contributions:\n${contribLines}` : ''}`;
-
-  // Savings / Investment accounts
-  const savingsAccounts = useSavingsStore.getState().accounts;
-  if (savingsAccounts.length > 0) {
-    const totalPortfolio = savingsAccounts.reduce((s, a) => s + a.currentValue, 0);
-    const totalInvested = savingsAccounts.reduce((s, a) => s + a.initialInvestment, 0);
-    const portfolioGain = totalPortfolio - totalInvested;
-    const portfolioReturn = totalInvested > 0 ? (portfolioGain / totalInvested) * 100 : 0;
-
-    const savingsLines = savingsAccounts
-      .map((a) => {
-        const gain = a.currentValue - a.initialInvestment;
-        const ret = a.initialInvestment > 0 ? (gain / a.initialInvestment) * 100 : 0;
-        const lastUpdate = a.history.length > 0
-          ? format(
-              a.history[a.history.length - 1].date instanceof Date
-                ? a.history[a.history.length - 1].date
-                : new Date(a.history[a.history.length - 1].date as any),
-              'dd MMM'
-            )
-          : 'never';
-        const target = a.target ? ` / target RM ${a.target.toFixed(2)}` : '';
-        return `  ${a.name} (${a.type}): RM ${a.currentValue.toFixed(2)} invested RM ${a.initialInvestment.toFixed(2)} (${ret >= 0 ? '+' : ''}${ret.toFixed(1)}%) last updated ${lastUpdate}${target}`;
-      })
-      .join('\n');
-
-    ctx += `\n\nSavings & Investments (${savingsAccounts.length} accounts):
-Portfolio: RM ${totalPortfolio.toFixed(2)} (invested RM ${totalInvested.toFixed(2)}, ${portfolioReturn >= 0 ? '+' : ''}${portfolioReturn.toFixed(1)}%)
-${savingsLines}`;
+  if (scope.lastMonthCats) {
+    ctx += `\n\nLast month top categories:\n${lastCatLines || '  (none)'}`;
   }
 
-  // Active Playbooks (salary envelope tracking)
+  if (scope.recentTxns) {
+    ctx += `\n\nRecent transactions:\n${recentTxns || '  (none yet)'}`;
+  }
+
+  if (scope.debtDetail) {
+    ctx += `\n\nDebts — you owe (total ${currency} ${iOweTotal.toFixed(2)}):\n${iOweLines || '  (none)'}`;
+    ctx += `\nDebts — owed to you (total ${currency} ${theyOweTotal.toFixed(2)}):\n${theyOweLines || '  (none)'}`;
+  } else if (iOweTotal > 0 || theyOweTotal > 0) {
+    const iOweCount = activeDebts.filter((d) => d.type === 'i_owe').length;
+    const theyOweCount = activeDebts.filter((d) => d.type === 'they_owe').length;
+    ctx += `\n\nDebts: owe ${currency} ${iOweTotal.toFixed(2)} (${iOweCount} people), owed ${currency} ${theyOweTotal.toFixed(2)} (${theyOweCount} people)`;
+  }
+
+  if (scope.budgets) {
+    ctx += `\n\nBreathing room:\n${budgetLines || '  (none set)'}`;
+  }
+
+  if (scope.goalDetail) {
+    ctx += `\n\nSavings goals:\n${goalLines || '  (none)'}`;
+  } else {
+    const activeGoalCount = goals.filter((g) => !g.isArchived && !g.isPaused).length;
+    if (activeGoalCount > 0) {
+      const totalSaved = goals.filter((g) => !g.isArchived).reduce((s, g) => s + g.currentAmount, 0);
+      const totalTarget = goals.filter((g) => !g.isArchived).reduce((s, g) => s + g.targetAmount, 0);
+      ctx += `\n\nGoals: ${activeGoalCount} active, ${currency} ${totalSaved.toFixed(0)} / ${currency} ${totalTarget.toFixed(0)} total`;
+    }
+  }
+
+  if (scope.subscriptions) {
+    ctx += `\n\nSubscriptions:\n${subLines || '  (none)'}`;
+  }
+
+  if (scope.merchants && merchantLines) {
+    ctx += `\n\nFrequent spending (2+ times this month):\n${merchantLines}`;
+  }
+
+  if (scope.goalContribs && contribLines) {
+    ctx += `\n\nRecent goal contributions:\n${contribLines}`;
+  }
+
+  // Savings / Investment accounts
+  if (scope.investments) {
+    const savingsAccounts = useSavingsStore.getState().accounts;
+    if (savingsAccounts.length > 0) {
+      const totalPortfolio = savingsAccounts.reduce((s, a) => s + a.currentValue, 0);
+      const totalInvested = savingsAccounts.reduce((s, a) => s + a.initialInvestment, 0);
+      const portfolioGain = totalPortfolio - totalInvested;
+      const portfolioReturn = totalInvested > 0 ? (portfolioGain / totalInvested) * 100 : 0;
+
+      const savingsLines = savingsAccounts
+        .map((a) => {
+          const gain = a.currentValue - a.initialInvestment;
+          const ret = a.initialInvestment > 0 ? (gain / a.initialInvestment) * 100 : 0;
+          const lastUpdate = a.history.length > 0
+            ? format(
+                a.history[a.history.length - 1].date instanceof Date
+                  ? a.history[a.history.length - 1].date
+                  : new Date(a.history[a.history.length - 1].date as any),
+                'dd MMM'
+              )
+            : 'never';
+          const target = a.target ? ` / target ${currency} ${a.target.toFixed(2)}` : '';
+          return `  ${a.name} (${a.type}): ${currency} ${a.currentValue.toFixed(2)} invested ${currency} ${a.initialInvestment.toFixed(2)} (${ret >= 0 ? '+' : ''}${ret.toFixed(1)}%) last updated ${lastUpdate}${target}`;
+        })
+        .join('\n');
+
+      ctx += `\n\nSavings & Investments (${savingsAccounts.length} accounts):
+Portfolio: ${currency} ${totalPortfolio.toFixed(2)} (invested ${currency} ${totalInvested.toFixed(2)}, ${portfolioReturn >= 0 ? '+' : ''}${portfolioReturn.toFixed(1)}%)
+${savingsLines}`;
+    }
+  }
+
+  // Active Playbooks (always — needed for salary tracking context)
   const pbStore = usePlaybookStore.getState();
   const activePbs = pbStore.getActivePlaybooks();
   if (activePbs.length > 0) {
     const pbLines = activePbs.map((pb) => {
       const stats = computePlaybookStats(pb, transactions);
       const topCats = stats.categoryBreakdown.slice(0, 5)
-        .map((c) => `${c.category}: RM ${c.spent.toFixed(0)} (${c.percentOfTotal.toFixed(0)}%)`)
+        .map((c) => `${c.category}: ${currency} ${c.spent.toFixed(0)} (${c.percentOfTotal.toFixed(0)}%)`)
         .join(', ');
-      return `  ${pb.name}: RM ${pb.sourceAmount.toFixed(2)} → spent RM ${stats.totalSpent.toFixed(2)}, RM ${stats.remaining.toFixed(2)} remaining (${stats.percentSpent.toFixed(0)}%), ~RM ${stats.dailyBurnRate.toFixed(0)}/day${stats.daysUntilEmpty != null ? `, ~${stats.daysUntilEmpty}d until empty` : ''}. Top: ${topCats || '(none yet)'}`;
+      return `  ${pb.name}: ${currency} ${pb.sourceAmount.toFixed(2)} → spent ${currency} ${stats.totalSpent.toFixed(2)}, ${currency} ${stats.remaining.toFixed(2)} remaining (${stats.percentSpent.toFixed(0)}%), ~${currency} ${stats.dailyBurnRate.toFixed(0)}/day${stats.daysUntilEmpty != null ? `, ~${stats.daysUntilEmpty}d until empty` : ''}. Top: ${topCats || '(none yet)'}`;
     }).join('\n');
     ctx += `\n\nActive Playbooks (salary envelope tracking):\n${pbLines}`;
   }
 
   // Business context
-  if (mode === 'business') {
+  if (scope.business && mode === 'business') {
     const biz = useBusinessStore.getState();
     const seller = useSellerStore.getState();
 
@@ -478,12 +616,12 @@ ${savingsLines}`;
           .slice(0, 5);
 
         ctx += `\n\nBusiness (${biz.incomeType}) — ${activeSeason.name}:
-Came in: RM ${stats.totalIncome.toFixed(2)}
-Costs: RM ${stats.totalCosts.toFixed(2)}
-Kept: RM ${stats.kept.toFixed(2)}
-Orders: ${stats.totalOrders} (${stats.unpaidCount} unpaid, RM ${stats.unpaidAmount.toFixed(2)})
+Came in: ${currency} ${stats.totalIncome.toFixed(2)}
+Costs: ${currency} ${stats.totalCosts.toFixed(2)}
+Kept: ${currency} ${stats.kept.toFixed(2)}
+Orders: ${stats.totalOrders} (${stats.unpaidCount} unpaid, ${currency} ${stats.unpaidAmount.toFixed(2)})
 Top products:
-${topProducts.map((p) => `  ${p.name}: ${p.sold} sold, RM ${p.revenue.toFixed(2)}`).join('\n')}`;
+${topProducts.map((p) => `  ${p.name}: ${p.sold} sold, ${currency} ${p.revenue.toFixed(2)}`).join('\n')}`;
       }
     } else if (biz.incomeType) {
       const recentBiz = biz.businessTransactions.filter((t) => {
@@ -493,9 +631,9 @@ ${topProducts.map((p) => `  ${p.name}: ${p.sold} sold, RM ${p.revenue.toFixed(2)
       const bizIncome = recentBiz.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
       const bizCosts = recentBiz.filter((t) => t.type === 'cost').reduce((s, t) => s + t.amount, 0);
       ctx += `\n\nBusiness (${biz.incomeType}):
-Came in: RM ${bizIncome.toFixed(2)}
-Costs: RM ${bizCosts.toFixed(2)}
-Kept: RM ${(bizIncome - bizCosts).toFixed(2)}`;
+Came in: ${currency} ${bizIncome.toFixed(2)}
+Costs: ${currency} ${bizCosts.toFixed(2)}
+Kept: ${currency} ${(bizIncome - bizCosts).toFixed(2)}`;
     }
   }
 
@@ -546,9 +684,11 @@ export async function sendChatMessage(
   }
 
   try {
-    const context = buildFinancialContext();
+    const currency = useSettingsStore.getState().currency;
+    // Image messages need full context (AI needs everything to categorize what it sees)
+    const context = buildFinancialContext(imageBase64 ? undefined : message);
     const learnedHints = useLearningStore.getState().getPromptHints();
-    const fullSystem = `${SYSTEM_PROMPT}\n\n${ACTION_PROMPT}${learnedHints}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
+    const fullSystem = `${buildSystemPrompt(currency)}\n\n${ACTION_PROMPT}${learnedHints}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
 
     // Build conversation history — last 10 messages to keep token usage low
     const recentHistory = history.slice(-10);

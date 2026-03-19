@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useMemo } from 'react';
 import {
   Pressable,
   Text,
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
+import { useCalm } from '../../hooks/useCalm';
 import { lightTap } from '../../services/haptics';
 
 type ButtonSize = 'small' | 'medium' | 'large';
@@ -52,6 +53,8 @@ const GradientButton: React.FC<GradientButtonProps> = ({
   accessibilityLabel,
   accessibilityHint,
 }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const opacityAnim = useRef(new Animated.Value(1)).current;
   const sizeCfg = SIZE_CONFIG[size];
   const isDisabled = disabled || loading;
@@ -120,13 +123,13 @@ const GradientButton: React.FC<GradientButtonProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
   buttonContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: RADIUS.md,
-    backgroundColor: CALM.accent,
+    backgroundColor: C.accent,
   },
   content: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   loadingContainer: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
