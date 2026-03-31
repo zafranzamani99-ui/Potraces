@@ -1453,7 +1453,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   transferTitle: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   transferSubtext: {
@@ -1472,7 +1472,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   transferButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
   },
   transferInputRow: {
@@ -1498,7 +1498,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   transferInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     padding: 0,
     fontVariant: ['tabular-nums'] as any,
@@ -1513,7 +1513,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   transferConfirmText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
 
@@ -1593,7 +1593,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   inlineListTitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
     flex: 1,
   },
@@ -1607,7 +1607,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   inlineListBadgeText: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
     fontVariant: ['tabular-nums'] as any,
   },
@@ -1638,7 +1638,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   listTapLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     flex: 1,
   },
@@ -1659,7 +1659,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   listModalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     flex: 1,
   },
@@ -1683,7 +1683,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   orderItemName: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
   },
   orderItemMeta: {
@@ -1697,7 +1697,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   orderItemAmount: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
@@ -1723,7 +1723,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   costItemAvatarText: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: BIZ.loss,
   },
   costItemContent: {
@@ -1732,7 +1732,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   costItemDesc: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
   },
   costItemDate: {
@@ -1741,7 +1741,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   costItemAmount: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
@@ -1856,7 +1856,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   reportButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: BIZ.success,
   },
 
@@ -1874,7 +1874,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   undoTransfersText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
   },
 
@@ -1892,7 +1892,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   deleteSeasonText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: BIZ.error,
   },
 
@@ -1954,7 +1954,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   renameModalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   renameModalInput: {
@@ -1991,7 +1991,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   renameModalConfirmText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
 
@@ -2019,7 +2019,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   endModalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   endModalStats: {
@@ -2035,7 +2035,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   endModalStatValue: {
     fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
@@ -2073,7 +2073,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   endModalCancelText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
   },
   endModalConfirmBtn: {
@@ -2087,7 +2087,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   endModalConfirmText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
 
@@ -2132,7 +2132,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   comparePillTextActive: {
     color: C.accent,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
   compareGrid: {
     gap: 2,
@@ -2154,7 +2154,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
     textAlign: 'right',
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
   compareHeaderPrev: {
     flex: 1,
@@ -2184,7 +2184,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textPrimary,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     textAlign: 'right',
   },
   compareRowPrev: {

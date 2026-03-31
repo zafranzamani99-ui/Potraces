@@ -99,6 +99,6 @@ Rules:
       useAIInsightsStore.getState().setReportNarrative(cacheKey, text);
     }
   } catch (err) {
-    console.warn('[ReportNarrative] Error:', err);
+    if (__DEV__) console.warn('[ReportNarrative] Error:', err);
   }
 }

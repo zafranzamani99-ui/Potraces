@@ -412,7 +412,7 @@ const Products: React.FC = () => {
         showToast('could not find any products in the image', 'error');
       }
     } catch (err: any) {
-      console.warn('[bulkImage]', err?.message || err);
+      if (__DEV__) console.warn('[bulkImage]', err?.message || err);
       showToast(err?.message || 'something went wrong', 'error');
     } finally {
       setBulkParsing(false);
@@ -1413,7 +1413,7 @@ const Products: React.FC = () => {
             <TouchableOpacity
               style={[
                 styles.addButton,
-                { flex: 1, backgroundColor: selectedIds.size > 0 ? '#C1694F' : withAlpha(C.textMuted, 0.12) },
+                { flex: 1, backgroundColor: selectedIds.size > 0 ? BIZ.destructive : withAlpha(C.textMuted, 0.12) },
               ]}
               activeOpacity={0.7}
               onPress={handleBulkDelete}
@@ -1915,8 +1915,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     opacity: 0.45,
   },
   productRowSelected: {
-    borderColor: withAlpha('#C1694F', 0.35),
-    backgroundColor: withAlpha('#C1694F', 0.04),
+    borderColor: withAlpha(BIZ.destructive, 0.35),
+    backgroundColor: withAlpha(BIZ.destructive, 0.04),
   },
   productRowDragging: {
     backgroundColor: withAlpha(C.accent, 0.06),
@@ -1932,8 +1932,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center' as const,
   },
   selectCheckboxActive: {
-    backgroundColor: '#C1694F',
-    borderColor: '#C1694F',
+    backgroundColor: BIZ.destructive,
+    borderColor: BIZ.destructive,
   },
   rowAvatar: {
     width: 40,
@@ -2369,8 +2369,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
   },
   modalInputError: {
-    borderColor: '#D4775C',
-    backgroundColor: withAlpha('#D4775C', 0.08),
+    borderColor: BIZ.inputError,
+    backgroundColor: withAlpha(BIZ.inputError, 0.08),
   },
   descInput: {
     minHeight: 56,
@@ -2532,8 +2532,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
   },
   currencyInputRowError: {
-    borderColor: '#D4775C',
-    backgroundColor: withAlpha('#D4775C', 0.08),
+    borderColor: BIZ.inputError,
+    backgroundColor: withAlpha(BIZ.inputError, 0.08),
   },
   currencyPrefix: {
     fontSize: TYPOGRAPHY.size.sm,

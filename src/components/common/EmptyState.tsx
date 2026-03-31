@@ -70,7 +70,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   title: {
     fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     marginBottom: SPACING.sm,
     textAlign: 'center',

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CALM, TYPE, SPACING, TYPOGRAPHY } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
@@ -9,12 +9,30 @@ interface BusinessSectionHeaderProps {
   accentColor?: string;
 }
 
+const makeStyles = (C: typeof CALM) => StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+  },
+  title: {
+    ...TYPE.muted,
+    color: C.textMuted,
+    textTransform: 'lowercase',
+  },
+  action: {
+    fontSize: TYPOGRAPHY.size.xs,
+  },
+});
+
 const BusinessSectionHeader: React.FC<BusinessSectionHeaderProps> = ({
   title,
   action,
   accentColor: accentColorProp,
 }) => {
   const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
   const accentColor = accentColorProp ?? C.bronze;
   return (
     <View style={styles.container}>
@@ -32,21 +50,5 @@ const BusinessSectionHeader: React.FC<BusinessSectionHeaderProps> = ({
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-  },
-  title: {
-    ...TYPE.muted,
-    textTransform: 'lowercase',
-  },
-  action: {
-    fontSize: TYPOGRAPHY.size.xs,
-  },
-});
 
 export default React.memo(BusinessSectionHeader);

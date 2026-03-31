@@ -19,7 +19,7 @@ const QueryResultCard: React.FC<QueryResultCardProps> = ({ answer }) => {
     <Animated.View style={[styles.card, { opacity: fadeSlide.opacity, transform: fadeSlide.transform }]}>
       <View style={styles.iconWrap}>
         <Feather
-          name={answer.icon as any}
+          name={answer.icon as keyof typeof Feather.glyphMap}
           size={16}
           color={C.bronze}
         />

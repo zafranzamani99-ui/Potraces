@@ -125,7 +125,7 @@ export const useSellerStore = create<SellerState>()(
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
             // Only wipe deposits when explicitly resetting payments (undo paid), not when reverting due to item changes
-            const { _resetPayments, ...rest } = updates as any;
+            const { _resetPayments, ...rest } = updates as Partial<SellerOrder> & { _resetPayments?: boolean };
             const extra = _resetPayments ? { deposits: [] as DepositEntry[], paidAmount: 0 } : {};
             return { ...o, ...rest, ...extra, updatedAt: new Date() };
           }),
@@ -462,21 +462,21 @@ export const useSellerStore = create<SellerState>()(
             id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
             supabaseId: row.id as string,
             orderNumber: (row.order_number as string | null) ?? generateOrderCode(state.orders),
-            items: (row.items as any[]) || [],
+            items: (row.items as SellerOrderItem[]) || [],
             customerName: (row.customer_name as string | null) ?? undefined,
             customerPhone: (row.customer_phone as string | null) ?? undefined,
             customerAddress: (row.customer_address as string | null) ?? undefined,
             totalAmount: parseFloat(String(row.total_amount)) || 0,
-            status: ((row.status as string) || 'pending') as any,
+            status: ((row.status as string) || 'pending') as OrderStatus,
             isPaid: Boolean(row.is_paid),
             paidAmount: row.paid_amount != null ? parseFloat(String(row.paid_amount)) : undefined,
-            paymentMethod: (row.payment_method as any) ?? undefined,
+            paymentMethod: (row.payment_method as SellerPaymentMethod | null) ?? undefined,
             paidAt: row.paid_at ? new Date(row.paid_at as string) : undefined,
             note: (row.note as string | null) ?? undefined,
             deposits: Array.isArray(row.deposits)
-              ? (row.deposits as any[]).map((d: any) => ({
+              ? (row.deposits as DepositEntry[]).map((d) => ({
                   ...d,
-                  date: d.date ? new Date(d.date) : new Date(),
+                  date: d.date instanceof Date ? d.date : new Date(String(d.date)),
                 }))
               : [],
             date: row.created_at ? new Date(row.created_at as string) : new Date(),

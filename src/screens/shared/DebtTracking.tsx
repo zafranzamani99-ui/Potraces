@@ -2622,7 +2622,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
                       <View style={styles.splitMeta}>
                         <View style={[styles.methodPill, { backgroundColor: withAlpha(methodConfig?.color || C.accent, 0.1), borderWidth: 1, borderColor: withAlpha(methodConfig?.color || C.accent, 0.2) }]}>
-                          <Feather name={methodConfig?.icon as any || 'users'} size={14} color={methodConfig?.color || C.accent} />
+                          <Feather name={(methodConfig?.icon || 'users') as keyof typeof Feather.glyphMap} size={14} color={methodConfig?.color || C.accent} />
                           <Text style={[styles.methodPillText, { color: methodConfig?.color || C.accent }]}>{methodConfig?.label}</Text>
                         </View>
                         {isDraft ? (
@@ -2749,7 +2749,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                       ]}
                       onPress={() => setDebtType(dt.value as DebtType)}
                     >
-                      <Feather name={dt.icon as any} size={18} color={dt.color} />
+                      <Feather name={dt.icon as keyof typeof Feather.glyphMap} size={18} color={dt.color} />
                       <Text style={[styles.typeText, debtType === dt.value && { color: dt.color }]}>
                         {dt.label}
                       </Text>
@@ -2931,7 +2931,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                           onPress={() => setSplitMethod(m.value as SplitMethod)}
                         >
                           <Feather
-                            name={m.icon as any}
+                            name={m.icon as keyof typeof Feather.glyphMap}
                             size={16}
                             color={splitMethod === m.value ? C.accent : C.textPrimary}
                           />

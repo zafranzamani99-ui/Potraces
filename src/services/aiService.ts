@@ -2,6 +2,48 @@ import { AIMessage, Transaction, IncomeType, BusinessTransaction, RiderCost, Cli
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants';
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 
+// ─── Anthropic API Types ────────────────────────────────
+
+interface AnthropicContentBlock {
+  type: 'text' | 'tool_use';
+  text?: string;
+}
+
+interface AnthropicResponse {
+  content?: AnthropicContentBlock[];
+  stop_reason?: string;
+}
+
+/** Shape of a raw parsed product from AI JSON before validation. */
+interface RawParsedProduct {
+  name?: unknown;
+  pricePerUnit?: unknown;
+  costPerUnit?: unknown;
+  unit?: unknown;
+  description?: unknown;
+}
+
+/** Shape of a raw WhatsApp order item from AI JSON before validation. */
+interface RawWhatsAppItem {
+  productName?: unknown;
+  quantity?: unknown;
+  unit?: unknown;
+}
+
+// ─── Gemini Vision Response Types ───────────────────────
+
+interface GeminiVisionPart {
+  text?: string;
+}
+
+interface GeminiVisionCandidate {
+  content?: { parts?: GeminiVisionPart[] };
+}
+
+interface GeminiVisionResponse {
+  candidates?: GeminiVisionCandidate[];
+}
+
 const API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '';
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-haiku-4-5-20251001';
@@ -44,11 +86,11 @@ async function callAnthropic(
 
   if (!response.ok) return null;
 
-  const data: any = await response.json();
+  const data: AnthropicResponse = await response.json();
   const content = data?.content?.[0];
   if (!content || content.type !== 'text') return null;
 
-  return content.text;
+  return content.text ?? null;
 }
 
 /**
@@ -246,12 +288,12 @@ Rules:
 - Return [] if the text/image doesn't contain any products
 - Output MUST start with [ and end with ]`;
 
-function extractJsonArray(raw: string): any[] | null {
+function extractJsonArray(raw: string): unknown[] | null {
   // Try direct parse first
   const stripped = stripJsonFences(raw);
   try {
     const parsed = JSON.parse(stripped);
-    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed)) return parsed as unknown[];
   } catch {}
 
   // Fallback: find the first [...] block in the text
@@ -259,7 +301,7 @@ function extractJsonArray(raw: string): any[] | null {
   if (match) {
     try {
       const parsed = JSON.parse(match[0]);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) return parsed as unknown[];
     } catch {}
   }
 
@@ -269,13 +311,16 @@ function extractJsonArray(raw: string): any[] | null {
 function parseParsedProducts(raw: string): ParsedProduct[] | null {
   const parsed = extractJsonArray(raw);
   if (!parsed) return null;
-  return parsed.map((item: any) => ({
-    name: String(item.name || '').trim(),
-    pricePerUnit: Number(item.pricePerUnit) || 0,
-    costPerUnit: item.costPerUnit ? Number(item.costPerUnit) : undefined,
-    unit: String(item.unit || 'balang'),
-    description: item.description ? String(item.description).trim() : undefined,
-  })).filter((p: ParsedProduct) => p.name.length > 0);
+  return parsed.map((item: unknown) => {
+    const p = item as RawParsedProduct;
+    return {
+      name: String(p.name || '').trim(),
+      pricePerUnit: Number(p.pricePerUnit) || 0,
+      costPerUnit: p.costPerUnit ? Number(p.costPerUnit) : undefined,
+      unit: String(p.unit || 'balang'),
+      description: p.description ? String(p.description).trim() : undefined,
+    };
+  }).filter((p: ParsedProduct) => p.name.length > 0);
 }
 
 export async function parseProductList(
@@ -306,12 +351,10 @@ export async function parseProductImage(
   const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
   const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
   if (!GEMINI_KEY) {
-    console.warn('[parseProductImage] No GEMINI_API_KEY');
     return null;
   }
 
   const base64 = await readAsStringAsync(imageUri, { encoding: EncodingType.Base64 });
-  console.log('[parseProductImage] base64 length:', base64.length);
 
   const response = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
     method: 'POST',
@@ -330,23 +373,17 @@ export async function parseProductImage(
   });
 
   if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    console.warn('[parseProductImage] Gemini error:', response.status, errText);
     return null;
   }
 
-  const data: any = await response.json();
+  const data: GeminiVisionResponse = await response.json();
   const candidate = data?.candidates?.[0];
   const text = candidate?.content?.parts?.[0]?.text;
-  const finishReason = candidate?.finishReason;
-  console.log('[parseProductImage] Gemini response (' + finishReason + '):', text?.slice(0, 500));
   if (!text) {
-    console.warn('[parseProductImage] No text in response. Full data:', JSON.stringify(data).slice(0, 300));
     return null;
   }
 
   const products = parseParsedProducts(text);
-  console.log('[parseProductImage] Parsed products:', products?.length ?? 'null');
   return products;
 }
 
@@ -382,11 +419,14 @@ export async function parseWhatsAppOrderAI(
     const parsed = JSON.parse(stripJsonFences(result));
     if (!Array.isArray(parsed)) return null;
 
-    return parsed.map((item: any) => ({
-      productName: String(item.productName || ''),
-      quantity: Number(item.quantity) || 1,
-      unit: String(item.unit || 'balang'),
-    }));
+    return parsed.map((item: unknown) => {
+      const w = item as RawWhatsAppItem;
+      return {
+        productName: String(w.productName || ''),
+        quantity: Number(w.quantity) || 1,
+        unit: String(w.unit || 'balang'),
+      };
+    });
   } catch {
     return null;
   }

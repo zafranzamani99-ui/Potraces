@@ -584,7 +584,7 @@ const PersonalDashboard: React.FC = () => {
                   'Add your payment QR code in Settings so you can show it here.',
                   [
                     { text: 'Later', style: 'cancel' },
-                    { text: 'Go to Settings', onPress: () => navigation.navigate('Settings' as any, { scrollTo: 'qr' }) },
+                    { text: 'Go to Settings', onPress: () => navigation.navigate('Settings', { scrollTo: 'qr' }) },
                   ]
                 );
               }

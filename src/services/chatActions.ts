@@ -13,7 +13,7 @@ import { useSavingsStore } from '../store/savingsStore';
 import { useAppStore } from '../store/appStore';
 import { usePlaybookStore } from '../store/playbookStore';
 import { computePlaybookStats } from '../utils/playbookStats';
-import { AppMode } from '../types';
+import { AppMode, Transaction, Subscription, Budget, Debt } from '../types';
 import { useLearningStore } from '../store/learningStore';
 
 // ─── Action Types ────────────────────────────────────────
@@ -118,7 +118,7 @@ export function parseActions(text: string): { cleanText: string; actions: ChatAc
         actions.push(parsed as ChatAction);
       }
     } catch (e) {
-      console.warn('[ChatActions] Failed to parse action block:', json, e);
+      if (__DEV__) console.warn('[ChatActions] Failed to parse action block:', json, e);
     }
     return '';
   }).trim();
@@ -452,7 +452,7 @@ export function executeAction(action: ChatAction): ActionResult {
           return { success: false, message: `No active debt found for ${personName}.`, action };
         }
         const remaining = matchingDebt.totalAmount - matchingDebt.paidAmount;
-        useDebtStore.getState().updateDebt(matchingDebt.id, { status: 'settled' } as any);
+        useDebtStore.getState().updateDebt(matchingDebt.id, { status: 'settled' });
         return {
           success: true,
           message: `Forgiven ${personName}'s debt of RM ${remaining.toFixed(2)} — marked as settled`,
@@ -472,7 +472,7 @@ export function executeAction(action: ChatAction): ActionResult {
         if (!sub) {
           return { success: false, message: `No active subscription matching "${subName}" found.`, action };
         }
-        const updates: Record<string, any> = {};
+        const updates: Partial<Pick<Subscription, 'amount' | 'billingCycle'>> = {};
         if (action.newAmount !== undefined && action.newAmount > 0) updates.amount = action.newAmount;
         if (action.billingCycle) updates.billingCycle = action.billingCycle;
         if (Object.keys(updates).length === 0) {
@@ -671,7 +671,7 @@ export function executeAction(action: ChatAction): ActionResult {
         return {
           success: true,
           message: count === 1
-            ? `Deleted: ${toDelete[0].description} — RM ${toDelete[0].amount.toFixed(2)} (${toDelete[0].type}, ${format(toDelete[0].date instanceof Date ? toDelete[0].date : new Date(toDelete[0].date as any), 'dd MMM')})`
+            ? `Deleted: ${toDelete[0].description} — RM ${toDelete[0].amount.toFixed(2)} (${toDelete[0].type}, ${format(toDelete[0].date instanceof Date ? toDelete[0].date : new Date(String(toDelete[0].date)), 'dd MMM')})`
             : `Deleted ${count} transactions totalling RM ${totalAmt.toFixed(2)}`,
           action,
         };
@@ -695,7 +695,7 @@ export function executeAction(action: ChatAction): ActionResult {
           return { success: false, message: `No transaction found matching "${action.description || ''}" RM ${(action.amount || 0).toFixed(2)}.`, action };
         }
         const tx = matches[matches.length - 1]; // most recent match
-        const updates: Record<string, any> = {};
+        const updates: Partial<Pick<Transaction, 'amount' | 'description' | 'category' | 'date'>> = {};
         if (action.newAmount !== undefined && action.newAmount > 0) updates.amount = action.newAmount;
         if (action.newDescription) updates.description = action.newDescription;
         if (action.newCategory) updates.category = action.newCategory;
@@ -757,7 +757,7 @@ export function executeAction(action: ChatAction): ActionResult {
           const available = budgets.map((b) => b.category).join(', ');
           return { success: false, message: `No budget matching "${cat}". You have: ${available || 'none'}`, action };
         }
-        const updates: Record<string, any> = {};
+        const updates: Partial<Pick<Budget, 'allocatedAmount'>> = {};
         if (action.amount && action.amount > 0) updates.allocatedAmount = action.amount;
         if (action.newAmount && action.newAmount > 0) updates.allocatedAmount = action.newAmount;
         if (Object.keys(updates).length === 0) {
@@ -819,7 +819,7 @@ export function executeAction(action: ChatAction): ActionResult {
         if (!matchingDebt) {
           return { success: false, message: `No active debt found for ${personName}.`, action };
         }
-        const updates: Record<string, any> = {};
+        const updates: Partial<Pick<Debt, 'totalAmount' | 'contact' | 'description'>> = {};
         if (action.amount && action.amount > 0) updates.totalAmount = action.amount;
         if (action.newAmount && action.newAmount > 0) updates.totalAmount = action.newAmount;
         if (action.newPerson) {
@@ -927,8 +927,9 @@ export function executeAction(action: ChatAction): ActionResult {
       default:
         return { success: false, message: `Unknown action: ${action.type}`, action };
     }
-  } catch (err: any) {
-    return { success: false, message: `Failed: ${err?.message || 'unknown error'}`, action };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'unknown error';
+    return { success: false, message: `Failed: ${message}`, action };
   }
 }
 

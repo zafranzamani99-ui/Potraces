@@ -167,7 +167,7 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
                 activeOpacity={0.6}
               >
                 <View style={[styles.methodIcon, { backgroundColor: withAlpha(item.color, 0.15) }]}>
-                  <Feather name={item.icon as any} size={20} color={item.color} />
+                  <Feather name={item.icon as keyof typeof Feather.glyphMap} size={20} color={item.color} />
                 </View>
                 <View style={styles.methodInfo}>
                   <Text style={styles.methodName}>{item.name}</Text>
@@ -230,7 +230,7 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
                     ]}
                     onPress={() => setEditIcon(iconName)}
                   >
-                    <Feather name={iconName as any} size={18} color={editIcon === iconName ? editColor : C.textSecondary} />
+                    <Feather name={iconName as keyof typeof Feather.glyphMap} size={18} color={editIcon === iconName ? editColor : C.textSecondary} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -295,7 +295,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   title: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   hint: {
@@ -324,7 +324,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   methodName: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
   },
   customBadge: {
@@ -348,7 +348,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   addButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.accent,
   },
   editModal: {
@@ -362,7 +362,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   fieldLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textSecondary,
     marginBottom: SPACING.xs,
     marginTop: SPACING.md,
@@ -423,7 +423,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
   deleteButton: {

@@ -22,7 +22,6 @@ Notifications.setNotificationHandler({
 /** Register for push notifications and save token to Supabase. */
 export async function registerPushNotifications(): Promise<string | null> {
   if (!Device.isDevice) {
-    console.warn('[push] Must use physical device for push notifications');
     return null;
   }
 
@@ -36,7 +35,6 @@ export async function registerPushNotifications(): Promise<string | null> {
   }
 
   if (finalStatus !== 'granted') {
-    console.warn('[push] Permission not granted');
     return null;
   }
 
@@ -65,10 +63,9 @@ export async function registerPushNotifications(): Promise<string | null> {
         .from('seller_profiles')
         .update({ push_token: token })
         .eq('user_id', session.user.id);
-      console.warn('[push] Token saved:', token.slice(0, 30) + '...');
     }
   } catch (e) {
-    console.warn('[push] Failed to save token:', e);
+    if (__DEV__) console.warn('[push] Failed to save token:', e);
   }
 
   return token;

@@ -109,7 +109,7 @@ const AuthGatedBusiness: React.FC = () => {
           setOtpCode(otp.code);
           setOtpPhone(phone);
         }).catch((err) => {
-          console.warn('[OTP request failed]', err?.message || err);
+          if (__DEV__) console.warn('[OTP request failed]', err?.message || err);
           // If not authenticated on server, reset local auth state
           if (err?.message?.includes('Not authenticated')) {
             useAuthStore.getState().reset();

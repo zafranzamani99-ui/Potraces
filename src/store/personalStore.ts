@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { PersonalState } from '../types';
+import { PersonalState, Transfer } from '../types';
 import { useWalletStore } from './walletStore';
 
 export const usePersonalStore = create<PersonalState>()(
@@ -143,7 +143,7 @@ export const usePersonalStore = create<PersonalState>()(
         })),
 
       addTransferIncome: (transfer) => {
-        const walletId = (transfer as any).walletId as string | undefined;
+        const walletId = (transfer as Transfer & { walletId?: string }).walletId;
         set((state) => ({
           transactions: [
             {

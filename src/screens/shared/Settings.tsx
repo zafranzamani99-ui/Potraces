@@ -309,7 +309,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   qrLabelTitle: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   qrLabelInput: {
@@ -359,7 +359,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     right: 0,
     textAlign: 'center',
     fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.bold as any,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: '#fff',
     zIndex: 10,
   },
@@ -390,7 +390,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   qrPreviewTabText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: 'rgba(255,255,255,0.5)',
   },
   qrPreviewTabTextActive: {
@@ -415,7 +415,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   currencyTitle: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     marginBottom: SPACING.md,
     paddingHorizontal: SPACING.xs,
@@ -436,7 +436,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   currencyCode: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   currencyCodeSelected: {
@@ -535,7 +535,7 @@ const Settings: React.FC = () => {
       if (sectionY.current[target] !== undefined) {
         scrollRef.current?.scrollTo({ y: sectionY.current[target], animated: true });
       }
-      navigation.setParams({ scrollTo: undefined } as any);
+      navigation.setParams({ scrollTo: undefined });
     }, 100);
     return () => clearTimeout(timer);
   }, [route.params?.scrollTo, ready]);
@@ -1396,7 +1396,7 @@ const Settings: React.FC = () => {
                 style={styles.qrLabelCancel}
                 onPress={() => setQrLabelModal((s) => ({ ...s, visible: false }))}
               >
-                <Text style={{ color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.medium as any }}>cancel</Text>
+                <Text style={{ color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.medium }}>cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.qrLabelSave}
@@ -1417,7 +1417,7 @@ const Settings: React.FC = () => {
                   setQrLabelModal((s) => ({ ...s, visible: false }));
                 }}
               >
-                <Text style={{ color: '#fff', fontWeight: TYPOGRAPHY.weight.semibold as any }}>save</Text>
+                <Text style={{ color: '#fff', fontWeight: TYPOGRAPHY.weight.semibold }}>save</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

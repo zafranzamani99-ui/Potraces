@@ -1855,7 +1855,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   contactButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: BIZ.success,
   },
 
@@ -1873,7 +1873,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   addressButtonText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.gold,
     lineHeight: 20,
   },
@@ -1892,7 +1892,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   vipBadgeText: {
     fontSize: 9,
-    fontWeight: '700' as '700',
+    fontWeight: '700',
     color: C.gold,
     letterSpacing: 0.5,
   },
@@ -1922,7 +1922,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   vipLabelActive: {
     color: C.gold,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
 
   // ── Note ──
@@ -2111,7 +2111,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   emptyAddButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: BIZ.success,
   },
   emptyContactsButton: {
@@ -2127,7 +2127,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   emptyContactsButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
   },
 

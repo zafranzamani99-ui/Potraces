@@ -12,11 +12,11 @@ import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, BIZ } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { IncomeStream } from '../../types';
 
-const PRESET_COLORS = ['#4F5104', '#B2780A', '#DEAB22', '#6BA3BE', '#C4956A', '#B8AFBC'];
+const PRESET_COLORS = [CALM.accent, CALM.bronze, CALM.gold, BIZ.success, BIZ.unpaid, CALM.neutral];
 
 const IncomeStreamsScreen: React.FC = () => {
   const C = useCalm();

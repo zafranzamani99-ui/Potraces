@@ -190,7 +190,7 @@ const BusinessNavigator: React.FC = () => {
         },
         headerTintColor: C.textPrimary,
         headerTitleStyle: {
-          fontWeight: TYPOGRAPHY.weight.semibold as '600',
+          fontWeight: TYPOGRAPHY.weight.semibold,
           fontSize: TYPOGRAPHY.size.lg,
         },
       })}

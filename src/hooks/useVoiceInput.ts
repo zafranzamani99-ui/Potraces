@@ -60,7 +60,7 @@ export function useVoiceInput(): UseVoiceInputReturn {
       recorder.record();
       setIsRecording(true);
     } catch (err) {
-      console.warn('[useVoiceInput] Start recording failed:', err);
+      if (__DEV__) console.warn('[useVoiceInput] Start recording failed:', err);
       setError('could not start recording');
     }
   }, [recorder]);
@@ -100,6 +100,7 @@ export function useVoiceInput(): UseVoiceInputReturn {
       const data = await callGeminiAPI({
         contents: [
           {
+            role: 'user',
             parts: [
               {
                 text: 'Transcribe this audio. The speaker may use Malay, English, or Manglish (mixed). Return ONLY the transcription text, nothing else. If you cannot hear anything, return an empty string.',
@@ -134,7 +135,7 @@ export function useVoiceInput(): UseVoiceInputReturn {
       setError('no speech detected');
       return null;
     } catch (err) {
-      console.warn('[useVoiceInput] Transcription failed:', err);
+      if (__DEV__) console.warn('[useVoiceInput] Transcription failed:', err);
       setError('transcription failed');
       return null;
     } finally {

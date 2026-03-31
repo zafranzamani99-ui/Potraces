@@ -34,7 +34,7 @@ const StoryCard: React.FC<StoryCardProps> = ({ narrative, icon, accentColor, onP
       },
     ]}>
       <View style={[styles.iconCircle, { backgroundColor: withAlpha(accentColor, 0.12) }]}>
-        <Feather name={icon as any} size={16} color={accentColor} />
+        <Feather name={icon as keyof typeof Feather.glyphMap} size={16} color={accentColor} />
       </View>
       <Text style={[styles.narrative, { color: C.textSecondary }]} numberOfLines={3}>
         {narrative}

@@ -170,6 +170,25 @@ const QuickAddExpense: React.FC = () => {
     }).catch(() => {});
   }, []);
 
+  // ── Open ──────────────────────────────────────────────────
+  const handleOpen = useCallback(() => {
+    lightTap();
+    setAmount('');
+    setCategoryId('');
+    setTxType('expense');
+    setStep('amount');
+    slideAnim.setValue(0);
+    cardScale.setValue(0.92);
+    cardOpacity.setValue(0);
+    setVisible(true);
+    Animated.parallel([
+      Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 3 }),
+      Animated.timing(cardOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+    ]).start();
+  }, [slideAnim, cardScale, cardOpacity]);
+
+  _quickAddOpenRef = handleOpen;
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -214,25 +233,6 @@ const QuickAddExpense: React.FC = () => {
     (s: Step) => (s === 'amount' ? 0 : s === 'category' ? 1 : 2),
     [],
   );
-
-  // ── Open ──────────────────────────────────────────────────
-  const handleOpen = useCallback(() => {
-    lightTap();
-    setAmount('');
-    setCategoryId('');
-    setTxType('expense');
-    setStep('amount');
-    slideAnim.setValue(0);
-    cardScale.setValue(0.92);
-    cardOpacity.setValue(0);
-    setVisible(true);
-    Animated.parallel([
-      Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 3 }),
-      Animated.timing(cardOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
-    ]).start();
-  }, [slideAnim, cardScale, cardOpacity]);
-
-  _quickAddOpenRef = handleOpen;
 
   // ── Navigation ─────────────────────────────────────────────
   const animateTo = useCallback(
@@ -519,7 +519,7 @@ const QuickAddExpense: React.FC = () => {
                         activeOpacity={0.55}
                       >
                         <View style={[styles.catIcon, { backgroundColor: withAlpha(cat.color, 0.1) }]}>
-                          <Feather name={(cat.icon as any) || 'tag'} size={22} color={cat.color} />
+                          <Feather name={(cat.icon as keyof typeof Feather.glyphMap) || 'tag'} size={22} color={cat.color} />
                         </View>
                         <Text style={styles.catLabel} numberOfLines={2}>{cat.name}</Text>
                       </TouchableOpacity>
@@ -549,7 +549,7 @@ const QuickAddExpense: React.FC = () => {
                           activeOpacity={0.55}
                         >
                           <View style={[styles.walletIco, { backgroundColor: withAlpha(w.color || C.accent, 0.08) }]}>
-                            <Feather name={(w.icon as any) || 'credit-card'} size={20} color={w.color || C.accent} />
+                            <Feather name={(w.icon as keyof typeof Feather.glyphMap) || 'credit-card'} size={20} color={w.color || C.accent} />
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.walletName}>{w.name}</Text>

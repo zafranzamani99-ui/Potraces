@@ -435,6 +435,9 @@ export const BIZ = {
   success: '#6BA3BE',       // calm teal-blue — settled, positive
   warning: '#D4A03C',       // warm gold — needs attention
   error: '#A0714A',         // burnt sienna — error state (no red)
+  destructive: '#C1694F',   // terracotta — delete / destructive actions
+  inputError: '#D4775C',    // warm salmon — input validation error borders
+  delivered: '#7C8DA4',     // cool slate — delivered order status
 };
 
 // ─── TYPE SCALE ────────────────────────────────────────────

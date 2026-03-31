@@ -1611,7 +1611,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   sectionLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
     letterSpacing: 0.3,
     paddingHorizontal: SPACING.xs,
@@ -1645,7 +1645,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   avatarText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: '#fff',
   },
 
@@ -1666,7 +1666,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   customerNameInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     paddingVertical: SPACING.sm,
   },
@@ -1707,7 +1707,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   contactsPillText: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
   },
 
@@ -1742,7 +1742,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   recentPillAvatarText: {
     fontSize: 10,
-    fontWeight: '700' as '700',
+    fontWeight: '700',
     color: C.bronze,
   },
   recentPillAvatarTextPressed: {
@@ -1750,7 +1750,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   recentName: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
     maxWidth: 100,
   },
@@ -1781,7 +1781,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   suggestionText: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
   },
   suggestionTextPressed: {
@@ -1809,7 +1809,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   reorderPillText: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
   },
   reorderPillTextPressed: {
@@ -1853,7 +1853,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   sectionChipText: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
     maxWidth: 140,
   },
@@ -1862,7 +1862,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   sectionChipCount: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textMuted,
     backgroundColor: withAlpha(C.textMuted, 0.12),
     borderRadius: 8,
@@ -1894,7 +1894,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   whatsAppParseBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   whatsAppParseBtnTextPressed: {
@@ -1946,7 +1946,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   addItemsPillText: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
   addItemsPillTextPressed: {},
@@ -1964,7 +1964,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   waPasteBtnText: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
   },
   waPasteBtnTextActive: {
@@ -1980,7 +1980,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   itemCountText: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: '#fff',
   },
   noProductsLink: {
@@ -2001,7 +2001,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   noProductsText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   noProductsHint: {
@@ -2057,11 +2057,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   productName: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
   },
   productNameActive: {
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
   },
   productPrice: {
@@ -2093,7 +2093,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   qtyText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     minWidth: 24,
     textAlign: 'center',
@@ -2101,7 +2101,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   qtyInput: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     backgroundColor: C.surface,
     borderRadius: RADIUS.sm,
@@ -2162,7 +2162,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   selectedItemName: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   selectedItemPrice: {
@@ -2173,7 +2173,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   selectedItemTotal: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     minWidth: 48,
@@ -2191,13 +2191,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   subtotalLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textMuted,
     letterSpacing: 0.3,
   },
   subtotalAmount: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
@@ -2233,7 +2233,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   contactSheetTitle: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   contactSearchBar: {
@@ -2274,7 +2274,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   contactAvatarText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.bronze,
   },
   contactInfo: {
@@ -2282,7 +2282,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   contactName: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
   },
   contactPhone: {
@@ -2337,7 +2337,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   pickerTitle: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     letterSpacing: -0.3,
   },
@@ -2384,7 +2384,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   pickerSectionLabel: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
     letterSpacing: 0.2,
   },
@@ -2396,7 +2396,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   pickerSectionCount: {
     fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textMuted,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
@@ -2423,7 +2423,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
   pickerBottomCountEmpty: {
     color: C.textMuted,
@@ -2444,7 +2444,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   pickerDoneBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textMuted,
   },
   pickerDoneBtnTextHasItems: {
@@ -2515,7 +2515,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   slipTotalAmount: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
@@ -2558,7 +2558,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   reviewTitle: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     letterSpacing: -0.3,
   },
@@ -2575,7 +2575,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   reviewCustomerName: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   reviewCustomerSub: {
@@ -2622,7 +2622,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   confirmBtnLabel: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
   confirmBtnChip: {
@@ -2630,7 +2630,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   confirmBtnTotal: {
     fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: '#fff',
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
@@ -2673,12 +2673,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   datePickerTitle: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   datePickerDone: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.bronze,
   },
 
@@ -2703,7 +2703,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   detailsFieldLabel: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textMuted,
     letterSpacing: 0.3,
   },
@@ -2718,7 +2718,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   deliveryLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textMuted,
     letterSpacing: 0.3,
     marginRight: SPACING.xs,
@@ -2752,7 +2752,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   dPillText: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
   },
   dPillTextActive: {
@@ -2768,7 +2768,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   deliveryBadgeText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
   },
   noteInput: {
@@ -2804,7 +2804,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   saveButtonLabel: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: '#fff',
     letterSpacing: -0.2,
   },
@@ -2819,7 +2819,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   saveButtonTotal: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: '#fff',
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     letterSpacing: -0.3,
@@ -2856,13 +2856,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   modalOrderNumber: {
     fontSize: TYPOGRAPHY.size.base,
     color: C.bronze,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     fontVariant: ['tabular-nums'],
     marginTop: 1,
   },
@@ -2898,7 +2898,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalCopyText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
   },
   modalWhatsAppButton: {
@@ -2913,7 +2913,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalWhatsAppText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
   modalDoneButton: {
@@ -2926,7 +2926,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalDoneText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
 
@@ -2942,7 +2942,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   qrAmount: {
     fontSize: 28,
-    fontWeight: '700' as '700',
+    fontWeight: '700',
     color: C.textPrimary,
     letterSpacing: -0.5,
   },
@@ -2964,7 +2964,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   qrTabTextActive: {
     color: '#fff',
-    fontWeight: '600' as '600',
+    fontWeight: '600',
   },
   qrImage: {
     width: 200,
@@ -2986,7 +2986,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalQrText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
   },
 });

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { SellerProduct, SellerOrder, Season, SellerCustomer, IngredientCost, RecurringCost, CostTemplate } from '../types';
+import { SellerProduct, SellerOrder, Season, SellerCustomer, IngredientCost, RecurringCost, CostTemplate, OrderStatus, SellerPaymentMethod, RecurringFrequency } from '../types';
 import { useSellerStore } from '../store/sellerStore';
 
 // ─── Safe date parsing ────────────────────────────────────────────────────────
@@ -69,23 +69,18 @@ export async function updateSellerProfile(
     shop_notice: shopNotice?.trim() || null,
   };
   if (logoUrl !== undefined) updatePayload.logo_url = logoUrl;
-  console.log('[ShopLink] Saving profile:', { profileId, userId: session.user.id, ...updatePayload });
-
   const { error, count } = await supabase
     .from('seller_profiles')
     .update(updatePayload, { count: 'exact' })
     .eq('user_id', session.user.id);
 
   if (error) {
-    console.warn('[ShopLink] Update error:', error);
     if (error.code === '23505') return 'This link is already taken. Try a different one.';
     return error.message;
   }
   if (count === 0) {
-    console.warn('[ShopLink] Update matched 0 rows — profile may not exist for this user');
     return 'Profile not found. Please sign out and sign in again.';
   }
-  console.log('[ShopLink] Saved successfully, rows updated:', count);
   return null;
 }
 
@@ -102,14 +97,13 @@ export async function uploadShopLogo(imageUri: string): Promise<string | null> {
       uri: imageUri,
       name: 'logo.jpg',
       type: 'image/jpeg',
-    } as any);
+    } as any); // RN FormData type limitation
 
     const { error } = await supabase.storage
       .from('shop-logos')
       .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
 
     if (error) {
-      console.warn('[ShopLogo] Upload error:', error.message);
       return null;
     }
 
@@ -120,7 +114,6 @@ export async function uploadShopLogo(imageUri: string): Promise<string | null> {
     // Append timestamp to bust cache after re-upload
     return urlData.publicUrl + '?t=' + Date.now();
   } catch (e: any) {
-    console.warn('[ShopLogo] Upload failed:', e.message);
     return null;
   }
 }
@@ -138,14 +131,13 @@ export async function uploadProductImage(imageUri: string, productId: string): P
       uri: imageUri,
       name: 'product.jpg',
       type: 'image/jpeg',
-    } as any);
+    } as any); // RN FormData type limitation
 
     const { error } = await supabase.storage
       .from('product-images')
       .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
 
     if (error) {
-      console.warn('[ProductImage] Upload error:', error.message);
       return null;
     }
 
@@ -155,7 +147,6 @@ export async function uploadProductImage(imageUri: string, productId: string): P
 
     return urlData.publicUrl + '?t=' + Date.now();
   } catch (e: any) {
-    console.warn('[ProductImage] Upload failed:', e.message);
     return null;
   }
 }
@@ -193,7 +184,6 @@ export async function ensureProfile(): Promise<string | null> {
     .single();
 
   if (insertErr) {
-    console.warn('[ensureProfile] Insert failed:', insertErr.message, insertErr.code);
     // If unique violation, profile was created between our select and insert — retry select
     if (insertErr.code === '23505') {
       const { data: retry } = await supabase
@@ -770,10 +760,10 @@ export async function pullAll(): Promise<void> {
         customerAddress: ro.customer_address ?? undefined,
         totalAmount: ro.total_amount,
         date: sd(ro.created_at),
-        status: ro.status as any,
+        status: ro.status as OrderStatus,
         isPaid: ro.is_paid,
         paidAmount: ro.paid_amount ?? undefined,
-        paymentMethod: (ro.payment_method as any) ?? undefined,
+        paymentMethod: (ro.payment_method as SellerPaymentMethod | null) ?? undefined,
         paidAt: ro.paid_at ? sd(ro.paid_at) : undefined,
         note: ro.note ?? undefined,
         deliveryDate: ro.delivery_date ? sd(ro.delivery_date) : undefined,
@@ -868,7 +858,7 @@ export async function pullAll(): Promise<void> {
         id: rr.local_id,
         description: rr.description,
         amount: rr.amount,
-        frequency: rr.frequency as any,
+        frequency: rr.frequency as RecurringFrequency,
         nextDue: sd(rr.next_due),
         seasonId: rr.season_local_id ?? undefined,
         isActive: rr.is_active,
@@ -961,7 +951,7 @@ export async function syncAll(
     const pushNames = ['products', 'orders', 'seasons', 'customers', 'ingredientCosts', 'recurringCosts', 'costTemplates'];
     results.forEach((result, i) => {
       if (result.status === 'rejected') {
-        console.warn(`[sellerSync] push ${pushNames[i]} failed:`, result.reason instanceof Error ? result.reason.message : result.reason);
+        if (__DEV__) console.warn(`[sellerSync] push ${pushNames[i]} failed:`, result.reason instanceof Error ? result.reason.message : result.reason);
       }
     });
 
@@ -972,10 +962,10 @@ export async function syncAll(
     if (results[2].status === 'fulfilled') cleared._deletedSeasonIds = [];
     if (results[3].status === 'fulfilled') cleared._deletedCustomerIds = [];
     if (Object.keys(cleared).length > 0) {
-      useSellerStore.setState(cleared as any);
+      useSellerStore.setState(cleared as Partial<ReturnType<typeof useSellerStore.getState>>);
     }
   } catch (err) {
-    console.warn('[sellerSync] syncAll failed:', err instanceof Error ? err.message : err);
+    if (__DEV__) console.warn('[sellerSync] syncAll failed:', err instanceof Error ? err.message : err);
   }
 }
 

@@ -395,7 +395,7 @@ export async function askEchoPlan(playbook: Playbook): Promise<PlaybookAIResult>
     premium.incrementAiCalls();
     return parseEchoResponse(rawText, truncated);
   } catch (err: any) {
-    console.warn('[PlaybookAI] Error:', err);
+    if (__DEV__) console.warn('[PlaybookAI] Error:', err);
     if (err?.name === 'AbortError') return { ok: false, error: 'request timed out' };
     return { ok: false, error: 'something went wrong — try again' };
   }
@@ -487,7 +487,7 @@ HOW TO RESPOND:
     premium.incrementAiCalls();
     return { ok: true, reply: text };
   } catch (err: any) {
-    console.warn('[PlaybookAI] Chat error:', err);
+    if (__DEV__) console.warn('[PlaybookAI] Chat error:', err);
     if (err?.name === 'AbortError') return { ok: false, error: 'request timed out' };
     return { ok: false, error: 'something went wrong — try again' };
   }
@@ -633,7 +633,7 @@ function parseEchoResponse(raw: string, truncated = false): PlaybookAIResult {
 
     return { ok: true, plan: { greeting, items, warnings, summary } };
   } catch {
-    console.warn('[PlaybookAI] Parse error, raw:', raw.slice(0, 200));
+    if (__DEV__) console.warn('[PlaybookAI] Parse error, raw:', raw.slice(0, 200));
     return { ok: false, error: 'echo response was garbled — try again' };
   }
 }

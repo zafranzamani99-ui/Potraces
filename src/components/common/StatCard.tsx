@@ -108,7 +108,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   trendText: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
   title: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -117,7 +117,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   value: {
     fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
   },
   subtitle: {

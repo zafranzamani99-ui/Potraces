@@ -548,7 +548,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#fff',
+    backgroundColor: C.surface,
   },
 
   // -- Compact stats inline -----------------------------------------
@@ -712,7 +712,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   templatePillTextActive: {
     color: C.accent,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
   templateHint: {
     fontSize: TYPOGRAPHY.size.xs,

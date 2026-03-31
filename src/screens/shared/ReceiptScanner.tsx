@@ -433,7 +433,7 @@ const ReceiptScanner: React.FC = () => {
       return;
     }
     setTimeout(() => {
-      navigation.navigate('DebtTracking' as any, {
+      navigation.navigate('DebtTracking', {
         receiptData: {
           vendor: editTitle || editVendor || 'Receipt Scan',
           total,
@@ -467,7 +467,7 @@ const ReceiptScanner: React.FC = () => {
           />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.taxItemName, isSelected && { color: itemColor, fontWeight: TYPOGRAPHY.weight.bold as any }, isNone && !isSelected && { color: C.neutral }]}>{item.name}</Text>
+          <Text style={[styles.taxItemName, isSelected && { color: itemColor, fontWeight: TYPOGRAPHY.weight.bold }, isNone && !isSelected && { color: C.neutral }]}>{item.name}</Text>
           <Text style={styles.taxItemDesc} numberOfLines={1}>{item.description}</Text>
         </View>
         {item.limit !== null && (
@@ -523,7 +523,7 @@ const ReceiptScanner: React.FC = () => {
             {/* View receipts link */}
             <TouchableOpacity
               style={styles.viewReceiptsLink}
-              onPress={() => navigation.navigate('ReceiptHistory' as any)}
+              onPress={() => navigation.navigate('ReceiptHistory')}
               activeOpacity={0.6}
             >
               <Feather name="archive" size={14} color={C.accent} />
@@ -893,9 +893,9 @@ const ReceiptScanner: React.FC = () => {
                     activeOpacity={0.7}
                   >
                     <View style={[styles.taxItemIcon, { backgroundColor: isSelected ? cat.color : withAlpha(cat.color, 0.15) }]}>
-                      <Feather name={cat.icon as any} size={18} color={isSelected ? '#fff' : cat.color} />
+                      <Feather name={cat.icon as keyof typeof Feather.glyphMap} size={18} color={isSelected ? '#fff' : cat.color} />
                     </View>
-                    <Text style={[styles.taxItemName, isSelected && { color: cat.color, fontWeight: TYPOGRAPHY.weight.bold as any }]}>{cat.name}</Text>
+                    <Text style={[styles.taxItemName, isSelected && { color: cat.color, fontWeight: TYPOGRAPHY.weight.bold }]}>{cat.name}</Text>
                     {isSelected && <Feather name="check" size={18} color={cat.color} />}
                   </TouchableOpacity>
                 );
@@ -943,9 +943,9 @@ const ReceiptScanner: React.FC = () => {
                     activeOpacity={0.7}
                   >
                     <View style={[styles.taxItemIcon, { backgroundColor: isSelected ? pm.color : withAlpha(pm.color, 0.15) }]}>
-                      <Feather name={pm.icon as any} size={18} color={isSelected ? '#fff' : pm.color} />
+                      <Feather name={pm.icon as keyof typeof Feather.glyphMap} size={18} color={isSelected ? '#fff' : pm.color} />
                     </View>
-                    <Text style={[styles.taxItemName, isSelected && { color: pm.color, fontWeight: TYPOGRAPHY.weight.bold as any }]}>{pm.name}</Text>
+                    <Text style={[styles.taxItemName, isSelected && { color: pm.color, fontWeight: TYPOGRAPHY.weight.bold }]}>{pm.name}</Text>
                     {isSelected && <Feather name="check" size={18} color={pm.color} />}
                   </TouchableOpacity>
                 );

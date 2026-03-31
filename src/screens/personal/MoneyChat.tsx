@@ -676,7 +676,7 @@ const MoneyChat: React.FC = () => {
         if (!result.canceled && result.assets[0]) setImageUri(result.assets[0].uri);
       }
     } catch (err) {
-      console.warn('[MoneyChat] Image picker error:', err);
+      if (__DEV__) console.warn('[MoneyChat] Image picker error:', err);
       showError('could not open image picker');
     }
   }, [showError]);

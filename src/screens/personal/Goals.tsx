@@ -966,7 +966,7 @@ const Goals: React.FC = () => {
                         <View style={styles.cardDivider} />
                         <View style={[styles.archivedItem]}>
                           <View style={[styles.goalIconWrap, { backgroundColor: withAlpha(goal.color, 0.08) }]}>
-                            <Feather name={goal.icon as any} size={16} color={goal.color} />
+                            <Feather name={goal.icon as keyof typeof Feather.glyphMap} size={16} color={goal.color} />
                           </View>
                           <View style={styles.goalInfo}>
                             <Text style={styles.archivedName} numberOfLines={1}>{goal.name}</Text>

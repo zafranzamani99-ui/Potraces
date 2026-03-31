@@ -132,7 +132,7 @@ const ReceiptDetail: React.FC = () => {
             <DetailRow icon="tag" label="category" value={receipt.category} C={C} />
             <TouchableOpacity onPress={() => setTaxPickerVisible(true)} activeOpacity={0.6}>
               <DetailRow
-                icon={(taxCat?.icon || 'file') as any}
+                icon={(taxCat?.icon || 'file') as keyof typeof Feather.glyphMap}
                 label="tax relief"
                 value={taxCat && taxCat.id !== 'none'
                   ? `${taxCat.name}${taxCat.limit ? ` · limit RM ${taxCat.limit.toLocaleString()}` : ''}`
@@ -144,7 +144,7 @@ const ReceiptDetail: React.FC = () => {
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setPaymentPickerVisible(true)} activeOpacity={0.6}>
               <DetailRow
-                icon={(paymentMethod?.icon || 'credit-card') as any}
+                icon={(paymentMethod?.icon || 'credit-card') as keyof typeof Feather.glyphMap}
                 label="payment"
                 value={paymentMethod?.name || 'not set'}
                 C={C}
@@ -255,7 +255,7 @@ const ReceiptDetail: React.FC = () => {
                     activeOpacity={0.7}
                   >
                     <View style={[styles.modalRowIcon, { backgroundColor: withAlpha(isSelected ? C.accent : C.textSecondary, 0.08) }]}>
-                      <Feather name={cat.icon as any} size={14} color={isSelected ? C.accent : C.textSecondary} />
+                      <Feather name={cat.icon as keyof typeof Feather.glyphMap} size={14} color={isSelected ? C.accent : C.textSecondary} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.modalRowName, isSelected && { color: C.accent }]}>{cat.name}</Text>
@@ -303,7 +303,7 @@ const ReceiptDetail: React.FC = () => {
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: SPACING.sm }}>
                       <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: withAlpha(pm.color, 0.12), alignItems: 'center', justifyContent: 'center' }}>
-                        <Feather name={pm.icon as any} size={14} color={pm.color} />
+                        <Feather name={pm.icon as keyof typeof Feather.glyphMap} size={14} color={pm.color} />
                       </View>
                       <Text style={[styles.modalRowName, isSelected && { color: C.accent }]}>{pm.name}</Text>
                     </View>

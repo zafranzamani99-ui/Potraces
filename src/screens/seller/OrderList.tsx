@@ -39,7 +39,7 @@ function statusColor(status: OrderStatus): string {
     case 'pending':   return BIZ.pending;       // amber-orange — urges action
     case 'confirmed': return BIZ.success;       // calm blue
     case 'ready':     return CALM.gold;         // gold
-    case 'delivered': return '#7C8DA4';         // cool slate
+    case 'delivered': return BIZ.delivered;       // cool slate
     case 'completed': return CALM.textMuted;
     default:          return CALM.textMuted;
   }
@@ -1256,7 +1256,7 @@ const OrderList: React.FC = () => {
           'Add your payment QR code in Settings first.',
           [
             { text: 'Later', style: 'cancel' },
-            { text: 'Go to Settings', onPress: () => navigation.navigate('SellerSettings' as any, { scrollTo: 'qr' }) },
+            { text: 'Go to Settings', onPress: () => navigation.navigate('SellerSettings', { scrollTo: 'qr' }) },
           ]
         );
         return;
@@ -2975,7 +2975,7 @@ const OrderList: React.FC = () => {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                     <Feather name={paymentMethodIcon(d.method)} size={14} color={BIZ.success} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium as any, color: BIZ.success }}>{paymentMethodLabel(d.method)}</Text>
+                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: BIZ.success }}>{paymentMethodLabel(d.method)}</Text>
                       <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 1 }}>{format(d2, 'd MMM yyyy, h:mm a')}</Text>
                       {d.note ? (() => {
                         const tipMatch = d.note.match(/(tip\s+\S+\s+[\d,.]+)/i);
@@ -2992,7 +2992,7 @@ const OrderList: React.FC = () => {
                         return <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary, marginTop: 2 }}>{d.note}</Text>;
                       })() : null}
                     </View>
-                    <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold as any, color: C.textPrimary }}>{currency} {d.amount.toFixed(2)}</Text>
+                    <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary }}>{currency} {d.amount.toFixed(2)}</Text>
                     <TouchableOpacity
                       onPress={() => { lightTap(); if (isEditingThis) { setEditPayIdx(null); } else { setEditPayIdx(i); setEditPayAmount(d.amount.toFixed(2)); setEditPayMethod(d.method); setEditPayNote(d.note || ''); } }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -4119,13 +4119,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   payContextPaid: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: BIZ.success,
     fontVariant: ['tabular-nums'],
   },
   payContextRemaining: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
     fontVariant: ['tabular-nums'],
   },
@@ -4185,18 +4185,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   deleteConfirmTitle: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     marginBottom: SPACING.sm,
   },
   deleteConfirmItem: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
   },
   deleteConfirmAmount: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
     marginBottom: SPACING.md,
   },
@@ -4229,7 +4229,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   deleteConfirmCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
   },
   deleteConfirmRemove: {
@@ -4244,7 +4244,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   deleteConfirmRemoveText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
 
@@ -4329,7 +4329,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   payHistoryBalanceAmount: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
     fontVariant: ['tabular-nums'],
   },

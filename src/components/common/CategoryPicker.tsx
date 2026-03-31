@@ -42,7 +42,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
   const settingsHint = (
     <TouchableOpacity
       style={styles.settingsHint}
-      onPress={() => onNavigateToSettings ? onNavigateToSettings() : navigation.navigate('Settings' as any, { scrollTo: 'categories' })}
+      onPress={() => onNavigateToSettings ? onNavigateToSettings() : navigation.navigate('Settings', { scrollTo: 'categories' })}
       activeOpacity={0.6}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
@@ -215,7 +215,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
                         if (onNavigateToSettings) {
                           onNavigateToSettings();
                         } else {
-                          navigation.navigate('Settings' as any, { scrollTo: 'categories' });
+                          navigation.navigate('Settings', { scrollTo: 'categories' });
                         }
                       }, 50);
                     }}

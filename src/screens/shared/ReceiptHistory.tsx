@@ -215,7 +215,7 @@ const ReceiptHistory: React.FC = () => {
                     overshootRight={false}
                   >
                     <Pressable
-                      onPress={() => navigation.navigate('ReceiptDetail' as any, { receiptId: item.id })}
+                      onPress={() => navigation.navigate('ReceiptDetail', { receiptId: item.id })}
                       style={({ pressed }) => [styles.receiptRow, pressed && { opacity: 0.7 }]}
                     >
                       {item.imageUri ? (
@@ -263,7 +263,7 @@ const ReceiptHistory: React.FC = () => {
             </Text>
             <TouchableOpacity
               style={styles.emptyButton}
-              onPress={() => navigation.navigate('ReceiptScanner' as any)}
+              onPress={() => navigation.navigate('ReceiptScanner')}
               activeOpacity={0.8}
             >
               <Feather name="camera" size={18} color="#fff" />
@@ -276,7 +276,7 @@ const ReceiptHistory: React.FC = () => {
       {/* ── FAB: scan receipt ── */}
       <TouchableOpacity
         style={[styles.fab, { bottom: 24 + insets.bottom }]}
-        onPress={() => { lightTap(); navigation.navigate('ReceiptScanner' as any); }}
+        onPress={() => { lightTap(); navigation.navigate('ReceiptScanner'); }}
         activeOpacity={0.85}
       >
         <Feather name="camera" size={22} color="#fff" />

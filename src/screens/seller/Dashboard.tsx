@@ -251,7 +251,7 @@ const SellerDashboard: React.FC = () => {
         setShopNotice(profile.shopNotice);
         setShopLogoUrl(profile.logoUrl);
       }
-    }).catch((err) => { console.warn('[Dashboard] Profile fetch failed:', err); });
+    }).catch((err) => { if (__DEV__) console.warn('[Dashboard] Profile fetch failed:', err); });
   }, []);
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -602,7 +602,7 @@ const SellerDashboard: React.FC = () => {
                     'Add your payment QR code in Settings so you can show it here.',
                     [
                       { text: 'Later', style: 'cancel' },
-                      { text: 'Go to Settings', onPress: () => navigation.navigate('SellerSettings' as any, { scrollTo: 'qr' }) },
+                      { text: 'Go to Settings', onPress: () => navigation.navigate('SellerSettings', { scrollTo: 'qr' }) },
                     ]
                   );
                 }
@@ -1360,7 +1360,7 @@ const SellerDashboard: React.FC = () => {
                 {ORDER_PAGE_BASE}/?slug={shopModalSlug}
               </Text>
             </View>
-            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.bronze, textAlign: 'center', marginBottom: SPACING.lg, fontWeight: TYPOGRAPHY.weight.medium as any }}>
+            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.bronze, textAlign: 'center', marginBottom: SPACING.lg, fontWeight: TYPOGRAPHY.weight.medium }}>
               this cannot be changed later
             </Text>
 
@@ -1552,7 +1552,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   seasonPillEmptyText: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.regular as '400',
+    fontWeight: TYPOGRAPHY.weight.regular,
   },
   viewAllSeasonsText: {
     fontSize: TYPOGRAPHY.size.sm, // 13
@@ -1603,17 +1603,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   urgencyTextOverdue: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: BIZ.overdue,
   },
   urgencyTextToday: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
   },
   urgencyTextTomorrow: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.regular as '400',
+    fontWeight: TYPOGRAPHY.weight.regular,
     color: C.textSecondary,
   },
   urgencyNames: {
@@ -1624,7 +1624,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   urgencyNamesText: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.regular as '400',
+    fontWeight: TYPOGRAPHY.weight.regular,
   },
 
   // ── Unpaid aging card ──────────────────────────────────
@@ -1646,13 +1646,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   unpaidAgingText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: BIZ.overdue,
     flex: 1,
   },
   unpaidAgingAmount: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: BIZ.overdue,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
@@ -2059,12 +2059,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   revenueRowLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.regular as '400',
+    fontWeight: TYPOGRAPHY.weight.regular,
     color: C.textSecondary,
   },
   revenueRowAmount: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
@@ -2082,12 +2082,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   revenueProfitSection: {},
   revenueKeptLabel: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   revenueKeptAmount: {
     fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold as '700',
+    fontWeight: TYPOGRAPHY.weight.bold,
     fontVariant: ['tabular-nums'],
   },
 
@@ -2163,12 +2163,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   earningsLabel: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
   },
   earningsValue: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as '600',
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: BIZ.profit,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     marginLeft: 'auto' as const,
@@ -2256,7 +2256,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   deliveryRouteName: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as '500',
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     marginBottom: 2,
   },
@@ -2536,7 +2536,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   shopModalTitle: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
   shopModalSubtitle: {
@@ -2546,14 +2546,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   shopModalFieldHint: {
     fontSize: 10,
-    fontWeight: '400' as any,
+    fontWeight: '400',
     textTransform: 'none' as const,
     letterSpacing: 0,
     color: C.textMuted,
   },
   shopModalError: {
     fontSize: 12,
-    color: '#C1694F',
+    color: BIZ.destructive,
     marginBottom: SPACING.sm,
   },
   shopModalSaveBtn: {
@@ -2568,7 +2568,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   shopModalSaveBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
   },
 
@@ -2610,12 +2610,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: C.surface,
   },
   logoLabel: {
     fontSize: 11,
     color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
   logoPreviewOverlay: {
     position: 'absolute',
@@ -2645,7 +2645,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   slmSectionLabel: {
     fontSize: 11,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textMuted,
     letterSpacing: 0.3,
   },
@@ -2662,7 +2662,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   slmGroupFieldLabel: {
     fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     letterSpacing: 0.6,
     textTransform: 'uppercase' as const,
     color: C.textMuted,
@@ -2706,7 +2706,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   slmCopyPillText: {
     fontSize: 11,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: BIZ.success,
   },
   slmConfirmOverlay: {
@@ -2734,7 +2734,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   slmConfirmCancelText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
   },
   slmConfirmBtn: {

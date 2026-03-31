@@ -148,7 +148,7 @@ export function useIntentEngine({
           showStatus('nothing new to extract');
         }
       } catch (err) {
-        console.warn('[useIntentEngine] Classification failed:', err);
+        if (__DEV__) console.warn('[useIntentEngine] Classification failed:', err);
         showStatus('extraction failed — try again');
       } finally {
         if (!abortRef.current) {

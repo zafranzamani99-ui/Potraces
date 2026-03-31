@@ -1191,7 +1191,7 @@ const makeStyles = (C: typeof CALM) =>
 
     modalTitle: {
       fontSize: TYPOGRAPHY.size.lg,
-      fontWeight: TYPOGRAPHY.weight.semibold as any,
+      fontWeight: TYPOGRAPHY.weight.semibold,
     },
 
     // Selection bar
@@ -1211,7 +1211,7 @@ const makeStyles = (C: typeof CALM) =>
     selectionCount: {
       flex: 1,
       fontSize: TYPOGRAPHY.size.sm,
-      fontWeight: TYPOGRAPHY.weight.medium as any,
+      fontWeight: TYPOGRAPHY.weight.medium,
     },
     selectionActions: {
       flexDirection: 'row',
@@ -1228,7 +1228,7 @@ const makeStyles = (C: typeof CALM) =>
     },
     selectionBtnText: {
       fontSize: TYPOGRAPHY.size.sm,
-      fontWeight: TYPOGRAPHY.weight.medium as any,
+      fontWeight: TYPOGRAPHY.weight.medium,
     },
 
     // Float edit modal
@@ -1279,7 +1279,7 @@ const makeStyles = (C: typeof CALM) =>
     },
     floatEditSaveText: {
       fontSize: TYPOGRAPHY.size.base,
-      fontWeight: TYPOGRAPHY.weight.medium as any,
+      fontWeight: TYPOGRAPHY.weight.medium,
     },
 
     // Top bar
@@ -1294,11 +1294,11 @@ const makeStyles = (C: typeof CALM) =>
     },
     topBarTitle: {
       flex: 1, textAlign: 'center',
-      fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium as any,
+      fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium,
       color: C.textSecondary, textTransform: 'lowercase',
     },
     readOnlyBadge: { paddingHorizontal: SPACING.sm, paddingVertical: 3, borderRadius: RADIUS.full },
-    readOnlyText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium as any },
+    readOnlyText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium },
 
     listContent: { paddingHorizontal: SPACING.lg },
 
@@ -1306,24 +1306,24 @@ const makeStyles = (C: typeof CALM) =>
     hero: { alignItems: 'center', paddingTop: SPACING.xl, paddingBottom: SPACING.lg },
     heroLabel: {
       fontSize: TYPOGRAPHY.size.xs, color: C.textMuted,
-      fontWeight: TYPOGRAPHY.weight.medium as any,
+      fontWeight: TYPOGRAPHY.weight.medium,
       letterSpacing: 0.5, textTransform: 'lowercase', marginBottom: SPACING.xs,
     },
     heroAmount: {
-      fontSize: TYPOGRAPHY.size['3xl'], fontWeight: TYPOGRAPHY.weight.extraLight as any,
+      fontSize: TYPOGRAPHY.size['3xl'], fontWeight: TYPOGRAPHY.weight.extraLight,
       color: C.textPrimary, fontVariant: ['tabular-nums'], letterSpacing: -0.5,
     },
     heroSub: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, marginTop: SPACING.xs },
-    heroAfterObl: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium as any, marginTop: SPACING.sm },
+    heroAfterObl: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, marginTop: SPACING.sm },
     heroStats: { flexDirection: 'row', alignItems: 'center', marginTop: SPACING.lg, gap: SPACING.md },
     heroStat: { alignItems: 'center', flex: 1 },
-    heroStatValue: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold as any, fontVariant: ['tabular-nums'] },
+    heroStatValue: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, fontVariant: ['tabular-nums'] },
     heroStatLabel: { fontSize: TYPOGRAPHY.size.xs, marginTop: 2 },
     heroDivider: { width: 1, height: 24 },
     heroBarWrap: { width: '100%', marginTop: SPACING.md, gap: SPACING.xs },
     heroBarTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
     heroBarFill: { height: '100%', borderRadius: 3 },
-    heroPace: { fontSize: TYPOGRAPHY.size.xs, textAlign: 'right', fontWeight: TYPOGRAPHY.weight.medium as any },
+    heroPace: { fontSize: TYPOGRAPHY.size.xs, textAlign: 'right', fontWeight: TYPOGRAPHY.weight.medium },
 
     // Section headers
     sectionHeader: {
@@ -1331,7 +1331,7 @@ const makeStyles = (C: typeof CALM) =>
       marginTop: SPACING.lg, marginBottom: SPACING.sm, paddingHorizontal: SPACING.xs,
     },
     sectionTitle: {
-      fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.semibold as any,
+      fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.semibold,
       color: C.textSecondary, textTransform: 'lowercase', letterSpacing: 0.3,
     },
     sectionRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
@@ -1342,7 +1342,7 @@ const makeStyles = (C: typeof CALM) =>
       flexDirection: 'row', alignItems: 'center', gap: 4,
       paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: RADIUS.full,
     },
-    aiBtnText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium as any },
+    aiBtnText: { fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium },
     aiLoadingRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
     aiLoadingText: { fontSize: TYPOGRAPHY.size.xs },
 
@@ -1353,13 +1353,13 @@ const makeStyles = (C: typeof CALM) =>
       borderRadius: RADIUS.md, marginBottom: SPACING.xs,
     },
     oblContent: { flex: 1, gap: 2 },
-    oblLabel: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.regular as any },
+    oblLabel: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.regular },
     oblLabelCovered: { textDecorationLine: 'line-through' },
     oblMeta: { fontSize: TYPOGRAPHY.size.xs },
     oblRight: { alignItems: 'flex-end', gap: 4 },
-    oblAmount: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.medium as any, fontVariant: ['tabular-nums'] },
+    oblAmount: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.medium, fontVariant: ['tabular-nums'] },
     oblTypeBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: RADIUS.full },
-    oblTypeText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.medium as any },
+    oblTypeText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.medium },
 
     // Shared checkbox
     checkbox: { marginRight: SPACING.md },
@@ -1377,11 +1377,11 @@ const makeStyles = (C: typeof CALM) =>
     lineContent: { flex: 1 },
     lineDisplay: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     lineLabel: {
-      fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.regular as any,
+      fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.regular,
       flex: 1, marginRight: SPACING.sm,
     },
     lineLabelPaid: { textDecorationLine: 'line-through' },
-    lineAmount: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.medium as any, fontVariant: ['tabular-nums'] },
+    lineAmount: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.medium, fontVariant: ['tabular-nums'] },
     editRow: { gap: SPACING.sm },
     editLabelInput: { fontSize: TYPOGRAPHY.size.base, padding: SPACING.sm, borderRadius: RADIUS.sm, borderWidth: 1 },
     editAmountBox: {
@@ -1414,10 +1414,10 @@ const makeStyles = (C: typeof CALM) =>
     spendDot: { width: 8, height: 8, borderRadius: 4 },
     spendLabel: { flex: 1, fontSize: TYPOGRAPHY.size.sm },
     spendRight: { alignItems: 'flex-end', gap: 2 },
-    spendAmount: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium as any, fontVariant: ['tabular-nums'] },
+    spendAmount: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, fontVariant: ['tabular-nums'] },
     spendPercent: { fontSize: TYPOGRAPHY.size.xs },
     unplannedBadge: { paddingHorizontal: 5, paddingVertical: 1, borderRadius: RADIUS.full },
-    unplannedText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.medium as any },
+    unplannedText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.medium },
 
     // Echo floating modal
     echoOverlay: {
@@ -1455,7 +1455,7 @@ const makeStyles = (C: typeof CALM) =>
     },
     echoReaskText: {
       fontSize: TYPOGRAPHY.size.xs,
-      fontWeight: TYPOGRAPHY.weight.medium as any,
+      fontWeight: TYPOGRAPHY.weight.medium,
     },
     echoScrollContent: {
       padding: SPACING.xl,
@@ -1469,7 +1469,7 @@ const makeStyles = (C: typeof CALM) =>
     },
     echoTitle: {
       fontSize: TYPOGRAPHY.size.xl,
-      fontWeight: TYPOGRAPHY.weight.semibold as any,
+      fontWeight: TYPOGRAPHY.weight.semibold,
     },
     echoGreetText: {
       fontSize: TYPOGRAPHY.size.base,
@@ -1493,7 +1493,7 @@ const makeStyles = (C: typeof CALM) =>
     },
     echoPlanLabel: {
       fontSize: TYPOGRAPHY.size.sm,
-      fontWeight: TYPOGRAPHY.weight.medium as any,
+      fontWeight: TYPOGRAPHY.weight.medium,
     },
     echoItemRow: {
       flexDirection: 'row',
@@ -1510,7 +1510,7 @@ const makeStyles = (C: typeof CALM) =>
     echoItemLabel: { fontSize: TYPOGRAPHY.size.base, flex: 1, marginRight: SPACING.sm },
     echoItemAmount: {
       fontSize: TYPOGRAPHY.size.lg,
-      fontWeight: TYPOGRAPHY.weight.semibold as any,
+      fontWeight: TYPOGRAPHY.weight.semibold,
       fontVariant: ['tabular-nums'] as any,
     },
     echoRationale: {
@@ -1553,7 +1553,7 @@ const makeStyles = (C: typeof CALM) =>
     },
     echoUseBtnText: {
       fontSize: TYPOGRAPHY.size.base,
-      fontWeight: TYPOGRAPHY.weight.medium as any,
+      fontWeight: TYPOGRAPHY.weight.medium,
     },
     echoDismissText: {
       fontSize: TYPOGRAPHY.size.sm,
@@ -1624,7 +1624,7 @@ const makeStyles = (C: typeof CALM) =>
       paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm + 2,
       borderRadius: RADIUS.full, marginTop: SPACING.sm,
     },
-    emptyAiBtnText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium as any },
+    emptyAiBtnText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium },
 
     // Quick notes
     quickNoteHeader: {
@@ -1632,7 +1632,7 @@ const makeStyles = (C: typeof CALM) =>
       paddingVertical: SPACING.sm, marginTop: SPACING.lg,
     },
     quickNoteLabel: {
-      fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium as any,
+      fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.medium,
       textTransform: 'lowercase',
     },
     quickNoteInput: {

@@ -108,6 +108,7 @@ export async function scanReceipt(imageUri: string): Promise<ExtractedReceipt> {
     {
       contents: [
         {
+          role: 'user',
           parts: [
             { text: RECEIPT_PROMPT },
             {

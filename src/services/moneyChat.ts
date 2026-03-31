@@ -7,7 +7,7 @@
  */
 
 import { format, startOfMonth, endOfMonth, subMonths, isWithinInterval, getDaysInMonth } from 'date-fns';
-import { callGeminiAPI, isGeminiAvailable, getCooldownSecondsLeft, isDailyQuotaExhausted, resetDailyQuota } from './geminiClient';
+import { callGeminiAPI, isGeminiAvailable, getCooldownSecondsLeft, isDailyQuotaExhausted, resetDailyQuota, GeminiPart, GeminiContent } from './geminiClient';
 import { usePremiumStore } from '../store/premiumStore';
 import { usePersonalStore } from '../store/personalStore';
 import { useWalletStore } from '../store/walletStore';
@@ -558,7 +558,7 @@ Net position: ${currency} ${netWorth.toFixed(2)} (wallets ${currency} ${totalWal
             ? format(
                 a.history[a.history.length - 1].date instanceof Date
                   ? a.history[a.history.length - 1].date
-                  : new Date(a.history[a.history.length - 1].date as any),
+                  : new Date(String(a.history[a.history.length - 1].date)),
                 'dd MMM'
               )
             : 'never';
@@ -692,22 +692,19 @@ export async function sendChatMessage(
 
     // Build conversation history — last 10 messages to keep token usage low
     const recentHistory = history.slice(-10);
-    const contents = recentHistory.map((msg) => ({
+    const contents: GeminiContent[] = recentHistory.map((msg) => ({
       role: msg.role === 'assistant' ? ('model' as const) : ('user' as const),
       parts: [{ text: msg.content }],
     }));
 
     // Add current message (with optional image)
-    const userParts: any[] = [{ text: message || 'What do you see in this image?' }];
+    const userParts: GeminiPart[] = [{ text: message || 'What do you see in this image?' }];
     if (imageBase64) {
       userParts.push({
         inlineData: { mimeType: 'image/jpeg', data: imageBase64 },
       });
     }
-    contents.push({
-      role: 'user' as const,
-      parts: userParts,
-    });
+    contents.push({ role: 'user' as const, parts: userParts });
 
     const hasImage = !!imageBase64;
     const data = await callGeminiAPI(
@@ -741,9 +738,9 @@ export async function sendChatMessage(
     }
 
     return { ok: false, error: 'AI returned empty — try rephrasing.' };
-  } catch (err: any) {
-    console.warn('[MoneyChat] Gemini failed:', err);
-    if (err?.name === 'AbortError') return { ok: false, error: 'Request timed out.' };
+  } catch (err: unknown) {
+    if (__DEV__) console.warn('[MoneyChat] Gemini failed:', err);
+    if (err instanceof Error && err.name === 'AbortError') return { ok: false, error: 'Request timed out.' };
     return { ok: false, error: 'Something went wrong. Try again.' };
   }
 }

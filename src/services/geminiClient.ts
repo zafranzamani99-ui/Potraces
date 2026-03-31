@@ -58,10 +58,47 @@ export function getCooldownSecondsLeft(): number {
   return soonest === Infinity ? 0 : Math.ceil(soonest / 1000);
 }
 
+// ─── Gemini API Types ────────────────────────────────────
+
+/** A single part within a Gemini content message. */
+export interface GeminiPart {
+  text?: string;
+  inlineData?: { mimeType: string; data: string };
+}
+
+/** A single turn in the Gemini conversation. */
+export interface GeminiContent {
+  role: 'user' | 'model';
+  parts: GeminiPart[];
+}
+
+/** Generation configuration sent to the Gemini API. */
+export interface GeminiGenerationConfig {
+  temperature?: number;
+  maxOutputTokens?: number;
+  responseMimeType?: string;
+  topP?: number;
+  topK?: number;
+  thinkingConfig?: { thinkingBudget: number };
+}
+
+/** A single candidate returned by Gemini. */
+export interface GeminiCandidate {
+  content: { parts: GeminiPart[] };
+  finishReason?: string;
+}
+
+/** Top-level response shape from Gemini generateContent. */
+export interface GeminiResponse {
+  candidates?: GeminiCandidate[];
+  promptFeedback?: { blockReason?: string };
+}
+
+/** Request body sent to the Gemini generateContent endpoint. */
 interface GeminiRequestBody {
-  contents: any[];
+  contents: GeminiContent[];
   system_instruction?: { parts: { text: string }[] };
-  generationConfig?: Record<string, any>;
+  generationConfig?: GeminiGenerationConfig;
 }
 
 function getUrl(model: string): string {
@@ -89,7 +126,7 @@ async function parse429(model: string, response: Response): Promise<number> {
   try {
     const body = await response.clone().json();
     const msg: string = body?.error?.message || '';
-    console.warn(`[Gemini] ${model} 429: ${msg.slice(0, 200)}`);
+    if (__DEV__) console.warn(`[Gemini] ${model} 429: ${msg.slice(0, 200)}`);
 
     // Parse "Please retry in 52.518570186s"
     const match = msg.match(/retry in ([\d.]+)s/i);
@@ -97,7 +134,7 @@ async function parse429(model: string, response: Response): Promise<number> {
       return Math.ceil(parseFloat(match[1])) * 1000;
     }
   } catch {
-    console.warn(`[Gemini] ${model} 429 (no readable body)`);
+    if (__DEV__) console.warn(`[Gemini] ${model} 429 (no readable body)`);
   }
 
   // Fallback: check Retry-After header
@@ -117,7 +154,7 @@ function getAvailableModels(): string[] {
 
 function blockModel(model: string, durationMs: number) {
   modelBlocked[model] = Date.now() + durationMs;
-  console.warn(`[Gemini] ${model} blocked for ${Math.ceil(durationMs / 1000)}s`);
+  if (__DEV__) console.warn(`[Gemini] ${model} blocked for ${Math.ceil(durationMs / 1000)}s`);
 
   // Check if ALL models are now blocked
   const now = Date.now();
@@ -125,7 +162,7 @@ function blockModel(model: string, durationMs: number) {
     allModelsExhausted = true;
     // Find soonest unblock
     const soonest = Math.min(...MODELS.map((m) => modelBlocked[m] || 0)) - now;
-    console.warn(`[Gemini] All models exhausted — next available in ${Math.ceil(soonest / 1000)}s`);
+    if (__DEV__) console.warn(`[Gemini] All models exhausted — next available in ${Math.ceil(soonest / 1000)}s`);
   }
 }
 
@@ -140,7 +177,7 @@ export async function callGeminiAPI(
   body: GeminiRequestBody,
   timeoutMs = 15_000,
   noFallback = false
-): Promise<any | null> {
+): Promise<GeminiResponse | null> {
   if (!isGeminiAvailable()) return null;
 
   const available = getAvailableModels();
@@ -166,7 +203,7 @@ export async function callGeminiAPI(
       clearTimeout(timeout);
 
       if (!response.ok) {
-        console.warn(`[Gemini] ${model} error: ${response.status}`);
+        if (__DEV__) console.warn(`[Gemini] ${model} error: ${response.status}`);
         continue;
       }
 
@@ -179,12 +216,12 @@ export async function callGeminiAPI(
     // All models failed
     clearTimeout(timeout);
     return null;
-  } catch (err: any) {
+  } catch (err: unknown) {
     clearTimeout(timeout);
-    if (err?.name === 'AbortError') {
-      console.warn('[Gemini] Request timed out');
+    if (err instanceof Error && err.name === 'AbortError') {
+      if (__DEV__) console.warn('[Gemini] Request timed out');
     } else {
-      console.warn('[Gemini] Request failed:', err);
+      if (__DEV__) console.warn('[Gemini] Request failed:', err);
     }
     return null;
   }

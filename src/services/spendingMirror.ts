@@ -201,7 +201,7 @@ Rules:
 
     return null;
   } catch (err) {
-    console.warn('[SpendingMirror] Failed:', err);
+    if (__DEV__) console.warn('[SpendingMirror] Failed:', err);
     return null;
   } finally {
     store.setIsGenerating(false);

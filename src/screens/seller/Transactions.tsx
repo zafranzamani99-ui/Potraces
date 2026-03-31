@@ -355,7 +355,7 @@ const SellerTransactions: React.FC = () => {
           <View style={styles.txRow}>
             <View style={[styles.txIcon, { backgroundColor: withAlpha(BIZ.success, 0.1) }]}>
               <Feather
-                name={METHOD_ICON[item.method] as any}
+                name={METHOD_ICON[item.method] as keyof typeof Feather.glyphMap}
                 size={16}
                 color={BIZ.success}
               />
@@ -495,7 +495,7 @@ const SellerTransactions: React.FC = () => {
             >
               {chip.icon && (
                 <Feather
-                  name={chip.icon as any}
+                  name={chip.icon as keyof typeof Feather.glyphMap}
                   size={12}
                   color={chip.active ? C.bronze : C.textSecondary}
                 />
@@ -599,7 +599,7 @@ const SellerTransactions: React.FC = () => {
                           activeOpacity={0.7}
                         >
                           <Feather
-                            name={opt.icon as any}
+                            name={opt.icon as keyof typeof Feather.glyphMap}
                             size={12}
                             color={active ? C.bronze : C.textMuted}
                           />
@@ -633,7 +633,7 @@ const SellerTransactions: React.FC = () => {
                           activeOpacity={0.7}
                         >
                           <Feather
-                            name={METHOD_ICON[m] as any}
+                            name={METHOD_ICON[m] as keyof typeof Feather.glyphMap}
                             size={12}
                             color={active ? C.bronze : C.textMuted}
                           />
@@ -754,7 +754,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   headerLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.bold as any,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textMuted,
     letterSpacing: 1,
     textTransform: 'uppercase',
@@ -784,7 +784,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   summaryAmount: {
     fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold as any,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: BIZ.success,
     fontVariant: ['tabular-nums'],
   },
@@ -878,12 +878,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   quickChipText: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
   },
   quickChipTextActive: {
     color: C.bronze,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
   // ── List ──
@@ -900,14 +900,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   dateHeader: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   dateHeaderTotal: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: BIZ.success,
     fontVariant: ['tabular-nums'],
   },
@@ -939,14 +939,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   txName: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     flex: 1,
     marginRight: SPACING.sm,
   },
   txAmount: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: BIZ.success,
     fontVariant: ['tabular-nums'],
   },
@@ -984,7 +984,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   clearFiltersText: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.bronze,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
 
   // ── Filter modal ──
@@ -1012,7 +1012,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   filterSortClear: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
   },
   filterSortScroll: {
@@ -1045,11 +1045,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   filterPillText: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
   filterPillTextActive: {
     color: C.bronze,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
   filterSortDone: {
     alignItems: 'center',
@@ -1060,7 +1060,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   filterSortDoneText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
   },
 
@@ -1081,7 +1081,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   dateRangeLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium as any,
+    fontWeight: TYPOGRAPHY.weight.medium,
     width: 36,
   },
   dateRangeValue: {

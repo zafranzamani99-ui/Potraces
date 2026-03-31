@@ -177,7 +177,7 @@ const CloseSession: React.FC = () => {
                   accessibilityState={{ selected: isSelected }}
                 >
                   <Feather
-                    name={cond.icon as any}
+                    name={cond.icon as keyof typeof Feather.glyphMap}
                     size={16}
                     color={isSelected ? C.bronze : C.textSecondary}
                   />
