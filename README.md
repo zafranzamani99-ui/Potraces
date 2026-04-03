@@ -297,10 +297,22 @@ Powered by Gemini. Works in both personal and business mode.
 - BNPL/credit balance summary
 - Net worth calculation (excl. credit)
 
-#### Onboarding
+#### First-Time Experience
 
-- First-launch guided tour
-- Feature highlights for new users
+- **Onboarding**: 3-slide welcome tour with name input + language toggle
+- **Getting Started checklist**: Dashboard card tracking first wallet, first expense, first budget — auto-detects completion and dismisses
+- **Screen Guides**: First-visit overlay on 8 key screens (expense entry, chat, notes, budgets, wallets, debts, receipts, pulse) — shows tips, dismisses with "got it"
+- **Feature Hints**: Inline discovery banners on 5 screens encouraging exploration
+- **First transaction celebration**: Toast animation on saving your first expense
+- **Warm empty states**: Friendly copy + illustration on Goals, Savings, Subscriptions, Pulse, Reports when empty
+
+#### i18n (English + Malay)
+
+- ~400 translation keys across `src/i18n/en.ts` and `src/i18n/ms.ts`
+- `useT()` hook returns the correct language object based on `settingsStore.language`
+- All personal mode screens fully translated (labels, toasts, alerts, placeholders, modals, guides)
+- Settings UI: 2-pill language toggle (EN / BM)
+- Business mode screens remain English — translate incrementally
 
 ---
 
@@ -318,7 +330,7 @@ Anxiety-reducing visual language:
 - **Border radius** — xs: 4, sm: 6, md: 10, lg: 14, xl: 20, 2xl: 28, full: 9999.
 - **Shadows** — Max opacity 0.06 for subtle (`sm`), up to 0.14 for modals (`2xl`). Inspired by Stripe/Linear: "felt, not seen." Shadow levels: none, xs, sm, md, lg, xl, 2xl.
 - **Status colors** — Pending: warm amber. Partial: bronze. Settled: calm teal. No red for anything.
-- **Dark mode** — Full dark color set defined (`COLORS_DARK`). Dark surfaces: `#0F1419`, `#1A1F2E`, `#252B3B`. Dark text: `#F8F9FE`, `#A1A8B8`.
+- **Dark mode** — Full warm dark palette (`CALM_DARK`). Background: `#121212`, surface: `#1E1E1E`, text: `#F0EDE8`. `useCalm()` hook returns correct palette based on `settingsStore.themePreference` + system `useColorScheme()`. `useIsDark()` boolean helper. Settings UI: 3-pill theme toggle (Light / Dark / System). All screens use `makeStyles(C)` pattern for dynamic theming.
 
 ### BIZ Color System (Business Mode)
 
@@ -565,7 +577,7 @@ Central wrapper for all Gemini API calls:
 
 ## Data Architecture
 
-### Stores (20 Zustand stores with AsyncStorage persistence)
+### Stores (21 Zustand stores with AsyncStorage persistence)
 
 | Store | File | What it manages |
 |-------|------|----------------|
@@ -577,7 +589,7 @@ Central wrapper for all Gemini API calls:
 | **stallStore** | `stallStore.ts` | Sessions, sales, stall products, regular customers |
 | **walletStore** | `walletStore.ts` | Wallets, transfers, credit tracking (limit, used, available) |
 | **debtStore** | `debtStore.ts` | Debts, splits, payments, participant tracking, edit audit logs |
-| **settingsStore** | `settingsStore.ts` | Currency, name, payment QRs, haptics toggle, display preferences |
+| **settingsStore** | `settingsStore.ts` | Currency, name, payment QRs, haptics, theme (light/dark/system), language (en/ms) |
 | **categoryStore** | `categoryStore.ts` | Custom categories, overrides, ordering per category type |
 | **premiumStore** | `premiumStore.ts` | Subscription tier, AI call quota, feature gates |
 | **savingsStore** | `savingsStore.ts` | Savings accounts, value snapshots, target tracking |
@@ -589,6 +601,7 @@ Central wrapper for all Gemini API calls:
 | **partTimeStore** | `partTimeStore.ts` | Main/side income tracking, type configuration |
 | **onTheRoadStore** | `onTheRoadStore.ts` | Vehicle setup, daily earnings, costs (petrol/toll/maintenance) |
 | **mixedStore** | `mixedStore.ts` | Multiple named income streams with colors |
+| **receiptStore** | `receiptStore.ts` | Scanned receipts, parsed data, receipt history |
 
 All stores use safe date rehydration: inline `sd()` helper on `onRehydrateStorage` prevents `Invalid Date` from crashing `format()` calls.
 
@@ -660,7 +673,7 @@ c:\Project\Potraces\
 │
 └── src/
     ├── components/
-    │   ├── common/                  # 28 reusable UI components
+    │   ├── common/                  # 32 reusable UI components
     │   │   ├── AnimatedNumber.tsx      # Smooth number transitions
     │   │   ├── BreathingRoom.tsx       # Spacer / padding component
     │   │   ├── Button.tsx             # Styled button with variants
@@ -688,7 +701,13 @@ c:\Project\Potraces\
     │   │   ├── TransactionItem.tsx      # Transaction list row (income/expense)
     │   │   ├── UnitManager.tsx         # Custom unit CRUD for products
     │   │   ├── WalletPicker.tsx        # Wallet selection dropdown
-    │   │   └── WeekBar.tsx            # 7-day spending bar chart
+    │   │   ├── WeekBar.tsx            # 7-day spending bar chart
+    │   │   ├── ScreenGuide.tsx        # First-visit overlay guide (centered card + tips)
+    │   │   ├── FeatureHint.tsx        # Inline discovery banner
+    │   │   ├── GettingStarted.tsx     # Dashboard checklist (wallet, expense, budget)
+    │   │   ├── StoryCard.tsx          # Outcome-driven insight card
+    │   │   ├── Sparkline.tsx          # Compact line chart for goals/savings
+    │   │   └── PaymentMethodManager.tsx # Payment method CRUD
     │   ├── business/                # 6 business-specific components
     │   │   ├── BusinessEmptyState.tsx   # Business mode empty state
     │   │   ├── BusinessFAB.tsx         # Business floating action button
@@ -696,6 +715,8 @@ c:\Project\Potraces\
     │   │   ├── BusinessInsightLine.tsx  # Business insight text row
     │   │   ├── BusinessSectionHeader.tsx # Business section header
     │   │   └── FilterTabRow.tsx        # Filter/tab row for business lists
+    │   ├── playbook/
+    │   │   └── PlaybookNotebook.tsx    # AI playbook notebook component
     │   └── navigation/
     │       └── CustomTabBar.tsx        # Animated bottom tab bar with center "+" button
     │
@@ -709,17 +730,25 @@ c:\Project\Potraces\
     │   │                              #   receipt scanner config, app config,
     │   │                              #   withAlpha() helper, coloredShadow() helper
     │   ├── premium.ts                 # Tier limits, wallet colors/icons, feature gates
-    │   └── gradients.ts               # Gradient color definitions
+    │   ├── gradients.ts               # Gradient color definitions
+    │   └── taxCategories.ts           # Malaysian tax category definitions
     │
     ├── context/
     │   └── ToastContext.tsx            # Global toast notification provider
     │
+    ├── i18n/
+    │   ├── index.ts                   # useT() hook — returns en/ms based on settingsStore.language
+    │   ├── en.ts                      # English translations (~400 keys, typed as Translations)
+    │   └── ms.ts                      # Malay translations (implements Translations)
+    │
     ├── hooks/
     │   ├── useBNPLTotal.ts            # Calculate total BNPL/credit obligations
+    │   ├── useCalm.ts                 # Theme hook: useCalm() returns CALM/CALM_DARK, useIsDark() boolean
     │   ├── useCategories.ts           # Merged default + custom categories
     │   ├── useFinancialInsights.ts     # Wellness score, velocity, streaks, trends
     │   ├── useIntentEngine.ts         # Hook wrapper for intent detection service
     │   ├── useKeptNumber.ts           # Calculate "kept" amount (income - expenses)
+    │   ├── useStoryCards.ts           # Outcome-driven insight card generation
     │   └── useVoiceInput.ts           # Voice recording → Gemini transcription hook
     │
     ├── navigation/
@@ -819,12 +848,14 @@ c:\Project\Potraces\
     │   │   ├── ConfirmationCard.tsx       # Intent confirmation UI
     │   │   └── QueryResultCard.tsx       # Data query result display
     │   │
-    │   └── shared/                    # 4 shared screens
+    │   └── shared/                    # 6 shared screens
     │       ├── Settings.tsx              # App settings (currency, name, QRs, categories,
-    │       │                             #   haptics, data export/import, account)
+    │       │                             #   haptics, theme, language, data export/import)
     │       ├── DebtTracking.tsx           # Debt & split management
     │       ├── ReceiptScanner.tsx         # Camera → OCR → Gemini → transaction
-    │       └── Onboarding.tsx            # First-launch guided tour
+    │       ├── ReceiptDetail.tsx          # Receipt detail view
+    │       ├── ReceiptHistory.tsx         # Past receipts list
+    │       └── Onboarding.tsx            # First-launch guided tour + name + language
     │
     ├── services/
     │   ├── geminiClient.ts              # Gemini API wrapper (rate limiting, cooldown, key check)
@@ -841,9 +872,11 @@ c:\Project\Potraces\
     │   ├── supabase.ts                  # Supabase client (auth + storage + realtime + session)
     │   ├── sellerSync.ts                # Push/pull sync, image uploads, profile management
     │   ├── pushNotifications.ts          # Expo push notification setup + handling
-    │   └── haptics.ts                   # Haptic feedback patterns (light, medium, selection, success)
+    │   ├── haptics.ts                   # Haptic feedback patterns (light, medium, selection, success)
+    │   ├── playbookAI.ts               # AI playbook generation
+    │   └── reportNarrative.ts          # AI-generated report narratives
     │
-    ├── store/                         # 20 Zustand stores (see Data Architecture section)
+    ├── store/                         # 21 Zustand stores (see Data Architecture section)
     │
     ├── types/
     │   └── index.ts                     # All TypeScript type definitions
@@ -870,7 +903,8 @@ c:\Project\Potraces\
         ├── calculateBuffer.ts           # Buffer calculation for financial forecasting
         ├── colorScheme.ts               # Color scheme utilities
         ├── fadeSlide.ts                 # Fade + slide animation config
-        └── performance.ts               # Performance monitoring utilities
+        ├── performance.ts               # Performance monitoring utilities
+        └── playbookObligations.ts       # Playbook obligation tracking utilities
 ```
 
 ---
@@ -942,6 +976,7 @@ expo-asset            — asset preloading
 | `docs/QUICKSTART.md` | Getting started guide |
 | `docs/SELLER_MODE_AUDIT.md` | Seller mode readiness audit (87.78% score) |
 | `docs/AI_SCENARIOS.md` | AI integration scenarios and edge cases |
+| `docs/OUTCOME_UI_ARCHITECTURE.md` | Outcome-driven UI design system |
 | `docs/Potraces_Integration_Plan.pdf` | Integration planning document |
 
 ---
