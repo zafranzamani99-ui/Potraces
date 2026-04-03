@@ -19,7 +19,7 @@ Tab bar: Home | Budget | Notes | Chat | Settings
 
 Dashboard → balance, week timeline, insights, quick actions
   → Tap "Add" → ExpenseEntry (manual, voice, or photo)
-  → Quick actions → Wallets / Savings / Debts / Commitments / Reports / Goals / Chat / Scan
+  → Quick actions → Wallets / Savings / Debts / Bills / Budgets / Reports / Goals / Receipts / Chat / Pulse
 Budget tab → category limits, spending vs budget tracking
 Notes tab → freeform notes with AI intent detection
 Money Chat tab → plain-language AI Q&A about your spending
@@ -47,12 +47,12 @@ Settings tab → currency, name, QR codes, categories, haptics, data
 4. Exceeded → noted calmly — no red alerts
 
 **Categories:**
-- Expense: Food & Dining, Transportation, Shopping, Entertainment, Bills & Utilities, Healthcare, Education, Family, Subscriptions, Business Cost, Debt Payment, Other
-- Income: Salary, Freelance, Business, Investment, Gift, From Business, Debt Paid, Other
-- Investment: TNG+, Robo Crypto, ESA, Bank, ASB, Tabung Haji, Stocks, Gold, Other
-- Business expense: Rent & Lease, Inventory/COGS, Payroll, Marketing, Utilities, Office Supplies, Travel, Insurance, Maintenance, Professional Services, Shipping, Other
-- Business income: Sales, Service Income, Consulting, Commission, Rental Income, Interest & Returns, Other
-- Product: Food & Beverages, Clothing, Electronics, Accessories, Books, Toys, Health & Beauty, Home & Garden, Other
+- Expense (12): Food & Dining, Transportation, Shopping, Entertainment, Bills & Utilities, Healthcare, Education, Family, Subscriptions, Business Cost, Debt Payment, Other
+- Income (8): Salary, Freelance, Business, Investment, Gift, From Business, Debt Paid, Other
+- Investment (9): TNG+, Robo Crypto, ESA, Bank, ASB, Tabung Haji, Stocks, Gold, Other
+- Business expense (12): Rent & Lease, Inventory/COGS, Payroll & Wages, Marketing & Ads, Utilities, Office Supplies, Travel & Meetings, Insurance, Maintenance, Professional Services, Shipping & Delivery, Other
+- Business income (7): Sales Revenue, Service Income, Consulting, Commission, Rental Income, Interest & Returns, Other
+- Product (9): Food & Beverages, Clothing, Electronics, Accessories, Books, Toys, Health & Beauty, Home & Garden, Other
 - All categories customizable — add, rename, reorder, delete via CategoryManager
 
 ### Business Mode
@@ -322,7 +322,7 @@ Powered by Gemini. Works in both personal and business mode.
 
 Anxiety-reducing visual language:
 
-- **Palette** — Warm off-white `#F9F9F7`, olive accent `#4F5104`, bronze `#B2780A`, gold `#DEAB22`, lavender `#B8AFBC`, deep olive `#332D03`. No red anywhere.
+- **Palette** — Warm off-white bg `#F9F9F7`, olive accent `#4F5104`, bronze `#B2780A`, gold `#DEAB22`, lavender `#B8AFBC`, deep olive `#332D03`. Positive/success uses olive — no green, no red anywhere.
 - **Typography** — Hero amounts: 48px, weight 200 (ultralight). Balance: 36px, weight 300. Labels: 12px uppercase, muted. Insights: 14px, line-height 22. All numeric text uses `tabular-nums` font variant for alignment.
 - **Type scale** — xs: 11, sm: 13, base: 15, lg: 17, xl: 20, 2xl: 24, 3xl: 30, 4xl: 36, 5xl: 48.
 - **Font weights** — extraLight: 200, light: 300, regular: 400, medium: 500, semibold: 600, bold: 700.
@@ -577,7 +577,7 @@ Central wrapper for all Gemini API calls:
 
 ## Data Architecture
 
-### Stores (21 Zustand stores with AsyncStorage persistence)
+### Stores (22 Zustand stores with AsyncStorage persistence)
 
 | Store | File | What it manages |
 |-------|------|----------------|
@@ -602,6 +602,7 @@ Central wrapper for all Gemini API calls:
 | **onTheRoadStore** | `onTheRoadStore.ts` | Vehicle setup, daily earnings, costs (petrol/toll/maintenance) |
 | **mixedStore** | `mixedStore.ts` | Multiple named income streams with colors |
 | **receiptStore** | `receiptStore.ts` | Scanned receipts, parsed data, receipt history |
+| **playbookStore** | `playbookStore.ts` | AI playbook entries, extraction history |
 
 All stores use safe date rehydration: inline `sd()` helper on `onRehydrateStorage` prevents `Invalid Date` from crashing `format()` calls.
 
@@ -673,7 +674,7 @@ c:\Project\Potraces\
 │
 └── src/
     ├── components/
-    │   ├── common/                  # 32 reusable UI components
+    │   ├── common/                  # 34 reusable UI components
     │   │   ├── AnimatedNumber.tsx      # Smooth number transitions
     │   │   ├── BreathingRoom.tsx       # Spacer / padding component
     │   │   ├── Button.tsx             # Styled button with variants
@@ -721,7 +722,7 @@ c:\Project\Potraces\
     │       └── CustomTabBar.tsx        # Animated bottom tab bar with center "+" button
     │
     ├── constants/
-    │   ├── index.ts                   # CALM palette, COLORS, COLORS_DARK, BIZ,
+    │   ├── index.ts                   # CALM palette, CALM_DARK, BIZ,
     │   │                              #   TYPE, TYPOGRAPHY, SPACING, RADIUS, SHADOWS,
     │   │                              #   ICON_SIZE, LETTER_SPACING, BLUR, ANIMATION,
     │   │                              #   categories (expense/income/investment/business/product),
@@ -876,7 +877,7 @@ c:\Project\Potraces\
     │   ├── playbookAI.ts               # AI playbook generation
     │   └── reportNarrative.ts          # AI-generated report narratives
     │
-    ├── store/                         # 21 Zustand stores (see Data Architecture section)
+    ├── store/                         # 22 Zustand stores (see Data Architecture section)
     │
     ├── types/
     │   └── index.ts                     # All TypeScript type definitions
