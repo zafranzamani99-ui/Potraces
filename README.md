@@ -15,14 +15,14 @@ The app runs in two modes: **Personal** (your daily money) and **Business** (you
 ### Personal Mode
 
 ```
-Tab bar: Home | Budget | Notes | Chat | Settings
+Tab bar: Home | Budget | Notes | Echo | Settings
 
 Dashboard → balance, week timeline, insights, quick actions
   → Tap "Add" → ExpenseEntry (manual, voice, or photo)
-  → Quick actions → Wallets / Savings / Debts / Bills / Budgets / Reports / Goals / Receipts / Chat / Pulse
+  → Quick actions → Wallets / Savings / Splits / Bills / Budgets / Reports / Goals / Receipts / Chat / Pulse
 Budget tab → category limits, spending vs budget tracking
 Notes tab → freeform notes with AI intent detection
-Money Chat tab → plain-language AI Q&A about your spending
+Echo tab → plain-language AI Q&A about your spending
 Settings tab → currency, name, QR codes, categories, haptics, data
 ```
 
@@ -50,7 +50,7 @@ Settings tab → currency, name, QR codes, categories, haptics, data
 - Expense (12): Food & Dining, Transportation, Shopping, Entertainment, Bills & Utilities, Healthcare, Education, Family, Subscriptions, Business Cost, Debt Payment, Other
 - Income (8): Salary, Freelance, Business, Investment, Gift, From Business, Debt Paid, Other
 - Investment (9): TNG+, Robo Crypto, ESA, Bank, ASB, Tabung Haji, Stocks, Gold, Other
-- Business expense (12): Rent & Lease, Inventory/COGS, Payroll & Wages, Marketing & Ads, Utilities, Office Supplies, Travel & Meetings, Insurance, Maintenance, Professional Services, Shipping & Delivery, Other
+- Business expense (12): Rent & Lease, Inventory / COGS, Payroll & Wages, Marketing & Ads, Utilities, Office Supplies, Travel & Meetings, Insurance, Maintenance, Professional Services, Shipping & Delivery, Other
 - Business income (7): Sales Revenue, Service Income, Consulting, Commission, Rental Income, Interest & Returns, Other
 - Product (9): Food & Beverages, Clothing, Electronics, Accessories, Books, Toys, Health & Beauty, Home & Garden, Other
 - All categories customizable — add, rename, reorder, delete via CategoryManager
@@ -299,10 +299,10 @@ Powered by Gemini. Works in both personal and business mode.
 
 #### First-Time Experience
 
-- **Onboarding**: 3-slide welcome tour with name input + language toggle
-- **Getting Started checklist**: Dashboard card tracking first wallet, first expense, first budget — auto-detects completion and dismisses
+- **Onboarding**: 4-page welcome tour — 1 welcome page (name input + language toggle) + 3 feature slides
+- **Getting Started checklist**: Dashboard card tracking first expense, first wallet, first budget, first note — auto-detects completion and dismisses
 - **Screen Guides**: First-visit overlay on 8 key screens (expense entry, chat, notes, budgets, wallets, debts, receipts, pulse) — shows tips, dismisses with "got it"
-- **Feature Hints**: Inline discovery banners on 5 screens encouraging exploration
+- **Feature Hints**: Inline discovery banner component (`FeatureHint.tsx`) — available but not yet wired to screens
 - **First transaction celebration**: Toast animation on saving your first expense
 - **Warm empty states**: Friendly copy + illustration on Goals, Savings, Subscriptions, Pulse, Reports when empty
 
@@ -344,6 +344,9 @@ Anxiety-reducing visual language:
 | Settled | Calm teal-blue | `#6BA3BE` |
 | Warning | Warm gold | `#D4A03C` |
 | Error | Burnt sienna | `#A0714A` |
+| Destructive | Terracotta | `#C1694F` |
+| Input error | Warm salmon | `#D4775C` |
+| Delivered | Cool slate | `#7C8DA4` |
 
 ### Language Rules (Non-negotiable)
 
@@ -609,33 +612,50 @@ All stores use safe date rehydration: inline `sd()` helper on `onRehydrateStorag
 ### Core Data Models
 
 ```
-Transaction     — id, amount, category, date, type (expense/income/investment),
-                  wallet, note, tags[], aiContext, recurringId
+Transaction     — id, amount, category, description, date, type (expense/income),
+                  mode, walletId?, tags[], timeContext?, dayContext?,
+                  sizeContext?, frequencyContext?, rawInput?, inputMethod?,
+                  confidence?, editLog[], createdAt, updatedAt
 Wallet          — id, name, type (bank/ewallet/credit/bnpl), balance,
-                  creditLimit, usedCredit, icon, color, sortOrder
-Debt            — id, contact, contactPhone, type (i_owe/they_owe),
-                  totalAmount, paidAmount, dueDate, payments[],
-                  editLog[], status (pending/partial/settled)
+                  creditLimit?, usedCredit?, icon, color, isDefault,
+                  presetId?, createdAt, updatedAt
+Debt            — id, contact (Contact), type (i_owe/they_owe),
+                  totalAmount, paidAmount, status (pending/partial/settled),
+                  description, category?, payments[], mode, dueDate?,
+                  splitId?, createdAt, updatedAt
 SplitExpense    — id, description, totalAmount, participants[], items[],
-                  splitMethod (equal/custom/item_based), taxAmount,
-                  editLog[], settled
-SellerOrder     — id, localId, items[], customerName, customerPhone,
-                  customerAddress, status, paymentStatus, totalAmount,
-                  paidAmount, deposits[], notes, source (app/order_link),
-                  seasonId, supabaseId, createdAt
-SellerProduct   — id, localId, name, pricePerUnit, costPerUnit, unit,
-                  stock, imageUrl, description, category, isActive, sortOrder
-Season          — id, localId, name, startDate, endDate, isActive, budget
-SellerCost      — id, localId, seasonId, description, amount,
-                  costType (one_time/recurring), category
-SellerCustomer  — id, localId, name, phone, address
-StallSession    — id, startTime, endTime, condition, sales[], revenue,
-                  cashAmount, qrAmount, productsSold
-Goal            — id, name, targetAmount, deadline, contributions[], milestones[]
-Subscription    — id, name, amount, category, billingCycle, nextDueDate, wallet
-Budget          — id, category, limit, period (weekly/monthly/yearly), spent
-Note            — id, content, intent, intentData, confirmed, createdAt
-SavingsAccount  — id, name, targetAmount, snapshots[]
+                  splitMethod (equal/custom/item_based), paidBy?,
+                  category?, taxAmount?, taxHandling?, walletId?,
+                  mode, createdAt, updatedAt
+SellerOrder     — id, orderNumber?, items[], customerName?, customerPhone?,
+                  customerAddress?, totalAmount, status, isPaid,
+                  paidAmount?, paymentMethod?, deposits?, note?,
+                  date, deliveryDate?, seasonId?, source? (app/order_link),
+                  supabaseId?, createdAt, updatedAt
+SellerProduct   — id, name, description?, pricePerUnit, costPerUnit?, unit,
+                  isActive, totalSold, trackStock?, stockQuantity?,
+                  imageUrl?, createdAt, updatedAt
+Season          — id, name, startDate, endDate?, isActive, costBudget?,
+                  revenueTarget?, note?, createdAt
+IngredientCost  — id, productId?, description, amount, date, seasonId?
+RecurringCost   — id, description, amount, frequency, nextDue, seasonId?,
+                  isActive, createdAt
+SellerCustomer  — id, name, phone?, address?, note?, isVip?, createdAt
+StallSession    — id, name?, startedAt, closedAt?, isActive, condition?,
+                  sales[], productsSnapshot[], totalRevenue, totalCash,
+                  totalQR, note?
+Goal            — id, name, targetAmount, currentAmount, deadline?, category,
+                  icon, color, contributions[], milestones[], createdAt
+Subscription    — id, name, amount, billingCycle, startDate, nextBillingDate,
+                  category, isActive, isPaused?, reminderDays, isInstallment,
+                  createdAt, updatedAt
+Budget          — id, category, allocatedAmount, spentAmount,
+                  period (weekly/monthly/yearly), rollover?, startDate,
+                  endDate, createdAt, updatedAt
+NotePage        — id, title, content, createdAt, updatedAt, extractions[],
+                  mode
+SavingsAccount  — id, name, type, initialInvestment, currentValue,
+                  target?, goalName?, annualRate?, history[]
 ```
 
 ---
@@ -705,7 +725,7 @@ c:\Project\Potraces\
     │   │   ├── WeekBar.tsx            # 7-day spending bar chart
     │   │   ├── ScreenGuide.tsx        # First-visit overlay guide (centered card + tips)
     │   │   ├── FeatureHint.tsx        # Inline discovery banner
-    │   │   ├── GettingStarted.tsx     # Dashboard checklist (wallet, expense, budget)
+    │   │   ├── GettingStarted.tsx     # Dashboard checklist (expense, wallet, budget, note)
     │   │   ├── StoryCard.tsx          # Outcome-driven insight card
     │   │   ├── Sparkline.tsx          # Compact line chart for goals/savings
     │   │   └── PaymentMethodManager.tsx # Payment method CRUD
@@ -905,7 +925,8 @@ c:\Project\Potraces\
         ├── colorScheme.ts               # Color scheme utilities
         ├── fadeSlide.ts                 # Fade + slide animation config
         ├── performance.ts               # Performance monitoring utilities
-        └── playbookObligations.ts       # Playbook obligation tracking utilities
+        ├── playbookObligations.ts       # Playbook obligation tracking utilities
+        └── playbookStats.ts             # Playbook statistics computation
 ```
 
 ---
