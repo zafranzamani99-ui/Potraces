@@ -48,6 +48,7 @@ const FALLBACK_TYPE: CategoryOption = { id: 'other', name: 'Other', icon: 'brief
 
 type TimeRange = '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
+// ALL label is rendered via t.savings.timeRangeAll at render time.
 const TIME_RANGES: { key: TimeRange; label: string }[] = [
   { key: '1M', label: '1M' },
   { key: '3M', label: '3M' },
@@ -56,17 +57,18 @@ const TIME_RANGES: { key: TimeRange; label: string }[] = [
   { key: 'ALL', label: 'All' },
 ];
 
-const SORT_OPTIONS: { key: SavingsSortBy; label: string }[] = [
-  { key: 'manual', label: 'Manual' },
-  { key: 'value', label: 'Value' },
-  { key: 'return', label: 'Growth' },
-  { key: 'updated', label: 'Updated' },
+// These labels are resolved at render time via t.savings to support i18n.
+const SORT_OPTIONS: { key: SavingsSortBy; labelKey: 'manual' | 'valueLabel' | 'growthLabel' | 'updatedLabel' }[] = [
+  { key: 'manual', labelKey: 'manual' },
+  { key: 'value', labelKey: 'valueLabel' },
+  { key: 'return', labelKey: 'growthLabel' },
+  { key: 'updated', labelKey: 'updatedLabel' },
 ];
 
-const SNAPSHOT_TYPES: { key: SnapshotType; label: string; icon: keyof typeof Feather.glyphMap }[] = [
-  { key: 'manual', label: 'Update', icon: 'refresh-cw' },
-  { key: 'dividend', label: 'Dividend', icon: 'gift' },
-  { key: 'withdrawal', label: 'Withdraw', icon: 'arrow-down-left' },
+const SNAPSHOT_TYPES: { key: SnapshotType; labelKey: 'updateType' | 'dividend' | 'withdrawalType'; icon: keyof typeof Feather.glyphMap }[] = [
+  { key: 'manual', labelKey: 'updateType', icon: 'refresh-cw' },
+  { key: 'dividend', labelKey: 'dividend', icon: 'gift' },
+  { key: 'withdrawal', labelKey: 'withdrawalType', icon: 'arrow-down-left' },
 ];
 
 // Milestones that trigger celebration / nudge
@@ -407,12 +409,12 @@ const SavingsTracker: React.FC = () => {
 
   const openAdd = useCallback(() => {
     if (accounts.length >= MAX_ACCOUNTS) {
-      showToast(`Maximum ${MAX_ACCOUNTS} savings accounts`, 'error');
+      showToast(t.savings.maxAccounts.replace('{n}', String(MAX_ACCOUNTS)), 'error');
       return;
     }
     resetForm();
     setModalVisible(true);
-  }, [accounts.length, resetForm, showToast]);
+  }, [accounts.length, resetForm, showToast, t]);
 
   const openEdit = useCallback((account: SavingsAccount) => {
     setEditingAccount(account);
@@ -430,17 +432,17 @@ const SavingsTracker: React.FC = () => {
 
   const handleSave = useCallback(() => {
     if (!name.trim()) {
-      showToast('Please enter an account name', 'error');
+      showToast(t.savings.enterAccountName, 'error');
       return;
     }
     const inv = parseFloat(initialInvestment);
     const cur = parseFloat(currentValue);
     if (!inv || inv <= 0) {
-      showToast('Please enter a valid initial investment', 'error');
+      showToast(t.savings.enterValidInitial, 'error');
       return;
     }
     if (!cur || cur < 0) {
-      showToast('Please enter a valid current value', 'error');
+      showToast(t.savings.enterValidCurrent, 'error');
       return;
     }
 
@@ -464,7 +466,7 @@ const SavingsTracker: React.FC = () => {
       if (valueChanged) {
         addSnapshot(editingAccount.id, cur, 'Edit');
       }
-      showToast('Account updated', 'success');
+      showToast(t.savings.accountUpdated, 'success');
     } else {
       addAccount({
         name: name.trim(),
@@ -474,31 +476,31 @@ const SavingsTracker: React.FC = () => {
         currentValue: cur,
         target, goalName, annualRate,
       });
-      showToast('Account added', 'success');
+      showToast(t.savings.accountAdded, 'success');
     }
     lightTap();
     setModalVisible(false);
     resetForm();
-  }, [name, selectedType, description, initialInvestment, currentValue, targetValue, goalNameValue, annualRateValue, editingAccount, addAccount, updateAccount, resetForm, showToast]);
+  }, [name, selectedType, description, initialInvestment, currentValue, targetValue, goalNameValue, annualRateValue, editingAccount, addAccount, updateAccount, resetForm, showToast, t]);
 
   const handleDelete = useCallback((account: SavingsAccount) => {
     Alert.alert(
-      'Delete Account',
-      `Remove "${account.name}" from your savings?`,
+      t.savings.deleteAccountTitle,
+      t.savings.deleteAccountMsg.replace('{name}', account.name),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.savings.deleteCancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: t.savings.deleteConfirm,
           style: 'destructive',
           onPress: () => {
             deleteAccount(account.id);
-            showToast('Account deleted', 'success');
+            showToast(t.savings.accountDeleted, 'success');
             lightTap();
           },
         },
       ]
     );
-  }, [deleteAccount, showToast]);
+  }, [deleteAccount, showToast, t]);
 
   const openUpdateValue = useCallback((account: SavingsAccount) => {
     setUpdatingAccount(account);
@@ -512,15 +514,15 @@ const SavingsTracker: React.FC = () => {
     if (!updatingAccount) return;
     const val = parseFloat(newValue);
     if (!val || val < 0) {
-      showToast('Please enter a valid value', 'error');
+      showToast(t.savings.enterValidValue, 'error');
       return;
     }
     addSnapshot(updatingAccount.id, val, updateNote.trim() || undefined, snapshotType);
-    showToast('Value updated', 'success');
+    showToast(t.savings.valueUpdated, 'success');
     lightTap();
     setUpdateModalVisible(false);
     setUpdatingAccount(null);
-  }, [updatingAccount, newValue, updateNote, snapshotType, addSnapshot, showToast]);
+  }, [updatingAccount, newValue, updateNote, snapshotType, addSnapshot, showToast, t]);
 
   const openHistory = useCallback((account: SavingsAccount) => {
     setHistoryAccount(account);
@@ -577,7 +579,7 @@ const SavingsTracker: React.FC = () => {
       >
         {!ready ? (
           <View style={{ alignItems: 'center', paddingTop: 80 }}>
-            <Text style={styles.heroLabel}>loading...</Text>
+            <Text style={styles.heroLabel}>{t.savings.loading}</Text>
           </View>
         ) : null}
         {/* ═══ HERO SECTION ═══ */}
@@ -603,7 +605,7 @@ const SavingsTracker: React.FC = () => {
                   styles.sinceLastText,
                   { color: sinceLastCheck >= 0 ? C.positive : C.neutral },
                 ]}>
-                  {sinceLastCheck >= 0 ? '+' : ''}{fmtAmount(sinceLastCheck)} since last check
+                  {sinceLastCheck >= 0 ? '+' : ''}{fmtAmount(sinceLastCheck)} {t.savings.sinceLastCheck}
                 </Text>
               </View>
             )}
@@ -624,15 +626,15 @@ const SavingsTracker: React.FC = () => {
 
             {/* Time range pills */}
             <View style={styles.timeRangeRow}>
-              {TIME_RANGES.map((tr) => (
+              {TIME_RANGES.map((range) => (
                 <TouchableOpacity
-                  key={tr.key}
-                  style={[styles.timeRangePill, timeRange === tr.key && styles.timeRangePillActive]}
-                  onPress={() => { setTimeRange(tr.key); selectionChanged(); }}
+                  key={range.key}
+                  style={[styles.timeRangePill, timeRange === range.key && styles.timeRangePillActive]}
+                  onPress={() => { setTimeRange(range.key); selectionChanged(); }}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.timeRangeText, timeRange === tr.key && styles.timeRangeTextActive]}>
-                    {tr.label}
+                  <Text style={[styles.timeRangeText, timeRange === range.key && styles.timeRangeTextActive]}>
+                    {range.key === 'ALL' ? t.savings.timeRangeAll : range.label}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -649,19 +651,19 @@ const SavingsTracker: React.FC = () => {
             {/* Stats row: invested · growth · return */}
             <View style={styles.heroStatsRow}>
               <View style={styles.heroStatItem}>
-                <Text style={styles.heroStatLabel}>invested</Text>
+                <Text style={styles.heroStatLabel}>{t.savings.invested}</Text>
                 <Text style={styles.heroStatValue}>{fmtAmount(portfolio.totalInvested)}</Text>
               </View>
               <View style={styles.heroStatDivider} />
               <View style={styles.heroStatItem}>
-                <Text style={styles.heroStatLabel}>growth</Text>
+                <Text style={styles.heroStatLabel}>{t.savings.growth}</Text>
                 <Text style={[styles.heroStatValue, { color: portfolio.totalGain >= 0 ? C.positive : C.neutral }]}>
                   {portfolio.totalGain >= 0 ? '+' : ''}{fmtAmount(portfolio.totalGain)}
                 </Text>
               </View>
               <View style={styles.heroStatDivider} />
               <View style={styles.heroStatItem}>
-                <Text style={styles.heroStatLabel}>growth</Text>
+                <Text style={styles.heroStatLabel}>{t.savings.growth}</Text>
                 <Text style={[styles.heroStatValue, { color: portfolio.totalReturn >= 0 ? C.positive : C.neutral }]}>
                   {portfolio.totalReturn >= 0 ? '+' : ''}{portfolio.totalReturn.toFixed(1)}%
                 </Text>
@@ -678,7 +680,7 @@ const SavingsTracker: React.FC = () => {
               <View style={styles.insightCard}>
                 <Feather name="sun" size={16} color={C.gold} />
                 <Text style={styles.insightValue}>{fmtShort(insights.projectedEarnings)}</Text>
-                <Text style={styles.insightLabel}>est. earnings{'\n'}this year</Text>
+                <Text style={styles.insightLabel}>{t.savings.estEarningsThisYear}</Text>
               </View>
             )}
 
@@ -687,7 +689,7 @@ const SavingsTracker: React.FC = () => {
               <View style={styles.insightCard}>
                 <Feather name="flag" size={16} color={C.accent} />
                 <Text style={styles.insightValue}>{fmtShort(insights.toMilestone)}</Text>
-                <Text style={styles.insightLabel}>to {fmtShort(insights.nextMilestone)}{'\n'}milestone</Text>
+                <Text style={styles.insightLabel}>{t.savings.toMilestone.replace('{amount}', fmtShort(insights.nextMilestone))}</Text>
               </View>
             )}
 
@@ -696,7 +698,7 @@ const SavingsTracker: React.FC = () => {
               <View style={styles.insightCard}>
                 <Feather name="award" size={16} color={C.bronze} />
                 <Text style={styles.insightValue} numberOfLines={1}>{insights.bestPerformer.name}</Text>
-                <Text style={styles.insightLabel}>+{insights.bestPct.toFixed(1)}%{'\n'}this month</Text>
+                <Text style={styles.insightLabel}>{t.savings.thisMonthPerf.replace('{pct}', insights.bestPct.toFixed(1))}</Text>
               </View>
             )}
 
@@ -705,7 +707,7 @@ const SavingsTracker: React.FC = () => {
               <View style={styles.insightCard}>
                 <Feather name="plus-circle" size={16} color={C.positive} />
                 <Text style={styles.insightValue}>{fmtShort(portfolio.monthContributed)}</Text>
-                <Text style={styles.insightLabel}>added this{'\n'}month</Text>
+                <Text style={styles.insightLabel}>{t.savings.addedThisMonth}</Text>
               </View>
             )}
           </View>
@@ -717,7 +719,7 @@ const SavingsTracker: React.FC = () => {
             <View style={styles.reminderContent}>
               <Feather name="clock" size={16} color={C.gold} />
               <Text style={styles.reminderText}>
-                {staleAccount.account.name} hasn't been updated in {staleAccount.days} days
+                {t.savings.notUpdatedDays.replace('{name}', staleAccount.account.name).replace('{days}', String(staleAccount.days))}
               </Text>
             </View>
             <View style={styles.reminderActions}>
@@ -726,7 +728,7 @@ const SavingsTracker: React.FC = () => {
                 style={styles.reminderBtn}
                 activeOpacity={0.7}
               >
-                <Text style={styles.reminderBtnText}>update now</Text>
+                <Text style={styles.reminderBtnText}>{t.savings.updateNow}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setReminderDismissed(true)}
@@ -741,7 +743,7 @@ const SavingsTracker: React.FC = () => {
         {/* ═══ BREAKDOWN ═══ */}
         {ready && breakdown && (
           <View style={styles.breakdownCard}>
-            <Text style={styles.sectionLabel}>where your money lives</Text>
+            <Text style={styles.sectionLabel}>{t.savings.whereMoneyLives}</Text>
             {breakdown.map((item) => (
               <View key={item.name} style={styles.breakdownRow}>
                 <Text style={styles.breakdownName} numberOfLines={1}>{item.name}</Text>
@@ -768,12 +770,12 @@ const SavingsTracker: React.FC = () => {
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.sortPillText, sortBy === opt.key && styles.sortPillTextActive]}>
-                    {opt.label}
+                    {t.savings[opt.labelKey]}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={styles.accountCount}>{accounts.length} accounts</Text>
+            <Text style={styles.accountCount}>{t.savings.accountsCount.replace('{n}', String(accounts.length))}</Text>
           </View>
         )}
 
@@ -836,7 +838,7 @@ const SavingsTracker: React.FC = () => {
 
                 {/* Sub stats: invested + gain */}
                 <View style={styles.subStatsRow}>
-                  <Text style={styles.subStatText}>put in {fmtAmount(account.initialInvestment)}</Text>
+                  <Text style={styles.subStatText}>{t.savings.putIn.replace('{amount}', fmtAmount(account.initialInvestment))}</Text>
                   <Text style={[styles.subStatText, { color: gain >= 0 ? C.positive : C.neutral }]}>
                     {gain >= 0 ? '+' : ''}{fmtAmount(gain)}
                   </Text>
@@ -860,7 +862,7 @@ const SavingsTracker: React.FC = () => {
                   <View style={styles.projectedRow}>
                     <Feather name="sun" size={12} color={C.gold} />
                     <Text style={styles.projectedText}>
-                      est. {fmtAmount(projectedAnnual)} earnings this year
+                      {t.savings.estEarningsLine.replace('{amount}', fmtAmount(projectedAnnual))}
                     </Text>
                   </View>
                 )}
@@ -870,7 +872,7 @@ const SavingsTracker: React.FC = () => {
                   <View style={styles.targetSection}>
                     <View style={styles.targetHeader}>
                       <Text style={styles.targetLabel}>
-                        {account.goalName || 'target'}: {fmtAmount(account.target)}
+                        {account.goalName || t.savings.targetLabel}: {fmtAmount(account.target)}
                       </Text>
                       <Text style={styles.targetPct}>{targetPct}%</Text>
                     </View>
@@ -882,7 +884,7 @@ const SavingsTracker: React.FC = () => {
                     />
                     {goalEta && (
                       <Text style={styles.goalEtaText}>
-                        at this pace: {goalEta}
+                        {t.savings.atThisPace.replace('{when}', goalEta)}
                       </Text>
                     )}
                   </View>
@@ -894,7 +896,7 @@ const SavingsTracker: React.FC = () => {
                     {isStale && <View style={[styles.staleDot, { backgroundColor: C.gold }]} />}
                     <Feather name="clock" size={11} color={isStale ? C.gold : C.textMuted} />
                     <Text style={[styles.lastUpdatedText, isStale && { color: C.gold }]}>
-                      {lastSnapshot ? formatDistanceToNow(lastDate, { addSuffix: true }) : 'no updates'}
+                      {lastSnapshot ? formatDistanceToNow(lastDate, { addSuffix: true }) : t.savings.noUpdates}
                     </Text>
                     {lastChange !== null && (
                       <Text style={[styles.lastChangeText, { color: lastChange >= 0 ? C.positive : C.neutral }]}>
@@ -910,7 +912,7 @@ const SavingsTracker: React.FC = () => {
                       accessibilityLabel={`Update value for ${account.name}`}
                     >
                       <Feather name="refresh-cw" size={14} color={C.accent} />
-                      <Text style={styles.actionBtnText}>update</Text>
+                      <Text style={styles.actionBtnText}>{t.savings.update}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.actionBtnSecondary}
@@ -919,7 +921,7 @@ const SavingsTracker: React.FC = () => {
                       accessibilityLabel={`View history for ${account.name}`}
                     >
                       <Feather name="bar-chart-2" size={14} color={C.textSecondary} />
-                      <Text style={styles.actionBtnSecondaryText}>history</Text>
+                      <Text style={styles.actionBtnSecondaryText}>{t.savings.history}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -978,12 +980,12 @@ const SavingsTracker: React.FC = () => {
                 style={styles.input}
                 value={name}
                 onChangeText={setName}
-                placeholder="e.g. My TNG GO+, ASB Main"
+                placeholder={t.savings.accountNamePlaceholder}
                 placeholderTextColor={C.textMuted}
                 returnKeyType="next"
               />
 
-              <Text style={styles.label}>type</Text>
+              <Text style={styles.label}>{t.savings.typeLabel}</Text>
               <TouchableOpacity
                 style={styles.dropdownTrigger}
                 onPress={() => setTypeDropdownOpen(!typeDropdownOpen)}
@@ -1024,19 +1026,19 @@ const SavingsTracker: React.FC = () => {
 
               {(selectedType === 'other' || selectedType.startsWith('custom_')) && (
                 <>
-                  <Text style={styles.label}>description</Text>
+                  <Text style={styles.label}>{t.savings.descriptionLabel}</Text>
                   <TextInput
                     style={styles.input}
                     value={description}
                     onChangeText={setDescription}
-                    placeholder="e.g. Stashaway, Gold, Mutual Fund"
+                    placeholder={t.savings.descriptionPlaceholder}
                     placeholderTextColor={C.textMuted}
                     returnKeyType="next"
                   />
                 </>
               )}
 
-              <Text style={styles.label}>put in</Text>
+              <Text style={styles.label}>{t.savings.putInLabel}</Text>
               <TextInput
                 style={styles.input}
                 value={initialInvestment}
@@ -1048,7 +1050,7 @@ const SavingsTracker: React.FC = () => {
                 onSubmitEditing={Keyboard.dismiss}
               />
 
-              <Text style={styles.label}>now</Text>
+              <Text style={styles.label}>{t.savings.nowLabel}</Text>
               <TextInput
                 style={styles.input}
                 value={currentValue}
@@ -1061,12 +1063,12 @@ const SavingsTracker: React.FC = () => {
               />
 
               {/* Annual rate — for projected earnings */}
-              <Text style={styles.label}>annual rate % (optional)</Text>
+              <Text style={styles.label}>{t.savings.annualRateLabel}</Text>
               <TextInput
                 style={styles.input}
                 value={annualRateValue}
                 onChangeText={setAnnualRateValue}
-                placeholder="e.g. 5.5 for ASB, 3.55 for GO+"
+                placeholder={t.savings.annualRatePlaceholder}
                 keyboardType="decimal-pad"
                 placeholderTextColor={C.textMuted}
                 returnKeyType="done"
@@ -1079,7 +1081,7 @@ const SavingsTracker: React.FC = () => {
                 style={styles.input}
                 value={targetValue}
                 onChangeText={setTargetValue}
-                placeholder="e.g. 50000"
+                placeholder={t.savings.targetPlaceholder}
                 keyboardType="decimal-pad"
                 placeholderTextColor={C.textMuted}
                 returnKeyType="done"
@@ -1088,12 +1090,12 @@ const SavingsTracker: React.FC = () => {
 
               {targetValue && parseFloat(targetValue) > 0 && (
                 <>
-                  <Text style={styles.label}>goal name (optional)</Text>
+                  <Text style={styles.label}>{t.savings.goalNameLabel}</Text>
                   <TextInput
                     style={styles.input}
                     value={goalNameValue}
                     onChangeText={setGoalNameValue}
-                    placeholder="e.g. rumah sendiri, emergency fund"
+                    placeholder={t.savings.goalNamePlaceholder}
                     placeholderTextColor={C.textMuted}
                     returnKeyType="done"
                   />
@@ -1102,13 +1104,13 @@ const SavingsTracker: React.FC = () => {
 
               <View style={styles.modalActions}>
                 <Button
-                  title="Cancel"
+                  title={t.savings.cancel}
                   onPress={() => { setModalVisible(false); resetForm(); }}
                   variant="outline"
                   style={{ flex: 1 }}
                 />
                 <Button
-                  title={editingAccount ? 'Save' : 'Add'}
+                  title={editingAccount ? t.savings.save : t.savings.addAction}
                   onPress={handleSave}
                   icon="check"
                   style={{ flex: 1 }}
@@ -1126,7 +1128,7 @@ const SavingsTracker: React.FC = () => {
                   activeOpacity={0.7}
                 >
                   <Feather name="trash-2" size={14} color={C.neutral} />
-                  <Text style={styles.deleteBtnText}>delete this account</Text>
+                  <Text style={styles.deleteBtnText}>{t.savings.deleteThisAccount}</Text>
                 </TouchableOpacity>
               )}
             </KeyboardAwareScrollView>
@@ -1145,7 +1147,7 @@ const SavingsTracker: React.FC = () => {
         <Pressable style={styles.modalOverlay} onPress={() => setUpdateModalVisible(false)}>
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>update value</Text>
+              <Text style={styles.modalTitle}>{t.savings.updateValue}</Text>
               <TouchableOpacity onPress={() => setUpdateModalVisible(false)}>
                 <Feather name="x" size={24} color={C.textPrimary} />
               </TouchableOpacity>
@@ -1155,7 +1157,7 @@ const SavingsTracker: React.FC = () => {
               <View style={styles.updateContext}>
                 <Text style={styles.updateContextName}>{updatingAccount.name}</Text>
                 <Text style={styles.updateContextPrev}>
-                  current: {fmtAmount(updatingAccount.currentValue)}
+                  {t.savings.currentLabel.replace('{amount}', fmtAmount(updatingAccount.currentValue))}
                 </Text>
               </View>
             )}
@@ -1167,7 +1169,7 @@ const SavingsTracker: React.FC = () => {
               contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}
             >
               {/* Snapshot type selector */}
-              <Text style={styles.label}>type of update</Text>
+              <Text style={styles.label}>{t.savings.typeOfUpdate}</Text>
               <View style={styles.snapshotTypeRow}>
                 {SNAPSHOT_TYPES.map((st) => (
                   <TouchableOpacity
@@ -1178,13 +1180,13 @@ const SavingsTracker: React.FC = () => {
                   >
                     <Feather name={st.icon} size={14} color={snapshotType === st.key ? '#FFF' : C.textSecondary} />
                     <Text style={[styles.snapshotTypeText, snapshotType === st.key && styles.snapshotTypeTextActive]}>
-                      {st.label}
+                      {t.savings[st.labelKey]}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <Text style={styles.label}>new value</Text>
+              <Text style={styles.label}>{t.savings.newValueLabel}</Text>
               <TextInput
                 style={styles.input}
                 value={newValue}
@@ -1196,12 +1198,12 @@ const SavingsTracker: React.FC = () => {
                 autoFocus
               />
 
-              <Text style={styles.label}>note (optional)</Text>
+              <Text style={styles.label}>{t.savings.noteOptional}</Text>
               <TextInput
                 style={styles.input}
                 value={updateNote}
                 onChangeText={setUpdateNote}
-                placeholder={snapshotType === 'dividend' ? 'e.g. ASB annual dividend' : snapshotType === 'withdrawal' ? 'e.g. emergency use' : 'e.g. monthly check'}
+                placeholder={snapshotType === 'dividend' ? t.savings.dividendPlaceholder : snapshotType === 'withdrawal' ? t.savings.withdrawalPlaceholder : t.savings.monthlyCheckPlaceholder}
                 placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
@@ -1217,7 +1219,7 @@ const SavingsTracker: React.FC = () => {
                     return (
                       <>
                         <Text style={styles.updatePreviewLabel}>
-                          {snapshotType === 'dividend' ? 'dividend earned' : snapshotType === 'withdrawal' ? 'withdrawn' : 'change'}
+                          {snapshotType === 'dividend' ? t.savings.dividendEarned : snapshotType === 'withdrawal' ? t.savings.withdrawnLabel : t.savings.changeLabel}
                         </Text>
                         <Text style={[styles.updatePreviewValue, { color: diff >= 0 ? C.positive : C.neutral }]}>
                           {diff >= 0 ? '+' : ''}{fmtAmount(diff)} ({pct >= 0 ? '+' : ''}{pct.toFixed(1)}%)
@@ -1230,13 +1232,13 @@ const SavingsTracker: React.FC = () => {
 
               <View style={styles.modalActions}>
                 <Button
-                  title="Cancel"
+                  title={t.savings.cancel}
                   onPress={() => setUpdateModalVisible(false)}
                   variant="outline"
                   style={{ flex: 1 }}
                 />
                 <Button
-                  title="Save"
+                  title={t.savings.save}
                   onPress={handleUpdateValue}
                   icon="check"
                   style={{ flex: 1 }}
@@ -1258,7 +1260,7 @@ const SavingsTracker: React.FC = () => {
         <Pressable style={styles.modalOverlay} onPress={() => setHistoryModalVisible(false)}>
           <View style={[styles.modalContent, { maxHeight: '85%' }]} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{historyAccount?.name || 'history'}</Text>
+              <Text style={styles.modalTitle}>{historyAccount?.name || t.savings.historyTitle}</Text>
               <TouchableOpacity onPress={() => setHistoryModalVisible(false)}>
                 <Feather name="x" size={24} color={C.textPrimary} />
               </TouchableOpacity>
@@ -1269,15 +1271,15 @@ const SavingsTracker: React.FC = () => {
                 {/* Summary */}
                 <View style={styles.historySummary}>
                   <View style={styles.historySummaryCol}>
-                    <Text style={styles.historySummaryLabel}>invested</Text>
+                    <Text style={styles.historySummaryLabel}>{t.savings.historyInvested}</Text>
                     <Text style={styles.historySummaryValue}>{fmtAmount(historyAccount.initialInvestment)}</Text>
                   </View>
                   <View style={styles.historySummaryCol}>
-                    <Text style={styles.historySummaryLabel}>current</Text>
+                    <Text style={styles.historySummaryLabel}>{t.savings.historyCurrent}</Text>
                     <Text style={styles.historySummaryValue}>{fmtAmount(historyAccount.currentValue)}</Text>
                   </View>
                   <View style={styles.historySummaryCol}>
-                    <Text style={styles.historySummaryLabel}>return</Text>
+                    <Text style={styles.historySummaryLabel}>{t.savings.historyReturn}</Text>
                     <Text style={[styles.historySummaryValue, {
                       color: historyAccount.currentValue >= historyAccount.initialInvestment ? C.positive : C.neutral,
                     }]}>
@@ -1306,12 +1308,12 @@ const SavingsTracker: React.FC = () => {
                   <View style={styles.historyHighlights}>
                     {historyData.bestMonth ? (
                       <Text style={[styles.historyHighlightText, { color: C.positive }]}>
-                        best: {historyData.bestMonth}
+                        {t.savings.bestMonth.replace('{label}', historyData.bestMonth)}
                       </Text>
                     ) : null}
                     {historyData.worstMonth ? (
                       <Text style={[styles.historyHighlightText, { color: C.neutral }]}>
-                        worst: {historyData.worstMonth}
+                        {t.savings.worstMonth.replace('{label}', historyData.worstMonth)}
                       </Text>
                     ) : null}
                   </View>

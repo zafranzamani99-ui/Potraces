@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,8 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { format, getYear, parse, isValid } from 'date-fns';
 import { scanReceipt } from '../../services/receiptScanner';
+import { enqueueReceipt } from '../../services/receiptQueue';
+import NetInfo from '@react-native-community/netinfo';
 import { usePersonalStore } from '../../store/personalStore';
 import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -200,7 +202,7 @@ const ReceiptScanner: React.FC = () => {
       // User cancelled or scanner unavailable — fall back to camera
       const granted = await requestPermission('camera');
       if (!granted) {
-        Alert.alert('Permission Required', 'Please grant camera permission to scan receipts.');
+        Alert.alert(t.receipts.permissionRequired, t.receipts.cameraPermissionMsg);
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
@@ -217,7 +219,7 @@ const ReceiptScanner: React.FC = () => {
   const handlePickImage = useCallback(async () => {
     const granted = await requestPermission('gallery');
     if (!granted) {
-      Alert.alert('Permission Required', 'Please grant photo library permission to scan receipts.');
+      Alert.alert(t.receipts.permissionRequired, t.receipts.galleryPermissionMsg);
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -239,6 +241,9 @@ const ReceiptScanner: React.FC = () => {
     setLoading(true);
     try {
       const extracted = await scanReceipt(imageUri);
+      if (!extracted || !(extracted.total > 0) || !Array.isArray(extracted.items)) {
+        throw new Error(t.receipts.noUsableData);
+      }
       incrementScanCount();
       setReceipt(extracted);
       setEditVendor(extracted.vendor || '');
@@ -250,9 +255,24 @@ const ReceiptScanner: React.FC = () => {
       setEditMyTaxCategory(extracted.suggestedTaxCategory || 'none');
       setEditPaymentMethod(extracted.paymentMethod || null);
       setEditLocation(extracted.location || '');
-      showToast('receipt extracted!', 'success');
+      showToast(t.receipts.receiptExtracted, 'success');
     } catch (error: any) {
-      Alert.alert('Extraction Failed', error.message || 'Could not extract receipt data. Please try again.');
+      // If offline, queue the image for retry instead of just failing.
+      try {
+        const net = await NetInfo.fetch();
+        const offline = !net.isConnected || net.isInternetReachable === false;
+        if (offline && imageUri) {
+          await enqueueReceipt(imageUri);
+          Alert.alert(
+            t.receipts.savedForLater,
+            t.receipts.offlineQueuedMsg,
+          );
+          return;
+        }
+      } catch {
+        // fall through to generic alert
+      }
+      Alert.alert(t.receipts.extractionFailed, error.message || t.receipts.extractionFailedMsg);
     } finally {
       setLoading(false);
     }
@@ -295,7 +315,7 @@ const ReceiptScanner: React.FC = () => {
 
   const handleAddItem = useCallback(() => {
     if (!newItemName.trim() || !newItemAmount || parseFloat(newItemAmount) <= 0) {
-      showToast('enter item name and amount', 'error');
+      showToast(t.receipts.enterItemNameAmount, 'error');
       return;
     }
     const amount = parseFloat(newItemAmount);
@@ -305,20 +325,46 @@ const ReceiptScanner: React.FC = () => {
     setNewItemAmount('');
   }, [newItemName, newItemAmount, editItems, editTotal, showToast]);
 
+  const saveLockRef = useRef(false);
   const handleSaveReceipt = useCallback(async () => {
+    if (saveLockRef.current) return;
     const total = parseFloat(editTotal);
     if (!total || total <= 0) {
-      showToast('please enter a valid total', 'error');
+      showToast(t.receipts.enterValidTotal, 'error');
       return;
     }
 
+    saveLockRef.current = true;
     setSaving(true);
+    let persistedUri: string | undefined;
+    let txId: string | undefined;
+    let walletDeducted = false;
     try {
-      const title = editTitle.trim() || editVendor.trim() || 'Receipt';
+      const title = editTitle.trim() || editVendor.trim() || t.receipts.receiptFallbackName;
       const description = title;
 
-      // 0. Persist image to permanent directory
-      let persistedUri = imageUri || undefined;
+      // 1. Create transaction (using original imageUri; we'll update with persisted URI below)
+      if (!recordOnly) {
+        txId = addTransaction({
+          amount: total,
+          category: editCategory,
+          description,
+          date: editDate,
+          type: 'expense',
+          mode,
+          walletId: selectedWalletId || undefined,
+          receiptUrl: imageUri || undefined,
+          inputMethod: 'photo',
+        });
+
+        // 2. Wallet deduction
+        if (selectedWalletId) {
+          deductFromWallet(selectedWalletId, total);
+          walletDeducted = true;
+        }
+      }
+
+      // 3. Persist image only after critical writes succeed
       if (imageUri) {
         try {
           const dir = `${FileSystem.documentDirectory}receipts/`;
@@ -328,34 +374,16 @@ const ReceiptScanner: React.FC = () => {
           const filename = `receipt_${Date.now()}.${ext}`;
           await FileSystem.copyAsync({ from: imageUri, to: dir + filename });
           persistedUri = dir + filename;
+          if (txId) {
+            updateTransaction(txId, { receiptUrl: persistedUri });
+          }
         } catch {
           // Keep original URI as fallback
+          persistedUri = imageUri;
         }
       }
 
-      let txId: string | undefined;
-
-      if (!recordOnly) {
-        // 1. Create transaction
-        txId = addTransaction({
-          amount: total,
-          category: editCategory,
-          description,
-          date: editDate,
-          type: 'expense',
-          mode,
-          walletId: selectedWalletId || undefined,
-          receiptUrl: persistedUri,
-          inputMethod: 'photo',
-        });
-
-        // 2. Wallet deduction
-        if (selectedWalletId) {
-          deductFromWallet(selectedWalletId, total);
-        }
-      }
-
-      // 3. Save receipt
+      // 4. Save receipt
       addReceipt({
         title,
         vendor: editVendor || undefined,
@@ -375,7 +403,7 @@ const ReceiptScanner: React.FC = () => {
         year: getYear(editDate),
       });
 
-      // 4. Playbook auto-link
+      // 5. Playbook auto-link
       if (txId) {
         const activePbs = usePlaybookStore.getState().getActivePlaybooks();
         const linkToPb = (pbId: string) => {
@@ -387,20 +415,33 @@ const ReceiptScanner: React.FC = () => {
         if (activePbs.length === 1) {
           linkToPb(activePbs[0].id);
         } else if (activePbs.length > 1) {
-          Alert.alert('link to playbook', 'which playbook?', [
+          Alert.alert(t.receipts.linkToPlaybook, t.receipts.whichPlaybook, [
             ...activePbs.map((pb) => ({
               text: pb.name,
               onPress: () => linkToPb(pb.id),
             })),
-            { text: 'skip', style: 'cancel' as const },
+            { text: t.receipts.skipAction, style: 'cancel' as const },
           ]);
         }
       }
 
       clearDraft();
-      showToast('receipt saved!', 'success');
+      showToast(t.receipts.receiptSaved, 'success');
       navigation.goBack();
+    } catch (err: any) {
+      // Roll back partial writes
+      if (walletDeducted && selectedWalletId) {
+        try { useWalletStore.getState().addToWallet(selectedWalletId, total); } catch {}
+      }
+      if (txId) {
+        try { usePersonalStore.getState().deleteTransaction(txId); } catch {}
+      }
+      if (persistedUri && persistedUri !== imageUri) {
+        try { await FileSystem.deleteAsync(persistedUri, { idempotent: true }); } catch {}
+      }
+      Alert.alert(t.receipts.saveFailed, err?.message || t.receipts.saveFailedMsg);
     } finally {
+      saveLockRef.current = false;
       setSaving(false);
     }
   }, [
@@ -423,19 +464,19 @@ const ReceiptScanner: React.FC = () => {
       location: editLocation,
       imageUri,
     });
-    showToast('draft saved', 'success');
+    showToast(t.receipts.draftSaved, 'success');
   }, [editTitle, editVendor, editItems, editTotal, editDate, editCategory, editMyTaxCategory, editPaymentMethod, editLocation, imageUri, saveDraft, showToast]);
 
   const handleSplitBill = () => {
     const total = parseFloat(editTotal);
     if (!total || total <= 0) {
-      showToast('please enter a valid total', 'error');
+      showToast(t.receipts.enterValidTotal, 'error');
       return;
     }
     setTimeout(() => {
       navigation.navigate('DebtTracking', {
         receiptData: {
-          vendor: editTitle || editVendor || 'Receipt Scan',
+          vendor: editTitle || editVendor || t.receipts.receiptScanFallbackName,
           total,
           items: editItems,
         },
@@ -494,13 +535,13 @@ const ReceiptScanner: React.FC = () => {
             <View style={styles.heroIcon}>
               <Feather name="camera" size={48} color={C.accent} />
             </View>
-            <Text style={styles.heroTitle}>Save Receipt</Text>
+            <Text style={styles.heroTitle}>{t.receipts.saveReceiptTitle}</Text>
             <Text style={styles.heroSubtitle}>
-              Take a photo or pick from gallery to extract items, amounts, and totals automatically.
+              {t.receipts.saveReceiptSubtitle}
             </Text>
             {tier === 'free' && (
               <Text style={styles.scanLimitText}>
-                {getRemainingScans()} scans remaining this month
+                {getRemainingScans()} {t.receipts.scansRemaining}
               </Text>
             )}
 
@@ -509,14 +550,14 @@ const ReceiptScanner: React.FC = () => {
                 <View style={[styles.captureIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
                   <Feather name="camera" size={24} color={C.accent} />
                 </View>
-                <Text style={styles.captureLabel}>Take Photo</Text>
+                <Text style={styles.captureLabel}>{t.receipts.takePhotoLabel}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.captureButton} onPress={handlePickImage} activeOpacity={0.7}>
                 <View style={[styles.captureIcon, { backgroundColor: withAlpha(C.positive, 0.12) }]}>
                   <Feather name="image" size={24} color={C.positive} />
                 </View>
-                <Text style={styles.captureLabel}>From Gallery</Text>
+                <Text style={styles.captureLabel}>{t.receipts.fromGallery}</Text>
               </TouchableOpacity>
             </View>
 
@@ -527,7 +568,7 @@ const ReceiptScanner: React.FC = () => {
               activeOpacity={0.6}
             >
               <Feather name="archive" size={14} color={C.accent} />
-              <Text style={styles.viewReceiptsText}>view my receipts</Text>
+              <Text style={styles.viewReceiptsText}>{t.receipts.viewMyReceipts}</Text>
             </TouchableOpacity>
           </Card>
         )}
@@ -543,9 +584,9 @@ const ReceiptScanner: React.FC = () => {
               <Feather name="bookmark" size={18} color={C.accent} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.thumbnailLabel}>continue draft</Text>
+              <Text style={styles.thumbnailLabel}>{t.receipts.continueDraft}</Text>
               <Text style={styles.thumbnailHint}>
-                {draft.title || 'untitled'} · {currency} {draft.total}
+                {draft.title || t.receipts.untitled} · {currency} {draft.total}
               </Text>
             </View>
             <Feather name="chevron-right" size={18} color={C.textSecondary} />
@@ -556,14 +597,14 @@ const ReceiptScanner: React.FC = () => {
         {imageUri && !receipt && !loading && (
           <Card style={styles.previewCard}>
             <View style={styles.previewHeader}>
-              <Text style={styles.sectionTitle}>Receipt Image</Text>
+              <Text style={styles.sectionTitle}>{t.receipts.receiptImage}</Text>
               <TouchableOpacity onPress={handleReset} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Feather name="x-circle" size={22} color={C.neutral} />
               </TouchableOpacity>
             </View>
             <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="contain" />
             <Button
-              title="Extract with AI"
+              title={t.receipts.extractWithAi}
               onPress={handleExtract}
               icon="cpu"
               style={{ marginTop: SPACING.lg }}
@@ -579,7 +620,7 @@ const ReceiptScanner: React.FC = () => {
             <SkeletonLoader shape="box" style={{ width: '100%', height: 120, marginTop: SPACING.lg }} />
             <SkeletonLoader shape="line" style={{ width: '80%', height: 16, marginTop: SPACING.md }} />
             <SkeletonLoader shape="line" style={{ width: '50%', height: 16, marginTop: SPACING.sm }} />
-            <Text style={[styles.loadingSubtext, { marginTop: SPACING.lg }]}>AI is extracting receipt data...</Text>
+            <Text style={[styles.loadingSubtext, { marginTop: SPACING.lg }]}>{t.receipts.aiExtracting}</Text>
           </Card>
         )}
 
@@ -595,8 +636,8 @@ const ReceiptScanner: React.FC = () => {
               >
                 <Image source={{ uri: imageUri }} style={styles.thumbnail} resizeMode="cover" />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.thumbnailLabel}>receipt image</Text>
-                  <Text style={styles.thumbnailHint}>tap to view full size</Text>
+                  <Text style={styles.thumbnailLabel}>{t.receipts.receiptImageLower}</Text>
+                  <Text style={styles.thumbnailHint}>{t.receipts.tapToViewFullSize}</Text>
                 </View>
                 <TouchableOpacity onPress={handleReset} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Feather name="x-circle" size={20} color={C.neutral} />
@@ -606,12 +647,12 @@ const ReceiptScanner: React.FC = () => {
 
             <Card style={styles.dataCard}>
               {/* Title */}
-              <Text style={styles.formLabel}>Title</Text>
+              <Text style={styles.formLabel}>{t.receipts.title}</Text>
               <TextInput
                 style={styles.formInput}
                 value={editTitle}
                 onChangeText={setEditTitle}
-                placeholder="e.g. lunch at mamak"
+                placeholder={t.receipts.titlePlaceholder}
                 placeholderTextColor={C.textSecondary}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
@@ -619,7 +660,7 @@ const ReceiptScanner: React.FC = () => {
 
               {/* Total */}
               <View style={[styles.summaryRow, styles.totalRow, { marginTop: SPACING.lg }]}>
-                <Text style={styles.totalLabel}>Total</Text>
+                <Text style={styles.totalLabel}>{t.receipts.totalLabel}</Text>
                 <View style={styles.totalInputContainer}>
                   <Text style={styles.totalCurrency}>{currency}</Text>
                   <TextInput
@@ -634,7 +675,7 @@ const ReceiptScanner: React.FC = () => {
               </View>
 
               {/* Date */}
-              <Text style={styles.formLabel}>Date</Text>
+              <Text style={styles.formLabel}>{t.receipts.dateLabel}</Text>
               <TouchableOpacity
                 style={styles.taxTrigger}
                 onPress={() => setCalendarPickerVisible(true)}
@@ -648,7 +689,7 @@ const ReceiptScanner: React.FC = () => {
               </TouchableOpacity>
 
               {/* Items */}
-              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>Items ({editItems.length})</Text>
+              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>{t.receipts.itemsLabel} ({editItems.length})</Text>
               {editItems.map((item, index) => (
                 <View key={index} style={styles.itemRow}>
                   <TextInput
@@ -678,7 +719,7 @@ const ReceiptScanner: React.FC = () => {
                   style={[styles.formInput, { flex: 2 }]}
                   value={newItemName}
                   onChangeText={setNewItemName}
-                  placeholder="New item"
+                  placeholder={t.receipts.newItemPlaceholder}
                   placeholderTextColor={C.textSecondary}
                   multiline
                   blurOnSubmit
@@ -703,13 +744,13 @@ const ReceiptScanner: React.FC = () => {
                 <View style={styles.summarySection}>
                   {receipt.subtotal !== undefined && (
                     <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Subtotal</Text>
+                      <Text style={styles.summaryLabel}>{t.receipts.subtotal}</Text>
                       <Text style={styles.summaryValue}>{currency} {receipt.subtotal.toFixed(2)}</Text>
                     </View>
                   )}
                   {receipt.tax !== undefined && (
                     <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Tax</Text>
+                      <Text style={styles.summaryLabel}>{t.receipts.tax}</Text>
                       <Text style={styles.summaryValue}>{currency} {receipt.tax.toFixed(2)}</Text>
                     </View>
                   )}
@@ -717,7 +758,7 @@ const ReceiptScanner: React.FC = () => {
               )}
 
               {/* Expense Category */}
-              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>Expense Category</Text>
+              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>{t.receipts.expenseCategory}</Text>
               <TouchableOpacity
                 style={styles.taxTrigger}
                 onPress={() => setCategoryPickerVisible(true)}
@@ -730,12 +771,12 @@ const ReceiptScanner: React.FC = () => {
                     color={selectedCat?.color || C.accent}
                   />
                 </View>
-                <Text style={[styles.taxTriggerName, { flex: 1 }]}>{selectedCat?.name || 'Select category'}</Text>
+                <Text style={[styles.taxTriggerName, { flex: 1 }]}>{selectedCat?.name || t.receipts.selectCategory}</Text>
                 <Feather name="chevron-right" size={18} color={C.textSecondary} />
               </TouchableOpacity>
 
               {/* Tax Relief */}
-              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>Tax Relief</Text>
+              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>{t.receipts.taxRelief}</Text>
               <TouchableOpacity
                 style={styles.taxTrigger}
                 onPress={() => setTaxPickerVisible(true)}
@@ -751,14 +792,14 @@ const ReceiptScanner: React.FC = () => {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.taxTriggerName}>{selectedTaxCat.name}</Text>
                   {selectedTaxCat.limit !== null && (
-                    <Text style={styles.taxTriggerLimit}>limit: RM {selectedTaxCat.limit.toLocaleString()}</Text>
+                    <Text style={styles.taxTriggerLimit}>{t.receipts.limit}: RM {selectedTaxCat.limit.toLocaleString()}</Text>
                   )}
                 </View>
                 <Feather name="chevron-right" size={18} color={C.textSecondary} />
               </TouchableOpacity>
 
               {/* Payment Method */}
-              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>Payment Method</Text>
+              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>{t.receipts.paymentMethod}</Text>
               <TouchableOpacity
                 style={styles.taxTrigger}
                 onPress={() => setPaymentPickerVisible(true)}
@@ -771,17 +812,17 @@ const ReceiptScanner: React.FC = () => {
                     color={selectedPayment?.color || C.neutral}
                   />
                 </View>
-                <Text style={[styles.taxTriggerName, { flex: 1 }]}>{selectedPayment?.name || 'Select payment method'}</Text>
+                <Text style={[styles.taxTriggerName, { flex: 1 }]}>{selectedPayment?.name || t.receipts.selectPaymentMethod}</Text>
                 <Feather name="chevron-right" size={18} color={C.textSecondary} />
               </TouchableOpacity>
 
               {/* Location */}
-              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>Location</Text>
+              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>{t.receipts.location}</Text>
               <TextInput
                 style={[styles.formInput, { minHeight: 40, textAlignVertical: 'top' }]}
                 value={editLocation}
                 onChangeText={setEditLocation}
-                placeholder="Store address (optional)"
+                placeholder={t.receipts.locationPlaceholder}
                 placeholderTextColor={C.textSecondary}
                 multiline
                 blurOnSubmit
@@ -796,8 +837,8 @@ const ReceiptScanner: React.FC = () => {
             >
               <Feather name={recordOnly ? 'check-square' : 'square'} size={18} color={recordOnly ? C.accent : C.textMuted} />
               <View style={{ flex: 1 }}>
-                <Text style={[styles.recordOnlyLabel, recordOnly && { color: C.accent }]}>Record only</Text>
-                <Text style={styles.recordOnlyHint}>Save for records / tax relief — no wallet deduction</Text>
+                <Text style={[styles.recordOnlyLabel, recordOnly && { color: C.accent }]}>{t.receipts.recordOnly}</Text>
+                <Text style={styles.recordOnlyHint}>{t.receipts.recordOnlyHint}</Text>
               </View>
             </TouchableOpacity>
 
@@ -807,21 +848,21 @@ const ReceiptScanner: React.FC = () => {
                 wallets={wallets}
                 selectedId={selectedWalletId}
                 onSelect={setSelectedWalletId}
-                label="Deduct from Wallet"
+                label={t.receipts.deductFromWallet}
               />
             )}
 
             {/* Action Buttons */}
             <View style={styles.actionButtons}>
               <Button
-                title={saving ? 'Saving...' : 'Save Receipt'}
+                title={saving ? t.receipts.savingEllipsis : t.receipts.saveReceiptBtn}
                 onPress={handleSaveReceipt}
                 icon="check-circle"
                 style={{ flex: 1 }}
                 disabled={saving}
               />
               <Button
-                title="Save Draft"
+                title={t.receipts.saveDraft}
                 onPress={handleSaveDraft}
                 icon="bookmark"
                 variant="secondary"
@@ -829,7 +870,7 @@ const ReceiptScanner: React.FC = () => {
               />
             </View>
             <Button
-              title="Split This Bill"
+              title={t.receipts.splitThisBill}
               onPress={handleSplitBill}
               icon="scissors"
               variant="secondary"
@@ -844,12 +885,12 @@ const ReceiptScanner: React.FC = () => {
         <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setTaxPickerVisible(false)}>
           <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
-              <Text style={styles.dropdownTitle}>Tax Relief Category</Text>
+              <Text style={styles.dropdownTitle}>{t.receipts.taxReliefCategory}</Text>
               <TouchableOpacity onPress={() => setTaxPickerVisible(false)}>
                 <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.taxHeaderSubtitle}>LHDN YA {getYear(editDate)} tax relief</Text>
+            <Text style={styles.taxHeaderSubtitle}>{t.receipts.lhdnYaPrefix} {getYear(editDate)} {t.receipts.lhdnYaSuffix}</Text>
             <FlatList
               data={MYTAX_CATEGORIES}
               keyExtractor={(item) => item.id}
@@ -870,7 +911,7 @@ const ReceiptScanner: React.FC = () => {
         <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setCategoryPickerVisible(false)}>
           <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
-              <Text style={styles.dropdownTitle}>Expense Category</Text>
+              <Text style={styles.dropdownTitle}>{t.receipts.expenseCategory}</Text>
               <TouchableOpacity onPress={() => setCategoryPickerVisible(false)}>
                 <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
@@ -907,7 +948,7 @@ const ReceiptScanner: React.FC = () => {
                   activeOpacity={0.6}
                 >
                   <Feather name="settings" size={14} color={C.accent} />
-                  <Text style={styles.manageLinkText}>manage categories</Text>
+                  <Text style={styles.manageLinkText}>{t.receipts.manageCategories}</Text>
                 </TouchableOpacity>
               }
             />
@@ -920,7 +961,7 @@ const ReceiptScanner: React.FC = () => {
         <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setPaymentPickerVisible(false)}>
           <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
-              <Text style={styles.dropdownTitle}>Payment Method</Text>
+              <Text style={styles.dropdownTitle}>{t.receipts.paymentMethod}</Text>
               <TouchableOpacity onPress={() => setPaymentPickerVisible(false)}>
                 <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
@@ -957,7 +998,7 @@ const ReceiptScanner: React.FC = () => {
                   activeOpacity={0.6}
                 >
                   <Feather name="settings" size={14} color={C.accent} />
-                  <Text style={styles.manageLinkText}>manage payment methods</Text>
+                  <Text style={styles.manageLinkText}>{t.receipts.managePaymentMethods}</Text>
                 </TouchableOpacity>
               }
             />
@@ -970,7 +1011,7 @@ const ReceiptScanner: React.FC = () => {
         <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setCalendarPickerVisible(false)}>
           <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
-              <Text style={styles.dropdownTitle}>Date</Text>
+              <Text style={styles.dropdownTitle}>{t.receipts.dateLabel}</Text>
               <TouchableOpacity onPress={() => setCalendarPickerVisible(false)}>
                 <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
@@ -1023,11 +1064,8 @@ const ReceiptScanner: React.FC = () => {
         id="guide_receipts"
         title={t.guide.scanReceipts}
         icon="camera"
-        tips={[
-          t.guide.tipReceipt1,
-          t.guide.tipReceipt2,
-          t.guide.tipReceipt3,
-        ]}
+        description={t.guide.descReceipt}
+        accent="#6BA3BE"
       />
     </View>
   );

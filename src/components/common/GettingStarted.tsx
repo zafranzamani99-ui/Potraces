@@ -1,8 +1,10 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
@@ -10,13 +12,13 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useWalletStore } from '../../store/walletStore';
 import { lightTap } from '../../services/haptics';
+import { openQuickAdd } from './QuickAddExpense';
 
 const GettingStarted: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
-  const userName = useSettingsStore((s) => s.userName);
   const dismissed = useSettingsStore((s) => s.gettingStartedDismissed);
   const setDismissed = useSettingsStore((s) => s.setGettingStartedDismissed);
   const transactions = usePersonalStore((s) => s.transactions);
@@ -25,113 +27,134 @@ const GettingStarted: React.FC = () => {
 
   if (dismissed || transactions.length >= 5) return null;
 
-  const items = [
+  const items: { icon: keyof typeof Feather.glyphMap; label: string; done: boolean; onPress: () => void }[] = [
     {
+      icon: 'plus-circle',
       label: t.gettingStarted.addFirstExpense,
       done: transactions.length > 0,
-      onPress: () => { lightTap(); navigation.navigate('ExpenseEntry'); },
+      onPress: () => { lightTap(); openQuickAdd(); },
     },
     {
+      icon: 'credit-card',
       label: t.gettingStarted.setUpWallet,
       done: wallets.length > 0,
-      onPress: () => { lightTap(); navigation.navigate('WalletManagement'); },
+      onPress: () => { lightTap(); navigation.getParent()?.navigate('WalletManagement'); },
     },
     {
+      icon: 'sliders',
       label: t.gettingStarted.setABudget,
       done: budgets.length > 0,
-      onPress: () => { lightTap(); navigation.navigate('BudgetPlanning'); },
+      onPress: () => { lightTap(); navigation.getParent()?.navigate('BudgetPlanning'); },
     },
     {
+      icon: 'edit-3',
       label: t.gettingStarted.writeANote,
       done: false,
-      onPress: () => { lightTap(); navigation.navigate('Notes'); },
+      onPress: () => { lightTap(); navigation.getParent()?.navigate('Notes'); },
     },
   ];
 
-  const greeting = userName ? t.gettingStarted.hiName.replace('{name}', userName) : t.gettingStarted.letsGetStarted;
+  const pending = items.filter((i) => !i.done);
+  if (pending.length === 0) return null;
 
   return (
-    <Animated.View entering={FadeIn.duration(300)} style={styles.card}>
-      <Text style={styles.title}>{greeting}</Text>
-
-      {items.map((item, i) => (
+    <Animated.View entering={FadeIn.duration(300)} style={styles.container}>
+      <View style={styles.headerRow}>
+        <Text style={styles.label}>{t.gettingStarted.letsGetStarted}</Text>
         <TouchableOpacity
-          key={i}
-          style={styles.row}
-          onPress={item.onPress}
-          activeOpacity={0.7}
+          onPress={() => { lightTap(); setDismissed(true); }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <View style={[styles.circle, item.done && styles.circleDone]}>
-            {item.done && <Feather name="check" size={12} color="#fff" />}
-          </View>
-          <Text style={[styles.rowLabel, item.done && styles.rowLabelDone]}>{item.label}</Text>
-          <Feather name="chevron-right" size={16} color={C.textMuted} />
+          <Feather name="x" size={14} color={C.textMuted} />
         </TouchableOpacity>
-      ))}
-
-      <TouchableOpacity
-        style={styles.dismissRow}
-        onPress={() => { lightTap(); setDismissed(true); }}
-      >
-        <Text style={styles.dismissText}>{t.gettingStarted.exploreOnMyOwn}</Text>
-      </TouchableOpacity>
+      </View>
+      <View style={styles.scrollWrap}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+          keyboardShouldPersistTaps="handled"
+        >
+          {pending.map((item, i) => (
+            <TouchableOpacity
+              key={i}
+              style={styles.chip}
+              onPress={item.onPress}
+              activeOpacity={0.7}
+            >
+              <View style={styles.chipIcon}>
+                <Feather name={item.icon} size={14} color={C.accent} />
+              </View>
+              <Text style={styles.chipText} numberOfLines={1}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <LinearGradient
+          colors={[withAlpha(C.background, 0), withAlpha(C.background, 1)]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.fade}
+          pointerEvents="none"
+        />
+      </View>
     </Animated.View>
   );
 };
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
-  card: {
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: SPACING.lg,
-    marginBottom: SPACING.lg,
-  },
-  title: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
+  container: {
     marginBottom: SPACING.md,
   },
-  row: {
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  label: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+    textTransform: 'lowercase',
+  },
+  scrollWrap: {
+    position: 'relative',
+    marginRight: -SPACING['2xl'],
+  },
+  chipRow: {
+    gap: SPACING.sm,
+    paddingRight: SPACING['2xl'],
+  },
+  fade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 40,
+  },
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: C.border,
-  },
-  circle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.xs,
+    borderWidth: 1,
     borderColor: C.border,
-    alignItems: 'center',
+  },
+  chipIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: withAlpha(C.accent, 0.08),
     justifyContent: 'center',
-    marginRight: SPACING.md,
-  },
-  circleDone: {
-    backgroundColor: C.accent,
-    borderColor: C.accent,
-  },
-  rowLabel: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-  },
-  rowLabelDone: {
-    color: C.textMuted,
-    textDecorationLine: 'line-through',
-  },
-  dismissRow: {
     alignItems: 'center',
-    marginTop: SPACING.md,
-    paddingTop: SPACING.sm,
   },
-  dismissText: {
+  chipText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: C.textMuted,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
 });
 

@@ -21,6 +21,7 @@ import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, successNotification } from '../../../services/haptics';
+import { useT } from '../../../i18n';
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -28,6 +29,7 @@ function toDate(d: Date | string): Date {
 
 const AddPayment: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation();
   const { showToast } = useToast();
@@ -69,7 +71,7 @@ const AddPayment: React.FC = () => {
       date.getMonth() === today.getMonth() &&
       date.getFullYear() === today.getFullYear()
     ) {
-      return 'today';
+      return t.freelancer.today;
     }
     return format(date, 'MMM dd');
   };
@@ -86,17 +88,17 @@ const AddPayment: React.FC = () => {
   };
 
   const getSelectedClientName = () => {
-    if (isNewClient) return newClientName || 'new client';
+    if (isNewClient) return newClientName || t.freelancer.newClient;
     if (selectedClientId) {
-      return clients.find((c) => c.id === selectedClientId)?.name || 'select client';
+      return clients.find((c) => c.id === selectedClientId)?.name || t.freelancer.selectClient;
     }
-    return 'select client';
+    return t.freelancer.selectClient;
   };
 
   const handleSave = () => {
     const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0) {
-      showToast('Enter a valid amount.', 'error');
+      showToast(t.freelancer.invalidAmount, 'error');
       return;
     }
 
@@ -161,7 +163,7 @@ const AddPayment: React.FC = () => {
     }
 
     successNotification();
-    showToast('Payment logged.', 'success');
+    showToast(t.freelancer.paymentLogged, 'success');
     navigation.goBack();
   };
 
@@ -185,7 +187,7 @@ const AddPayment: React.FC = () => {
     }
 
     setShowAutoDetectPrompt(false);
-    showToast('Client saved.', 'success');
+    showToast(t.freelancer.clientSaved, 'success');
   };
 
   return (
@@ -265,7 +267,7 @@ const AddPayment: React.FC = () => {
               onPress={() => handleSelectClient('new')}
               activeOpacity={0.7}
             >
-              <Text style={styles.newClientText}>+ new client</Text>
+              <Text style={styles.newClientText}>{t.freelancer.addNewClient}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -276,7 +278,7 @@ const AddPayment: React.FC = () => {
             style={styles.inlineInput}
             value={newClientName}
             onChangeText={setNewClientName}
-            placeholder="client name"
+            placeholder={t.freelancer.clientNamePlaceholder}
             placeholderTextColor={C.textMuted}
             autoFocus
             returnKeyType="done"
@@ -317,7 +319,7 @@ const AddPayment: React.FC = () => {
             style={styles.noteInput}
             value={note}
             onChangeText={setNote}
-            placeholder="what was this for?"
+            placeholder={t.freelancer.whatWasThisFor}
             placeholderTextColor={C.textMuted}
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
@@ -340,7 +342,7 @@ const AddPayment: React.FC = () => {
               (!amount || parseFloat(amount) <= 0) && styles.saveButtonTextDisabled,
             ]}
           >
-            save
+            {t.freelancer.save}
           </Text>
         </TouchableOpacity>
       </KeyboardAwareScrollView>
@@ -349,10 +351,10 @@ const AddPayment: React.FC = () => {
       {showAutoDetectPrompt && (
         <Animated.View style={[styles.autoDetectPrompt, { opacity: promptOpacity }]}>
           <Text style={styles.autoDetectText}>
-            new client?
+            {t.freelancer.newClientPrompt}
           </Text>
           <TouchableOpacity onPress={handleAutoDetectSave}>
-            <Text style={styles.autoDetectAction}>save as client</Text>
+            <Text style={styles.autoDetectAction}>{t.freelancer.saveAsClient}</Text>
           </TouchableOpacity>
         </Animated.View>
       )}

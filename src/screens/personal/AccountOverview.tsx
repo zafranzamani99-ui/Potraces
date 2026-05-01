@@ -32,6 +32,7 @@ import {
 import { useCalm } from '../../hooks/useCalm';
 import { useCategories } from '../../hooks/useCategories';
 import Card from '../../components/common/Card';
+import WalletLogo from '../../components/common/WalletLogo';
 import ProgressBar from '../../components/common/ProgressBar';
 import { lightTap } from '../../services/haptics';
 import { useT } from '../../i18n';
@@ -724,17 +725,8 @@ const AccountOverview: React.FC = () => {
                   i < wallets.length - 1 && styles.walletRowBorder,
                 ]}
               >
-                <View
-                  style={[
-                    styles.walletIcon,
-                    { backgroundColor: withAlpha(w.color, 0.15) },
-                  ]}
-                >
-                  <Feather
-                    name={w.icon as keyof typeof Feather.glyphMap}
-                    size={14}
-                    color={w.color}
-                  />
+                <View style={[styles.walletIcon, { backgroundColor: w.presetId ? 'transparent' : withAlpha(w.color, 0.15) }]}>
+                  <WalletLogo wallet={w} size={28} />
                 </View>
                 <Text style={styles.walletName} numberOfLines={1}>
                   {w.name}

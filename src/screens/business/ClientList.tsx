@@ -14,10 +14,12 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { Client } from '../../types';
 
 const ClientList: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { clients, addClient, logClientPayment, addBusinessTransaction } = useBusinessStore();
   const currency = useSettingsStore((s) => s.currency);
@@ -74,7 +76,7 @@ const ClientList: React.FC = () => {
       </View>
       {item.lastPaid && (
         <Text style={styles.clientLastPaid}>
-          last paid {format(item.lastPaid instanceof Date ? item.lastPaid : new Date(item.lastPaid), 'MMM dd')}
+          {t.business.clientsLastPaid} {format(item.lastPaid instanceof Date ? item.lastPaid : new Date(item.lastPaid), 'MMM dd')}
         </Text>
       )}
 
@@ -87,7 +89,7 @@ const ClientList: React.FC = () => {
         }}
       >
         <Feather name="plus" size={14} color={C.bronze} />
-        <Text style={styles.logPaymentText}>log payment</Text>
+        <Text style={styles.logPaymentText}>{t.business.clientsLogPayment}</Text>
       </TouchableOpacity>
 
       {/* Expanded: payment history */}
@@ -112,8 +114,11 @@ const ClientList: React.FC = () => {
     <View style={styles.container}>
       {/* Summary */}
       <Text style={styles.summary}>
-        {currency} {totalAcross.toFixed(2)} received from {clients.length} client
-        {clients.length !== 1 ? 's' : ''} so far.
+        {t.business.clientsSummary
+          .replace('{currency}', currency)
+          .replace('{total}', totalAcross.toFixed(2))
+          .replace('{n}', String(clients.length))
+          .replace('{plural}', clients.length !== 1 ? 's' : '')}
       </Text>
 
       <FlatList
@@ -123,7 +128,7 @@ const ClientList: React.FC = () => {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No clients yet. Add your first one.</Text>
+            <Text style={styles.emptyText}>{t.business.clientsEmpty}</Text>
           </View>
         }
         removeClippedSubviews
@@ -139,28 +144,28 @@ const ClientList: React.FC = () => {
         onPress={() => setShowAddClient(true)}
       >
         <Feather name="plus" size={20} color="#fff" />
-        <Text style={styles.addButtonText}>add client</Text>
+        <Text style={styles.addButtonText}>{t.business.clientsAddClient}</Text>
       </TouchableOpacity>
 
       {/* Add client modal */}
       <Modal visible={showAddClient} transparent statusBarTranslucent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>new client</Text>
+            <Text style={styles.modalTitle}>{t.business.clientsNewClient}</Text>
             <TextInput
               style={styles.modalInput}
               value={newClientName}
               onChangeText={setNewClientName}
-              placeholder="client name"
+              placeholder={t.business.clientsNamePlaceholder}
               placeholderTextColor={C.textSecondary}
               autoFocus
             />
             <View style={styles.modalActions}>
               <TouchableOpacity onPress={() => setShowAddClient(false)} style={styles.modalCancel}>
-                <Text style={styles.modalCancelText}>cancel</Text>
+                <Text style={styles.modalCancelText}>{t.business.clientsCancel}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleAddClient} style={styles.modalConfirm}>
-                <Text style={styles.modalConfirmText}>add</Text>
+                <Text style={styles.modalConfirmText}>{t.business.clientsAdd}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -172,13 +177,13 @@ const ClientList: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              payment from {selectedClient?.name}
+              {t.business.clientsPaymentFrom.replace('{name}', selectedClient?.name ?? '')}
             </Text>
             <TextInput
               style={styles.modalInput}
               value={paymentAmount}
               onChangeText={setPaymentAmount}
-              placeholder="amount"
+              placeholder={t.business.clientsAmountPlaceholder}
               placeholderTextColor={C.textSecondary}
               keyboardType="numeric"
               autoFocus
@@ -191,10 +196,10 @@ const ClientList: React.FC = () => {
                 }}
                 style={styles.modalCancel}
               >
-                <Text style={styles.modalCancelText}>cancel</Text>
+                <Text style={styles.modalCancelText}>{t.business.clientsCancel}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleLogPayment} style={styles.modalConfirm}>
-                <Text style={styles.modalConfirmText}>done</Text>
+                <Text style={styles.modalConfirmText}>{t.business.clientsDone}</Text>
               </TouchableOpacity>
             </View>
           </View>

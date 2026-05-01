@@ -14,6 +14,7 @@ import { useMixedStore } from '../../../store/mixedStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha, COLORS } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 import { askMixedQuestion } from '../../../services/aiService';
 import { generateReportNarrative, ReportMonthData } from '../../../services/reportNarrative';
 import { useAIInsightsStore } from '../../../store/aiInsightsStore';
@@ -46,6 +47,7 @@ function toDate(d: Date | string): Date {
 
 const MixedReports: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
   const { businessTransactions } = useBusinessStore();
@@ -226,7 +228,7 @@ const MixedReports: React.FC = () => {
         ) : null}
 
         {/* Section 1 — Stacked Bar: Income by Stream */}
-        <Text style={styles.sectionLabel}>income by source</Text>
+        <Text style={styles.sectionLabel}>{t.mixed.incomeBySource}</Text>
         {stackedBarData && hasMonthlyData ? (
           <View style={styles.chartContainer}>
             <StackedBarChart
@@ -239,13 +241,13 @@ const MixedReports: React.FC = () => {
             />
           </View>
         ) : (
-          <Text style={styles.noDataText}>no data yet</Text>
+          <Text style={styles.noDataText}>{t.mixed.noDataYet}</Text>
         )}
 
         {/* Section 2 — Stream Share Over Time */}
         {streamShareData && streamShareData.datasets.length > 0 && (
           <>
-            <Text style={styles.sectionLabel}>share over time</Text>
+            <Text style={styles.sectionLabel}>{t.mixed.shareOverTime}</Text>
             <View style={styles.chartContainer}>
               <LineChart
                 data={streamShareData}
@@ -284,14 +286,14 @@ const MixedReports: React.FC = () => {
         {/* Section 3 — Stream Consistency */}
         {streamConsistency.length > 0 && (
           <>
-            <Text style={styles.sectionLabel}>consistency</Text>
+            <Text style={styles.sectionLabel}>{t.mixed.consistency}</Text>
             <View style={styles.consistencySection}>
               {streamConsistency.map((item) => (
                 <View key={item.stream} style={styles.consistencyRow}>
                   <View style={styles.consistencyLeft}>
                     <Text style={styles.consistencyStream}>{item.stream}</Text>
                     <Text style={styles.consistencyMonths}>
-                      {item.monthsActive} of 6 months
+                      {t.mixed.monthsActive.replace('{n}', String(item.monthsActive))}
                     </Text>
                   </View>
                   <Text style={styles.consistencyTotal}>
@@ -306,7 +308,7 @@ const MixedReports: React.FC = () => {
         {/* Section 4 — Cost Breakdown (only if hasRoadCosts) */}
         {mixedDetails.hasRoadCosts && costBreakdown.length > 0 && (
           <>
-            <Text style={styles.sectionLabel}>cost breakdown</Text>
+            <Text style={styles.sectionLabel}>{t.mixed.costBreakdown}</Text>
             <View style={styles.breakdownSection}>
               {costBreakdown.map((item, index) => {
                 const barWidth =
@@ -343,14 +345,14 @@ const MixedReports: React.FC = () => {
           {aiSummary ? (
             <Text style={styles.aiSummaryText}>{aiSummary}</Text>
           ) : aiLoading ? (
-            <Text style={styles.aiLoadingText}>thinking...</Text>
+            <Text style={styles.aiLoadingText}>{t.mixed.thinking}</Text>
           ) : (
             <TouchableOpacity
               onPress={handleShowSummary}
               style={styles.showSummaryButton}
               activeOpacity={0.7}
             >
-              <Text style={styles.showSummaryText}>show summary</Text>
+              <Text style={styles.showSummaryText}>{t.mixed.showSummary}</Text>
             </TouchableOpacity>
           )}
         </View>

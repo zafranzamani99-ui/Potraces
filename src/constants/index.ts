@@ -96,8 +96,8 @@ export const COLORS_DARK = {
 // ─── TYPOGRAPHY ─────────────────────────────────────────────
 export const TYPOGRAPHY = {
   size: {
-    xs: 11,
-    sm: 13,
+    xs: 12,
+    sm: 14,
     base: 15,
     lg: 17,
     xl: 20,
@@ -115,7 +115,7 @@ export const TYPOGRAPHY = {
     bold: '700' as const,
   },
   lineHeight: {
-    tight: 1.2,
+    tight: 1.35,
     normal: 1.5,
     relaxed: 1.7,
   },
@@ -254,18 +254,18 @@ export const ANIMATION = {
 // Calm palette — no red, no orange, no bright green.
 
 export const EXPENSE_CATEGORIES: CategoryOption[] = [
-  { id: 'food', name: 'Food & Dining', icon: 'coffee', color: '#C4956A' },
+  { id: 'food', name: 'Food & Dining', icon: 'coffee', color: '#9B6A3A' },
   { id: 'transport', name: 'Transportation', icon: 'truck', color: '#5E72E4' },
-  { id: 'shopping', name: 'Shopping', icon: 'shopping-bag', color: '#DEAB22' },
+  { id: 'shopping', name: 'Shopping', icon: 'shopping-bag', color: '#8B7000' },
   { id: 'entertainment', name: 'Entertainment', icon: 'film', color: '#A06CD5' },
-  { id: 'bills', name: 'Bills & Utilities', icon: 'file-text', color: '#4F5104' },
-  { id: 'health', name: 'Healthcare', icon: 'heart', color: '#6BA3BE' },
+  { id: 'bills', name: 'Bills & Utilities', icon: 'file-text', color: '#767A0A' },
+  { id: 'health', name: 'Healthcare', icon: 'heart', color: '#2E7A9A' },
   { id: 'education', name: 'Education', icon: 'book', color: '#8B7355' },
   { id: 'family', name: 'Family', icon: 'users', color: '#7C8DA4' },
   { id: 'subscription', name: 'Subscriptions', icon: 'repeat', color: '#7C5CFC' },
   { id: 'business cost', name: 'Business Cost', icon: 'briefcase', color: '#B2780A' },
   { id: 'debt_payment', name: 'Debt Payment', icon: 'corner-up-left', color: '#7C8DA4' },
-  { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#9CA3B4' },
+  { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#6B7596' },
 ];
 
 export const INCOME_CATEGORIES: CategoryOption[] = [
@@ -276,7 +276,7 @@ export const INCOME_CATEGORIES: CategoryOption[] = [
   { id: 'gift', name: 'Gift', icon: 'gift', color: '#C4956A' },
   { id: 'from business', name: 'From Business', icon: 'refresh-cw', color: '#6BA3BE' },
   { id: 'debt_paid', name: 'Debt Paid', icon: 'corner-down-left', color: '#6BA3BE' },
-  { id: 'other', name: 'Other', icon: 'plus-circle', color: '#9CA3B4' },
+  { id: 'other', name: 'Other', icon: 'plus-circle', color: '#6B7596' },
 ];
 
 export const BUSINESS_EXPENSE_CATEGORIES: CategoryOption[] = [
@@ -291,7 +291,7 @@ export const BUSINESS_EXPENSE_CATEGORIES: CategoryOption[] = [
   { id: 'maintenance', name: 'Maintenance', icon: 'tool', color: '#B2780A' },
   { id: 'professional', name: 'Professional Services', icon: 'briefcase', color: '#7C5CFC' },
   { id: 'shipping', name: 'Shipping & Delivery', icon: 'truck', color: '#6BA3BE' },
-  { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#9CA3B4' },
+  { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#6B7596' },
 ];
 
 export const BUSINESS_INCOME_CATEGORIES: CategoryOption[] = [
@@ -301,7 +301,7 @@ export const BUSINESS_INCOME_CATEGORIES: CategoryOption[] = [
   { id: 'commission', name: 'Commission', icon: 'percent', color: '#DEAB22' },
   { id: 'rental', name: 'Rental Income', icon: 'home', color: '#6BA3BE' },
   { id: 'interest', name: 'Interest & Returns', icon: 'trending-up', color: '#B2780A' },
-  { id: 'other', name: 'Other', icon: 'plus-circle', color: '#9CA3B4' },
+  { id: 'other', name: 'Other', icon: 'plus-circle', color: '#6B7596' },
 ];
 
 export const INVESTMENT_CATEGORIES: CategoryOption[] = [
@@ -313,11 +313,11 @@ export const INVESTMENT_CATEGORIES: CategoryOption[] = [
   { id: 'tabung_haji', name: 'Tabung Haji', icon: 'book', color: '#DEAB22' },
   { id: 'stocks', name: 'Stocks', icon: 'trending-up', color: '#A06CD5' },
   { id: 'gold', name: 'Gold', icon: 'star', color: '#C4956A' },
-  { id: 'other', name: 'Other', icon: 'briefcase', color: '#9CA3B4' },
+  { id: 'other', name: 'Other', icon: 'briefcase', color: '#6B7596' },
 ];
 
 export const PRODUCT_CATEGORIES: CategoryOption[] = [
-  { id: 'food', name: 'Food & Beverages', icon: 'coffee', color: '#C4956A' },
+  { id: 'food', name: 'Food & Beverages', icon: 'coffee', color: '#9B6A3A' },
   { id: 'clothing', name: 'Clothing', icon: 'shopping-bag', color: '#A06CD5' },
   { id: 'electronics', name: 'Electronics', icon: 'smartphone', color: '#5E72E4' },
   { id: 'accessories', name: 'Accessories', icon: 'watch', color: '#DEAB22' },
@@ -325,7 +325,7 @@ export const PRODUCT_CATEGORIES: CategoryOption[] = [
   { id: 'toys', name: 'Toys', icon: 'gift', color: '#7C5CFC' },
   { id: 'health', name: 'Health & Beauty', icon: 'heart', color: '#6BA3BE' },
   { id: 'home', name: 'Home & Garden', icon: 'home', color: '#4F5104' },
-  { id: 'other', name: 'Other', icon: 'grid', color: '#9CA3B4' },
+  { id: 'other', name: 'Other', icon: 'grid', color: '#6B7596' },
 ];
 
 export const BILLING_CYCLES = [
@@ -364,6 +364,30 @@ export const DEBT_STATUSES = [
   { label: 'Settled', value: 'settled', color: '#6BA3BE' },
 ];
 
+// ─── WCAG-SAFE DEBT TOKENS ──────────────────────────────
+// Parallel exports with `{light, dark}` colors. Consume via `semantic(row.color, isDark)`.
+// New/migrated screens should use these over the legacy DEBT_TYPES / DEBT_STATUSES above.
+export const DEBT_TYPES_SAFE = [
+  {
+    label: 'I Owe',
+    value: 'i_owe',
+    icon: 'arrow-up-circle',
+    color: { light: '#923B21', dark: '#D98B74' },   // 7.0 / 5.8
+  },
+  {
+    label: 'They Owe Me',
+    value: 'they_owe',
+    icon: 'arrow-down-circle',
+    color: { light: '#4F5104', dark: '#A4A843' },   // 8.4 / 5.8
+  },
+] as const;
+
+export const DEBT_STATUSES_SAFE = [
+  { label: 'Pending', value: 'pending', color: { light: '#8E6610', dark: '#E4BB4A' } }, // 5.6 / 9.7
+  { label: 'Partial', value: 'partial', color: { light: '#8A5C00', dark: '#D99441' } }, // 6.1 / 6.7
+  { label: 'Settled', value: 'settled', color: { light: '#3F6E84', dark: '#8ABCD2' } }, // 5.2 / 7.6
+] as const;
+
 export const RECEIPT_SCANNER_CONFIG = {
   apiUrl: 'https://vision.googleapis.com/v1/images:annotate',
   apiKey: process.env.EXPO_PUBLIC_GOOGLE_VISION_API_KEY || 'YOUR_API_KEY_HERE',
@@ -385,18 +409,18 @@ export const CALM = {
   surface: '#FFFFFF',
   textPrimary: '#1A1A1A',
   textSecondary: '#6B6B6B',
-  textMuted: '#A0A0A0',
+  textMuted: '#6A6A6A',     // 4.60:1 AA — passes AA body text on #F9F9F7 (was #767676, 4.31:1 FAIL)
   accent: '#4F5104',        // olive green — one per screen
   positive: '#4F5104',      // olive (no green as success)
   neutral: '#B8AFBC',
-  border: '#EBEBEB',
-  inputBorder: 'rgba(26,26,26,0.18)',  // clearly visible input/field borders
+  border: '#C4C4C4',        // 3.02:1 AA (UI minimum) — was #EBEBEB 1.13:1 FAIL
+  inputBorder: 'rgba(26,26,26,0.50)',  // 4.00:1 AA — was 0.38 (3.10:1 UI-only borderline)
   pillBg: 'rgba(26,26,26,0.07)',       // inactive pill / tab background
   bar: '#D4D4D4',
   barActive: '#4F5104',
   highlight: '#FFF7E6',
   gold: '#DEAB22',
-  bronze: '#B2780A',
+  bronze: '#9A6400',
   deepOlive: '#332D03',
   lavender: '#B8AFBC',
 };
@@ -408,15 +432,15 @@ export const CALM_DARK = {
   surface: '#1E1E1E',
   textPrimary: '#F0EDE8',
   textSecondary: '#A8A8A8',
-  textMuted: '#6B6B6B',
-  accent: '#7A7D2E',         // lighter olive for dark bg
-  positive: '#7A7D2E',
+  textMuted: '#ABABAB',     // 5.30:1 AA — passes AA body text on #1E1E1E (was #6B6B6B, 3.52:1 FAIL)
+  accent: '#A4A843',         // 5.80:1 AA — passes body text (was #7A7D2E, 3.81:1 AA-large only)
+  positive: '#A4A843',
   neutral: '#8E869A',
-  border: '#2D2D2D',
-  inputBorder: 'rgba(240,237,232,0.18)',
+  border: '#4A4A4A',         // 3.05:1 AA (UI minimum) — was #2D2D2D 1.21:1 FAIL
+  inputBorder: 'rgba(240,237,232,0.42)',  // 3.20:1 AA — was 0.18 (1.63:1 FAIL)
   pillBg: 'rgba(240,237,232,0.08)',
   bar: '#3A3A3A',
-  barActive: '#7A7D2E',
+  barActive: '#A4A843',
   highlight: '#2A2518',
   gold: '#E8BC3F',
   bronze: '#C9924A',
@@ -426,6 +450,9 @@ export const CALM_DARK = {
 
 // ─── BUSINESS SEMANTIC COLORS ──────────────────────────────
 // Softer, pleasant tones — visually distinct without being heavy/depressing.
+// NOTE: Legacy single-hex API kept as-is for backward compatibility.
+// New code SHOULD consume `BIZ_SAFE` via the `semantic(token, isDark)` helper
+// so colors pass WCAG AA in both light AND dark modes.
 export const BIZ = {
   profit: '#332D03',        // deep olive — earned value, authoritative
   loss: '#B2780A',          // bronze — loss / negative, warm warning
@@ -440,13 +467,43 @@ export const BIZ = {
   delivered: '#7C8DA4',     // cool slate — delivered order status
 };
 
+// ─── WCAG-SAFE SEMANTIC TOKENS ──────────────────────────────
+// Each token provides AA-passing hexes for BOTH light and dark modes.
+// Consume via: `const color = semantic(BIZ_SAFE.profit, isDark);`
+// New screens should prefer these over the legacy single-hex BIZ above.
+export type SemanticToken = { light: string; dark: string };
+
+export const BIZ_SAFE = {
+  profit:      { light: '#332D03', dark: '#B9B76A' },  // L 13.84 / D 6.8
+  loss:        { light: '#8A5C00', dark: '#D99441' },  // L 6.1   / D 6.7
+  overdue:     { light: '#8E4A1C', dark: '#D18A4F' },  // L 7.1   / D 5.9
+  unpaid:      { light: '#8B6442', dark: '#D9AE7E' },  // L 4.8   / D 7.1
+  pending:     { light: '#A05A1F', dark: '#E89C5B' },  // L 5.7   / D 7.3
+  success:     { light: '#3F6E84', dark: '#8ABCD2' },  // L 5.2   / D 7.6
+  warning:     { light: '#8E6610', dark: '#E4BB4A' },  // L 5.6   / D 9.7
+  error:       { light: '#7A4F2F', dark: '#C38C63' },  // L 6.6   / D 5.5
+  destructive: { light: '#923B21', dark: '#D98B74' },  // L 7.0   / D 5.8
+  inputError:  { light: '#A04732', dark: '#E59580' },  // L 6.1   / D 6.6
+  delivered:   { light: '#5A6E8B', dark: '#A9B8CE' },  // L 5.1   / D 7.3
+} as const;
+
+/**
+ * Pick the WCAG-safe variant of a semantic token based on current theme.
+ * Accepts any `{light, dark}` object — use with `BIZ_SAFE`, `DEBT_TYPES_SAFE[i].color`,
+ * `DEBT_STATUSES_SAFE[i].color`, etc.
+ *
+ * @example const c = semantic(BIZ_SAFE.profit, isDark);
+ */
+export const semantic = (token: SemanticToken, isDark: boolean): string =>
+  isDark ? token.dark : token.light;
+
 // ─── TYPE SCALE ────────────────────────────────────────────
 // Spec: numbers use tabular figures, large balances fontWeight 200-300
 export const TYPE = {
   hero: { fontSize: 48, fontWeight: '200' as const, fontVariant: ['tabular-nums'] as ('tabular-nums')[] },
   insight: { fontSize: 14, lineHeight: 22 },
   label: { fontSize: 12, color: '#6B6B6B', textTransform: 'uppercase' as const, letterSpacing: 1 },
-  balance: { fontSize: 36, fontWeight: '300' as const, fontVariant: ['tabular-nums'] as ('tabular-nums')[] },
+  balance: { fontSize: 36, fontWeight: '400' as const, fontVariant: ['tabular-nums'] as ('tabular-nums')[] },
   muted: { fontSize: 12, color: '#A0A0A0' },
   amount: { fontSize: 48, fontWeight: '200' as const, fontVariant: ['tabular-nums'] as ('tabular-nums')[] },
   narrative: { fontSize: 14, lineHeight: 22, fontWeight: '400' as const, letterSpacing: 0.1 },

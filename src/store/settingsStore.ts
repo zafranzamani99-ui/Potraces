@@ -46,6 +46,22 @@ interface SettingsState {
   hasCompletedOnboarding: boolean;
   gettingStartedDismissed: boolean;
   dismissedHints: string[];
+  biometricLockEnabled: boolean;
+  biometricLockTimeoutMin: number;
+  walletEchoHidden: boolean;
+  setWalletEchoHidden: (value: boolean) => void;
+  budgetEchoHidden: boolean;
+  setBudgetEchoHidden: (value: boolean) => void;
+  commitmentEchoHidden: boolean;
+  setCommitmentEchoHidden: (value: boolean) => void;
+  personalSyncEnabled: boolean;
+  lastPersonalSyncAt: Date | null;
+  setPersonalSyncEnabled: (value: boolean) => void;
+  setLastPersonalSyncAt: (value: Date | null) => void;
+  spendingAlertsEnabled: boolean;
+  setSpendingAlertsEnabled: (value: boolean) => void;
+  quickAddConfirm: boolean;
+  setQuickAddConfirm: (value: boolean) => void;
   getPaymentMethods: () => CategoryOption[];
   addCustomPaymentMethod: (method: CategoryOption) => void;
   removeCustomPaymentMethod: (id: string) => void;
@@ -66,6 +82,8 @@ interface SettingsState {
   setHasCompletedOnboarding: (value: boolean) => void;
   setGettingStartedDismissed: (value: boolean) => void;
   dismissHint: (id: string) => void;
+  setBiometricLockEnabled: (value: boolean) => void;
+  setBiometricLockTimeoutMin: (value: number) => void;
   clearAllData: () => void;
   clearBusinessData: () => Promise<void>;
 }
@@ -88,6 +106,23 @@ export const useSettingsStore = create<SettingsState>()(
       hasCompletedOnboarding: false,
       gettingStartedDismissed: false,
       dismissedHints: [],
+      biometricLockEnabled: false,
+      biometricLockTimeoutMin: 5,
+      walletEchoHidden: true,
+      setWalletEchoHidden: (walletEchoHidden) => set({ walletEchoHidden }),
+      budgetEchoHidden: true,
+      setBudgetEchoHidden: (budgetEchoHidden) => set({ budgetEchoHidden }),
+      commitmentEchoHidden: false,
+      setCommitmentEchoHidden: (commitmentEchoHidden) => set({ commitmentEchoHidden }),
+      personalSyncEnabled: false,
+      lastPersonalSyncAt: null,
+      spendingAlertsEnabled: true,
+      quickAddConfirm: false,
+
+      setPersonalSyncEnabled: (personalSyncEnabled) => set({ personalSyncEnabled }),
+      setLastPersonalSyncAt: (lastPersonalSyncAt) => set({ lastPersonalSyncAt }),
+      setSpendingAlertsEnabled: (spendingAlertsEnabled) => set({ spendingAlertsEnabled }),
+      setQuickAddConfirm: (quickAddConfirm) => set({ quickAddConfirm }),
 
       getPaymentMethods: () => {
         const { customPaymentMethods, paymentMethodOverrides } = get();
@@ -136,6 +171,8 @@ export const useSettingsStore = create<SettingsState>()(
       },
       setHasCompletedOnboarding: (hasCompletedOnboarding) => set({ hasCompletedOnboarding }),
       setGettingStartedDismissed: (gettingStartedDismissed) => set({ gettingStartedDismissed }),
+      setBiometricLockEnabled: (biometricLockEnabled) => set({ biometricLockEnabled }),
+      setBiometricLockTimeoutMin: (biometricLockTimeoutMin) => set({ biometricLockTimeoutMin }),
       dismissHint: (id) => set((s) => ({
         dismissedHints: s.dismissedHints.includes(id) ? s.dismissedHints : [...s.dismissedHints, id],
       })),
@@ -359,6 +396,17 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (!state.customPaymentMethods) state.customPaymentMethods = [];
         if (!state.paymentMethodOverrides) state.paymentMethodOverrides = {};
+        // Rehydrate sync timestamp (stored as ISO)
+        const rawSync = (state as any).lastPersonalSyncAt;
+        if (rawSync && typeof rawSync === 'string') {
+          const d = new Date(rawSync);
+          state.lastPersonalSyncAt = isNaN(d.getTime()) ? null : d;
+        } else if (!rawSync) {
+          state.lastPersonalSyncAt = null;
+        }
+        if (typeof state.personalSyncEnabled !== 'boolean') {
+          state.personalSyncEnabled = false;
+        }
       },
     }
   )

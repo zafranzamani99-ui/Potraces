@@ -14,8 +14,9 @@ import { Feather } from '@expo/vector-icons';
 import { format, differenceInDays, differenceInHours } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useToast } from '../../context/ToastContext';
 import { warningNotification } from '../../services/haptics';
 import { Season } from '../../types';
@@ -95,6 +96,10 @@ const PulsingDot: React.FC<{ styles: ReturnType<typeof makeStyles> }> = React.me
 
 const PastSeasons: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
+  const bizProfit = semantic(BIZ_SAFE.profit, isDark);
+  const bizLoss = semantic(BIZ_SAFE.loss, isDark);
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { seasons, orders, ingredientCosts, addSeason, useSeasonTemplate } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
@@ -111,13 +116,13 @@ const PastSeasons: React.FC = () => {
   const handleStartSeason = useCallback(() => {
     if (!newName.trim()) {
       warningNotification();
-      showToast('enter a season name', 'error');
+      showToast(t.seller.enterSeasonName, 'error');
       return;
     }
 
     if (activeSeason) {
       warningNotification();
-      showToast(`"${activeSeason.name}" is still active — end it first`, 'error');
+      showToast(t.seller.stillActiveEndFirst.replace('{name}', activeSeason.name), 'error');
       return;
     }
 
@@ -173,10 +178,10 @@ const PastSeasons: React.FC = () => {
       const isLast = index === allSeasons.length - 1;
 
       // Build compact stats parts
-      const ordersPart = `${stats.orderCount} orders`;
-      const keptPart = `${currency} ${stats.kept.toFixed(0)} kept`;
+      const ordersPart = t.seller.nOrders.replace('{n}', String(stats.orderCount));
+      const keptPart = t.seller.nKept.replace('{currency}', currency).replace('{amount}', stats.kept.toFixed(0));
       const customersPart = stats.customerCount > 0
-        ? `${stats.customerCount} customers`
+        ? t.seller.nCustomers.replace('{n}', String(stats.customerCount))
         : null;
 
       return (
@@ -221,20 +226,20 @@ const PastSeasons: React.FC = () => {
                     </View>
                     <View style={styles.activeBadge}>
                       <PulsingDot styles={styles} />
-                      <Text style={styles.activeBadgeText}>active</Text>
+                      <Text style={styles.activeBadgeText}>{t.seller.active}</Text>
                     </View>
                   </View>
 
                   {/* Quick stats */}
                   <Text style={styles.seasonStatsInline}>
                     {ordersPart}{'  \u00B7  '}
-                    <Text style={{ color: stats.kept >= 0 ? BIZ.profit : BIZ.loss }}>{keptPart}</Text>
+                    <Text style={{ color: stats.kept >= 0 ? bizProfit : bizLoss }}>{keptPart}</Text>
                     {customersPart ? `  \u00B7  ${customersPart}` : ''}
                   </Text>
 
                   {/* View details link */}
                   <View style={styles.viewDetailsRow}>
-                    <Text style={styles.viewDetailsText}>view details</Text>
+                    <Text style={styles.viewDetailsText}>{t.seller.viewDetails}</Text>
                     <Feather name="arrow-right" size={14} color={C.bronze} />
                   </View>
                 </TouchableOpacity>
@@ -266,13 +271,13 @@ const PastSeasons: React.FC = () => {
                   {/* Compact stats */}
                   <Text style={styles.seasonStatsInline}>
                     {ordersPart}{'  \u00B7  '}
-                    <Text style={{ color: stats.kept >= 0 ? BIZ.profit : BIZ.loss }}>{keptPart}</Text>
+                    <Text style={{ color: stats.kept >= 0 ? bizProfit : bizLoss }}>{keptPart}</Text>
                     {customersPart ? `  \u00B7  ${customersPart}` : ''}
                   </Text>
 
                   {/* View details link */}
                   <View style={styles.viewDetailsRow}>
-                    <Text style={styles.viewDetailsText}>view details</Text>
+                    <Text style={styles.viewDetailsText}>{t.seller.viewDetails}</Text>
                     <Feather name="arrow-right" size={14} color={C.bronze} />
                   </View>
                 </TouchableOpacity>
@@ -288,10 +293,10 @@ const PastSeasons: React.FC = () => {
   // Page header above FlatList
   const ListHeaderComponent = useMemo(() => (
     <View style={styles.pageHeader}>
-      <Text style={styles.pageTitle}>seasons</Text>
-      <Text style={styles.pageSubtitle}>track your seasonal events like Raya, CNY, or bazaar</Text>
+      <Text style={styles.pageTitle}>{t.seller.seasonsHeading}</Text>
+      <Text style={styles.pageSubtitle}>{t.seller.seasonsSubtitle}</Text>
     </View>
-  ), []);
+  ), [t]);
 
   return (
     <View style={styles.container}>
@@ -307,9 +312,9 @@ const PastSeasons: React.FC = () => {
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Feather name="calendar" size={40} color={C.border} />
-            <Text style={styles.emptyTitle}>no seasons yet</Text>
+            <Text style={styles.emptyTitle}>{t.seller.noSeasonsYet}</Text>
             <Text style={styles.emptyHint}>
-              a season is like Raya, CNY, or any event where you take orders.
+              {t.seller.seasonsEmptyHint}
             </Text>
             <TouchableOpacity
               style={styles.emptyCTA}
@@ -319,7 +324,7 @@ const PastSeasons: React.FC = () => {
               accessibilityLabel="Start your first season"
             >
               <Feather name="plus" size={18} color="#fff" />
-              <Text style={styles.emptyCTAText}>start your first season</Text>
+              <Text style={styles.emptyCTAText}>{t.seller.startFirstSeason}</Text>
             </TouchableOpacity>
           </View>
         }
@@ -340,7 +345,7 @@ const PastSeasons: React.FC = () => {
             accessibilityLabel="Start new season"
           >
             <Feather name="plus" size={20} color="#fff" />
-            <Text style={styles.addButtonText}>start new season</Text>
+            <Text style={styles.addButtonText}>{t.seller.startNewSeason}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -349,18 +354,18 @@ const PastSeasons: React.FC = () => {
         <Modal visible transparent statusBarTranslucent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>new season</Text>
+              <Text style={styles.modalTitle}>{t.seller.newSeason}</Text>
               <TextInput
                 style={styles.modalInput}
                 value={newName}
                 onChangeText={setNewName}
-                placeholder="e.g. Raya 2025, CNY 2025"
+                placeholder={t.seller.newSeasonPlaceholder}
                 placeholderTextColor={C.textSecondary}
                 autoFocus
               />
               {pastSeasons.length > 0 && (
                 <View style={styles.templateSection}>
-                  <Text style={styles.templateLabel}>copy from previous season</Text>
+                  <Text style={styles.templateLabel}>{t.seller.copyFromPrev}</Text>
                   <View style={styles.templatePills}>
                     <TouchableOpacity
                       style={[styles.templatePill, templateSeasonId === null && styles.templatePillActive]}
@@ -368,7 +373,7 @@ const PastSeasons: React.FC = () => {
                       activeOpacity={0.7}
                     >
                       <Text style={[styles.templatePillText, templateSeasonId === null && styles.templatePillTextActive]}>
-                        none
+                        {t.seller.none}
                       </Text>
                     </TouchableOpacity>
                     {pastSeasons.slice(0, 3).map((s) => (
@@ -385,7 +390,7 @@ const PastSeasons: React.FC = () => {
                     ))}
                   </View>
                   {templateSeasonId && (
-                    <Text style={styles.templateHint}>copies costs, budget & product prices</Text>
+                    <Text style={styles.templateHint}>{t.seller.copyHint}</Text>
                   )}
                 </View>
               )}
@@ -397,7 +402,7 @@ const PastSeasons: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Cancel"
                 >
-                  <Text style={styles.modalCancelText}>cancel</Text>
+                  <Text style={styles.modalCancelText}>{t.seller.cancelLower}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleStartSeason}
@@ -406,7 +411,7 @@ const PastSeasons: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Start season"
                 >
-                  <Text style={styles.modalConfirmText}>start</Text>
+                  <Text style={styles.modalConfirmText}>{t.seller.start}</Text>
                 </TouchableOpacity>
               </View>
             </View>

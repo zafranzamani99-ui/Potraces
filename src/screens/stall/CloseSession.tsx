@@ -16,18 +16,19 @@ import { useCalm } from '../../hooks/useCalm';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { SessionCondition } from '../../types';
-
-const CONDITIONS: { value: SessionCondition; label: string; icon: string }[] = [
-  { value: 'good', label: 'good', icon: 'sun' },
-  { value: 'slow', label: 'slow', icon: 'moon' },
-  { value: 'rainy', label: 'rainy', icon: 'cloud-rain' },
-  { value: 'hot', label: 'hot', icon: 'thermometer' },
-  { value: 'normal', label: 'normal', icon: 'minus' },
-];
+import { useT } from '../../i18n';
 
 const CloseSession: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const CONDITIONS: { value: SessionCondition; label: string; icon: string }[] = [
+    { value: 'good', label: t.stall.conditionGood, icon: 'sun' },
+    { value: 'slow', label: t.stall.conditionSlow, icon: 'moon' },
+    { value: 'rainy', label: t.stall.conditionRainy, icon: 'cloud-rain' },
+    { value: 'hot', label: t.stall.conditionHot, icon: 'thermometer' },
+    { value: 'normal', label: t.stall.conditionNormal, icon: 'minus' },
+  ];
   const { getActiveSession, closeSession, getSessionSummary } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
@@ -65,14 +66,14 @@ const CloseSession: React.FC = () => {
     return (
       <View style={styles.container}>
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>no active session</Text>
+          <Text style={styles.emptyText}>{t.stall.noActiveSession}</Text>
           <TouchableOpacity
             style={styles.backLink}
             onPress={() => navigation.goBack()}
             accessibilityRole="button"
             accessibilityLabel="Go back"
           >
-            <Text style={styles.backLinkText}>go back</Text>
+            <Text style={styles.backLinkText}>{t.stall.goBack}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -103,11 +104,11 @@ const CloseSession: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.heading}>close session</Text>
+        <Text style={styles.heading}>{t.stall.closeSessionHeading}</Text>
 
         {/* Session summary */}
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>TOTAL REVENUE</Text>
+          <Text style={styles.summaryLabel}>{t.stall.totalRevenueLabel}</Text>
           <Text
             style={styles.summaryRevenue}
             accessibilityLabel={`Total revenue ${currency} ${summary.totalRevenue.toFixed(2)}`}
@@ -121,13 +122,13 @@ const CloseSession: React.FC = () => {
               <Text style={styles.summaryItemValue}>
                 {formatDuration(summary.duration)}
               </Text>
-              <Text style={styles.summaryItemLabel}>duration</Text>
+              <Text style={styles.summaryItemLabel}>{t.stall.durationLabel}</Text>
             </View>
             <View style={styles.summaryItem}>
               <Feather name="shopping-bag" size={16} color={C.textSecondary} style={{ marginBottom: 4 }} />
               <Text style={styles.summaryItemValue}>{summary.saleCount}</Text>
               <Text style={styles.summaryItemLabel}>
-                sale{summary.saleCount !== 1 ? 's' : ''}
+                {summary.saleCount !== 1 ? t.stall.salesLabel : t.stall.saleLabel}
               </Text>
             </View>
           </View>
@@ -137,13 +138,13 @@ const CloseSession: React.FC = () => {
             <View style={styles.breakdownItem}>
               <Feather name="dollar-sign" size={14} color={C.textSecondary} />
               <Text style={styles.breakdownText}>
-                cash {currency} {summary.totalCash.toFixed(0)}
+                {t.stall.cashPrefix} {currency} {summary.totalCash.toFixed(0)}
               </Text>
             </View>
             <View style={styles.breakdownItem}>
               <Feather name="smartphone" size={14} color={C.textSecondary} />
               <Text style={styles.breakdownText}>
-                qr {currency} {summary.totalQR.toFixed(0)}
+                {t.stall.qrPrefix} {currency} {summary.totalQR.toFixed(0)}
               </Text>
             </View>
           </View>
@@ -151,7 +152,7 @@ const CloseSession: React.FC = () => {
 
         {/* Condition picker */}
         <View style={styles.conditionSection}>
-          <Text style={styles.inputLabel}>HOW WAS IT?</Text>
+          <Text style={styles.inputLabel}>{t.stall.howWasIt}</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -197,12 +198,12 @@ const CloseSession: React.FC = () => {
 
         {/* Note input */}
         <View style={styles.noteSection}>
-          <Text style={styles.inputLabel}>NOTE</Text>
+          <Text style={styles.inputLabel}>{t.stall.noteLabel}</Text>
           <TextInput
             style={styles.noteInput}
             value={note}
             onChangeText={setNote}
-            placeholder="anything to remember about today?"
+            placeholder={t.stall.notePlaceholder}
             placeholderTextColor={C.neutral}
             multiline
             numberOfLines={3}
@@ -220,7 +221,7 @@ const CloseSession: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Close this selling session"
         >
-          <Text style={styles.closeButtonText}>close session</Text>
+          <Text style={styles.closeButtonText}>{t.stall.closeSessionButton}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

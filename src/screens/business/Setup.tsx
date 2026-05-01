@@ -6,21 +6,24 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useAppStore } from '../../store/appStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { IncomeType } from '../../types';
-
-const TILES: { type: IncomeType; label: string; sublabel: string }[] = [
-  { type: 'seller', label: 'Selling products', sublabel: 'online shop,\nmade-to-order, kuih raya' },
-  { type: 'stall', label: 'Stall / walk-in', sublabel: 'pasar malam,\nroadside, bazaar' },
-  { type: 'freelance', label: 'Freelance / gigs', sublabel: 'design, tutor,\ncontent, dev' },
-  { type: 'parttime', label: 'Part-time job', sublabel: 'side income\nalongside main job' },
-  { type: 'rider', label: 'Delivery rider', sublabel: 'Grab, Foodpanda,\nLalamove, others' },
-];
 
 const Setup: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const [selected, setSelected] = useState<IncomeType | null>(null);
+
+  const TILES: { type: IncomeType; label: string; sublabel: string }[] = [
+    { type: 'seller', label: t.business.setupSellerLabel, sublabel: t.business.setupSellerSub },
+    { type: 'stall', label: t.business.setupStallLabel, sublabel: t.business.setupStallSub },
+    { type: 'freelance', label: t.business.setupFreelanceLabel, sublabel: t.business.setupFreelanceSub },
+    { type: 'parttime', label: t.business.setupParttimeLabel, sublabel: t.business.setupParttimeSub },
+    { type: 'rider', label: t.business.setupRiderLabel, sublabel: t.business.setupRiderSub },
+  ];
   const insets = useSafeAreaInsets();
+  // Translations moved above to use `t`
 
   const handleConfirm = () => {
     if (!selected) return;
@@ -46,7 +49,7 @@ const Setup: React.FC = () => {
       </TouchableOpacity>
 
       <View style={styles.content}>
-        <Text style={styles.heading}>how does money come to you?</Text>
+        <Text style={styles.heading}>{t.business.setupHeading}</Text>
 
         <View style={styles.grid}>
           {TILES.map((tile) => (
@@ -67,8 +70,8 @@ const Setup: React.FC = () => {
           onPress={() => setSelected('mixed')}
           activeOpacity={0.7}
         >
-          <Text style={styles.tileLabel}>Mixed / all of the above</Text>
-          <Text style={styles.tileSublabel}>I do more than one</Text>
+          <Text style={styles.tileLabel}>{t.business.setupMixedLabel}</Text>
+          <Text style={styles.tileSublabel}>{t.business.setupMixedSub}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -78,7 +81,7 @@ const Setup: React.FC = () => {
           activeOpacity={0.7}
         >
           <Text style={[styles.confirmText, !selected && styles.confirmTextDisabled]}>
-            that's me
+            {t.business.setupConfirm}
           </Text>
         </TouchableOpacity>
       </View>

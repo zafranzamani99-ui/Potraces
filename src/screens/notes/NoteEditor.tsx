@@ -30,6 +30,7 @@ import { usePremiumStore } from '../../store/premiumStore';
 import { AIExtraction, ExtractionIntent } from '../../types';
 import { useLearningStore } from '../../store/learningStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useT } from '../../i18n';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import ConfirmationCard from './ConfirmationCard';
@@ -49,8 +50,20 @@ const AUTO_SAVE_DELAY = 600; // ms
 
 const NoteEditor: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
+  const editTypeLabel = useCallback((key: ExtractionIntent): string => {
+    switch (key) {
+      case 'expense': return t.notes.typeExpense;
+      case 'income': return t.notes.typeIncome;
+      case 'debt': return t.notes.typeDebt;
+      case 'debt_update': return t.notes.typePayment;
+      case 'seller_cost': return t.notes.typeCost;
+      case 'playbook': return t.notes.typePlaybook;
+      default: return String(key);
+    }
+  }, [t]);
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -343,10 +356,10 @@ const NoteEditor: React.FC = () => {
 
   const handleDelete = useCallback(() => {
     warningNotification();
-    Alert.alert('Delete note?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t.notes.deleteNoteSingular, t.notes.cannotUndo, [
+      { text: t.common.cancel, style: 'cancel' },
       {
-        text: 'Delete',
+        text: t.common.delete,
         style: 'destructive',
         onPress: () => {
           if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -360,7 +373,7 @@ const NoteEditor: React.FC = () => {
   if (!page) {
     return (
       <View style={styles.container}>
-        <Text style={styles.errorText}>note not found</Text>
+        <Text style={styles.errorText}>{t.notes.noteNotFound}</Text>
       </View>
     );
   }
@@ -444,13 +457,13 @@ const NoteEditor: React.FC = () => {
         {isRecording && (
           <View style={styles.recordingBar}>
             <View style={styles.recordingDot} />
-            <Text style={styles.recordingText}>recording... tap mic to stop</Text>
+            <Text style={styles.recordingText}>{t.notes.recordingHint}</Text>
           </View>
         )}
         {isTranscribing && (
           <View style={styles.recordingBar}>
             <ActivityIndicator size="small" color={C.bronze} />
-            <Text style={styles.recordingText}>transcribing...</Text>
+            <Text style={styles.recordingText}>{t.notes.transcribing}</Text>
           </View>
         )}
         {voiceError && (
@@ -463,7 +476,7 @@ const NoteEditor: React.FC = () => {
           ref={inputRef}
           style={styles.unifiedInput}
           onChangeText={handleTextChange}
-          placeholder="start writing..."
+          placeholder={t.notes.startWritingPlaceholder}
           placeholderTextColor={C.textMuted}
           multiline
           textAlignVertical="top"
@@ -484,7 +497,7 @@ const NoteEditor: React.FC = () => {
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Feather name="zap" size={13} color={C.bronze} />
-            <Text style={styles.extractBtnText}>extract</Text>
+            <Text style={styles.extractBtnText}>{t.notes.extractLower}</Text>
           </TouchableOpacity>
         )}
 
@@ -499,7 +512,7 @@ const NoteEditor: React.FC = () => {
                 <Feather name="check" size={10} color={C.positive} />
               )}
               <Text style={[styles.pipelineLabel, classifyStep !== 'scanning' && styles.pipelineDone]}>
-                scanning
+                {t.notes.scanning}
               </Text>
             </View>
             {/* Connector */}
@@ -514,17 +527,17 @@ const NoteEditor: React.FC = () => {
               ) : classifyStep === 'local' ? (
                 <>
                   <ActivityIndicator size={10} color={C.bronze} />
-                  <Text style={styles.pipelineLabel}>local parser</Text>
+                  <Text style={styles.pipelineLabel}>{t.notes.localParser}</Text>
                 </>
               ) : (classifyStep === 'scanning') ? (
                 <>
                   <Feather name="cpu" size={10} color={C.textMuted} />
-                  <Text style={[styles.pipelineLabel, { color: C.textMuted }]}>waiting</Text>
+                  <Text style={[styles.pipelineLabel, { color: C.textMuted }]}>{t.notes.waiting}</Text>
                 </>
               ) : (
                 <>
                   <Feather name="check" size={10} color={C.positive} />
-                  <Text style={styles.pipelineDone}>done</Text>
+                  <Text style={styles.pipelineDone}>{t.notes.stepDone}</Text>
                 </>
               )}
             </View>
@@ -559,7 +572,7 @@ const NoteEditor: React.FC = () => {
           >
             <Feather name="layers" size={13} color={C.bronze} />
             <Text style={styles.reopenText}>
-              {pendingExtractions.length} item{pendingExtractions.length > 1 ? 's' : ''} found
+              {pendingExtractions.length} {pendingExtractions.length > 1 ? t.notes.itemsFound : t.notes.itemFound}
             </Text>
           </TouchableOpacity>
         )}
@@ -602,10 +615,10 @@ const NoteEditor: React.FC = () => {
               <Feather name={extractionSource === 'ai' ? 'zap' : 'cpu'} size={25} color={C.bronze} />
               <View>
                 <Text style={styles.extractTitle}>
-                  {pendingExtractions.length} item{pendingExtractions.length > 1 ? 's' : ''} found
+                  {pendingExtractions.length} {pendingExtractions.length > 1 ? t.notes.itemsFound : t.notes.itemFound}
                 </Text>
                 <Text style={styles.extractHint}>
-                  {extractionSource === 'ai' ? 'via AI' : extractionSource === 'local' ? 'via local parser' : 'tap to edit'}
+                  {extractionSource === 'ai' ? t.notes.viaAi : extractionSource === 'local' ? t.notes.viaLocalParser : t.notes.tapToEdit}
                 </Text>
               </View>
             </View>
@@ -613,7 +626,7 @@ const NoteEditor: React.FC = () => {
             {/* Clear & re-extract */}
             <TouchableOpacity onPress={handleClearExtractions} style={styles.retryBanner} activeOpacity={0.7}>
               <Feather name="refresh-cw" size={12} color={C.bronze} />
-              <Text style={styles.retryText}>not right? clear and re-extract</Text>
+              <Text style={styles.retryText}>{t.notes.clearAndReExtract}</Text>
             </TouchableOpacity>
 
             {/* Extraction cards — always visible */}
@@ -665,19 +678,19 @@ const NoteEditor: React.FC = () => {
                 >
                   {/* Type selector */}
                   <View style={styles.editField}>
-                    <Text style={styles.editLabel}>type</Text>
+                    <Text style={styles.editLabel}>{t.notes.type}</Text>
                     <TouchableOpacity
                       style={styles.editTypeSelect}
                       onPress={() => { lightTap(); setShowTypePicker(true); }}
                       activeOpacity={0.7}
                     >
                       <Feather
-                        name={EDIT_TYPES.find((t) => t.key === editType)?.icon || 'circle'}
+                        name={EDIT_TYPES.find((et) => et.key === editType)?.icon || 'circle'}
                         size={14}
                         color={C.bronze}
                       />
                       <Text style={styles.editTypeSelectText}>
-                        {EDIT_TYPES.find((t) => t.key === editType)?.label || editType}
+                        {editTypeLabel(editType)}
                       </Text>
                       <Feather name="chevron-down" size={14} color={C.textMuted} />
                     </TouchableOpacity>
@@ -701,7 +714,7 @@ const NoteEditor: React.FC = () => {
                     style={styles.editDescInput}
                     value={editDescription}
                     onChangeText={setEditDescription}
-                    placeholder="description"
+                    placeholder={t.notes.description}
                     placeholderTextColor={C.textMuted}
                   />
 
@@ -711,7 +724,7 @@ const NoteEditor: React.FC = () => {
                       categories={editCategories}
                       selectedId={editCategoryId}
                       onSelect={setEditCategoryId}
-                      label="category"
+                      label={t.notes.category}
                       layout="dropdown"
                       onNavigateToSettings={handleEditNavToSettings}
                     />
@@ -723,7 +736,7 @@ const NoteEditor: React.FC = () => {
                       wallets={wallets}
                       selectedId={editWalletId}
                       onSelect={setEditWalletId}
-                      label="wallet"
+                      label={t.notes.wallet}
                     />
                   )}
 
@@ -731,12 +744,12 @@ const NoteEditor: React.FC = () => {
                   {showEditPerson && (
                     <>
                       <View style={styles.editField}>
-                        <Text style={styles.editLabel}>person</Text>
+                        <Text style={styles.editLabel}>{t.notes.person}</Text>
                         <TextInput
                           style={styles.editDescInput}
                           value={editPerson}
                           onChangeText={setEditPerson}
-                          placeholder="name"
+                          placeholder={t.notes.personName}
                           placeholderTextColor={C.textMuted}
                         />
                       </View>
@@ -748,7 +761,7 @@ const NoteEditor: React.FC = () => {
                             activeOpacity={0.7}
                           >
                             <Text style={[styles.editDebtText, editDebtType === 'they_owe' && styles.editDebtTextTheyOwe]}>
-                              they owe me
+                              {t.notes.theyOweMe}
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
@@ -757,7 +770,7 @@ const NoteEditor: React.FC = () => {
                             activeOpacity={0.7}
                           >
                             <Text style={[styles.editDebtText, editDebtType === 'i_owe' && styles.editDebtTextIOwe]}>
-                              I owe them
+                              {t.notes.iOweThem}
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -773,7 +786,7 @@ const NoteEditor: React.FC = () => {
                     activeOpacity={0.7}
                   >
                     <Feather name="check" size={15} color="#fff" />
-                    <Text style={styles.editConfirmText}>confirm</Text>
+                    <Text style={styles.editConfirmText}>{t.notes.confirm}</Text>
                   </TouchableOpacity>
                 </ScrollView>
                 </View>
@@ -796,24 +809,24 @@ const NoteEditor: React.FC = () => {
           onPress={() => setShowTypePicker(false)}
         >
           <View style={styles.typePickerCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.typePickerTitle}>select type</Text>
-            {EDIT_TYPES.map((t) => {
-              const active = editType === t.key;
+            <Text style={styles.typePickerTitle}>{t.notes.selectType}</Text>
+            {EDIT_TYPES.map((et) => {
+              const active = editType === et.key;
               return (
                 <TouchableOpacity
-                  key={t.key}
+                  key={et.key}
                   style={[styles.typePickerOption, active && styles.typePickerOptionActive]}
                   onPress={() => {
-                    setEditType(t.key);
+                    setEditType(et.key);
                     setShowTypePicker(false);
                   }}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.typePickerIcon, active && styles.typePickerIconActive]}>
-                    <Feather name={t.icon} size={18} color={active ? C.bronze : C.textMuted} />
+                    <Feather name={et.icon} size={18} color={active ? C.bronze : C.textMuted} />
                   </View>
                   <Text style={[styles.typePickerText, active && styles.typePickerTextActive]}>
-                    {t.label}
+                    {editTypeLabel(et.key)}
                   </Text>
                   {active && <Feather name="check" size={18} color={C.bronze} />}
                 </TouchableOpacity>

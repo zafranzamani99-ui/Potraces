@@ -26,8 +26,8 @@ import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { SellerOrder, SellerOrderItem, OrderStatus, SellerPaymentMethod, SellerProduct, DepositEntry } from '../../types';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -186,6 +186,7 @@ const OrderLifecycleBar: React.FC<{
   styles: ReturnType<typeof makeStyles>;
 }> = React.memo(({ currentStatus, onChangeStatus, styles }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const currentIndex = LIFECYCLE_STEPS.indexOf(currentStatus);
   const currentColor = statusColor(currentStatus);
 
@@ -282,6 +283,7 @@ const AnimatedOrderCard: React.FC<{
   styles: ReturnType<typeof makeStyles>;
 }> = React.memo(({ item, index, currency, selectMode, isSelected, isExpanded, isUnseen, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid, styles }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const alreadySeen = _animatedOrderIds.has(item.id);
   const fadeAnim = useRef(new Animated.Value(alreadySeen ? 1 : 0)).current;
 
@@ -341,7 +343,7 @@ const AnimatedOrderCard: React.FC<{
                 <View style={styles.orderMetaLeft}>
                   {deliveryInfo && (
                     <>
-                      <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : C.textMuted} />
+                      <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? semantic(BIZ_SAFE.overdue, isDark) : deliveryInfo.isTodayDelivery ? semantic(BIZ_SAFE.warning, isDark) : C.textMuted} />
                       <Text style={[styles.orderMetaDelivery, deliveryInfo.isOverdue && styles.deliveryOverdue, deliveryInfo.isTodayDelivery && styles.deliveryToday]}>{deliveryInfo.label}</Text>
                       <Text style={styles.orderMetaDot}>·</Text>
                     </>
@@ -365,7 +367,7 @@ const AnimatedOrderCard: React.FC<{
               <View style={styles.orderMetaLeft}>
                 {deliveryInfo && (
                   <>
-                    <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : C.textMuted} />
+                    <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? semantic(BIZ_SAFE.overdue, isDark) : deliveryInfo.isTodayDelivery ? semantic(BIZ_SAFE.warning, isDark) : C.textMuted} />
                     <Text style={[styles.orderMetaDelivery, deliveryInfo.isOverdue && styles.deliveryOverdue, deliveryInfo.isTodayDelivery && styles.deliveryToday]}>{deliveryInfo.label}</Text>
                     <Text style={styles.orderMetaDot}>·</Text>
                   </>
@@ -375,12 +377,12 @@ const AnimatedOrderCard: React.FC<{
               </View>
               <View style={styles.orderTags}>
                 <Text style={[styles.orderTag, { color }]}>{item.status}</Text>
-                <View style={[styles.paymentBadge, { backgroundColor: item.isPaid ? withAlpha(BIZ.success, 0.1) : withAlpha(C.bronze, 0.1) }]}>
-                  <Text style={[styles.paymentBadgeText, { color: item.isPaid ? BIZ.success : C.bronze }]}>{item.isPaid ? 'paid' : 'unpaid'}</Text>
+                <View style={[styles.paymentBadge, { backgroundColor: item.isPaid ? withAlpha(semantic(BIZ_SAFE.success, isDark), 0.1) : withAlpha(C.bronze, 0.1) }]}>
+                  <Text style={[styles.paymentBadgeText, { color: item.isPaid ? semantic(BIZ_SAFE.success, isDark) : C.bronze }]}>{item.isPaid ? 'paid' : 'unpaid'}</Text>
                 </View>
                 {item.source === 'order_link' && (
                   <View style={styles.onlineBadge}>
-                    <Feather name="globe" size={9} color={BIZ.success} />
+                    <Feather name="globe" size={9} color={semantic(BIZ_SAFE.success, isDark)} />
                     <Text style={styles.onlineBadgeText}>online</Text>
                   </View>
                 )}
@@ -407,11 +409,11 @@ const AnimatedOrderCard: React.FC<{
                   ) : !item.isPaid ? (
                     <TouchableOpacity
                       activeOpacity={0.8}
-                      style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(BIZ.success, 0.1) }]}
+                      style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.1) }]}
                       onPress={() => { mediumTap(); onMarkPaid(item); }}
                     >
-                      <Feather name="dollar-sign" size={13} color={BIZ.success} />
-                      <Text style={[styles.expandedAdvanceBtnText, { color: BIZ.success }]}>mark paid</Text>
+                      <Feather name="dollar-sign" size={13} color={semantic(BIZ_SAFE.success, isDark)} />
+                      <Text style={[styles.expandedAdvanceBtnText, { color: semantic(BIZ_SAFE.success, isDark) }]}>mark paid</Text>
                     </TouchableOpacity>
                   ) : <View style={{ flex: 0.85 }} />}
                   <TouchableOpacity
@@ -450,6 +452,7 @@ const GroupedCustomerCard: React.FC<{
   styles: ReturnType<typeof makeStyles>;
 }> = React.memo(({ group, index, currency, selectMode, selectedIds, expandedId, seenSet, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid, styles }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const alreadySeen = _animatedOrderIds.has(`group_${group.customerKey}`);
   const fadeAnim = useRef(new Animated.Value(alreadySeen ? 1 : 0)).current;
 
@@ -541,7 +544,7 @@ const GroupedCustomerCard: React.FC<{
                   <View style={styles.orderMetaLeft}>
                     {deliveryInfo && (
                       <>
-                        <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? BIZ.overdue : deliveryInfo.isTodayDelivery ? BIZ.warning : C.textMuted} />
+                        <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? semantic(BIZ_SAFE.overdue, isDark) : deliveryInfo.isTodayDelivery ? semantic(BIZ_SAFE.warning, isDark) : C.textMuted} />
                         <Text style={[styles.orderMetaDelivery, deliveryInfo.isOverdue && styles.deliveryOverdue, deliveryInfo.isTodayDelivery && styles.deliveryToday]}>
                           {deliveryInfo.label}
                         </Text>
@@ -555,8 +558,8 @@ const GroupedCustomerCard: React.FC<{
                   </View>
                   <View style={styles.orderTags}>
                     <Text style={[styles.orderTag, { color }]}>{order.status}</Text>
-                    <View style={[styles.paymentBadge, { backgroundColor: order.isPaid ? withAlpha(BIZ.success, 0.1) : withAlpha(C.bronze, 0.1) }]}>
-                      <Text style={[styles.paymentBadgeText, { color: order.isPaid ? BIZ.success : C.bronze }]}>
+                    <View style={[styles.paymentBadge, { backgroundColor: order.isPaid ? withAlpha(semantic(BIZ_SAFE.success, isDark), 0.1) : withAlpha(C.bronze, 0.1) }]}>
+                      <Text style={[styles.paymentBadgeText, { color: order.isPaid ? semantic(BIZ_SAFE.success, isDark) : C.bronze }]}>
                         {order.isPaid ? 'paid' : 'unpaid'}
                       </Text>
                     </View>
@@ -589,11 +592,11 @@ const GroupedCustomerCard: React.FC<{
                       ) : !order.isPaid ? (
                         <TouchableOpacity
                           activeOpacity={0.8}
-                          style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(BIZ.success, 0.1) }]}
+                          style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.1) }]}
                           onPress={() => { mediumTap(); onMarkPaid(order); }}
                         >
-                          <Feather name="dollar-sign" size={13} color={BIZ.success} />
-                          <Text style={[styles.expandedAdvanceBtnText, { color: BIZ.success }]}>mark paid</Text>
+                          <Feather name="dollar-sign" size={13} color={semantic(BIZ_SAFE.success, isDark)} />
+                          <Text style={[styles.expandedAdvanceBtnText, { color: semantic(BIZ_SAFE.success, isDark) }]}>mark paid</Text>
                         </TouchableOpacity>
                       ) : <View style={{ flex: 0.85 }} />}
                       <TouchableOpacity
@@ -628,6 +631,7 @@ const GroupedCustomerCard: React.FC<{
 // ─── MAIN COMPONENT ─────────────────────────────────────────
 const OrderList: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const orders = useSellerStore((s) => s.orders);
@@ -1736,11 +1740,11 @@ const OrderList: React.FC = () => {
             activeOpacity={0.7}
             onPress={() => { selectionChanged(); setOnlineOnly(true); setDeliveryFilter('all'); setPaymentFilter('all'); setOverdueOnly(false); }}
           >
-            <Feather name="globe" size={12} color={BIZ.success} style={{ marginRight: 4 }} />
+            <Feather name="globe" size={12} color={semantic(BIZ_SAFE.success, isDark)} style={{ marginRight: 4 }} />
             <Text style={[styles.quickChipText, activeChip === 'online' && styles.quickChipTextActive]}>online</Text>
             {unseenOnlineCount > 0 && (
-              <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(BIZ.warning, 0.2) }]}>
-                <Text style={[styles.chipCountText, { color: BIZ.warning }]}>{unseenOnlineCount}</Text>
+              <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(semantic(BIZ_SAFE.warning, isDark), 0.2) }]}>
+                <Text style={[styles.chipCountText, { color: semantic(BIZ_SAFE.warning, isDark) }]}>{unseenOnlineCount}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -1766,11 +1770,11 @@ const OrderList: React.FC = () => {
             activeOpacity={0.7}
             onPress={() => { selectionChanged(); setOverdueOnly(true); setDeliveryFilter('all'); setPaymentFilter('all'); setOnlineOnly(false); }}
           >
-            <Feather name="alert-circle" size={12} color={BIZ.warning} style={{ marginRight: 4 }} />
+            <Feather name="alert-circle" size={12} color={semantic(BIZ_SAFE.warning, isDark)} style={{ marginRight: 4 }} />
             <Text style={[styles.quickChipText, activeChip === 'overdue' && styles.quickChipTextActive]}>overdue</Text>
             {(overdueCount || 0) > 0 && (
-              <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(BIZ.warning, 0.15) }]}>
-                <Text style={[styles.chipCountText, { color: BIZ.warning }]}>{overdueCount}</Text>
+              <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(semantic(BIZ_SAFE.warning, isDark), 0.15) }]}>
+                <Text style={[styles.chipCountText, { color: semantic(BIZ_SAFE.warning, isDark) }]}>{overdueCount}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -1840,7 +1844,7 @@ const OrderList: React.FC = () => {
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={[styles.bulkIconButton, { backgroundColor: BIZ.success }, selectedIds.size === 0 && styles.bulkPayButtonDisabled]}
+            style={[styles.bulkIconButton, { backgroundColor: semantic(BIZ_SAFE.success, isDark) }, selectedIds.size === 0 && styles.bulkPayButtonDisabled]}
             activeOpacity={0.7}
             onPress={handleBulkMarkPaid}
             disabled={selectedIds.size === 0}
@@ -1850,7 +1854,7 @@ const OrderList: React.FC = () => {
             <Feather name="dollar-sign" size={18} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.bulkIconButton, { backgroundColor: BIZ.warning }, selectedIds.size === 0 && styles.bulkPayButtonDisabled]}
+            style={[styles.bulkIconButton, { backgroundColor: semantic(BIZ_SAFE.warning, isDark) }, selectedIds.size === 0 && styles.bulkPayButtonDisabled]}
             activeOpacity={0.7}
             onPress={handleBulkMarkUnseen}
             disabled={selectedIds.size === 0}
@@ -1860,7 +1864,7 @@ const OrderList: React.FC = () => {
             <Feather name="eye-off" size={18} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.bulkIconButton, { backgroundColor: BIZ.error }, selectedIds.size === 0 && styles.bulkPayButtonDisabled]}
+            style={[styles.bulkIconButton, { backgroundColor: semantic(BIZ_SAFE.error, isDark) }, selectedIds.size === 0 && styles.bulkPayButtonDisabled]}
             activeOpacity={0.7}
             onPress={handleBulkDelete}
             disabled={selectedIds.size === 0}
@@ -2002,7 +2006,7 @@ const OrderList: React.FC = () => {
                   activeOpacity={0.7}
                   onPress={() => { selectionChanged(); setOverdueOnly(!overdueOnly); }}
                 >
-                  <Feather name="alert-circle" size={13} color={overdueOnly ? BIZ.overdue : C.textMuted} />
+                  <Feather name="alert-circle" size={13} color={overdueOnly ? semantic(BIZ_SAFE.overdue, isDark) : C.textMuted} />
                   <Text style={[styles.filterPillText, overdueOnly && styles.filterPillOverdueText]}>
                     overdue only
                   </Text>
@@ -2100,7 +2104,7 @@ const OrderList: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel={`Pay by ${m.label}`}
                   >
-                    <Feather name={m.icon} size={14} color={active ? BIZ.success : C.textSecondary} />
+                    <Feather name={m.icon} size={14} color={active ? semantic(BIZ_SAFE.success, isDark) : C.textSecondary} />
                     <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
                   </TouchableOpacity>
                 );
@@ -2399,9 +2403,9 @@ const OrderList: React.FC = () => {
                               size={14}
                               color={
                                 info.isOverdue
-                                  ? BIZ.overdue
+                                  ? semantic(BIZ_SAFE.overdue, isDark)
                                   : info.isTodayDelivery
-                                    ? BIZ.warning
+                                    ? semantic(BIZ_SAFE.warning, isDark)
                                     : C.textMuted
                               }
                             />
@@ -2468,7 +2472,7 @@ const OrderList: React.FC = () => {
                             const d2 = d.date instanceof Date ? d.date : new Date(d.date);
                             return (
                               <View key={i} style={[styles.payHistoryRow, { flexWrap: 'wrap' }, i < selectedOrder.deposits!.length - 1 && styles.modalItemRowBorder]}>
-                                <Feather name={paymentMethodIcon(d.method)} size={13} color={BIZ.success} />
+                                <Feather name={paymentMethodIcon(d.method)} size={13} color={semantic(BIZ_SAFE.success, isDark)} />
                                 <Text style={styles.payHistoryMethod}>{paymentMethodLabel(d.method)}</Text>
                                 <Text style={styles.payHistoryDate}>{format(d2, 'd MMM, h:mm a')}</Text>
                                 <Text style={styles.payHistoryAmount}>{currency} {d.amount.toFixed(2)}</Text>
@@ -2492,7 +2496,7 @@ const OrderList: React.FC = () => {
                           })
                         : (
                           <View style={styles.payHistoryRow}>
-                            <Feather name={paymentMethodIcon(selectedOrder.paymentMethod)} size={13} color={BIZ.success} />
+                            <Feather name={paymentMethodIcon(selectedOrder.paymentMethod)} size={13} color={semantic(BIZ_SAFE.success, isDark)} />
                             <Text style={styles.payHistoryMethod}>{paymentMethodLabel(selectedOrder.paymentMethod)}</Text>
                             {selectedOrder.paidAt && (
                               <Text style={styles.payHistoryDate}>{format(selectedOrder.paidAt instanceof Date ? selectedOrder.paidAt : new Date(selectedOrder.paidAt), 'd MMM, h:mm a')}</Text>
@@ -2851,7 +2855,7 @@ const OrderList: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel={`Deposit via ${m.label}`}
                   >
-                    <Feather name={m.icon} size={14} color={active ? BIZ.success : C.textSecondary} />
+                    <Feather name={m.icon} size={14} color={active ? semantic(BIZ_SAFE.success, isDark) : C.textSecondary} />
                     <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
                   </TouchableOpacity>
                 );
@@ -2973,9 +2977,9 @@ const OrderList: React.FC = () => {
               return (
                 <View key={i} style={[{ paddingVertical: SPACING.sm }, i < selectedOrder.deposits!.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-                    <Feather name={paymentMethodIcon(d.method)} size={14} color={BIZ.success} />
+                    <Feather name={paymentMethodIcon(d.method)} size={14} color={semantic(BIZ_SAFE.success, isDark)} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: BIZ.success }}>{paymentMethodLabel(d.method)}</Text>
+                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: semantic(BIZ_SAFE.success, isDark) }}>{paymentMethodLabel(d.method)}</Text>
                       <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 1 }}>{format(d2, 'd MMM yyyy, h:mm a')}</Text>
                       {d.note ? (() => {
                         const tipMatch = d.note.match(/(tip\s+\S+\s+[\d,.]+)/i);
@@ -3049,7 +3053,7 @@ const OrderList: React.FC = () => {
                               style={[styles.paymentPill, active && styles.paymentPillActive]}
                               onPress={() => { lightTap(); setEditPayMethod(m.value as SellerPaymentMethod); }}
                             >
-                              <Feather name={m.icon} size={13} color={active ? BIZ.success : C.textSecondary} />
+                              <Feather name={m.icon} size={13} color={active ? semantic(BIZ_SAFE.success, isDark) : C.textSecondary} />
                               <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
                             </TouchableOpacity>
                           );

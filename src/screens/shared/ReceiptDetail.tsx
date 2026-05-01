@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   FlatList,
   Dimensions,
 } from 'react-native';
+import ViewShot from 'react-native-view-shot';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -19,7 +20,10 @@ import { useReceiptStore } from '../../store/receiptStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
+import { exportSingleReceiptPdf } from '../../services/pdfExport';
+import { shareCapturedReceipt } from '../../services/receiptImageExport';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useToast } from '../../context/ToastContext';
 import type { RootStackParamList } from '../../types';
 
@@ -29,6 +33,7 @@ type DetailRoute = RouteProp<RootStackParamList, 'ReceiptDetail'>;
 
 const ReceiptDetail: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -50,17 +55,19 @@ const ReceiptDetail: React.FC = () => {
   const [imageError, setImageError] = useState(false);
   const [taxPickerVisible, setTaxPickerVisible] = useState(false);
   const [paymentPickerVisible, setPaymentPickerVisible] = useState(false);
+  const [sharingImage, setSharingImage] = useState(false);
+  const captureRef = useRef<ViewShot>(null);
 
   if (!receipt) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <Feather name="alert-circle" size={48} color={C.textMuted} />
-        <Text style={styles.emptyTitle}>receipt not found</Text>
+        <Text style={styles.emptyTitle}>{t.receiptDetail.notFound}</Text>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={{ marginTop: SPACING.lg, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl, backgroundColor: C.pillBg, borderRadius: RADIUS.full }}
         >
-          <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textPrimary }}>go back</Text>
+          <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.textPrimary }}>{t.receiptDetail.goBack}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -69,18 +76,40 @@ const ReceiptDetail: React.FC = () => {
   const taxCat = MYTAX_CATEGORIES.find((c) => c.id === receipt.myTaxCategory);
   const paymentMethod = paymentMethods.find((p) => p.id === receipt.paymentMethod);
 
+  const handleShare = async () => {
+    try {
+      const categoryNames = Object.fromEntries(MYTAX_CATEGORIES.map((c) => [c.id, c.name]));
+      await exportSingleReceiptPdf({ receipt, currency, categoryNames });
+    } catch (err: any) {
+      Alert.alert(t.receiptDetail.shareFailed, err?.message || t.receiptDetail.shareFailedMsg);
+    }
+  };
+
+  const handleShareAsImage = async () => {
+    if (sharingImage) return;
+    setSharingImage(true);
+    try {
+      await new Promise((r) => setTimeout(r, 50));
+      await shareCapturedReceipt(captureRef, receipt.title || 'receipt');
+    } catch (err: any) {
+      Alert.alert(t.receiptDetail.shareFailed, err?.message || t.receiptDetail.shareFailedMsg);
+    } finally {
+      setSharingImage(false);
+    }
+  };
+
   const handleDelete = () => {
     Alert.alert(
-      'remove receipt?',
-      'the linked expense will remain.',
+      t.receiptDetail.removeReceiptTitle,
+      t.receiptDetail.removeReceiptMsg,
       [
-        { text: 'cancel', style: 'cancel' },
+        { text: t.receiptDetail.cancel, style: 'cancel' },
         {
-          text: 'remove',
+          text: t.receiptDetail.remove,
           style: 'destructive',
           onPress: () => {
             deleteReceipt(receipt.id);
-            showToast('receipt removed', 'success');
+            showToast(t.receiptDetail.receiptRemoved, 'success');
             navigation.goBack();
           },
         },
@@ -95,6 +124,11 @@ const ReceiptDetail: React.FC = () => {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
+        <ViewShot
+          ref={captureRef}
+          options={{ format: 'png', quality: 1 }}
+          style={{ backgroundColor: C.background }}
+        >
         {/* ── Hero image ── */}
         {receipt.imageUri && !imageError && (
           <TouchableOpacity
@@ -129,14 +163,14 @@ const ReceiptDetail: React.FC = () => {
 
           {/* Detail rows — tax relief & payment are tappable to edit */}
           <View style={styles.detailGrid}>
-            <DetailRow icon="tag" label="category" value={receipt.category} C={C} />
+            <DetailRow icon="tag" label={t.receiptDetail.category} value={receipt.category} C={C} />
             <TouchableOpacity onPress={() => setTaxPickerVisible(true)} activeOpacity={0.6}>
               <DetailRow
                 icon={(taxCat?.icon || 'file') as keyof typeof Feather.glyphMap}
-                label="tax relief"
+                label={t.receiptDetail.taxRelief}
                 value={taxCat && taxCat.id !== 'none'
-                  ? `${taxCat.name}${taxCat.limit ? ` · limit RM ${taxCat.limit.toLocaleString()}` : ''}`
-                  : 'none'}
+                  ? `${taxCat.name}${taxCat.limit ? ` · ${t.receiptDetail.limitPrefix} ${taxCat.limit.toLocaleString()}` : ''}`
+                  : t.receiptDetail.none}
                 C={C}
                 accent={taxCat?.id !== 'none'}
                 editable
@@ -145,14 +179,14 @@ const ReceiptDetail: React.FC = () => {
             <TouchableOpacity onPress={() => setPaymentPickerVisible(true)} activeOpacity={0.6}>
               <DetailRow
                 icon={(paymentMethod?.icon || 'credit-card') as keyof typeof Feather.glyphMap}
-                label="payment"
-                value={paymentMethod?.name || 'not set'}
+                label={t.receiptDetail.payment}
+                value={paymentMethod?.name || t.receiptDetail.notSet}
                 C={C}
                 editable
               />
             </TouchableOpacity>
             {receipt.location && (
-              <DetailRow icon="map-pin" label="location" value={receipt.location} C={C} />
+              <DetailRow icon="map-pin" label={t.receiptDetail.location} value={receipt.location} C={C} />
             )}
           </View>
         </View>
@@ -161,7 +195,7 @@ const ReceiptDetail: React.FC = () => {
         {receipt.items.length > 0 && (
           <View style={styles.groupCard}>
             <View style={styles.itemsHeader}>
-              <Text style={styles.itemsHeaderText}>items</Text>
+              <Text style={styles.itemsHeaderText}>{t.receiptDetail.items}</Text>
               <Text style={styles.itemsCount}>{receipt.items.length}</Text>
             </View>
             {receipt.items.map((item, i) => (
@@ -180,13 +214,13 @@ const ReceiptDetail: React.FC = () => {
                 <View style={styles.summaryDivider} />
                 {receipt.subtotal !== undefined && (
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>subtotal</Text>
+                    <Text style={styles.summaryLabel}>{t.receiptDetail.subtotal}</Text>
                     <Text style={styles.summaryValue}>{currency} {receipt.subtotal.toFixed(2)}</Text>
                   </View>
                 )}
                 {receipt.tax !== undefined && (
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>tax</Text>
+                    <Text style={styles.summaryLabel}>{t.receiptDetail.tax}</Text>
                     <Text style={styles.summaryValue}>{currency} {receipt.tax.toFixed(2)}</Text>
                   </View>
                 )}
@@ -194,16 +228,29 @@ const ReceiptDetail: React.FC = () => {
             )}
             <View style={styles.summaryDivider} />
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>total</Text>
+              <Text style={styles.totalLabel}>{t.receiptDetail.total}</Text>
               <Text style={styles.totalValue}>{currency} {receipt.total.toFixed(2)}</Text>
             </View>
           </View>
         )}
+        </ViewShot>
+
+        {/* ── Share as image ── */}
+        <TouchableOpacity style={styles.deleteButton} onPress={handleShareAsImage} activeOpacity={0.7} disabled={sharingImage}>
+          <Feather name="image" size={16} color={C.accent} />
+          <Text style={[styles.deleteText, { color: C.accent }]}>{sharingImage ? t.receiptDetail.sharing : t.receiptDetail.shareAsImage}</Text>
+        </TouchableOpacity>
+
+        {/* ── Share as PDF ── */}
+        <TouchableOpacity style={styles.deleteButton} onPress={handleShare} activeOpacity={0.7}>
+          <Feather name="share-2" size={16} color={C.accent} />
+          <Text style={[styles.deleteText, { color: C.accent }]}>{t.receiptDetail.shareAsPdf}</Text>
+        </TouchableOpacity>
 
         {/* ── Delete button ── */}
         <TouchableOpacity style={styles.deleteButton} onPress={handleDelete} activeOpacity={0.7}>
           <Feather name="trash-2" size={16} color={C.bronze} />
-          <Text style={styles.deleteText}>remove this receipt</Text>
+          <Text style={styles.deleteText}>{t.receiptDetail.removeThisReceipt}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -232,7 +279,7 @@ const ReceiptDetail: React.FC = () => {
           onPress={() => setTaxPickerVisible(false)}
         >
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>tax relief category</Text>
+            <Text style={styles.modalTitle}>{t.receiptDetail.taxReliefCategoryTitle}</Text>
             <FlatList
               data={MYTAX_CATEGORIES}
               keyExtractor={(item) => item.id}
@@ -250,7 +297,7 @@ const ReceiptDetail: React.FC = () => {
                     onPress={() => {
                       updateReceipt(receipt.id, { myTaxCategory: cat.id });
                       setTaxPickerVisible(false);
-                      showToast('tax relief updated', 'success');
+                      showToast(t.receiptDetail.taxReliefUpdated, 'success');
                     }}
                     activeOpacity={0.7}
                   >
@@ -260,7 +307,7 @@ const ReceiptDetail: React.FC = () => {
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.modalRowName, isSelected && { color: C.accent }]}>{cat.name}</Text>
                       {cat.limit !== null && (
-                        <Text style={styles.modalRowLimit}>limit RM {cat.limit.toLocaleString()}</Text>
+                        <Text style={styles.modalRowLimit}>{t.receiptDetail.limitPrefix} {cat.limit.toLocaleString()}</Text>
                       )}
                     </View>
                     {isSelected && <Feather name="check" size={16} color={C.accent} />}
@@ -280,7 +327,7 @@ const ReceiptDetail: React.FC = () => {
           onPress={() => setPaymentPickerVisible(false)}
         >
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>payment method</Text>
+            <Text style={styles.modalTitle}>{t.receiptDetail.paymentMethodTitle}</Text>
             <FlatList
               data={paymentMethods}
               keyExtractor={(item) => item.id}
@@ -297,7 +344,7 @@ const ReceiptDetail: React.FC = () => {
                     onPress={() => {
                       updateReceipt(receipt.id, { paymentMethod: pm.id });
                       setPaymentPickerVisible(false);
-                      showToast('payment method updated', 'success');
+                      showToast(t.receiptDetail.paymentMethodUpdated, 'success');
                     }}
                     activeOpacity={0.7}
                   >

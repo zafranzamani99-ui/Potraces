@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform } from 'react-native';
+import { requestTrackingPermissionsAsync, getTrackingPermissionsAsync } from 'expo-tracking-transparency';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -19,10 +20,23 @@ import { useAppStore } from './src/store/appStore';
 import { useSettingsStore } from './src/store/settingsStore';
 import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
+import BiometricGate from './src/components/common/BiometricGate';
+import PersonalSyncManager from './src/components/common/PersonalSyncManager';
+import { checkStorageIntegrity, clearCorruptedStores } from './src/services/storageIntegrity';
+import { usePersonalStore } from './src/store/personalStore';
+import { ensurePermissionAndScheduleAll, scheduleBehavior as scheduleSubBehavior } from './src/services/subscriptionNotifications';
+import { maybeRunSpendingAlertCheck } from './src/services/spendingAlerts';
+import { recordFirstRun, maybeRequestReview } from './src/services/reviewPrompt';
+import { syncPersonal } from './src/services/personalSync';
+import { runReceiptDrain } from './src/services/receiptQueueDrainer';
+import { withBackoff } from './src/services/syncBackoff';
+import NetInfo from '@react-native-community/netinfo';
+import { prefetchWalletLogos } from './src/utils/prefetchAssets';
 
 // Debounced auto-sync — pushes to Supabase ~1.5s after any data mutation
 let _autoSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let _unsubAutoSync: (() => void) | null = null;
+let _unsubSubSched: (() => void) | null = null;
 let _lastForegroundSync = 0;
 
 export default function App() {
@@ -42,6 +56,23 @@ export default function App() {
       });
 
     const init = async () => {
+      // Kick off logo pre-decode in parallel — does not block startup
+      prefetchWalletLogos();
+
+      // Check AsyncStorage integrity BEFORE hydration so a corrupted blob
+      // can be handled gracefully instead of silently wiping data.
+      try {
+        const report = await checkStorageIntegrity();
+        if (report.corrupted.length > 0) {
+          if (__DEV__) console.warn('[Storage] corrupted blobs detected:', report.corrupted);
+          // Non-blocking for now: clear the bad keys so stores can hydrate clean.
+          // TODO: surface a UI prompt that offers cloud restore once personal sync ships.
+          await clearCorruptedStores(report.corrupted);
+        }
+      } catch {
+        // best-effort
+      }
+
       // Wait for store hydration
       await Promise.all([
         waitForStore(useSellerStore),
@@ -67,6 +98,59 @@ export default function App() {
       }
 
       if (!cancelled) setIsLoading(false);
+
+      // Record first-run timestamp for the review-prompt gate.
+      recordFirstRun().catch(() => {});
+
+      // Schedule local bill reminders for active subscriptions.
+      try {
+        scheduleSubBehavior();
+        const subs = usePersonalStore.getState().subscriptions.filter((s) => s.isActive);
+        if (subs.length > 0) {
+          await ensurePermissionAndScheduleAll(subs);
+        }
+      } catch {
+        // best-effort
+      }
+
+      // Debounced re-schedule on subscription list changes (add/update/delete).
+      let subReschedTimer: ReturnType<typeof setTimeout> | null = null;
+      _unsubSubSched?.();
+      _unsubSubSched = usePersonalStore.subscribe((state, prev) => {
+        if (state.subscriptions === prev.subscriptions) return;
+        if (subReschedTimer) clearTimeout(subReschedTimer);
+        subReschedTimer = setTimeout(() => {
+          const active = usePersonalStore.getState().subscriptions.filter((s) => s.isActive);
+          ensurePermissionAndScheduleAll(active).catch(() => {});
+        }, 1000);
+      });
+
+      // After any new transaction, consider requesting a store review.
+      // The service enforces its own gates (10+ tx, 2-day install, 90-day cooldown).
+      const initialTxCount = usePersonalStore.getState().transactions.length;
+      let lastTxCount = initialTxCount;
+      usePersonalStore.subscribe((state) => {
+        const count = state.transactions.length;
+        if (count > lastTxCount) {
+          lastTxCount = count;
+          maybeRequestReview().catch(() => {});
+        } else {
+          lastTxCount = count;
+        }
+      });
+
+      // iOS ATT: request tracking permission after onboarding (once, non-blocking).
+      // Only meaningful on iOS 14.5+; harmless no-op elsewhere.
+      if (Platform.OS === 'ios' && useSettingsStore.getState().hasCompletedOnboarding) {
+        try {
+          const current = await getTrackingPermissionsAsync();
+          if (current.status === 'undetermined') {
+            await requestTrackingPermissionsAsync();
+          }
+        } catch {
+          // ignore — App Store requires the prompt; if system denies we fall through
+        }
+      }
 
       // Sync + push for any authenticated session (anonymous or verified)
       if (session) {
@@ -123,6 +207,7 @@ export default function App() {
       cancelled = true;
       unsubOrderLink?.();
       _unsubAutoSync?.();
+      _unsubSubSched?.();
       if (_autoSyncTimeout) clearTimeout(_autoSyncTimeout);
     };
   }, []);
@@ -137,22 +222,58 @@ export default function App() {
       } else if (event === 'SIGNED_OUT') {
         auth.reset();
         clearProfileCache();
+        // Disable personal sync — it can't run without a session.
+        // Keep local data intact; user can re-enable after signing back in.
+        useSettingsStore.getState().setPersonalSyncEnabled(false);
       }
     });
     return () => subscription.unsubscribe();
+  }, []);
+
+  // Net connectivity recovery — trigger sync when offline → online.
+  React.useEffect(() => {
+    let wasOffline = false;
+    const unsub = NetInfo.addEventListener((st) => {
+      const online = !!st.isConnected && st.isInternetReachable !== false;
+      if (online && wasOffline) {
+        wasOffline = false;
+        // Personal opt-in sync — skipped if under backoff, retries with exponential delay
+        withBackoff('personalSync', syncPersonal).catch(() => {});
+        // Drain any receipt scans that were queued while offline
+        withBackoff('receiptDrain', runReceiptDrain).catch(() => {});
+        // Seller sync if authenticated
+        const { isAuthenticated, isVerified } = useAuthStore.getState();
+        if (isAuthenticated && isVerified) {
+          const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
+          withBackoff('sellerSync', () =>
+            syncAll(products, orders, seasons, sellerCustomers),
+          ).catch(() => {});
+        }
+      } else if (!online) {
+        wasOffline = true;
+      }
+    });
+    return () => unsub();
   }, []);
 
   // Re-sync whenever the app comes back to the foreground (only if authenticated)
   React.useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
+        // Spending alerts — daily cadence, no-op if disabled or recent.
+        maybeRunSpendingAlertCheck().catch(() => {});
+        // Retry any queued receipt scans.
+        withBackoff('receiptDrain', runReceiptDrain).catch(() => {});
+
         const now = Date.now();
         if (now - _lastForegroundSync < 10000) return; // Skip if synced within 10s
         _lastForegroundSync = now;
         const { isAuthenticated, isVerified } = useAuthStore.getState();
         if (!isAuthenticated || !isVerified) return;
         const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
-        syncAll(products, orders, seasons, sellerCustomers).catch(() => {});
+        withBackoff('sellerSync', () =>
+          syncAll(products, orders, seasons, sellerCustomers),
+        ).catch(() => {});
       }
     });
     return () => sub.remove();
@@ -216,7 +337,10 @@ export default function App() {
             <View style={{ flex: 1 }}>
               <ToastProvider>
                 <StatusBar style={isDark ? 'light' : 'dark'} />
-                <RootNavigator />
+                <BiometricGate>
+                  <PersonalSyncManager />
+                  <RootNavigator />
+                </BiometricGate>
               </ToastProvider>
             </View>
           </TouchableWithoutFeedback>

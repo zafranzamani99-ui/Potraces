@@ -1,6 +1,15 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { SlideInUp, SlideOutUp } from 'react-native-reanimated';
+import Animated, {
+  SlideInUp,
+  SlideOutUp,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  runOnJS,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { CALM, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
@@ -38,42 +47,70 @@ const Toast: React.FC<ToastProps> = ({ visible, message, type, onHide, duration 
   const styles = useMemo(() => makeStyles(C), [C]);
   const ACCENT_COLORS = useMemo(() => makeAccentColors(C), [C]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const translateY = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
+      translateY.value = 0;
       timerRef.current = setTimeout(() => onHide(), duration);
     }
-    return () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
+    return () => {
+      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    };
   }, [visible, duration, onHide]);
+
+  const pan = Gesture.Pan()
+    .activeOffsetY([-8, 8])
+    .onUpdate((e) => {
+      // only allow dragging upward
+      translateY.value = Math.min(0, e.translationY);
+    })
+    .onEnd((e) => {
+      if (e.translationY < -40) {
+        // fly out upward then dismiss
+        translateY.value = withTiming(-200, { duration: 160 }, () => {
+          runOnJS(onHide)();
+        });
+      } else {
+        // snap back
+        translateY.value = withSpring(0, { damping: 18, stiffness: 250 });
+      }
+    });
+
+  const dragStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+    opacity: Math.max(0, 1 + translateY.value / 80),
+  }));
 
   if (!visible) return null;
 
   return (
-    <Animated.View
-      entering={SlideInUp.duration(250)}
-      exiting={SlideOutUp.duration(250)}
-      style={styles.wrapper}
-      pointerEvents={action ? 'box-none' : 'none'}
-      accessible
-      accessibilityRole="alert"
-      accessibilityLiveRegion="assertive"
-      accessibilityLabel={`${type} notification: ${message}`}
-    >
-      <View style={styles.container}>
-        <View style={[styles.accentBar, { backgroundColor: ACCENT_COLORS[type] }]} />
-        <Feather name={ICONS[type]} size={20} color={ACCENT_COLORS[type]} style={styles.icon} />
-        <Text style={styles.message} numberOfLines={2}>{message}</Text>
-        {action && (
-          <TouchableOpacity
-            onPress={() => { action.onPress(); onHide(); }}
-            style={styles.actionBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={styles.actionText}>{action.label}</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </Animated.View>
+    <GestureDetector gesture={pan}>
+      <Animated.View
+        entering={SlideInUp.duration(250)}
+        exiting={SlideOutUp.duration(250)}
+        style={[styles.wrapper, dragStyle]}
+        accessible
+        accessibilityRole="alert"
+        accessibilityLiveRegion="assertive"
+        accessibilityLabel={`${type} notification: ${message}`}
+      >
+        <View style={styles.container}>
+          <View style={[styles.accentBar, { backgroundColor: ACCENT_COLORS[type] }]} />
+          <Feather name={ICONS[type]} size={20} color={ACCENT_COLORS[type]} style={styles.icon} />
+          <Text style={styles.message} numberOfLines={2}>{message}</Text>
+          {action && (
+            <TouchableOpacity
+              onPress={() => { action.onPress(); onHide(); }}
+              style={styles.actionBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.actionText}>{action.label}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </Animated.View>
+    </GestureDetector>
   );
 };
 

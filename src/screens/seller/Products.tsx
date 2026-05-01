@@ -30,8 +30,8 @@ import { useSellerStore } from '../../store/sellerStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { SellerProduct, IngredientCost } from '../../types';
 import {
   lightTap,
@@ -87,6 +87,10 @@ const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }
 // ─── Main component ────────────────────────────────────────────
 const Products: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
+  const bizSuccess = semantic(BIZ_SAFE.success, isDark);
+  const bizProfit = semantic(BIZ_SAFE.profit, isDark);
+  const bizDestructive = semantic(BIZ_SAFE.destructive, isDark);
   const styles = useMemo(() => makeStyles(C), [C]);
   const products = useSellerStore((s) => s.products);
   const orders = useSellerStore((s) => s.orders);
@@ -1023,7 +1027,7 @@ const Products: React.FC = () => {
               { transform: [{ scale: addCheckAnim }] },
             ]}
           >
-            <Feather name="check-circle" size={32} color={BIZ.success} />
+            <Feather name="check-circle" size={32} color={bizSuccess} />
           </Animated.View>
           <Text style={styles.justAddedTitle}>product added!</Text>
           <Text style={styles.justAddedHint}>add another or tap done to close</Text>
@@ -1172,7 +1176,7 @@ const Products: React.FC = () => {
         </View>
         {keptPreview && (
           <View style={styles.profitRow}>
-            <Feather name="trending-up" size={12} color={BIZ.profit} />
+            <Feather name="trending-up" size={12} color={bizProfit} />
             <Text style={styles.profitText}>
               kept {currency} {keptPreview.kept}/unit
             </Text>
@@ -1413,7 +1417,7 @@ const Products: React.FC = () => {
             <TouchableOpacity
               style={[
                 styles.addButton,
-                { flex: 1, backgroundColor: selectedIds.size > 0 ? BIZ.destructive : withAlpha(C.textMuted, 0.12) },
+                { flex: 1, backgroundColor: selectedIds.size > 0 ? bizDestructive : withAlpha(C.textMuted, 0.12) },
               ]}
               activeOpacity={0.7}
               onPress={handleBulkDelete}

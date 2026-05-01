@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WalletState } from '../types';
+import { newId } from '../utils/id';
 
 export const useWalletStore = create<WalletState>()(
   persist(
@@ -9,32 +10,51 @@ export const useWalletStore = create<WalletState>()(
       wallets: [],
       transfers: [],
       selectedWalletId: null,
+      _deletedWalletIds: [],
+      _deletedTransferIds: [],
+
+      clearWalletTombstones: () => set({
+        _deletedWalletIds: [],
+        _deletedTransferIds: [],
+      }),
 
       addWallet: (wallet) =>
-        set((state) => ({
-          wallets: [
-            {
-              ...wallet,
-              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            },
-            ...state.wallets,
-          ],
-        })),
+        set((state) => {
+          const makingDefault = !!wallet.isDefault;
+          const next = {
+            ...wallet,
+            id: newId(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          return {
+            wallets: [
+              next,
+              ...(makingDefault
+                ? state.wallets.map((w) => (w.isDefault ? { ...w, isDefault: false, updatedAt: new Date() } : w))
+                : state.wallets),
+            ],
+          };
+        }),
 
       updateWallet: (id, updates) =>
-        set((state) => ({
-          wallets: state.wallets.map((w) =>
-            w.id === id ? { ...w, ...updates, updatedAt: new Date() } : w
-          ),
-        })),
+        set((state) => {
+          const makingDefault = updates.isDefault === true;
+          return {
+            wallets: state.wallets.map((w) => {
+              if (w.id === id) return { ...w, ...updates, updatedAt: new Date() };
+              if (makingDefault && w.isDefault) return { ...w, isDefault: false, updatedAt: new Date() };
+              return w;
+            }),
+          };
+        }),
 
       deleteWallet: (id) =>
         set((state) => ({
           wallets: state.wallets.filter((w) => w.id !== id),
           selectedWalletId:
             state.selectedWalletId === id ? null : state.selectedWalletId,
+          _deletedWalletIds: [...(state._deletedWalletIds ?? []), id],
         })),
 
       setSelectedWallet: (id) => set({ selectedWalletId: id }),
@@ -50,26 +70,47 @@ export const useWalletStore = create<WalletState>()(
 
       deductFromWallet: (id, amount) =>
         set((state) => ({
-          wallets: state.wallets.map((w) =>
-            w.id === id
-              ? { ...w, balance: w.balance - amount, updatedAt: new Date() }
-              : w
-          ),
+          wallets: state.wallets.map((w) => {
+            if (w.id !== id) return w;
+            if (w.type === 'credit') {
+              return {
+                ...w,
+                balance: w.balance - amount,
+                usedCredit: (w.usedCredit || 0) + amount,
+                updatedAt: new Date(),
+              };
+            }
+            return { ...w, balance: w.balance - amount, updatedAt: new Date() };
+          }),
         })),
 
       addToWallet: (id, amount) =>
         set((state) => ({
+          wallets: state.wallets.map((w) => {
+            if (w.id !== id) return w;
+            if (w.type === 'credit') {
+              return {
+                ...w,
+                balance: w.balance + amount,
+                usedCredit: Math.max(0, (w.usedCredit || 0) - amount),
+                updatedAt: new Date(),
+              };
+            }
+            return { ...w, balance: w.balance + amount, updatedAt: new Date() };
+          }),
+        })),
+
+      setWalletBalance: (id, balance) =>
+        set((state) => ({
           wallets: state.wallets.map((w) =>
-            w.id === id
-              ? { ...w, balance: w.balance + amount, updatedAt: new Date() }
-              : w
+            w.id === id ? { ...w, balance, updatedAt: new Date() } : w
           ),
         })),
 
       transferBetweenWallets: (fromId, toId, amount, note) =>
         set((state) => {
           const transfer = {
-            id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
+            id: newId(),
             fromWalletId: fromId,
             toWalletId: toId,
             amount,
@@ -98,6 +139,52 @@ export const useWalletStore = create<WalletState>()(
               return w;
             }),
             transfers: [transfer, ...state.transfers],
+          };
+        }),
+
+      logActivity: (fromId, toId, amount, kind, note) =>
+        set((state) => ({
+          transfers: [
+            {
+              id: newId(),
+              fromWalletId: fromId,
+              toWalletId: toId,
+              amount,
+              note,
+              date: new Date(),
+              createdAt: new Date(),
+              kind,
+            },
+            ...state.transfers,
+          ],
+        })),
+
+      deleteTransfer: (transferId) =>
+        set((state) => {
+          const t = state.transfers.find((x) => x.id === transferId);
+          if (!t) return state;
+          // Rollback: reverse the transfer on both wallets
+          const wallets = state.wallets.map((w) => {
+            if (w.id === t.fromWalletId) {
+              if (w.type === 'credit') {
+                return {
+                  ...w,
+                  balance: w.balance + t.amount,
+                  usedCredit: Math.max(0, (w.usedCredit || 0) - t.amount),
+                  updatedAt: new Date(),
+                };
+              }
+              return { ...w, balance: w.balance + t.amount, updatedAt: new Date() };
+            }
+            if (w.id === t.toWalletId) {
+              return { ...w, balance: w.balance - t.amount, updatedAt: new Date() };
+            }
+            return w;
+          });
+          return {
+            wallets,
+            transfers: state.transfers.filter((x) => x.id !== transferId),
+            _deletedTransferIds: [...(state._deletedTransferIds ?? []), transferId],
           };
         }),
 
@@ -130,7 +217,7 @@ export const useWalletStore = create<WalletState>()(
         })),
 
       clearAll: () =>
-        set({ wallets: [], transfers: [], selectedWalletId: null }),
+        set({ wallets: [], transfers: [], selectedWalletId: null, _deletedWalletIds: [], _deletedTransferIds: [] }),
     }),
     {
       name: 'wallet-storage',
@@ -147,6 +234,8 @@ export const useWalletStore = create<WalletState>()(
           createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt,
         })),
         selectedWalletId: state.selectedWalletId,
+        _deletedWalletIds: state._deletedWalletIds ?? [],
+        _deletedTransferIds: state._deletedTransferIds ?? [],
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -158,6 +247,16 @@ export const useWalletStore = create<WalletState>()(
             createdAt: sd(w.createdAt),
             updatedAt: sd(w.updatedAt),
           }));
+          // Collapse multiple defaults: keep only the first default
+          let seenDefault = false;
+          state.wallets = state.wallets.map((w: any) => {
+            if (!w.isDefault) return w;
+            if (seenDefault) return { ...w, isDefault: false };
+            seenDefault = true;
+            return w;
+          });
+          state._deletedWalletIds = state._deletedWalletIds ?? [];
+          state._deletedTransferIds = state._deletedTransferIds ?? [];
           // Migrate transfers array if missing
           if (!state.transfers) {
             state.transfers = [];

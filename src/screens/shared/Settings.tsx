@@ -16,8 +16,11 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
+  Linking,
+  Share,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+import * as LocalAuthentication from 'expo-local-authentication';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Feather } from '@expo/vector-icons';
@@ -29,6 +32,10 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useAppStore } from '../../store/appStore';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useWalletStore } from '../../store/walletStore';
+import { useReceiptStore } from '../../store/receiptStore';
+import { exportTransactionsCsv, exportWalletsCsv, exportSubscriptionsCsv, exportReceiptsCsv } from '../../services/exportService';
+import { exportMonthlyStatement, exportTaxYearPdf } from '../../services/pdfExport';
+import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { FREE_TIER, PREMIUM_CONFIG } from '../../constants/premium';
 import { RootStackParamList } from '../../types';
@@ -42,8 +49,12 @@ import { lightTap } from '../../services/haptics';
 import { signOut } from '../../services/supabase';
 import { clearProfileCache } from '../../services/sellerSync';
 import { useAuthStore } from '../../store/authStore';
+import { syncPersonal, disablePersonalSync } from '../../services/personalSync';
+import { resetBackoff } from '../../services/syncBackoff';
+import { getOrCreateReferralCode, referralMessage } from '../../services/referrals';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
+import { loadDummyData } from '../../utils/dummyData';
 import type { ThemePreference, AppLanguage } from '../../store/settingsStore';
 
 const CURRENCY_OPTIONS = [
@@ -485,6 +496,12 @@ const Settings: React.FC = () => {
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const notificationsEnabled = useSettingsStore((s) => s.notificationsEnabled);
   const businessModeEnabled = useSettingsStore((s) => s.businessModeEnabled);
+  const walletEchoHidden = useSettingsStore((s) => s.walletEchoHidden);
+  const setWalletEchoHidden = useSettingsStore((s) => s.setWalletEchoHidden);
+  const budgetEchoHidden = useSettingsStore((s) => s.budgetEchoHidden);
+  const setBudgetEchoHidden = useSettingsStore((s) => s.setBudgetEchoHidden);
+  const commitmentEchoHidden = useSettingsStore((s) => s.commitmentEchoHidden);
+  const setCommitmentEchoHidden = useSettingsStore((s) => s.setCommitmentEchoHidden);
   const defaultMode = useSettingsStore((s) => s.defaultMode);
   const setUserName = useSettingsStore((s) => s.setUserName);
   const setCurrency = useSettingsStore((s) => s.setCurrency);
@@ -492,6 +509,17 @@ const Settings: React.FC = () => {
   const setNotificationsEnabled = useSettingsStore((s) => s.setNotificationsEnabled);
   const setBusinessModeEnabled = useSettingsStore((s) => s.setBusinessModeEnabled);
   const setDefaultMode = useSettingsStore((s) => s.setDefaultMode);
+  const biometricLockEnabled = useSettingsStore((s) => s.biometricLockEnabled);
+  const setBiometricLockEnabled = useSettingsStore((s) => s.setBiometricLockEnabled);
+  const biometricLockTimeoutMin = useSettingsStore((s) => s.biometricLockTimeoutMin);
+  const setBiometricLockTimeoutMin = useSettingsStore((s) => s.setBiometricLockTimeoutMin);
+  const personalSyncEnabled = useSettingsStore((s) => s.personalSyncEnabled);
+  const setPersonalSyncEnabled = useSettingsStore((s) => s.setPersonalSyncEnabled);
+  const lastPersonalSyncAt = useSettingsStore((s) => s.lastPersonalSyncAt);
+  const spendingAlertsEnabled = useSettingsStore((s) => s.spendingAlertsEnabled);
+  const setSpendingAlertsEnabled = useSettingsStore((s) => s.setSpendingAlertsEnabled);
+  const quickAddConfirm = useSettingsStore((s) => s.quickAddConfirm);
+  const setQuickAddConfirm = useSettingsStore((s) => s.setQuickAddConfirm);
   const personalQrs = useSettingsStore((s) => s.paymentQrs) || [];
   const businessQrs = useSettingsStore((s) => s.businessPaymentQrs) || [];
   const paymentQrs = mode === 'business' ? businessQrs : personalQrs;
@@ -547,24 +575,24 @@ const Settings: React.FC = () => {
 
   const handleDefaultModePress = useCallback(() => {
     lightTap();
-    Alert.alert('Default Mode', 'Choose which mode opens on app launch', [
+    Alert.alert(t.settings.defaultModeAlertTitle, t.settings.defaultModeAlertMsg, [
       {
-        text: `Personal${defaultMode === 'personal' ? '  \u2713' : ''}`,
+        text: `${t.settings.personal}${defaultMode === 'personal' ? '  \u2713' : ''}`,
         onPress: () => {
           setDefaultMode('personal');
-          showToast('Default mode set to Personal', 'success');
+          showToast(t.settings.defaultModeSetPersonal, 'success');
         },
       },
       {
-        text: `Business${defaultMode === 'business' ? '  \u2713' : ''}`,
+        text: `${t.settings.business}${defaultMode === 'business' ? '  \u2713' : ''}`,
         onPress: () => {
           setDefaultMode('business');
-          showToast('Default mode set to Business', 'success');
+          showToast(t.settings.defaultModeSetBusiness, 'success');
         },
       },
-      { text: 'Cancel', style: 'cancel' },
+      { text: t.common.cancel, style: 'cancel' },
     ]);
-  }, [defaultMode, setDefaultMode, showToast]);
+  }, [defaultMode, setDefaultMode, showToast, t]);
 
   const handleViewReports = useCallback(() => {
     lightTap();
@@ -575,12 +603,89 @@ const Settings: React.FC = () => {
 
   const handleExportData = useCallback(() => {
     lightTap();
+    const userName = useSettingsStore.getState().userName;
+
+    const doCsv = async (kind: 'transactions' | 'wallets' | 'subscriptions' | 'receipts') => {
+      try {
+        if (kind === 'transactions') await exportTransactionsCsv(usePersonalStore.getState().transactions);
+        else if (kind === 'wallets') await exportWalletsCsv(useWalletStore.getState().wallets);
+        else if (kind === 'subscriptions') await exportSubscriptionsCsv(usePersonalStore.getState().subscriptions);
+        else if (kind === 'receipts') await exportReceiptsCsv(useReceiptStore.getState().receipts);
+      } catch (err: any) {
+        Alert.alert(t.settings.exportFailed, err?.message || t.settings.exportFailedMsg);
+      }
+    };
+
+    const doMonthlyPdf = async () => {
+      try {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        await exportMonthlyStatement({
+          start, end, userName, currency,
+          transactions: usePersonalStore.getState().transactions,
+          wallets: useWalletStore.getState().wallets,
+        });
+      } catch (err: any) {
+        Alert.alert(t.settings.exportFailed, err?.message || t.settings.couldNotGeneratePdf);
+      }
+    };
+
+    const doTaxPdf = async () => {
+      try {
+        const year = new Date().getFullYear();
+        const categoryNames = Object.fromEntries(MYTAX_CATEGORIES.map((c) => [c.id, c.name]));
+        await exportTaxYearPdf({
+          year, userName, currency,
+          receipts: useReceiptStore.getState().receipts,
+          categoryNames,
+        });
+      } catch (err: any) {
+        Alert.alert(t.settings.exportFailed, err?.message || t.settings.couldNotGeneratePdf);
+      }
+    };
+
+    const showCsvMenu = () => {
+      Alert.alert(t.settings.csvExport, t.settings.chooseWhatToExport, [
+        { text: t.settings.transactionsLabel, onPress: () => doCsv('transactions') },
+        { text: t.settings.wallets, onPress: () => doCsv('wallets') },
+        { text: t.settings.subscriptionsLabel, onPress: () => doCsv('subscriptions') },
+        { text: t.settings.receiptsLabel, onPress: () => doCsv('receipts') },
+        { text: t.common.cancel, style: 'cancel' },
+      ]);
+    };
+
+    Alert.alert(t.settings.exportDataTitle, t.settings.chooseFormat, [
+      { text: t.settings.monthlyPdf, onPress: doMonthlyPdf },
+      { text: t.settings.taxYearPdf.replace('{year}', String(new Date().getFullYear())), onPress: doTaxPdf },
+      { text: t.settings.csvEllipsis, onPress: showCsvMenu },
+      { text: t.common.cancel, style: 'cancel' },
+    ]);
+  }, [currency, t]);
+
+  const handleLoadSampleData = useCallback(() => {
+    lightTap();
     Alert.alert(
-      'Export Data',
-      'Export functionality will be available in a future update. Your data is safely stored locally on your device.',
-      [{ text: 'OK' }]
+      t.settings.loadSampleData,
+      t.settings.loadSampleDataConfirm,
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.common.confirm,
+          onPress: () => {
+            setTimeout(() => {
+              try {
+                loadDummyData();
+                showToast(t.settings.loadSampleDataSuccess, 'success');
+              } catch {
+                showToast('Failed to load sample data', 'error');
+              }
+            }, 50);
+          },
+        },
+      ]
     );
-  }, []);
+  }, [t, showToast]);
 
   const handlePickQrImage = useCallback(async (replaceIndex?: number) => {
     lightTap();
@@ -635,54 +740,78 @@ const Settings: React.FC = () => {
       setQrLabelModal({ visible: true, renameIndex: index, defaultLabel: qr.label });
     } else if (action === 'delete') {
       removePaymentQr(index, mode);
-      showToast('QR removed', 'success');
+      showToast(t.settings.qrRemoved, 'success');
     }
-  }, [qrActionIndex, paymentQrs, updatePaymentQrLabel, removePaymentQr, showToast, mode]);
+  }, [qrActionIndex, paymentQrs, updatePaymentQrLabel, removePaymentQr, showToast, mode, t]);
 
-  const handleClearData = useCallback(() => {
+  const handleDeleteAccount = useCallback(() => {
+    // Step 1: initial warning
     Alert.alert(
-      'Clear All Data',
-      'This will permanently delete all transactions, subscriptions, budgets, products, sales, suppliers, debts, splits, customers, and orders. This cannot be undone.',
+      t.settings.deleteAccountTitle,
+      t.settings.deleteAccountWarning,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Clear All',
+          text: t.settings.continueLabel,
           style: 'destructive',
           onPress: () => {
-            clearAllData();
-            showToast('All data cleared', 'success');
+            // Step 2: biometric (if enabled) — we don't gate with expo-local-auth here
+            // because the clear operation is destructive and an attacker with the phone
+            // already has full access. Instead require a final explicit confirmation.
+            Alert.alert(
+              t.settings.absolutelySure,
+              t.settings.absolutelySureMsg,
+              [
+                { text: t.common.cancel, style: 'cancel' },
+                {
+                  text: t.settings.deleteEverything,
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      if (mode === 'business' || businessModeEnabled) {
+                        await clearBusinessData();
+                      }
+                      clearAllData();
+                      showToast(t.settings.accountDeleted, 'success');
+                    } catch (err: any) {
+                      Alert.alert(t.settings.errorLabel, err?.message || t.settings.deletionError);
+                    }
+                  },
+                },
+              ]
+            );
           },
         },
       ]
     );
-  }, [clearAllData, showToast]);
+  }, [clearAllData, clearBusinessData, businessModeEnabled, mode, showToast, t]);
 
   const handleClearBusinessData = useCallback(() => {
     Alert.alert(
-      'Clear Business Data',
-      'This will permanently delete all business data (products, orders, seasons, customers) both locally and from the server, sign you out, and return to personal mode. This cannot be undone.',
+      t.settings.clearBusinessDataTitle,
+      t.settings.clearBusinessDataMsg,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Clear & Sign Out',
+          text: t.settings.clearAndSignOut,
           style: 'destructive',
           onPress: async () => {
             await clearBusinessData();
-            showToast('Business data cleared & signed out', 'success');
+            showToast(t.settings.businessDataCleared, 'success');
           },
         },
       ]
     );
-  }, [clearBusinessData, showToast]);
+  }, [clearBusinessData, showToast, t]);
 
   const handleSignOut = useCallback(() => {
     Alert.alert(
-      'Sign Out',
-      'You will be signed out of your business account. Your data will remain on this device.',
+      t.settings.signOutTitle,
+      t.settings.signOutMsg,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Sign Out',
+          text: t.settings.signOut,
           onPress: async () => {
             // Reset auth while Settings still covers the screen
             useAuthStore.getState().reset();
@@ -694,21 +823,116 @@ const Settings: React.FC = () => {
         },
       ]
     );
-  }, [showToast]);
+  }, [showToast, t, navigation]);
 
   const handleHapticToggle = useCallback((value: boolean) => {
     setHapticEnabled(value);
     if (value) lightTap();
   }, [setHapticEnabled]);
 
+  const handleBiometricToggle = useCallback(async (value: boolean) => {
+    lightTap();
+    if (!value) {
+      setBiometricLockEnabled(false);
+      return;
+    }
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!hasHardware) {
+        Alert.alert(t.settings.notSupported, t.settings.biometricNotSupported);
+        return;
+      }
+      if (!enrolled) {
+        Alert.alert(
+          t.settings.noBiometricsSetUp,
+          t.settings.noBiometricsMsg
+        );
+        return;
+      }
+      const res = await LocalAuthentication.authenticateAsync({
+        promptMessage: t.settings.enableAppLockPrompt,
+      });
+      if (res.success) {
+        setBiometricLockEnabled(true);
+        showToast(t.settings.appLockEnabled, 'success');
+      }
+    } catch (err: any) {
+      Alert.alert(t.settings.errorLabel, err?.message || t.settings.appLockError);
+    }
+  }, [setBiometricLockEnabled, showToast, t]);
+
+  const handlePersonalSyncToggle = useCallback(async (value: boolean) => {
+    lightTap();
+    if (!value) {
+      // Disable: keep remote data intact by default, user can wipe later
+      Alert.alert(
+        t.settings.turnOffCloudSync,
+        t.settings.turnOffCloudSyncMsg,
+        [
+          { text: t.common.cancel, style: 'cancel' },
+          {
+            text: t.settings.turnOff,
+            onPress: async () => {
+              await disablePersonalSync(false);
+              showToast(t.settings.cloudSyncDisabled, 'info');
+            },
+          },
+          {
+            text: t.settings.turnOffWipe,
+            style: 'destructive',
+            onPress: async () => {
+              await disablePersonalSync(true);
+              showToast(t.settings.cloudSyncDisabledWiped, 'info');
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    // Enable: require sign-in
+    const { isAuthenticated, isVerified } = useAuthStore.getState();
+    if (!isAuthenticated || !isVerified) {
+      Alert.alert(
+        t.settings.signInRequired,
+        t.settings.signInRequiredMsg,
+        [{ text: t.common.ok }],
+      );
+      return;
+    }
+
+    setPersonalSyncEnabled(true);
+    showToast(t.settings.cloudSyncEnabledSyncing, 'success');
+    try {
+      await syncPersonal();
+      showToast(t.settings.syncedToCloud, 'success');
+    } catch {
+      showToast(t.settings.syncFailedRetry, 'info');
+    }
+  }, [setPersonalSyncEnabled, showToast, t]);
+
+  const handleManualSyncNow = useCallback(async () => {
+    lightTap();
+    // User-initiated — bypass any active backoff window
+    resetBackoff('personalSync');
+    showToast(t.settings.syncing, 'info');
+    try {
+      await syncPersonal();
+      showToast(t.settings.synced, 'success');
+    } catch {
+      showToast(t.settings.syncFailed, 'info');
+    }
+  }, [showToast, t]);
+
   const handleNotificationsToggle = useCallback((value: boolean) => {
     lightTap();
     setNotificationsEnabled(value);
     showToast(
-      value ? 'Notifications enabled' : 'Notifications disabled',
+      value ? t.settings.notificationsEnabledToast : t.settings.notificationsDisabledToast,
       'success'
     );
-  }, [setNotificationsEnabled, showToast]);
+  }, [setNotificationsEnabled, showToast, t]);
 
   const handleBusinessModeToggle = useCallback((value: boolean) => {
     lightTap();
@@ -718,10 +942,10 @@ const Settings: React.FC = () => {
       setMode('personal');
     }
     showToast(
-      value ? 'Business mode enabled' : 'Business mode disabled',
+      value ? t.settings.businessModeEnabledToast : t.settings.businessModeDisabledToast,
       'success'
     );
-  }, [setBusinessModeEnabled, navigation, setMode, showToast]);
+  }, [setBusinessModeEnabled, navigation, setMode, showToast, t]);
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
@@ -734,17 +958,17 @@ const Settings: React.FC = () => {
         scrollEventThrottle={16}
       >
         {/* Profile */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Profile</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.profile}</Text>
         <Card style={styles.card}>
           <View style={styles.settingRow}>
             <View style={styles.settingLabelRow}>
               <Feather name="user" size={18} color={C.textSecondary} />
-              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Name</Text>
+              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.name}</Text>
             </View>
             <TextInput
               value={userName}
               onChangeText={setUserName}
-              placeholder="Enter your name"
+              placeholder={t.settings.enterYourName}
               placeholderTextColor={C.neutral}
               style={[styles.input, { color: C.textPrimary }]}
               returnKeyType="done"
@@ -754,7 +978,7 @@ const Settings: React.FC = () => {
         </Card>
 
         {/* Preferences */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Preferences</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.preferences}</Text>
         <Card style={styles.card}>
           <TouchableOpacity
             style={styles.settingRow}
@@ -763,7 +987,7 @@ const Settings: React.FC = () => {
           >
             <View style={styles.settingLabelRow}>
               <Feather name="dollar-sign" size={18} color={C.textSecondary} />
-              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Currency</Text>
+              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.currency}</Text>
             </View>
             <View style={styles.valueRow}>
               <Text style={[styles.settingValue, { color: C.textSecondary }]}>{currency}</Text>
@@ -782,11 +1006,11 @@ const Settings: React.FC = () => {
               >
                 <View style={styles.settingLabelRow}>
                   <Feather name="layout" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Default Mode</Text>
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.defaultMode}</Text>
                 </View>
                 <View style={styles.valueRow}>
                   <Text style={[styles.settingValue, { color: C.textSecondary }]}>
-                    {defaultMode === 'personal' ? 'Personal' : 'Business'}
+                    {defaultMode === 'personal' ? t.settings.personal : t.settings.business}
                   </Text>
                   <Feather name="chevron-right" size={18} color={C.neutral} />
                 </View>
@@ -799,7 +1023,7 @@ const Settings: React.FC = () => {
           <View style={styles.settingRow}>
             <View style={styles.settingLabelRow}>
               <Feather name="smartphone" size={18} color={C.textSecondary} />
-              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Haptic Feedback</Text>
+              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.hapticFeedback}</Text>
             </View>
             <Switch
               value={hapticEnabled}
@@ -815,10 +1039,10 @@ const Settings: React.FC = () => {
             <View style={{ flex: 1 }}>
               <View style={styles.settingLabelRow}>
                 <Feather name="bell" size={18} color={C.textSecondary} />
-                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Notifications</Text>
+                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.notifications}</Text>
               </View>
               <Text style={styles.settingDescription}>
-                new orders from your web shop link
+                {t.settings.notificationsDesc}
               </Text>
             </View>
             <Switch
@@ -834,11 +1058,51 @@ const Settings: React.FC = () => {
           <View style={styles.settingRow}>
             <View style={{ flex: 1 }}>
               <View style={styles.settingLabelRow}>
-                <Feather name="briefcase" size={18} color={C.textSecondary} />
-                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Business Mode</Text>
+                <Feather name="trending-up" size={18} color={C.textSecondary} />
+                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.spendingAlerts}</Text>
               </View>
               <Text style={styles.settingDescription}>
-                Enable to switch between Personal and Business modes
+                {t.settings.spendingAlertsDesc}
+              </Text>
+            </View>
+            <Switch
+              value={spendingAlertsEnabled}
+              onValueChange={(v) => { lightTap(); setSpendingAlertsEnabled(v); }}
+              trackColor={{ false: C.border, true: C.positive }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: C.border }]} />
+
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.settingLabelRow}>
+                <Feather name="check-circle" size={18} color={C.textSecondary} />
+                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.quickAddConfirm}</Text>
+              </View>
+              <Text style={styles.settingDescription}>
+                {t.settings.quickAddConfirmDesc}
+              </Text>
+            </View>
+            <Switch
+              value={quickAddConfirm}
+              onValueChange={(v) => { lightTap(); setQuickAddConfirm(v); }}
+              trackColor={{ false: C.border, true: C.positive }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: C.border }]} />
+
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.settingLabelRow}>
+                <Feather name="briefcase" size={18} color={C.textSecondary} />
+                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.businessMode}</Text>
+              </View>
+              <Text style={styles.settingDescription}>
+                {t.settings.businessModeDesc}
               </Text>
             </View>
             <Switch
@@ -850,8 +1114,127 @@ const Settings: React.FC = () => {
           </View>
         </Card>
 
+        {/* Security */}
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.security}</Text>
+        <Card style={styles.card}>
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.settingLabelRow}>
+                <Feather name="lock" size={18} color={C.textSecondary} />
+                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.appLock}</Text>
+              </View>
+              <Text style={styles.settingDescription}>
+                {t.settings.appLockDesc}
+              </Text>
+            </View>
+            <Switch
+              value={biometricLockEnabled}
+              onValueChange={handleBiometricToggle}
+              trackColor={{ false: C.border, true: C.positive }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+
+          {biometricLockEnabled && (
+            <>
+              <View style={[styles.divider, { backgroundColor: C.border }]} />
+              <View style={styles.settingRow}>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.settingLabelRow}>
+                    <Feather name="clock" size={18} color={C.textSecondary} />
+                    <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.lockAfter}</Text>
+                  </View>
+                  <Text style={styles.settingDescription}>
+                    {t.settings.lockAfterDesc}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: SPACING.xs }}>
+                  {[0, 1, 5, 15].map((m) => (
+                    <TouchableOpacity
+                      key={m}
+                      onPress={() => { lightTap(); setBiometricLockTimeoutMin(m); }}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: RADIUS.full,
+                        borderWidth: 1,
+                        borderColor: biometricLockTimeoutMin === m ? C.accent : C.border,
+                        backgroundColor: biometricLockTimeoutMin === m ? withAlpha(C.accent, 0.1) : 'transparent',
+                      }}
+                    >
+                      <Text style={{
+                        fontSize: TYPOGRAPHY.size.xs,
+                        fontWeight: TYPOGRAPHY.weight.medium,
+                        color: biometricLockTimeoutMin === m ? C.accent : C.textSecondary,
+                      }}>{m === 0 ? t.settings.always : `${m}m`}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </>
+          )}
+        </Card>
+
+        {/* Cloud Sync */}
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.cloudSync}</Text>
+        <Card style={styles.card}>
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.settingLabelRow}>
+                <Feather name="cloud" size={18} color={C.textSecondary} />
+                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.syncPersonalData}</Text>
+              </View>
+              <Text style={styles.settingDescription}>
+                {t.settings.syncPersonalDataDesc}
+              </Text>
+            </View>
+            <Switch
+              value={personalSyncEnabled}
+              onValueChange={handlePersonalSyncToggle}
+              trackColor={{ false: C.border, true: C.positive }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+
+          {personalSyncEnabled && (
+            <>
+              <View style={[styles.divider, { backgroundColor: C.border }]} />
+              <View style={styles.settingRow}>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.settingLabelRow}>
+                    <Feather name="refresh-cw" size={18} color={C.textSecondary} />
+                    <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.lastSync}</Text>
+                  </View>
+                  <Text style={styles.settingDescription}>
+                    {lastPersonalSyncAt
+                      ? lastPersonalSyncAt.toLocaleString()
+                      : t.settings.notSyncedYet}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleManualSyncNow}
+                  style={{
+                    paddingHorizontal: SPACING.md,
+                    paddingVertical: 8,
+                    borderRadius: RADIUS.full,
+                    borderWidth: 1,
+                    borderColor: C.accent,
+                    backgroundColor: withAlpha(C.accent, 0.1),
+                  }}
+                >
+                  <Text style={{
+                    fontSize: TYPOGRAPHY.size.xs,
+                    fontWeight: TYPOGRAPHY.weight.medium,
+                    color: C.accent,
+                  }}>{t.settings.syncNow}</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </Card>
+
         {/* Appearance */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Appearance</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.appearance}</Text>
         <Card style={styles.card}>
           {/* Theme */}
           <View style={styles.settingRow}>
@@ -940,13 +1323,50 @@ const Settings: React.FC = () => {
               </TouchableOpacity>
             ))}
           </View>
+
+          <View style={[styles.divider, { backgroundColor: C.border }]} />
+
+          {/* Echo assistant visibility */}
+          <View style={[styles.settingRow, { paddingBottom: 4 }]}>
+            <View style={styles.settingLabelRow}>
+              <Feather name="zap" size={18} color={C.textSecondary} />
+              <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.echoVisibility}</Text>
+            </View>
+          </View>
+          <View style={styles.settingRow}>
+            <Text style={[styles.settingLabel, { color: C.textSecondary, paddingLeft: 26 }]}>{t.settings.echoOnWallets}</Text>
+            <Switch
+              value={!walletEchoHidden}
+              onValueChange={(v) => { lightTap(); setWalletEchoHidden(!v); }}
+              trackColor={{ false: C.border, true: C.positive }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+          <View style={styles.settingRow}>
+            <Text style={[styles.settingLabel, { color: C.textSecondary, paddingLeft: 26 }]}>{t.settings.echoOnBudgets}</Text>
+            <Switch
+              value={!budgetEchoHidden}
+              onValueChange={(v) => { lightTap(); setBudgetEchoHidden(!v); }}
+              trackColor={{ false: C.border, true: C.positive }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+          <View style={styles.settingRow}>
+            <Text style={[styles.settingLabel, { color: C.textSecondary, paddingLeft: 26 }]}>{t.settings.echoOnCommitments}</Text>
+            <Switch
+              value={!commitmentEchoHidden}
+              onValueChange={(v) => { lightTap(); setCommitmentEchoHidden(!v); }}
+              trackColor={{ false: C.border, true: C.positive }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
         </Card>
 
         {ready && <>
         {/* Business Income Type */}
         {businessModeEnabled && mode === 'business' && (
           <>
-            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Business Setup</Text>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.businessSetup}</Text>
             <Card style={styles.card}>
               <TouchableOpacity
                 style={styles.settingRow}
@@ -958,11 +1378,11 @@ const Settings: React.FC = () => {
               >
                 <View style={styles.settingLabelRow}>
                   <Feather name="briefcase" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Change Income Type</Text>
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.changeIncomeType}</Text>
                 </View>
                 <View style={styles.valueRow}>
                   <Text style={[styles.settingValue, { color: C.textSecondary }]}>
-                    {incomeType || 'not set'}
+                    {incomeType || t.settings.notSet}
                   </Text>
                   <Feather name="chevron-right" size={18} color={C.neutral} />
                 </View>
@@ -974,7 +1394,7 @@ const Settings: React.FC = () => {
         {/* Categories — show in personal mode, hide for seller & stall in business mode */}
         {(mode === 'personal' || (incomeType !== 'seller' && incomeType !== 'stall')) && (
           <>
-            <Text style={[styles.sectionHeader, { color: C.textSecondary }]} onLayout={(e) => { sectionY.current.categories = e.nativeEvent.layout.y; }}>Categories</Text>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]} onLayout={(e) => { sectionY.current.categories = e.nativeEvent.layout.y; }}>{t.settings.categories}</Text>
             <Card style={styles.card}>
               <TouchableOpacity
                 style={styles.settingRow}
@@ -987,7 +1407,7 @@ const Settings: React.FC = () => {
               >
                 <View style={styles.settingLabelRow}>
                   <Feather name="tag" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Expense Categories</Text>
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.expenseCategories}</Text>
                 </View>
                 <Feather name="chevron-right" size={18} color={C.neutral} />
               </TouchableOpacity>
@@ -1005,7 +1425,7 @@ const Settings: React.FC = () => {
               >
                 <View style={styles.settingLabelRow}>
                   <Feather name="trending-up" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Income Categories</Text>
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.incomeCategories}</Text>
                 </View>
                 <Feather name="chevron-right" size={18} color={C.neutral} />
               </TouchableOpacity>
@@ -1023,7 +1443,7 @@ const Settings: React.FC = () => {
               >
                 <View style={styles.settingLabelRow}>
                   <Feather name="pie-chart" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Investment Categories</Text>
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.investmentCategories}</Text>
                 </View>
                 <Feather name="chevron-right" size={18} color={C.neutral} />
               </TouchableOpacity>
@@ -1040,7 +1460,7 @@ const Settings: React.FC = () => {
               >
                 <View style={styles.settingLabelRow}>
                   <Feather name="credit-card" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Payment Methods</Text>
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.paymentMethods}</Text>
                 </View>
                 <Feather name="chevron-right" size={18} color={C.neutral} />
               </TouchableOpacity>
@@ -1051,7 +1471,7 @@ const Settings: React.FC = () => {
         {/* Product Units — only for seller & stall in business mode */}
         {mode === 'business' && (incomeType === 'seller' || incomeType === 'stall') && (
           <>
-            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Product Units</Text>
+            <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.productUnits}</Text>
             <Card style={styles.card}>
               <TouchableOpacity
                 style={styles.settingRow}
@@ -1063,7 +1483,7 @@ const Settings: React.FC = () => {
               >
                 <View style={styles.settingLabelRow}>
                   <Feather name="box" size={18} color={C.textSecondary} />
-                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Manage Units</Text>
+                  <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.manageUnits}</Text>
                 </View>
                 <Feather name="chevron-right" size={18} color={C.neutral} />
               </TouchableOpacity>
@@ -1095,34 +1515,34 @@ const Settings: React.FC = () => {
         )}
 
         {/* Subscription */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Subscription</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.subscription}</Text>
         <Card style={styles.card}>
           {tier === 'premium' ? (
             <View style={styles.premiumStatusRow}>
               <View style={styles.premiumBadge}>
                 <Feather name="award" size={14} color="#fff" />
-                <Text style={styles.premiumBadgeText}>Premium</Text>
+                <Text style={styles.premiumBadgeText}>{t.settings.premiumBadge}</Text>
               </View>
               <TouchableOpacity
                 onPress={() => {
                   Alert.alert(
-                    'Unsubscribe',
-                    'Are you sure you want to cancel your premium subscription?',
+                    t.settings.unsubscribe,
+                    t.settings.unsubscribeConfirm,
                     [
-                      { text: 'Keep Premium', style: 'cancel' },
+                      { text: t.settings.keepPremium, style: 'cancel' },
                       {
-                        text: 'Unsubscribe',
+                        text: t.settings.unsubscribe,
                         style: 'destructive',
                         onPress: () => {
                           unsubscribe();
-                          showToast('Subscription cancelled', 'success');
+                          showToast(t.settings.subscriptionCancelled, 'success');
                         },
                       },
                     ]
                   );
                 }}
               >
-                <Text style={styles.unsubscribeText}>Cancel</Text>
+                <Text style={styles.unsubscribeText}>{t.settings.cancelSubscription}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -1131,28 +1551,28 @@ const Settings: React.FC = () => {
                 <View style={styles.usageRow}>
                   <View style={styles.settingLabelRow}>
                     <Feather name="credit-card" size={16} color={C.textSecondary} />
-                    <Text style={styles.usageLabel}>Wallets</Text>
+                    <Text style={styles.usageLabel}>{t.settings.walletsUsage}</Text>
                   </View>
                   <Text style={styles.usageValue}>{walletCount}/{FREE_TIER.maxWallets}</Text>
                 </View>
                 <View style={styles.usageRow}>
                   <View style={styles.settingLabelRow}>
                     <Feather name="pie-chart" size={16} color={C.textSecondary} />
-                    <Text style={styles.usageLabel}>Budgets</Text>
+                    <Text style={styles.usageLabel}>{t.settings.budgetsUsage}</Text>
                   </View>
                   <Text style={styles.usageValue}>{budgetCount}/{FREE_TIER.maxBudgets}</Text>
                 </View>
                 <View style={styles.usageRow}>
                   <View style={styles.settingLabelRow}>
                     <Feather name="camera" size={16} color={C.textSecondary} />
-                    <Text style={styles.usageLabel}>Scans this month</Text>
+                    <Text style={styles.usageLabel}>{t.settings.scansThisMonth}</Text>
                   </View>
                   <Text style={styles.usageValue}>{scanCount}/{FREE_TIER.maxScansPerMonth}</Text>
                 </View>
                 <View style={styles.usageRow}>
                   <View style={styles.settingLabelRow}>
                     <Feather name="cpu" size={16} color={C.textSecondary} />
-                    <Text style={styles.usageLabel}>AI calls this month</Text>
+                    <Text style={styles.usageLabel}>{t.settings.aiCallsThisMonth}</Text>
                   </View>
                   <Text style={styles.usageValue}>{aiCallsCount}/{FREE_TIER.maxAiCallsPerMonth}</Text>
                 </View>
@@ -1161,13 +1581,16 @@ const Settings: React.FC = () => {
                 style={styles.subscribeButton}
                 onPress={() => {
                   subscribe();
-                  showToast('Welcome to Premium!', 'success');
+                  showToast(t.settings.welcomeToPremium, 'success');
                 }}
                 activeOpacity={0.7}
               >
                 <Feather name="award" size={18} color="#fff" />
                 <Text style={styles.subscribeButtonText}>
-                  Subscribe - {PREMIUM_CONFIG.currency} {PREMIUM_CONFIG.price}/{PREMIUM_CONFIG.period}
+                  {t.settings.subscribeButton
+                    .replace('{currency}', PREMIUM_CONFIG.currency)
+                    .replace('{price}', String(PREMIUM_CONFIG.price))
+                    .replace('{period}', PREMIUM_CONFIG.period)}
                 </Text>
               </TouchableOpacity>
             </>
@@ -1175,10 +1598,10 @@ const Settings: React.FC = () => {
         </Card>
 
         {/* Wallets */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Wallets</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.wallets}</Text>
         <Card style={styles.card}>
           <Button
-            title="Manage Wallets"
+            title={t.settings.manageWallets}
             onPress={() => {
               lightTap();
               navigation.navigate('WalletManagement');
@@ -1190,10 +1613,10 @@ const Settings: React.FC = () => {
         </Card>
 
         {/* Payment QR */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]} onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }}>Payment QR</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]} onLayout={(e) => { sectionY.current.qr = e.nativeEvent.layout.y; }}>{t.settings.paymentQr}</Text>
         <Card style={styles.card}>
           <Text style={styles.qrSubtitle}>
-            Add up to 2 QR codes. View them from the Dashboard.
+            {t.settings.qrSubtitle}
           </Text>
           <View style={styles.qrSlots}>
             {[0, 1].map((idx) => {
@@ -1217,7 +1640,7 @@ const Settings: React.FC = () => {
                         )}
                       </View>
                       <Text style={styles.qrSlotLabel} numberOfLines={1}>
-                        {qrLoadingIndex === idx ? 'Opening...' : qr.label}
+                        {qrLoadingIndex === idx ? t.settings.qrOpening : qr.label}
                       </Text>
                       {qrLoadingIndex !== idx && (
                         <Feather name="more-vertical" size={16} color={C.textMuted} />
@@ -1236,7 +1659,7 @@ const Settings: React.FC = () => {
                         <Feather name="plus" size={22} color={C.accent} />
                       )}
                       <Text style={styles.qrSlotAddText}>
-                        {qrLoadingIndex === idx ? 'Opening...' : 'Add QR'}
+                        {qrLoadingIndex === idx ? t.settings.qrOpening : t.settings.addQrShort}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -1247,10 +1670,10 @@ const Settings: React.FC = () => {
         </Card>
 
         {/* Data */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>Data</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.data}</Text>
         <Card style={styles.card}>
           <Button
-            title="View Reports"
+            title={t.settings.viewReports}
             onPress={handleViewReports}
             variant="outline"
             icon="bar-chart-2"
@@ -1258,16 +1681,63 @@ const Settings: React.FC = () => {
             style={{ marginBottom: SPACING.md }}
           />
           <Button
-            title="Export Data"
+            title={t.settings.exportData}
             onPress={handleExportData}
             variant="outline"
             icon="download"
             fullWidth
             style={{ marginBottom: SPACING.md }}
           />
+          <Button
+            title={t.settings.importFromStatement}
+            onPress={() => { lightTap(); navigation.navigate('ImportFromStatement' as never); }}
+            variant="outline"
+            icon="upload"
+            fullWidth
+            style={{ marginBottom: SPACING.md }}
+          />
+          <Button
+            title={t.settings.importFromCsv}
+            onPress={() => { lightTap(); navigation.navigate('ImportFromCsv' as never); }}
+            variant="outline"
+            icon="file-plus"
+            fullWidth
+            style={{ marginBottom: SPACING.md }}
+          />
+          <Button
+            title={t.settings.inviteFriends}
+            onPress={async () => {
+              lightTap();
+              const code = await getOrCreateReferralCode();
+              if (!code) {
+                Alert.alert(
+                  t.settings.signInRequired,
+                  t.settings.signInRequiredInvite,
+                );
+                return;
+              }
+              try {
+                await Share.share({ message: referralMessage(code) });
+              } catch {
+                // ignore user-cancelled
+              }
+            }}
+            variant="outline"
+            icon="user-plus"
+            fullWidth
+            style={{ marginBottom: SPACING.md }}
+          />
+          <Button
+            title={t.settings.loadSampleData}
+            onPress={handleLoadSampleData}
+            variant="outline"
+            icon="database"
+            fullWidth
+            style={{ marginBottom: SPACING.md }}
+          />
           {mode === 'business' && (
             <Button
-              title="Sign Out"
+              title={t.settings.signOut}
               onPress={handleSignOut}
               variant="outline"
               icon="log-out"
@@ -1277,7 +1747,7 @@ const Settings: React.FC = () => {
           )}
           {mode === 'business' && (
             <Button
-              title="Clear Business Data & Sign Out"
+              title={t.settings.clearBusinessDataBtn}
               onPress={handleClearBusinessData}
               variant="danger"
               icon="trash-2"
@@ -1286,8 +1756,8 @@ const Settings: React.FC = () => {
             />
           )}
           <Button
-            title="Clear All Data"
-            onPress={handleClearData}
+            title={t.settings.deleteAccount}
+            onPress={handleDeleteAccount}
             variant="danger"
             icon="trash-2"
             fullWidth
@@ -1295,17 +1765,26 @@ const Settings: React.FC = () => {
         </Card>
 
         {/* About */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>About</Text>
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.aboutSection}</Text>
         <Card style={styles.card}>
           <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: C.textPrimary }]}>App</Text>
-            <Text style={[styles.settingValue, { color: C.textSecondary }]}>Potraces</Text>
+            <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.appLabel}</Text>
+            <Text style={[styles.settingValue, { color: C.textSecondary }]}>{t.settings.potracesApp}</Text>
           </View>
           <View style={[styles.divider, { backgroundColor: C.border }]} />
           <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: C.textPrimary }]}>Version</Text>
+            <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.version}</Text>
             <Text style={[styles.settingValue, { color: C.textSecondary }]}>1.0.0</Text>
           </View>
+          <View style={[styles.divider, { backgroundColor: C.border }]} />
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => Linking.openURL('https://potraces.vercel.app/privacy.html')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.privacyPolicy}</Text>
+            <Feather name="external-link" size={16} color={C.textSecondary} />
+          </TouchableOpacity>
         </Card>
 
         <View style={{ height: SPACING['3xl'] }} />
@@ -1334,7 +1813,7 @@ const Settings: React.FC = () => {
               <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
                 <Feather name="image" size={18} color={C.accent} />
               </View>
-              <Text style={styles.qrActionText}>Replace Image</Text>
+              <Text style={styles.qrActionText}>{t.settings.qrReplaceImage}</Text>
               <Feather name="chevron-right" size={16} color={C.textMuted} />
             </TouchableOpacity>
 
@@ -1348,7 +1827,7 @@ const Settings: React.FC = () => {
               <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
                 <Feather name="edit-2" size={18} color={C.accent} />
               </View>
-              <Text style={styles.qrActionText}>Rename</Text>
+              <Text style={styles.qrActionText}>{t.settings.qrRename}</Text>
               <Feather name="chevron-right" size={16} color={C.textMuted} />
             </TouchableOpacity>
 
@@ -1362,7 +1841,7 @@ const Settings: React.FC = () => {
               <View style={[styles.qrActionIconBg, { backgroundColor: withAlpha(C.neutral, 0.1) }]}>
                 <Feather name="trash-2" size={18} color={C.neutral} />
               </View>
-              <Text style={[styles.qrActionText, { color: C.neutral }]}>Delete</Text>
+              <Text style={[styles.qrActionText, { color: C.neutral }]}>{t.settings.qrDelete}</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -1380,13 +1859,13 @@ const Settings: React.FC = () => {
         <Pressable style={[styles.qrLabelOverlay, { backgroundColor: 'transparent' }]} onPress={() => setQrLabelModal((s) => ({ ...s, visible: false }))}>
           <Pressable style={[styles.qrLabelCard, { backgroundColor: C.surface }]} onPress={() => {}}>
             <Text style={styles.qrLabelTitle}>
-              {qrLabelModal.renameIndex !== undefined ? 'rename QR' : 'name this QR'}
+              {qrLabelModal.renameIndex !== undefined ? t.settings.qrRenameTitle : t.settings.qrNameTitle}
             </Text>
             <TextInput
               style={[styles.qrLabelInput, { color: C.textPrimary }]}
               value={qrLabelInput}
               onChangeText={setQrLabelInput}
-              placeholder="e.g. Maybank, TnG, ShopeePay"
+              placeholder={t.settings.qrNamePlaceholder}
               placeholderTextColor={C.textMuted}
               autoFocus
               selectTextOnFocus
@@ -1396,7 +1875,7 @@ const Settings: React.FC = () => {
                 style={styles.qrLabelCancel}
                 onPress={() => setQrLabelModal((s) => ({ ...s, visible: false }))}
               >
-                <Text style={{ color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.medium }}>cancel</Text>
+                <Text style={{ color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.medium }}>{t.settings.qrCancel}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.qrLabelSave}
@@ -1408,16 +1887,16 @@ const Settings: React.FC = () => {
                     const qrLabel = label || `QR ${qrLabelModal.replaceIndex !== undefined ? qrLabelModal.replaceIndex + 1 : paymentQrs.length + 1}`;
                     if (qrLabelModal.replaceIndex !== undefined) {
                       replacePaymentQr(qrLabelModal.replaceIndex, qrLabelModal.uri, qrLabel, mode);
-                      showToast('QR updated', 'success');
+                      showToast(t.settings.qrUpdated, 'success');
                     } else {
                       addPaymentQr(qrLabelModal.uri, qrLabel, mode);
-                      showToast('QR added', 'success');
+                      showToast(t.settings.qrAdded, 'success');
                     }
                   }
                   setQrLabelModal((s) => ({ ...s, visible: false }));
                 }}
               >
-                <Text style={{ color: '#fff', fontWeight: TYPOGRAPHY.weight.semibold }}>save</Text>
+                <Text style={{ color: '#fff', fontWeight: TYPOGRAPHY.weight.semibold }}>{t.settings.qrSave}</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -1436,7 +1915,7 @@ const Settings: React.FC = () => {
       >
         <Pressable style={styles.currencyOverlay} onPress={() => setCurrencyModalVisible(false)}>
           <View style={[styles.currencyCard, { backgroundColor: C.surface }]} onStartShouldSetResponder={() => true}>
-            <Text style={styles.currencyTitle}>select currency</Text>
+            <Text style={styles.currencyTitle}>{t.settings.selectCurrency}</Text>
             <ScrollView style={styles.currencyList} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
               {CURRENCY_OPTIONS.map((opt) => {
                 const selected = opt.code === currency;
@@ -1448,7 +1927,7 @@ const Settings: React.FC = () => {
                       lightTap();
                       setCurrency(opt.code);
                       setCurrencyModalVisible(false);
-                      showToast(`Currency set to ${opt.code}`, 'success');
+                      showToast(t.settings.currencySetTo.replace('{code}', opt.code), 'success');
                     }}
                     activeOpacity={0.6}
                   >

@@ -10,6 +10,9 @@ export const useSavingsStore = create<SavingsState>()(
       sortBy: 'manual' as SavingsSortBy,
       accountOrder: [] as string[],
       lastOpenedValue: null,
+      _deletedSavingsIds: [],
+
+      clearSavingsTombstones: () => set({ _deletedSavingsIds: [] }),
 
       addAccount: (account) =>
         set((state) => {
@@ -47,6 +50,7 @@ export const useSavingsStore = create<SavingsState>()(
         set((state) => ({
           accounts: state.accounts.filter((a) => a.id !== id),
           accountOrder: state.accountOrder.filter((oid) => oid !== id),
+          _deletedSavingsIds: [...(state._deletedSavingsIds ?? []), id],
         })),
 
       addSnapshot: (accountId, value, note, snapshotType) =>
@@ -106,6 +110,7 @@ export const useSavingsStore = create<SavingsState>()(
         sortBy: state.sortBy,
         accountOrder: state.accountOrder,
         lastOpenedValue: state.lastOpenedValue,
+        _deletedSavingsIds: state._deletedSavingsIds ?? [],
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -129,6 +134,7 @@ export const useSavingsStore = create<SavingsState>()(
           if (!state.sortBy) state.sortBy = 'manual';
           if (!state.accountOrder) state.accountOrder = [];
           if (state.lastOpenedValue === undefined) state.lastOpenedValue = null;
+          state._deletedSavingsIds = state._deletedSavingsIds ?? [];
         }
       },
     }

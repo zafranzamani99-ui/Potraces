@@ -19,6 +19,7 @@ import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
 import { lightTap } from '../../../services/haptics';
 import { useToast } from '../../../context/ToastContext';
+import { useT } from '../../../i18n';
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -28,6 +29,7 @@ type SortMode = 'recent' | 'total';
 
 const FreelancerClientList: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
   const { showToast } = useToast();
@@ -83,7 +85,7 @@ const FreelancerClientList: React.FC = () => {
     setNewContact('');
     setNewNotes('');
     setShowAddModal(false);
-    showToast('Client added.', 'success');
+    showToast(t.freelancer.clientAdded, 'success');
   };
 
   const toggleSort = () => {
@@ -112,7 +114,7 @@ const FreelancerClientList: React.FC = () => {
         </Text>
         {item.avgGap !== null && (
           <Text style={styles.clientGap}>
-            pays about every {item.avgGap} days
+            {t.freelancer.paysAboutEvery.replace('{n}', String(item.avgGap))}
           </Text>
         )}
       </View>
@@ -127,17 +129,17 @@ const FreelancerClientList: React.FC = () => {
         <Feather name="chevron-right" size={16} color={C.textMuted} />
       </View>
     </TouchableOpacity>
-  ), [currency, navigation]);
+  ), [currency, navigation, t]);
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>clients</Text>
+        <Text style={styles.headerTitle}>{t.freelancer.clientsTitle}</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={toggleSort} style={styles.sortButton}>
             <Text style={styles.sortText}>
-              {sortMode === 'recent' ? 'recent' : 'total earned'}
+              {sortMode === 'recent' ? t.freelancer.sortRecent : t.freelancer.sortTotalEarned}
             </Text>
             <Feather name="chevron-down" size={14} color={C.textSecondary} />
           </TouchableOpacity>
@@ -156,7 +158,7 @@ const FreelancerClientList: React.FC = () => {
       {clients.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>
-            no clients yet — they'll show up when you log your first payment
+            {t.freelancer.emptyClients}
           </Text>
         </View>
       ) : (
@@ -194,13 +196,13 @@ const FreelancerClientList: React.FC = () => {
             activeOpacity={1}
             onPress={Keyboard.dismiss}
           >
-            <Text style={styles.modalTitle}>add client</Text>
+            <Text style={styles.modalTitle}>{t.freelancer.addClientTitle}</Text>
 
             <TextInput
               style={styles.modalInput}
               value={newName}
               onChangeText={setNewName}
-              placeholder="name"
+              placeholder={t.freelancer.namePlaceholder}
               placeholderTextColor={C.textMuted}
               autoFocus
               returnKeyType="next"
@@ -209,7 +211,7 @@ const FreelancerClientList: React.FC = () => {
               style={styles.modalInput}
               value={newContact}
               onChangeText={setNewContact}
-              placeholder="contact (optional)"
+              placeholder={t.freelancer.contactPlaceholder}
               placeholderTextColor={C.textMuted}
               returnKeyType="next"
             />
@@ -217,7 +219,7 @@ const FreelancerClientList: React.FC = () => {
               style={styles.modalInput}
               value={newNotes}
               onChangeText={setNewNotes}
-              placeholder="notes (optional)"
+              placeholder={t.freelancer.notesPlaceholder}
               placeholderTextColor={C.textMuted}
               returnKeyType="done"
               onSubmitEditing={handleAddClient}
@@ -238,7 +240,7 @@ const FreelancerClientList: React.FC = () => {
                   !newName.trim() && styles.saveButtonTextDisabled,
                 ]}
               >
-                save
+                {t.freelancer.save}
               </Text>
             </TouchableOpacity>
           </TouchableOpacity>

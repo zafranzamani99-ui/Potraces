@@ -637,7 +637,7 @@ function sbFetch(path,opts){
 
 async function loadShop(slug){
   try{
-    var r1=await sbFetch('/rest/v1/seller_profiles?select=id,user_id,display_name,currency,shop_notice,phone,logo_url&slug=eq.'+encodeURIComponent(slug)+'&order=updated_at.desc&limit=1');
+    var r1=await sbFetch('/rest/v1/seller_profiles_public?select=id,user_id,display_name,currency,shop_notice,phone,logo_url&slug=eq.'+encodeURIComponent(slug)+'&limit=1');
     var profiles=await r1.json();
     if(!profiles||!profiles.length){
       document.getElementById('loading').innerHTML='<div class="skel-err"><div class="skel-err-icon">🔍</div><div class="skel-err-title">Store not found</div><div class="skel-err-sub">Please check your link</div></div>';

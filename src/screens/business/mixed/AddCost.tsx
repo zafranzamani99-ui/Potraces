@@ -17,21 +17,22 @@ import { useSettingsStore } from '../../../store/settingsStore';
 import { CostCategory } from '../../../types';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, successNotification } from '../../../services/haptics';
 
-const CATEGORIES: { type: CostCategory; emoji: string; label: string; placeholder: string }[] = [
-  { type: 'petrol', emoji: '\u26FD', label: 'Petrol', placeholder: 'full tank? top up?' },
-  { type: 'maintenance', emoji: '\u{1F527}', label: 'Maintenance', placeholder: 'what was fixed?' },
-  { type: 'data', emoji: '\u{1F4F1}', label: 'Data/Phone', placeholder: 'monthly reload?' },
-  { type: 'toll', emoji: '\u{1F6E3}\uFE0F', label: 'Toll', placeholder: 'which highway?' },
-  { type: 'parking', emoji: '\u{1F17F}\uFE0F', label: 'Parking', placeholder: 'where?' },
-  { type: 'insurance', emoji: '\u{1F6E1}\uFE0F', label: 'Insurance', placeholder: 'which coverage?' },
-  { type: 'other', emoji: '\u270F\uFE0F', label: 'Other', placeholder: 'what was this?' },
-];
-
 const AddCost: React.FC = () => {
   const C = useCalm();
+  const t = useT();
+  const CATEGORIES: { type: CostCategory; emoji: string; label: string; placeholder: string }[] = [
+    { type: 'petrol', emoji: '\u26FD', label: t.mixed.catPetrol, placeholder: t.mixed.costNotePetrol },
+    { type: 'maintenance', emoji: '\u{1F527}', label: t.mixed.catMaintenance, placeholder: t.mixed.costNoteMaintenance },
+    { type: 'data', emoji: '\u{1F4F1}', label: t.mixed.catData, placeholder: t.mixed.costNoteData },
+    { type: 'toll', emoji: '\u{1F6E3}\uFE0F', label: t.mixed.catToll, placeholder: t.mixed.costNoteToll },
+    { type: 'parking', emoji: '\u{1F17F}\uFE0F', label: t.mixed.catParking, placeholder: t.mixed.costNoteParking },
+    { type: 'insurance', emoji: '\u{1F6E1}\uFE0F', label: t.mixed.catInsurance, placeholder: t.mixed.costNoteInsurance },
+    { type: 'other', emoji: '\u270F\uFE0F', label: t.mixed.catOther, placeholder: t.mixed.costNoteOther },
+  ];
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation();
   const { showToast } = useToast();
@@ -54,7 +55,7 @@ const AddCost: React.FC = () => {
       date.getMonth() === today.getMonth() &&
       date.getFullYear() === today.getFullYear()
     ) {
-      return 'today';
+      return t.mixed.today;
     }
     return format(date, 'MMM dd');
   };
@@ -68,7 +69,7 @@ const AddCost: React.FC = () => {
 
   const getPlaceholder = () => {
     const cat = CATEGORIES.find((c) => c.type === selectedCategory);
-    return cat?.placeholder || 'what was this?';
+    return cat?.placeholder || t.mixed.costNoteOther;
   };
 
   const resetForm = () => {
@@ -83,7 +84,7 @@ const AddCost: React.FC = () => {
   const handleSave = () => {
     const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0 || !selectedCategory) {
-      showToast('Enter a valid amount.', 'error');
+      showToast(t.mixed.enterValidAmount, 'error');
       return;
     }
 
@@ -99,7 +100,7 @@ const AddCost: React.FC = () => {
     });
 
     successNotification();
-    showToast('Cost saved.', 'success');
+    showToast(t.mixed.costSaved, 'success');
     resetForm();
   };
 
@@ -113,13 +114,13 @@ const AddCost: React.FC = () => {
       >
         {justSaved && !selectedCategory && (
           <View style={styles.savedBanner}>
-            <Text style={styles.savedText}>saved. log another or go back.</Text>
+            <Text style={styles.savedText}>{t.mixed.savedLogAnother}</Text>
             <TouchableOpacity
               onPress={() => navigation.goBack()}
               activeOpacity={0.7}
               style={styles.doneLink}
             >
-              <Text style={styles.doneLinkText}>done</Text>
+              <Text style={styles.doneLinkText}>{t.mixed.done}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -127,7 +128,7 @@ const AddCost: React.FC = () => {
         {/* Step 1 — Category tiles */}
         {!selectedCategory && (
           <>
-            <Text style={styles.heading}>what kind of cost?</Text>
+            <Text style={styles.heading}>{t.mixed.whatKindOfCost}</Text>
             <View style={styles.categoryGrid}>
               {CATEGORIES.map((cat) => (
                 <TouchableOpacity
@@ -164,7 +165,7 @@ const AddCost: React.FC = () => {
                 style={styles.customCategoryInput}
                 value={customCategoryName}
                 onChangeText={setCustomCategoryName}
-                placeholder="what kind of cost?"
+                placeholder={t.mixed.whatKindOfCost}
                 placeholderTextColor={C.textMuted}
                 returnKeyType="next"
               />
@@ -242,7 +243,7 @@ const AddCost: React.FC = () => {
                   (!amount || parseFloat(amount) <= 0) && styles.saveButtonTextDisabled,
                 ]}
               >
-                done
+                {t.mixed.done}
               </Text>
             </TouchableOpacity>
           </>

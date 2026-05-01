@@ -20,6 +20,7 @@ interface PaywallModalProps {
   onClose: () => void;
   feature: PaywallFeature;
   currentUsage?: number;
+  reason?: string;
 }
 
 const FEATURE_CONFIG: Record<PaywallFeature, { title: string; icon: keyof typeof Feather.glyphMap; freeLimit: number; unit: string }> = {
@@ -54,6 +55,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
   onClose,
   feature,
   currentUsage,
+  reason,
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
@@ -112,6 +114,11 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
                 ? `You've used ${currentUsage}/${config.freeLimit} free ${config.unit}`
                 : `Free plan allows ${config.freeLimit} ${config.unit}`}
             </Text>
+            {reason && (
+              <Text style={[styles.headerSubtitle, { marginTop: 6, color: C.textSecondary, fontSize: 13 }]}>
+                {reason}
+              </Text>
+            )}
           </View>
 
           {/* Comparison */}

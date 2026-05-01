@@ -7,6 +7,7 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, COLORS, SPACING, TYPOGRAPHY, RADIUS, PRODUCT_CATEGORIES, TYPE, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { generateReportNarrative, ReportMonthData } from '../../services/reportNarrative';
 import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import Card from '../../components/common/Card';
@@ -16,6 +17,7 @@ const screenWidth = Dimensions.get('window').width;
 
 const BusinessReports: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { sales, products } = useBusinessStore();
   const currency = useSettingsStore(state => state.currency);
@@ -91,9 +93,9 @@ const BusinessReports: React.FC = () => {
     const card = sales.filter((s) => s.paymentMethod === 'card').reduce((sum, s) => sum + s.totalAmount, 0);
 
     const data = [];
-    if (cash > 0) data.push({ name: 'Cash', amount: cash, color: COLORS.success, legendFontColor: C.textPrimary, legendFontSize: 12 });
-    if (digital > 0) data.push({ name: 'Digital', amount: digital, color: COLORS.info, legendFontColor: C.textPrimary, legendFontSize: 12 });
-    if (card > 0) data.push({ name: 'Card', amount: card, color: COLORS.warning, legendFontColor: C.textPrimary, legendFontSize: 12 });
+    if (cash > 0) data.push({ name: t.business.reportsCash, amount: cash, color: COLORS.success, legendFontColor: C.textPrimary, legendFontSize: 12 });
+    if (digital > 0) data.push({ name: t.business.reportsDigital, amount: digital, color: COLORS.info, legendFontColor: C.textPrimary, legendFontSize: 12 });
+    if (card > 0) data.push({ name: t.business.reportsCard, amount: card, color: COLORS.warning, legendFontColor: C.textPrimary, legendFontSize: 12 });
 
     return data;
   }, [sales]);
@@ -196,8 +198,8 @@ const BusinessReports: React.FC = () => {
       <View style={styles.container}>
         <EmptyState
           icon="trending-up"
-          title="nothing here yet"
-          message="once orders start flowing, you'll see everything here"
+          title={t.business.reportsEmptyTitle}
+          message={t.business.reportsEmptyMsg}
         />
       </View>
     );
@@ -218,11 +220,11 @@ const BusinessReports: React.FC = () => {
 
         <View style={styles.statsRow}>
           <Card style={styles.statCard}>
-            <Text style={styles.statLabel}>total came in</Text>
+            <Text style={styles.statLabel}>{t.business.reportsTotalCameIn}</Text>
             <Text style={styles.statValue}>{currency} {totalStats.revenue.toFixed(2)}</Text>
           </Card>
           <Card style={styles.statCard}>
-            <Text style={styles.statLabel}>total kept</Text>
+            <Text style={styles.statLabel}>{t.business.reportsTotalKept}</Text>
             <Text style={[styles.statValue, { color: C.positive }]}>
               {currency} {totalStats.profit.toFixed(2)}
             </Text>
@@ -230,7 +232,7 @@ const BusinessReports: React.FC = () => {
         </View>
 
         <Card>
-          <Text style={styles.chartTitle}>monthly flow (6 months)</Text>
+          <Text style={styles.chartTitle}>{t.business.reportsMonthlyFlow}</Text>
           <BarChart
             data={monthlySalesData}
             width={screenWidth - 64}
@@ -255,7 +257,7 @@ const BusinessReports: React.FC = () => {
 
         {paymentMethodData.length > 0 && (
           <Card>
-            <Text style={styles.chartTitle}>Payment Methods</Text>
+            <Text style={styles.chartTitle}>{t.business.reportsPaymentMethods}</Text>
             <PieChart
               data={paymentMethodData}
               width={screenWidth - 64}
@@ -274,7 +276,7 @@ const BusinessReports: React.FC = () => {
 
         {topSellingProducts.length > 0 && (
           <Card>
-            <Text style={styles.chartTitle}>Top Selling Products</Text>
+            <Text style={styles.chartTitle}>{t.business.reportsTopSelling}</Text>
             {topSellingProducts.map((product, index) => (
               <View key={index} style={styles.productRow}>
                 <View style={styles.productRank}>
@@ -282,7 +284,7 @@ const BusinessReports: React.FC = () => {
                 </View>
                 <View style={styles.productInfo}>
                   <Text style={styles.productName}>{product.name}</Text>
-                  <Text style={styles.productQuantity}>{product.quantity} sold</Text>
+                  <Text style={styles.productQuantity}>{product.quantity} {t.business.reportsSold}</Text>
                 </View>
                 <Text style={styles.productRevenue}>{currency} {product.revenue.toFixed(2)}</Text>
               </View>
@@ -291,23 +293,23 @@ const BusinessReports: React.FC = () => {
         )}
 
         <Card>
-          <Text style={styles.chartTitle}>the numbers</Text>
+          <Text style={styles.chartTitle}>{t.business.reportsTheNumbers}</Text>
           <View style={styles.metricsGrid}>
             <View style={styles.metricItem}>
               <Text style={styles.metricValue}>{sales.length}</Text>
-              <Text style={styles.metricLabel}>orders</Text>
+              <Text style={styles.metricLabel}>{t.business.reportsOrders}</Text>
             </View>
             <View style={styles.metricDivider} />
             <View style={styles.metricItem}>
               <Text style={styles.metricValue}>{products.length}</Text>
-              <Text style={styles.metricLabel}>Products</Text>
+              <Text style={styles.metricLabel}>{t.business.reportsProducts}</Text>
             </View>
             <View style={styles.metricDivider} />
             <View style={styles.metricItem}>
               <Text style={[styles.metricValue, { color: C.positive }]}>
                 {totalStats.profitMargin.toFixed(1)}%
               </Text>
-              <Text style={styles.metricLabel}>kept per sale</Text>
+              <Text style={styles.metricLabel}>{t.business.reportsKeptPerSale}</Text>
             </View>
           </View>
         </Card>

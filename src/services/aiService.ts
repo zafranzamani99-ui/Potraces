@@ -47,6 +47,7 @@ interface GeminiVisionResponse {
 const API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '';
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-haiku-4-5-20251001';
+const CHAT_MODEL = 'claude-sonnet-4-6'; // conversational Echo — needs personality, not just speed
 
 const categoryNames = [
   ...EXPENSE_CATEGORIES.map((c) => c.name),
@@ -64,9 +65,17 @@ export interface ParsedTransaction {
 async function callAnthropic(
   system: string,
   messages: { role: 'user' | 'assistant'; content: string }[],
-  maxTokens: number
+  maxTokens: number,
+  model: string = MODEL,
+  prefill?: string
 ): Promise<string | null> {
   if (!API_KEY) return null;
+
+  // Prefill: seed the assistant's response so it continues from that point.
+  // The model physically cannot insert a filler opener before the prefill.
+  const msgsWithPrefill = prefill
+    ? [...messages, { role: 'assistant' as const, content: prefill }]
+    : messages;
 
   const response = await fetch(API_URL, {
     method: 'POST',
@@ -77,10 +86,10 @@ async function callAnthropic(
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       max_tokens: maxTokens,
       system,
-      messages,
+      messages: msgsWithPrefill,
     }),
   });
 
@@ -90,7 +99,10 @@ async function callAnthropic(
   const content = data?.content?.[0];
   if (!content || content.type !== 'text') return null;
 
-  return content.text ?? null;
+  // Prepend the prefill since the API returns only the continuation
+  const text = content.text ?? null;
+  if (!text) return null;
+  return prefill ? prefill + text : text;
 }
 
 /**
@@ -196,15 +208,35 @@ export async function askMoneyQuestion(
       .map(([cat, amt]) => `${cat} RM ${amt.toFixed(2)}`)
       .join(', ')}.`;
 
+    // Detect language to pick right prefill and examples
+    const isMalay = /\b(aku|kau|dia|saya|kita|boleh|tak|lah|sia|banyak|duit|macam|berapa|kenapa|camne|gaji|belanja|simpan|hutang|kaya|miskin|pokai|weh|wei|bro|kan|je|je lah|memang|mana|tau|tahu)\b/i.test(question);
+
+    // Few-shot examples — include both EN and BM to show style in both languages
+    const echoExamples: { role: 'user' | 'assistant'; content: string }[] = [
+      { role: 'user', content: 'am i rich chat?' },
+      { role: 'assistant', content: 'not rich-rich lah — but RM 6k net after debts with RM 8k cash? not pokai either. boleh tahan.' },
+      { role: 'user', content: 'banyak sia duit aku' },
+      { role: 'assistant', content: 'banyak ke? RM 6k net je sebenarnya. tapi takde la pokai, oklah tu.' },
+      { role: 'user', content: 'kenapa aku selalu pokai' },
+      { role: 'assistant', content: 'makan je dah habis 40% duit kau setiap bulan. tu la pasal.' },
+      { role: 'user', content: 'how much did i spend this month' },
+      { role: 'assistant', content: 'RM 1,840 out, RM 4,500 in. kept 59% — better than last month.' },
+    ];
+
     const messages: { role: 'user' | 'assistant'; content: string }[] = [
+      ...echoExamples,
       ...history.map((m) => ({ role: m.role, content: m.content })),
       { role: 'user' as const, content: question },
     ];
 
     return await callAnthropic(
-      `You are a calm, non-judgmental financial companion for a Malaysian user. You can see their transaction history. Answer questions about their spending honestly but kindly. Never give investment advice. Never be preachy. Use 'RM' for amounts. Keep responses concise (2-3 sentences max).\n\n${summary}`,
+      `You are Echo — a financial companion for a young Malaysian. Always reply in the SAME language the user writes in. Malay message = Malay reply. English = English. Manglish = Manglish. Short, direct, casual. Use RM. Max 2 sentences.
+
+${summary}`,
       messages,
-      300
+      150,
+      CHAT_MODEL,
+      isMalay ? 'eh,' : 'tbh,' // prefill forces casual opener, no filler
     );
   } catch {
     return null;
@@ -251,7 +283,8 @@ export async function askBusinessQuestion(
     return await callAnthropic(
       `You are a calm, honest money companion for a Malaysian gig worker or small earner.\nYou understand that income is irregular and unpredictable.\nNever compare the user to a standard or ideal.\nNever use words like "should", "must", "discipline", or "goal".\nWhen asked about slow months, normalize them — they are part of this kind of work.\nWhen asked about affordability, calculate from realistic average income, not current month.\nIf the user earns from multiple sources, treat that as a strength, not complexity.\nKeep responses under 4 sentences.\nSpeak plainly. No jargon.\n\n${contextSummary}`,
       messages,
-      400
+      150,
+      CHAT_MODEL
     );
   } catch {
     return null;

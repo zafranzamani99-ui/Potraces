@@ -20,11 +20,13 @@ import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallSession } from '../../utils/explainStallSession';
 import { RootStackParamList } from '../../types';
+import { useT } from '../../i18n';
 
 type SessionSummaryRoute = RouteProp<RootStackParamList, 'StallSessionSummary'>;
 
 const SessionSummary: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<SessionSummaryRoute>();
   const { sessionId } = route.params;
@@ -135,15 +137,15 @@ const SessionSummary: React.FC = () => {
   const handleShare = async () => {
     if (!session) return;
 
-    const sessionLabel = session.name || 'stall session';
+    const sessionLabel = session.name || t.stall.stallSessionFallback;
     const dateStr = format(
       session.closedAt || session.startedAt,
       'dd MMM yyyy'
     );
 
     let message = `${sessionLabel}\n${dateStr}\n`;
-    message += `Total: ${currency} ${summary.totalRevenue.toFixed(2)}\n`;
-    message += `Cash: ${currency} ${summary.totalCash.toFixed(2)} | QR: ${currency} ${summary.totalQR.toFixed(2)}\n`;
+    message += `${t.stall.totalLine}: ${currency} ${summary.totalRevenue.toFixed(2)}\n`;
+    message += `${t.stall.cashLine}: ${currency} ${summary.totalCash.toFixed(2)} | ${t.stall.qrLine}: ${currency} ${summary.totalQR.toFixed(2)}\n`;
     message += '---\n';
 
     for (const product of summary.productBreakdown) {
@@ -165,14 +167,14 @@ const SessionSummary: React.FC = () => {
     return (
       <View style={styles.container}>
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>session not found</Text>
+          <Text style={styles.emptyText}>{t.stall.sessionNotFound}</Text>
           <TouchableOpacity
             style={styles.doneButtonEmpty}
             onPress={() => navigation.goBack()}
             accessibilityRole="button"
             accessibilityLabel="Go back"
           >
-            <Text style={styles.doneButtonEmptyText}>go back</Text>
+            <Text style={styles.doneButtonEmptyText}>{t.stall.goBack}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -195,7 +197,7 @@ const SessionSummary: React.FC = () => {
         </Text>
 
         {/* Total revenue */}
-        <Text style={styles.revenueLabel}>TOTAL REVENUE</Text>
+        <Text style={styles.revenueLabel}>{t.stall.totalRevenueLabel}</Text>
         <Text
           style={styles.revenueAmount}
           accessibilityLabel={`Total revenue ${currency} ${summary.totalRevenue.toFixed(2)}`}
@@ -212,7 +214,7 @@ const SessionSummary: React.FC = () => {
           <View style={styles.statItem}>
             <Feather name="shopping-bag" size={16} color={C.textSecondary} />
             <Text style={styles.statText}>
-              {summary.saleCount} sale{summary.saleCount !== 1 ? 's' : ''}
+              {summary.saleCount} {summary.saleCount !== 1 ? t.stall.salesLabel : t.stall.saleLabel}
             </Text>
           </View>
         </View>
@@ -221,7 +223,7 @@ const SessionSummary: React.FC = () => {
         <View style={styles.splitRow}>
           <View style={styles.splitItem}>
             <Feather name="dollar-sign" size={16} color={C.textSecondary} style={{ marginBottom: 4 }} />
-            <Text style={styles.splitLabel}>CASH</Text>
+            <Text style={styles.splitLabel}>{t.stall.cashLabelCaps}</Text>
             <Text
               style={styles.splitValue}
               accessibilityLabel={`Cash ${currency} ${summary.totalCash.toFixed(2)}`}
@@ -232,7 +234,7 @@ const SessionSummary: React.FC = () => {
           <View style={styles.splitDivider} />
           <View style={styles.splitItem}>
             <Feather name="smartphone" size={16} color={C.textSecondary} style={{ marginBottom: 4 }} />
-            <Text style={styles.splitLabel}>QR</Text>
+            <Text style={styles.splitLabel}>{t.stall.qrLabelCaps}</Text>
             <Text
               style={styles.splitValue}
               accessibilityLabel={`QR payments ${currency} ${summary.totalQR.toFixed(2)}`}
@@ -245,13 +247,13 @@ const SessionSummary: React.FC = () => {
         {/* Product breakdown */}
         {summary.productBreakdown.length > 0 && (
           <View style={styles.breakdownSection}>
-            <Text style={styles.sectionLabel}>PRODUCTS</Text>
+            <Text style={styles.sectionLabel}>{t.stall.productsLabel}</Text>
             {summary.productBreakdown.map((product, index) => (
               <View key={`${product.productName}-${index}`} style={styles.productRow}>
                 <View style={styles.productInfo}>
                   <Text style={styles.productName}>{product.productName}</Text>
                   <Text style={styles.productQty}>
-                    {product.qtySold} sold
+                    {product.qtySold} {t.stall.soldLabel}
                   </Text>
                 </View>
                 <Text
@@ -277,8 +279,11 @@ const SessionSummary: React.FC = () => {
         {comparison && (
           <View style={styles.comparisonCard}>
             <Text style={styles.comparisonText}>
-              {currency} {summary.totalRevenue.toFixed(0)} vs your {currency}{' '}
-              {comparison.avg.toFixed(0)} average
+              {t.stall.revenueVsAverage
+                .replace('{curr}', currency)
+                .replace('{amount}', summary.totalRevenue.toFixed(0))
+                .replace('{curr2}', currency)
+                .replace('{avg}', comparison.avg.toFixed(0))}
             </Text>
           </View>
         )}
@@ -300,8 +305,8 @@ const SessionSummary: React.FC = () => {
         {/* Transfer bridge */}
         {showTransferBridge && (
           <View style={styles.transferCard}>
-            <Text style={styles.transferLabel}>TRANSFER TO PERSONAL</Text>
-            <Text style={styles.transferHint}>move stall earnings to your personal wallet</Text>
+            <Text style={styles.transferLabel}>{t.stall.transferToPersonal}</Text>
+            <Text style={styles.transferHint}>{t.stall.transferHint}</Text>
             <View style={styles.transferRow}>
               <Text style={styles.transferCurrency}>{currency}</Text>
               <TextInput
@@ -320,7 +325,7 @@ const SessionSummary: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Transfer to personal wallet"
             >
-              <Text style={styles.transferButtonText}>transfer</Text>
+              <Text style={styles.transferButtonText}>{t.stall.transferButton}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.skipLink}
@@ -329,7 +334,7 @@ const SessionSummary: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Skip transfer"
             >
-              <Text style={styles.skipLinkText}>skip</Text>
+              <Text style={styles.skipLinkText}>{t.stall.skip}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -339,7 +344,7 @@ const SessionSummary: React.FC = () => {
           <Animated.View style={[styles.transferConfirm, { opacity: fadeAnim }]}>
             <Feather name="check" size={16} color={C.positive} />
             <Text style={styles.transferConfirmText}>
-              {currency} {session?.transferAmount?.toFixed(2) || transferAmount} transferred
+              {currency} {session?.transferAmount?.toFixed(2) || transferAmount} {t.stall.transferredSuffix}
             </Text>
           </Animated.View>
         )}
@@ -353,7 +358,7 @@ const SessionSummary: React.FC = () => {
           accessibilityLabel="Share session summary via WhatsApp or other apps"
         >
           <Feather name="share" size={18} color={C.bronze} />
-          <Text style={styles.shareButtonText}>share summary</Text>
+          <Text style={styles.shareButtonText}>{t.stall.shareSummary}</Text>
         </TouchableOpacity>
 
         {/* Done button */}
@@ -364,7 +369,7 @@ const SessionSummary: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Done, return to stall dashboard"
         >
-          <Text style={styles.doneButtonText}>done</Text>
+          <Text style={styles.doneButtonText}>{t.stall.done}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

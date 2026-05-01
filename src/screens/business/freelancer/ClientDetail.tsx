@@ -18,6 +18,7 @@ import { useCalm } from '../../../hooks/useCalm';
 import { RootStackParamList } from '../../../types';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap } from '../../../services/haptics';
+import { useT } from '../../../i18n';
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -25,6 +26,7 @@ function toDate(d: Date | string): Date {
 
 const ClientDetail: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<RouteProp<RootStackParamList, 'FreelancerClientDetail'>>();
   const navigation = useNavigation();
@@ -54,7 +56,7 @@ const ClientDetail: React.FC = () => {
     [client, businessTransactions]
   );
 
-  const totalEarned = payments.reduce((s, t) => s + t.amount, 0);
+  const totalEarned = payments.reduce((s, p) => s + p.amount, 0);
   const avgGap = client ? getClientAverageGap(client.id) : null;
   const lastPayment = client ? getClientLastPayment(client.id) : null;
 
@@ -68,7 +70,7 @@ const ClientDetail: React.FC = () => {
   if (!client) {
     return (
       <View style={styles.container}>
-        <Text style={styles.emptyText}>client not found</Text>
+        <Text style={styles.emptyText}>{t.freelancer.clientNotFound}</Text>
       </View>
     );
   }
@@ -92,16 +94,16 @@ const ClientDetail: React.FC = () => {
 
   const handleDelete = () => {
     Alert.alert(
-      'delete client',
-      'payments from this client will become uncategorized. delete?',
+      t.freelancer.deleteConfirmTitle,
+      t.freelancer.deleteConfirmMsg,
       [
-        { text: 'cancel', style: 'cancel' },
+        { text: t.freelancer.cancel, style: 'cancel' },
         {
-          text: 'delete',
+          text: t.freelancer.delete,
           style: 'destructive',
           onPress: () => {
             deleteClient(client.id);
-            showToast('Client removed.', 'success');
+            showToast(t.freelancer.clientRemoved, 'success');
             navigation.goBack();
           },
         },
@@ -140,7 +142,7 @@ const ClientDetail: React.FC = () => {
             value={contactValue}
             onChangeText={setContactValue}
             autoFocus
-            placeholder="contact"
+            placeholder={t.freelancer.contactLabel}
             placeholderTextColor={C.textMuted}
             onBlur={saveContact}
             onSubmitEditing={saveContact}
@@ -149,7 +151,7 @@ const ClientDetail: React.FC = () => {
         ) : (
           <TouchableOpacity onPress={() => setEditingContact(true)}>
             <Text style={styles.contactText}>
-              {client.contact || 'tap to add contact'}
+              {client.contact || t.freelancer.tapToAddContact}
             </Text>
           </TouchableOpacity>
         )}
@@ -161,7 +163,7 @@ const ClientDetail: React.FC = () => {
             value={notesValue}
             onChangeText={setNotesValue}
             autoFocus
-            placeholder="notes"
+            placeholder={t.freelancer.notesLabel}
             placeholderTextColor={C.textMuted}
             onBlur={saveNotes}
             onSubmitEditing={saveNotes}
@@ -171,35 +173,35 @@ const ClientDetail: React.FC = () => {
         ) : (
           <TouchableOpacity onPress={() => setEditingNotes(true)}>
             <Text style={styles.notesText}>
-              {client.notes || 'tap to add notes'}
+              {client.notes || t.freelancer.tapToAddNotes}
             </Text>
           </TouchableOpacity>
         )}
 
         {client.isAutoDetected && (
-          <Text style={styles.autoDetectedLabel}>added from a payment</Text>
+          <Text style={styles.autoDetectedLabel}>{t.freelancer.addedFromPayment}</Text>
         )}
 
         {/* Hero — Total Earned */}
         <Text style={styles.totalEarned}>
           {currency} {totalEarned.toLocaleString()}
         </Text>
-        <Text style={styles.totalLabel}>total earned</Text>
+        <Text style={styles.totalLabel}>{t.freelancer.totalEarned}</Text>
 
         {/* Stats line */}
         {avgGap !== null && (
           <Text style={styles.statsLine}>
-            payments come about every {avgGap} days
+            {t.freelancer.paymentsEvery.replace('{n}', String(avgGap))}
           </Text>
         )}
         <Text style={styles.statusText}>
-          {isActive ? 'active' : 'quiet'}
+          {isActive ? t.freelancer.active : t.freelancer.quiet}
         </Text>
 
         {/* Payment History */}
         {payments.length > 0 && (
           <View style={styles.historySection}>
-            <Text style={styles.historyLabel}>payments</Text>
+            <Text style={styles.historyLabel}>{t.freelancer.paymentsHeading}</Text>
             {payments.map((payment) => (
               <View key={payment.id} style={styles.paymentRow}>
                 <Text style={styles.paymentAmount}>
@@ -214,7 +216,7 @@ const ClientDetail: React.FC = () => {
         )}
 
         {payments.length === 0 && (
-          <Text style={styles.noPaymentsText}>no payments yet</Text>
+          <Text style={styles.noPaymentsText}>{t.freelancer.noPaymentsYet}</Text>
         )}
 
         {/* Delete */}
@@ -225,7 +227,7 @@ const ClientDetail: React.FC = () => {
           }}
           style={styles.deleteButton}
         >
-          <Text style={styles.deleteText}>delete client</Text>
+          <Text style={styles.deleteText}>{t.freelancer.deleteClient}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

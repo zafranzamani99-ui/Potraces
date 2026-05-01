@@ -55,13 +55,38 @@ Deno.serve(async (req: Request) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    const chatIdStr = String(chatId);
+
+    // Rate limit: count attempts from this chat_id in the last 15 minutes.
+    // Reject once >= 10 attempts — blocks online brute force while being
+    // tolerant of legitimate typos.
+    const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const { count: recentAttempts } = await admin
+      .from('otp_chat_attempts')
+      .select('id', { count: 'exact', head: true })
+      .eq('chat_id', chatIdStr)
+      .gte('attempted_at', since);
+
+    if ((recentAttempts ?? 0) >= 10) {
+      await sendTelegramReply(
+        chatId,
+        '🚫 Terlalu banyak cubaan. Sila tunggu 15 minit.\n\nToo many attempts. Please wait 15 minutes.'
+      );
+      return new Response('OK', { status: 200 });
+    }
+
     // Look up pending OTP
     const { data: otp } = await admin
       .from('otp_verifications')
-      .select('id, user_id, expires_at')
+      .select('id, user_id, expires_at, chat_id')
       .eq('code', code)
       .eq('status', 'pending')
       .maybeSingle();
+
+    // Always log the attempt (matched or not) for rate-limit accounting
+    await admin
+      .from('otp_chat_attempts')
+      .insert({ chat_id: chatIdStr, matched: !!otp });
 
     if (!otp) {
       // Check if code exists but expired
@@ -100,10 +125,24 @@ Deno.serve(async (req: Request) => {
       return new Response('OK', { status: 200 });
     }
 
+    // Bind to this chat_id on first matching submission. If a previous
+    // attempt from a different chat already bound it, reject.
+    if (otp.chat_id && otp.chat_id !== chatIdStr) {
+      await sendTelegramReply(
+        chatId,
+        '❌ Kod ini telah dimulakan oleh pengguna lain.\n\nThis code was started by a different user.'
+      );
+      return new Response('OK', { status: 200 });
+    }
+
     // Mark verified
     await admin
       .from('otp_verifications')
-      .update({ status: 'verified', verified_at: new Date().toISOString() })
+      .update({
+        status: 'verified',
+        verified_at: new Date().toISOString(),
+        chat_id: chatIdStr,
+      })
       .eq('id', otp.id);
 
     // Update seller_profiles.is_verified

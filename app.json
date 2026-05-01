@@ -61,7 +61,8 @@
       ],
       "expo-font",
       "expo-asset",
-      "react-native-document-scanner-plugin"
+      "react-native-document-scanner-plugin",
+      "expo-tracking-transparency"
     ],
     "owner": "zafranzamani",
     "runtimeVersion": {

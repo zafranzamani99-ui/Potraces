@@ -125,7 +125,7 @@ const NotesHome: React.FC = () => {
           )}
           <View style={styles.pageContent}>
             <Text style={styles.pageTitle} numberOfLines={1}>
-              {item.title || 'untitled'}
+              {item.title || t.notes.untitled}
             </Text>
             {preview ? (
               <Text style={styles.pagePreview} numberOfLines={1}>
@@ -161,12 +161,10 @@ const NotesHome: React.FC = () => {
             <Feather name="edit-3" size={28} color={C.bronze} />
           </View>
           <Text style={styles.emptyTitle}>
-            {isFirstWrite ? 'just write' : 'no notes yet'}
+            {isFirstWrite ? t.notes.justWrite : t.notes.noNotesYet}
           </Text>
           <Text style={styles.emptyHint}>
-            {isFirstWrite
-              ? 'tulis apa kau belanja hari ni.\nthe app will figure out the rest.'
-              : 'tap below to start writing.'}
+            {isFirstWrite ? t.notes.firstWriteHint : t.notes.startWritingHint}
           </Text>
           <TouchableOpacity
             style={styles.emptyCTA}
@@ -174,7 +172,7 @@ const NotesHome: React.FC = () => {
             onPress={handleNewNote}
           >
             <Feather name="plus" size={18} color="#fff" />
-            <Text style={styles.emptyCTAText}>start writing</Text>
+            <Text style={styles.emptyCTAText}>{t.notes.startWriting}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -206,7 +204,7 @@ const NotesHome: React.FC = () => {
             <Feather name="x" size={18} color={C.textSecondary} />
           </TouchableOpacity>
           <Text style={styles.selectBarCount}>
-            {selectedIds.size} selected
+            {selectedIds.size} {t.notes.selected}
           </Text>
           <TouchableOpacity
             style={styles.selectBarDeleteBtn}
@@ -214,7 +212,7 @@ const NotesHome: React.FC = () => {
             activeOpacity={0.7}
           >
             <Feather name="trash-2" size={15} color={C.textMuted} />
-            <Text style={styles.selectBarDeleteText}>Delete</Text>
+            <Text style={styles.selectBarDeleteText}>{t.common.delete}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -231,11 +229,8 @@ const NotesHome: React.FC = () => {
         id="guide_notes"
         title={t.guide.yourMoneyNotes}
         icon="edit-3"
-        tips={[
-          t.guide.tipNotes1,
-          t.guide.tipNotes2,
-          t.guide.tipNotes3,
-        ]}
+        description={t.guide.descNotes}
+        accent="#8B7355"
       />
     </View>
   );

@@ -13,6 +13,7 @@ import { useMixedStore } from '../../../store/mixedStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -30,6 +31,7 @@ const CATEGORY_EMOJIS: Record<string, string> = {
 
 const StreamHistory: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
   const { businessTransactions } = useBusinessStore();
@@ -42,15 +44,15 @@ const StreamHistory: React.FC = () => {
 
   // Build dynamic tabs: All + each stream + optional Costs
   const tabs = useMemo(() => {
-    const result: { label: string; value: string }[] = [{ label: 'All', value: 'all' }];
+    const result: { label: string; value: string }[] = [{ label: t.mixed.tabAll, value: 'all' }];
     for (const stream of mixedDetails.streams) {
       result.push({ label: stream, value: stream });
     }
     if (mixedDetails.hasRoadCosts) {
-      result.push({ label: 'Costs', value: '__costs__' });
+      result.push({ label: t.mixed.tabCosts, value: '__costs__' });
     }
     return result;
-  }, [mixedDetails.streams, mixedDetails.hasRoadCosts]);
+  }, [mixedDetails.streams, mixedDetails.hasRoadCosts, t]);
 
   const filteredEntries = useMemo(() => {
     return businessTransactions
@@ -96,19 +98,19 @@ const StreamHistory: React.FC = () => {
       const label = cat === 'other' && tx.costCategoryOther ? tx.costCategoryOther : cat;
       return { emoji: CATEGORY_EMOJIS[cat] || '\u270F\uFE0F', label };
     }
-    return { emoji: '', label: tx.streamLabel || 'income' };
+    return { emoji: '', label: tx.streamLabel || t.mixed.incomeFallback };
   };
 
   const getSummaryLabel = () => {
-    if (filter === '__costs__') return 'total costs this month';
-    if (filter === 'all') return 'total income this month';
-    return `${filter} this month`;
+    if (filter === '__costs__') return t.mixed.totalCostsThisMonth;
+    if (filter === 'all') return t.mixed.totalIncomeThisMonth;
+    return t.mixed.thisMonthSuffix.replace('{stream}', filter);
   };
 
   const getEmptyText = () => {
-    if (filter === 'all') return 'nothing logged yet.';
-    if (filter === '__costs__') return 'no costs logged yet.';
-    return `no ${filter} income logged yet.`;
+    if (filter === 'all') return t.mixed.nothingLoggedYet;
+    if (filter === '__costs__') return t.mixed.noCostsLoggedYet;
+    return t.mixed.noStreamIncomeYet.replace('{stream}', filter);
   };
 
   const renderItem = ({ item }: { item: typeof filteredEntries[0] }) => {

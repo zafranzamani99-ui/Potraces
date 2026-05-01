@@ -472,7 +472,6 @@ export type RootStackParamList = {
 
 export type PersonalStackParamList = {
   Dashboard: undefined;
-  ExpenseEntry: undefined;
   ReceiptScanner: undefined;
   BudgetPlanning: undefined;
   Settings: undefined;
@@ -534,6 +533,12 @@ export interface Transaction {
   linkedDebtId?: string;
   editLog?: TransactionEdit[];
   playbookLinks?: PlaybookExpenseLink[];
+  // Multi-currency: if set, `amount` is the MYR-equivalent.
+  originalAmount?: number;
+  originalCurrency?: string;
+  fxRate?: number;   // rate used to convert originalAmount → amount
+  // Cached AI explanation of why the category was chosen — populated on-demand.
+  categoryExplanation?: string;
 }
 
 export interface AIMessageAction {
@@ -560,6 +565,14 @@ export interface ChatConversation {
   lastMessageAt: string;
 }
 
+export interface SubscriptionPayment {
+  id: string;
+  paidAt: Date;
+  amount: number;
+  transactionId?: string;
+  note?: string;
+}
+
 export interface Subscription {
   id: string;
   name: string;
@@ -574,6 +587,11 @@ export interface Subscription {
   isInstallment: boolean;
   totalInstallments?: number;
   completedInstallments?: number;
+  walletId?: string;
+  note?: string;
+  outstandingBalance?: number;
+  lastPaidAt?: Date;
+  paymentHistory?: SubscriptionPayment[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -896,6 +914,8 @@ export interface ReceiptDraft {
 export interface ReceiptState {
   receipts: SavedReceipt[];
   draft: ReceiptDraft | null;
+  _deletedReceiptIds?: string[];
+  clearReceiptTombstones?: () => void;
   addReceipt: (receipt: Omit<SavedReceipt, 'id' | 'createdAt' | 'updatedAt'>) => string;
   updateReceipt: (id: string, updates: Partial<SavedReceipt>) => void;
   deleteReceipt: (id: string) => void;
@@ -963,6 +983,11 @@ export interface PersonalState {
   subscriptions: Subscription[];
   budgets: Budget[];
   goals: Goal[];
+  _deletedTransactionIds?: string[];
+  _deletedSubscriptionIds?: string[];
+  _deletedBudgetIds?: string[];
+  _deletedGoalIds?: string[];
+  clearPersonalTombstones?: () => void;
   addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>) => string;
   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
@@ -974,6 +999,7 @@ export interface PersonalState {
   deleteBudget: (id: string) => void;
   incrementInstallment: (id: string) => void;
   toggleSubscriptionPause: (id: string) => void;
+  markSubscriptionPaid: (id: string) => void;
   addTransferIncome: (transfer: Transfer) => void;
   addGoal: (goal: Omit<Goal, 'id' | 'currentAmount' | 'contributions' | 'milestones' | 'createdAt' | 'updatedAt'>) => void;
   updateGoal: (id: string, updates: Partial<Goal>) => void;
@@ -1024,11 +1050,15 @@ export interface DebtState {
   debts: Debt[];
   splits: SplitExpense[];
   contacts: Contact[];
+  _deletedDebtIds?: string[];
+  _deletedSplitIds?: string[];
+  _deletedContactIds?: string[];
+  clearDebtTombstones?: () => void;
 
   addDebt: (debt: Omit<Debt, 'id' | 'paidAmount' | 'status' | 'payments' | 'createdAt' | 'updatedAt'>) => string;
   updateDebt: (id: string, updates: Partial<Debt>) => void;
   deleteDebt: (id: string) => void;
-  addPayment: (debtId: string, payment: Omit<Payment, 'id' | 'createdAt'>) => string;
+  addPayment: (debtId: string, payment: Omit<Payment, 'id' | 'createdAt'>) => string | null;
   deletePayment: (debtId: string, paymentId: string) => void;
   updatePayment: (debtId: string, paymentId: string, updates: Partial<Pick<Payment, 'amount' | 'note' | 'linkedTransactionId' | 'walletId'>>) => void;
 
@@ -1092,6 +1122,8 @@ export interface SavingsState {
   sortBy: SavingsSortBy;
   accountOrder: string[];
   lastOpenedValue: number | null;
+  _deletedSavingsIds?: string[];
+  clearSavingsTombstones?: () => void;
   addAccount: (account: Omit<SavingsAccount, 'id' | 'history' | 'createdAt' | 'updatedAt'>) => void;
   updateAccount: (id: string, updates: Partial<SavingsAccount>) => void;
   deleteAccount: (id: string) => void;
@@ -1115,6 +1147,8 @@ export interface Wallet {
   color: string;
   isDefault: boolean;
   presetId?: string;
+  creditBank?: string;
+  creditNetwork?: string;
   creditLimit?: number;
   usedCredit?: number;
   createdAt: Date;
@@ -1129,12 +1163,16 @@ export interface WalletTransfer {
   note?: string;
   date: Date;
   createdAt: Date;
+  kind?: 'transfer' | 'repayment';
 }
 
 export interface WalletState {
   wallets: Wallet[];
   transfers: WalletTransfer[];
   selectedWalletId: string | null;
+  _deletedWalletIds?: string[];
+  _deletedTransferIds?: string[];
+  clearWalletTombstones?: () => void;
   addWallet: (wallet: Omit<Wallet, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateWallet: (id: string, updates: Partial<Wallet>) => void;
   deleteWallet: (id: string) => void;
@@ -1143,8 +1181,12 @@ export interface WalletState {
   deductFromWallet: (id: string, amount: number) => void;
   addToWallet: (id: string, amount: number) => void;
   transferBetweenWallets: (fromId: string, toId: string, amount: number, note?: string) => void;
+  deleteTransfer: (transferId: string) => void;
+  logActivity: (fromId: string, toId: string, amount: number, kind: 'transfer' | 'repayment', note?: string) => void;
   useCredit: (id: string, amount: number) => void;
   repayCredit: (id: string, amount: number) => void;
+  /** Overwrite a wallet's balance. Used by reconciliation. */
+  setWalletBalance: (id: string, balance: number) => void;
 }
 
 export interface PremiumState {

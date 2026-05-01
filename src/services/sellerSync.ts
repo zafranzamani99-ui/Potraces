@@ -227,6 +227,9 @@ function toIso(d: Date | string | undefined | null): string | null {
 export async function pushProducts(products: SellerProduct[]): Promise<void> {
   const session = await getSession();
   if (!session) return;
+  const deletedIds = useSellerStore.getState()._deletedProductIds || [];
+  // Safety: if nothing local and nothing queued for deletion, skip to avoid wiping remote
+  if (products.length === 0 && deletedIds.length === 0) return;
   const syncStart = new Date().toISOString();
 
   if (products.length > 0) {
@@ -278,6 +281,8 @@ export async function pushOrders(
 ): Promise<void> {
   const session = await getSession();
   if (!session) return;
+  const deletedIds = useSellerStore.getState()._deletedOrderIds || [];
+  if (orders.length === 0 && deletedIds.length === 0) return;
   const syncStart = new Date().toISOString();
 
   // ── App-originated orders ──────────────────────────────────
@@ -366,6 +371,8 @@ export async function pushOrders(
 export async function pushSeasons(seasons: Season[]): Promise<void> {
   const session = await getSession();
   if (!session) return;
+  const deletedIds = useSellerStore.getState()._deletedSeasonIds || [];
+  if (seasons.length === 0 && deletedIds.length === 0) return;
   const syncStart = new Date().toISOString();
 
   if (seasons.length > 0) {
@@ -411,6 +418,8 @@ export async function pushSeasons(seasons: Season[]): Promise<void> {
 export async function pushCustomers(customers: SellerCustomer[]): Promise<void> {
   const session = await getSession();
   if (!session) return;
+  const deletedIds = useSellerStore.getState()._deletedCustomerIds || [];
+  if (customers.length === 0 && deletedIds.length === 0) return;
   const syncStart = new Date().toISOString();
 
   if (customers.length > 0) {
@@ -599,10 +608,11 @@ export async function pullAll(): Promise<void> {
   const deletedCustomerIds = new Set(store._deletedCustomerIds);
 
   // Pull products
-  const { data: remoteProducts } = await supabase
+  const { data: remoteProducts, error: productsErr } = await supabase
     .from('seller_products')
     .select('*')
     .eq('user_id', userId);
+  if (productsErr) throw productsErr;
 
   if (remoteProducts && remoteProducts.length > 0) {
     const localProductMap = new Map(store.products.map((p) => [p.id, p]));
@@ -647,10 +657,11 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull seasons
-  const { data: remoteSeasons } = await supabase
+  const { data: remoteSeasons, error: seasonsErr } = await supabase
     .from('seller_seasons')
     .select('*')
     .eq('user_id', userId);
+  if (seasonsErr) throw seasonsErr;
 
   if (remoteSeasons && remoteSeasons.length > 0) {
     const localSeasonMap = new Map(store.seasons.map((s) => [s.id, s]));
@@ -692,10 +703,11 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull customers
-  const { data: remoteCustomers } = await supabase
+  const { data: remoteCustomers, error: customersErr } = await supabase
     .from('seller_customers')
     .select('*')
     .eq('user_id', userId);
+  if (customersErr) throw customersErr;
 
   if (remoteCustomers && remoteCustomers.length > 0) {
     const localCustomerMap = new Map(store.sellerCustomers.map((c) => [c.id, c]));
@@ -735,11 +747,12 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull app orders
-  const { data: remoteOrders } = await supabase
+  const { data: remoteOrders, error: ordersErr } = await supabase
     .from('seller_orders')
     .select('*')
     .eq('user_id', userId)
     .eq('source', 'app');
+  if (ordersErr) throw ordersErr;
 
   if (remoteOrders && remoteOrders.length > 0) {
     const localOrderMap = new Map(store.orders.map((o) => [o.id, o]));
@@ -797,10 +810,11 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull ingredient costs
-  const { data: remoteIngredientCosts } = await supabase
+  const { data: remoteIngredientCosts, error: ingredientCostsErr } = await supabase
     .from('seller_ingredient_costs')
     .select('*')
     .eq('user_id', userId);
+  if (ingredientCostsErr) throw ingredientCostsErr;
 
   if (remoteIngredientCosts && remoteIngredientCosts.length > 0) {
     const localCostMap = new Map(store.ingredientCosts.map((c) => [c.id, c]));
@@ -840,10 +854,11 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull recurring costs
-  const { data: remoteRecurringCosts } = await supabase
+  const { data: remoteRecurringCosts, error: recurringCostsErr } = await supabase
     .from('seller_recurring_costs')
     .select('*')
     .eq('user_id', userId);
+  if (recurringCostsErr) throw recurringCostsErr;
 
   if (remoteRecurringCosts && remoteRecurringCosts.length > 0) {
     const localRcMap = new Map(store.recurringCosts.map((r) => [r.id, r]));
@@ -882,10 +897,11 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull cost templates
-  const { data: remoteCostTemplates } = await supabase
+  const { data: remoteCostTemplates, error: costTemplatesErr } = await supabase
     .from('seller_cost_templates')
     .select('*')
     .eq('user_id', userId);
+  if (costTemplatesErr) throw costTemplatesErr;
 
   if (remoteCostTemplates && remoteCostTemplates.length > 0) {
     const localTplMap = new Map(store.costTemplates.map((t) => [t.id, t]));
@@ -933,7 +949,12 @@ export async function syncAll(
     if (!profileId) return;
 
     // Pull first — prevents empty local store from deleting remote data
-    await pullAll();
+    try {
+      await pullAll();
+    } catch (pullErr) {
+      if (__DEV__) console.warn('[sellerSync] pull failed — skipping push to avoid tombstone wipe:', pullErr instanceof Error ? pullErr.message : pullErr);
+      return;
+    }
 
     // Re-read store after pull (may have new items merged in)
     const store = useSellerStore.getState();

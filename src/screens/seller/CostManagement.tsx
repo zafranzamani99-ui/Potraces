@@ -24,8 +24,9 @@ import { usePersonalStore } from '../../store/personalStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { IngredientCost, RecurringFrequency } from '../../types';
 import { createTransfer } from '../../utils/transferBridge';
 import {
@@ -43,6 +44,10 @@ import { useFadeSlide } from '../../utils/fadeSlide';
 // ─── Component ───────────────────────────────────────────────
 const CostManagement: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
+  const bizProfit = semantic(BIZ_SAFE.profit, isDark);
+  const bizLoss = semantic(BIZ_SAFE.loss, isDark);
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const ingredientCosts = useSellerStore((s) => s.ingredientCosts);
@@ -153,9 +158,9 @@ const CostManagement: React.FC = () => {
     for (const entry of filteredCostEntries) {
       const d = entry.date instanceof Date ? entry.date : new Date(entry.date);
       let label: string;
-      if (!isValid(d)) label = 'unknown';
-      else if (isToday(d)) label = 'today';
-      else if (isYesterday(d)) label = 'yesterday';
+      if (!isValid(d)) label = t.seller.unknownLabel;
+      else if (isToday(d)) label = t.seller.todayLabel;
+      else if (isYesterday(d)) label = t.seller.yesterdayLabel;
       else label = format(d, 'dd MMM yyyy');
 
       if (!map.has(label)) map.set(label, []);
@@ -173,12 +178,12 @@ const CostManagement: React.FC = () => {
     const _budget = activeSeason?.costBudget;
     const _budgetPercent = _budget && _budget > 0 ? Math.round((seasonStats.totalCosts / _budget) * 100) : 0;
     const _budgetColor = _budgetPercent >= 100
-      ? BIZ.loss
+      ? bizLoss
       : _budgetPercent >= 80
       ? C.bronze
-      : BIZ.profit;
+      : bizProfit;
     return { budget: _budget, budgetPercent: _budgetPercent, budgetColor: _budgetColor };
-  }, [activeSeason?.costBudget, seasonStats.totalCosts]);
+  }, [activeSeason?.costBudget, seasonStats.totalCosts, bizLoss, bizProfit, C.bronze]);
 
   const untransferredOrders = useMemo(() => {
     if (activeSeason) {
@@ -244,7 +249,7 @@ const CostManagement: React.FC = () => {
 
     if (hasDescErr || hasAmtErr) {
       warningNotification();
-      showToast('please fill in description and amount', 'error');
+      showToast(t.seller.fillDescAmount, 'error');
       return;
     }
 
@@ -263,7 +268,7 @@ const CostManagement: React.FC = () => {
         });
       }
       successNotification();
-      showToast('cost updated', 'success');
+      showToast(t.seller.costUpdated, 'success');
     } else {
       // Create personal expense first (if toggled) so we get the real ID
       let personalTxId: string | undefined;
@@ -297,7 +302,7 @@ const CostManagement: React.FC = () => {
         addCostTemplate({ description: desc, amount });
       }
 
-      showToast(syncToPersonal ? 'cost logged + personal expense' : 'cost logged', 'success');
+      showToast(syncToPersonal ? t.seller.costLoggedPersonal : t.seller.costLogged, 'success');
     }
 
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -311,16 +316,18 @@ const CostManagement: React.FC = () => {
 
   const handleDeleteCost = useCallback((cost: IngredientCost) => {
     warningNotification();
-    const msg = cost.syncedToPersonal
-      ? `Remove "${cost.description}" (${currency} ${cost.amount.toFixed(2)})?\n\nThis will also remove the linked personal expense.`
-      : `Remove "${cost.description}" (${currency} ${cost.amount.toFixed(2)})?`;
+    const msgTmpl = cost.syncedToPersonal ? t.seller.deleteCostSyncedMsg : t.seller.deleteCostMsg;
+    const msg = msgTmpl
+      .replace('{desc}', cost.description)
+      .replace('{currency}', currency)
+      .replace('{amount}', cost.amount.toFixed(2));
     Alert.alert(
-      'Delete cost?',
+      t.seller.deleteCostTitle,
       msg,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.seller.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: t.seller.delete,
           style: 'destructive',
           onPress: () => {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -329,22 +336,22 @@ const CostManagement: React.FC = () => {
               deletePersonalTransaction(cost.personalTransactionId);
             }
             deleteIngredientCost(cost.id);
-            showToast('cost deleted', 'success');
+            showToast(t.seller.costDeleted, 'success');
           },
         },
       ]
     );
-  }, [currency, deleteIngredientCost, deletePersonalTransaction, showToast]);
+  }, [currency, deleteIngredientCost, deletePersonalTransaction, showToast, t]);
 
   const handleSaveBudget = useCallback(() => {
     if (!activeSeason) return;
     const val = parseFloat(budgetInput);
     if (isNaN(val) || val <= 0) {
       updateSeasonBudget(activeSeason.id, undefined);
-      showToast('budget cleared', 'success');
+      showToast(t.seller.budgetCleared, 'success');
     } else {
       updateSeasonBudget(activeSeason.id, val);
-      showToast('budget set', 'success');
+      showToast(t.seller.budgetSet, 'success');
     }
     successNotification();
     setShowBudgetModal(false);
@@ -354,7 +361,7 @@ const CostManagement: React.FC = () => {
     const amount = parseFloat(transferAmount);
     if (isNaN(amount) || !amount || amount <= 0) return;
     if (amount > untransferredAmount) {
-      showToast('cannot transfer more than untransferred amount', 'error');
+      showToast(t.seller.cannotTransferMore, 'error');
       return;
     }
 
@@ -370,9 +377,9 @@ const CostManagement: React.FC = () => {
       transfer.id
     );
     successNotification();
-    showToast('transferred to personal', 'success');
+    showToast(t.seller.transferredToPersonal, 'success');
     setShowTransfer(false);
-  }, [transferAmount, activeSeason, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast]);
+  }, [transferAmount, activeSeason, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast, t]);
 
   return (
     <View style={styles.container}>
@@ -399,23 +406,23 @@ const CostManagement: React.FC = () => {
             {currency} {seasonStats.kept.toFixed(0)}
           </Text>
           <Text style={styles.summaryHeroLabel}>
-            {seasonStats.kept >= 0 ? 'kept' : 'shortfall'}
+            {seasonStats.kept >= 0 ? t.seller.keptLabel : t.seller.shortfall}
           </Text>
           <View style={styles.summaryBreakdown}>
             <View style={styles.summaryBreakdownItem}>
-              <Feather name="arrow-up-circle" size={14} color={BIZ.profit} />
+              <Feather name="arrow-up-circle" size={14} color={bizProfit} />
               <Text style={styles.summaryBreakdownValue}>
                 {currency} {seasonStats.totalIncome.toFixed(0)}
               </Text>
-              <Text style={styles.summaryBreakdownLabel}>came in</Text>
+              <Text style={styles.summaryBreakdownLabel}>{t.seller.cameIn}</Text>
             </View>
             <View style={styles.summaryBreakdownDot} />
             <View style={styles.summaryBreakdownItem}>
-              <Feather name="arrow-down-circle" size={14} color={BIZ.loss} />
+              <Feather name="arrow-down-circle" size={14} color={bizLoss} />
               <Text style={styles.summaryBreakdownValue}>
                 {currency} {seasonStats.totalCosts.toFixed(0)}
               </Text>
-              <Text style={styles.summaryBreakdownLabel}>costs</Text>
+              <Text style={styles.summaryBreakdownLabel}>{t.seller.costsLabel}</Text>
             </View>
           </View>
         </Animated.View>
@@ -428,7 +435,7 @@ const CostManagement: React.FC = () => {
                 <View style={styles.budgetIconWrap}>
                   <Feather name="pie-chart" size={14} color={C.bronze} />
                 </View>
-                <Text style={styles.budgetTitle}>cost budget</Text>
+                <Text style={styles.budgetTitle}>{t.seller.costBudget}</Text>
               </View>
               <TouchableOpacity
                 style={styles.budgetEditBtn}
@@ -461,7 +468,7 @@ const CostManagement: React.FC = () => {
                 </View>
                 <View style={styles.budgetTextRow}>
                   <Text style={[styles.budgetText, { color: budgetColor }]}>
-                    {budgetPercent}% used
+                    {t.seller.pctUsed.replace('{pct}', String(budgetPercent))}
                   </Text>
                   <Text style={styles.budgetTextMuted}>
                     {currency} {seasonStats.totalCosts.toFixed(0)} / {currency} {budget.toFixed(0)}
@@ -470,7 +477,7 @@ const CostManagement: React.FC = () => {
               </View>
             ) : (
               <Text style={styles.budgetHint}>
-                set a spending limit for this season
+                {t.seller.setSpendingLimit}
               </Text>
             )}
           </Animated.View>
@@ -485,9 +492,13 @@ const CostManagement: React.FC = () => {
                   <Feather name="refresh-cw" size={14} color={C.bronze} />
                 </View>
                 <View>
-                  <Text style={styles.transferTitle}>transfer to personal</Text>
+                  <Text style={styles.transferTitle}>{t.seller.transferToPersonal}</Text>
                   <Text style={styles.transferSubtext}>
-                    {currency} {untransferredAmount.toFixed(0)} from {untransferredOrders.length} order{untransferredOrders.length !== 1 ? 's' : ''}
+                    {t.seller.fromOrders
+                      .replace('{currency}', currency)
+                      .replace('{amount}', untransferredAmount.toFixed(0))
+                      .replace('{n}', String(untransferredOrders.length))
+                      .replace('{plural}', untransferredOrders.length !== 1 ? 's' : '')}
                   </Text>
                 </View>
               </View>
@@ -523,7 +534,7 @@ const CostManagement: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Transfer to personal wallet"
               >
-                <Text style={styles.transferBtnText}>transfer</Text>
+                <Text style={styles.transferBtnText}>{t.seller.cmTransfer}</Text>
                 <Feather name="arrow-right" size={14} color="#fff" />
               </TouchableOpacity>
             )}
@@ -535,7 +546,7 @@ const CostManagement: React.FC = () => {
           <View style={styles.recurringCard}>
             <View style={styles.recurringHeader}>
               <Feather name="repeat" size={14} color={C.bronze} />
-              <Text style={styles.recurringTitle}>recurring</Text>
+              <Text style={styles.recurringTitle}>{t.seller.recurring}</Text>
               <TouchableOpacity
                 onPress={() => { setRecurringDesc(''); setRecurringAmount(''); setRecurringFreq('weekly'); setShowRecurringModal(true); }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -551,10 +562,10 @@ const CostManagement: React.FC = () => {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.recurringDesc}>{r.description}</Text>
                     <Text style={styles.recurringMeta}>
-                      {currency} {r.amount.toFixed(2)} · {r.frequency === 'weekly' ? 'weekly' : r.frequency === 'biweekly' ? 'every 2 weeks' : 'monthly'}
+                      {currency} {r.amount.toFixed(2)} · {r.frequency === 'weekly' ? t.seller.weekly : r.frequency === 'biweekly' ? t.seller.every2Weeks : t.seller.monthly}
                     </Text>
                     <Text style={[styles.recurringDue, isDue && styles.recurringDueNow]}>
-                      {isDue ? 'due now' : `next: ${format(dueDate, 'dd MMM')}`}
+                      {isDue ? t.seller.dueNow : t.seller.nextDate.replace('{date}', format(dueDate, 'dd MMM'))}
                     </Text>
                   </View>
                   <View style={{ gap: 6 }}>
@@ -562,16 +573,16 @@ const CostManagement: React.FC = () => {
                       style={[styles.recurringApplyBtn, !isDue && styles.recurringApplyBtnMuted]}
                       onPress={() => {
                         if (!activeSeason) {
-                          showToast('start a season first to log costs.', 'error');
+                          showToast(t.seller.startSeasonFirst, 'error');
                           return;
                         }
                         lightTap();
                         applyRecurringCost(r.id, activeSeason.id);
-                        showToast(`${r.description} logged.`, 'success');
+                        showToast(t.seller.loggedToast.replace('{desc}', r.description), 'success');
                       }}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.recurringApplyText, !isDue && { color: C.textMuted }]}>apply</Text>
+                      <Text style={[styles.recurringApplyText, !isDue && { color: C.textMuted }]}>{t.seller.apply}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => { warningNotification(); deleteRecurringCost(r.id); }}
@@ -592,14 +603,14 @@ const CostManagement: React.FC = () => {
             activeOpacity={0.7}
           >
             <Feather name="repeat" size={14} color={C.textMuted} />
-            <Text style={styles.recurringAddText}>add recurring cost</Text>
+            <Text style={styles.recurringAddText}>{t.seller.addRecurringCost}</Text>
           </TouchableOpacity>
         )}
 
         {/* ─── Cost History ────────────────────────────────── */}
         <Animated.View style={[styles.historyCard, historyAnim]}>
           <View style={styles.historyHeader}>
-            <Text style={styles.historyTitle}>cost history</Text>
+            <Text style={styles.historyTitle}>{t.seller.costHistory}</Text>
             <View style={styles.historyBadge}>
               <Text style={styles.historyBadgeText}>{seasonCostEntries.length}</Text>
             </View>
@@ -610,7 +621,7 @@ const CostManagement: React.FC = () => {
               <Feather name="search" size={14} color={C.textMuted} />
               <TextInput
                 style={styles.historySearchInput}
-                placeholder="search costs..."
+                placeholder={t.seller.searchCosts}
                 placeholderTextColor={C.textMuted}
                 value={costSearch}
                 onChangeText={setCostSearch}
@@ -630,12 +641,12 @@ const CostManagement: React.FC = () => {
           {seasonCostEntries.length === 0 ? (
             <View style={styles.historyEmptyWrap}>
               <Feather name="inbox" size={24} color={C.textMuted} />
-              <Text style={styles.historyEmpty}>no costs logged yet</Text>
+              <Text style={styles.historyEmpty}>{t.seller.noCostsLoggedYet}</Text>
             </View>
           ) : filteredCostEntries.length === 0 ? (
             <View style={styles.historyEmptyWrap}>
               <Feather name="search" size={18} color={C.textMuted} />
-              <Text style={styles.historyEmpty}>no match</Text>
+              <Text style={styles.historyEmpty}>{t.seller.noMatch}</Text>
             </View>
           ) : (
             groupedCostEntries.map((group, gi) => (
@@ -674,7 +685,7 @@ const CostManagement: React.FC = () => {
                             <View style={styles.historyItemBottom}>
                               <View style={styles.historyLinkedBadge}>
                                 <Feather name="link" size={9} color={C.bronze} />
-                                <Text style={styles.historyLinkedText}>synced</Text>
+                                <Text style={styles.historyLinkedText}>{t.seller.synced}</Text>
                               </View>
                             </View>
                           )}
@@ -699,7 +710,7 @@ const CostManagement: React.FC = () => {
           accessibilityLabel="Log new cost"
         >
           <Feather name="plus" size={20} color="#fff" />
-          <Text style={styles.fabText}>log cost</Text>
+          <Text style={styles.fabText}>{t.seller.logCost}</Text>
         </TouchableOpacity>
       </View>
 
@@ -707,12 +718,12 @@ const CostManagement: React.FC = () => {
       {showRecurringModal && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowRecurringModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowRecurringModal(false)}>
           <Pressable style={[styles.modalCard, { gap: SPACING.md }]} onPress={() => {}}>
-            <Text style={styles.modalTitle}>recurring cost</Text>
+            <Text style={styles.modalTitle}>{t.seller.recurringCostTitle}</Text>
             <TextInput
               style={styles.modalInput}
               value={recurringDesc}
               onChangeText={setRecurringDesc}
-              placeholder="e.g. Tepung from Billion"
+              placeholder={t.seller.recurringDescPlaceholder}
               placeholderTextColor={C.textMuted}
               autoFocus
             />
@@ -722,7 +733,7 @@ const CostManagement: React.FC = () => {
                 style={[styles.modalInput, { flex: 1 }]}
                 value={recurringAmount}
                 onChangeText={setRecurringAmount}
-                placeholder="amount"
+                placeholder={t.seller.amountPlaceholder}
                 placeholderTextColor={C.textMuted}
                 keyboardType="numeric"
               />
@@ -736,7 +747,7 @@ const CostManagement: React.FC = () => {
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.freqPillText, recurringFreq === f && styles.freqPillTextActive]}>
-                    {f === 'weekly' ? 'weekly' : f === 'biweekly' ? 'every 2 wk' : 'monthly'}
+                    {f === 'weekly' ? t.seller.weekly : f === 'biweekly' ? t.seller.every2wk : t.seller.monthly}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -754,11 +765,11 @@ const CostManagement: React.FC = () => {
                 else if (recurringFreq === 'biweekly') nextDue.setDate(nextDue.getDate() + 14);
                 else nextDue.setMonth(nextDue.getMonth() + 1);
                 addRecurringCost({ description: desc, amount, frequency: recurringFreq, nextDue, isActive: true, seasonId: activeSeason?.id });
-                showToast('recurring cost added.', 'success');
+                showToast(t.seller.recurringCostAdded, 'success');
                 setShowRecurringModal(false);
               }}
             >
-              <Text style={styles.modalSaveText}>save</Text>
+              <Text style={styles.modalSaveText}>{t.seller.saveLabel}</Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>
@@ -778,7 +789,7 @@ const CostManagement: React.FC = () => {
             <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
-                  {editingCostId ? 'edit cost' : 'log cost'}
+                  {editingCostId ? t.seller.editCost : t.seller.logCostHeader}
                 </Text>
                 <TouchableOpacity
                   onPress={() => {
@@ -811,56 +822,56 @@ const CostManagement: React.FC = () => {
               {!editingCostId && costTemplates.length > 0 && !costDescription.trim() && (
                 <View style={styles.fieldGroup}>
                   <View style={styles.templateHeader}>
-                    <Text style={styles.fieldLabel}>templates</Text>
+                    <Text style={styles.fieldLabel}>{t.seller.templates}</Text>
                     <Text style={styles.templateCount}>{costTemplates.length}</Text>
                   </View>
                   <ScrollView style={styles.templateList} showsVerticalScrollIndicator={costTemplates.length > 4} nestedScrollEnabled>
-                    {costTemplates.map((t) => (
+                    {costTemplates.map((tmpl) => (
                       <TouchableOpacity
-                        key={t.id}
+                        key={tmpl.id}
                         onPress={() => {
                           lightTap();
-                          setCostDescription(t.description);
-                          setCostAmount(t.amount.toString());
+                          setCostDescription(tmpl.description);
+                          setCostAmount(tmpl.amount.toString());
                         }}
                         onLongPress={() => {
                           warningNotification();
-                          Alert.alert(t.description, '', [
-                            { text: 'cancel', style: 'cancel' },
+                          Alert.alert(tmpl.description, '', [
+                            { text: t.seller.cancelLower, style: 'cancel' },
                             {
-                              text: 'edit',
+                              text: t.seller.editLabel,
                               onPress: () => {
-                                setEditingTemplateId(t.id);
-                                setTemplateDesc(t.description);
-                                setTemplateAmt(t.amount.toString());
+                                setEditingTemplateId(tmpl.id);
+                                setTemplateDesc(tmpl.description);
+                                setTemplateAmt(tmpl.amount.toString());
                                 setShowTemplateEditModal(true);
                               },
                             },
-                            { text: 'delete', style: 'destructive', onPress: () => deleteCostTemplate(t.id) },
+                            { text: t.seller.deleteLabel, style: 'destructive', onPress: () => deleteCostTemplate(tmpl.id) },
                           ]);
                         }}
                         delayLongPress={400}
                         style={styles.templateItem}
                         accessibilityRole="button"
-                        accessibilityLabel={`Use template: ${t.description}`}
+                        accessibilityLabel={`Use template: ${tmpl.description}`}
                       >
-                        <Text style={styles.templateItemName} numberOfLines={1}>{t.description}</Text>
-                        <Text style={styles.templateItemAmount}>{currency} {t.amount.toFixed(2)}</Text>
+                        <Text style={styles.templateItemName} numberOfLines={1}>{tmpl.description}</Text>
+                        <Text style={styles.templateItemAmount}>{currency} {tmpl.amount.toFixed(2)}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
-                  <Text style={styles.templateHint}>tap to use · hold to edit or delete</Text>
+                  <Text style={styles.templateHint}>{t.seller.templateHintTap}</Text>
                 </View>
               )}
 
               <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>what did you buy?</Text>
+                <Text style={styles.fieldLabel}>{t.seller.whatDidYouBuy}</Text>
                 <Animated.View style={{ transform: [{ translateX: costDescShakeAnim }] }}>
                   <TextInput
                     style={[styles.modalInput, costDescError && styles.modalInputError]}
                     value={costDescription}
                     onChangeText={setCostDescription}
-                    placeholder="e.g. tepung, gula, mentega"
+                    placeholder={t.seller.costDescPlaceholder}
                     placeholderTextColor={C.textMuted}
                     autoFocus
                   />
@@ -868,7 +879,7 @@ const CostManagement: React.FC = () => {
               </View>
 
               <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>amount</Text>
+                <Text style={styles.fieldLabel}>{t.seller.amountLabel}</Text>
                 <Animated.View style={{ transform: [{ translateX: costAmtShakeAnim }] }}>
                   <View
                     style={[
@@ -908,7 +919,7 @@ const CostManagement: React.FC = () => {
                     >
                       {syncToPersonal && <Feather name="check" size={12} color="#fff" />}
                     </View>
-                    <Text style={styles.syncToggleText}>also record as personal expense</Text>
+                    <Text style={styles.syncToggleText}>{t.seller.alsoRecordPersonal}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.syncToggleRow}
@@ -926,7 +937,7 @@ const CostManagement: React.FC = () => {
                     >
                       {saveAsTemplate && <Feather name="check" size={12} color="#fff" />}
                     </View>
-                    <Text style={styles.syncToggleText}>save as template</Text>
+                    <Text style={styles.syncToggleText}>{t.seller.saveAsTemplate}</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -944,7 +955,7 @@ const CostManagement: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Cancel"
                 >
-                  <Text style={styles.modalCancelText}>cancel</Text>
+                  <Text style={styles.modalCancelText}>{t.seller.cmCancel}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveCost}
@@ -954,7 +965,7 @@ const CostManagement: React.FC = () => {
                   accessibilityLabel={editingCostId ? 'Save cost' : 'Log cost'}
                 >
                   <Text style={styles.modalConfirmText}>
-                    {editingCostId ? 'save' : 'log'}
+                    {editingCostId ? t.seller.saveLabel : t.seller.logLabel}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -974,7 +985,7 @@ const CostManagement: React.FC = () => {
             >
               <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>edit template</Text>
+                  <Text style={styles.modalTitle}>{t.seller.editTemplate}</Text>
                   <TouchableOpacity
                     onPress={() => { lightTap(); setShowTemplateEditModal(false); }}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -989,7 +1000,7 @@ const CostManagement: React.FC = () => {
                   style={styles.modalInput}
                   value={templateDesc}
                   onChangeText={setTemplateDesc}
-                  placeholder="description"
+                  placeholder={t.seller.templateDescPlaceholder}
                   placeholderTextColor={C.textMuted}
                   autoFocus
                 />
@@ -1012,13 +1023,13 @@ const CostManagement: React.FC = () => {
                     style={styles.modalCancel}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.modalCancelText}>cancel</Text>
+                    <Text style={styles.modalCancelText}>{t.seller.cmCancel}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => {
                       if (!templateDesc.trim() || !templateAmt.trim()) {
                         warningNotification();
-                        showToast('fill in description and amount', 'error');
+                        showToast(t.seller.fillTemplateFields, 'error');
                         return;
                       }
                       if (editingTemplateId) {
@@ -1028,13 +1039,13 @@ const CostManagement: React.FC = () => {
                         });
                       }
                       successNotification();
-                      showToast('template updated', 'success');
+                      showToast(t.seller.templateUpdated, 'success');
                       setShowTemplateEditModal(false);
                     }}
                     style={styles.modalConfirm}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.modalConfirmText}>save</Text>
+                    <Text style={styles.modalConfirmText}>{t.seller.saveLabel}</Text>
                   </TouchableOpacity>
                 </View>
               </Pressable>
@@ -1056,7 +1067,7 @@ const CostManagement: React.FC = () => {
           >
             <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>cost budget</Text>
+                <Text style={styles.modalTitle}>{t.seller.costBudget}</Text>
                 <TouchableOpacity
                   onPress={() => { lightTap(); setShowBudgetModal(false); }}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -1068,7 +1079,7 @@ const CostManagement: React.FC = () => {
               </View>
 
               <Text style={styles.budgetModalHint}>
-                set a spending limit for "{activeSeason?.name || 'this season'}"
+                {t.seller.cmBudgetHint.replace('{name}', activeSeason?.name || 'this season')}
               </Text>
 
               <View style={styles.currencyInputRow}>
@@ -1091,7 +1102,7 @@ const CostManagement: React.FC = () => {
                       lightTap();
                       if (activeSeason) {
                         updateSeasonBudget(activeSeason.id, undefined);
-                        showToast('budget cleared', 'success');
+                        showToast(t.seller.budgetCleared, 'success');
                       }
                       setShowBudgetModal(false);
                     }}
@@ -1100,7 +1111,7 @@ const CostManagement: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel="Clear budget"
                   >
-                    <Text style={styles.modalCancelText}>clear</Text>
+                    <Text style={styles.modalCancelText}>{t.seller.clearLabel}</Text>
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
@@ -1110,7 +1121,7 @@ const CostManagement: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel="Cancel"
                   >
-                    <Text style={styles.modalCancelText}>cancel</Text>
+                    <Text style={styles.modalCancelText}>{t.seller.cmCancel}</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -1120,7 +1131,7 @@ const CostManagement: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Save budget"
                 >
-                  <Text style={styles.modalConfirmText}>save</Text>
+                  <Text style={styles.modalConfirmText}>{t.seller.saveLabel}</Text>
                 </TouchableOpacity>
               </View>
             </Pressable>

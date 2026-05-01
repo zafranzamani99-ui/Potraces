@@ -13,18 +13,20 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { RiderCost } from '../../types';
-
-const COST_TYPES: { type: RiderCost['type']; label: string }[] = [
-  { type: 'petrol', label: 'Petrol' },
-  { type: 'maintenance', label: 'Maintenance' },
-  { type: 'data', label: 'Data' },
-  { type: 'other', label: 'Other' },
-];
 
 const RiderCostsScreen: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+
+  const COST_TYPES: { type: RiderCost['type']; label: string }[] = [
+    { type: 'petrol', label: t.business.riderPetrol },
+    { type: 'maintenance', label: t.business.riderMaintenance },
+    { type: 'data', label: t.business.riderData },
+    { type: 'other', label: t.business.riderOther },
+  ];
   const { businessTransactions, riderCosts, addRiderCost } = useBusinessStore();
   const currency = useSettingsStore((s) => s.currency);
 
@@ -84,15 +86,15 @@ const RiderCostsScreen: React.FC = () => {
       {/* Three numbers */}
       <View style={styles.statsRow}>
         <View style={styles.stat}>
-          <Text style={styles.statLabel}>grossed</Text>
+          <Text style={styles.statLabel}>{t.business.riderGrossed}</Text>
           <Text style={styles.statValue}>{currency} {grossIncome.toFixed(2)}</Text>
         </View>
         <View style={styles.stat}>
-          <Text style={styles.statLabel}>costs</Text>
+          <Text style={styles.statLabel}>{t.business.riderCosts}</Text>
           <Text style={styles.statValue}>{currency} {totalCosts.toFixed(2)}</Text>
         </View>
         <View style={styles.stat}>
-          <Text style={styles.statLabel}>kept</Text>
+          <Text style={styles.statLabel}>{t.business.riderKept}</Text>
           <Text style={styles.keptValue}>{currency} {kept.toFixed(2)}</Text>
         </View>
       </View>
@@ -105,7 +107,7 @@ const RiderCostsScreen: React.FC = () => {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No costs logged this month.</Text>
+            <Text style={styles.emptyText}>{t.business.riderEmpty}</Text>
           </View>
         }
         removeClippedSubviews
@@ -141,19 +143,19 @@ const RiderCostsScreen: React.FC = () => {
               value={costAmount}
               onChangeText={setCostAmount}
               keyboardType="numeric"
-              placeholder="amount"
+              placeholder={t.business.riderAmountPlaceholder}
               placeholderTextColor={C.textSecondary}
               autoFocus
             />
             <TouchableOpacity onPress={handleAdd} style={styles.doneButton}>
-              <Text style={styles.doneText}>done</Text>
+              <Text style={styles.doneText}>{t.business.riderDone}</Text>
             </TouchableOpacity>
           </View>
         </View>
       ) : (
         <TouchableOpacity style={styles.addButton} onPress={() => setShowAdd(true)}>
           <Feather name="plus" size={20} color="#fff" />
-          <Text style={styles.addButtonText}>add cost</Text>
+          <Text style={styles.addButtonText}>{t.business.riderAddCost}</Text>
         </TouchableOpacity>
       )}
     </View>

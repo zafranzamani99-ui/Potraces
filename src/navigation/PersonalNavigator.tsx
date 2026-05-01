@@ -7,7 +7,6 @@ import { useT } from '../i18n';
 import CustomTabBar from '../components/navigation/CustomTabBar';
 
 import PersonalDashboard from '../screens/personal/Dashboard';
-import ExpenseEntry from '../screens/personal/ExpenseEntry';
 import NotesHome from '../screens/notes/NotesHome';
 import MoneyChat from '../screens/personal/MoneyChat';
 import BudgetPlanning from '../screens/personal/BudgetPlanning';
@@ -55,6 +54,7 @@ const PersonalNavigator: React.FC = () => {
         tabBarActiveTintColor: COLORS.personal,
         tabBarInactiveTintColor: C.textMuted,
         tabBarShowLabel: false,
+        animation: 'fade',
         headerStyle: {
           backgroundColor: C.background,
         },

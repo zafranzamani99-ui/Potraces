@@ -266,7 +266,7 @@ export function useIntentEngine({
               useWalletStore.getState().addToWallet(pWalletId, amount);
             }
           }
-          updateExtractionStatus(pageId, extractionId, 'confirmed', paymentId);
+          updateExtractionStatus(pageId, extractionId, 'confirmed', paymentId ?? undefined);
         } else {
           // No matching debt — just mark confirmed
           updateExtractionStatus(pageId, extractionId, 'confirmed');

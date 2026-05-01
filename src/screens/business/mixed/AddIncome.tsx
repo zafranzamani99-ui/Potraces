@@ -17,11 +17,13 @@ import { useMixedStore } from '../../../store/mixedStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, successNotification } from '../../../services/haptics';
 
 const AddIncome: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation();
   const { showToast } = useToast();
@@ -51,7 +53,7 @@ const AddIncome: React.FC = () => {
       date.getMonth() === today.getMonth() &&
       date.getFullYear() === today.getFullYear()
     ) {
-      return 'today';
+      return t.mixed.today;
     }
     return format(date, 'MMM dd');
   };
@@ -89,7 +91,7 @@ const AddIncome: React.FC = () => {
   const handleSave = () => {
     const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0) {
-      showToast('Enter a valid amount.', 'error');
+      showToast(t.mixed.enterValidAmount, 'error');
       return;
     }
 
@@ -110,7 +112,7 @@ const AddIncome: React.FC = () => {
     }
 
     successNotification();
-    showToast('Income logged.', 'success');
+    showToast(t.mixed.incomeLogged, 'success');
     navigation.goBack();
   };
 
@@ -176,7 +178,7 @@ const AddIncome: React.FC = () => {
                     showNewStreamInput && styles.streamTextActive,
                   ]}
                 >
-                  + new
+                  {t.mixed.newPill}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -187,7 +189,7 @@ const AddIncome: React.FC = () => {
                 style={styles.newStreamInput}
                 value={newStreamName}
                 onChangeText={setNewStreamName}
-                placeholder="new source name"
+                placeholder={t.mixed.newSourcePlaceholder}
                 placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={handleNewStreamSubmit}
@@ -230,7 +232,7 @@ const AddIncome: React.FC = () => {
             style={styles.noteInput}
             value={note}
             onChangeText={setNote}
-            placeholder="any notes?"
+            placeholder={t.mixed.anyNotes}
             placeholderTextColor={C.textMuted}
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
@@ -253,7 +255,7 @@ const AddIncome: React.FC = () => {
               (!amount || parseFloat(amount) <= 0) && styles.saveButtonTextDisabled,
             ]}
           >
-            done
+            {t.mixed.done}
           </Text>
         </TouchableOpacity>
       </KeyboardAwareScrollView>

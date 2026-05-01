@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { TouchableOpacity } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';
@@ -11,6 +11,7 @@ import { useCalm } from '../hooks/useCalm';
 import AuthScreen from '../screens/auth/AuthScreen';
 import OtpVerificationScreen from '../screens/auth/OtpVerificationScreen';
 import { requestOtp, signOut, getAuthSession } from '../services/supabase';
+import { clearProfileCache } from '../services/sellerSync';
 import PersonalNavigator from './PersonalNavigator';
 import BusinessNavigator from './BusinessNavigator';
 import PersonalReports from '../screens/personal/Reports';
@@ -25,6 +26,8 @@ import ReceiptHistory from '../screens/shared/ReceiptHistory';
 import ReceiptDetail from '../screens/shared/ReceiptDetail';
 import Onboarding from '../screens/shared/Onboarding';
 import WalletManagement from '../screens/personal/WalletManagement';
+import ImportFromStatement from '../screens/personal/ImportFromStatement';
+import ImportFromCsv from '../screens/personal/ImportFromCsv';
 import AccountOverview from '../screens/personal/AccountOverview';
 import SavingsTracker from '../screens/personal/SavingsTracker';
 import MoneyChat from '../screens/personal/MoneyChat';
@@ -77,6 +80,40 @@ import NoteEditor from '../screens/notes/NoteEditor';
 
 const Stack = createNativeStackNavigator();
 
+// Reusable header options for any pushed screen that needs a "< back" button
+// which falls back to resetting to the correct mode's main screen when there's
+// no back stack. Replaces the ~25-line boilerplate that was duplicated across
+// every Stack.Screen below. New screens should use this helper directly:
+//   <Stack.Screen name="Foo" component={Foo} options={makeBackHeader(C, mode, 'Title')} />
+function makeBackHeader(
+  C: typeof import('../constants').CALM,
+  mode: 'personal' | 'business',
+  title: string,
+) {
+  return ({ navigation }: any) => ({
+    headerShown: true,
+    headerTitle: title,
+    headerStyle: { backgroundColor: C.background },
+    headerTintColor: C.textPrimary,
+    headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
+    headerLeft: () => (
+      <TouchableOpacity
+        onPress={() => {
+          if (navigation.canGoBack()) navigation.goBack();
+          else navigation.reset({
+            index: 0,
+            routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
+          });
+        }}
+        style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+        accessibilityLabel="Go back"
+      >
+        <Feather name="arrow-left" size={22} color={C.textPrimary} />
+      </TouchableOpacity>
+    ),
+  });
+}
+
 /** Wraps business mode with auth gating + setup gating. */
 const AuthGatedBusiness: React.FC = () => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -86,36 +123,39 @@ const AuthGatedBusiness: React.FC = () => {
   const [otpCode, setOtpCode] = useState<string | null>(null);
   const [otpPhone, setOtpPhone] = useState('');
   const [otpError, setOtpError] = useState<string | null>(null);
+  const lastOtpAtRef = useRef(0);
 
-  // Validate session on mount — reset stale auth state if no real Supabase session
+  // Validate session on state change — reset stale auth state if no real Supabase session
   useEffect(() => {
     if (isAuthenticated && !isVerified) {
       getAuthSession().then((session) => {
         if (!session) {
-          // Stale local auth state with no real session — reset
           useAuthStore.getState().reset();
         }
       });
     }
-  }, []);
+  }, [isAuthenticated, isVerified]);
 
-  // Auto-request OTP if authenticated but not verified and no code yet
+  // Auto-request OTP if authenticated but not verified and no code yet (with cooldown)
   useEffect(() => {
     if (isAuthenticated && !isVerified && !otpCode) {
+      const now = Date.now();
+      if (now - lastOtpAtRef.current < 30_000) return;
       const phone = useAuthStore.getState().phone;
       if (phone) {
+        lastOtpAtRef.current = now;
         setOtpError(null);
         requestOtp(phone).then((otp) => {
           setOtpCode(otp.code);
           setOtpPhone(phone);
         }).catch((err) => {
           if (__DEV__) console.warn('[OTP request failed]', err?.message || err);
-          // If not authenticated on server, reset local auth state
           if (err?.message?.includes('Not authenticated')) {
             useAuthStore.getState().reset();
           } else {
             setOtpError(err?.message || 'Failed to request verification code');
           }
+          lastOtpAtRef.current = 0;
         });
       }
     }
@@ -135,7 +175,12 @@ const AuthGatedBusiness: React.FC = () => {
   }, []);
 
   const handleOtpBack = useCallback(() => {
-    signOut().catch(() => {});
+    // Invalidate server-side cache immediately — don't depend on SIGNED_OUT event
+    // which won't fire if signOut fails offline.
+    clearProfileCache();
+    signOut().catch((err) => {
+      if (__DEV__) console.warn('[signOut] failed:', err?.message || err);
+    });
     useAuthStore.getState().reset();
     setOtpCode(null);
     setOtpPhone('');
@@ -228,242 +273,42 @@ const RootNavigator: React.FC = () => {
         <Stack.Screen
           name="PersonalReports"
           component={PersonalReports}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Reports',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Reports')}
         />
         <Stack.Screen
           name="BusinessReports"
           component={BusinessReports}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Reports',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Reports')}
         />
         <Stack.Screen
           name="TransactionsList"
           component={TransactionsList}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'All Transactions',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'All Transactions')}
         />
         <Stack.Screen
           name="SubscriptionList"
           component={SubscriptionList}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Commitments',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Commitments')}
         />
         <Stack.Screen
           name="BudgetPlanning"
           component={BudgetPlanning}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Budgets',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Budgets')}
         />
         <Stack.Screen
           name="SupplierList"
           component={SupplierList}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Suppliers',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Suppliers')}
         />
         <Stack.Screen
           name="DebtTracking"
           component={DebtTracking}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Debts & Splits',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Debts & Splits')}
         />
         <Stack.Screen
           name="ReceiptScanner"
           component={ReceiptScanner}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Save Receipt',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Save Receipt')}
         />
         <Stack.Screen
           name="ReceiptHistory"
@@ -490,1246 +335,224 @@ const RootNavigator: React.FC = () => {
           }}
         />
         <Stack.Screen
+          name="ImportFromStatement"
+          component={ImportFromStatement}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="ImportFromCsv"
+          component={ImportFromCsv}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
           name="WalletManagement"
           component={WalletManagement}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Manage Wallets',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Manage Wallets')}
         />
         <Stack.Screen
           name="AccountOverview"
           component={AccountOverview}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Account Overview',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Account Overview')}
         />
         <Stack.Screen
           name="SavingsTracker"
           component={SavingsTracker}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Savings & Investments',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Savings & Investments')}
         />
         <Stack.Screen
           name="MoneyChat"
           component={MoneyChat}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Money Chat',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Money Chat')}
         />
         <Stack.Screen
           name="Goals"
           component={Goals}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'My Goals',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'My Goals')}
         />
         <Stack.Screen
           name="FinancialPulse"
           component={FinancialPulse}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Financial Pulse',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Financial Pulse')}
         />
         <Stack.Screen
           name="LogIncome"
           component={LogIncome}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Log Income',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Log Income')}
         />
         <Stack.Screen
           name="ClientList"
           component={ClientList}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Clients',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Clients')}
         />
         <Stack.Screen
           name="RiderCosts"
           component={RiderCostsScreen}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Costs',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Costs')}
         />
         <Stack.Screen
           name="IncomeStreams"
           component={IncomeStreamsScreen}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Income Streams',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Income Streams')}
         />
         <Stack.Screen
           name="SellerNewOrder"
           component={SellerNewOrder}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'New Order',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'New Order')}
         />
         <Stack.Screen
           name="SellerOrderList"
           component={SellerOrderList}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Orders',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Orders')}
         />
         <Stack.Screen
           name="SellerTransactions"
           component={SellerTransactions}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Transactions',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => navigation.goBack()}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Transactions')}
         />
         <Stack.Screen
           name="SellerProducts"
           component={SellerProducts}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Products',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Products')}
         />
         <Stack.Screen
           name="SellerCosts"
           component={SellerCosts}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Costs',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Costs')}
         />
         <Stack.Screen
           name="SellerCustomersStack"
           component={SellerCustomersScreen}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Customers',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Customers')}
         />
         <Stack.Screen
           name="SeasonSummary"
           component={SeasonSummary}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Season',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Season')}
         />
         <Stack.Screen
           name="Settings"
           component={Settings}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Settings',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => navigation.goBack()}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Settings')}
         />
         <Stack.Screen
           name="SellerSettings"
           component={Settings}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Settings',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Settings')}
         />
         <Stack.Screen
           name="PastSeasons"
           component={PastSeasons}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Seasons',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Seasons')}
         />
         <Stack.Screen
           name="StallSessionSetup"
           component={StallSessionSetup}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'New Session',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'New Session')}
         />
         <Stack.Screen
           name="StallCloseSession"
           component={StallCloseSession}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Close Session',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Close Session')}
         />
         <Stack.Screen
           name="StallSessionSummary"
           component={StallSessionSummary}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Session Summary',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Session Summary')}
         />
         <Stack.Screen
           name="StallProducts"
           component={StallProducts}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Products',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Products')}
         />
         <Stack.Screen
           name="FreelancerClientList"
           component={FreelancerClientListScreen}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Clients',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Clients')}
         />
         <Stack.Screen
           name="FreelancerClientDetail"
           component={FreelancerClientDetail}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Client',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Client')}
         />
         <Stack.Screen
           name="FreelancerAddPayment"
           component={FreelancerAddPayment}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Log Payment',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Log Payment')}
         />
         <Stack.Screen
           name="FreelancerReports"
           component={FreelancerReports}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Reports',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Reports')}
         />
         <Stack.Screen
           name="PartTimeSetup"
           component={PartTimeSetup}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Job Details',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Job Details')}
         />
         <Stack.Screen
           name="PartTimeAddIncome"
           component={PartTimeAddIncome}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Log Income',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Log Income')}
         />
         <Stack.Screen
           name="PartTimeIncomeHistory"
           component={PartTimeIncomeHistory}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Income History',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Income History')}
         />
         <Stack.Screen
           name="PartTimeReports"
           component={PartTimeReports}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Reports',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Reports')}
         />
         <Stack.Screen
           name="OnTheRoadSetup"
           component={OnTheRoadSetup}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Road Details',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Road Details')}
         />
         <Stack.Screen
           name="OnTheRoadAddEarnings"
           component={OnTheRoadAddEarnings}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Log Earnings',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Log Earnings')}
         />
         <Stack.Screen
           name="OnTheRoadAddCost"
           component={OnTheRoadAddCost}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Log Cost',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Log Cost')}
         />
         <Stack.Screen
           name="OnTheRoadCostHistory"
           component={OnTheRoadCostHistory}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Costs',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Costs')}
         />
         <Stack.Screen
           name="OnTheRoadReports"
           component={OnTheRoadReports}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Reports',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Reports')}
         />
         <Stack.Screen
           name="MixedSetup"
           component={MixedSetup}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Stream Setup',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Stream Setup')}
         />
         <Stack.Screen
           name="MixedAddIncome"
           component={MixedAddIncome}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Log Income',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Log Income')}
         />
         <Stack.Screen
           name="MixedAddCost"
           component={MixedAddCost}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Log Cost',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Log Cost')}
         />
         <Stack.Screen
           name="MixedStreamHistory"
           component={MixedStreamHistory}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'History',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'History')}
         />
         <Stack.Screen
           name="MixedReports"
           component={MixedReports}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerTitle: 'Reports',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: mode === 'personal' ? 'PersonalMain' : 'BusinessMain' }],
-                    });
-                  }
-                }}
-                style={{ marginLeft: 16 }}
-                accessibilityLabel="Go back"
-              >
-                <Feather name="arrow-left" size={24} color={C.textPrimary} />
-              </TouchableOpacity>
-            ),
-          })}
+          options={makeBackHeader(C, mode, 'Reports')}
         />
         <Stack.Screen
           name="NoteEditor"

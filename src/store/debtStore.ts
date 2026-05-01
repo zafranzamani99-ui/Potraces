@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DebtState, DebtStatus } from '../types';
+import { newId } from '../utils/id';
 
 export const useDebtStore = create<DebtState>()(
   persist(
@@ -9,9 +10,18 @@ export const useDebtStore = create<DebtState>()(
       debts: [],
       splits: [],
       contacts: [],
+      _deletedDebtIds: [],
+      _deletedSplitIds: [],
+      _deletedContactIds: [],
+
+      clearDebtTombstones: () => set({
+        _deletedDebtIds: [],
+        _deletedSplitIds: [],
+        _deletedContactIds: [],
+      }),
 
       addDebt: (debt) => {
-        const id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
+        const id = newId();
         set((state) => ({
           debts: [
             {
@@ -59,32 +69,38 @@ export const useDebtStore = create<DebtState>()(
       deleteDebt: (id) =>
         set((state) => ({
           debts: state.debts.filter((d) => d.id !== id),
+          _deletedDebtIds: [...(state._deletedDebtIds ?? []), id],
         })),
 
       addPayment: (debtId, payment) => {
-        const paymentId = Date.now().toString() + Math.random().toString(36).slice(2, 7);
+        const debt = (useDebtStore.getState() as DebtState).debts.find((d) => d.id === debtId);
+        if (!debt) return null;
+        if (debt.status === 'settled') return null;
+
+        const remaining = Math.max(0, debt.totalAmount - debt.paidAmount);
+        const cappedAmount = Math.min(payment.amount, remaining);
+        if (cappedAmount <= 0) return null;
+
+        const paymentId = newId();
         set((state) => ({
-          debts: state.debts.map((debt) => {
-            if (debt.id !== debtId) return debt;
-            if (debt.status === 'settled') return debt;
+          debts: state.debts.map((d) => {
+            if (d.id !== debtId) return d;
 
             const newPayment = {
               ...payment,
+              amount: cappedAmount,
               id: paymentId,
               createdAt: new Date(),
             };
 
-            const newPaidAmount = debt.paidAmount + payment.amount;
+            const newPaidAmount = d.paidAmount + cappedAmount;
             let newStatus: DebtStatus = 'pending';
-            if (newPaidAmount >= debt.totalAmount) {
-              newStatus = 'settled';
-            } else if (newPaidAmount > 0) {
-              newStatus = 'partial';
-            }
+            if (newPaidAmount >= d.totalAmount) newStatus = 'settled';
+            else if (newPaidAmount > 0) newStatus = 'partial';
 
             return {
-              ...debt,
-              payments: [...debt.payments, newPayment],
+              ...d,
+              payments: [...d.payments, newPayment],
               paidAmount: newPaidAmount,
               status: newStatus,
               updatedAt: new Date(),
@@ -126,17 +142,32 @@ export const useDebtStore = create<DebtState>()(
           debts: state.debts.map((debt) => {
             if (debt.id !== debtId) return debt;
 
+            const existing = debt.payments.find((p) => p.id === paymentId);
+            if (!existing) return debt;
+
+            let cappedAmount = updates.amount;
+            if (cappedAmount !== undefined) {
+              const sumOfOthers = debt.payments.reduce(
+                (sum, p) => p.id === paymentId ? sum : sum + p.amount,
+                0,
+              );
+              const maxAllowed = Math.max(0, debt.totalAmount - sumOfOthers);
+              cappedAmount = Math.max(0, Math.min(cappedAmount, maxAllowed));
+            }
+
             const newPayments = debt.payments.map((p) => {
               if (p.id !== paymentId) return p;
-              // Snapshot current values into editLog before applying changes
-              const amountChanged = updates.amount !== undefined && updates.amount !== p.amount;
-              const noteChanged = updates.note !== undefined && updates.note !== p.note;
+              const effectiveUpdates = cappedAmount !== undefined
+                ? { ...updates, amount: cappedAmount }
+                : updates;
+              const amountChanged = effectiveUpdates.amount !== undefined && effectiveUpdates.amount !== p.amount;
+              const noteChanged = effectiveUpdates.note !== undefined && effectiveUpdates.note !== p.note;
               const editEntry = (amountChanged || noteChanged)
                 ? { editedAt: new Date(), previousAmount: p.amount, previousNote: p.note }
                 : null;
               return {
                 ...p,
-                ...updates,
+                ...effectiveUpdates,
                 editLog: editEntry
                   ? [...(p.editLog ?? []), editEntry]
                   : p.editLog,
@@ -161,7 +192,7 @@ export const useDebtStore = create<DebtState>()(
         })),
 
       addSplit: (split) => {
-        const id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
+        const id = newId();
         set((state) => ({
           splits: [
             {
@@ -188,6 +219,7 @@ export const useDebtStore = create<DebtState>()(
       deleteSplit: (id) =>
         set((state) => ({
           splits: state.splits.filter((s) => s.id !== id),
+          _deletedSplitIds: [...(state._deletedSplitIds ?? []), id],
         })),
 
       markSplitParticipantPaid: (splitId, contactId) =>
@@ -223,7 +255,7 @@ export const useDebtStore = create<DebtState>()(
           contacts: [
             {
               ...contact,
-              id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
+              id: newId(),
             },
             ...state.contacts,
           ],
@@ -232,6 +264,7 @@ export const useDebtStore = create<DebtState>()(
       deleteContact: (id) =>
         set((state) => ({
           contacts: state.contacts.filter((c) => c.id !== id),
+          _deletedContactIds: [...(state._deletedContactIds ?? []), id],
           debts: state.debts.map((d) =>
             d.contact?.id === id ? { ...d, contact: { ...d.contact, name: '(deleted)' } } : d
           ),
@@ -264,6 +297,9 @@ export const useDebtStore = create<DebtState>()(
           updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
         })),
         contacts: state.contacts,
+        _deletedDebtIds: state._deletedDebtIds ?? [],
+        _deletedSplitIds: state._deletedSplitIds ?? [],
+        _deletedContactIds: state._deletedContactIds ?? [],
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -288,6 +324,9 @@ export const useDebtStore = create<DebtState>()(
             createdAt: sd(s.createdAt),
             updatedAt: sd(s.updatedAt),
           }));
+          state._deletedDebtIds = state._deletedDebtIds ?? [];
+          state._deletedSplitIds = state._deletedSplitIds ?? [];
+          state._deletedContactIds = state._deletedContactIds ?? [];
         }
       },
     }

@@ -86,14 +86,7 @@ type GoalFilter = 'all' | 'active' | 'completed' | 'paused';
 type GoalSort = 'manual' | 'deadline' | 'progress';
 
 // ── ENCOURAGING MESSAGES ──────────────────────────────────────
-const getObservation = (percentage: number): string => {
-  if (percentage >= 100) return 'goal reached.';
-  if (percentage >= 75) return 'almost there.';
-  if (percentage >= 50) return 'halfway.';
-  if (percentage >= 25) return 'a quarter saved.';
-  if (percentage >= 10) return 'getting started.';
-  return '';
-};
+// Localized version defined inside component via useT()
 
 const MAX_GOALS = 10;
 
@@ -447,7 +440,7 @@ const Goals: React.FC = () => {
         showToast(t.goals.goalReached, 'success');
       } else if (crossedPct) {
         mediumTap();
-        showToast(`${crossedPct}% milestone.`, 'success');
+        showToast(t.goals.milestoneReached.replace('{n}', String(crossedPct)), 'success');
       } else {
         showToast(t.goals.contributionAdded, 'success');
       }
@@ -613,7 +606,7 @@ const Goals: React.FC = () => {
     let currentLabel = '';
     contribs.forEach((c) => {
       const d = c.date instanceof Date ? c.date : new Date(c.date);
-      const label = isValid(d) ? format(d, 'MMMM yyyy') : 'Unknown';
+      const label = isValid(d) ? format(d, 'MMMM yyyy') : t.goals.unknown;
       if (label !== currentLabel) {
         currentLabel = label;
         groups.push({ label, items: [] });
@@ -621,7 +614,7 @@ const Goals: React.FC = () => {
       groups[groups.length - 1].items.push(c);
     });
     return groups;
-  }, [historyGoal]);
+  }, [historyGoal, t]);
 
   const historyStats = useMemo(() => {
     if (!historyGoal) return { total: 0, avg: 0, count: 0 };
@@ -643,7 +636,7 @@ const Goals: React.FC = () => {
   ], [t]);
 
   const sortOptions = useMemo<{ key: GoalSort; label: string; icon: keyof typeof Feather.glyphMap }[]>(() => [
-    { key: 'manual', label: 'default', icon: 'list' },
+    { key: 'manual', label: t.goals.defaultSort, icon: 'list' },
     { key: 'deadline', label: t.goals.deadline, icon: 'calendar' },
     { key: 'progress', label: t.goals.progress, icon: 'trending-up' },
   ], [t]);

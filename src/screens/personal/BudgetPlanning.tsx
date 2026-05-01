@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -13,9 +13,13 @@ import {
   Switch,
   KeyboardAvoidingView,
   FlatList,
-  InteractionManager,
+  PanResponder,
+  Animated as RNAnimated,
+  useWindowDimensions,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutUp } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import {
   startOfMonth, endOfMonth,
@@ -39,13 +43,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
 import { Budget, CategoryOption, Playbook } from '../../types';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { lightTap, mediumTap } from '../../services/haptics';
 import ScreenGuide from '../../components/common/ScreenGuide';
+import EchoInlineChat from '../../components/common/EchoInlineChat';
+import TypewriterText from '../../components/common/TypewriterText';
 import { usePlaybookStore } from '../../store/playbookStore';
 import { computePlaybookStats, isOverspent, getOverspentAmount, isPlaybookStale } from '../../utils/playbookStats';
 import PlaybookNotebook from '../../components/playbook/PlaybookNotebook';
-import SkeletonLoader from '../../components/common/SkeletonLoader';
 import { format } from 'date-fns';
 
 // ─── Pace helpers ──────────────────────────────────────────
@@ -60,6 +65,20 @@ const getPaceLabel = (paceRatio: number) => {
   if (paceRatio <= 1.1) return 'on track';
   if (paceRatio <= 1.3) return 'moving a bit fast';
   return 'needs attention';
+};
+
+const getPaceIcon = (paceRatio: number): 'trending-down' | 'check-circle' | 'trending-up' | 'alert-circle' => {
+  if (paceRatio < 0.9) return 'trending-down';
+  if (paceRatio <= 1.1) return 'check-circle';
+  if (paceRatio <= 1.3) return 'trending-up';
+  return 'alert-circle';
+};
+
+type BudgetStatus = 'urgent' | 'track' | 'plenty';
+const classifyBudget = (percentSpent: number, paceRatio: number): BudgetStatus => {
+  if (percentSpent >= 0.85 || paceRatio > 1.3) return 'urgent';
+  if (percentSpent >= 0.4 || paceRatio > 0.9) return 'track';
+  return 'plenty';
 };
 
 const getPeriodInterval = (period: 'weekly' | 'monthly' | 'yearly', now: Date) => {
@@ -93,16 +112,93 @@ const BudgetPlanning: React.FC = () => {
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
-  const { budgets, addBudget, updateBudget, deleteBudget, transactions } = usePersonalStore();
+  const { budgets, addBudget, updateBudget, deleteBudget, transactions, subscriptions, goals } = usePersonalStore();
   const currency = useSettingsStore(state => state.currency);
+  const echoHidden = useSettingsStore((s) => s.budgetEchoHidden);
+  const setEchoHidden = useSettingsStore((s) => s.setBudgetEchoHidden);
   const canCreateBudget = usePremiumStore((s) => s.canCreateBudget);
   const tier = usePremiumStore((s) => s.tier);
   const expenseCategories = useCategories('expense');
 
   const [modalVisible, setModalVisible] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
+  const [echoPaywallVisible, setEchoPaywallVisible] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [echoSheetVisible, setEchoSheetVisible] = useState(false);
+  const [greetingDismissed, setGreetingDismissed] = useState(false);
+  const [greetingHiddenDuringDrag, setGreetingHiddenDuringDrag] = useState(false);
+  const [greetingText, setGreetingText] = useState('');
+  const [greetingChips, setGreetingChips] = useState<{ label: string; question: string }[]>([]);
+  const [echoAutoPrompt, setEchoAutoPrompt] = useState<string | undefined>(undefined);
+  const [fabSide, setFabSide] = useState<'left' | 'right'>('right');
+  const [chipRotation, setChipRotation] = useState(0);
+
+  // ── Draggable Echo FAB — free X+Y drag, snaps to edge on release ──
+  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
+  const echoFabPan = useRef(new RNAnimated.ValueXY({ x: 0, y: 0 })).current;
+  // When anchor (fabSide) switches, reset X to 0 atomically before the frame paints
+  const prevFabSideRef = useRef<'left' | 'right'>('right');
+  useLayoutEffect(() => {
+    if (prevFabSideRef.current !== fabSide) {
+      prevFabSideRef.current = fabSide;
+      echoFabPan.setValue({ x: 0, y: (echoFabPan.y as any)._value });
+    }
+  }, [fabSide, echoFabPan]);
+  const echoFabPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onStartShouldSetPanResponderCapture: () => false,
+        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
+        onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
+        onPanResponderGrant: () => {
+          echoFabPan.setOffset({
+            x: (echoFabPan.x as any)._value,
+            y: (echoFabPan.y as any)._value,
+          });
+          echoFabPan.setValue({ x: 0, y: 0 });
+          setGreetingHiddenDuringDrag(true);
+        },
+        onPanResponderMove: RNAnimated.event(
+          [null, { dx: echoFabPan.x, dy: echoFabPan.y }],
+          { useNativeDriver: false }
+        ),
+        onPanResponderRelease: () => {
+          echoFabPan.flattenOffset();
+          const curX = (echoFabPan.x as any)._value;
+          const curY = (echoFabPan.y as any)._value;
+          const safeTop = Math.max(insets.top, 20);
+          const defaultTop = safeTop + 80;
+          // Determine target side from projected FAB center
+          const fabCenterX = fabSide === 'right'
+            ? SCREEN_W - SPACING.xl - 28 + curX
+            : SPACING.xl + 28 + curX;
+          const newSide = fabCenterX < SCREEN_W / 2 ? 'left' : 'right';
+          // Snap X in CURRENT anchor coords — don't switch anchor until spring is done
+          const edgeSpan = SCREEN_W - 2 * SPACING.xl - 56;
+          const snapX = fabSide === newSide ? 0
+            : fabSide === 'right' ? -edgeSpan : edgeSpan;
+          // Y clamp
+          const minY = -(defaultTop - 8);
+          const maxY = SCREEN_H - insets.top - 44 - insets.bottom - 80 - 56 - defaultTop;
+          const clampedY = Math.max(minY, Math.min(maxY, curY));
+          RNAnimated.spring(echoFabPan, {
+            toValue: { x: snapX, y: clampedY },
+            useNativeDriver: false,
+            friction: 14,
+            tension: 100,
+          }).start(() => {
+            // useLayoutEffect resets X to 0 atomically when fabSide changes — no flicker
+            setFabSide(newSide);
+            setGreetingHiddenDuringDrag(false);
+          });
+        },
+      }),
+    // fabSide in deps — release uses it to compute FAB center X
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [echoFabPan, fabSide, SCREEN_W, SCREEN_H, insets.top, insets.bottom]
+  );
 
   // Form state
   const [category, setCategory] = useState(expenseCategories[0]?.id || 'food');
@@ -119,6 +215,27 @@ const BudgetPlanning: React.FC = () => {
   // expandedPbId removed — cards now tap-to-open notebook directly
   const [notebookPb, setNotebookPb] = useState<Playbook | null>(null);
   const navigation = useNavigation<any>();
+
+  useLayoutEffect(() => {
+    if (!echoHidden) {
+      navigation.setOptions({ headerRight: undefined, headerRightContainerStyle: undefined });
+      return;
+    }
+    navigation.setOptions({
+      headerRightContainerStyle: { paddingRight: 12 },
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => { lightTap(); setEchoHidden(false); }}
+          accessibilityRole="button"
+          accessibilityLabel="Show Echo assistant"
+          style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Feather name="zap" size={20} color={CALM.textPrimary} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [echoHidden, navigation]);
+
   const pendingNavRef = useRef<string | null>(null);
   const pendingNavParamsRef = useRef<Record<string, any> | undefined>(undefined);
   const reopenPlaybookRef = useRef<string | null>(null);
@@ -210,12 +327,21 @@ const BudgetPlanning: React.FC = () => {
       )
       .reduce((sum, t) => sum + t.amount, 0);
 
+    // Baseline: sum of budgeted allocations (monthly)
     const totalAllocated = budgetsWithSpent
       .filter((b) => b.period === 'monthly')
       .reduce((sum, b) => sum + b.allocatedAmount, 0);
+    const totalBudgetSpent = budgetsWithSpent
+      .filter((b) => b.period === 'monthly')
+      .reduce((sum, b) => sum + b.spentAmount, 0);
+
+    const overBudgets = budgetsWithSpent.filter((b) => b.spentAmount > b.allocatedAmount);
+    const totalOverBy = overBudgets.reduce((s, b) => s + (b.spentAmount - b.allocatedAmount), 0);
 
     const totalSpent = totalExpenses;
-    const freeToSpend = totalIncome - totalExpenses;
+    // Use BUDGET baseline for "left to spend" (not income — income might not be tracked)
+    const budgetLeft = Math.max(totalAllocated - totalBudgetSpent, 0);
+    const freeToSpend = totalAllocated > 0 ? budgetLeft : Math.max(totalIncome - totalExpenses, 0);
 
     const daysInMonth = getDaysInMonth(now);
     const dayOfMonth = getDate(now);
@@ -223,8 +349,70 @@ const BudgetPlanning: React.FC = () => {
     const dailyAllowance = freeToSpend > 0 ? freeToSpend / daysRemaining : 0;
 
     const percentElapsed = dayOfMonth / daysInMonth;
-    const percentSpent = totalIncome > 0 ? totalSpent / totalIncome : 0;
+    // Percent spent is now budget-relative (with income fallback)
+    const percentSpent = totalAllocated > 0
+      ? totalBudgetSpent / totalAllocated
+      : totalIncome > 0 ? totalSpent / totalIncome : 0;
     const paceRatio = percentElapsed > 0 ? percentSpent / percentElapsed : 0;
+
+    // Runway prediction — uses BUDGET baseline (not income)
+    const daysElapsed = Math.max(dayOfMonth, 1);
+    const runwayBaseline = totalAllocated > 0 ? totalAllocated : totalIncome;
+    const runwayBurn = totalAllocated > 0
+      ? totalBudgetSpent / daysElapsed
+      : totalExpenses / daysElapsed;
+    const dailyBurn = runwayBurn;
+    const runwayDays = runwayBurn > 0 && runwayBaseline > 0
+      ? Math.floor(runwayBaseline / runwayBurn)
+      : daysInMonth + 10;
+    const runsOutOnDay = Math.min(runwayDays, daysInMonth + 5);
+    const stretchesWholeMonth = overBudgets.length === 0 && runwayDays >= daysInMonth;
+    const runwayOverage = Math.max(runwayDays - daysInMonth, 0);
+    const alreadyOver = overBudgets.length > 0;
+
+    // ─── Smart daily allowance ───
+    // Considers: upcoming subscriptions, active goal contributions, safety buffer
+    // Returns: RM per day the user should spend to stay on plan
+    const upcomingBillsTotal = subscriptions
+      .filter((s) => s.isActive && !s.isPaused)
+      .reduce((sum, s) => {
+        const next = s.nextBillingDate instanceof Date ? s.nextBillingDate : new Date(s.nextBillingDate);
+        if (next >= now && next <= monthEnd) return sum + s.amount;
+        return sum;
+      }, 0);
+    const upcomingBillsCount = subscriptions.filter((s) => {
+      if (!s.isActive || s.isPaused) return false;
+      const next = s.nextBillingDate instanceof Date ? s.nextBillingDate : new Date(s.nextBillingDate);
+      return next >= now && next <= monthEnd;
+    }).length;
+
+    // Active goals still being contributed to — reserve ~5% of remaining target per month
+    const activeGoalReserve = goals
+      .filter((g) => {
+        const contributed = (g.contributions || []).reduce((s, c) => s + c.amount, 0);
+        return contributed < g.targetAmount;
+      })
+      .reduce((sum, g) => {
+        const contributed = (g.contributions || []).reduce((s, c) => s + c.amount, 0);
+        const remaining = Math.max(g.targetAmount - contributed, 0);
+        return sum + Math.min(remaining * 0.05, remaining);
+      }, 0);
+    const activeGoalCount = goals.filter((g) => {
+      const contributed = (g.contributions || []).reduce((s, c) => s + c.amount, 0);
+      return contributed < g.targetAmount;
+    }).length;
+
+    // 10% safety buffer on remaining free money
+    const rawFree = Math.max(budgetLeft > 0 ? budgetLeft : freeToSpend, 0);
+    const safetyBuffer = rawFree * 0.10;
+
+    // Spendable after commitments + reserves + buffer
+    const spendablePool = Math.max(rawFree - upcomingBillsTotal - activeGoalReserve - safetyBuffer, 0);
+    const smartDaily = daysRemaining > 0 ? spendablePool / daysRemaining : 0;
+
+    // Confidence signal
+    const naiveDaily = rawFree / daysRemaining;
+    const smartVsNaive = naiveDaily > 0 ? smartDaily / naiveDaily : 1;
 
     return {
       freeToSpend,
@@ -232,13 +420,32 @@ const BudgetPlanning: React.FC = () => {
       daysRemaining,
       daysInMonth,
       percentSpent,
+      percentElapsed,
       totalIncome,
       totalSpent,
       totalAllocated,
       paceRatio,
+      dailyBurn,
+      runwayDays,
+      runsOutOnDay,
+      stretchesWholeMonth,
+      runwayOverage,
+      dayOfMonth,
+      smartDaily,
+      smartVsNaive,
+      upcomingBillsTotal,
+      upcomingBillsCount,
+      activeGoalReserve,
+      activeGoalCount,
+      safetyBuffer,
+      alreadyOver,
+      overBudgets,
+      totalOverBy,
+      budgetLeft,
+      totalBudgetSpent,
       paceColor: getPaceColor(paceRatio),
     };
-  }, [transactions, budgetsWithSpent, now]);
+  }, [transactions, budgetsWithSpent, now, subscriptions, goals]);
 
   // ─── Handlers ────────────────────────────────────────────
   const handleAdd = useCallback(() => {
@@ -380,6 +587,364 @@ const BudgetPlanning: React.FC = () => {
     };
   }, [now, expenseCategories]);
 
+  // ─── Smart insight — observes patterns and narrates them ───
+  const smartInsight = useMemo(() => {
+    if (heroData.overBudgets.length > 0) {
+      const worst = [...heroData.overBudgets].sort((a, b) => (b.spentAmount - b.allocatedAmount) - (a.spentAmount - a.allocatedAmount))[0];
+      const overBy = worst.spentAmount - worst.allocatedAmount;
+      const cat = expenseCategories.find((c) => c.id === worst.category);
+      const biggest = transactions
+        .filter((tx) => tx.category === worst.category && tx.type === 'expense' && tx.date >= startOfMonth(now))
+        .sort((a, b) => b.amount - a.amount)[0];
+      return {
+        mode: 'over' as const,
+        title: `${cat?.name || worst.category} went ${currency} ${overBy.toFixed(0)} past the line`,
+        subtitle: biggest && biggest.description
+          ? `biggest single hit was ${currency} ${biggest.amount.toFixed(0)} on "${biggest.description}". unusual, or a pattern building?`
+          : biggest
+          ? `biggest single hit was ${currency} ${biggest.amount.toFixed(0)}. want echo to walk through what pushed it past?`
+          : `want echo to scan what pushed it past the line?`,
+      };
+    }
+    const close = budgetsWithSpent.filter((b) => {
+      const pct = b.allocatedAmount > 0 ? b.spentAmount / b.allocatedAmount : 0;
+      return pct >= 0.85 && pct < 1;
+    });
+    if (close.length > 0) {
+      const nearest = close[0];
+      const cat = expenseCategories.find((c) => c.id === nearest.category);
+      const leftAmt = nearest.allocatedAmount - nearest.spentAmount;
+      const dailyLeft = leftAmt / Math.max(heroData.daysRemaining, 1);
+      return {
+        mode: 'close' as const,
+        title: `${cat?.name || nearest.category} is brushing the ceiling`,
+        subtitle: `${currency} ${leftAmt.toFixed(0)} left — that's ${currency} ${dailyLeft.toFixed(0)}/day through day ${heroData.daysInMonth}. careful with weekend plans.`,
+      };
+    }
+    if (!heroData.stretchesWholeMonth) {
+      return {
+        mode: 'tight' as const,
+        title: `money runs out on day ${heroData.runsOutOnDay} of ${heroData.daysInMonth}`,
+        subtitle: heroData.smartDaily > 0
+          ? `burning ${currency} ${heroData.dailyBurn.toFixed(0)}/day. slowing to ${currency} ${heroData.smartDaily.toFixed(0)}/day keeps you through month end.`
+          : `burning ${currency} ${heroData.dailyBurn.toFixed(0)}/day. set a budget per category for a sharper daily pace.`,
+      };
+    }
+    const cushion = [...budgetsWithSpent].sort((a, b) => (b.allocatedAmount - b.spentAmount) - (a.allocatedAmount - a.spentAmount))[0];
+    if (cushion && cushion.allocatedAmount - cushion.spentAmount > 0) {
+      const cat = expenseCategories.find((c) => c.id === cushion.category);
+      const left = cushion.allocatedAmount - cushion.spentAmount;
+      return {
+        mode: 'healthy' as const,
+        title: `you're on pace through day ${heroData.daysInMonth}`,
+        subtitle: `${cat?.name || cushion.category} has ${currency} ${left.toFixed(0)} unused — a cushion if anything else runs hot.`,
+      };
+    }
+    return {
+      mode: 'empty' as const,
+      title: `add a budget to unlock coaching`,
+      subtitle: `echo works best when there's something to measure against. start with your biggest category.`,
+    };
+  }, [heroData, budgetsWithSpent, transactions, expenseCategories, now, currency]);
+
+  // ─── Psychology-driven chip pool (Gollwitzer, Thaler, Hershfield, MI) ───
+  // STING: loss aversion, regret, mental accounting — reflective framing
+  // SPARK: future self, identity, values — aspirational framing
+  // PLAN:  implementation intentions, habit stacking — actionable framing
+  const suggestedPrompts = useMemo(() => {
+    const state: 'over' | 'tight' | 'healthy' = heroData.alreadyOver
+      ? 'over'
+      : !heroData.stretchesWholeMonth
+      ? 'tight'
+      : 'healthy';
+
+    // Context injection — user's actual worst category, name-qualified
+    const topOver = [...budgetsWithSpent].sort((a, b) => (b.spentAmount - b.allocatedAmount) - (a.spentAmount - a.allocatedAmount))[0];
+    const topCatName = (expenseCategories.find((c) => c.id === topOver?.category)?.name || topOver?.category || 'spending').toLowerCase();
+    const overBy = heroData.totalOverBy;
+    const deficit = Math.max((heroData.dailyBurn - heroData.smartDaily) * heroData.daysRemaining, 100);
+
+    type Bucket = 'sting' | 'spark' | 'plan';
+    type ChipDef = { bucket: Bucket; states: ('over' | 'tight' | 'healthy')[]; build: () => { label: string; question: string } };
+
+    const POOL: ChipDef[] = [
+      // ── STING ── loss aversion / regret / mental accounting
+      { bucket: 'sting', states: ['over', 'tight', 'healthy'], build: () => ({
+        label: `what leaks away by year end?`,
+        question: `If I keep my current pace on ${topCatName}, roughly how much will have slipped by the end of the year? Give me the actual number and one concrete thing it could have gone toward (a trip, an emergency cushion, etc.).`,
+      })},
+      { bucket: 'sting', states: ['over', 'tight'], build: () => ({
+        label: `which ringgit would sting most?`,
+        question: `Scan my recent expenses. Which specific ringgit I spent this week would hurt the most if I had to pay it again tomorrow? Help me feel the weight of it.`,
+      })},
+      { bucket: 'sting', states: ['over', 'healthy'], build: () => ({
+        label: `is ${topCatName} from fun money or future money?`,
+        question: `I spent the most on ${topCatName} this month. Help me reframe: is that category genuinely fun-money (joy I'd repeat) or future-money (money that should have grown)? Use my actual transactions to show it.`,
+      })},
+      { bucket: 'sting', states: ['tight', 'healthy'], build: () => ({
+        label: `if ${topCatName} had its own jar?`,
+        question: `If my ${topCatName} budget was a physical jar with exactly RM in it, and I had to hand over the cash for each transaction — which ones would I have paused on? Walk me through them honestly.`,
+      })},
+      { bucket: 'sting', states: ['over'], build: () => ({
+        label: `what would i undo this month?`,
+        question: `Looking at my transactions this month, if I could undo just ONE purchase, which one would I pick and why? Reason out loud — this is self-reflection, not shame.`,
+      })},
+
+      // ── SPARK ── future self / identity / values
+      { bucket: 'spark', states: ['over', 'tight', 'healthy'], build: () => ({
+        label: `what would future me thank me for?`,
+        question: `Imagine 40-year-old me looking at this month's spending. What would they quietly thank me for? What would they wish I'd done differently? Be specific with my actual numbers.`,
+      })},
+      { bucket: 'spark', states: ['healthy', 'tight'], build: () => ({
+        label: `am i becoming a saver?`,
+        question: `Am I currently acting like a person who saves, or a person who's just surviving month to month? Look at my recent patterns and tell me honestly which identity my money habits are building.`,
+      })},
+      { bucket: 'spark', states: ['healthy'], build: () => ({
+        label: `what does 'enough' look like?`,
+        question: `What does "enough" actually look like for me this month? Given my budgets and values, help me define a number and a feeling — not a finish line that keeps moving.`,
+      })},
+      { bucket: 'spark', states: ['over', 'tight'], build: () => ({
+        label: `what am i spending TO feel?`,
+        question: `When I spent the most this month, what emotion was I probably feeling — stressed, celebrating, bored, lonely? Cross-reference timestamps with the transactions and give me your best read.`,
+      })},
+      { bucket: 'spark', states: ['over', 'tight', 'healthy'], build: () => ({
+        label: `what if family wasn't watching?`,
+        question: `If nobody — family, friends, colleagues — could see my spending, what would I actually spend on? And what does that tell me about where face-saving is costing me money?`,
+      })},
+
+      // ── PLAN ── implementation intentions / habit stacking
+      { bucket: 'plan', states: ['over', 'tight', 'healthy'], build: () => ({
+        label: `when payday hits, what's my first move?`,
+        question: `Give me a concrete if-then plan for payday: "When salary arrives, the first RM X I'll move before I spend is..." Use my real numbers and goals to fill it in. One sentence, unmissable.`,
+      })},
+      { bucket: 'plan', states: ['over', 'tight'], build: () => ({
+        label: `'jom makan' midweek — what's the plan?`,
+        question: `Build me a mamak/jom-makan implementation intention for weekdays when I'm tired and someone suggests eating out. "When X happens, I will Y." Keep it realistic — I'm Malaysian, not going to never eat out.`,
+      })},
+      { bucket: 'plan', states: ['over', 'tight', 'healthy'], build: () => ({
+        label: `Shopee after 10pm — what instead?`,
+        question: `Build me a concrete if-then plan for late-night Shopee/Lazada scrolling. "If I open the app after 10pm, I will..." — replacement behavior, not just willpower.`,
+      })},
+      { bucket: 'plan', states: ['healthy', 'tight'], build: () => ({
+        label: `smallest win this week?`,
+        question: `What's the tiniest possible money win I can lock in this week? Something I'd be almost embarrassed NOT to achieve. Give me one, with the exact trigger and action.`,
+      })},
+      { bucket: 'plan', states: ['over', 'tight'], build: () => ({
+        label: `where's ${currency} ${Math.max(deficit, overBy, 50).toFixed(0)} to cut?`,
+        question: `I need to trim ${currency} ${Math.max(deficit, overBy, 50).toFixed(0)} this month. Point to the 2-3 easiest cuts with specific Malaysian swaps (mamak → masak sendiri, Grab → LRT, Shopee → wait 48h). Be numbers-specific, not preachy.`,
+      })},
+      { bucket: 'plan', states: ['healthy'], build: () => ({
+        label: `stack a habit on morning kopi?`,
+        question: `Stack a tiny money-check habit onto something I already do every morning (like kopi, shower, phone unlock). What's the smallest, stickiest one you can design for me? Keep it under 30 seconds.`,
+      })},
+      { bucket: 'plan', states: ['over', 'tight', 'healthy'], build: () => ({
+        label: `forecast month end — honestly`,
+        question: `Forecast where each of my categories will land on the last day of the month — under, on, or over. Use real pace math, be blunt, and explain the one category I should watch hardest this week.`,
+      })},
+    ];
+
+    // Daily rotation seed — same chips all day, fresh tomorrow; state break changes immediately
+    const dayKey = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+    const stateOffset = state === 'over' ? 7 : state === 'tight' ? 13 : 19;
+    const seed = dayKey + stateOffset + chipRotation * 3;
+
+    const pickFrom = (bucket: Bucket, extraOffset: number) => {
+      const candidates = POOL.filter((c) => c.bucket === bucket && c.states.includes(state));
+      if (candidates.length === 0) return null;
+      const idx = (seed + extraOffset) % candidates.length;
+      return candidates[idx].build();
+    };
+
+    const chips = [
+      pickFrom('sting', 0),
+      pickFrom('spark', 1),
+      pickFrom('plan', 2),
+    ].filter((c): c is { label: string; question: string } => c !== null);
+
+    return chips;
+  }, [heroData, budgetsWithSpent, expenseCategories, currency, chipRotation]);
+
+  // ─── Upcoming bills this week (next 7 days) ───
+  const upcomingBillsThisWeek = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const sevenDaysOut = new Date(today);
+    sevenDaysOut.setDate(sevenDaysOut.getDate() + 7);
+    const bills = subscriptions
+      .filter((s) => s.isActive && !s.isPaused)
+      .map((s) => ({
+        ...s,
+        nextDate: s.nextBillingDate instanceof Date ? s.nextBillingDate : new Date(s.nextBillingDate),
+      }))
+      .filter((s) => s.nextDate >= today && s.nextDate <= sevenDaysOut)
+      .sort((a, b) => a.nextDate.getTime() - b.nextDate.getTime());
+    const total = bills.reduce((sum, b) => sum + b.amount, 0);
+    return { bills, total, count: bills.length };
+  }, [subscriptions]);
+
+  // ─── Top active savings goal (connects budget defense with saving offense) ───
+  const topGoal = useMemo(() => {
+    const active = goals
+      .map((g) => {
+        const contributed = (g.contributions || []).reduce((s, c) => s + c.amount, 0);
+        const pct = g.targetAmount > 0 ? contributed / g.targetAmount : 0;
+        return { goal: g, contributed, pct };
+      })
+      .filter(({ pct }) => pct < 1);
+    if (active.length === 0) return null;
+    // Pick the goal with the most recent contribution (or highest pct as tiebreak)
+    active.sort((a, b) => {
+      const aLatest = Math.max(0, ...(a.goal.contributions || []).map((c) => new Date(c.date).getTime()));
+      const bLatest = Math.max(0, ...(b.goal.contributions || []).map((c) => new Date(c.date).getTime()));
+      if (aLatest !== bLatest) return bLatest - aLatest;
+      return b.pct - a.pct;
+    });
+    return active[0];
+  }, [goals]);
+
+  // ─── Build adaptive budget snapshot for Echo ───
+  const buildBudgetSnapshot = useCallback(() => {
+    const lines: string[] = [];
+    const situation = heroData.alreadyOver
+      ? 'OVER_BUDGET'
+      : !heroData.stretchesWholeMonth
+      ? 'TIGHT'
+      : 'HEALTHY';
+    lines.push(`[Situation: ${situation}]`);
+    lines.push(`Today is day ${heroData.dayOfMonth} of ${heroData.daysInMonth} (${heroData.daysRemaining} days left)`);
+    lines.push('');
+    lines.push(`--- Money picture ---`);
+    if (heroData.totalIncome > 0) {
+      lines.push(`Income tracked: ${currency} ${heroData.totalIncome.toFixed(0)}`);
+    } else {
+      lines.push(`Income: not tracked yet`);
+    }
+    lines.push(`Total allocated across budgets: ${currency} ${heroData.totalAllocated.toFixed(0)}`);
+    lines.push(`Total spent so far: ${currency} ${heroData.totalBudgetSpent.toFixed(0)} (${(heroData.percentSpent * 100).toFixed(0)}% of allocated, day ${heroData.dayOfMonth}/${heroData.daysInMonth})`);
+    lines.push(`Daily burn rate: ${currency} ${heroData.dailyBurn.toFixed(0)}/day`);
+    if (heroData.smartDaily > 0) {
+      lines.push(`Remaining budget pace: ${currency} ${heroData.smartDaily.toFixed(0)}/day would keep me on plan`);
+    }
+    lines.push('');
+    if (heroData.upcomingBillsCount > 0 || heroData.activeGoalCount > 0) {
+      lines.push(`--- Commitments ahead ---`);
+      if (heroData.upcomingBillsCount > 0) {
+        lines.push(`• ${heroData.upcomingBillsCount} upcoming bill${heroData.upcomingBillsCount > 1 ? 's' : ''} totaling ${currency} ${heroData.upcomingBillsTotal.toFixed(0)} due before month end`);
+      }
+      if (heroData.activeGoalCount > 0) {
+        lines.push(`• ${heroData.activeGoalCount} active savings goal${heroData.activeGoalCount > 1 ? 's' : ''} (reserving ~${currency} ${heroData.activeGoalReserve.toFixed(0)}/month)`);
+      }
+      lines.push('');
+    }
+    lines.push(`--- Category breakdown (worst first) ---`);
+    const sorted = [...budgetsWithSpent].sort((a, b) => {
+      const aPct = a.allocatedAmount > 0 ? a.spentAmount / a.allocatedAmount : 0;
+      const bPct = b.allocatedAmount > 0 ? b.spentAmount / b.allocatedAmount : 0;
+      return bPct - aPct;
+    });
+    sorted.forEach((b) => {
+      const meta = getBudgetMeta(b);
+      const pct = (meta.percentSpent * 100).toFixed(0);
+      const catName = meta.cat?.name || b.category;
+      const leftAmt = b.allocatedAmount - b.spentAmount;
+      const statusTag = meta.percentSpent > 1
+        ? `OVER by ${currency} ${Math.abs(leftAmt).toFixed(0)}`
+        : meta.percentSpent >= 0.85
+        ? 'close to limit'
+        : meta.percentSpent >= 0.4
+        ? 'on track'
+        : 'plenty of room';
+      lines.push(`• ${catName}: spent ${currency} ${b.spentAmount.toFixed(0)} / ${currency} ${b.allocatedAmount.toFixed(0)} (${pct}%) — ${statusTag}`);
+    });
+    return lines.join('\n');
+  }, [heroData, budgetsWithSpent, currency, getBudgetMeta]);
+
+  const handleAskEcho = useCallback((specificQuestion?: string) => {
+    lightTap();
+    setEchoSheetVisible(false);
+    const snapshot = buildBudgetSnapshot();
+    navigation.navigate('MoneyChat', {
+      budgetContext: snapshot,
+      budgetQuestion: specificQuestion,
+    });
+    // Rotate chip pool so next view surfaces different questions
+    setChipRotation((prev) => prev + 1);
+  }, [navigation, buildBudgetSnapshot]);
+
+  // ─── Greeting bubble — pool of variants, one picked fresh on each screen focus ───
+  const greetingPool = useMemo((): string[] => {
+    if (budgetsWithSpent.length === 0) return [];
+    const m = smartInsight.mode;
+    const over = heroData.overBudgets.length;
+    if (m === 'over') {
+      const label = over > 1 ? `${over} categories` : `one category`;
+      return [
+        `${label} over budget — want a plan?`,
+        `${label} went over — let's look at it`,
+        `overspent in ${label} — shall we rebalance?`,
+        `${label} in the red — want to fix it?`,
+      ];
+    }
+    if (m === 'close') {
+      return [
+        `one category's brushing its limit`,
+        `getting close on a few — check in?`,
+        `some budgets are nearly full`,
+        `a category's close to the edge`,
+      ];
+    }
+    if (m === 'tight') {
+      return [
+        `runway's tight — let's slow the burn`,
+        `spending's a bit fast — want to review?`,
+        `burn rate's high — shall we adjust?`,
+        `pace is fast — want to see where?`,
+      ];
+    }
+    return [
+      `on pace — want a cushion review?`,
+      `looking good this month — any tweaks?`,
+      `budget's healthy — want to plan ahead?`,
+      `all clear — want to see what's next?`,
+    ];
+  }, [smartInsight.mode, heroData.overBudgets.length, budgetsWithSpent.length]);
+
+  useFocusEffect(useCallback(() => {
+    if (greetingPool.length === 0) return;
+    const idx = Math.floor(Math.random() * greetingPool.length);
+    setGreetingText(greetingPool[idx]);
+    setGreetingDismissed(false);
+
+    const m = smartInsight.mode;
+    const over = heroData.overBudgets.length;
+    if (m === 'over') {
+      const label = over > 1 ? `${over} categories` : `one category`;
+      setGreetingChips([
+        { label: 'which category is worst?', question: `Which of my budget categories is most overspent right now? Show me the numbers.` },
+        { label: `how do I catch up?`, question: `I'm over budget this month in ${label}. Is there a realistic way to recover before month end, or should I adjust my limits?` },
+        { label: 'should I reallocate?', question: `Should I move budget from an underspent category to cover the overspent ones? What makes sense for my situation?` },
+      ]);
+    } else if (m === 'close') {
+      setGreetingChips([
+        { label: 'which one is closest?', question: `Which budget category is closest to hitting its limit right now? How much runway do I have left?` },
+        { label: 'should I slow down?', question: `With some categories close to their limits, should I slow spending now or is there still comfortable room?` },
+        { label: 'can I adjust the limit?', question: `Would it make sense to adjust any category budget to give myself more room, or should I hold the line?` },
+      ]);
+    } else if (m === 'tight') {
+      setGreetingChips([
+        { label: 'what can I cut today?', question: `What's one thing I can slow down or cut right now to stretch my budget for the rest of the month?` },
+        { label: 'how many days left?', question: `At my current burn rate, how many more days can I spend before hitting my limits? Show me the math.` },
+        { label: "what's my safe daily limit?", question: `What's a safe daily spending amount for me for the rest of this month given my current budgets?` },
+      ]);
+    } else {
+      setGreetingChips([
+        { label: 'where can I save more?', question: `My budget's healthy. Are there any categories where I could save a bit more without really feeling it?` },
+        { label: 'am I on pace?', question: `Am I on pace to finish the month under budget? What's my forecast based on current spending?` },
+        { label: 'what to do with leftover budget?', question: `If I have leftover budget at month end, what's the smartest thing to do with it?` },
+      ]);
+    }
+  }, [greetingPool, smartInsight.mode, heroData.overBudgets.length]));
+
   // ─── Playbook data ─────────────────────────────────────────
   const activePlaybooks = useMemo(
     () => playbooks.filter((p) => p.isActive && !p.isClosed),
@@ -513,23 +1078,32 @@ const BudgetPlanning: React.FC = () => {
     }
   }, [reopenPlaybookAction, showToast]);
 
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => setReady(true));
-    return () => task.cancel();
-  }, []);
-
-  if (!ready) {
-    return (
-      <View style={styles.container}>
-        <SkeletonLoader />
-        <SkeletonLoader style={{ marginTop: SPACING.md }} />
-      </View>
-    );
-  }
-
   // ─── Render ──────────────────────────────────────────────
   const hasBudgets = budgetsWithSpent.length > 0;
+
+  // ─── Header Echo button (only when FAB is hidden) ─
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => hasBudgets && echoHidden ? (
+        <TouchableOpacity
+          onPress={() => {
+            lightTap();
+            if (tier !== 'premium') { setEchoPaywallVisible(true); return; }
+            setEchoHidden(false);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Open Echo assistant"
+          style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Feather
+            name="zap"
+            size={20}
+            color={tier !== 'premium' ? C.textMuted : C.textPrimary}
+          />
+        </TouchableOpacity>
+      ) : null,
+    });
+  }, [echoHidden, tier, hasBudgets, navigation, C, setEchoHidden]);
 
   return (
     <View style={styles.container}>
@@ -539,62 +1113,158 @@ const BudgetPlanning: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── Segment Toggle ── */}
-        <View style={styles.segmentRow}>
-          <TouchableOpacity
-            style={[styles.segmentChip, viewMode === 'budget' && styles.segmentChipActive]}
-            onPress={() => { lightTap(); setViewMode('budget'); }}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.segmentText, viewMode === 'budget' && styles.segmentTextActive]}>
-              {t.budget.regularBudget}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.segmentChip, viewMode === 'playbook' && styles.segmentChipActive]}
-            onPress={() => { lightTap(); setViewMode('playbook'); }}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.segmentText, viewMode === 'playbook' && styles.segmentTextActive]}>
-              playbook
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {/* Segment toggle only in playbook view — budget view uses quick-action pill instead */}
+        {viewMode === 'playbook' && (
+          <View style={styles.segmentRow}>
+            <TouchableOpacity
+              style={[styles.segmentChip, viewMode === 'budget' && styles.segmentChipActive]}
+              onPress={() => { lightTap(); setViewMode('budget'); }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.segmentText, viewMode === 'budget' && styles.segmentTextActive]}>
+                {t.budget.regularBudget}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.segmentChip, viewMode === 'playbook' && styles.segmentChipActive]}
+              onPress={() => { lightTap(); setViewMode('playbook'); }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.segmentText, viewMode === 'playbook' && styles.segmentTextActive]}>
+                playbook
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ══════════════ BUDGET VIEW ══════════════ */}
         {viewMode === 'budget' && (<>
 
-        {/* ── Hero: Breathing Room ── */}
-        {hasBudgets && (
-          <View style={styles.heroCard}>
-            <Text style={styles.heroLabel}>breathing room</Text>
-            <Text style={styles.heroAmount}>
-              {currency} {heroData.freeToSpend.toFixed(0)}{' '}
-              <Text style={styles.heroAmountSub}>left this month</Text>
+        {/* ── Hero: Runway narrative + AI daily inline ── */}
+        {hasBudgets ? (
+          <View style={styles.heroV2}>
+            {/* Narrative hero — always visible anchor */}
+            <Text style={styles.runwayEyebrow}>
+              {heroData.alreadyOver ? 'heads up' : 'at this pace'}
             </Text>
-            <Text style={styles.heroDailyText}>
-              {currency} {heroData.dailyAllowance.toFixed(0)}/day for {heroData.daysRemaining} days
+            <Text style={styles.runwayNarrative}>
+              {heroData.alreadyOver ? (
+                <>
+                  you're over in{' '}
+                  <Text style={[styles.runwayHighlight, { color: '#DEAB22' }]}>
+                    {heroData.overBudgets.length} categor{heroData.overBudgets.length === 1 ? 'y' : 'ies'}
+                  </Text>
+                  {' by '}
+                  <Text style={[styles.runwayHighlight, { color: '#DEAB22' }]}>
+                    {currency} {heroData.totalOverBy.toFixed(0)}
+                  </Text>
+                </>
+              ) : heroData.stretchesWholeMonth ? (
+                <>
+                  you'll stretch to{' '}
+                  <Text style={[styles.runwayHighlight, { color: heroData.paceColor }]}>the end of the month</Text>
+                  {heroData.runwayOverage > 2 && <Text> with room to spare</Text>}
+                </>
+              ) : (
+                <>
+                  money runs out on{' '}
+                  <Text style={[styles.runwayHighlight, { color: heroData.paceColor }]}>
+                    day {heroData.runsOutOnDay}
+                  </Text>
+                  <Text> of {heroData.daysInMonth}</Text>
+                </>
+              )}
             </Text>
 
-            {/* Progress bar */}
-            <View style={styles.heroBarTrack}>
-              <View
-                style={[
-                  styles.heroBarFill,
-                  {
-                    width: `${Math.min(heroData.percentSpent * 100, 100)}%`,
-                    backgroundColor: heroData.paceColor,
-                  },
-                ]}
-              />
+            {/* Month bar — single horizontal timeline with two markers */}
+            <View style={styles.monthBarWrap}>
+              <View style={styles.monthBar}>
+                <View
+                  style={[
+                    styles.monthBarElapsed,
+                    { width: `${Math.min(heroData.percentElapsed * 100, 100)}%` },
+                  ]}
+                />
+                {!heroData.stretchesWholeMonth && (
+                  <View
+                    style={[
+                      styles.monthBarRunwayMark,
+                      {
+                        left: `${Math.min((heroData.runsOutOnDay / heroData.daysInMonth) * 100, 99)}%`,
+                        backgroundColor: heroData.paceColor,
+                      },
+                    ]}
+                  />
+                )}
+                <View
+                  style={[
+                    styles.monthBarTodayMark,
+                    { left: `${Math.min((heroData.dayOfMonth / heroData.daysInMonth) * 100, 99)}%` },
+                  ]}
+                />
+              </View>
+              <View style={styles.monthBarLabels}>
+                <Text style={styles.monthBarLabelText}>day 1</Text>
+                <Text style={[styles.monthBarLabelText, { color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.semibold }]}>
+                  today — day {heroData.dayOfMonth}
+                </Text>
+                <Text style={styles.monthBarLabelText}>day {heroData.daysInMonth}</Text>
+              </View>
             </View>
-            <Text style={[styles.heroPercentText, { color: heroData.paceColor }]}>
-              {(heroData.percentSpent * 100).toFixed(0)}%
-            </Text>
-          </View>
-        )}
 
-        {/* ── Over-limit banner ── */}
+            {/* ── Bills this week — awareness strip ── */}
+            {upcomingBillsThisWeek.count > 0 && (
+              <View style={styles.billsStrip}>
+                <View style={styles.billsStripIcon}>
+                  <Feather name="calendar" size={13} color={C.bronze} />
+                </View>
+                <View style={styles.billsStripContent}>
+                  <Text style={styles.billsStripTitle}>
+                    {upcomingBillsThisWeek.count} bill{upcomingBillsThisWeek.count > 1 ? 's' : ''} this week · {currency} {upcomingBillsThisWeek.total.toFixed(0)}
+                  </Text>
+                  <Text style={styles.billsStripNames} numberOfLines={1}>
+                    {upcomingBillsThisWeek.bills
+                      .slice(0, 3)
+                      .map((b) => `${b.name} ${currency}${b.amount.toFixed(0)}`)
+                      .join('  ·  ')}
+                    {upcomingBillsThisWeek.bills.length > 3 ? '  ·  …' : ''}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* ── Top savings goal — aspirational offense beneath defensive budget ── */}
+            {topGoal && (
+              <TouchableOpacity
+                style={styles.goalStrip}
+                onPress={() => { lightTap(); navigation.navigate('Goals'); }}
+                activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${topGoal.goal.name} goal`}
+              >
+                <View style={styles.goalStripIcon}>
+                  <Feather name="target" size={12} color={C.accent} />
+                </View>
+                <View style={styles.goalStripContent}>
+                  <View style={styles.goalStripHeader}>
+                    <Text style={styles.goalStripName} numberOfLines={1}>
+                      {topGoal.goal.name}
+                    </Text>
+                    <Text style={styles.goalStripAmount}>
+                      {currency} {topGoal.contributed.toFixed(0)} / {topGoal.goal.targetAmount.toFixed(0)}
+                    </Text>
+                  </View>
+                  <View style={styles.goalStripBarTrack}>
+                    <View style={[styles.goalStripBarFill, { width: `${Math.min(topGoal.pct * 100, 100)}%` }]} />
+                  </View>
+                </View>
+                <Feather name="chevron-right" size={14} color={C.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : null}
+
+        {/* ── Over-limit banner (free tier) ── */}
         {tier === 'free' && budgets.length > FREE_TIER.maxBudgets && (
           <View style={styles.bannerCard}>
             <Feather name="info" size={16} color={C.bronze} />
@@ -610,134 +1280,182 @@ const BudgetPlanning: React.FC = () => {
           </View>
         )}
 
-        {/* ── Budget Cards (wallet-style grouped) ── */}
-        {hasBudgets ? (
-          <View style={styles.groupCard}>
-            {budgetsWithSpent.map((budget, index) => {
-              const meta = getBudgetMeta(budget);
-              const isLast = index === budgetsWithSpent.length - 1;
-              const isExpanded = expandedId === budget.id;
-              const percentage = meta.percentSpent * 100;
+        {/* ── Quick actions (Wallet-style outline buttons) ── */}
+        {hasBudgets && (
+          <View style={styles.actionsRowV2}>
+            <TouchableOpacity
+              style={styles.actionBtnV2}
+              onPress={openAddModal}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t.budget.addBudget}
+            >
+              <Feather name="plus" size={16} color={C.accent} />
+              <Text style={styles.actionBtnV2Label}>add budget</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionBtnV2}
+              onPress={() => { lightTap(); setViewMode('playbook'); }}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="playbooks"
+            >
+              <Feather name="book-open" size={16} color={C.accent} />
+              <Text style={styles.actionBtnV2Label}>playbooks</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-              return (
-                <View key={budget.id}>
-                  <Pressable
-                    onPress={() => toggleExpand(budget.id)}
-                    style={({ pressed }) => [styles.budgetRow, pressed && { opacity: 0.7 }]}
-                  >
-                    {/* Icon */}
-                    <View
-                      style={[
-                        styles.iconCircle,
-                        {
-                          backgroundColor: meta.cat?.color
-                            ? withAlpha(meta.cat.color, 0.08)
-                            : withAlpha(C.accent, 0.08),
-                        },
-                      ]}
-                    >
-                      <Feather
-                        name={(meta.cat?.icon as keyof typeof Feather.glyphMap) || 'pie-chart'}
-                        size={18}
-                        color={meta.cat?.color || C.accent}
-                      />
-                    </View>
+        {/* ── Budget groups by status (Wallet-style grouped sections) ── */}
+        {hasBudgets ? (() => {
+          const urgent: typeof budgetsWithSpent = [];
+          const track: typeof budgetsWithSpent = [];
+          const plenty: typeof budgetsWithSpent = [];
+          budgetsWithSpent.forEach((b) => {
+            const meta = getBudgetMeta(b);
+            const status = classifyBudget(meta.percentSpent, meta.paceRatio);
+            if (status === 'urgent') urgent.push(b);
+            else if (status === 'track') track.push(b);
+            else plenty.push(b);
+          });
 
-                    {/* Content */}
-                    <View style={styles.budgetContent}>
-                      {/* Name row */}
-                      <View style={styles.budgetNameRow}>
-                        <Text style={styles.budgetName} numberOfLines={1}>
-                          {meta.cat?.name || budget.category}
-                        </Text>
-                        <Text style={styles.budgetAmounts}>
-                          <Text style={{ fontWeight: TYPOGRAPHY.weight.semibold }}>
-                            {currency} {budget.spentAmount.toFixed(0)}
-                          </Text>
-                          {' / '}
-                          {budget.allocatedAmount.toFixed(0)}
-                        </Text>
-                      </View>
+          const renderBudgetRowV2 = (budget: typeof budgetsWithSpent[0], isLast: boolean) => {
+            const meta = getBudgetMeta(budget);
+            const percentage = meta.percentSpent * 100;
+            const tickPercent = Math.min(meta.percentElapsed * 100, 100);
+            const leftAmount = Math.max(budget.allocatedAmount - budget.spentAmount, 0);
+            const catColor = meta.cat?.color || C.accent;
+            const perDaySpend = meta.elapsed > 0 ? budget.spentAmount / meta.elapsed : 0;
+            const perCategoryRunway = perDaySpend > 0
+              ? Math.floor(leftAmount / perDaySpend)
+              : meta.remaining;
+            const willStretch = perCategoryRunway >= meta.remaining;
 
-                      {/* Progress bar */}
-                      <View style={styles.barTrack}>
-                        <View
-                          style={[
-                            styles.barFill,
-                            {
-                              width: `${Math.min(percentage, 100)}%`,
-                              backgroundColor: meta.paceColor,
-                            },
-                          ]}
-                        />
-                      </View>
-
-                      {/* Pace row */}
-                      <View style={styles.paceRow}>
-                        <Text style={styles.paceText}>
-                          {currency} {meta.dailyBudget.toFixed(0)}/day
-                          {'  ·  '}
-                          {meta.remaining} days left
-                          {'  ·  '}
-                          <Text style={{ color: meta.paceColor }}>{meta.paceLabel}</Text>
-                        </Text>
-                        <Text style={[styles.percentLabel, { color: meta.paceColor }]}>
-                          {percentage.toFixed(0)}%
-                        </Text>
-                      </View>
-
-                      {/* Warm context label */}
-                      <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: meta.percentSpent > 1 ? C.bronze : C.textMuted, marginTop: 2 }}>
-                        {meta.percentSpent > 1
-                          ? `went past — by ${currency} ${(budget.spentAmount - budget.allocatedAmount).toFixed(0)}`
-                          : meta.percentSpent >= 0.95
-                          ? 'almost there'
-                          : meta.percentSpent >= 0.8
-                          ? 'getting close'
-                          : meta.percentSpent >= 0.5
-                          ? 'on track'
-                          : 'plenty of room'}
-                      </Text>
-
-                      {/* Rollover info */}
-                      {budget.rollover && budget.rolloverAmount != null && budget.rolloverAmount !== 0 && (
-                        <Text style={styles.rolloverText}>
-                          {budget.rolloverAmount > 0
-                            ? `+${currency} ${budget.rolloverAmount.toFixed(0)} from last month`
-                            : `-${currency} ${Math.abs(budget.rolloverAmount).toFixed(0)} to make up`}
-                        </Text>
-                      )}
-                    </View>
-                  </Pressable>
-
-                  {/* Expanded actions */}
-                  {isExpanded && (
-                    <View style={styles.expandedActions}>
+            return (
+              <View key={budget.id}>
+                <ReanimatedSwipeable
+                  friction={2}
+                  rightThreshold={40}
+                  renderRightActions={() => (
+                    <View style={styles.swipeActionsV2}>
                       <TouchableOpacity
-                        style={styles.actionButton}
+                        style={[styles.swipeActionV2, { backgroundColor: C.accent }]}
                         onPress={() => handleEdit(budget)}
-                        activeOpacity={0.7}
+                        activeOpacity={0.85}
                       >
-                        <Feather name="edit-2" size={16} color={C.accent} />
-                        <Text style={[styles.actionText, { color: C.accent }]}>{t.common.edit.toLowerCase()}</Text>
+                        <Feather name="edit-2" size={18} color="#fff" />
+                        <Text style={styles.swipeActionLabel}>edit</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={styles.actionButton}
+                        style={[styles.swipeActionV2, { backgroundColor: C.neutral }]}
                         onPress={() => handleDelete(budget)}
-                        activeOpacity={0.7}
+                        activeOpacity={0.85}
                       >
-                        <Feather name="trash-2" size={16} color={C.neutral} />
-                        <Text style={[styles.actionText, { color: C.neutral }]}>{t.common.delete.toLowerCase()}</Text>
+                        <Feather name="trash-2" size={18} color="#fff" />
+                        <Text style={styles.swipeActionLabel}>delete</Text>
                       </TouchableOpacity>
                     </View>
                   )}
+                >
+                  <Pressable
+                    onLongPress={() => {
+                      mediumTap();
+                      Alert.alert(meta.cat?.name || budget.category, undefined, [
+                        { text: t.common.edit, onPress: () => handleEdit(budget) },
+                        { text: t.common.delete, style: 'destructive', onPress: () => handleDelete(budget) },
+                        { text: t.common.cancel, style: 'cancel' },
+                      ]);
+                    }}
+                    delayLongPress={350}
+                    style={({ pressed }) => [styles.editorialRow, pressed && { opacity: 0.6 }]}
+                  >
+                    {/* Eyebrow — category name + tiny color dot */}
+                    <View style={styles.editorialEyebrow}>
+                      <View style={[styles.editorialDot, { backgroundColor: catColor }]} />
+                      <Text style={styles.editorialCategoryName} numberOfLines={1}>
+                        {meta.cat?.name || budget.category}
+                      </Text>
+                      <Text style={[styles.editorialPercent, { color: meta.paceColor }]}>
+                        {percentage.toFixed(0)}%
+                      </Text>
+                    </View>
 
-                  {!isLast && <View style={styles.divider} />}
+                    {/* Main line — spent, "of", allocated — newspaper-style */}
+                    <Text style={styles.editorialMainLine}>
+                      <Text style={styles.editorialSpent}>
+                        {currency} {budget.spentAmount.toFixed(0)}
+                      </Text>
+                      <Text style={styles.editorialOfLabel}> of </Text>
+                      <Text style={styles.editorialAllocated}>
+                        {currency} {budget.allocatedAmount.toFixed(0)}
+                      </Text>
+                    </Text>
+
+                    {/* Ultra-thin hairline progress with tick */}
+                    <View style={styles.editorialBar}>
+                      <View
+                        style={[
+                          styles.editorialBarFill,
+                          {
+                            width: `${Math.min(percentage, 100)}%`,
+                            backgroundColor: meta.paceColor,
+                          },
+                        ]}
+                      />
+                      <View style={[styles.editorialBarTick, { left: `${tickPercent}%` }]} />
+                    </View>
+
+                    {/* Tight meta line — just the essentials */}
+                    <Text style={styles.editorialCaption}>
+                      {meta.percentSpent > 1
+                        ? `over by ${currency} ${(budget.spentAmount - budget.allocatedAmount).toFixed(0)}`
+                        : willStretch
+                        ? `${currency} ${leftAmount.toFixed(0)} left · ${meta.remaining}d`
+                        : `${currency} ${leftAmount.toFixed(0)} left · ${perCategoryRunway}d at this pace`}
+                    </Text>
+
+                    {budget.rollover && budget.rolloverAmount != null && budget.rolloverAmount !== 0 && (
+                      <Text style={styles.editorialRollover}>
+                        {budget.rolloverAmount > 0
+                          ? `+${currency} ${budget.rolloverAmount.toFixed(0)} carried`
+                          : `−${currency} ${Math.abs(budget.rolloverAmount).toFixed(0)} debt`}
+                      </Text>
+                    )}
+                  </Pressable>
+                </ReanimatedSwipeable>
+                {!isLast && <View style={styles.editorialHairline} />}
+              </View>
+            );
+          };
+
+          const renderSection = (
+            label: string,
+            icon: keyof typeof Feather.glyphMap,
+            color: string,
+            list: typeof budgetsWithSpent,
+          ) => {
+            if (list.length === 0) return null;
+            return (
+              <View style={styles.sectionV2}>
+                <View style={styles.sectionHeaderV2}>
+                  <View style={[styles.sectionIconDot, { backgroundColor: color }]} />
+                  <Feather name={icon} size={13} color={C.textSecondary} />
+                  <Text style={styles.sectionTitleV2}>{label}</Text>
+                  <Text style={styles.sectionCountV2}>{list.length}</Text>
                 </View>
-              );
-            })}
-          </View>
-        ) : (
+                {list.map((b, i) => renderBudgetRowV2(b, i === list.length - 1))}
+              </View>
+            );
+          };
+
+          return (
+            <View style={styles.budgetGroupsWrap}>
+              {renderSection(t.budget.needsAttention, 'alert-circle', '#DEAB22', urgent)}
+              {renderSection(t.budget.onTrackSection, 'check-circle', C.accent, track)}
+              {renderSection(t.budget.plentyOfRoom, 'circle', C.bronze, plenty)}
+            </View>
+          );
+        })() : (
           /* ── Empty state ── */
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconCircle}>
@@ -1143,6 +1861,13 @@ const BudgetPlanning: React.FC = () => {
         currentUsage={budgets.length}
       />
 
+      {/* Echo paywall (separate so it shows AI upgrade pitch, not budget) */}
+      <PaywallModal
+        visible={echoPaywallVisible}
+        onClose={() => setEchoPaywallVisible(false)}
+        feature="ai"
+      />
+
       {/* ── Playbook FAB ── */}
       {viewMode === 'playbook' && playbookTab === 'active' && !createPlaybookVisible && (
         <TouchableOpacity
@@ -1245,15 +1970,108 @@ const BudgetPlanning: React.FC = () => {
           onNavigate={handleNotebookNavigate}
         />
       )}
+      {/* ── Echo FAB + Greeting bubble (draggable, default top-right) ── */}
+      {viewMode === 'budget' && hasBudgets && !echoHidden && !modalVisible && !echoSheetVisible && (
+        <RNAnimated.View
+          style={[
+            styles.echoFabContainer,
+            fabSide === 'right'
+              ? { right: SPACING.xl, flexDirection: 'row-reverse' }
+              : { left: SPACING.xl, flexDirection: 'row' },
+            { top: Math.max(insets.top, 20) + 80 },
+            { transform: echoFabPan.getTranslateTransform() },
+          ]}
+          {...echoFabPanResponder.panHandlers}
+        >
+          {/* FAB always first in JSX; flexDirection controls visual order */}
+          <TouchableOpacity
+            style={styles.echoFab}
+            onPress={() => {
+              lightTap();
+              if (tier !== 'premium') { setEchoPaywallVisible(true); return; }
+              setEchoAutoPrompt(undefined);
+              setEchoSheetVisible(true);
+              setGreetingDismissed(true);
+            }}
+            onLongPress={() => {
+              lightTap();
+              Alert.alert('hide echo here?', "you can re-enable it from settings.", [
+                { text: 'cancel', style: 'cancel' },
+                { text: 'hide', onPress: () => setEchoHidden(true) },
+              ]);
+            }}
+            delayLongPress={500}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Open Echo assistant (hold to hide)"
+          >
+            <Feather name="zap" size={22} color="#fff" />
+            {tier !== 'premium' && (
+              <View style={styles.echoFabLock}>
+                <Feather name="lock" size={9} color="#fff" />
+              </View>
+            )}
+            <View style={styles.echoFabPulse} />
+          </TouchableOpacity>
+          {greetingText && !greetingDismissed && !greetingHiddenDuringDrag && (
+            <TouchableOpacity
+              style={styles.echoGreetingBubble}
+              onPress={() => {
+                lightTap();
+                if (tier !== 'premium') { setEchoPaywallVisible(true); return; }
+                setEchoAutoPrompt(greetingChips[0]?.question || greetingText);
+                setEchoSheetVisible(true);
+              }}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`Echo: ${greetingText}`}
+            >
+              <View style={styles.echoGreetingDot} />
+              <TypewriterText
+                text={greetingText}
+                style={styles.echoGreetingText}
+                speed={28}
+                startDelay={140}
+              />
+              <TouchableOpacity
+                onPress={(e) => { e.stopPropagation(); setGreetingDismissed(true); }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={styles.echoGreetingDismiss}
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss greeting"
+              >
+                <Feather name="x" size={12} color={C.textMuted} />
+              </TouchableOpacity>
+              <View style={[
+                styles.echoGreetingTail,
+                fabSide === 'left'
+                  ? { left: -6, right: undefined, borderBottomWidth: 1, borderLeftWidth: 1, borderTopWidth: 0, borderRightWidth: 0 }
+                  : { right: -6, left: undefined, borderTopWidth: 1, borderRightWidth: 1, borderBottomWidth: 0, borderLeftWidth: 0 },
+              ]} />
+            </TouchableOpacity>
+          )}
+        </RNAnimated.View>
+      )}
+
+      {/* ── Echo inline chat sheet ── */}
+      <EchoInlineChat
+        visible={echoSheetVisible}
+        onClose={() => setEchoSheetVisible(false)}
+        insightTitle={smartInsight.title}
+        insightSubtitle={smartInsight.subtitle}
+        chips={greetingChips}
+        contextSnapshot={buildBudgetSnapshot()}
+        topInset={insets.top}
+        bottomInset={insets.bottom}
+        autoPrompt={echoAutoPrompt}
+      />
+
       <ScreenGuide
         id="guide_budget"
         title={t.guide.spendingLimits}
         icon="sliders"
-        tips={[
-          t.guide.tipBudget1,
-          t.guide.tipBudget2,
-          t.guide.tipBudget3,
-        ]}
+        description={t.guide.descBudget}
+        accent="#B2780A"
       />
     </View>
   );
@@ -1504,6 +2322,186 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOWS.md,
+  },
+
+  // ── Echo FAB + greeting bubble + bottom sheet ──
+  echoFabContainer: {
+    position: 'absolute',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    zIndex: 999,
+    // left/right anchor applied dynamically in JSX based on fabSide
+  },
+  echoFab: {
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.md,
+  },
+  echoFabPulse: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#DEAB22',
+    borderWidth: 1.5,
+    borderColor: C.accent,
+  },
+  echoFabLock: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
+  echoGreetingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    maxWidth: 260,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.2),
+    ...SHADOWS.md,
+  },
+  echoGreetingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: C.accent,
+  },
+  echoGreetingText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    lineHeight: 18,
+  },
+  echoGreetingDismiss: {
+    padding: 2,
+    marginLeft: SPACING.xs,
+  },
+  echoGreetingTail: {
+    position: 'absolute',
+    top: 13,
+    width: 12,
+    height: 12,
+    backgroundColor: C.surface,
+    borderColor: withAlpha(C.accent, 0.2),
+    transform: [{ rotate: '45deg' }],
+  },
+  echoSheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  echoSheetCard: {
+    backgroundColor: C.surface,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.md,
+    ...SHADOWS.lg,
+  },
+  echoSheetHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: C.border,
+    marginBottom: SPACING.md,
+  },
+  echoSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  echoSheetHeaderLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm + 2,
+  },
+  echoSheetIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  echoSheetEyebrow: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.accent,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  echoSheetTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    lineHeight: 22,
+  },
+  echoSheetSubtitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    lineHeight: 20,
+    marginBottom: SPACING.md,
+  },
+  echoSheetChips: {
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  echoSheetChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(C.accent, 0.06),
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.15),
+  },
+  echoSheetChipText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    lineHeight: 19,
+  },
+  echoSheetOpenBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    backgroundColor: C.accent,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
+  },
+  echoSheetOpenBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: '#fff',
   },
 
   // Modal
@@ -1837,6 +2835,985 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
+  },
+
+  // ═══ V2 Redesign ═══════════════════════════════════════════
+  // Hero (Wallet-caliber typography)
+  heroV2: {
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.lg,
+    marginBottom: SPACING.lg,
+  },
+  heroV2Label: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    textTransform: 'lowercase',
+  },
+  heroV2AmountLine: {
+    marginTop: SPACING.xs,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  heroV2Prefix: {
+    fontSize: 22,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+  },
+  heroV2Int: {
+    fontSize: 48,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    letterSpacing: -1,
+  },
+  heroV2Sub: {
+    marginTop: SPACING.xs,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  heroV2TrackWrap: {
+    marginTop: SPACING.lg,
+  },
+  heroV2Track: {
+    height: 8,
+    backgroundColor: withAlpha(C.textMuted, 0.12),
+    borderRadius: 4,
+    overflow: 'visible',
+    position: 'relative',
+  },
+  heroV2Fill: {
+    height: 8,
+    borderRadius: 4,
+    position: 'absolute',
+    left: 0,
+    top: 0,
+  },
+  heroV2Marker: {
+    position: 'absolute',
+    top: -3,
+    width: 2,
+    height: 14,
+    backgroundColor: withAlpha(C.textPrimary, 0.35),
+    borderRadius: 1,
+    zIndex: 2,
+  },
+  heroV2TrackMeta: {
+    marginTop: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  heroV2TrackMetaText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  heroV2PaceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+  },
+  heroV2PaceChipText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    textTransform: 'lowercase',
+  },
+  heroV2Footer: {
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  heroV2FooterText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
+  // Quick actions row (Wallet-style outline buttons)
+  actionsRowV2: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  actionBtnV2: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  actionBtnV2Label: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+
+  // Budget groups wrapper
+  budgetGroupsWrap: {
+    gap: SPACING.lg,
+  },
+
+  // Section — editorial groupings, no card wrapper
+  sectionV2: {
+    marginBottom: SPACING.md,
+  },
+  sectionHeaderV2: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+  },
+  sectionIconDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  sectionTitleV2: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    flex: 1,
+    textTransform: 'lowercase',
+  },
+  sectionCountV2: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+  },
+  sectionCardV2: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    overflow: 'hidden',
+  },
+
+  // Budget row V2
+  budgetRowV2: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: SPACING.md,
+    gap: SPACING.md,
+  },
+  iconCircleV2: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  budgetContentV2: {
+    flex: 1,
+    minWidth: 0,
+  },
+  budgetHeaderRowV2: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xs,
+    gap: SPACING.sm,
+  },
+  budgetNameV2: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    textTransform: 'lowercase',
+    flex: 1,
+  },
+  budgetAmountsV2: {
+    fontVariant: ['tabular-nums'] as any,
+  },
+  budgetSpentV2: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  budgetAllocV2: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.regular,
+  },
+  barTrackV2: {
+    height: 6,
+    backgroundColor: withAlpha(C.textMuted, 0.12),
+    borderRadius: 3,
+    marginBottom: SPACING.xs,
+    position: 'relative',
+    overflow: 'visible',
+  },
+  barFillV2: {
+    height: 6,
+    borderRadius: 3,
+  },
+  budgetMetaRowV2: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
+  budgetMetaTextV2: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    flex: 1,
+  },
+  budgetPercentV2: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  rolloverTextV2: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.bronze,
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  dividerV2: {
+    height: 1,
+    backgroundColor: C.border,
+    marginHorizontal: SPACING.md,
+  },
+
+  // ─── Runway narrative hero ───
+  runwayEyebrow: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  runwayNarrative: {
+    marginTop: 6,
+    fontSize: 28,
+    lineHeight: 36,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: -0.5,
+  },
+  runwayHighlight: {
+    fontWeight: TYPOGRAPHY.weight.bold,
+  },
+
+  // ─── AI callout nested in hero ───
+  aiCallout: {
+    marginTop: SPACING.xl,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: withAlpha(C.accent, 0.06),
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.15),
+  },
+  aiCalloutHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
+  aiCalloutBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: withAlpha(C.accent, 0.15),
+    borderRadius: RADIUS.full,
+  },
+  aiCalloutBadgeText: {
+    fontSize: 10,
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  aiCalloutDailyLine: {
+    fontVariant: ['tabular-nums'] as any,
+  },
+  aiCalloutDailyPrefix: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  aiCalloutDailyInt: {
+    fontSize: 22,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+  },
+  aiCalloutDailyPerDay: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+  },
+  aiCalloutReason: {
+    marginTop: 4,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    lineHeight: 18,
+  },
+
+  // ─── Smart daily inline + Ask Echo CTA ───
+  smartDailyInline: {
+    marginTop: SPACING.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  smartDailyInlineText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  smartDailyInlineLabel: {
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  smartDailyInlineAmount: {
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  askEchoBtn: {
+    marginTop: SPACING.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md + 2,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: C.accent,
+    borderRadius: RADIUS.full,
+  },
+  askEchoBtnText: {
+    color: '#fff',
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    textTransform: 'lowercase',
+    letterSpacing: 0.3,
+  },
+
+  // ─── Bills this week strip ───
+  billsStrip: {
+    marginTop: SPACING.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    borderRadius: RADIUS.md,
+    borderLeftWidth: 3,
+    borderLeftColor: C.bronze,
+  },
+  billsStripIcon: {
+    width: 22,
+    alignItems: 'center',
+  },
+  billsStripContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  billsStripTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  billsStripNames: {
+    marginTop: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+  },
+
+  // ─── Top goal strip ───
+  goalStrip: {
+    marginTop: SPACING.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm + 2,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: withAlpha(C.accent, 0.06),
+    borderRadius: RADIUS.md,
+  },
+  goalStripIcon: {
+    width: 22,
+    alignItems: 'center',
+  },
+  goalStripContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  goalStripHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+    marginBottom: 6,
+  },
+  goalStripName: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    textTransform: 'lowercase',
+    flex: 1,
+  },
+  goalStripAmount: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  goalStripBarTrack: {
+    height: 4,
+    backgroundColor: withAlpha(C.textMuted, 0.15),
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  goalStripBarFill: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: C.accent,
+  },
+
+  // ─── Echo CTA (collapsed state) ───
+  echoCTA: {
+    marginTop: SPACING.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.22),
+  },
+  echoCTALeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm + 2,
+    flex: 1,
+    minWidth: 0,
+  },
+  echoCTAIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  echoCTATextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  echoCTATitle: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    textTransform: 'lowercase',
+    letterSpacing: -0.2,
+  },
+  echoCTASubtitle: {
+    marginTop: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+  },
+  echoCTAArrow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  livePulseDotBig: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: C.accent,
+  },
+
+  // ─── Echo expanded panel ───
+  echoPanel: {
+    marginTop: SPACING.xl,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: withAlpha(C.accent, 0.06),
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.2),
+  },
+  echoPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  echoPanelTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    lineHeight: 24,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    letterSpacing: -0.3,
+    textTransform: 'lowercase',
+  },
+  echoPanelSubtitle: {
+    marginTop: 4,
+    fontSize: TYPOGRAPHY.size.sm,
+    lineHeight: 20,
+    color: C.textSecondary,
+  },
+  echoPanelChips: {
+    marginTop: SPACING.md,
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    flexWrap: 'wrap',
+  },
+  echoPanelChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.xs + 2,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.25),
+    maxWidth: '100%',
+  },
+  echoPanelChipText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    flexShrink: 1,
+  },
+
+  // ─── Echo collapsed pill (legacy, unused but kept) ───
+  echoCollapsedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: withAlpha(C.accent, 0.08),
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.22),
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+  },
+  echoCollapsedText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    textTransform: 'lowercase',
+  },
+
+  // ─── Echo expanded card ───
+  echoExpandedCard: {
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: withAlpha(C.accent, 0.05),
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.18),
+  },
+  echoExpandedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+
+  // ─── Echo insight eyebrow + chips ───
+  insightEyebrow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  livePulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.accent,
+  },
+  insightEyebrowText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  insightTitle: {
+    fontSize: 26,
+    lineHeight: 34,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    letterSpacing: -0.5,
+    textTransform: 'lowercase',
+  },
+  insightSubtitle: {
+    marginTop: 8,
+    fontSize: TYPOGRAPHY.size.sm,
+    lineHeight: 22,
+    color: C.textSecondary,
+  },
+  promptChipsRow: {
+    marginTop: SPACING.lg,
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    flexWrap: 'wrap',
+  },
+  promptChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.xs + 2,
+    backgroundColor: withAlpha(C.accent, 0.08),
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.2),
+    maxWidth: '100%',
+  },
+  promptChipText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    flexShrink: 1,
+  },
+
+  // Month timeline bar
+  monthBarWrap: {
+    marginTop: SPACING.xl,
+    marginBottom: SPACING.xs,
+  },
+  monthBar: {
+    height: 6,
+    backgroundColor: withAlpha(C.textMuted, 0.1),
+    borderRadius: 3,
+    position: 'relative',
+    overflow: 'visible',
+  },
+  monthBarElapsed: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: withAlpha(C.textPrimary, 0.15),
+    position: 'absolute',
+    left: 0,
+    top: 0,
+  },
+  monthBarTodayMark: {
+    position: 'absolute',
+    top: -4,
+    width: 3,
+    height: 14,
+    backgroundColor: C.textPrimary,
+    borderRadius: 1.5,
+    marginLeft: -1.5,
+  },
+  monthBarRunwayMark: {
+    position: 'absolute',
+    top: -7,
+    width: 2,
+    height: 20,
+    borderRadius: 1,
+    marginLeft: -1,
+    opacity: 0.9,
+  },
+  monthBarLabels: {
+    marginTop: SPACING.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  monthBarLabelText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    textTransform: 'lowercase',
+  },
+
+  // 3-tile stat strip
+  statStrip: {
+    marginTop: SPACING.xl,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  statTile: {
+    flex: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  statTileDivider: {
+    width: 1,
+    backgroundColor: C.border,
+    marginHorizontal: SPACING.sm,
+  },
+  statTileLabel: {
+    fontSize: 10,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  statTileValue: {
+    marginTop: 4,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    textTransform: 'lowercase',
+    fontVariant: ['tabular-nums'] as any,
+  },
+
+  // Monarch-style time-of-month tick on budget row progress bars
+  barTickV2: {
+    position: 'absolute',
+    top: -2,
+    width: 2,
+    height: 10,
+    backgroundColor: withAlpha(C.textPrimary, 0.45),
+    borderRadius: 1,
+    marginLeft: -1,
+  },
+
+  // Swipe actions (Edit / Delete) — shown when swiping row left
+  swipeActionsV2: {
+    flexDirection: 'row',
+    height: '100%',
+  },
+  swipeActionV2: {
+    width: 72,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  swipeActionLabel: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    textTransform: 'lowercase',
+  },
+
+  // ─── Depth Card — the budget row ───
+  depthCard: {
+    flexDirection: 'row',
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  depthCardEdge: {
+    width: 4,
+    alignSelf: 'stretch',
+  },
+  depthCardInner: {
+    flex: 1,
+    padding: SPACING.md,
+  },
+  depthCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+    gap: SPACING.md,
+  },
+  depthCardIdentity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    flex: 1,
+    minWidth: 0,
+  },
+  depthCardIconBg: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  depthCardNameCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  depthCardName: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    textTransform: 'lowercase',
+  },
+  depthCardBudgetOf: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    marginTop: 1,
+  },
+  depthCardAmountCol: {
+    alignItems: 'flex-end',
+  },
+  depthCardSpentAmount: {
+    fontSize: 22,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+    letterSpacing: -0.3,
+  },
+  depthCardPercent: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    marginTop: 2,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  depthCardBarTrack: {
+    height: 6,
+    backgroundColor: withAlpha(C.textMuted, 0.12),
+    borderRadius: 3,
+    position: 'relative',
+    overflow: 'visible',
+    marginBottom: SPACING.sm,
+  },
+  depthCardBarFill: {
+    height: 6,
+    borderRadius: 3,
+  },
+  depthCardBarTick: {
+    position: 'absolute',
+    top: -3,
+    width: 2,
+    height: 12,
+    backgroundColor: withAlpha(C.textPrimary, 0.5),
+    borderRadius: 1,
+    marginLeft: -1,
+  },
+  depthCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
+  depthCardFooterText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  depthCardFooterEmphasis: {
+    fontWeight: TYPOGRAPHY.weight.bold,
+  },
+  depthCardDailyHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  depthCardSpacer: {
+    height: SPACING.sm,
+  },
+
+  // ─── Editorial Row (bordered card, typography-first) ───
+  editorialRow: {
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  editorialEyebrow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
+  editorialDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  editorialCategoryName: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  editorialPercent: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    fontVariant: ['tabular-nums'] as any,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  editorialMainLine: {
+    marginTop: 2,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  editorialSpent: {
+    fontSize: 28,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    letterSpacing: -0.7,
+  },
+  editorialOfLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.regular,
+  },
+  editorialAllocated: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  editorialBar: {
+    marginTop: SPACING.md,
+    height: 2,
+    backgroundColor: withAlpha(C.textMuted, 0.15),
+    position: 'relative',
+    overflow: 'visible',
+  },
+  editorialBarFill: {
+    height: 2,
+  },
+  editorialBarTick: {
+    position: 'absolute',
+    top: -3,
+    width: 1,
+    height: 8,
+    backgroundColor: withAlpha(C.textPrimary, 0.55),
+    marginLeft: -0.5,
+  },
+  editorialCaption: {
+    marginTop: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  editorialRollover: {
+    marginTop: SPACING.xs,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.bronze,
+    fontStyle: 'italic',
+  },
+  editorialHairline: {
+    height: SPACING.sm,
   },
 });
 

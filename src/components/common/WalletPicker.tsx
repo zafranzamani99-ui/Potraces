@@ -11,6 +11,7 @@ import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { WALLET_TYPE_CONFIG } from '../../constants/premium';
+import WalletLogo from './WalletLogo';
 import { Wallet, WalletType } from '../../types';
 import { lightTap } from '../../services/haptics';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -96,21 +97,8 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
             }}
             activeOpacity={0.7}
           >
-            <View
-              style={[
-                styles.itemIcon,
-                {
-                  backgroundColor: isSelected
-                    ? item.color
-                    : withAlpha(item.color, 0.15),
-                },
-              ]}
-            >
-              <Feather
-                name={item.icon as keyof typeof Feather.glyphMap}
-                size={18}
-                color={isSelected ? '#fff' : item.color}
-              />
+            <View style={[styles.itemIcon, { backgroundColor: item.presetId ? 'transparent' : isSelected ? item.color : withAlpha(item.color, 0.15) }]}>
+              <WalletLogo wallet={item} size={32} />
             </View>
             <View style={styles.itemTextGroup}>
               <Text
@@ -174,17 +162,8 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
         <View style={styles.selectedRow}>
           {selectedWallet ? (
             <>
-              <View
-                style={[
-                  styles.iconCircle,
-                  { backgroundColor: withAlpha(selectedWallet.color, 0.15) },
-                ]}
-              >
-                <Feather
-                  name={selectedWallet.icon as keyof typeof Feather.glyphMap}
-                  size={18}
-                  color={selectedWallet.color}
-                />
+              <View style={[styles.iconCircle, { backgroundColor: selectedWallet.presetId ? 'transparent' : withAlpha(selectedWallet.color, 0.15) }]}>
+                <WalletLogo wallet={selectedWallet} size={32} />
               </View>
               <View style={styles.textGroup}>
                 <View style={styles.nameRow}>

@@ -256,6 +256,7 @@ const ActionEditModal = ({
   onClose: () => void;
 }) => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const [desc, setDesc] = useState('');
   const [amount, setAmount] = useState('');
@@ -474,7 +475,7 @@ const ActionEditModal = ({
               {/* Confirm */}
               <TouchableOpacity style={styles.confirmBtnFull} onPress={handleConfirm} activeOpacity={0.7}>
                 <Feather name="check" size={15} color="#fff" />
-                <Text style={styles.confirmBtnText}>confirm</Text>
+                <Text style={styles.confirmBtnText}>{t.chat.confirm}</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -494,7 +495,7 @@ const ActionEditModal = ({
           onPress={() => setShowTypePicker(false)}
         >
           <View style={styles.typePickerCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.typePickerTitle}>select type</Text>
+            <Text style={styles.typePickerTitle}>{t.chat.selectType}</Text>
             {SWITCHABLE_TYPES.map((t) => {
               const active = actionType === t.key;
               return (
@@ -583,6 +584,10 @@ const MoneyChat: React.FC = () => {
   const headerHeight = useHeaderHeight();
   const initialContext = route.params?.noteContext as string | undefined;
   const extractionContext = route.params?.extractionContext as string | undefined;
+  const budgetContext = route.params?.budgetContext as string | undefined;
+  const budgetQuestion = route.params?.budgetQuestion as string | undefined;
+  const walletContext = route.params?.walletContext as string | undefined;
+  const walletQuestion = route.params?.walletQuestion as string | undefined;
   const mode = useAppStore((s) => s.mode);
 
   const chatMessages = useAIInsightsStore((s) => s.chatMessages);
@@ -606,6 +611,7 @@ const MoneyChat: React.FC = () => {
   const [showScrollDown, setShowScrollDown] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const didAutoSendRef = useRef(false);
+  const lastAutoSentKeyRef = useRef<string | null>(null);
   const didArchiveRef = useRef(false);
   const prevCountRef = useRef(chatMessages.length);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -783,13 +789,45 @@ const MoneyChat: React.FC = () => {
     setPendingActions((prev) => prev.filter((_, i) => i !== index));
   }, [addChatMessage]);
 
-  // Auto-send note context if passed from NoteEditor
+  // Auto-send context if passed from another screen
   useEffect(() => {
-    if (initialContext && !didAutoSendRef.current) {
+    // Signature of the current trigger — changes when chip/context changes
+    const thisKey = walletContext
+      ? `wallet::${walletQuestion ?? ''}::${walletContext}`
+      : budgetContext
+      ? `budget::${budgetQuestion ?? ''}::${budgetContext}`
+      : initialContext
+      ? `note::${initialContext}::${extractionContext ?? ''}`
+      : null;
+    const shouldAutoSend = !!thisKey && lastAutoSentKeyRef.current !== thisKey;
+    if (shouldAutoSend) {
+      lastAutoSentKeyRef.current = thisKey;
       didAutoSendRef.current = true;
 
       let question: string;
-      if (extractionContext) {
+      const tonePreamble = `Talk to me like a warm Malaysian friend who knows money. Use ringgit, local references where fitting (mamak, pasar malam, Grab, Shopee, etc.). Be numbers-specific. Skip generic advice. Reference my actual data.`;
+      if (walletContext) {
+        if (walletQuestion) {
+          question = `Here's a live snapshot of my wallets (day ${new Date().getDate()} of the month):\n\n${walletContext}\n\n${walletQuestion}\n\n${tonePreamble}`;
+        } else {
+          question = `Here's a live snapshot of my wallets (day ${new Date().getDate()} of the month):\n\n${walletContext}\n\nCoach me on my liquidity and money-parking habits. Point out idle money, credit traps, and one specific move I could make this month. ${tonePreamble}`;
+        }
+      } else if (budgetContext) {
+        if (budgetQuestion) {
+          // User tapped a specific quick-prompt — use their exact question with the live snapshot
+          question = `Here's my live budget snapshot (day ${new Date().getDate()} of the month):\n\n${budgetContext}\n\n${budgetQuestion}\n\n${tonePreamble}`;
+        } else {
+          // Fallback: generic coaching flow
+          const isOver = budgetContext.includes('OVER_BUDGET');
+          const isTight = budgetContext.includes('TIGHT');
+          const mood = isOver
+            ? `I'm already over in some categories. Don't shame me — help me recover calmly. Which specific overspends matter most to reduce this week? Give me one quiet win today to feel in control.`
+            : isTight
+            ? `I'm on a tight runway. Which categories are pulling me down? Where's the easiest RM 50-100 I can save this week without killing the joy?`
+            : `Things look okay. Don't just cheerlead — scan for hidden leaks, one category I could tighten, and one habit that compounds over months.`;
+          question = `Here's a live snapshot of my budgets right now (day ${new Date().getDate()} of the month):\n\n${budgetContext}\n\n${mood}\n\n${tonePreamble}`;
+        }
+      } else if (extractionContext) {
         question = `Here's my note:\n\n${initialContext}\n\nThe app extracted these items:\n${extractionContext}\n\nCheck if anything is missing or wrong — amounts, categories, items that should be there but aren't.`;
       } else {
         question = `Here's my note — help me understand the finances:\n\n${initialContext}`;
@@ -810,7 +848,7 @@ const MoneyChat: React.FC = () => {
         setIsLoading(false);
       })();
     }
-  }, [initialContext, extractionContext]);
+  }, [initialContext, extractionContext, budgetContext, budgetQuestion, walletContext, walletQuestion]);
 
   const handleSend = useCallback(async () => {
     const question = input.trim();
@@ -1116,7 +1154,7 @@ const MoneyChat: React.FC = () => {
         >
           <View style={styles.historyCard} onStartShouldSetResponder={() => true}>
             <View style={styles.historyHeader}>
-              <Text style={styles.historyTitle}>past chats</Text>
+              <Text style={styles.historyTitle}>{t.chat.pastChats}</Text>
               <TouchableOpacity
                 onPress={() => setShowHistory(false)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1125,7 +1163,7 @@ const MoneyChat: React.FC = () => {
               </TouchableOpacity>
             </View>
             {conversations.length === 0 ? (
-              <Text style={styles.historyEmpty}>no past conversations</Text>
+              <Text style={styles.historyEmpty}>{t.chat.noPastConversations}</Text>
             ) : (
               <FlatList
                 style={styles.historyList}
@@ -1185,7 +1223,7 @@ const MoneyChat: React.FC = () => {
         >
           <View style={styles.selectTextCard} onStartShouldSetResponder={() => true}>
             <View style={styles.selectTextHeader}>
-              <Text style={styles.selectTextTitle}>select text</Text>
+              <Text style={styles.selectTextTitle}>{t.chat.selectText}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                 <TouchableOpacity
                   onPress={copyToClipboard}
@@ -1217,11 +1255,8 @@ const MoneyChat: React.FC = () => {
         id="guide_chat"
         title={t.guide.meetEcho}
         icon="message-circle"
-        tips={[
-          t.guide.tipChat1,
-          t.guide.tipChat2,
-          t.guide.tipChat3,
-        ]}
+        description={t.guide.descChat}
+        accent="#6BA3BE"
       />
     </View>
   );

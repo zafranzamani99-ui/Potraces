@@ -1,26 +1,26 @@
 import React, { useMemo, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Pressable, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
-import { useT } from '../../i18n';
 import { useSettingsStore } from '../../store/settingsStore';
 import { lightTap } from '../../services/haptics';
 
 interface ScreenGuideProps {
   id: string;
   title: string;
-  tips: string[];
+  description: string;
   icon?: keyof typeof Feather.glyphMap;
+  accent?: string;
 }
 
-const ScreenGuide: React.FC<ScreenGuideProps> = ({ id, title, tips, icon = 'info' }) => {
+const ScreenGuide: React.FC<ScreenGuideProps> = ({ id, title, description, icon = 'info', accent }) => {
   const C = useCalm();
-  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const dismissed = useSettingsStore((s) => s.dismissedHints.includes(id));
   const dismissHint = useSettingsStore((s) => s.dismissHint);
+  const accentColor = accent ?? C.accent;
 
   const handleDismiss = useCallback(() => {
     lightTap();
@@ -31,100 +31,72 @@ const ScreenGuide: React.FC<ScreenGuideProps> = ({ id, title, tips, icon = 'info
 
   return (
     <Animated.View
-      entering={FadeIn.delay(400).duration(300)}
+      entering={FadeIn.delay(500).duration(300)}
       exiting={FadeOut.duration(200)}
-      style={styles.overlay}
+      style={styles.wrapper}
       pointerEvents="box-none"
     >
-      <Pressable style={styles.backdrop} onPress={handleDismiss} />
-      <View style={styles.card}>
-        <View style={styles.iconCircle}>
-          <Feather name={icon} size={24} color={C.accent} />
+      <TouchableOpacity
+        style={[styles.card, { borderLeftColor: accentColor }]}
+        onPress={handleDismiss}
+        activeOpacity={0.9}
+      >
+        <View style={[styles.iconCircle, { backgroundColor: withAlpha(accentColor, 0.1) }]}>
+          <Feather name={icon} size={16} color={accentColor} />
         </View>
-        <Text style={styles.title}>{title}</Text>
-        {tips.map((tip, i) => (
-          <View key={i} style={styles.tipRow}>
-            <View style={[styles.tipDot, { backgroundColor: C.accent }]} />
-            <Text style={styles.tipText}>{tip}</Text>
-          </View>
-        ))}
-        <TouchableOpacity style={styles.gotItBtn} onPress={handleDismiss} activeOpacity={0.7}>
-          <Text style={styles.gotItText}>{t.guide.gotIt}</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.content}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.desc}>{description}</Text>
+        </View>
+        <Feather name="x" size={14} color={C.textMuted} style={styles.close} />
+      </TouchableOpacity>
     </Animated.View>
   );
 };
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
+  wrapper: {
+    position: 'absolute',
+    bottom: 24,
+    left: SPACING.lg,
+    right: SPACING.lg,
     zIndex: 9998,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
   },
   card: {
-    width: '82%',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    paddingVertical: SPACING.xl,
-    paddingHorizontal: SPACING.xl,
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
-    ...SHADOWS.lg,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    borderLeftWidth: 4,
+    borderLeftColor: C.accent,
+    ...SHADOWS.sm,
   },
   iconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: withAlpha(C.accent, 0.08),
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: SPACING.md,
+    marginRight: SPACING.md,
+  },
+  content: {
+    flex: 1,
   },
   title: {
-    fontSize: TYPOGRAPHY.size.lg,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
-    marginBottom: SPACING.lg,
-    textAlign: 'center',
+    marginBottom: 2,
   },
-  tipRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    alignSelf: 'stretch',
-    marginBottom: SPACING.sm,
-    paddingLeft: SPACING.sm,
-  },
-  tipDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 7,
-    marginRight: SPACING.sm,
-  },
-  tipText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
+  desc: {
+    fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
-    lineHeight: TYPOGRAPHY.size.base * TYPOGRAPHY.lineHeight.normal,
+    lineHeight: TYPOGRAPHY.size.sm * TYPOGRAPHY.lineHeight.normal,
   },
-  gotItBtn: {
-    marginTop: SPACING.lg,
-    paddingHorizontal: SPACING.xl * 2,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.accent,
-  },
-  gotItText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+  close: {
+    marginLeft: SPACING.sm,
+    padding: SPACING.xs,
   },
 });
 

@@ -17,6 +17,7 @@ import { signUpWithPhone, signInWithPhone, requestOtp } from '../../services/sup
 import { ensureProfile } from '../../services/sellerSync';
 import { useAuthStore } from '../../store/authStore';
 import { useAppStore } from '../../store/appStore';
+import { useT } from '../../i18n';
 
 interface AuthScreenProps {
   onVerificationNeeded: (code: string, phone: string) => void;
@@ -25,6 +26,7 @@ interface AuthScreenProps {
 
 const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthenticated }) => {
   const C = useCalm();
+  const tr = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const [isLogin, setIsLogin] = useState(true);
@@ -52,15 +54,15 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
     setError('');
     const cleaned = cleanPhone(phone);
     if (cleaned.length < 10) {
-      setError('enter a valid phone number');
+      setError(tr.auth.errEnterValidPhone);
       return;
     }
     if (password.length < 6) {
-      setError('password must be at least 6 characters');
+      setError(tr.auth.errPasswordLen);
       return;
     }
     if (!isLogin && password !== confirmPassword) {
-      setError('passwords do not match');
+      setError(tr.auth.errPasswordMismatch);
       return;
     }
 
@@ -106,15 +108,15 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
         }
       }
     } catch (e: any) {
-      const msg = e?.message || 'Something went wrong';
-      if (msg.includes('Invalid login')) setError('wrong phone number or password');
+      const msg = e?.message || tr.auth.errSomethingWrong;
+      if (msg.includes('Invalid login')) setError(tr.auth.errWrongCreds);
       else if (msg.includes('already registered') || msg.includes('already been registered'))
-        setError('this phone is already registered — try logging in');
+        setError(tr.auth.errAlreadyRegistered);
       else setError(msg.toLowerCase());
     } finally {
       setLoading(false);
     }
-  }, [phone, password, confirmPassword, isLogin, cleanPhone, onVerificationNeeded, onAuthenticated]);
+  }, [phone, password, confirmPassword, isLogin, cleanPhone, onVerificationNeeded, onAuthenticated, tr]);
 
   const handleBack = useCallback(() => {
     useAppStore.getState().setMode('personal');
@@ -136,9 +138,9 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
             <View style={styles.iconCircle}>
               <Feather name="briefcase" size={28} color={C.accent} />
             </View>
-            <Text style={styles.title}>business mode</Text>
+            <Text style={styles.title}>{tr.auth.businessMode}</Text>
             <Text style={styles.subtitle}>
-              {isLogin ? 'sign in to your account' : 'create your business account'}
+              {isLogin ? tr.auth.signInSub : tr.auth.signUpSub}
             </Text>
           </View>
 
@@ -149,14 +151,14 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
               onPress={() => { setIsLogin(true); setError(''); }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.toggleText, isLogin && styles.toggleTextActive]}>sign in</Text>
+              <Text style={[styles.toggleText, isLogin && styles.toggleTextActive]}>{tr.auth.signIn}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.toggleBtn, !isLogin && styles.toggleActive]}
               onPress={() => { setIsLogin(false); setError(''); }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.toggleText, !isLogin && styles.toggleTextActive]}>sign up</Text>
+              <Text style={[styles.toggleText, !isLogin && styles.toggleTextActive]}>{tr.auth.signUp}</Text>
             </TouchableOpacity>
           </View>
 
@@ -164,14 +166,14 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
           <View style={styles.form}>
             {/* Phone */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>phone number</Text>
+              <Text style={styles.label}>{tr.auth.phoneNumber}</Text>
               <View style={styles.phoneRow}>
                 <View style={styles.prefixBox}>
                   <Text style={styles.prefixText}>+60</Text>
                 </View>
                 <TextInput
                   style={[styles.input, styles.phoneInput, focusedField === 'phone' && styles.inputFocused]}
-                  placeholder="12-345 6789"
+                  placeholder={tr.auth.phonePlaceholder}
                   placeholderTextColor={C.textMuted}
                   value={phone}
                   onChangeText={setPhone}
@@ -187,12 +189,12 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
 
             {/* Password */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>password</Text>
+              <Text style={styles.label}>{tr.auth.password}</Text>
               <View style={styles.passwordRow}>
                 <TextInput
                   ref={passwordRef}
                   style={[styles.input, styles.passwordInput, focusedField === 'password' && styles.inputFocused]}
-                  placeholder="min 6 characters"
+                  placeholder={tr.auth.passwordPlaceholder}
                   placeholderTextColor={C.textMuted}
                   value={password}
                   onChangeText={setPassword}
@@ -219,11 +221,11 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
             {/* Confirm Password (signup only) */}
             {!isLogin && (
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>confirm password</Text>
+                <Text style={styles.label}>{tr.auth.confirmPassword}</Text>
                 <TextInput
                   ref={confirmRef}
                   style={[styles.input, focusedField === 'confirm' && styles.inputFocused]}
-                  placeholder="re-enter password"
+                  placeholder={tr.auth.confirmPasswordPlaceholder}
                   placeholderTextColor={C.textMuted}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
@@ -255,7 +257,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
               {loading ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.submitText}>{isLogin ? 'sign in' : 'create account'}</Text>
+                <Text style={styles.submitText}>{isLogin ? tr.auth.signIn : tr.auth.createAccount}</Text>
               )}
             </TouchableOpacity>
           </View>

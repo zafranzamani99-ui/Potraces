@@ -17,23 +17,25 @@ import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { parseTextInput } from '../../services/aiService';
 import { transcribeAudio } from '../../services/speechService';
 import { createTransfer } from '../../utils/transferBridge';
 
 type InputMode = 'text' | 'voice';
 
-const PLACEHOLDERS: Record<string, string> = {
-  freelance: 'who paid you and how much? e.g. client sarah rm800',
-  parttime: 'log your pay e.g. shift pay rm150 or bonus rm200',
-  rider: 'log your transfer e.g. grab weekly rm620',
-  mixed: 'what came in? e.g. rm300 freelance logo job',
-  seller: 'describe what came in e.g. sold 5 nasi lemak rm50',
-};
-
 const LogIncome: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+
+  const PLACEHOLDERS: Record<string, string> = {
+    freelance: t.business.logPlaceholderFreelance,
+    parttime: t.business.logPlaceholderParttime,
+    rider: t.business.logPlaceholderRider,
+    mixed: t.business.logPlaceholderMixed,
+    seller: t.business.logPlaceholderSeller,
+  };
   const { incomeType, incomeStreams, addBusinessTransaction, addRiderCost, addTransfer } =
     useBusinessStore();
   const { addTransferIncome } = usePersonalStore();
@@ -176,22 +178,22 @@ const LogIncome: React.FC = () => {
       <View style={styles.container}>
         <View style={styles.savedContainer}>
           <Feather name="check-circle" size={48} color={C.positive} />
-          <Text style={styles.savedText}>saved.</Text>
+          <Text style={styles.savedText}>{t.business.logSaved}</Text>
 
           {showTransferPrompt && (
             <View style={styles.transferPrompt}>
               <Text style={styles.transferQuestion}>
-                did any of this move to your personal wallet?
+                {t.business.logTransferQuestion}
               </Text>
               <TouchableOpacity onPress={handleTransfer} style={styles.transferLink}>
-                <Text style={styles.transferLinkText}>log transfer</Text>
+                <Text style={styles.transferLinkText}>{t.business.logTransferLink}</Text>
               </TouchableOpacity>
               <TextInput
                 style={styles.transferInput}
                 value={transferAmount}
                 onChangeText={setTransferAmount}
                 keyboardType="numeric"
-                placeholder="amount"
+                placeholder={t.business.logAmountPlaceholder}
                 placeholderTextColor={C.textSecondary}
               />
             </View>
@@ -199,14 +201,20 @@ const LogIncome: React.FC = () => {
 
           {incomeType === 'rider' && !showCostEntry && (
             <TouchableOpacity onPress={() => setShowCostEntry(true)} style={styles.costLink}>
-              <Text style={styles.costLinkText}>log a cost for this day</Text>
+              <Text style={styles.costLinkText}>{t.business.logCostLink}</Text>
             </TouchableOpacity>
           )}
 
           {showCostEntry && (
             <View style={styles.costEntry}>
               <View style={styles.costTypes}>
-                {(['petrol', 'maintenance', 'data', 'other'] as const).map((type) => (
+                {(['petrol', 'maintenance', 'data', 'other'] as const).map((type) => {
+                  const costLabel =
+                    type === 'petrol' ? t.business.costTypePetrol :
+                    type === 'maintenance' ? t.business.costTypeMaintenance :
+                    type === 'data' ? t.business.costTypeData :
+                    t.business.costTypeOther;
+                  return (
                   <TouchableOpacity
                     key={type}
                     style={[styles.costTypeChip, costType === type && styles.costTypeSelected]}
@@ -215,27 +223,28 @@ const LogIncome: React.FC = () => {
                     <Text
                       style={[styles.costTypeText, costType === type && styles.costTypeTextSelected]}
                     >
-                      {type}
+                      {costLabel}
                     </Text>
                   </TouchableOpacity>
-                ))}
+                  );
+                })}
               </View>
               <TextInput
                 style={styles.costAmountInput}
                 value={costAmount}
                 onChangeText={setCostAmount}
                 keyboardType="numeric"
-                placeholder="amount"
+                placeholder={t.business.logAmountPlaceholder}
                 placeholderTextColor={C.textSecondary}
               />
               <TouchableOpacity onPress={handleSaveCost} style={styles.costSaveButton}>
-                <Text style={styles.costSaveText}>done</Text>
+                <Text style={styles.costSaveText}>{t.business.logDone}</Text>
               </TouchableOpacity>
             </View>
           )}
 
           <TouchableOpacity onPress={handleReset} style={styles.anotherButton}>
-            <Text style={styles.anotherText}>log another</Text>
+            <Text style={styles.anotherText}>{t.business.logAnother}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -265,14 +274,14 @@ const LogIncome: React.FC = () => {
             onPress={() => setMode('text')}
           >
             <Feather name="type" size={16} color={mode === 'text' ? '#fff' : C.textSecondary} />
-            <Text style={[styles.pillText, mode === 'text' && styles.pillTextActive]}>type</Text>
+            <Text style={[styles.pillText, mode === 'text' && styles.pillTextActive]}>{t.business.logModeType}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.pill, mode === 'voice' && styles.pillActive]}
             onPress={() => setMode('voice')}
           >
             <Feather name="mic" size={16} color={mode === 'voice' ? '#fff' : C.textSecondary} />
-            <Text style={[styles.pillText, mode === 'voice' && styles.pillTextActive]}>voice</Text>
+            <Text style={[styles.pillText, mode === 'voice' && styles.pillTextActive]}>{t.business.logModeVoice}</Text>
           </TouchableOpacity>
         </View>
 
@@ -291,7 +300,7 @@ const LogIncome: React.FC = () => {
             />
             {textInput.trim().length > 0 && (
               <TouchableOpacity onPress={handleTextParse} style={styles.parseButton}>
-                <Text style={styles.parseButtonText}>parse</Text>
+                <Text style={styles.parseButtonText}>{t.business.logParse}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -306,7 +315,7 @@ const LogIncome: React.FC = () => {
           >
             <Feather name="mic" size={32} color={isRecording ? '#fff' : C.bronze} />
             <Text style={[styles.voiceHint, isRecording && styles.voiceHintRecording]}>
-              {isRecording ? 'listening...' : 'hold to speak'}
+              {isRecording ? t.business.logListening : t.business.logHoldToSpeak}
             </Text>
           </TouchableOpacity>
         )}
@@ -314,7 +323,7 @@ const LogIncome: React.FC = () => {
         {isProcessing && (
           <View style={styles.processingRow}>
             <ActivityIndicator size="small" color={C.bronze} />
-            <Text style={styles.processingText}>processing...</Text>
+            <Text style={styles.processingText}>{t.business.logProcessing}</Text>
           </View>
         )}
 
@@ -323,14 +332,14 @@ const LogIncome: React.FC = () => {
           style={styles.noteInput}
           value={note}
           onChangeText={setNote}
-          placeholder="note (optional)"
+          placeholder={t.business.logNotePlaceholder}
           placeholderTextColor={C.textSecondary}
         />
 
         {/* Stream selector for mixed/parttime */}
         {(incomeType === 'mixed' || incomeType === 'parttime') && incomeStreams.length > 0 && (
           <View style={styles.streamSelector}>
-            <Text style={styles.streamSelectorLabel}>source</Text>
+            <Text style={styles.streamSelectorLabel}>{t.business.logSource}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.streamChips}>
                 {incomeStreams.map((stream) => (
@@ -365,7 +374,7 @@ const LogIncome: React.FC = () => {
           onPress={handleSave}
           disabled={!amount || parseFloat(amount) <= 0}
         >
-          <Text style={styles.saveText}>save</Text>
+          <Text style={styles.saveText}>{t.business.logSave}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

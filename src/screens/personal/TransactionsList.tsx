@@ -25,9 +25,11 @@ import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import TransactionItem from '../../components/common/TransactionItem';
 import EmptyState from '../../components/common/EmptyState';
+import WalletLogo from '../../components/common/WalletLogo';
 import Button from '../../components/common/Button';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
+import WhyCategoryChip from '../../components/common/WhyCategoryChip';
 import { Transaction, CategoryOption } from '../../types';
 import { useWalletStore } from '../../store/walletStore';
 import { useSellerStore } from '../../store/sellerStore';
@@ -193,15 +195,23 @@ const TransactionsList: React.FC = () => {
       result = result.filter((t) => t.walletId === selectedWalletId);
     }
 
-    // Search
+    // Search — matches description, category, tags, amount, formatted date
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (t) =>
-          t.description.toLowerCase().includes(query) ||
-          t.category.toLowerCase().includes(query) ||
-          (t.tags && t.tags.some((tag) => tag.toLowerCase().includes(query)))
-      );
+      result = result.filter((t) => {
+        if (t.description.toLowerCase().includes(query)) return true;
+        if (t.category.toLowerCase().includes(query)) return true;
+        if (t.tags && t.tags.some((tag) => tag.toLowerCase().includes(query))) return true;
+        if (t.amount.toString().includes(query)) return true;
+        if (t.amount.toFixed(2).includes(query)) return true;
+        if (isValid(t.date)) {
+          const iso = t.date.toISOString().slice(0, 10);
+          if (iso.includes(query)) return true;
+          const local = t.date.toLocaleDateString().toLowerCase();
+          if (local.includes(query)) return true;
+        }
+        return false;
+      });
     }
 
     // Sort
@@ -240,7 +250,7 @@ const TransactionsList: React.FC = () => {
     if (sortBy === 'amount') {
       // Flat list when sorting by amount (no date grouping)
       return [{
-        title: `sorted by amount · ${sortOrder === 'desc' ? 'highest first' : 'lowest first'}`,
+        title: t.transactionList.sortedByAmount.replace('{order}', sortOrder === 'desc' ? t.transactionList.highestFirst : t.transactionList.lowestFirst),
         titleDate: null as Date | null,
         data: filteredTransactions,
         dailyNet: 0,
@@ -262,13 +272,13 @@ const TransactionsList: React.FC = () => {
         let title: string;
         let titleDate: Date | null = null;
         if (dateKey === 'unknown') {
-          title = 'unknown date';
+          title = t.transactionList.unknownDate;
         } else {
           try {
             titleDate = new Date(dateKey + 'T00:00:00');
-            title = isValid(titleDate) ? format(titleDate, 'EEEE, MMM d').toLowerCase() : 'unknown date';
+            title = isValid(titleDate) ? format(titleDate, 'EEEE, MMM d').toLowerCase() : t.transactionList.unknownDate;
           } catch {
-            title = 'unknown date';
+            title = t.transactionList.unknownDate;
           }
         }
 
@@ -280,17 +290,17 @@ const TransactionsList: React.FC = () => {
           const dayExpenses = data.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
           if (avgDailyExpense > 0 && dayExpenses > avgDailyExpense * 2) {
-            microInsight = 'busier than usual';
+            microInsight = t.transactionList.busierThanUsual;
           } else if (avgDailyExpense > 0 && dayExpenses > 0 && dayExpenses < avgDailyExpense * 0.5) {
-            microInsight = 'quiet day';
+            microInsight = t.transactionList.quietDay;
           } else if (isWeekend) {
-            microInsight = 'weekend';
+            microInsight = t.transactionList.weekend;
           }
         }
 
         return { title, titleDate, data, dailyNet, microInsight };
       });
-  }, [filteredTransactions, sortBy, sortOrder, avgDailyExpense]);
+  }, [filteredTransactions, sortBy, sortOrder, avgDailyExpense, t]);
 
   // ── Totals ───────────────────────────────────────────────────
   const totals = useMemo(() => {
@@ -372,9 +382,10 @@ const TransactionsList: React.FC = () => {
 
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
+    const title = (selectedIds.size > 1 ? t.transactionList.deleteNTitlePlural : t.transactionList.deleteNTitle).replace('{n}', String(selectedIds.size));
     Alert.alert(
-      `Delete ${selectedIds.size} transaction${selectedIds.size > 1 ? 's' : ''}?`,
-      'This cannot be undone. Wallet balances will be adjusted.',
+      title,
+      t.transactionList.deleteNMsg,
       [
         { text: t.common.cancel, style: 'cancel' },
         {
@@ -408,7 +419,7 @@ const TransactionsList: React.FC = () => {
               usePlaybookStore.getState().unlinkAllFromTransaction(id);
               deleteTransaction(id);
             }
-            showToast(`${selectedIds.size} transaction${selectedIds.size > 1 ? 's' : ''} deleted`, 'success');
+            showToast((selectedIds.size > 1 ? t.transactionList.nDeletedPlural : t.transactionList.nDeleted).replace('{n}', String(selectedIds.size)), 'success');
             exitSelectMode();
           },
         },
@@ -571,7 +582,7 @@ const TransactionsList: React.FC = () => {
 
     setEditModalVisible(false);
     setEditingTransaction(null);
-    showToast('transaction updated.', 'success');
+    showToast(t.transactionList.transactionUpdated, 'success');
   }, [editingTransaction, editAmount, editDescription, editCategory, editType, editTags, editWalletId, updateTransaction, addToWallet, deductFromWallet, updateIngredientCost, showToast, t]);
 
   const handleDeleteTransaction = useCallback(() => {
@@ -615,7 +626,7 @@ const TransactionsList: React.FC = () => {
     if (linkedDebtId) {
       Alert.alert(
         t.transaction.deleteConfirm,
-        'This will also remove the linked debt payment record.',
+        t.transactionList.linkedDebtDeleteMsg,
         [
           { text: t.common.cancel, style: 'cancel' },
           { text: t.transaction.deleteBoth, style: 'destructive', onPress: doDelete },
@@ -627,8 +638,8 @@ const TransactionsList: React.FC = () => {
     Alert.alert(
       t.transaction.deleteConfirm,
       isTransferLinked
-        ? 'This income was transferred from seller mode. Deleting it will allow you to re-transfer those orders.\n\nDelete anyway?'
-        : 'Are you sure you want to delete this transaction?',
+        ? t.transactionList.transferDeleteMsg
+        : t.transactionList.defaultDeleteMsg,
       [
         { text: t.common.cancel, style: 'cancel' },
         { text: t.common.delete, style: 'destructive', onPress: doDelete },
@@ -719,7 +730,7 @@ const TransactionsList: React.FC = () => {
           <TouchableOpacity onPress={exitSelectMode} style={styles.selectHeaderBtn}>
             <Text style={styles.selectHeaderBtnText}>{t.common.done.toLowerCase()}</Text>
           </TouchableOpacity>
-          <Text style={styles.selectHeaderTitle}>{selectedIds.size} selected</Text>
+          <Text style={styles.selectHeaderTitle}>{selectedIds.size} {t.transactionList.selected}</Text>
           <TouchableOpacity onPress={selectAll} style={styles.selectHeaderBtn}>
             <Text style={styles.selectHeaderBtnText}>{t.transactionList.selectAll.toLowerCase()}</Text>
           </TouchableOpacity>
@@ -733,7 +744,7 @@ const TransactionsList: React.FC = () => {
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="search transactions..."
+              placeholder={t.transactionList.searchPlaceholder}
               placeholderTextColor={C.textMuted}
               returnKeyType="search"
             />
@@ -791,7 +802,7 @@ const TransactionsList: React.FC = () => {
                   onPress={() => { lightTap(); setSelectedCategories(new Set()); }}
                 >
                   <Text style={styles.activeFilterText}>
-                    {selectedCategories.size} categor{selectedCategories.size === 1 ? 'y' : 'ies'}
+                    {(selectedCategories.size === 1 ? t.transactionList.categoryCount : t.transactionList.categoriesCount).replace('{n}', String(selectedCategories.size))}
                   </Text>
                   <Feather name="x" size={12} color={C.accent} />
                 </TouchableOpacity>
@@ -802,7 +813,7 @@ const TransactionsList: React.FC = () => {
                   onPress={() => { lightTap(); setSelectedWalletId(null); }}
                 >
                   <Text style={styles.activeFilterText}>
-                    {wallets.find((w) => w.id === selectedWalletId)?.name || 'wallet'}
+                    {wallets.find((w) => w.id === selectedWalletId)?.name || t.transactionList.walletFallback}
                   </Text>
                   <Feather name="x" size={12} color={C.accent} />
                 </TouchableOpacity>
@@ -829,7 +840,7 @@ const TransactionsList: React.FC = () => {
         </View>
         <View style={styles.totalDivider} />
         <View style={styles.totalItem}>
-          <Text style={styles.totalLabel}>net</Text>
+          <Text style={styles.totalLabel}>{t.transactionList.net}</Text>
           <Text
             style={[
               styles.totalValue,
@@ -869,7 +880,7 @@ const TransactionsList: React.FC = () => {
             title={searchQuery || hasAdvancedFilters ? t.transactionList.noResults : t.dashboard.noTransactions}
             message={
               searchQuery
-                ? `nothing matching "${searchQuery}"`
+                ? t.transactionList.nothingMatching.replace('{query}', searchQuery)
                 : hasAdvancedFilters
                 ? t.transactionList.noResults
                 : t.dashboard.addFirst
@@ -887,7 +898,7 @@ const TransactionsList: React.FC = () => {
                 setTypeFilter('all');
               }}
             >
-              <Text style={styles.clearFiltersBtnText}>clear all filters</Text>
+              <Text style={styles.clearFiltersBtnText}>{t.transactionList.clearAllFilters}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -905,8 +916,8 @@ const TransactionsList: React.FC = () => {
             <Feather name="trash-2" size={18} color="#fff" />
             <Text style={styles.bulkDeleteText}>
               {selectedIds.size > 0
-                ? `delete ${selectedIds.size} item${selectedIds.size > 1 ? 's' : ''}`
-                : 'select items to delete'}
+                ? (selectedIds.size > 1 ? t.transactionList.deleteItemsPlural : t.transactionList.deleteItems).replace('{n}', String(selectedIds.size))
+                : t.transactionList.selectItemsToDelete}
             </Text>
           </TouchableOpacity>
         </View>
@@ -994,11 +1005,7 @@ const TransactionsList: React.FC = () => {
                         onPress={() => { lightTap(); setTempWalletId(w.id); }}
                         activeOpacity={0.7}
                       >
-                        <Feather
-                          name={(w.icon as keyof typeof Feather.glyphMap) || 'credit-card'}
-                          size={14}
-                          color={tempWalletId === w.id ? '#fff' : w.color || C.textSecondary}
-                        />
+                        <WalletLogo wallet={w} size={18} />
                         <Text style={[styles.filterOptionText, tempWalletId === w.id && styles.filterOptionTextActive]}>
                           {w.name}
                         </Text>
@@ -1117,7 +1124,7 @@ const TransactionsList: React.FC = () => {
               {editingTransaction?.linkedDebtId && (
                 <View style={styles.typeLockedCaption}>
                   <Feather name="lock" size={10} color={C.textMuted} />
-                  <Text style={styles.typeLockedCaptionText}>locked · determined by debt direction</Text>
+                  <Text style={styles.typeLockedCaptionText}>{t.transactionList.typeLocked}</Text>
                 </View>
               )}
 
@@ -1139,6 +1146,17 @@ const TransactionsList: React.FC = () => {
                 onSelect={setEditCategory}
                 label={t.transaction.category.toLowerCase()}
                 layout="dropdown"
+              />
+
+              <WhyCategoryChip
+                description={editDescription}
+                category={editCategory}
+                cached={editingTransaction?.categoryExplanation}
+                onExplained={(text) => {
+                  if (editingTransaction) {
+                    updateTransaction(editingTransaction.id, { categoryExplanation: text });
+                  }
+                }}
               />
 
               <WalletPicker
@@ -1171,7 +1189,7 @@ const TransactionsList: React.FC = () => {
               {editingTransaction?.linkedDebtId && (
                 <View style={styles.linkedNotice}>
                   <Feather name="link" size={12} color={C.bronze} />
-                  <Text style={styles.linkedNoticeText}>amount syncs to the linked debt payment</Text>
+                  <Text style={styles.linkedNoticeText}>{t.transactionList.amountSyncsNotice}</Text>
                 </View>
               )}
 

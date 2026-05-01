@@ -113,10 +113,10 @@ const ReceiptHistory: React.FC = () => {
         {/* ── Tax Relief Summary (hero card) ── */}
         {taxSummary.length > 0 && (
           <View style={styles.heroCard}>
-            <Text style={styles.heroLabel}>LHDN tax relief {selectedYear}</Text>
+            <Text style={styles.heroLabel}>{t.receipts.lhdnTaxRelief} {selectedYear}</Text>
             <Text style={styles.heroAmount}>
               {currency} {totalClaimable.toFixed(0)}{' '}
-              <Text style={styles.heroAmountSub}>claimable</Text>
+              <Text style={styles.heroAmountSub}>{t.receipts.claimable}</Text>
             </Text>
             {taxSummary.map((s) => {
               const cat = MYTAX_CATEGORIES.find((c) => c.id === s.categoryId);
@@ -158,7 +158,7 @@ const ReceiptHistory: React.FC = () => {
             <View style={styles.reminderCard}>
               <Feather name="info" size={14} color={C.accent} />
               <Text style={styles.reminderText}>
-                remember to request e-invoices for claimable purchases — you'll need your IC number at checkout
+                {t.receipts.einvoiceReminder}
               </Text>
             </View>
           </View>
@@ -173,7 +173,7 @@ const ReceiptHistory: React.FC = () => {
               activeOpacity={0.7}
             >
               <Text style={[styles.tabText, !filterCategory && styles.tabTextActive]}>
-                all ({yearReceipts.length})
+                {t.common.all.toLowerCase()} ({yearReceipts.length})
               </Text>
             </TouchableOpacity>
             {activeCategories.map((cat) => {
@@ -257,9 +257,9 @@ const ReceiptHistory: React.FC = () => {
             <View style={styles.emptyIconCircle}>
               <Feather name="archive" size={48} color={C.textMuted} />
             </View>
-            <Text style={styles.emptyTitle}>no receipts yet</Text>
+            <Text style={styles.emptyTitle}>{t.receipts.noReceipts}</Text>
             <Text style={styles.emptyMessage}>
-              scan a receipt to save it here for tax filing
+              {t.receipts.scanReceiptHint}
             </Text>
             <TouchableOpacity
               style={styles.emptyButton}
@@ -267,7 +267,7 @@ const ReceiptHistory: React.FC = () => {
               activeOpacity={0.8}
             >
               <Feather name="camera" size={18} color="#fff" />
-              <Text style={styles.emptyButtonText}>scan receipt</Text>
+              <Text style={styles.emptyButtonText}>{t.receipts.scanReceipt}</Text>
             </TouchableOpacity>
           </View>
         )}

@@ -13,21 +13,22 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useMixedStore } from '../../../store/mixedStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 import { successNotification, lightTap } from '../../../services/haptics';
-
-const PLACEHOLDERS = [
-  'e.g. Grab driving',
-  'e.g. tutoring',
-  'e.g. selling kuih',
-  'e.g. freelance design',
-  'e.g. part-time work',
-  'e.g. online selling',
-  'e.g. photography',
-  'e.g. baking',
-];
 
 const MixedSetup: React.FC = () => {
   const C = useCalm();
+  const t = useT();
+  const PLACEHOLDERS = [
+    t.mixed.streamPlaceholder1,
+    t.mixed.streamPlaceholder2,
+    t.mixed.streamPlaceholder3,
+    t.mixed.streamPlaceholder4,
+    t.mixed.streamPlaceholder5,
+    t.mixed.streamPlaceholder6,
+    t.mixed.streamPlaceholder7,
+    t.mixed.streamPlaceholder8,
+  ];
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
   const { mixedDetails, setMixedDetails } = useMixedStore();
@@ -93,9 +94,9 @@ const MixedSetup: React.FC = () => {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.heading}>where does your money come from?</Text>
+        <Text style={styles.heading}>{t.mixed.setupHeading}</Text>
         <Text style={styles.subText}>
-          list your income sources — you can always add more later.
+          {t.mixed.setupSub}
         </Text>
 
         {/* Stream inputs */}
@@ -137,16 +138,16 @@ const MixedSetup: React.FC = () => {
             onPress={handleAddStream}
             activeOpacity={0.7}
           >
-            <Text style={styles.addLinkText}>+ add another</Text>
+            <Text style={styles.addLinkText}>{t.mixed.addAnother}</Text>
           </TouchableOpacity>
         )}
 
         {/* Road costs toggle */}
         <Text style={styles.sectionHeading}>
-          do you have costs on the road?
+          {t.mixed.roadCostsHeading}
         </Text>
         <Text style={styles.sectionSubText}>
-          petrol, toll, data — things that eat into what you earn.
+          {t.mixed.roadCostsSub}
         </Text>
 
         <View style={styles.toggleRow}>
@@ -167,7 +168,7 @@ const MixedSetup: React.FC = () => {
                 hasRoadCosts && styles.toggleTextActive,
               ]}
             >
-              yes
+              {t.mixed.yes}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -187,7 +188,7 @@ const MixedSetup: React.FC = () => {
                 !hasRoadCosts && styles.toggleTextActive,
               ]}
             >
-              no
+              {t.mixed.no}
             </Text>
           </TouchableOpacity>
         </View>
@@ -198,11 +199,11 @@ const MixedSetup: React.FC = () => {
           onPress={handleSave}
           activeOpacity={0.7}
         >
-          <Text style={styles.saveButtonText}>that's me</Text>
+          <Text style={styles.saveButtonText}>{t.mixed.thatsMe}</Text>
         </TouchableOpacity>
 
         <Text style={styles.optionalNote}>
-          all fields are optional — you can always come back and change things.
+          {t.mixed.optionalNote}
         </Text>
       </KeyboardAwareScrollView>
     </View>

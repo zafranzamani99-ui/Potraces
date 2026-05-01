@@ -27,8 +27,9 @@ import {
 } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, TYPE, withAlpha, BIZ } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, TYPE, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { SellerPaymentMethod } from '../../types';
 import { useFadeSlide } from '../../utils/fadeSlide';
 import { useToast } from '../../context/ToastContext';
@@ -53,26 +54,12 @@ type FilterType = 'all' | 'full' | 'deposit';
 type SortOption = 'newest' | 'oldest' | 'highest' | 'lowest';
 type PeriodFilter = 'all' | 'today' | 'this_week' | 'this_month' | 'custom';
 
-const SORT_OPTIONS: { value: SortOption; label: string; icon: string }[] = [
-  { value: 'newest', label: 'newest first', icon: 'arrow-down' },
-  { value: 'oldest', label: 'oldest first', icon: 'arrow-up' },
-  { value: 'highest', label: 'highest amount', icon: 'trending-up' },
-  { value: 'lowest', label: 'lowest amount', icon: 'trending-down' },
-];
-
-const PERIOD_OPTIONS: { value: PeriodFilter; label: string }[] = [
-  { value: 'all', label: 'all time' },
-  { value: 'today', label: 'today' },
-  { value: 'this_week', label: 'this week' },
-  { value: 'this_month', label: 'this month' },
-  { value: 'custom', label: 'custom range' },
-];
-
-const TYPE_OPTIONS: { value: FilterType; label: string }[] = [
-  { value: 'all', label: 'all' },
-  { value: 'full', label: 'full payment' },
-  { value: 'deposit', label: 'deposit' },
-];
+const SORT_ICONS: Record<SortOption, string> = {
+  newest: 'arrow-down',
+  oldest: 'arrow-up',
+  highest: 'trending-up',
+  lowest: 'trending-down',
+};
 
 const METHOD_ICON: Record<SellerPaymentMethod, string> = {
   cash: 'dollar-sign',
@@ -85,21 +72,45 @@ const METHOD_ICON: Record<SellerPaymentMethod, string> = {
   maybank_qr: 'grid',
 };
 
-const METHOD_LABEL: Record<SellerPaymentMethod, string> = {
-  cash: 'cash',
-  ewallet: 'e-wallet',
-  duitnow: 'QR',
-  bank_transfer: 'transfer',
-  tng: 'TnG',
-  grab: 'GrabPay',
-  boost: 'Boost',
-  maybank_qr: 'Maybank QR',
-};
-
 // ─── Component ─────────────────────────────────────────────
 const SellerTransactions: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
+  const bizSuccess = semantic(BIZ_SAFE.success, isDark);
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+
+  const SORT_OPTIONS: { value: SortOption; label: string; icon: string }[] = [
+    { value: 'newest', label: t.seller.sortNewest, icon: SORT_ICONS.newest },
+    { value: 'oldest', label: t.seller.sortOldest, icon: SORT_ICONS.oldest },
+    { value: 'highest', label: t.seller.sortHighest, icon: SORT_ICONS.highest },
+    { value: 'lowest', label: t.seller.sortLowest, icon: SORT_ICONS.lowest },
+  ];
+
+  const PERIOD_OPTIONS: { value: PeriodFilter; label: string }[] = [
+    { value: 'all', label: t.seller.periodAll },
+    { value: 'today', label: t.seller.periodToday },
+    { value: 'this_week', label: t.seller.periodThisWeek },
+    { value: 'this_month', label: t.seller.periodThisMonth },
+    { value: 'custom', label: t.seller.periodCustom },
+  ];
+
+  const TYPE_OPTIONS: { value: FilterType; label: string }[] = [
+    { value: 'all', label: t.seller.typeAll },
+    { value: 'full', label: t.seller.typeFull },
+    { value: 'deposit', label: t.seller.typeDeposit },
+  ];
+
+  const METHOD_LABEL: Record<SellerPaymentMethod, string> = {
+    cash: t.seller.methodCash,
+    ewallet: t.seller.methodEwallet,
+    duitnow: t.seller.methodDuitnow,
+    bank_transfer: t.seller.methodBankTransfer,
+    tng: t.seller.methodTng,
+    grab: t.seller.methodGrab,
+    boost: t.seller.methodBoost,
+    maybank_qr: t.seller.methodMaybankQr,
+  };
   const { orders } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
   const toast = useToast();
@@ -134,7 +145,7 @@ const SellerTransactions: React.FC = () => {
             id: dep.id || `${order.id}-dep-${dep.date}`,
             orderId: order.id,
             orderNumber: order.orderNumber,
-            customerName: order.customerName || 'walk-in',
+            customerName: order.customerName || t.seller.walkIn,
             amount: dep.amount,
             method: dep.method,
             date: (() => { const dd = dep.date instanceof Date ? dep.date : new Date(dep.date); return isValid(dd) ? dd : new Date(); })(),
@@ -153,7 +164,7 @@ const SellerTransactions: React.FC = () => {
             id: `${order.id}-paid`,
             orderId: order.id,
             orderNumber: order.orderNumber,
-            customerName: order.customerName || 'walk-in',
+            customerName: order.customerName || t.seller.walkIn,
             amount: fullPayAmount,
             method: order.paymentMethod,
             date: (() => { const dd = order.paidAt instanceof Date ? order.paidAt : new Date(order.paidAt!); return isValid(dd) ? dd : new Date(); })(),
@@ -276,16 +287,16 @@ const SellerTransactions: React.FC = () => {
   const handleExportSummary = useCallback(async () => {
     const lines: string[] = [];
     const periodLabel =
-      periodFilter === 'today' ? 'today' :
-      periodFilter === 'this_week' ? 'this week' :
-      periodFilter === 'this_month' ? 'this month' :
+      periodFilter === 'today' ? t.seller.periodToday :
+      periodFilter === 'this_week' ? t.seller.periodThisWeek :
+      periodFilter === 'this_month' ? t.seller.periodThisMonth :
       periodFilter === 'custom' && customDateFrom && customDateTo
         ? `${format(customDateFrom, 'd MMM yyyy')} – ${format(customDateTo, 'd MMM yyyy')}`
-        : 'all time';
+        : t.seller.periodAll;
 
-    lines.push(`Transactions Summary (${periodLabel})`);
-    lines.push(`Total: ${currency} ${totalAmount.toFixed(2)}`);
-    lines.push(`Count: ${filtered.length} transactions`);
+    lines.push(`${t.seller.txTitle} (${periodLabel})`);
+    lines.push(`${t.seller.totalReceived}: ${currency} ${totalAmount.toFixed(2)}`);
+    lines.push(t.seller.nTransactions.replace('{n}', String(filtered.length)));
     lines.push('');
 
     let currentDate = '';
@@ -298,14 +309,14 @@ const SellerTransactions: React.FC = () => {
         lines.push(`── ${dateStr}  (${currency} ${dayTotal.toFixed(2)}) ──`);
       }
       const orderNo = e.orderNumber ? `#${e.orderNumber}` : '';
-      const typeLabel = e.type === 'deposit' ? 'deposit' : 'paid';
+      const typeLabel = e.type === 'deposit' ? t.seller.deposit : t.seller.paid;
       lines.push(`  ${e.customerName} ${orderNo} · ${typeLabel} · ${METHOD_LABEL[e.method]} · ${currency} ${e.amount.toFixed(2)}`);
     }
 
     await Clipboard.setStringAsync(lines.join('\n'));
     lightTap();
-    toast.showToast('copied to clipboard', 'success');
-  }, [filtered, totalAmount, dailyTotals, currency, periodFilter, customDateFrom, customDateTo, toast]);
+    toast.showToast(t.seller.copiedToClipboard, 'success');
+  }, [filtered, totalAmount, dailyTotals, currency, periodFilter, customDateFrom, customDateTo, toast, t, METHOD_LABEL]);
 
   const handleSetFromDate = useCallback((date: Date) => {
     setCustomDateFrom(date);
@@ -353,11 +364,11 @@ const SellerTransactions: React.FC = () => {
             </View>
           )}
           <View style={styles.txRow}>
-            <View style={[styles.txIcon, { backgroundColor: withAlpha(BIZ.success, 0.1) }]}>
+            <View style={[styles.txIcon, { backgroundColor: withAlpha(bizSuccess, 0.1) }]}>
               <Feather
                 name={METHOD_ICON[item.method] as keyof typeof Feather.glyphMap}
                 size={16}
-                color={BIZ.success}
+                color={bizSuccess}
               />
             </View>
             <View style={styles.txContent}>
@@ -373,7 +384,7 @@ const SellerTransactions: React.FC = () => {
                 <Text style={styles.txMeta} numberOfLines={1}>
                   {item.orderNumber ? `#${item.orderNumber}` : ''}
                   {item.orderNumber ? ' · ' : ''}
-                  {item.type === 'deposit' ? 'deposit' : 'paid'}
+                  {item.type === 'deposit' ? t.seller.deposit : t.seller.paid}
                   {' · '}
                   {METHOD_LABEL[item.method]}
                 </Text>
@@ -404,10 +415,10 @@ const SellerTransactions: React.FC = () => {
   // Quick chips: period shortcuts + payment method chips
   const quickChips = useMemo(() => {
     const chips: { key: string; label: string; onPress: () => void; active: boolean; icon?: string }[] = [
-      { key: 'all', label: 'all', onPress: () => { handleResetFilters(); }, active: !hasActiveFilters },
-      { key: 'today', label: 'today', onPress: () => handleQuickChipPress('today'), active: periodFilter === 'today' },
-      { key: 'this_week', label: 'this week', onPress: () => handleQuickChipPress('this_week'), active: periodFilter === 'this_week' },
-      { key: 'this_month', label: 'this month', onPress: () => handleQuickChipPress('this_month'), active: periodFilter === 'this_month' },
+      { key: 'all', label: t.seller.all, onPress: () => { handleResetFilters(); }, active: !hasActiveFilters },
+      { key: 'today', label: t.seller.periodToday, onPress: () => handleQuickChipPress('today'), active: periodFilter === 'today' },
+      { key: 'this_week', label: t.seller.periodThisWeek, onPress: () => handleQuickChipPress('this_week'), active: periodFilter === 'this_week' },
+      { key: 'this_month', label: t.seller.periodThisMonth, onPress: () => handleQuickChipPress('this_month'), active: periodFilter === 'this_month' },
     ];
     // Add payment method chips
     for (const m of usedMethods) {
@@ -420,26 +431,26 @@ const SellerTransactions: React.FC = () => {
       });
     }
     return chips;
-  }, [usedMethods, filterMethod, periodFilter, hasActiveFilters, handleResetFilters, handleQuickChipPress]);
+  }, [usedMethods, filterMethod, periodFilter, hasActiveFilters, handleResetFilters, handleQuickChipPress, t, METHOD_LABEL]);
 
   return (
     <View style={styles.screen}>
       {/* Header */}
       <Animated.View style={[styles.header, headerAnim]}>
-        <Text style={styles.headerLabel}>TRANSACTIONS</Text>
-        <Text style={styles.headerSubtitle}>all payments received</Text>
+        <Text style={styles.headerLabel}>{t.seller.txTitle}</Text>
+        <Text style={styles.headerSubtitle}>{t.seller.txSubtitle}</Text>
       </Animated.View>
 
       {/* Summary card */}
       <Animated.View style={[styles.summaryCard, headerAnim]}>
         <View>
-          <Text style={styles.summaryLabel}>total received</Text>
+          <Text style={styles.summaryLabel}>{t.seller.totalReceived}</Text>
           <Text style={styles.summaryAmount}>
             {currency} {totalAmount.toFixed(2)}
           </Text>
         </View>
         <View style={styles.summaryRight}>
-          <Text style={styles.summaryCount}>{filtered.length} transactions</Text>
+          <Text style={styles.summaryCount}>{t.seller.nTransactions.replace('{n}', String(filtered.length))}</Text>
           <TouchableOpacity
             onPress={handleExportSummary}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -459,7 +470,7 @@ const SellerTransactions: React.FC = () => {
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="search by name, order #, or note"
+            placeholder={t.seller.searchPlaceholder}
             placeholderTextColor={C.textMuted}
             returnKeyType="search"
           />
@@ -524,12 +535,12 @@ const SellerTransactions: React.FC = () => {
               <Feather name="inbox" size={32} color={C.textMuted} />
               <Text style={styles.emptyText}>
                 {allPayments.length === 0
-                  ? 'no payments recorded yet.'
-                  : 'no matching transactions.'}
+                  ? t.seller.noPaymentsRecorded
+                  : t.seller.noMatchingTransactions}
               </Text>
               {hasActiveFilters && allPayments.length > 0 && (
                 <TouchableOpacity onPress={handleResetFilters} activeOpacity={0.7}>
-                  <Text style={styles.clearFiltersText}>clear filters</Text>
+                  <Text style={styles.clearFiltersText}>{t.seller.clearFilters}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -556,7 +567,7 @@ const SellerTransactions: React.FC = () => {
                 <View style={styles.filterSortHeader}>
                   <TouchableOpacity onPress={() => { setShowFromCalendar(false); setShowToCalendar(false); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Feather name="arrow-left" size={16} color={C.textSecondary} />
-                    <Text style={TYPE.label}>{showFromCalendar ? 'from date' : 'to date'}</Text>
+                    <Text style={TYPE.label}>{showFromCalendar ? t.seller.fromDate : t.seller.toDate}</Text>
                   </TouchableOpacity>
                 </View>
                 {showFromCalendar && (
@@ -577,17 +588,17 @@ const SellerTransactions: React.FC = () => {
               <>
                 {/* Filter view */}
                 <View style={styles.filterSortHeader}>
-                  <Text style={TYPE.label}>filters</Text>
+                  <Text style={TYPE.label}>{t.seller.filters}</Text>
                   {hasActiveFilters && (
                     <TouchableOpacity onPress={() => { handleResetFilters(); setShowFilterModal(false); }}>
-                      <Text style={styles.filterSortClear}>reset</Text>
+                      <Text style={styles.filterSortClear}>{t.seller.reset}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
 
                 <ScrollView showsVerticalScrollIndicator={false} style={styles.filterSortScroll}>
                   {/* Sort by */}
-                  <Text style={styles.filterSectionLabel}>sort by</Text>
+                  <Text style={styles.filterSectionLabel}>{t.seller.sortBy}</Text>
                   <View style={styles.filterSectionPills}>
                     {SORT_OPTIONS.map((opt) => {
                       const active = sortBy === opt.value;
@@ -612,7 +623,7 @@ const SellerTransactions: React.FC = () => {
                   </View>
 
                   {/* Payment method */}
-                  <Text style={styles.filterSectionLabel}>payment method</Text>
+                  <Text style={styles.filterSectionLabel}>{t.seller.paymentMethod}</Text>
                   <View style={styles.filterSectionPills}>
                     <TouchableOpacity
                       style={[styles.filterPill, filterMethod === 'all' && styles.filterPillActive]}
@@ -620,7 +631,7 @@ const SellerTransactions: React.FC = () => {
                       activeOpacity={0.7}
                     >
                       <Text style={[styles.filterPillText, filterMethod === 'all' && styles.filterPillTextActive]}>
-                        all
+                        {t.seller.all}
                       </Text>
                     </TouchableOpacity>
                     {usedMethods.map((m) => {
@@ -646,7 +657,7 @@ const SellerTransactions: React.FC = () => {
                   </View>
 
                   {/* Type */}
-                  <Text style={styles.filterSectionLabel}>type</Text>
+                  <Text style={styles.filterSectionLabel}>{t.seller.type}</Text>
                   <View style={styles.filterSectionPills}>
                     {TYPE_OPTIONS.map((opt) => {
                       const active = filterType === opt.value;
@@ -666,7 +677,7 @@ const SellerTransactions: React.FC = () => {
                   </View>
 
                   {/* Period */}
-                  <Text style={styles.filterSectionLabel}>period</Text>
+                  <Text style={styles.filterSectionLabel}>{t.seller.period}</Text>
                   <View style={styles.filterSectionPills}>
                     {PERIOD_OPTIONS.map((opt) => {
                       const active = periodFilter === opt.value;
@@ -700,9 +711,9 @@ const SellerTransactions: React.FC = () => {
                         onPress={() => setShowFromCalendar(true)}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.dateRangeLabel}>from</Text>
+                        <Text style={styles.dateRangeLabel}>{t.seller.from}</Text>
                         <Text style={styles.dateRangeValue}>
-                          {customDateFrom ? format(customDateFrom, 'd MMM yyyy') : 'select date'}
+                          {customDateFrom ? format(customDateFrom, 'd MMM yyyy') : t.seller.selectDate}
                         </Text>
                         <Feather name="calendar" size={14} color={C.textMuted} />
                       </TouchableOpacity>
@@ -712,9 +723,9 @@ const SellerTransactions: React.FC = () => {
                         onPress={() => setShowToCalendar(true)}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.dateRangeLabel}>to</Text>
+                        <Text style={styles.dateRangeLabel}>{t.seller.to}</Text>
                         <Text style={styles.dateRangeValue}>
-                          {customDateTo ? format(customDateTo, 'd MMM yyyy') : 'select date'}
+                          {customDateTo ? format(customDateTo, 'd MMM yyyy') : t.seller.selectDate}
                         </Text>
                         <Feather name="calendar" size={14} color={C.textMuted} />
                       </TouchableOpacity>
@@ -728,7 +739,7 @@ const SellerTransactions: React.FC = () => {
                   onPress={() => setShowFilterModal(false)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.filterSortDoneText}>done</Text>
+                  <Text style={styles.filterSortDoneText}>{t.seller.doneBtn}</Text>
                 </TouchableOpacity>
               </>
             )}

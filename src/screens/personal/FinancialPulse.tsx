@@ -19,6 +19,9 @@ import {
   startOfDay,
   addDays,
   isValid,
+  startOfWeek,
+  endOfWeek,
+  subWeeks,
 } from 'date-fns';
 
 import { useFocusEffect } from '@react-navigation/native';
@@ -203,6 +206,33 @@ const FinancialPulse: React.FC = () => {
       ? C.accent
       : C.neutral;
 
+  // ─── WEEK-OVER-WEEK ───────────────────────────────────────
+  const weekComparison = useMemo(() => {
+    const thisWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const lastWeekStart = subWeeks(thisWeekStart, 1);
+    const lastWeekEnd = endOfWeek(lastWeekStart, { weekStartsOn: 1 });
+
+    const thisWeekSpend = transactions
+      .filter((t) => t.type === 'expense' && t.date >= thisWeekStart && t.date <= now)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const lastWeekSpend = transactions
+      .filter((t) => t.type === 'expense' && isWithinInterval(t.date, { start: lastWeekStart, end: lastWeekEnd }))
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const changePercent = lastWeekSpend > 0
+      ? Math.round(((thisWeekSpend - lastWeekSpend) / lastWeekSpend) * 100)
+      : 0;
+
+    return { thisWeek: thisWeekSpend, lastWeek: lastWeekSpend, changePercent, hasData: lastWeekSpend > 0 || thisWeekSpend > 0 };
+  }, [transactions, now]);
+
+  // ─── PROJECTED MONTH SPEND ───────────────────────────────
+  const projectedMonthSpend = useMemo(() => {
+    if (dayOfMonth <= 2 || monthlyStats.expenses === 0) return 0;
+    return Math.round((monthlyStats.expenses / dayOfMonth) * daysInCurrentMonth);
+  }, [monthlyStats.expenses, dayOfMonth, daysInCurrentMonth]);
+
   // ─── 4. CATEGORY BREAKDOWN ────────────────────────────────
   const categoryBreakdown = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -360,24 +390,41 @@ const FinancialPulse: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── 1. WELLNESS SCORE HERO ──────────────────────── */}
-        <View style={styles.heroSection}>
-          <View
-            style={[
-              styles.scoreCircle,
-              { borderColor: wellnessColor },
-            ]}
-            accessibilityLabel={`Financial wellness score: ${wellnessScore} out of 100`}
-          >
-            <Text style={[styles.scoreNumber, { color: wellnessColor }]}>
-              {wellnessScore}
+        {/* ── 1. HERO ──────────────────────────────────────── */}
+        <View style={styles.heroCard}>
+          <View style={[styles.heroWellnessBadge, { backgroundColor: withAlpha(wellnessColor, 0.1) }]}>
+            <View style={[styles.heroWellnessDot, { backgroundColor: wellnessColor }]} />
+            <Text style={[styles.heroWellnessText, { color: wellnessColor }]}>
+              {getWellnessLabel(wellnessScore, t.pulse)}
             </Text>
-            <Text style={styles.scoreOutOf}>/ 100</Text>
           </View>
-          <Text style={styles.wellnessLabel}>{getWellnessLabel(wellnessScore, t.pulse)}</Text>
-          <Text style={styles.heroSubtitle}>
-            {t.pulse.yourMoneyPulse}
+          <Text style={styles.heroHeadline}>
+            {monthlyStats.net >= 0
+              ? `${t.pulse.youKept} ${currency} ${monthlyStats.net.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} in ${format(now, 'MMMM')}`
+              : `${currency} ${Math.abs(monthlyStats.net).toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} more out than in`}
           </Text>
+          <View style={styles.heroStats}>
+            <View style={styles.heroStat}>
+              <Text style={[styles.heroStatValue, { color: monthlyStats.net >= 0 ? C.positive : C.neutral }]}>
+                {monthlyStats.net >= 0 ? '+' : '−'}{currency} {Math.abs(monthlyStats.net).toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </Text>
+              <Text style={styles.heroStatLabel}>{t.pulse.youKept}</Text>
+            </View>
+            <View style={styles.heroStatDivider} />
+            <View style={styles.heroStat}>
+              <Text style={[styles.heroStatValue, { color: velocityColor }]}>
+                {velocity.percent > 0 ? `${velocity.percent}%` : '—'}
+              </Text>
+              <Text style={styles.heroStatLabel}>{t.pulse.yourPace}</Text>
+            </View>
+            <View style={styles.heroStatDivider} />
+            <View style={styles.heroStat}>
+              <Text style={styles.heroStatValue}>
+                {Math.max(daysInCurrentMonth - dayOfMonth, 0)}
+              </Text>
+              <Text style={styles.heroStatLabel}>{t.pulse.daysLeft}</Text>
+            </View>
+          </View>
         </View>
 
         {/* ── 2. MONTHLY CASH FLOW ────────────────────────── */}
@@ -467,6 +514,43 @@ const FinancialPulse: React.FC = () => {
           </View>
         </Card>
 
+        {/* ── 2b. WEEK-OVER-WEEK ──────────────────────────── */}
+        {weekComparison.hasData && (
+          <>
+            <Text style={styles.sectionLabel}>{t.pulse.thisWeek}</Text>
+            <Card style={styles.card}>
+              <View style={styles.weekCompareRow}>
+                <View style={styles.weekCompareLeft}>
+                  <Text style={styles.weekCompareAmount}>
+                    {currency} {weekComparison.thisWeek.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                  {weekComparison.lastWeek > 0 && weekComparison.changePercent !== 0 && (
+                    <View style={[styles.weekChangePill, {
+                      backgroundColor: withAlpha(weekComparison.changePercent > 0 ? C.neutral : C.positive, 0.12),
+                    }]}>
+                      <Feather
+                        name={weekComparison.changePercent > 0 ? 'arrow-up' : 'arrow-down'}
+                        size={11}
+                        color={weekComparison.changePercent > 0 ? C.neutral : C.positive}
+                      />
+                      <Text style={[styles.weekChangeText, {
+                        color: weekComparison.changePercent > 0 ? C.neutral : C.positive,
+                      }]}>
+                        {Math.abs(weekComparison.changePercent)}% {t.pulse.vsLastWeek}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                {weekComparison.lastWeek > 0 && (
+                  <Text style={styles.weekLastWeek}>
+                    {t.pulse.lastWeek}: {currency} {weekComparison.lastWeek.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                )}
+              </View>
+            </Card>
+          </>
+        )}
+
         {/* ── 3. SPENDING VELOCITY ────────────────────────── */}
         <Text style={styles.sectionLabel}>{t.pulse.yourPace}</Text>
         <Card style={styles.card}>
@@ -496,6 +580,11 @@ const FinancialPulse: React.FC = () => {
                 {' \u2014 '}
                 {velocity.proRated}% pro-rated pace
               </Text>
+              {projectedMonthSpend > 0 && (
+                <Text style={styles.projectedText}>
+                  {t.pulse.projectedThisMonth}: {currency} {projectedMonthSpend.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </Text>
+              )}
             </>
           )}
         </Card>
@@ -688,11 +777,8 @@ const FinancialPulse: React.FC = () => {
         id="guide_pulse"
         title={t.guide.yourMoneyHealth}
         icon="activity"
-        tips={[
-          t.guide.tipPulse1,
-          t.guide.tipPulse2,
-          t.guide.tipPulse3,
-        ]}
+        description={t.guide.descPulse}
+        accent="#A688B8"
       />
     </View>
   );
@@ -726,39 +812,70 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.xs,
   },
 
-  // ── 1. Wellness Score Hero ────────────────────────────────
-  heroSection: {
-    alignItems: 'center',
-    paddingVertical: SPACING['2xl'],
-  },
-  scoreCircle: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    borderWidth: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
+  // ── 1. Hero ───────────────────────────────────────────────
+  heroCard: {
     backgroundColor: C.surface,
-    marginBottom: SPACING.lg,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    marginBottom: SPACING.xs,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  scoreNumber: {
-    fontSize: TYPE.amount.fontSize,
-    fontWeight: TYPE.amount.fontWeight,
+  heroWellnessBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    marginBottom: SPACING.md,
+    gap: SPACING.xs,
+  },
+  heroWellnessDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  heroWellnessText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    letterSpacing: 0.3,
+  },
+  heroHeadline: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    lineHeight: TYPOGRAPHY.size.xl * 1.3,
+    marginBottom: SPACING.xl,
+  },
+  heroStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  heroStat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  heroStatValue: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
-  scoreOutOf: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    marginTop: -SPACING.xs,
+  heroStatLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  wellnessLabel: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    marginBottom: SPACING.xs,
-  },
-  heroSubtitle: {
-    ...TYPE.muted,
+  heroStatDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: C.border,
   },
 
   // ── 2. Cash Flow ──────────────────────────────────────────
@@ -1043,6 +1160,48 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     lineHeight: TYPE.insight.lineHeight,
     color: C.textSecondary,
     textAlign: 'center',
+  },
+
+  // ── Week-over-week ────────────────────────────────────────
+  weekCompareRow: {
+    gap: SPACING.sm,
+  },
+  weekCompareLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    flexWrap: 'wrap',
+  },
+  weekCompareAmount: {
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  weekChangePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+    gap: 3,
+  },
+  weekChangeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  weekLastWeek: {
+    fontSize: TYPE.insight.fontSize,
+    lineHeight: TYPE.insight.lineHeight,
+    color: C.textMuted,
+  },
+
+  // ── Projected spend ───────────────────────────────────────
+  projectedText: {
+    fontSize: TYPE.insight.fontSize,
+    lineHeight: TYPE.insight.lineHeight,
+    color: C.textSecondary,
+    marginTop: SPACING.sm,
   },
 });
 

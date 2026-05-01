@@ -14,12 +14,14 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, BIZ } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { IncomeStream } from '../../types';
 
 const PRESET_COLORS = [CALM.accent, CALM.bronze, CALM.gold, BIZ.success, BIZ.unpaid, CALM.neutral];
 
 const IncomeStreamsScreen: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { incomeStreams, businessTransactions, addIncomeStream } = useBusinessStore();
   const currency = useSettingsStore((s) => s.currency);
@@ -78,8 +80,11 @@ const IncomeStreamsScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <Text style={styles.summary}>
-        {currency} {totalThisMonth.toFixed(2)} this month from {incomeStreams.length} source
-        {incomeStreams.length !== 1 ? 's' : ''}.
+        {t.business.streamsSummary
+          .replace('{currency}', currency)
+          .replace('{total}', totalThisMonth.toFixed(2))
+          .replace('{n}', String(incomeStreams.length))
+          .replace('{plural}', incomeStreams.length !== 1 ? 's' : '')}
       </Text>
 
       <FlatList
@@ -89,7 +94,7 @@ const IncomeStreamsScreen: React.FC = () => {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No income streams yet. Add your first one.</Text>
+            <Text style={styles.emptyText}>{t.business.streamsEmpty}</Text>
           </View>
         }
         removeClippedSubviews
@@ -100,18 +105,18 @@ const IncomeStreamsScreen: React.FC = () => {
 
       <TouchableOpacity style={styles.addButton} onPress={() => setShowAdd(true)}>
         <Feather name="plus" size={20} color="#fff" />
-        <Text style={styles.addButtonText}>add stream</Text>
+        <Text style={styles.addButtonText}>{t.business.streamsAddStream}</Text>
       </TouchableOpacity>
 
       <Modal visible={showAdd} transparent statusBarTranslucent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>new income stream</Text>
+            <Text style={styles.modalTitle}>{t.business.streamsNewStream}</Text>
             <TextInput
               style={styles.modalInput}
               value={newLabel}
               onChangeText={setNewLabel}
-              placeholder="e.g. freelance design, tutoring"
+              placeholder={t.business.streamsLabelPlaceholder}
               placeholderTextColor={C.textSecondary}
               autoFocus
             />
@@ -130,10 +135,10 @@ const IncomeStreamsScreen: React.FC = () => {
             </View>
             <View style={styles.modalActions}>
               <TouchableOpacity onPress={() => setShowAdd(false)} style={styles.modalCancel}>
-                <Text style={styles.modalCancelText}>cancel</Text>
+                <Text style={styles.modalCancelText}>{t.business.streamsCancel}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleAdd} style={styles.modalConfirm}>
-                <Text style={styles.modalConfirmText}>add</Text>
+                <Text style={styles.modalConfirmText}>{t.business.streamsAdd}</Text>
               </TouchableOpacity>
             </View>
           </View>

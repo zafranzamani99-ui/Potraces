@@ -25,13 +25,14 @@ import { startOfMonth, endOfMonth, subMonths, subDays, isWithinInterval, isToday
 import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { explainSellerMonth } from '../../utils/explainSellerMonth';
 import { lightTap, mediumTap } from '../../services/haptics';
 import ModeToggle from '../../components/common/ModeToggle';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSellerProfile, updateSellerProfile, uploadShopLogo } from '../../services/sellerSync';
+import { useAuthStore } from '../../store/authStore';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -40,6 +41,7 @@ import { useFadeSlide } from '../../utils/fadeSlide';
 // ─── Component ───────────────────────────────────────────────
 const SellerDashboard: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { orders, products, ingredientCosts, seasons, sellerCustomers, skippedOnboardingSteps, skipOnboardingStep } = useSellerStore();
@@ -581,9 +583,9 @@ const SellerDashboard: React.FC = () => {
                 <Feather
                   name={momDelta >= 0 ? 'trending-up' : 'trending-down'}
                   size={12}
-                  color={momDelta >= 0 ? BIZ.profit : BIZ.loss}
+                  color={momDelta >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark)}
                 />
-                <Text style={[styles.heroMomText, { color: momDelta >= 0 ? BIZ.profit : BIZ.loss }]}>
+                <Text style={[styles.heroMomText, { color: momDelta >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark) }]}>
                   {momDelta >= 0 ? '+' : ''}{momDelta.toFixed(0)}%
                 </Text>
               </View>
@@ -628,17 +630,17 @@ const SellerDashboard: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="My shop link"
             >
-              <Feather name="link-2" size={22} color={shopLinkUrl ? BIZ.success : C.textMuted} />
+              <Feather name="link-2" size={22} color={shopLinkUrl ? semantic(BIZ_SAFE.success, isDark) : C.textMuted} />
             </TouchableOpacity>
           </View>
           <Text
-            style={[styles.heroAmount, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}
+            style={[styles.heroAmount, { color: kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark) }]}
             accessibilityLabel={`Profit this month: ${currency} ${kept.toFixed(2)}`}
           >
             {currency} {kept.toFixed(0)}
           </Text>
           {totalCosts > 0 && (
-            <Text style={[styles.heroCostsSubtitle, kept < 0 && { color: BIZ.loss }]}>
+            <Text style={[styles.heroCostsSubtitle, kept < 0 && { color: semantic(BIZ_SAFE.loss, isDark) }]}>
               after {currency} {totalCosts.toFixed(0)} in costs
             </Text>
           )}
@@ -680,8 +682,8 @@ const SellerDashboard: React.FC = () => {
                             {
                               height: `${Math.max(heightPct, 6)}%`,
                               backgroundColor: isActive
-                                ? withAlpha(kept >= 0 ? BIZ.profit : BIZ.loss, 0.9)
-                                : withAlpha(kept >= 0 ? BIZ.profit : BIZ.loss, 0.18),
+                                ? withAlpha(kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark), 0.9)
+                                : withAlpha(kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark), 0.18),
                             },
                           ]}
                         />
@@ -731,14 +733,14 @@ const SellerDashboard: React.FC = () => {
               <Text style={styles.quickActionLabel}>costs</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.quickActionButton, { borderColor: withAlpha(BIZ.success, 0.25), backgroundColor: withAlpha(BIZ.success, 0.08) }]}
+              style={[styles.quickActionButton, { borderColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.25), backgroundColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.08) }]}
               activeOpacity={0.7}
               onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'online' }); }}
               accessibilityRole="button"
               accessibilityLabel="View online orders"
             >
-              <Feather name="globe" size={16} color={BIZ.success} />
-              <Text style={[styles.quickActionLabel, { color: BIZ.success }]}>online</Text>
+              <Feather name="globe" size={16} color={semantic(BIZ_SAFE.success, isDark)} />
+              <Text style={[styles.quickActionLabel, { color: semantic(BIZ_SAFE.success, isDark) }]}>online</Text>
               {unseenOnlineCount > 0 && (
                 <View style={styles.notiBadge}>
                   <Text style={styles.notiBadgeText}>{unseenOnlineCount}</Text>
@@ -811,9 +813,9 @@ const SellerDashboard: React.FC = () => {
             <Feather
               name={kept >= 0 ? 'check-circle' : 'target'}
               size={14}
-              color={kept >= 0 ? BIZ.profit : C.bronze}
+              color={kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : C.bronze}
             />
-            <Text style={[styles.breakEvenText, { color: kept >= 0 ? BIZ.profit : C.bronze }]}>
+            <Text style={[styles.breakEvenText, { color: kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : C.bronze }]}>
               {kept >= 0
                 ? `costs covered · ${currency} ${kept.toFixed(0)} above break-even`
                 : `need ${currency} ${Math.abs(kept).toFixed(0)} more to cover costs`}
@@ -947,7 +949,7 @@ const SellerDashboard: React.FC = () => {
             <Animated.View style={[styles.actionCardsRow, pipelineAnim]}>
               {/* Orders card */}
               <TouchableOpacity
-                style={[styles.actionCard, pendingOrders.length > 0 && { borderLeftWidth: 3, borderLeftColor: BIZ.pending, backgroundColor: withAlpha(BIZ.pending, 0.04) }]}
+                style={[styles.actionCard, pendingOrders.length > 0 && { borderLeftWidth: 3, borderLeftColor: semantic(BIZ_SAFE.pending, isDark), backgroundColor: withAlpha(semantic(BIZ_SAFE.pending, isDark), 0.04) }]}
                 activeOpacity={0.7}
                 onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'pending' }); }}
                 accessibilityRole="button"
@@ -955,10 +957,10 @@ const SellerDashboard: React.FC = () => {
               >
                 <View style={styles.actionCardInner}>
                   <View style={styles.actionCardTop}>
-                    <Feather name="clipboard" size={18} color={pendingOrders.length > 0 ? BIZ.pending : C.textSecondary} />
+                    <Feather name="clipboard" size={18} color={pendingOrders.length > 0 ? semantic(BIZ_SAFE.pending, isDark) : C.textSecondary} />
                     <Feather name="chevron-right" size={14} color={C.textMuted} />
                   </View>
-                  <Text style={[styles.actionCardNumber, pendingOrders.length > 0 && { color: BIZ.pending }]}>{pendingOrders.length}</Text>
+                  <Text style={[styles.actionCardNumber, pendingOrders.length > 0 && { color: semantic(BIZ_SAFE.pending, isDark) }]}>{pendingOrders.length}</Text>
                   <Text style={styles.actionCardLabel}>pending</Text>
                 </View>
               </TouchableOpacity>
@@ -997,7 +999,7 @@ const SellerDashboard: React.FC = () => {
                     <Feather
                       name="alert-circle"
                       size={18}
-                      color={unpaidOrders.length > 0 ? BIZ.unpaid : C.textSecondary}
+                      color={unpaidOrders.length > 0 ? semantic(BIZ_SAFE.unpaid, isDark) : C.textSecondary}
                     />
                     <Feather name="chevron-right" size={14} color={C.textMuted} />
                   </View>
@@ -1096,7 +1098,7 @@ const SellerDashboard: React.FC = () => {
               {/* Came in row */}
               <View style={styles.revenueRow}>
                 <View style={styles.revenueRowLeft}>
-                  <Feather name="arrow-down-circle" size={15} color={BIZ.success} />
+                  <Feather name="arrow-down-circle" size={15} color={semantic(BIZ_SAFE.success, isDark)} />
                   <Text style={styles.revenueRowLabel}>came in</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
@@ -1122,10 +1124,10 @@ const SellerDashboard: React.FC = () => {
               {/* Kept row */}
               <View style={[styles.revenueRow, { paddingVertical: 0 }]}>
                 <View style={styles.revenueRowLeft}>
-                  <Feather name="pocket" size={15} color={kept >= 0 ? BIZ.profit : BIZ.loss} />
-                  <Text style={[styles.revenueKeptLabel, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}>kept</Text>
+                  <Feather name="pocket" size={15} color={kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark)} />
+                  <Text style={[styles.revenueKeptLabel, { color: kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark) }]}>kept</Text>
                 </View>
-                <Text style={[styles.revenueKeptAmount, { color: kept >= 0 ? BIZ.profit : BIZ.loss }]}>
+                <Text style={[styles.revenueKeptAmount, { color: kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark) }]}>
                   {currency} {kept.toFixed(2)}
                 </Text>
               </View>
@@ -1166,7 +1168,7 @@ const SellerDashboard: React.FC = () => {
             {/* Header */}
             <View style={styles.shopModalHeader}>
               <View style={styles.shopModalIconWrap}>
-                <Feather name="link-2" size={18} color={BIZ.success} />
+                <Feather name="link-2" size={18} color={semantic(BIZ_SAFE.success, isDark)} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.shopModalTitle}>my shop link</Text>
@@ -1200,7 +1202,7 @@ const SellerDashboard: React.FC = () => {
                     </Text>
                   </View>
                   <View style={styles.slmCopyPill}>
-                    <Feather name={shopLinkCopied ? 'check' : 'copy'} size={13} color={shopLinkCopied ? C.textMuted : BIZ.success} />
+                    <Feather name={shopLinkCopied ? 'check' : 'copy'} size={13} color={shopLinkCopied ? C.textMuted : semantic(BIZ_SAFE.success, isDark)} />
                     <Text style={[styles.slmCopyPillText, shopLinkCopied && { color: C.textMuted }]}>
                       {shopLinkCopied ? 'copied' : 'copy'}
                     </Text>
@@ -1281,6 +1283,24 @@ const SellerDashboard: React.FC = () => {
               </View>
             </View>
 
+            {/* ── Section: WhatsApp (from account) ── */}
+            <View style={styles.slmSectionHeader}>
+              <Feather name="phone" size={14} color={C.textMuted} />
+              <Text style={styles.slmSectionLabel}>whatsapp</Text>
+              <Text style={[styles.shopModalFieldHint, { marginLeft: 4 }]}>required</Text>
+            </View>
+            <View style={styles.slmGroupCard}>
+              <View style={styles.slmGroupField}>
+                <Text style={styles.slmGroupFieldLabel}>your number</Text>
+                <Text style={[styles.slmGroupInput, { paddingVertical: 10 }]}>
+                  {useAuthStore.getState().phone ?? '(not set)'}
+                </Text>
+                <Text style={[styles.shopModalFieldHint, { marginTop: 3 }]}>
+                  customers tap this to whatsapp you after ordering. tied to your signup — contact support to change.
+                </Text>
+              </View>
+            </View>
+
             {/* ── Section: Customer Notice ── */}
             <View style={styles.slmSectionHeader}>
               <Feather name="message-circle" size={14} color={C.textMuted} />
@@ -1347,7 +1367,7 @@ const SellerDashboard: React.FC = () => {
           <View style={styles.slmConfirmCard}>
             <View style={{ alignItems: 'center', marginBottom: SPACING.md }}>
               <View style={[styles.shopModalIconWrap, { width: 44, height: 44, borderRadius: 22, marginBottom: SPACING.sm }]}>
-                <Feather name="link-2" size={20} color={BIZ.success} />
+                <Feather name="link-2" size={20} color={semantic(BIZ_SAFE.success, isDark)} />
               </View>
               <Text style={[styles.shopModalTitle, { fontSize: TYPOGRAPHY.size.base }]}>confirm shop link</Text>
             </View>

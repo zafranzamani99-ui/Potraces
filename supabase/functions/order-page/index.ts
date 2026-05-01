@@ -249,10 +249,10 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-se
 
 <script>
 var PRODS=${productsJson};
-var SELLER_ID='${sellerId}';
-var SB_URL='${supabaseUrl}';
-var SB_KEY='${anonKey}';
-var CUR='${currency}';
+var SELLER_ID=${JSON.stringify(sellerId)};
+var SB_URL=${JSON.stringify(supabaseUrl)};
+var SB_KEY=${JSON.stringify(anonKey)};
+var CUR=${JSON.stringify(currency)};
 var cart={};
 
 function fmt(n){return CUR+' '+n.toFixed(2);}

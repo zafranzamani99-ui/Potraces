@@ -217,7 +217,7 @@ function sbFetch(path, opts) {
 }
 
 async function loadShop(slug) {
-  var r1 = await sbFetch('/rest/v1/seller_profiles?select=id,user_id,display_name,currency&slug=eq.' + encodeURIComponent(slug) + '&limit=1');
+  var r1 = await sbFetch('/rest/v1/seller_profiles_public?select=id,user_id,display_name,currency&slug=eq.' + encodeURIComponent(slug) + '&limit=1');
   var profiles = await r1.json();
   if (!profiles || !profiles.length) {
     document.getElementById('loading').innerHTML = '<b>Kedai tidak dijumpai.</b><br><small>Semak semula pautan anda.</small>';

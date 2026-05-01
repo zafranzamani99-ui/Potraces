@@ -16,6 +16,7 @@ import { CALM, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { supabase, requestOtp, checkVerification } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
+import { useT } from '../../i18n';
 
 interface OtpVerificationScreenProps {
   code: string;
@@ -33,6 +34,7 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   initialError,
 }) => {
   const C = useCalm();
+  const tr = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const [code, setCode] = useState(initialCode);
@@ -130,11 +132,11 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
       const otp = await requestOtp(phone);
       setCode(otp.code);
     } catch (err: any) {
-      setError(err?.message || 'Failed to get new code. Try again.');
+      setError(err?.message || tr.auth.otpFailedNewCode);
     } finally {
       setRequesting(false);
     }
-  }, [phone]);
+  }, [phone, tr]);
 
   const handleCheckNow = useCallback(async () => {
     setChecking(true);
@@ -164,9 +166,9 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
           <View style={styles.iconCircle}>
             <Feather name="shield" size={28} color={C.accent} />
           </View>
-          <Text style={styles.title}>verify your account</Text>
+          <Text style={styles.title}>{tr.auth.otpTitle}</Text>
           <Text style={styles.subtitle}>
-            send this code to our Telegram bot to complete verification
+            {tr.auth.otpSubtitle}
           </Text>
         </View>
 
@@ -177,7 +179,7 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
               <Text style={styles.codeText}>{code}</Text>
               <View style={styles.copyRow}>
                 <Feather name={copied ? 'check' : 'copy'} size={14} color={C.accent} />
-                <Text style={styles.copyText}>{copied ? 'copied!' : 'tap to copy'}</Text>
+                <Text style={styles.copyText}>{copied ? tr.auth.otpCopied : tr.auth.otpTapToCopy}</Text>
               </View>
             </>
           ) : (
@@ -189,45 +191,45 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
         <View style={styles.steps}>
           <View style={styles.step}>
             <View style={styles.stepNum}><Text style={styles.stepNumText}>1</Text></View>
-            <Text style={styles.stepText}>copy the code above</Text>
+            <Text style={styles.stepText}>{tr.auth.otpStep1}</Text>
           </View>
           <View style={styles.step}>
             <View style={styles.stepNum}><Text style={styles.stepNumText}>2</Text></View>
-            <Text style={styles.stepText}>open @PotracesBot on Telegram</Text>
+            <Text style={styles.stepText}>{tr.auth.otpStep2}</Text>
           </View>
           <View style={styles.step}>
             <View style={styles.stepNum}><Text style={styles.stepNumText}>3</Text></View>
-            <Text style={styles.stepText}>send the code to the bot</Text>
+            <Text style={styles.stepText}>{tr.auth.otpStep3}</Text>
           </View>
           <View style={styles.step}>
             <View style={styles.stepNum}><Text style={styles.stepNumText}>4</Text></View>
-            <Text style={styles.stepText}>come back here — we'll detect it automatically</Text>
+            <Text style={styles.stepText}>{tr.auth.otpStep4}</Text>
           </View>
         </View>
 
         {/* Open Telegram button */}
         <TouchableOpacity style={styles.telegramBtn} onPress={handleOpenTelegram} activeOpacity={0.8}>
           <Feather name="send" size={18} color="#fff" />
-          <Text style={styles.telegramText}>open Telegram</Text>
+          <Text style={styles.telegramText}>{tr.auth.otpOpenTelegram}</Text>
         </TouchableOpacity>
 
         {/* Waiting indicator */}
         <View style={styles.waitingRow}>
           <ActivityIndicator size="small" color={C.textMuted} />
-          <Text style={styles.waitingText}>waiting for verification...</Text>
+          <Text style={styles.waitingText}>{tr.auth.otpWaiting}</Text>
         </View>
 
         {/* Actions */}
         <View style={styles.actions}>
           <TouchableOpacity onPress={handleCheckNow} disabled={checking} style={styles.linkBtn}>
             <Text style={styles.linkText}>
-              {checking ? 'checking...' : 'check now'}
+              {checking ? tr.auth.otpChecking : tr.auth.otpCheckNow}
             </Text>
           </TouchableOpacity>
           <Text style={styles.dot}>·</Text>
           <TouchableOpacity onPress={handleRequestNew} disabled={requesting} style={styles.linkBtn}>
             <Text style={styles.linkText}>
-              {requesting ? 'requesting...' : 'get new code'}
+              {requesting ? tr.auth.otpRequesting : tr.auth.otpGetNewCode}
             </Text>
           </TouchableOpacity>
         </View>

@@ -185,6 +185,7 @@ const BusinessNavigator: React.FC = () => {
         tabBarActiveTintColor: COLORS.business,
         tabBarInactiveTintColor: C.textMuted,
         tabBarShowLabel: false,
+        animation: 'fade',
         headerStyle: {
           backgroundColor: C.background,
         },

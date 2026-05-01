@@ -22,9 +22,11 @@ import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 import { useToast } from '../../context/ToastContext';
+import { useT } from '../../i18n';
 
 const SupplierList: React.FC = () => {
   const C = useCalm();
+  const tr = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
@@ -54,7 +56,7 @@ const SupplierList: React.FC = () => {
 
   const handleAdd = () => {
     if (!name.trim()) {
-      showToast('Please enter supplier name', 'error');
+      showToast(tr.business.supplierEnterName, 'error');
       return;
     }
 
@@ -69,14 +71,14 @@ const SupplierList: React.FC = () => {
 
     if (editingId) {
       updateSupplier(editingId, supplierData);
-      showToast('Supplier updated successfully!', 'success');
+      showToast(tr.business.supplierUpdated, 'success');
     } else {
       addSupplier({
         ...supplierData,
         products: [],
         totalPurchased: 0,
       });
-      showToast('Supplier added successfully!', 'success');
+      showToast(tr.business.supplierAdded, 'success');
     }
 
     setModalVisible(false);
@@ -98,16 +100,16 @@ const SupplierList: React.FC = () => {
 
   const handleDelete = (id: string, supplierName: string) => {
     Alert.alert(
-      'Delete Supplier',
-      `Are you sure you want to delete "${supplierName}"?`,
+      tr.business.supplierDeleteTitle,
+      tr.business.supplierDeleteMsg.replace('{name}', supplierName),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tr.business.supplierCancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: tr.business.supplierDelete,
           style: 'destructive',
           onPress: () => {
             deleteSupplier(id);
-            showToast('Supplier deleted', 'success');
+            showToast(tr.business.supplierDeleted, 'success');
           },
         },
       ]
@@ -139,7 +141,7 @@ const SupplierList: React.FC = () => {
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search suppliers..."
+              placeholder={tr.business.supplierSearchPlaceholder}
               placeholderTextColor={C.textSecondary}
               returnKeyType="search"
               onSubmitEditing={Keyboard.dismiss}
@@ -208,12 +210,12 @@ const SupplierList: React.FC = () => {
 
               <View style={styles.statsSection}>
                 <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>Total Purchased</Text>
+                  <Text style={styles.statLabel}>{tr.business.supplierTotalPurchased}</Text>
                   <Text style={styles.statValue}>{currency} {supplier.totalPurchased.toFixed(2)}</Text>
                 </View>
                 {supplier.lastPurchaseDate && (
                   <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>Last Purchase</Text>
+                    <Text style={styles.statLabel}>{tr.business.supplierLastPurchase}</Text>
                     <Text style={styles.statValue}>
                       {format(supplier.lastPurchaseDate, 'MMM dd, yyyy')}
                     </Text>
@@ -225,24 +227,24 @@ const SupplierList: React.FC = () => {
         ) : suppliers.length > 0 ? (
           <View style={styles.noResults}>
             <Feather name="search" size={40} color={C.textSecondary} />
-            <Text style={styles.noResultsTitle}>No results found</Text>
+            <Text style={styles.noResultsTitle}>{tr.business.supplierNoResultsTitle}</Text>
             <Text style={styles.noResultsText}>
-              Try a different search term
+              {tr.business.supplierNoResultsText}
             </Text>
           </View>
         ) : (
           <EmptyState
             icon="truck"
-            title="No Suppliers"
-            message="Add suppliers to track your business purchases and relationships"
-            actionLabel="Add Supplier"
+            title={tr.business.supplierEmptyTitle}
+            message={tr.business.supplierEmptyMsg}
+            actionLabel={tr.business.supplierAdd}
             onAction={() => setModalVisible(true)}
           />
         )}
       </ScrollView>
 
       <Button
-        title="Add Supplier"
+        title={tr.business.supplierAdd}
         onPress={() => {
           resetForm();
           setModalVisible(true);
@@ -263,7 +265,7 @@ const SupplierList: React.FC = () => {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { paddingBottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.lg) }]}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{editingId ? 'Edit Supplier' : 'Add Supplier'}</Text>
+                <Text style={styles.modalTitle}>{editingId ? tr.business.supplierEdit : tr.business.supplierAdd}</Text>
                 <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }}>
                   <Feather name="x" size={24} color={C.textPrimary} />
                 </TouchableOpacity>
@@ -271,68 +273,68 @@ const SupplierList: React.FC = () => {
 
               <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <Text style={styles.label}>
-                  Supplier Name <Text style={styles.required}>*</Text>
+                  {tr.business.supplierName} <Text style={styles.required}>*</Text>
                 </Text>
                 <TextInput
                   style={styles.input}
                   value={name}
                   onChangeText={setName}
-                  placeholder="ABC Supplies Co."
+                  placeholder={tr.business.supplierNamePlaceholder}
                   placeholderTextColor={C.textSecondary}
                   returnKeyType="next"
                 />
 
-                <Text style={styles.label}>Contact Person</Text>
+                <Text style={styles.label}>{tr.business.supplierContactPerson}</Text>
                 <TextInput
                   style={styles.input}
                   value={contactPerson}
                   onChangeText={setContactPerson}
-                  placeholder="John Doe"
+                  placeholder={tr.business.supplierContactPlaceholder}
                   placeholderTextColor={C.textSecondary}
                   returnKeyType="next"
                 />
 
-                <Text style={styles.label}>Phone</Text>
+                <Text style={styles.label}>{tr.business.supplierPhone}</Text>
                 <TextInput
                   style={styles.input}
                   value={phone}
                   onChangeText={setPhone}
-                  placeholder="+60 12-345 6789"
+                  placeholder={tr.business.supplierPhonePlaceholder}
                   placeholderTextColor={C.textSecondary}
                   keyboardType="phone-pad"
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
 
-                <Text style={styles.label}>Email</Text>
+                <Text style={styles.label}>{tr.business.supplierEmail}</Text>
                 <TextInput
                   style={styles.input}
                   value={email}
                   onChangeText={setEmail}
-                  placeholder="contact@supplier.com"
+                  placeholder={tr.business.supplierEmailPlaceholder}
                   placeholderTextColor={C.textSecondary}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   returnKeyType="next"
                 />
 
-                <Text style={styles.label}>Address</Text>
+                <Text style={styles.label}>{tr.business.supplierAddress}</Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
                   value={address}
                   onChangeText={setAddress}
-                  placeholder="123 Main Street, City"
+                  placeholder={tr.business.supplierAddressPlaceholder}
                   placeholderTextColor={C.textSecondary}
                   multiline
                   numberOfLines={2}
                 />
 
-                <Text style={styles.label}>Payment Terms</Text>
+                <Text style={styles.label}>{tr.business.supplierPaymentTerms}</Text>
                 <TextInput
                   style={styles.input}
                   value={paymentTerms}
                   onChangeText={setPaymentTerms}
-                  placeholder="Net 30 days"
+                  placeholder={tr.business.supplierPaymentTermsPlaceholder}
                   placeholderTextColor={C.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
@@ -340,13 +342,13 @@ const SupplierList: React.FC = () => {
 
                 <View style={styles.modalActions}>
                   <Button
-                    title="Cancel"
+                    title={tr.business.supplierCancel}
                     onPress={() => { setModalVisible(false); resetForm(); }}
                     variant="secondary"
                     style={{ flex: 1 }}
                   />
                   <Button
-                    title={editingId ? 'Update' : 'Add'}
+                    title={editingId ? tr.business.supplierUpdate : tr.business.supplierAddShort}
                     onPress={handleAdd}
                     icon="check"
                     style={{ flex: 1 }}

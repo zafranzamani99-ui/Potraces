@@ -18,6 +18,7 @@ import { useCalm } from '../../../hooks/useCalm';
 import { askFreelancerQuestion } from '../../../services/aiService';
 import { generateReportNarrative, ReportMonthData } from '../../../services/reportNarrative';
 import { useAIInsightsStore } from '../../../store/aiInsightsStore';
+import { useT } from '../../../i18n';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -27,16 +28,16 @@ function toDate(d: Date | string): Date {
 
 type PeriodOption = 'month' | '3months' | '6months' | 'year';
 
-const PERIODS: { label: string; value: PeriodOption }[] = [
-  { label: 'this month', value: 'month' },
-  { label: '3 months', value: '3months' },
-  { label: '6 months', value: '6months' },
-  { label: 'this year', value: 'year' },
-];
-
 const FreelancerReports: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const PERIODS: { label: string; value: PeriodOption }[] = [
+    { label: t.freelancer.periodThisMonth, value: 'month' },
+    { label: t.freelancer.period3Months, value: '3months' },
+    { label: t.freelancer.period6Months, value: '6months' },
+    { label: t.freelancer.periodThisYear, value: 'year' },
+  ];
   const currency = useSettingsStore((s) => s.currency);
   const { businessTransactions } = useBusinessStore();
   const {
@@ -98,17 +99,17 @@ const FreelancerReports: React.FC = () => {
 
   const clientBreakdown = useMemo(() => {
     const totals: Record<string, number> = {};
-    for (const t of periodPayments) {
-      const key = t.clientId || 'uncategorized';
-      totals[key] = (totals[key] || 0) + t.amount;
+    for (const tx of periodPayments) {
+      const key = tx.clientId || 'uncategorized';
+      totals[key] = (totals[key] || 0) + tx.amount;
     }
     return Object.entries(totals)
       .map(([clientId, amount]) => {
         const client = clients.find((c) => c.id === clientId);
-        return { name: client?.name || 'uncategorized', amount };
+        return { name: client?.name || t.freelancer.uncategorized, amount };
       })
       .sort((a, b) => b.amount - a.amount);
-  }, [periodPayments, clients]);
+  }, [periodPayments, clients, t]);
 
   const maxClientAmount = Math.max(...clientBreakdown.map((c) => c.amount), 1);
 
@@ -155,10 +156,10 @@ const FreelancerReports: React.FC = () => {
 
     // By client for top categories
     const clientTotals: Record<string, number> = {};
-    for (const t of monthTxns) {
-      const client = clients.find((c) => c.id === t.clientId);
+    for (const tx of monthTxns) {
+      const client = clients.find((c) => c.id === tx.clientId);
       const name = client?.name || 'uncategorized';
-      clientTotals[name] = (clientTotals[name] || 0) + t.amount;
+      clientTotals[name] = (clientTotals[name] || 0) + tx.amount;
     }
     const topCategories = Object.entries(clientTotals)
       .sort(([, a], [, b]) => b - a)
@@ -253,7 +254,7 @@ const FreelancerReports: React.FC = () => {
         ) : null}
 
         {/* Section 1 — Income Over Time */}
-        <Text style={styles.sectionLabel}>income over time</Text>
+        <Text style={styles.sectionLabel}>{t.freelancer.incomeOverTime}</Text>
         {monthlyIncome.some((m) => m.amount > 0) ? (
           <View style={styles.chartContainer}>
             <BarChart
@@ -273,16 +274,16 @@ const FreelancerReports: React.FC = () => {
             />
             {sixMonthAvg > 0 && (
               <Text style={styles.avgLine}>
-                — {currency} {Math.round(sixMonthAvg).toLocaleString()} average
+                — {t.freelancer.averageSuffix.replace('{amount}', `${currency} ${Math.round(sixMonthAvg).toLocaleString()}`)}
               </Text>
             )}
           </View>
         ) : (
-          <Text style={styles.noDataText}>no income data yet</Text>
+          <Text style={styles.noDataText}>{t.freelancer.noIncomeData}</Text>
         )}
 
         {/* Section 2 — Client Breakdown */}
-        <Text style={styles.sectionLabel}>by client</Text>
+        <Text style={styles.sectionLabel}>{t.freelancer.byClient}</Text>
 
         {/* Period picker */}
         <View style={styles.periodPicker}>
@@ -338,26 +339,29 @@ const FreelancerReports: React.FC = () => {
             })}
           </View>
         ) : (
-          <Text style={styles.noDataText}>no data for this period</Text>
+          <Text style={styles.noDataText}>{t.freelancer.noDataForPeriod}</Text>
         )}
 
         {/* Section 3 — Payment Gaps */}
         {gapData.length > 0 && (
           <>
-            <Text style={styles.sectionLabel}>payment timing</Text>
+            <Text style={styles.sectionLabel}>{t.freelancer.paymentTiming}</Text>
             {longestWait && (
               <Text style={styles.longestWaitText}>
-                longest wait: {longestWait.longestGap} days from{' '}
-                {longestWait.name}
+                {t.freelancer.longestWait
+                  .replace('{days}', String(longestWait.longestGap))
+                  .replace('{name}', longestWait.name)}
               </Text>
             )}
             {gapData.map((item) => (
               <View key={item.name} style={styles.gapRow}>
                 <Text style={styles.gapName}>{item.name}</Text>
                 <View style={styles.gapStats}>
-                  <Text style={styles.gapAvg}>avg {item.averageGap}d</Text>
+                  <Text style={styles.gapAvg}>
+                    {t.freelancer.avgDays.replace('{n}', String(item.averageGap))}
+                  </Text>
                   <Text style={styles.gapLongest}>
-                    longest {item.longestGap}d
+                    {t.freelancer.longestDays.replace('{n}', String(item.longestGap))}
                   </Text>
                 </View>
               </View>
@@ -370,14 +374,14 @@ const FreelancerReports: React.FC = () => {
           {aiSummary ? (
             <Text style={styles.aiSummaryText}>{aiSummary}</Text>
           ) : aiLoading ? (
-            <Text style={styles.aiLoadingText}>thinking...</Text>
+            <Text style={styles.aiLoadingText}>{t.freelancer.thinking}</Text>
           ) : (
             <TouchableOpacity
               onPress={handleShowSummary}
               style={styles.showSummaryButton}
               activeOpacity={0.7}
             >
-              <Text style={styles.showSummaryText}>show summary</Text>
+              <Text style={styles.showSummaryText}>{t.freelancer.showSummary}</Text>
             </TouchableOpacity>
           )}
         </View>

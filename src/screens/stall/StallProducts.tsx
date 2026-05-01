@@ -14,9 +14,11 @@ import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 
 const StallProducts: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { products, addProduct, updateProduct, deleteProduct } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
@@ -80,9 +82,9 @@ const StallProducts: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.heading}>products</Text>
+        <Text style={styles.heading}>{t.stall.productsHeading}</Text>
         <Text style={styles.subheading}>
-          things you sell at the stall{products.length > 0 ? ` \u00B7 ${activeCount} active` : ''}
+          {t.stall.productsSub}{products.length > 0 ? ` \u00B7 ${t.stall.activeSuffix.replace('{n}', String(activeCount))}` : ''}
         </Text>
 
         {/* Add / Edit form */}
@@ -92,7 +94,7 @@ const StallProducts: React.FC = () => {
               style={styles.input}
               value={name}
               onChangeText={setName}
-              placeholder="e.g. kuih seri muka"
+              placeholder={t.stall.namePlaceholder}
               placeholderTextColor={C.neutral}
               autoFocus
               accessibilityLabel="Product name"
@@ -103,7 +105,7 @@ const StallProducts: React.FC = () => {
                 style={[styles.input, styles.priceInput]}
                 value={price}
                 onChangeText={setPrice}
-                placeholder="0.00"
+                placeholder={t.stall.pricePlaceholder}
                 placeholderTextColor={C.neutral}
                 keyboardType="decimal-pad"
                 accessibilityLabel="Product price"
@@ -118,7 +120,7 @@ const StallProducts: React.FC = () => {
                 accessibilityLabel={editingId ? 'Update product' : 'Add product'}
               >
                 <Text style={styles.saveButtonText}>
-                  {editingId ? 'update' : 'add'}
+                  {editingId ? t.stall.update : t.stall.addAction}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -127,7 +129,7 @@ const StallProducts: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Cancel"
               >
-                <Text style={styles.cancelLinkText}>cancel</Text>
+                <Text style={styles.cancelLinkText}>{t.stall.cancel}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -148,7 +150,7 @@ const StallProducts: React.FC = () => {
             accessibilityLabel="Add a new product"
           >
             <Feather name="plus" size={18} color="#FFFFFF" />
-            <Text style={styles.addButtonText}>add product</Text>
+            <Text style={styles.addButtonText}>{t.stall.addProduct}</Text>
           </TouchableOpacity>
         )}
 
@@ -182,7 +184,7 @@ const StallProducts: React.FC = () => {
                   </Text>
                   <Text style={styles.productPrice}>
                     {currency} {product.price.toFixed(2)}
-                    {product.totalSold > 0 ? ` · ${product.totalSold} sold` : ''}
+                    {product.totalSold > 0 ? ` · ${t.stall.soldSuffix.replace('{n}', String(product.totalSold))}` : ''}
                   </Text>
                 </View>
 
@@ -214,7 +216,7 @@ const StallProducts: React.FC = () => {
         {products.length === 0 && !showForm && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyText}>
-              no products yet — add what you sell
+              {t.stall.productsEmpty}
             </Text>
           </View>
         )}

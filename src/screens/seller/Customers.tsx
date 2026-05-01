@@ -16,8 +16,8 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { syncAll, pullOrderLinkOrders } from '../../services/sellerSync';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { SellerOrder, SellerCustomer } from '../../types';
 
 // ─── Smart date label ─────────────────────────────────────────
@@ -70,6 +70,7 @@ const StatsSummary: React.FC<{
   styles: ReturnType<typeof makeStyles>;
 }> = React.memo(({ customers, currency, onTapAll, onTapOwes, onTapRepeat, styles }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const stats = useMemo(() => {
     let outstanding = 0;
     let repeatCount = 0;
@@ -90,21 +91,21 @@ const StatsSummary: React.FC<{
         accessibilityLabel={`${stats.total} total customers`}
       >
         <View style={styles.statIconRow}>
-          <Feather name="users" size={14} color={BIZ.success} />
+          <Feather name="users" size={14} color={semantic(BIZ_SAFE.success, isDark)} />
           <Text style={styles.statValue}>{stats.total}</Text>
         </View>
         <Text style={styles.statLabel}>customers</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.statChip, { backgroundColor: withAlpha(BIZ.unpaid, 0.05) }]}
+        style={[styles.statChip, { backgroundColor: withAlpha(semantic(BIZ_SAFE.unpaid, isDark), 0.05) }]}
         activeOpacity={0.7}
         onPress={() => { lightTap(); onTapOwes(); }}
         accessibilityRole="button"
         accessibilityLabel={`${currency} ${stats.outstanding.toFixed(2)} outstanding`}
       >
         <View style={styles.statIconRow}>
-          <Feather name="alert-circle" size={14} color={BIZ.unpaid} />
+          <Feather name="alert-circle" size={14} color={semantic(BIZ_SAFE.unpaid, isDark)} />
           <Text style={styles.statValue} numberOfLines={1}>{currency} {stats.outstanding.toFixed(0)}</Text>
         </View>
         <Text style={styles.statLabel}>outstanding</Text>
@@ -243,6 +244,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
   styles,
 }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const insets = useSafeAreaInsets();
 
   const recentOrders = useMemo(() => {
@@ -349,7 +351,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                   accessibilityRole="button"
                   accessibilityLabel={`Call ${customer.phone}`}
                 >
-                  <Feather name="phone" size={15} color={BIZ.success} />
+                  <Feather name="phone" size={15} color={semantic(BIZ_SAFE.success, isDark)} />
                   <Text style={styles.contactButtonText} numberOfLines={1}>
                     {customer.phone}
                   </Text>
@@ -361,7 +363,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                   accessibilityRole="button"
                   accessibilityLabel="WhatsApp customer"
                 >
-                  <Feather name="message-circle" size={15} color={BIZ.success} />
+                  <Feather name="message-circle" size={15} color={semantic(BIZ_SAFE.success, isDark)} />
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -512,6 +514,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
 // ─── Main Component ──────────────────────────────────────────
 const SellerCustomers: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { orders, sellerCustomers, addSellerCustomer, updateSellerCustomer, deleteSellerCustomer, deleteOrder, deleteOrders, updateOrder } = useSellerStore();
@@ -1033,7 +1036,7 @@ const SellerCustomers: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel={`Sort by ${sortBy}`}
         >
-          <Feather name="sliders" size={18} color={sortBy !== 'recent' ? '#fff' : BIZ.success} />
+          <Feather name="sliders" size={18} color={sortBy !== 'recent' ? '#fff' : semantic(BIZ_SAFE.success, isDark)} />
         </TouchableOpacity>
       </View>
 
@@ -1094,7 +1097,7 @@ const SellerCustomers: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Add a new customer"
         >
-          <Feather name="user-plus" size={16} color={BIZ.success} />
+          <Feather name="user-plus" size={16} color={semantic(BIZ_SAFE.success, isDark)} />
           <Text style={styles.addCustomerButtonText}>add customer</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -1130,7 +1133,7 @@ const SellerCustomers: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Add a new customer"
             >
-              <Feather name="user-plus" size={16} color={BIZ.success} />
+              <Feather name="user-plus" size={16} color={semantic(BIZ_SAFE.success, isDark)} />
               <Text style={styles.emptyAddButtonText}>add customer</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -1240,12 +1243,12 @@ const SellerCustomers: React.FC = () => {
                   accessibilityState={{ selected: isActive }}
                 >
                   <View style={styles.sortOptionLeft}>
-                    <Feather name={opt.icon} size={16} color={isActive ? BIZ.success : C.textMuted} />
+                    <Feather name={opt.icon} size={16} color={isActive ? semantic(BIZ_SAFE.success, isDark) : C.textMuted} />
                     <Text style={[styles.sortOptionText, isActive && styles.sortOptionTextActive]}>
                       {opt.label}
                     </Text>
                   </View>
-                  {isActive && <Feather name="check" size={16} color={BIZ.success} />}
+                  {isActive && <Feather name="check" size={16} color={semantic(BIZ_SAFE.success, isDark)} />}
                 </TouchableOpacity>
               );
             })}

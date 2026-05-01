@@ -5,13 +5,15 @@ import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useFadeSlide } from '../../utils/fadeSlide';
 
 // ─── Component ───────────────────────────────────────────────
 const SellerManage: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
+  const bizSuccess = semantic(BIZ_SAFE.success, isDark);
   const styles = useMemo(() => makeStyles(C), [C]);
   const { products, seasons, ingredientCosts, orders } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);
@@ -77,8 +79,8 @@ const SellerManage: React.FC = () => {
           accessibilityLabel={`Transactions. ${paidOrders.length} paid orders. Navigate to transaction list.`}
           onPress={() => navigation.getParent()?.navigate('SellerTransactions')}
         >
-          <View style={[styles.iconBox, { backgroundColor: withAlpha(BIZ.success, 0.12) }]}>
-            <Feather name="list" size={24} color={BIZ.success} />
+          <View style={[styles.iconBox, { backgroundColor: withAlpha(bizSuccess, 0.12) }]}>
+            <Feather name="list" size={24} color={bizSuccess} />
           </View>
           <View style={styles.cardContent}>
             <Text style={styles.cardTitle}>Transactions</Text>

@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PersonalState, Transfer } from '../types';
 import { useWalletStore } from './walletStore';
+import { newId } from '../utils/id';
 
 export const usePersonalStore = create<PersonalState>()(
   persist(
@@ -11,9 +12,20 @@ export const usePersonalStore = create<PersonalState>()(
       subscriptions: [],
       budgets: [],
       goals: [],
+      _deletedTransactionIds: [],
+      _deletedSubscriptionIds: [],
+      _deletedBudgetIds: [],
+      _deletedGoalIds: [],
+
+      clearPersonalTombstones: () => set({
+        _deletedTransactionIds: [],
+        _deletedSubscriptionIds: [],
+        _deletedBudgetIds: [],
+        _deletedGoalIds: [],
+      }),
 
       addTransaction: (transaction) => {
-        const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+        const id = newId();
         set((state) => ({
           transactions: [
             {
@@ -28,7 +40,8 @@ export const usePersonalStore = create<PersonalState>()(
         return id;
       },
 
-      updateTransaction: (id, updates) =>
+      updateTransaction: (id, updates) => {
+        const prev = (usePersonalStore.getState() as PersonalState).transactions.find((t) => t.id === id);
         set((state) => ({
           transactions: state.transactions.map((t) => {
             if (t.id !== id) return t;
@@ -53,21 +66,50 @@ export const usePersonalStore = create<PersonalState>()(
               editLog: editEntry ? [...(t.editLog ?? []), editEntry] : t.editLog,
             };
           }),
-        })),
+        }));
 
-      // NOTE: If this transaction has playbookLinks, the caller should also call
-      // usePlaybookStore.getState().unlinkAllFromTransaction(id) to clean up.
-      deleteTransaction: (id) =>
+        if (!prev) return;
+        const newAmount = updates.amount ?? prev.amount;
+        const newType = updates.type ?? prev.type;
+        const newWalletId = updates.walletId !== undefined ? updates.walletId : prev.walletId;
+        const amountChanged = newAmount !== prev.amount;
+        const typeChanged = newType !== prev.type;
+        const walletChanged = newWalletId !== prev.walletId;
+        if (!amountChanged && !typeChanged && !walletChanged) return;
+
+        const wallets = useWalletStore.getState();
+        const applyOld = (w: string | undefined | null, amt: number, type: string) => {
+          if (!w) return;
+          if (type === 'expense') wallets.addToWallet(w, amt);
+          else if (type === 'income') wallets.deductFromWallet(w, amt);
+        };
+        const applyNew = (w: string | undefined | null, amt: number, type: string) => {
+          if (!w) return;
+          if (type === 'expense') wallets.deductFromWallet(w, amt);
+          else if (type === 'income') wallets.addToWallet(w, amt);
+        };
+        applyOld(prev.walletId, prev.amount, prev.type);
+        applyNew(newWalletId, newAmount, newType);
+      },
+
+      deleteTransaction: (id) => {
+        const prev = (usePersonalStore.getState() as PersonalState).transactions.find((t) => t.id === id);
         set((state) => ({
           transactions: state.transactions.filter((t) => t.id !== id),
-        })),
+          _deletedTransactionIds: [...(state._deletedTransactionIds ?? []), id],
+        }));
+        if (!prev || !prev.walletId) return;
+        const wallets = useWalletStore.getState();
+        if (prev.type === 'expense') wallets.addToWallet(prev.walletId, prev.amount);
+        else if (prev.type === 'income') wallets.deductFromWallet(prev.walletId, prev.amount);
+      },
 
       addSubscription: (subscription) =>
         set((state) => ({
           subscriptions: [
             {
               ...subscription,
-              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+              id: newId(),
               createdAt: new Date(),
               updatedAt: new Date(),
             },
@@ -80,7 +122,7 @@ export const usePersonalStore = create<PersonalState>()(
           budgets: [
             {
               ...budget,
-              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+              id: newId(),
               spentAmount: 0,
               createdAt: new Date(),
               updatedAt: new Date(),
@@ -110,11 +152,13 @@ export const usePersonalStore = create<PersonalState>()(
       deleteSubscription: (id) =>
         set((state) => ({
           subscriptions: state.subscriptions.filter((sub) => sub.id !== id),
+          _deletedSubscriptionIds: [...(state._deletedSubscriptionIds ?? []), id],
         })),
 
       deleteBudget: (id) =>
         set((state) => ({
           budgets: state.budgets.filter((b) => b.id !== id),
+          _deletedBudgetIds: [...(state._deletedBudgetIds ?? []), id],
         })),
 
       incrementInstallment: (id) =>
@@ -140,6 +184,39 @@ export const usePersonalStore = create<PersonalState>()(
               ? { ...sub, isPaused: !sub.isPaused, updatedAt: new Date() }
               : sub
           ),
+        })),
+
+      markSubscriptionPaid: (id) =>
+        set((state) => ({
+          subscriptions: state.subscriptions.map((sub) => {
+            if (sub.id !== id) return sub;
+            // Advance next billing date by one cycle
+            let next = sub.nextBillingDate;
+            switch (sub.billingCycle) {
+              case 'weekly':    next = new Date(next); next.setDate(next.getDate() + 7);    break;
+              case 'quarterly': next = new Date(next); next.setMonth(next.getMonth() + 3);  break;
+              case 'yearly':    next = new Date(next); next.setFullYear(next.getFullYear() + 1); break;
+              default:          next = new Date(next); next.setMonth(next.getMonth() + 1);  break;
+            }
+            const newCompleted = sub.isInstallment
+              ? Math.min((sub.completedInstallments || 0) + 1, sub.totalInstallments || 9999)
+              : sub.completedInstallments;
+            const newOutstanding = sub.outstandingBalance !== undefined
+              ? Math.max(sub.outstandingBalance - sub.amount, 0)
+              : undefined;
+            return {
+              ...sub,
+              lastPaidAt: new Date(),
+              nextBillingDate: next,
+              completedInstallments: newCompleted,
+              outstandingBalance: newOutstanding,
+              paymentHistory: [
+                ...(sub.paymentHistory || []),
+                { id: `pay-${Date.now()}`, paidAt: new Date(), amount: sub.amount },
+              ],
+              updatedAt: new Date(),
+            };
+          }),
         })),
 
       addTransferIncome: (transfer) => {
@@ -172,7 +249,7 @@ export const usePersonalStore = create<PersonalState>()(
           goals: [
             {
               ...goal,
-              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+              id: newId(),
               currentAmount: 0,
               contributions: [],
               milestones: [
@@ -200,6 +277,7 @@ export const usePersonalStore = create<PersonalState>()(
       deleteGoal: (id) =>
         set((state) => ({
           goals: state.goals.filter((g) => g.id !== id),
+          _deletedGoalIds: [...(state._deletedGoalIds ?? []), id],
         })),
 
       contributeToGoal: (goalId, amount, note, walletId) =>
@@ -209,7 +287,7 @@ export const usePersonalStore = create<PersonalState>()(
             const remaining = goal.targetAmount - goal.currentAmount;
             const actualAmount = remaining > 0 ? Math.min(amount, remaining) : amount;
             const newContribution = {
-              id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+              id: newId(),
               amount: actualAmount,
               note,
               date: new Date(),
@@ -249,7 +327,7 @@ export const usePersonalStore = create<PersonalState>()(
               contributions: [
                 ...goal.contributions,
                 {
-                  id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                  id: newId(),
                   amount: -amount,
                   note: note || 'withdrawal',
                   date: new Date(),
@@ -331,6 +409,11 @@ export const usePersonalStore = create<PersonalState>()(
           ...s,
           startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
           nextBillingDate: s.nextBillingDate instanceof Date ? s.nextBillingDate.toISOString() : s.nextBillingDate,
+          lastPaidAt: s.lastPaidAt instanceof Date ? s.lastPaidAt.toISOString() : s.lastPaidAt,
+          paymentHistory: (s.paymentHistory || []).map((p: any) => ({
+            ...p,
+            paidAt: p.paidAt instanceof Date ? p.paidAt.toISOString() : p.paidAt,
+          })),
           createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
           updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
         })),
@@ -355,6 +438,10 @@ export const usePersonalStore = create<PersonalState>()(
           createdAt: g.createdAt instanceof Date ? g.createdAt.toISOString() : g.createdAt,
           updatedAt: g.updatedAt instanceof Date ? g.updatedAt.toISOString() : g.updatedAt,
         })),
+        _deletedTransactionIds: state._deletedTransactionIds ?? [],
+        _deletedSubscriptionIds: state._deletedSubscriptionIds ?? [],
+        _deletedBudgetIds: state._deletedBudgetIds ?? [],
+        _deletedGoalIds: state._deletedGoalIds ?? [],
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -374,6 +461,11 @@ export const usePersonalStore = create<PersonalState>()(
             ...s,
             startDate: s.startDate ? sd(s.startDate) : sd(s.createdAt),
             nextBillingDate: sd(s.nextBillingDate),
+            lastPaidAt: s.lastPaidAt ? sd(s.lastPaidAt) : undefined,
+            paymentHistory: (s.paymentHistory || []).map((p: any) => ({
+              ...p,
+              paidAt: sd(p.paidAt),
+            })),
             createdAt: sd(s.createdAt),
             updatedAt: sd(s.updatedAt),
             isInstallment: s.isInstallment ?? false,
@@ -386,6 +478,10 @@ export const usePersonalStore = create<PersonalState>()(
             createdAt: sd(b.createdAt),
             updatedAt: sd(b.updatedAt),
           }));
+          state._deletedTransactionIds = state._deletedTransactionIds ?? [];
+          state._deletedSubscriptionIds = state._deletedSubscriptionIds ?? [];
+          state._deletedBudgetIds = state._deletedBudgetIds ?? [];
+          state._deletedGoalIds = state._deletedGoalIds ?? [];
           state.goals = (state.goals || []).map((g: any) => ({
             ...g,
             deadline: g.deadline ? sd(g.deadline) : undefined,

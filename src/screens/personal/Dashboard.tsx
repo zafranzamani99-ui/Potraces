@@ -596,9 +596,6 @@ const PersonalDashboard: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Getting Started — first-time checklist */}
-        <GettingStarted />
-
         {/* Zone 2 — Balance (the hero) */}
         <RAnimated.View entering={FadeIn.duration(200)}>
           <Text style={[styles.heroHeadline, { color: C.textSecondary }]}>{heroHeadline.headline}</Text>
@@ -617,6 +614,9 @@ const PersonalDashboard: React.FC = () => {
 
         {/* Fresh Start — 1st of month ritual */}
         <FreshStart />
+
+        {/* Getting Started — first-time action strip */}
+        <GettingStarted />
 
         {/* Zone 5 — Insight Strip */}
         <RAnimated.View entering={FadeInDown.delay(150).duration(200)} style={styles.insightStripWrap}>
@@ -637,12 +637,12 @@ const PersonalDashboard: React.FC = () => {
               <View style={[styles.insightIconBg, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
                 <Feather name="layers" size={16} color={C.accent} />
               </View>
-              <Text style={styles.insightCardLabel}>this month</Text>
+              <Text style={styles.insightCardLabel}>{t.dashboard.thisMonth.toLowerCase()}</Text>
             </View>
             <Text style={[styles.insightValue, { color: C.textPrimary }]}>
               {stats.transactionCount}
             </Text>
-            <Text style={styles.insightContext}>transactions</Text>
+            <Text style={styles.insightContext}>{t.dashboard.transactions.toLowerCase()}</Text>
           </TouchableOpacity>
 
           {/* Spending Pace */}
@@ -661,7 +661,7 @@ const PersonalDashboard: React.FC = () => {
             <Text style={[styles.insightValue, { color: C.textPrimary }]}>
               {insightStrip.velocityPercent}%
             </Text>
-            <Text style={styles.insightContext}>of usual spending</Text>
+            <Text style={styles.insightContext}>{t.dashboard.ofUsualSpending}</Text>
           </TouchableOpacity>
 
           {/* Kept */}
@@ -680,7 +680,7 @@ const PersonalDashboard: React.FC = () => {
             <Text style={[styles.insightValue, { color: C.textPrimary }]}>
               {kept.keptThisMonth >= 0 ? '+' : ''}{currency} {kept.keptThisMonth.toFixed(0)}
             </Text>
-            <Text style={styles.insightContext}>net this month</Text>
+            <Text style={styles.insightContext}>{t.dashboard.netThisMonth}</Text>
           </TouchableOpacity>
 
           {/* BNPL / Credit */}
@@ -695,12 +695,12 @@ const PersonalDashboard: React.FC = () => {
                 <View style={[styles.insightIconBg, { backgroundColor: withAlpha(C.bronze, 0.10) }]}>
                   <Feather name="clock" size={16} color={C.bronze} />
                 </View>
-                <Text style={styles.insightCardLabel}>owed later</Text>
+                <Text style={styles.insightCardLabel}>{t.dashboard.owedLater}</Text>
               </View>
               <Text style={[styles.insightValue, { color: C.textPrimary }]}>
                 {currency} {bnpl.totalUsed.toFixed(0)}
               </Text>
-              <Text style={styles.insightContext}>buy now pay later</Text>
+              <Text style={styles.insightContext}>{t.dashboard.buyNowPayLater}</Text>
             </TouchableOpacity>
           )}
 
@@ -715,7 +715,7 @@ const PersonalDashboard: React.FC = () => {
               <View style={[styles.insightIconBg, { backgroundColor: withAlpha(C.gold, 0.10) }]}>
                 <Feather name="bell" size={16} color={C.gold} />
               </View>
-              <Text style={styles.insightCardLabel}>coming up</Text>
+              <Text style={styles.insightCardLabel}>{t.dashboard.comingUp}</Text>
             </View>
             <Text style={[styles.insightValue, { color: C.textPrimary }]}>
               {insightStrip.upcomingCount} {insightStrip.upcomingCount === 1 ? 'bill' : 'bills'}
@@ -818,7 +818,7 @@ const PersonalDashboard: React.FC = () => {
                   <Text style={styles.upcomingTitle}>{t.dashboard.upcomingBills}</Text>
                   <Feather name="chevron-right" size={16} color={C.textSecondary} />
                 </View>
-                <Text style={styles.upcomingEmpty}>No bills due soon</Text>
+                <Text style={styles.upcomingEmpty}>{t.dashboard.noBillsDueSoon}</Text>
               </Card>
             )}
           </TouchableOpacity>
@@ -905,7 +905,7 @@ const PersonalDashboard: React.FC = () => {
         <Pressable style={styles.modalOverlay} onPress={() => { setEditModalVisible(false); setEditingTransaction(null); }}>
             <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Edit Transaction</Text>
+                <Text style={styles.modalTitle}>{t.transaction.editTransaction}</Text>
                 <TouchableOpacity onPress={() => {
                   setEditModalVisible(false);
                   setEditingTransaction(null);
@@ -981,7 +981,7 @@ const PersonalDashboard: React.FC = () => {
                   label="Wallet"
                 />
 
-                <Text style={styles.label}>Description</Text>
+                <Text style={styles.label}>{t.transaction.description}</Text>
                 <TextInput
                   style={styles.input}
                   value={editDescription}

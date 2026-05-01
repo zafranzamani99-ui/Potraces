@@ -11,21 +11,29 @@ import {
   PanResponder,
   TouchableWithoutFeedback,
   Alert,
+  Pressable,
+  Image,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
+import { findRecentDuplicate } from '../../utils/findDuplicateTransaction';
+import { SUPPORTED_CURRENCIES, getRates, toMyr } from '../../services/fxRates';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePersonalStore } from '../../store/personalStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useCategoryStore } from '../../store/categoryStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePlaybookStore } from '../../store/playbookStore';
-import { CALM, SHADOWS, withAlpha } from '../../constants';
+import { CALM, SHADOWS, withAlpha, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
+import WalletLogo from './WalletLogo';
 import { useCalm } from '../../hooks/useCalm';
 import { lightTap, successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 import { useLearningStore } from '../../store/learningStore';
+import { nowMYT } from '../../utils/datetime';
+import { useT } from '../../i18n';
+import { HITSLOP_10 } from '../../utils/hitSlop';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const FAB_SIZE = 56;
@@ -71,6 +79,7 @@ const NumpadKey = React.memo(
 // ─── Main Component ──────────────────────────────────────────
 const QuickAddExpense: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
@@ -78,6 +87,8 @@ const QuickAddExpense: React.FC = () => {
 
   const addTransaction = usePersonalStore((s) => s.addTransaction);
   const updateTransaction = usePersonalStore((s) => s.updateTransaction);
+  const deleteTransaction = usePersonalStore((s) => s.deleteTransaction);
+  const quickAddConfirm = useSettingsStore((s) => s.quickAddConfirm);
   const wallets = useWalletStore((s) => s.wallets);
   const deductFromWallet = useWalletStore((s) => s.deductFromWallet);
   const addToWallet = useWalletStore((s) => s.addToWallet);
@@ -89,12 +100,36 @@ const QuickAddExpense: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [txType, setTxType] = useState<'expense' | 'income'>('expense');
+  // Currency picker — defaults to user's settings currency (usually MYR).
+  const [selectedCurrency, setSelectedCurrency] = useState<string>(currency || 'MYR');
+  const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
+  const [fxRates, setFxRates] = useState<Record<string, number> | null>(null);
   const [pbPrompt, setPbPrompt] = useState<{ txId: string; amount: number; name: string } | null>(null);
+  const [pendingWalletId, setPendingWalletId] = useState<string | null>(null);
+  const [confirmVisible, setConfirmVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const cardScale = useRef(new Animated.Value(0.92)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const pbPromptScale = useRef(new Animated.Value(0.92)).current;
   const pbPromptOpacity = useRef(new Animated.Value(0)).current;
+  const confirmCardScale = useRef(new Animated.Value(0.85)).current;
+  const confirmCardOpacity = useRef(new Animated.Value(0)).current;
+  const bgCardScale = useRef(new Animated.Value(1)).current;
+  const bgCardOpacity = useRef(new Animated.Value(1)).current;
+
+  // ── FX: fetch rates when a non-MYR currency is chosen ─────
+  useEffect(() => {
+    if (selectedCurrency === 'MYR' || fxRates) return;
+    let cancelled = false;
+    getRates().then((r) => { if (!cancelled) setFxRates(r.rates); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedCurrency, fxRates]);
+
+  const myrEquivalent = useMemo(() => {
+    const parsed = parseFloat(amount);
+    if (!parsed || selectedCurrency === 'MYR' || !fxRates) return null;
+    return toMyr(parsed, selectedCurrency, fxRates);
+  }, [amount, selectedCurrency, fxRates]);
 
   // ── Draggable FAB ──────────────────────────────────────────
   const fabPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -177,6 +212,9 @@ const QuickAddExpense: React.FC = () => {
     setCategoryId('');
     setTxType('expense');
     setStep('amount');
+    setConfirmVisible(false);
+    bgCardScale.setValue(1);
+    bgCardOpacity.setValue(1);
     slideAnim.setValue(0);
     cardScale.setValue(0.92);
     cardOpacity.setValue(0);
@@ -185,9 +223,14 @@ const QuickAddExpense: React.FC = () => {
       Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 3 }),
       Animated.timing(cardOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
     ]).start();
-  }, [slideAnim, cardScale, cardOpacity]);
+  }, [slideAnim, cardScale, cardOpacity, bgCardScale]);
 
-  _quickAddOpenRef = handleOpen;
+  useEffect(() => {
+    _quickAddOpenRef = handleOpen;
+    return () => {
+      if (_quickAddOpenRef === handleOpen) _quickAddOpenRef = null;
+    };
+  }, [handleOpen]);
 
   const panResponder = useMemo(
     () =>
@@ -276,54 +319,78 @@ const QuickAddExpense: React.FC = () => {
     animateTo('category');
   }, [amount, animateTo]);
 
-  // ── Category select ─────────────────────────────────────────
-  const handleCategorySelect = useCallback(
-    (catId: string) => {
-      lightTap();
-      setCategoryId(catId);
-      if (!hasMultipleWallets) {
-        const cat = categories.find((c) => c.id === catId);
-        const defaultWallet = wallets.find((w) => w.isDefault) || wallets[0];
-        saveTransaction(catId, cat?.name || catId, defaultWallet?.id || null);
-      } else {
-        animateTo('wallet');
-      }
-    },
-    [hasMultipleWallets, wallets, categories, animateTo],
-  );
-
-  // ── Wallet select ───────────────────────────────────────────
-  const handleWalletSelect = useCallback(
-    (wId: string) => {
-      lightTap();
-      const cat = categories.find((c) => c.id === categoryId);
-      saveTransaction(categoryId, cat?.name || categoryId, wId);
-    },
-    [categoryId, categories],
-  );
-
   // ── Save ────────────────────────────────────────────────────
   const saveTransaction = useCallback(
     (catId: string, catName: string, walletId: string | null) => {
       const parsed = parseFloat(amount);
       if (!parsed || parsed <= 0) return;
 
+      // Duplicate guard: same amount + wallet + type within last 10 min.
+      const dup = findRecentDuplicate(
+        usePersonalStore.getState().transactions,
+        {
+          amount: parsed,
+          walletId: walletId || undefined,
+          type: txType,
+        },
+      );
+      if (dup) {
+        const mins = Math.max(1, Math.round((Date.now() - new Date(dup.createdAt).getTime()) / 60000));
+        Alert.alert(
+          'similar transaction',
+          `you logged ${dup.description || dup.category} (${parsed.toFixed(2)}) ${mins} min ago. keep both or skip?`,
+          [
+            { text: 'skip', style: 'cancel' },
+            { text: 'keep both', onPress: () => saveTransactionUnchecked(catId, catName, walletId) },
+          ],
+        );
+        return;
+      }
+      saveTransactionUnchecked(catId, catName, walletId);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [amount, txType, selectedCurrency, fxRates],
+  );
+
+  const saveTransactionUnchecked = useCallback(
+    (catId: string, catName: string, walletId: string | null) => {
+      const parsed = parseFloat(amount);
+      if (!parsed || parsed <= 0) return;
+
+      // If a non-MYR currency is selected, store the MYR-equivalent as the
+      // canonical `amount`, and keep the original amount/currency/rate for
+      // display. Wallet math stays in MYR so balances don't drift.
+      let storedAmount = parsed;
+      let originalFields: { originalAmount?: number; originalCurrency?: string; fxRate?: number } = {};
+      if (selectedCurrency !== 'MYR' && fxRates) {
+        const myr = toMyr(parsed, selectedCurrency, fxRates);
+        if (myr != null && myr > 0) {
+          storedAmount = Number(myr.toFixed(2));
+          originalFields = {
+            originalAmount: parsed,
+            originalCurrency: selectedCurrency,
+            fxRate: fxRates[selectedCurrency.toUpperCase()],
+          };
+        }
+      }
+
       const txId = addTransaction({
-        amount: parsed,
+        amount: storedAmount,
         category: catId,
         description: catName,
-        date: new Date(),
+        date: nowMYT(),
         type: txType,
         mode: 'personal',
         walletId: walletId || undefined,
         inputMethod: 'manual',
+        ...originalFields,
       });
 
       if (walletId) {
         if (txType === 'expense') {
-          deductFromWallet(walletId, parsed);
+          deductFromWallet(walletId, storedAmount);
         } else {
-          addToWallet(walletId, parsed);
+          addToWallet(walletId, storedAmount);
         }
       }
 
@@ -333,7 +400,7 @@ const QuickAddExpense: React.FC = () => {
         const linkToPb = (pbId: string) => {
           usePlaybookStore.getState().linkExpense(pbId, txId);
           updateTransaction(txId, {
-            playbookLinks: [{ playbookId: pbId, amount: parsed }],
+            playbookLinks: [{ playbookId: pbId, amount: storedAmount }],
           });
         };
         if (activePbs.length === 1) {
@@ -355,7 +422,34 @@ const QuickAddExpense: React.FC = () => {
       successNotification();
       setVisible(false);
       const label = txType === 'expense' ? 'went out' : 'came in';
-      showToast(`${currency} ${parsed.toFixed(2)} ${label}`, 'success');
+      const capturedTxId = txId;
+      const capturedWalletId = walletId;
+      const capturedStored = storedAmount;
+      const capturedType = txType;
+      const capturedHasMultiple = hasMultipleWallets;
+      showToast(`${currency} ${parsed.toFixed(2)} ${label}`, 'success', {
+        label: 'undo',
+        onPress: () => {
+          deleteTransaction(capturedTxId);
+          if (capturedWalletId) {
+            capturedType === 'expense'
+              ? addToWallet(capturedWalletId, capturedStored)
+              : deductFromWallet(capturedWalletId, capturedStored);
+          }
+          // Reopen at wallet step (or category if single wallet) with state intact
+          const targetStep: Step = capturedHasMultiple ? 'wallet' : 'category';
+          const targetIdx = capturedHasMultiple ? 2 : 1;
+          slideAnim.setValue(-targetIdx * CARD_WIDTH);
+          setStep(targetStep);
+          cardScale.setValue(0.92);
+          cardOpacity.setValue(0);
+          setVisible(true);
+          Animated.parallel([
+            Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 3 }),
+            Animated.timing(cardOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+          ]).start();
+        },
+      });
 
       // Offer playbook creation for income
       if (txType === 'income' && usePlaybookStore.getState().canCreatePlaybook()) {
@@ -370,8 +464,73 @@ const QuickAddExpense: React.FC = () => {
         }, 300);
       }
     },
-    [amount, txType, addTransaction, updateTransaction, deductFromWallet, addToWallet, currency, showToast],
+    [amount, txType, addTransaction, updateTransaction, deleteTransaction, deductFromWallet, addToWallet, currency, showToast, pbPromptScale, pbPromptOpacity, hasMultipleWallets],
   );
+
+  // ── Confirm overlay helpers ────────────────────────────────
+  const showConfirmOverlay = useCallback(() => {
+    confirmCardScale.setValue(0.88);
+    confirmCardOpacity.setValue(0);
+    setConfirmVisible(true);
+    Animated.parallel([
+      Animated.spring(confirmCardScale, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 5 }),
+      Animated.timing(confirmCardOpacity, { toValue: 1, duration: 160, useNativeDriver: true }),
+      Animated.timing(bgCardOpacity, { toValue: 0, duration: 160, useNativeDriver: false }),
+    ]).start();
+  }, [confirmCardScale, confirmCardOpacity, bgCardOpacity]);
+
+  const hideConfirmOverlay = useCallback(() => {
+    lightTap();
+    Animated.parallel([
+      Animated.timing(confirmCardOpacity, { toValue: 0, duration: 140, useNativeDriver: true }),
+      Animated.timing(bgCardOpacity, { toValue: 1, duration: 180, useNativeDriver: false }),
+    ]).start(() => setConfirmVisible(false));
+  }, [confirmCardOpacity, bgCardOpacity]);
+
+  // ── Category select ─────────────────────────────────────────
+  const handleCategorySelect = useCallback(
+    (catId: string) => {
+      lightTap();
+      setCategoryId(catId);
+      if (!hasMultipleWallets) {
+        const cat = categories.find((c) => c.id === catId);
+        const defaultWallet = wallets.find((w) => w.isDefault) || wallets[0];
+        if (quickAddConfirm) {
+          setPendingWalletId(defaultWallet?.id || null);
+          showConfirmOverlay();
+        } else {
+          saveTransaction(catId, cat?.name || catId, defaultWallet?.id || null);
+        }
+      } else {
+        animateTo('wallet');
+      }
+    },
+    [hasMultipleWallets, wallets, categories, animateTo, saveTransaction, quickAddConfirm, showConfirmOverlay],
+  );
+
+  // ── Wallet select ───────────────────────────────────────────
+  const handleWalletSelect = useCallback(
+    (wId: string) => {
+      lightTap();
+      if (quickAddConfirm) {
+        setPendingWalletId(wId);
+        showConfirmOverlay();
+      } else {
+        const cat = categories.find((c) => c.id === categoryId);
+        saveTransaction(categoryId, cat?.name || categoryId, wId);
+      }
+    },
+    [categoryId, categories, saveTransaction, quickAddConfirm, showConfirmOverlay],
+  );
+
+  const handleConfirmSave = useCallback(() => {
+    lightTap();
+    setConfirmVisible(false);
+    bgCardScale.setValue(1);
+    bgCardOpacity.setValue(1);
+    const cat = categories.find((c) => c.id === categoryId);
+    saveTransaction(categoryId, cat?.name || categoryId, pendingWalletId);
+  }, [categoryId, categories, saveTransaction, pendingWalletId, bgCardScale, bgCardOpacity]);
 
   const handleClose = useCallback(() => setVisible(false), []);
 
@@ -424,20 +583,21 @@ const QuickAddExpense: React.FC = () => {
           <TouchableWithoutFeedback onPress={handleClose}>
             <View style={StyleSheet.absoluteFill} />
           </TouchableWithoutFeedback>
+          <Animated.View style={{ opacity: bgCardOpacity }}>
           <Animated.View
-            style={[styles.card, { transform: [{ scale: cardScale }], opacity: cardOpacity, elevation: 24 }]}
+            style={[styles.card, { transform: [{ scale: cardScale }, { scale: bgCardScale }], opacity: cardOpacity, elevation: 24 }]}
             onStartShouldSetResponder={() => true}
           >
             {/* ── Header row ──────────────────────────── */}
             <View style={styles.hdr}>
               {currentStepIdx > 0 ? (
-                <TouchableOpacity onPress={goBack} style={styles.hdrBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <TouchableOpacity onPress={goBack} style={styles.hdrBtn} hitSlop={HITSLOP_10} accessibilityRole="button" accessibilityLabel={t.a11y.back}>
                   <Feather name="chevron-left" size={20} color={C.textSecondary} />
                 </TouchableOpacity>
               ) : (
                 <View style={styles.hdrBtn} />
               )}
-              <TouchableOpacity onPress={handleClose} style={styles.hdrBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <TouchableOpacity onPress={handleClose} style={styles.hdrBtn} hitSlop={HITSLOP_10} accessibilityRole="button" accessibilityLabel={t.a11y.close}>
                 <Feather name="x" size={18} color={C.textMuted} />
               </TouchableOpacity>
             </View>
@@ -456,10 +616,20 @@ const QuickAddExpense: React.FC = () => {
                 <View style={[styles.step, { width: CARD_WIDTH }]}>
                   {/* Amount display */}
                   <View style={styles.amountWrap}>
-                    <Text style={[styles.amountDisplay, !amount && { color: C.neutral }]}>
-                      <Text style={styles.amountCurrency}>{currency} </Text>
-                      {displayAmount}
-                    </Text>
+                    <TouchableOpacity
+                      onPress={() => { lightTap(); setCurrencyPickerOpen(true); }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.amountDisplay, !amount && { color: C.neutral }]}>
+                        <Text style={styles.amountCurrency}>{selectedCurrency} </Text>
+                        {displayAmount}
+                      </Text>
+                    </TouchableOpacity>
+                    {myrEquivalent != null && (
+                      <Text style={{ color: C.textMuted, fontSize: 12, marginTop: 2 }}>
+                        ≈ RM {myrEquivalent.toFixed(2)}
+                      </Text>
+                    )}
                   </View>
 
                   {/* Type toggle */}
@@ -540,7 +710,7 @@ const QuickAddExpense: React.FC = () => {
                       </Text>
                     </View>
 
-                    <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                    <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                       {[...wallets].sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0)).map((w) => (
                         <TouchableOpacity
                           key={w.id}
@@ -548,8 +718,8 @@ const QuickAddExpense: React.FC = () => {
                           onPress={() => handleWalletSelect(w.id)}
                           activeOpacity={0.55}
                         >
-                          <View style={[styles.walletIco, { backgroundColor: withAlpha(w.color || C.accent, 0.08) }]}>
-                            <Feather name={(w.icon as keyof typeof Feather.glyphMap) || 'credit-card'} size={20} color={w.color || C.accent} />
+                          <View style={[styles.walletIco, { backgroundColor: w.presetId ? C.background : withAlpha(w.color || C.accent, 0.08) }]}>
+                            <WalletLogo wallet={w} size={44} />
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.walletName}>{w.name}</Text>
@@ -564,11 +734,117 @@ const QuickAddExpense: React.FC = () => {
                     </ScrollView>
                   </View>
                 )}
+
               </Animated.View>
             </View>
           </Animated.View>
+          </Animated.View>
+
+          {/* ── Receipt confirm overlay ──────────────────── */}
+          {confirmVisible && (() => {
+            const cat = categories.find((c) => c.id === categoryId);
+            const pendingWallet = wallets.find((w) => w.id === pendingWalletId);
+            return (
+              <Animated.View
+                style={[styles.receiptCard, { transform: [{ scale: confirmCardScale }], opacity: confirmCardOpacity }]}
+                onStartShouldSetResponder={() => true}
+              >
+                <Text style={styles.receiptAmount}>{currency} {parsedAmount.toFixed(2)}</Text>
+                <Text style={styles.receiptType}>{txType === 'expense' ? 'went out' : 'came in'}</Text>
+
+                <View style={styles.receiptDivider}>
+                  {Array.from({ length: 22 }).map((_, i) => (
+                    <View key={i} style={styles.receiptDash} />
+                  ))}
+                </View>
+
+                {cat && (
+                  <View style={styles.receiptRow}>
+                    <View style={[styles.receiptIcon, { backgroundColor: withAlpha(cat.color, 0.1) }]}>
+                      <Feather name={(cat.icon as keyof typeof Feather.glyphMap) || 'tag'} size={20} color={cat.color} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.receiptRowLabel}>category</Text>
+                      <Text style={styles.receiptRowValue}>{cat.name}</Text>
+                    </View>
+                  </View>
+                )}
+
+                {pendingWallet && (
+                  <View style={styles.receiptRow}>
+                    <View style={[styles.walletIco, { backgroundColor: pendingWallet.presetId ? C.background : withAlpha(pendingWallet.color || C.accent, 0.08) }]}>
+                      <WalletLogo wallet={pendingWallet} size={40} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.receiptRowLabel}>wallet</Text>
+                      <Text style={styles.receiptRowValue}>{pendingWallet.name}</Text>
+                      <Text style={styles.walletBal}>{currency} {pendingWallet.balance.toFixed(2)}</Text>
+                    </View>
+                  </View>
+                )}
+
+                <View style={styles.receiptActions}>
+                  <TouchableOpacity style={styles.receiptSave} onPress={handleConfirmSave} activeOpacity={0.8}>
+                    <Feather name="check" size={16} color="#fff" />
+                    <Text style={styles.receiptSaveText}>save</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.receiptChange} onPress={hideConfirmOverlay} activeOpacity={0.6} hitSlop={HITSLOP_10}>
+                    <Feather name="chevron-left" size={13} color={C.textMuted} />
+                    <Text style={styles.receiptChangeText}>change</Text>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
+            );
+          })()}
         </View>
       </Modal>
+
+      {/* ── Currency picker ─────────────────────── */}
+      {currencyPickerOpen && (
+        <Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setCurrencyPickerOpen(false)}>
+          <Pressable style={styles.overlay} onPress={() => setCurrencyPickerOpen(false)}>
+            <Pressable
+              style={{
+                width: '85%',
+                maxHeight: '70%',
+                backgroundColor: C.surface,
+                borderRadius: RADIUS.xl,
+                padding: SPACING.lg,
+                ...SHADOWS.lg,
+              }}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary, marginBottom: SPACING.md }}>
+                choose a currency
+              </Text>
+              <ScrollView style={{ maxHeight: 320 }}>
+                {SUPPORTED_CURRENCIES.map((cur) => (
+                  <TouchableOpacity
+                    key={cur}
+                    onPress={() => { lightTap(); setSelectedCurrency(cur); setCurrencyPickerOpen(false); }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingVertical: SPACING.sm,
+                      paddingHorizontal: SPACING.sm,
+                      borderRadius: RADIUS.md,
+                      backgroundColor: cur === selectedCurrency ? withAlpha(C.accent, 0.1) : 'transparent',
+                    }}
+                  >
+                    <Text style={{ flex: 1, fontSize: TYPOGRAPHY.size.base, color: C.textPrimary, fontWeight: cur === selectedCurrency ? TYPOGRAPHY.weight.semibold : TYPOGRAPHY.weight.regular }}>
+                      {cur}
+                    </Text>
+                    {cur === selectedCurrency && <Feather name="check" size={16} color={C.positive} />}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: SPACING.sm, textAlign: 'center' }}>
+                non-MYR amounts are stored as MYR-equivalent using today's rate
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
 
       {/* ── Playbook prompt ─────────────────────── */}
       {pbPrompt && (
@@ -644,6 +920,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   /* ── Card ─────────────────────────────────── */
   card: {
     width: CARD_WIDTH,
+    maxHeight: SCREEN_HEIGHT * 0.88,
     backgroundColor: C.surface,
     borderRadius: 28,
     overflow: 'hidden',
@@ -803,11 +1080,115 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.background,
   },
   walletIco: {
-    width: 44, height: 44, borderRadius: 14,
+    minWidth: 44, height: 44, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
   },
   walletName: { fontSize: 15, fontWeight: '500', color: C.textPrimary },
   walletBal: { fontSize: 12, color: C.textMuted, marginTop: 2, fontVariant: ['tabular-nums'] },
+  receiptCard: {
+    position: 'absolute',
+    width: CARD_WIDTH - 12,
+    backgroundColor: C.surface,
+    borderRadius: 26,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(C.textPrimary, 0.07),
+    ...SHADOWS.lg,
+  },
+  receiptAmount: {
+    fontSize: 40,
+    fontWeight: '200',
+    color: C.textPrimary,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -1.5,
+  },
+  receiptType: {
+    fontSize: 11,
+    color: C.textMuted,
+    textAlign: 'center',
+    marginTop: 4,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  receiptDivider: {
+    flexDirection: 'row',
+    gap: 3,
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  receiptDash: {
+    flex: 1,
+    height: 1.5,
+    backgroundColor: withAlpha(C.textPrimary, 0.1),
+    borderRadius: 1,
+  },
+  receiptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 9,
+  },
+  receiptIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  receiptRowLabel: {
+    fontSize: 10,
+    color: C.textMuted,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 2,
+  },
+  receiptRowValue: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: C.textPrimary,
+  },
+  receiptActions: {
+    marginTop: 24,
+    gap: 2,
+  },
+  receiptSave: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 17,
+    borderRadius: 999,
+    backgroundColor: C.accent,
+    borderWidth: 1,
+    borderColor: withAlpha('#fff', 0.14),
+    ...SHADOWS.md,
+  },
+  receiptSaveText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  receiptChange: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingVertical: 11,
+  },
+  receiptChangeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: C.textMuted,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
   defBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: withAlpha(C.accent, 0.07),

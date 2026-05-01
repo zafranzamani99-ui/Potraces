@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 
@@ -27,6 +28,7 @@ interface ProductSetupItem {
 
 const SessionSetup: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { products, startSession } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
@@ -112,16 +114,16 @@ const SessionSetup: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.heading}>new session</Text>
+        <Text style={styles.heading}>{t.stall.newSession}</Text>
 
         {/* Session name input */}
         <View style={styles.inputSection}>
-          <Text style={styles.inputLabel}>SESSION NAME</Text>
+          <Text style={styles.inputLabel}>{t.stall.sessionNameLabel}</Text>
           <TextInput
             style={styles.textInput}
             value={sessionName}
             onChangeText={setSessionName}
-            placeholder="e.g. pasar malam seri kembangan"
+            placeholder={t.stall.sessionNamePlaceholder}
             placeholderTextColor={C.neutral}
             returnKeyType="done"
             accessibilityLabel="Session name, optional"
@@ -133,9 +135,11 @@ const SessionSetup: React.FC = () => {
         {activeProducts.length > 0 && (
           <View style={styles.productsSection}>
             <View style={styles.productsLabelRow}>
-              <Text style={[styles.inputLabel, { marginBottom: 0 }]}>PRODUCTS</Text>
+              <Text style={[styles.inputLabel, { marginBottom: 0 }]}>{t.stall.products}</Text>
               <Text style={styles.productCountBadge}>
-                {productSetup.filter((p) => p.included).length} / {productSetup.length} selected
+                {t.stall.selectedCount
+                  .replace('{selected}', String(productSetup.filter((p) => p.included).length))
+                  .replace('{total}', String(productSetup.length))}
               </Text>
             </View>
             {productSetup.map((item) => (
@@ -178,7 +182,7 @@ const SessionSetup: React.FC = () => {
                     style={styles.qtyInput}
                     value={item.startQty}
                     onChangeText={(val) => setQuantity(item.productId, val)}
-                    placeholder="qty"
+                    placeholder={t.stall.qtyPlaceholder}
                     placeholderTextColor={C.neutral}
                     keyboardType="number-pad"
                     returnKeyType="done"
@@ -195,7 +199,7 @@ const SessionSetup: React.FC = () => {
           <View style={styles.noProducts}>
             <Feather name="package" size={24} color={C.neutral} />
             <Text style={styles.noProductsText}>
-              no products set up yet.{'\n'}you can still start selling.
+              {t.stall.noProductsMsg}
             </Text>
           </View>
         )}
@@ -208,7 +212,7 @@ const SessionSetup: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Start selling session"
         >
-          <Text style={styles.startButtonText}>start selling</Text>
+          <Text style={styles.startButtonText}>{t.stall.startSelling}</Text>
         </TouchableOpacity>
 
         {/* Skip setup link */}
@@ -219,7 +223,7 @@ const SessionSetup: React.FC = () => {
           accessibilityLabel="Skip setup and start with defaults"
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={styles.skipLinkText}>skip setup</Text>
+          <Text style={styles.skipLinkText}>{t.stall.skipSetup}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

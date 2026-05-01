@@ -25,8 +25,9 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { createTransfer } from '../../utils/transferBridge';
 import { lightTap, mediumTap, successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 
 // -- Count-up animation hook ----------------------------------------
 const useCountUp = (target: number, duration: number = 300) => {
@@ -84,6 +85,7 @@ const AnimatedKeptAmount: React.FC<{ value: number; currency: string; styles: Re
 }) => {
   const animatedValue = useCountUp(value, 300);
   const [displayText, setDisplayText] = React.useState(`${currency} 0`);
+  const isDark = useIsDark();
 
   useEffect(() => {
     const id = animatedValue.addListener(({ value: v }) => {
@@ -92,11 +94,13 @@ const AnimatedKeptAmount: React.FC<{ value: number; currency: string; styles: Re
     return () => animatedValue.removeListener(id);
   }, [animatedValue, currency]);
 
-  return <Text style={[styles.keptAmount, { color: value >= 0 ? BIZ.profit : BIZ.loss }]}>{displayText}</Text>;
+  return <Text style={[styles.keptAmount, { color: value >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark) }]}>{displayText}</Text>;
 });
 
 const SeasonSummary: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
@@ -266,7 +270,7 @@ const SeasonSummary: React.FC = () => {
     const amount = parseFloat(transferAmount);
     if (!amount || amount <= 0 || !season) return;
     if (amount > untransferredAmount) {
-      showToast('cannot transfer more than untransferred amount', 'error');
+      showToast(t.seller.cannotTransferMore, 'error');
       return;
     }
 
@@ -283,9 +287,9 @@ const SeasonSummary: React.FC = () => {
       transfer.id
     );
     successNotification();
-    showToast('transferred to personal', 'success');
+    showToast(t.seller.transferredToPersonal, 'success');
     setShowTransfer(false);
-  }, [transferAmount, season, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast]);
+  }, [transferAmount, season, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast, t]);
 
   const handleEndSeason = useCallback(() => {
     mediumTap();
@@ -297,18 +301,18 @@ const SeasonSummary: React.FC = () => {
     if (!season) return;
     endSeason(season.id);
     successNotification();
-    showToast('season ended', 'success');
+    showToast(t.seller.seasonEnded, 'success');
     setShowEndModal(false);
-  }, [season, endSeason, showToast]);
+  }, [season, endSeason, showToast, t]);
 
   const handleStartNewSeason = () => {
     Alert.prompt
-      ? Alert.prompt('New season', 'What do you want to call it?', (name) => {
+      ? Alert.prompt(t.seller.newSessionPrompt, t.seller.newSessionQ, (name) => {
           if (name?.trim()) {
             addSeason({ name: name.trim(), startDate: new Date(), isActive: true });
           }
         })
-      : Alert.alert('New season', 'Use the seasons tab to start a new season.');
+      : Alert.alert(t.seller.newSessionPrompt, t.seller.newSessionFallback);
   };
 
   const generateReportText = useCallback(() => {
@@ -344,8 +348,8 @@ const SeasonSummary: React.FC = () => {
     if (!text) return;
     await Clipboard.setStringAsync(text);
     lightTap();
-    showToast('report copied', 'info');
-  }, [generateReportText, showToast]);
+    showToast(t.seller.reportCopied, 'info');
+  }, [generateReportText, showToast, t]);
 
   const handleExportXlsx = useCallback(async () => {
     if (!season || !stats) return;
@@ -410,21 +414,21 @@ const SeasonSummary: React.FC = () => {
           dialogTitle: `${season.name} Report`,
         });
       } else {
-        showToast('sharing not available on this device', 'error');
+        showToast(t.seller.sharingNotAvailable, 'error');
       }
     } catch (e) {
-      showToast('failed to export report', 'error');
+      showToast(t.seller.failedToExport, 'error');
     }
-  }, [season, stats, orders, currency, showToast]);
+  }, [season, stats, orders, currency, showToast, t]);
 
   if (!season || !stats) {
     return (
       <View style={styles.container}>
         <View style={styles.noSeason}>
           <Feather name="calendar" size={48} color={C.border} />
-          <Text style={styles.noSeasonTitle}>no active season</Text>
+          <Text style={styles.noSeasonTitle}>{t.seller.noActiveSeason}</Text>
           <Text style={styles.noSeasonText}>
-            start a season when you begin taking orders for an event, like Raya or CNY.
+            {t.seller.noActiveSeasonText}
           </Text>
           <TouchableOpacity
             style={styles.startSeasonButton}
@@ -434,7 +438,7 @@ const SeasonSummary: React.FC = () => {
             accessibilityLabel="Start a season"
           >
             <Feather name="plus" size={18} color="#fff" />
-            <Text style={styles.startSeasonButtonText}>start a season</Text>
+            <Text style={styles.startSeasonButtonText}>{t.seller.startASeason}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -442,7 +446,7 @@ const SeasonSummary: React.FC = () => {
   }
 
   // Emotional messaging based on results
-  const emotionalMessage = useMemo(() => getEmotionalMessage(stats.kept, stats.totalOrders, stats.customerCount), [stats.kept, stats.totalOrders, stats.customerCount]);
+  const emotionalMessage = useMemo(() => getEmotionalMessage(stats.kept, stats.totalOrders, stats.customerCount, t), [stats.kept, stats.totalOrders, stats.customerCount, t]);
 
   return (
     <View style={styles.container}>
@@ -470,7 +474,7 @@ const SeasonSummary: React.FC = () => {
             {format(season.startDate instanceof Date ? season.startDate : new Date(season.startDate), 'dd MMM yyyy, h:mm a')}
             {season.endDate
               ? ` \u2013 ${format(season.endDate instanceof Date ? season.endDate : new Date(season.endDate), 'dd MMM yyyy, h:mm a')}`
-              : ' \u2013 now'}
+              : ` \u2013 ${t.seller.now}`}
           </Text>
         </FadeInSection>
 
@@ -479,10 +483,10 @@ const SeasonSummary: React.FC = () => {
           <View style={styles.keptSection}>
             <View style={styles.ledgerLine} />
             <View style={styles.keptInner}>
-              <Text style={styles.keptLabel}>you kept</Text>
+              <Text style={styles.keptLabel}>{t.seller.youKept}</Text>
               <AnimatedKeptAmount value={stats.kept} currency={currency} styles={styles} />
               <Text style={styles.keptSubtext}>
-                after {currency} {stats.totalCosts.toFixed(0)} in ingredients
+                {t.seller.afterInIngredients.replace('{currency}', currency).replace('{amount}', stats.totalCosts.toFixed(0))}
               </Text>
             </View>
             <View style={styles.ledgerLine} />
@@ -504,26 +508,26 @@ const SeasonSummary: React.FC = () => {
                 <Feather name="clipboard" size={16} color={C.gold} />
               </View>
               <Text style={styles.statNumber}>{stats.totalOrders}</Text>
-              <Text style={styles.statLabel}>orders</Text>
+              <Text style={styles.statLabel}>{t.seller.orders}</Text>
             </View>
             <View style={styles.statBoxDivider} />
             <View style={styles.statBox} accessible={true} accessibilityLabel={`${stats.customerCount} customers`}>
-              <View style={[styles.statIconCircle, { backgroundColor: withAlpha(BIZ.success, 0.1) }]}>
-                <Feather name="users" size={16} color={BIZ.success} />
+              <View style={[styles.statIconCircle, { backgroundColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.1) }]}>
+                <Feather name="users" size={16} color={semantic(BIZ_SAFE.success, isDark)} />
               </View>
               <Text style={styles.statNumber}>{stats.customerCount}</Text>
-              <Text style={styles.statLabel}>customers</Text>
+              <Text style={styles.statLabel}>{t.seller.customers}</Text>
             </View>
           </View>
           <View style={styles.statsWideRow}>
             <View style={styles.statBoxWide} accessible={true} accessibilityLabel={`Total income ${currency} ${stats.totalIncome.toFixed(0)}`}>
-              <View style={[styles.statIconCircle, { backgroundColor: withAlpha(BIZ.profit, 0.1) }]}>
-                <Feather name="trending-up" size={16} color={BIZ.profit} />
+              <View style={[styles.statIconCircle, { backgroundColor: withAlpha(semantic(BIZ_SAFE.profit, isDark), 0.1) }]}>
+                <Feather name="trending-up" size={16} color={semantic(BIZ_SAFE.profit, isDark)} />
               </View>
-              <Text style={[styles.statNumber, { color: BIZ.profit }]}>
+              <Text style={[styles.statNumber, { color: semantic(BIZ_SAFE.profit, isDark) }]}>
                 {currency} {stats.totalIncome.toFixed(0)}
               </Text>
-              <Text style={styles.statLabel}>came in</Text>
+              <Text style={styles.statLabel}>{t.seller.cameIn}</Text>
             </View>
           </View>
         </FadeInSection>
@@ -535,25 +539,28 @@ const SeasonSummary: React.FC = () => {
               <View style={styles.targetRow}>
                 <Feather name="target" size={14} color={C.accent} />
                 <Text style={styles.targetLabel}>
-                  {currency} {stats.totalIncome.toFixed(0)} / {currency} {season.revenueTarget.toFixed(0)} target
+                  {currency} {stats.totalIncome.toFixed(0)} / {currency} {season.revenueTarget.toFixed(0)} {t.seller.target}
                 </Text>
                 <TouchableOpacity onPress={() => { setTargetInput(String(season.revenueTarget)); setShowTargetInput(true); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Feather name="edit-2" size={12} color={C.textMuted} />
                 </TouchableOpacity>
               </View>
               <View style={styles.targetBarBg}>
-                <View style={[styles.targetBarFill, { width: `${Math.min(100, (stats.totalIncome / season.revenueTarget) * 100)}%` as any, backgroundColor: stats.totalIncome >= season.revenueTarget ? BIZ.profit : C.accent }]} />
+                <View style={[styles.targetBarFill, { width: `${Math.min(100, (stats.totalIncome / season.revenueTarget) * 100)}%` as any, backgroundColor: stats.totalIncome >= season.revenueTarget ? semantic(BIZ_SAFE.profit, isDark) : C.accent }]} />
               </View>
               <Text style={styles.targetPct}>
                 {stats.totalIncome >= season.revenueTarget
-                  ? `target reached \u2714`
-                  : `${((stats.totalIncome / season.revenueTarget) * 100).toFixed(0)}% · need ${currency} ${(season.revenueTarget - stats.totalIncome).toFixed(0)} more`}
+                  ? `${t.seller.targetReached} \u2714`
+                  : t.seller.needMore
+                      .replace('{pct}', ((stats.totalIncome / season.revenueTarget) * 100).toFixed(0))
+                      .replace('{currency}', currency)
+                      .replace('{amount}', (season.revenueTarget - stats.totalIncome).toFixed(0))}
               </Text>
             </View>
           ) : (
             <TouchableOpacity style={styles.setTargetBtn} onPress={() => { setTargetInput(''); setShowTargetInput(true); }} activeOpacity={0.7}>
               <Feather name="target" size={14} color={C.textMuted} />
-              <Text style={styles.setTargetText}>set season target</Text>
+              <Text style={styles.setTargetText}>{t.seller.setSeasonTarget}</Text>
             </TouchableOpacity>
           )}
         </FadeInSection>
@@ -567,7 +574,7 @@ const SeasonSummary: React.FC = () => {
               activeOpacity={0.7}
             >
               <Feather name="bar-chart-2" size={14} color={C.textMuted} />
-              <Text style={styles.compareToggleText}>compare with previous season</Text>
+              <Text style={styles.compareToggleText}>{t.seller.compareWithPrev}</Text>
               <Feather name={showCompare ? 'chevron-up' : 'chevron-down'} size={14} color={C.textMuted} />
             </TouchableOpacity>
             {showCompare && (
@@ -593,22 +600,22 @@ const SeasonSummary: React.FC = () => {
                   <View style={styles.compareGrid}>
                     <View style={styles.compareHeaderRow}>
                       <Text style={styles.compareHeaderLabel} />
-                      <Text style={styles.compareHeaderThis}>this</Text>
-                      <Text style={styles.compareHeaderPrev}>{seasons.find((s) => s.id === compareSeasonId)?.name ?? 'prev'}</Text>
+                      <Text style={styles.compareHeaderThis}>{t.seller.thisCol}</Text>
+                      <Text style={styles.compareHeaderPrev}>{seasons.find((s) => s.id === compareSeasonId)?.name ?? t.seller.prevCol}</Text>
                       <Text style={styles.compareHeaderDelta}>Δ</Text>
                     </View>
                     {([
-                      { label: 'orders', cur: stats.totalOrders, prev: compareStats.totalOrders, fmt: (v: number) => String(v) },
-                      { label: 'customers', cur: stats.customerCount, prev: compareStats.customerCount, fmt: (v: number) => String(v) },
-                      { label: 'came in', cur: stats.totalIncome, prev: compareStats.totalIncome, fmt: (v: number) => `${currency} ${v.toFixed(0)}` },
-                      { label: 'costs', cur: stats.totalCosts, prev: compareStats.totalCosts, fmt: (v: number) => `${currency} ${v.toFixed(0)}` },
-                      { label: 'kept', cur: stats.kept, prev: compareStats.kept, fmt: (v: number) => `${currency} ${v.toFixed(0)}` },
-                    ] as const).map(({ label, cur, prev, fmt }) => {
+                      { label: t.seller.orders, cur: stats.totalOrders, prev: compareStats.totalOrders, fmt: (v: number) => String(v) },
+                      { label: t.seller.customers, cur: stats.customerCount, prev: compareStats.customerCount, fmt: (v: number) => String(v) },
+                      { label: t.seller.cameIn, cur: stats.totalIncome, prev: compareStats.totalIncome, fmt: (v: number) => `${currency} ${v.toFixed(0)}` },
+                      { label: t.seller.costsCol, cur: stats.totalCosts, prev: compareStats.totalCosts, fmt: (v: number) => `${currency} ${v.toFixed(0)}` },
+                      { label: t.seller.keptCol, cur: stats.kept, prev: compareStats.kept, fmt: (v: number) => `${currency} ${v.toFixed(0)}` },
+                    ]).map(({ label, cur, prev, fmt }) => {
                       const diff = cur - prev;
                       const pct = prev !== 0 ? Math.abs(diff / prev) * 100 : null;
                       const up = diff > 0;
                       const same = diff === 0;
-                      const isGood = label === 'costs' ? !up : up;
+                      const isGood = label === t.seller.costsCol ? !up : up;
                       return (
                         <View key={label} style={styles.compareRow}>
                           <Text style={styles.compareRowLabel}>{label}</Text>
@@ -617,8 +624,8 @@ const SeasonSummary: React.FC = () => {
                           <View style={styles.compareRowDelta}>
                             {!same && (
                               <>
-                                <Feather name={up ? 'arrow-up' : 'arrow-down'} size={10} color={isGood ? BIZ.profit : C.bronze} />
-                                <Text style={[styles.compareRowDeltaText, { color: isGood ? BIZ.profit : C.bronze }]}>
+                                <Feather name={up ? 'arrow-up' : 'arrow-down'} size={10} color={isGood ? semantic(BIZ_SAFE.profit, isDark) : C.bronze} />
+                                <Text style={[styles.compareRowDeltaText, { color: isGood ? semantic(BIZ_SAFE.profit, isDark) : C.bronze }]}>
                                   {pct != null ? `${pct.toFixed(0)}%` : (up ? '+' : '−')}
                                 </Text>
                               </>
@@ -644,8 +651,11 @@ const SeasonSummary: React.FC = () => {
               accessibilityLabel={`${stats.unpaidOrders} unpaid orders totalling ${currency} ${stats.unpaidAmount.toFixed(2)}`}
             >
               <Text style={styles.unpaidText}>
-                {stats.unpaidOrders} order{stats.unpaidOrders !== 1 ? 's' : ''} still unpaid {'\u00B7'}{' '}
-                {currency} {stats.unpaidAmount.toFixed(0)}
+                {t.seller.unpaidNotice
+                  .replace('{n}', String(stats.unpaidOrders))
+                  .replace('{plural}', stats.unpaidOrders !== 1 ? 's' : '')
+                  .replace('{currency}', currency)
+                  .replace('{amount}', stats.unpaidAmount.toFixed(0))}
               </Text>
             </View>
           </FadeInSection>
@@ -658,11 +668,13 @@ const SeasonSummary: React.FC = () => {
               <View style={styles.transferHeader}>
                 <Feather name="refresh-cw" size={16} color={C.bronze} />
                 <Text style={styles.transferTitle}>
-                  {currency} {untransferredAmount.toFixed(0)} untransferred
+                  {t.seller.untransferred.replace('{currency}', currency).replace('{amount}', untransferredAmount.toFixed(0))}
                 </Text>
               </View>
               <Text style={styles.transferSubtext}>
-                {untransferredOrders.length} paid order{untransferredOrders.length !== 1 ? 's' : ''} not yet in your personal wallet
+                {t.seller.untransferredSub
+                  .replace('{n}', String(untransferredOrders.length))
+                  .replace('{plural}', untransferredOrders.length !== 1 ? 's' : '')}
               </Text>
               {showTransfer ? (
                 <View style={styles.transferInputRow}>
@@ -682,7 +694,7 @@ const SeasonSummary: React.FC = () => {
                     onPress={handleTransferToPersonal}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Text style={styles.transferConfirmText}>transfer</Text>
+                    <Text style={styles.transferConfirmText}>{t.seller.transfer}</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -692,7 +704,7 @@ const SeasonSummary: React.FC = () => {
                   onPress={() => { lightTap(); setShowTransfer(true); }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Text style={styles.transferButtonText}>transfer to personal</Text>
+                  <Text style={styles.transferButtonText}>{t.seller.transferToPersonal}</Text>
                   <Feather name="arrow-right" size={14} color={C.bronze} />
                 </TouchableOpacity>
               )}
@@ -704,7 +716,7 @@ const SeasonSummary: React.FC = () => {
         {stats.topProducts.length > 0 && (
           <FadeInSection delay={250}>
             <View style={styles.topSection}>
-              <Text style={styles.sectionTitle}>what people ordered most</Text>
+              <Text style={styles.sectionTitle}>{t.seller.whatPeopleOrderedMost}</Text>
               {stats.topProducts.map((p, i) => {
                 const proportion = stats.maxQty > 0 ? p.qty / stats.maxQty : 0;
                 return (
@@ -714,7 +726,7 @@ const SeasonSummary: React.FC = () => {
                         <Text style={styles.rankText}>{i + 1}</Text>
                       </View>
                       <Text style={styles.topName}>{p.name}</Text>
-                      <Text style={styles.topQty}>{p.qty} units</Text>
+                      <Text style={styles.topQty}>{t.seller.unitsSuffix.replace('{n}', String(p.qty))}</Text>
                     </View>
                     {/* Proportional bar */}
                     <View style={styles.barTrack}>
@@ -746,7 +758,7 @@ const SeasonSummary: React.FC = () => {
                   <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(C.gold, 0.1) }]}>
                     <Feather name="clipboard" size={16} color={C.gold} />
                   </View>
-                  <Text style={styles.actionRowText}>orders</Text>
+                  <Text style={styles.actionRowText}>{t.seller.orders}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <View style={styles.inlineListBadge}>
@@ -768,7 +780,7 @@ const SeasonSummary: React.FC = () => {
                   <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
                     <Feather name="dollar-sign" size={16} color={C.accent} />
                   </View>
-                  <Text style={styles.actionRowText}>costs</Text>
+                  <Text style={styles.actionRowText}>{t.seller.costs}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <View style={styles.inlineListBadge}>
@@ -789,10 +801,10 @@ const SeasonSummary: React.FC = () => {
                 accessibilityLabel="Copy season report"
               >
                 <View style={styles.actionRowLeft}>
-                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(BIZ.success, 0.08) }]}>
-                    <Feather name="copy" size={16} color={BIZ.success} />
+                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.08) }]}>
+                    <Feather name="copy" size={16} color={semantic(BIZ_SAFE.success, isDark)} />
                   </View>
-                  <Text style={styles.actionRowText}>copy report</Text>
+                  <Text style={styles.actionRowText}>{t.seller.copyReport}</Text>
                 </View>
                 <Feather name="copy" size={14} color={C.textMuted} />
               </TouchableOpacity>
@@ -808,10 +820,10 @@ const SeasonSummary: React.FC = () => {
                 accessibilityLabel="Export season report as spreadsheet"
               >
                 <View style={styles.actionRowLeft}>
-                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(BIZ.success, 0.08) }]}>
-                    <Feather name="download" size={16} color={BIZ.success} />
+                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.08) }]}>
+                    <Feather name="download" size={16} color={semantic(BIZ_SAFE.success, isDark)} />
                   </View>
-                  <Text style={styles.actionRowText}>export report</Text>
+                  <Text style={styles.actionRowText}>{t.seller.exportReport}</Text>
                 </View>
                 <Feather name="download" size={14} color={C.textMuted} />
               </TouchableOpacity>
@@ -827,12 +839,12 @@ const SeasonSummary: React.FC = () => {
                 accessibilityLabel="End this season"
               >
                 <View style={styles.actionRowLeft}>
-                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(BIZ.warning, 0.1) }]}>
-                    <Feather name="x-circle" size={16} color={BIZ.warning} />
+                  <View style={[styles.actionIconCircle, { backgroundColor: withAlpha(semantic(BIZ_SAFE.warning, isDark), 0.1) }]}>
+                    <Feather name="x-circle" size={16} color={semantic(BIZ_SAFE.warning, isDark)} />
                   </View>
-                  <Text style={[styles.actionRowText, { color: BIZ.warning }]}>end this season</Text>
+                  <Text style={[styles.actionRowText, { color: semantic(BIZ_SAFE.warning, isDark) }]}>{t.seller.endThisSeason}</Text>
                 </View>
-                <Feather name="chevron-right" size={16} color={BIZ.warning} />
+                <Feather name="chevron-right" size={16} color={semantic(BIZ_SAFE.warning, isDark)} />
               </TouchableOpacity>
             </View>
           ) : (
@@ -840,16 +852,16 @@ const SeasonSummary: React.FC = () => {
               {/* Season complete badge */}
               <View style={styles.completeBadge}>
                 <View style={styles.completeIconCircle}>
-                  <Feather name="check-circle" size={20} color={BIZ.success} />
+                  <Feather name="check-circle" size={20} color={semantic(BIZ_SAFE.success, isDark)} />
                 </View>
                 <View style={styles.completeBadgeText}>
-                  <Text style={styles.completeTitle}>season complete</Text>
+                  <Text style={styles.completeTitle}>{t.seller.seasonComplete}</Text>
                   {season.endDate && (
                     <Text style={styles.completeDate}>
-                      ended {format(
+                      {t.seller.endedOn.replace('{date}', format(
                         season.endDate instanceof Date ? season.endDate : new Date(season.endDate),
                         'dd MMM yyyy, h:mm a'
-                      )}
+                      ))}
                     </Text>
                   )}
                 </View>
@@ -864,8 +876,8 @@ const SeasonSummary: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Copy season report"
                 >
-                  <Feather name="copy" size={16} color={BIZ.success} />
-                  <Text style={styles.reportButtonText}>copy report</Text>
+                  <Feather name="copy" size={16} color={semantic(BIZ_SAFE.success, isDark)} />
+                  <Text style={styles.reportButtonText}>{t.seller.copyReport}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.reportButton}
@@ -874,8 +886,8 @@ const SeasonSummary: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Export report as spreadsheet"
                 >
-                  <Feather name="download" size={16} color={BIZ.success} />
-                  <Text style={styles.reportButtonText}>export xlsx</Text>
+                  <Feather name="download" size={16} color={semantic(BIZ_SAFE.success, isDark)} />
+                  <Text style={styles.reportButtonText}>{t.seller.exportXlsx}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -890,12 +902,16 @@ const SeasonSummary: React.FC = () => {
                     const totalAmount = transferred.reduce((s, o) => s + o.totalAmount, 0);
 
                     Alert.alert(
-                      'Undo transfers?',
-                      `This will reverse ${transferred.length} order${transferred.length !== 1 ? 's' : ''} (${currency} ${totalAmount.toFixed(2)}) transferred to your personal account.\n\nThe money will be removed from your personal wallet.`,
+                      t.seller.undoTransfersTitle,
+                      t.seller.undoTransfersMsg
+                        .replace('{n}', String(transferred.length))
+                        .replace('{plural}', transferred.length !== 1 ? 's' : '')
+                        .replace('{currency}', currency)
+                        .replace('{amount}', totalAmount.toFixed(2)),
                       [
-                        { text: 'Cancel', style: 'cancel' },
+                        { text: t.seller.cancel, style: 'cancel' },
                         {
-                          text: 'Undo',
+                          text: t.seller.undo,
                           style: 'destructive',
                           onPress: () => {
                             for (const tid of transferIds) {
@@ -903,7 +919,7 @@ const SeasonSummary: React.FC = () => {
                               deleteTransfer(tid!);
                               deletePersonalTransaction(`transfer-${tid}`);
                             }
-                            showToast('transfers undone', 'success');
+                            showToast(t.seller.transfersUndone, 'success');
                           },
                         },
                       ]
@@ -913,7 +929,7 @@ const SeasonSummary: React.FC = () => {
                   accessibilityLabel="Undo transfers to personal"
                 >
                   <Feather name="rotate-ccw" size={16} color={C.bronze} />
-                  <Text style={styles.undoTransfersText}>undo transfers</Text>
+                  <Text style={styles.undoTransfersText}>{t.seller.undoTransfers}</Text>
                 </TouchableOpacity>
               )}
 
@@ -925,8 +941,8 @@ const SeasonSummary: React.FC = () => {
                   // Block deleting active season
                   if (!season.endDate) {
                     Alert.alert(
-                      'Season is still active',
-                      'End the season first before deleting.',
+                      t.seller.seasonStillActive,
+                      t.seller.endFirstBeforeDelete,
                       [{ text: 'OK' }]
                     );
                     return;
@@ -935,19 +951,23 @@ const SeasonSummary: React.FC = () => {
                   if (transferredOrders.length > 0) {
                     const totalTransferred = transferredOrders.reduce((s, o) => s + o.totalAmount, 0);
                     Alert.alert(
-                      'Season can\'t be deleted',
-                      `${transferredOrders.length} order${transferredOrders.length !== 1 ? 's' : ''} (${currency} ${totalTransferred.toFixed(2)}) from this season have already been transferred to your personal account.\n\nTo delete this season, you need to undo those transfers first.`,
+                      t.seller.seasonCantBeDeleted,
+                      t.seller.seasonCantBeDeletedMsg
+                        .replace('{n}', String(transferredOrders.length))
+                        .replace('{plural}', transferredOrders.length !== 1 ? 's' : '')
+                        .replace('{currency}', currency)
+                        .replace('{amount}', totalTransferred.toFixed(2)),
                       [{ text: 'OK' }]
                     );
                     return;
                   }
                   Alert.alert(
-                    `Delete ${season.name}?`,
-                    `This will permanently remove this season and all its ${stats?.totalOrders ?? 0} orders and costs. This cannot be undone.`,
+                    t.seller.deleteSeasonTitle.replace('{name}', season.name),
+                    t.seller.deleteSeasonMsg.replace('{n}', String(stats?.totalOrders ?? 0)),
                     [
-                      { text: 'Cancel', style: 'cancel' },
+                      { text: t.seller.cancel, style: 'cancel' },
                       {
-                        text: 'Delete',
+                        text: t.seller.delete,
                         style: 'destructive',
                         onPress: () => {
                           deleteSeason(season.id);
@@ -960,8 +980,8 @@ const SeasonSummary: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Delete this season"
               >
-                <Feather name="trash-2" size={16} color={BIZ.error} />
-                <Text style={styles.deleteSeasonText}>delete this season</Text>
+                <Feather name="trash-2" size={16} color={semantic(BIZ_SAFE.error, isDark)} />
+                <Text style={styles.deleteSeasonText}>{t.seller.deleteThisSeason}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -974,30 +994,34 @@ const SeasonSummary: React.FC = () => {
           <Pressable style={styles.endModalContent} onPress={() => {}}>
             <View style={styles.endModalHeader}>
               <Feather name="calendar" size={20} color={C.bronze} />
-              <Text style={styles.endModalTitle}>end {season?.name}?</Text>
+              <Text style={styles.endModalTitle}>{t.seller.endSeasonTitle.replace('{name}', season?.name || '')}</Text>
             </View>
 
             <View style={styles.endModalStats}>
               <View style={styles.endModalStatItem}>
                 <Text style={styles.endModalStatValue}>{stats?.totalOrders ?? 0}</Text>
-                <Text style={styles.endModalStatLabel}>orders</Text>
+                <Text style={styles.endModalStatLabel}>{t.seller.orders}</Text>
               </View>
               <View style={styles.endModalStatItem}>
                 <Text style={styles.endModalStatValue}>{stats?.customerCount ?? 0}</Text>
-                <Text style={styles.endModalStatLabel}>customers</Text>
+                <Text style={styles.endModalStatLabel}>{t.seller.customers}</Text>
               </View>
               <View style={styles.endModalStatItem}>
-                <Text style={[styles.endModalStatValue, { color: BIZ.profit }]}>{currency} {(stats?.kept ?? 0).toFixed(0)}</Text>
-                <Text style={styles.endModalStatLabel}>kept</Text>
+                <Text style={[styles.endModalStatValue, { color: semantic(BIZ_SAFE.profit, isDark) }]}>{currency} {(stats?.kept ?? 0).toFixed(0)}</Text>
+                <Text style={styles.endModalStatLabel}>{t.seller.keptStat}</Text>
               </View>
             </View>
 
-            <Text style={styles.endModalWarning}>this will mark the season as complete. you can still view it in past seasons.</Text>
+            <Text style={styles.endModalWarning}>{t.seller.endModalWarning}</Text>
 
             {(stats?.unpaidOrders ?? 0) > 0 && (
-              <View style={[styles.endModalInfoBox, { borderLeftColor: BIZ.unpaid }]}>
+              <View style={[styles.endModalInfoBox, { borderLeftColor: semantic(BIZ_SAFE.unpaid, isDark) }]}>
                 <Text style={styles.endModalInfoText}>
-                  {stats!.unpaidOrders} order{stats!.unpaidOrders !== 1 ? 's' : ''} still unpaid ({currency} {stats!.unpaidAmount.toFixed(0)}) — you can still collect after ending
+                  {t.seller.stillUnpaidCollectLater
+                    .replace('{n}', String(stats!.unpaidOrders))
+                    .replace('{plural}', stats!.unpaidOrders !== 1 ? 's' : '')
+                    .replace('{currency}', currency)
+                    .replace('{amount}', stats!.unpaidAmount.toFixed(0))}
                 </Text>
               </View>
             )}
@@ -1005,7 +1029,7 @@ const SeasonSummary: React.FC = () => {
             {untransferredAmount > 0 && (
               <View style={[styles.endModalInfoBox, { borderLeftColor: C.bronze }]}>
                 <Text style={styles.endModalInfoText}>
-                  {currency} {untransferredAmount.toFixed(0)} not yet transferred to personal
+                  {t.seller.notYetTransferred.replace('{currency}', currency).replace('{amount}', untransferredAmount.toFixed(0))}
                 </Text>
               </View>
             )}
@@ -1016,14 +1040,14 @@ const SeasonSummary: React.FC = () => {
                 onPress={() => setShowEndModal(false)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.endModalCancelText}>not yet</Text>
+                <Text style={styles.endModalCancelText}>{t.seller.notYet}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.endModalConfirmBtn}
                 onPress={confirmEndSeason}
                 activeOpacity={0.7}
               >
-                <Text style={styles.endModalConfirmText}>end season</Text>
+                <Text style={styles.endModalConfirmText}>{t.seller.endSeasonBtn}</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -1038,7 +1062,7 @@ const SeasonSummary: React.FC = () => {
               <View style={[styles.inlineListIconCircle, { backgroundColor: withAlpha(C.gold, 0.1) }]}>
                 <Feather name="clipboard" size={14} color={C.gold} />
               </View>
-              <Text style={styles.listModalTitle}>orders</Text>
+              <Text style={styles.listModalTitle}>{t.seller.orders}</Text>
               <View style={styles.inlineListBadge}>
                 <Text style={styles.inlineListBadgeText}>{seasonOrders.length}</Text>
               </View>
@@ -1054,7 +1078,7 @@ const SeasonSummary: React.FC = () => {
             <ScrollView style={styles.listModalScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
               {seasonOrders.length === 0 ? (
                 <View style={styles.inlineListEmpty}>
-                  <Text style={styles.inlineListEmptyText}>no orders yet</Text>
+                  <Text style={styles.inlineListEmptyText}>{t.seller.noOrdersYet}</Text>
                 </View>
               ) : (
                 seasonOrders.map((order, i) => (
@@ -1073,7 +1097,7 @@ const SeasonSummary: React.FC = () => {
                         <Text style={styles.orderItemAmount}>{currency} {order.totalAmount.toFixed(0)}</Text>
                         <View style={[
                           styles.orderStatusDot,
-                          { backgroundColor: order.isPaid ? BIZ.profit : BIZ.unpaid },
+                          { backgroundColor: order.isPaid ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.unpaid, isDark) },
                         ]} />
                       </View>
                     </View>
@@ -1093,7 +1117,7 @@ const SeasonSummary: React.FC = () => {
               <View style={[styles.inlineListIconCircle, { backgroundColor: withAlpha(C.accent, 0.1) }]}>
                 <Feather name="dollar-sign" size={14} color={C.accent} />
               </View>
-              <Text style={styles.listModalTitle}>costs</Text>
+              <Text style={styles.listModalTitle}>{t.seller.costs}</Text>
               <View style={styles.inlineListBadge}>
                 <Text style={styles.inlineListBadgeText}>{seasonCosts.length}</Text>
               </View>
@@ -1109,7 +1133,7 @@ const SeasonSummary: React.FC = () => {
             <ScrollView style={styles.listModalScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
               {seasonCosts.length === 0 ? (
                 <View style={styles.inlineListEmpty}>
-                  <Text style={styles.inlineListEmptyText}>no costs logged</Text>
+                  <Text style={styles.inlineListEmptyText}>{t.seller.noCostsLogged}</Text>
                 </View>
               ) : (
                 seasonCosts.map((cost, i) => (
@@ -1139,12 +1163,12 @@ const SeasonSummary: React.FC = () => {
       {showRenameModal && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowRenameModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowRenameModal(false)}>
           <Pressable style={styles.renameModalContent} onPress={() => {}}>
-            <Text style={styles.renameModalTitle}>rename season</Text>
+            <Text style={styles.renameModalTitle}>{t.seller.renameSeason}</Text>
             <TextInput
               style={styles.renameModalInput}
               value={renameValue}
               onChangeText={setRenameValue}
-              placeholder="Season name"
+              placeholder={t.seller.seasonNamePlaceholder}
               placeholderTextColor={C.textSecondary}
               autoFocus
               selectTextOnFocus
@@ -1155,21 +1179,21 @@ const SeasonSummary: React.FC = () => {
                 style={styles.renameModalCancel}
                 activeOpacity={0.7}
               >
-                <Text style={styles.renameModalCancelText}>cancel</Text>
+                <Text style={styles.renameModalCancelText}>{t.seller.cancelLower}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
                   const trimmed = renameValue.trim();
                   if (trimmed && trimmed !== season.name) {
                     updateSeasonName(season.id, trimmed);
-                    showToast('season renamed', 'success');
+                    showToast(t.seller.seasonRenamed, 'success');
                   }
                   setShowRenameModal(false);
                 }}
                 style={styles.renameModalConfirm}
                 activeOpacity={0.7}
               >
-                <Text style={styles.renameModalConfirmText}>save</Text>
+                <Text style={styles.renameModalConfirmText}>{t.seller.save}</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -1180,12 +1204,12 @@ const SeasonSummary: React.FC = () => {
       {showTargetInput && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowTargetInput(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowTargetInput(false)}>
           <Pressable style={styles.renameModalContent} onPress={() => {}}>
-            <Text style={styles.renameModalTitle}>season target</Text>
+            <Text style={styles.renameModalTitle}>{t.seller.seasonTargetTitle}</Text>
             <TextInput
               style={styles.renameModalInput}
               value={targetInput}
               onChangeText={setTargetInput}
-              placeholder="e.g. 2000"
+              placeholder={t.seller.targetPlaceholder}
               placeholderTextColor={C.textSecondary}
               keyboardType="numeric"
               autoFocus
@@ -1197,7 +1221,7 @@ const SeasonSummary: React.FC = () => {
                 style={styles.renameModalCancel}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.renameModalCancelText, { color: C.textMuted }]}>clear</Text>
+                <Text style={[styles.renameModalCancelText, { color: C.textMuted }]}>{t.seller.clear}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
@@ -1210,7 +1234,7 @@ const SeasonSummary: React.FC = () => {
                 style={[styles.renameModalConfirm, { backgroundColor: C.accent }]}
                 activeOpacity={0.7}
               >
-                <Text style={styles.renameModalConfirmText}>save</Text>
+                <Text style={styles.renameModalConfirmText}>{t.seller.save}</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -1223,24 +1247,25 @@ const SeasonSummary: React.FC = () => {
 function getEmotionalMessage(
   kept: number,
   totalOrders: number,
-  customerCount: number
+  customerCount: number,
+  t: any
 ): string | null {
   if (totalOrders === 0) return null;
 
   if (kept > 0 && totalOrders >= 10) {
-    return `${totalOrders} orders. That's a lot of work \u2014 and you showed up for every one.`;
+    return t.seller.emoManyOrders.replace('{n}', String(totalOrders));
   }
 
   if (kept > 0 && customerCount >= 5) {
-    return `${customerCount} different people trusted your food this season. That matters.`;
+    return t.seller.emoManyCustomers.replace('{n}', String(customerCount));
   }
 
   if (kept > 0) {
-    return "You made something, people wanted it, and you kept some of it. That's real.";
+    return t.seller.emoKeptSome;
   }
 
   if (kept <= 0 && totalOrders > 0) {
-    return "Costs were high this time. That doesn't take away from the work you put in.";
+    return t.seller.emoHighCosts;
   }
 
   return null;

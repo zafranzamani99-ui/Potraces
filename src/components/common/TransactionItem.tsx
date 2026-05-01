@@ -4,6 +4,7 @@ import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { Feather } from '@expo/vector-icons';
 import { format, isValid } from 'date-fns';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, ICON_SIZE, withAlpha } from '../../constants';
+import WalletLogo from './WalletLogo';
 import { useCalm } from '../../hooks/useCalm';
 import { Transaction, CategoryOption, Wallet } from '../../types';
 import { lightTap } from '../../services/haptics';
@@ -142,7 +143,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
           )}
           {wallet && (
             <View style={styles.walletBadge}>
-              <Feather name={wallet.icon as keyof typeof Feather.glyphMap} size={10} color={wallet.color} />
+              <WalletLogo wallet={wallet} size={14} />
               <Text style={[styles.walletBadgeText, { color: wallet.color }]}>{wallet.name}</Text>
             </View>
           )}

@@ -84,7 +84,7 @@ const SIZE_CONFIG: Record<
   { height: number; paddingH: number; fontSize: number; iconSize: number }
 > = {
   small: {
-    height: 44,
+    height: 44, // WCAG 2.5.5 — tap-target minimum
     paddingH: SPACING.md,
     fontSize: TYPOGRAPHY.size.sm,
     iconSize: 16,
@@ -102,6 +102,9 @@ const SIZE_CONFIG: Record<
     iconSize: 20,
   },
 };
+
+// WCAG 2.5.5 — enforced minimums on every Button regardless of variant/size.
+const MIN_TAP = 44;
 
 const Button: React.FC<ButtonProps> = ({
   title,
@@ -150,6 +153,8 @@ const Button: React.FC<ButtonProps> = ({
 
   const containerStyle: ViewStyle = {
     height: sizeCfg.height,
+    minHeight: MIN_TAP,
+    minWidth: MIN_TAP,
     paddingHorizontal: sizeCfg.paddingH,
     backgroundColor: variantCfg.bg,
     borderColor: variantCfg.border,
