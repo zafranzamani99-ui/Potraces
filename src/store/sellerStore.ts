@@ -675,7 +675,21 @@ export const useSellerStore = create<SellerState>()(
             updatedAt: row.updated_at ? new Date(row.updated_at as string) : new Date(),
           };
 
-          return { orders: [newOrder, ...state.orders] };
+          // Mirror addOrder: an online sale must also move product totalSold and
+          // stock, or stock reads too high (overselling) and totalSold understates.
+          // Safe from double-count — the supabaseId dedup above runs first, and the
+          // main pull only fetches source='app' orders.
+          const updatedProducts = state.products.map((p) => {
+            const item = newOrder.items.find((i) => i.productId === p.id);
+            if (!item) return p;
+            const updates: any = { ...p, totalSold: p.totalSold + item.quantity, updatedAt: new Date() };
+            if (p.trackStock && p.stockQuantity != null) {
+              updates.stockQuantity = Math.max(0, p.stockQuantity - item.quantity);
+            }
+            return updates;
+          });
+
+          return { orders: [newOrder, ...state.orders], products: updatedProducts };
         }),
 
       // ─── Seen Online Orders ──────────────────────────────

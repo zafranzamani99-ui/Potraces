@@ -499,6 +499,9 @@ const NewOrder: React.FC = () => {
       showToast('no valid products in order', 'error');
       return;
     }
+    // Total must reflect the items actually saved, not the full (pre-filter)
+    // list — otherwise an excluded unmatched item inflates the order total.
+    const validTotal = validItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
 
     // Validate customer phone before creating order
     if (!persistCustomer()) return;
@@ -512,7 +515,7 @@ const NewOrder: React.FC = () => {
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
       customerAddress: customerAddress.trim() || undefined,
-      totalAmount: total,
+      totalAmount: validTotal,
       status: 'pending',
       isPaid: false,
       note: note.trim() || undefined,
@@ -522,8 +525,10 @@ const NewOrder: React.FC = () => {
       seasonId: activeSeason?.id,
     });
 
-    // Use the already-subscribed `orders` selector — store prepends synchronously
-    setSavedOrderNumber(orders[0]?.orderNumber || '');
+    // Read the just-created order from the store directly — the `orders`
+    // selector still holds the previous render's value at this point.
+    const freshOrders = useSellerStore.getState().orders;
+    setSavedOrderNumber(freshOrders[0]?.orderNumber || '');
 
     successNotification();
     setCopiedFlag(false);

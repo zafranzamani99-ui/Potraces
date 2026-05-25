@@ -364,6 +364,7 @@ export async function pushOrders(
       payment_method: o.paymentMethod ?? null,
       paid_at: toIso(o.paidAt),
       note: o.note ?? null,
+      order_date: toIso(o.date),
       delivery_date: toIso(o.deliveryDate),
       season_local_id: o.seasonId ?? null,
       deposits: o.deposits ?? [],
@@ -907,7 +908,9 @@ export async function pullAll(): Promise<void> {
         customerPhone: ro.customer_phone ?? undefined,
         customerAddress: ro.customer_address ?? undefined,
         totalAmount: ro.total_amount,
-        date: sd(ro.created_at),
+        // Prefer the real order date; fall back to created_at for rows that
+        // predate the order_date column or for order-link orders (placed live).
+        date: sd(ro.order_date ?? ro.created_at),
         status: ro.status as OrderStatus,
         isPaid: ro.is_paid,
         paidAmount: ro.paid_amount ?? undefined,
