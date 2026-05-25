@@ -165,6 +165,8 @@ const NewOrder: React.FC = () => {
   const [contactsList, setContactsList] = useState<Contacts.Contact[]>([]);
   const [contactSearch, setContactSearch] = useState('');
   const checkScaleAnim = useRef(new Animated.Value(0)).current;
+  // Guards against rapid double-taps creating duplicate orders.
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (activeQrIndex >= paymentQrs.length) setActiveQrIndex(0);
@@ -501,6 +503,10 @@ const NewOrder: React.FC = () => {
     // Validate customer phone before creating order
     if (!persistCustomer()) return;
 
+    // Block a second submit firing before the confirm modal covers the button
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+
     addOrder({
       items: validItems,
       customerName: customerName.trim() || undefined,
@@ -532,6 +538,11 @@ const NewOrder: React.FC = () => {
       bounciness: 12,
     }).start();
   }, [items, customerName, customerPhone, customerAddress, total, note, whatsAppText, deliveryDate, activeSeason, addOrder, persistCustomer, checkScaleAnim]);
+
+  // Release the double-submit guard once the confirmation modal is dismissed.
+  useEffect(() => {
+    if (!showConfirmModal) submittingRef.current = false;
+  }, [showConfirmModal]);
 
   const handleCopyToClipboard = useCallback(async () => {
     lightTap();
