@@ -59,10 +59,13 @@ function generateOrderCode(existingOrders: SellerOrder[]): string {
   return `ZZ${Date.now().toString().slice(-3)}`;
 }
 
-// Module-level caches for derived selectors (avoids new arrays every call)
-let _seasonOrdersCache: { key: string; val: any[] } = { key: '', val: [] };
-let _seasonCostsCache: { key: string; val: any[] } = { key: '', val: [] };
-let _seasonStatsCache: { key: string; val: any } = { key: '', val: null };
+// Module-level caches for derived selectors (avoids new arrays every call).
+// Keyed on the source array's identity, not its length: an in-place edit
+// (e.g. marking an order paid, changing a cost amount) keeps length the same
+// but produces a new array via immer, so identity is the correct invalidator.
+let _seasonOrdersCache: { seasonId: string; ref: any[]; val: any[] } = { seasonId: '', ref: [], val: [] };
+let _seasonCostsCache: { seasonId: string; ref: any[]; val: any[] } = { seasonId: '', ref: [], val: [] };
+let _seasonStatsCache: { seasonId: string; ordersRef: any[]; costsRef: any[]; val: any } = { seasonId: '', ordersRef: [], costsRef: [], val: null };
 
 export const useSellerStore = create<SellerState>()(
   persist(
@@ -837,26 +840,23 @@ export const useSellerStore = create<SellerState>()(
       // ─── Derived Data (cached) ──────────────────────────
       getSeasonOrders: (seasonId) => {
         const orders = get().orders;
-        const key = `${seasonId}:${orders.length}`;
-        if (_seasonOrdersCache.key === key) return _seasonOrdersCache.val;
+        if (_seasonOrdersCache.seasonId === seasonId && _seasonOrdersCache.ref === orders) return _seasonOrdersCache.val;
         const result = orders.filter((o) => o.seasonId === seasonId);
-        _seasonOrdersCache = { key, val: result };
+        _seasonOrdersCache = { seasonId, ref: orders, val: result };
         return result;
       },
 
       getSeasonCosts: (seasonId) => {
         const costs = get().ingredientCosts;
-        const key = `${seasonId}:${costs.length}`;
-        if (_seasonCostsCache.key === key) return _seasonCostsCache.val;
+        if (_seasonCostsCache.seasonId === seasonId && _seasonCostsCache.ref === costs) return _seasonCostsCache.val;
         const result = costs.filter((c) => c.seasonId === seasonId);
-        _seasonCostsCache = { key, val: result };
+        _seasonCostsCache = { seasonId, ref: costs, val: result };
         return result;
       },
 
       getSeasonStats: (seasonId) => {
         const state = get();
-        const key = `${seasonId}:${state.orders.length}:${state.ingredientCosts.length}`;
-        if (_seasonStatsCache.key === key) return _seasonStatsCache.val;
+        if (_seasonStatsCache.seasonId === seasonId && _seasonStatsCache.ordersRef === state.orders && _seasonStatsCache.costsRef === state.ingredientCosts) return _seasonStatsCache.val;
         const orders = state.orders.filter((o) => o.seasonId === seasonId);
         const costs = state.ingredientCosts.filter((c) => c.seasonId === seasonId);
         const totalIncome = orders.filter((o) => o.isPaid).reduce((s, o) => s + o.totalAmount, 0);
@@ -871,7 +871,7 @@ export const useSellerStore = create<SellerState>()(
           unpaidCount: unpaid.length,
           unpaidAmount: unpaid.reduce((s, o) => s + o.totalAmount, 0),
         };
-        _seasonStatsCache = { key, val: result };
+        _seasonStatsCache = { seasonId, ordersRef: state.orders, costsRef: state.ingredientCosts, val: result };
         return result;
       },
     }),

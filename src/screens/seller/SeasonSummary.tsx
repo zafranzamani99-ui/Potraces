@@ -145,8 +145,7 @@ const SeasonSummary: React.FC = () => {
 
   const stats = useMemo(() => {
     if (!season) return null;
-    const seasonOrders = orders.filter((o) => o.seasonId === season.id);
-    const seasonCosts = ingredientCosts.filter((c) => c.seasonId === season.id);
+    // Reuse the already-filtered season memos instead of re-scanning the full arrays.
     const paidOrders = seasonOrders.filter((o) => o.isPaid);
     const unpaidOrders = seasonOrders.filter((o) => !o.isPaid);
 
@@ -190,7 +189,7 @@ const SeasonSummary: React.FC = () => {
       customerCount: customers.size,
       maxQty,
     };
-  }, [season, orders, ingredientCosts]);
+  }, [season, seasonOrders, seasonCosts]);
 
   // ─── Transfer bridge ───────────────────────────────────────
   const untransferredOrders = useMemo(() => {
