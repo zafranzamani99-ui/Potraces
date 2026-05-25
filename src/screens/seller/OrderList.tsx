@@ -1407,24 +1407,30 @@ const OrderList: React.FC = () => {
 
   // Undo paid (with warning)
   const handleUndoPaid = useCallback((order: SellerOrder) => {
+    const transferred = order.transferredToPersonal;
     Alert.alert(
       'undo payment?',
-      'this will mark the order as unpaid. this action may affect your sales records.',
+      transferred
+        ? `this order was sent to personal. undoing payment will move its ${currency} ${order.totalAmount.toFixed(2)} back out of your personal wallet and mark the order unpaid.`
+        : 'this will mark the order as unpaid and clear its payment history.',
       [
         { text: 'cancel', style: 'cancel' },
         {
           text: 'mark unpaid',
           style: 'destructive',
           onPress: () => {
+            // An unpaid order can't be "transferred" income — pull it back out
+            // of personal first so the two sides stay in sync.
+            if (transferred) untransferOrder(order.id);
             updateOrder(order.id, { isPaid: false, paymentMethod: undefined, paidAt: undefined, _resetPayments: true } as any);
-            setSelectedOrder({ ...order, isPaid: false, paymentMethod: undefined, paidAt: undefined, deposits: [], paidAmount: 0, updatedAt: new Date() });
+            setSelectedOrder({ ...order, isPaid: false, paymentMethod: undefined, paidAt: undefined, deposits: [], paidAmount: 0, transferredToPersonal: false, transferId: undefined, updatedAt: new Date() });
             warningNotification();
             showToast('payment undone.', 'info');
           },
         },
       ]
     );
-  }, [updateOrder, showToast]);
+  }, [updateOrder, untransferOrder, showToast, currency]);
 
   // Call
   const handleCall = useCallback((phone: string) => {
@@ -2550,6 +2556,18 @@ const OrderList: React.FC = () => {
                             {currency} {(selectedOrder.totalAmount - (selectedOrder.paidAmount || 0)).toFixed(2)}
                           </Text>
                         </View>
+                      )}
+                      {(selectedOrder.isPaid || (selectedOrder.paidAmount || 0) > 0) && (
+                        <TouchableOpacity
+                          style={styles.undoPaymentBtn}
+                          activeOpacity={0.7}
+                          onPress={() => handleUndoPaid(selectedOrder)}
+                          accessibilityRole="button"
+                          accessibilityLabel="Undo payment, mark this order unpaid"
+                        >
+                          <Feather name="rotate-ccw" size={13} color={C.bronze} />
+                          <Text style={styles.undoPaymentText}>undo payment</Text>
+                        </TouchableOpacity>
                       )}
                     </View>
                   )}
@@ -4390,6 +4408,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
     fontVariant: ['tabular-nums'],
+  },
+  undoPaymentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    minHeight: 44,
+  },
+  undoPaymentText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.bronze,
   },
   // ── Modal ──
   modalOverlay: {
