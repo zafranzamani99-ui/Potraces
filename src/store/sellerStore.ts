@@ -341,7 +341,9 @@ export const useSellerStore = create<SellerState>()(
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
             if (amount <= 0) return o;
-            const newPaidAmount = (o.paidAmount || 0) + amount;
+            // Cap at the order total so paidAmount can't exceed what's owed
+            // (mirrors updateDeposit). Prevents "Paid RM80 / RM50" states.
+            const newPaidAmount = Math.min(o.totalAmount, (o.paidAmount || 0) + amount);
             const fullyPaid = newPaidAmount >= o.totalAmount;
             const entry = { amount, method: paymentMethod, date: new Date(), ...(note ? { note } : {}) };
             return {
@@ -394,17 +396,50 @@ export const useSellerStore = create<SellerState>()(
           ),
         })),
 
-      deleteSeason: (id) =>
+      deleteSeason: (id) => {
+        const seasonOrders = get().orders.filter((o) => o.seasonId === id);
         set((state) => {
-          const deletedOrderIds = state.orders.filter((o) => o.seasonId === id).map((o) => o.id);
+          const deletedOrderIds = seasonOrders.map((o) => o.id);
+          // Reverse product totalSold + stock for every order in this season
+          // (same as deleteOrders — otherwise products keep phantom sales).
+          const adjustments = new Map<string, number>();
+          for (const order of seasonOrders) {
+            for (const item of order.items) {
+              adjustments.set(item.productId, (adjustments.get(item.productId) || 0) + item.quantity);
+            }
+          }
+          const updatedProducts = adjustments.size > 0
+            ? state.products.map((p) => {
+                const qty = adjustments.get(p.id);
+                if (qty) {
+                  const updates: any = { ...p, totalSold: Math.max(0, p.totalSold - qty), updatedAt: new Date() };
+                  if (p.trackStock && p.stockQuantity != null) {
+                    updates.stockQuantity = p.stockQuantity + qty;
+                  }
+                  return updates;
+                }
+                return p;
+              })
+            : state.products;
           return {
             seasons: state.seasons.filter((s) => s.id !== id),
             orders: state.orders.filter((o) => o.seasonId !== id),
             ingredientCosts: state.ingredientCosts.filter((c) => c.seasonId !== id),
+            products: updatedProducts,
             _deletedSeasonIds: [...state._deletedSeasonIds, id],
             _deletedOrderIds: [...state._deletedOrderIds, ...deletedOrderIds],
           };
-        }),
+        });
+        // Reverse any transferred-to-personal income, summed per transfer batch,
+        // so deleting a season can't strand phantom personal income.
+        const byTransfer = new Map<string, number>();
+        for (const o of seasonOrders) {
+          if (o.transferredToPersonal && o.transferId) {
+            byTransfer.set(o.transferId, (byTransfer.get(o.transferId) || 0) + o.totalAmount);
+          }
+        }
+        for (const [tid, amt] of byTransfer) reconcileTransferIncome(tid, -amt, true);
+      },
 
       getActiveSeason: () => {
         const state = get();
