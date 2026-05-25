@@ -2818,20 +2818,10 @@ const OrderList: React.FC = () => {
           </TouchableOpacity>
         )}
 
-</View>
-      </Modal>}
-
-      {/* ─── Record deposit modal ─── */}
-      {showDepositInput && selectedOrder && <Modal
-        visible
-        transparent
-        statusBarTranslucent
-        animationType="fade"
-        onRequestClose={() => setShowDepositInput(false)}
-      >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
+      {/* ─── Record deposit modal (overlay inside detail modal — iOS can't stack modals) ─── */}
+      {showDepositInput && selectedOrder && (
         <TouchableOpacity
-          style={[styles.sortOverlay, { backgroundColor: 'transparent' }]}
+          style={[StyleSheet.absoluteFill, styles.sortOverlay]}
           activeOpacity={1}
           onPress={() => setShowDepositInput(false)}
         >
@@ -2979,20 +2969,12 @@ const OrderList: React.FC = () => {
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </Modal>}
+      )}
 
-      {/* ─── Edit payments modal ─── */}
-      {editingPayHistory && selectedOrder && (selectedOrder.deposits && selectedOrder.deposits.length > 0) && <Modal
-        visible
-        transparent
-        statusBarTranslucent
-        animationType="fade"
-        onRequestClose={() => { setEditingPayHistory(false); setEditPayIdx(null); }}
-      >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}>
+      {/* ─── Edit payments overlay ─── */}
+      {editingPayHistory && selectedOrder && selectedOrder.deposits && selectedOrder.deposits.length > 0 && (
         <TouchableOpacity
-          style={[styles.sortOverlay, { backgroundColor: 'transparent' }]}
+          style={[StyleSheet.absoluteFill, styles.sortOverlay]}
           activeOpacity={1}
           onPress={() => { setEditingPayHistory(false); setEditPayIdx(null); }}
         >
@@ -3142,19 +3124,12 @@ const OrderList: React.FC = () => {
 
           </View>
         </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </Modal>}
+      )}
 
-      {/* ─── Navigation app picker modal (lazy-mounted, renders after detail modal) ─── */}
-      {!!navAddress && <Modal
-        visible
-        transparent
-        statusBarTranslucent
-        animationType="fade"
-        onRequestClose={() => setNavAddress(null)}
-      >
+      {/* ─── Navigation app picker overlay ─── */}
+      {!!navAddress && (
         <TouchableOpacity
-          style={styles.sortOverlay}
+          style={[StyleSheet.absoluteFill, styles.sortOverlay]}
           activeOpacity={1}
           onPress={() => setNavAddress(null)}
         >
@@ -3211,14 +3186,13 @@ const OrderList: React.FC = () => {
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
-      </Modal>}
+      )}
 
-      {/* ─── Delete item confirmation modal ─── */}
+      {/* ─── Delete item confirmation overlay ─── */}
       {deleteItemConfirm && (() => {
         const isLastItem = editItems.length <= 1;
         return (
-        <Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setDeleteItemConfirm(null)}>
-          <TouchableOpacity style={styles.sortOverlay} activeOpacity={1} onPress={() => setDeleteItemConfirm(null)}>
+        <TouchableOpacity style={[StyleSheet.absoluteFill, styles.sortOverlay]} activeOpacity={1} onPress={() => setDeleteItemConfirm(null)}>
             <View style={styles.deleteConfirmCard} onStartShouldSetResponder={() => true}>
               <View style={styles.deleteConfirmIconWrap}>
                 <Feather name={isLastItem ? 'shield' : 'alert-triangle'} size={24} color={C.bronze} />
@@ -3278,14 +3252,12 @@ const OrderList: React.FC = () => {
               </View>
             </View>
           </TouchableOpacity>
-        </Modal>
         );
       })()}
 
-      {/* ─── Remove deposit confirmation modal ─── */}
+      {/* ─── Remove deposit confirmation overlay ─── */}
       {removeDepositConfirm && selectedOrder && (
-        <Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setRemoveDepositConfirm(null)}>
-          <TouchableOpacity style={styles.sortOverlay} activeOpacity={1} onPress={() => setRemoveDepositConfirm(null)}>
+        <TouchableOpacity style={[StyleSheet.absoluteFill, styles.sortOverlay]} activeOpacity={1} onPress={() => setRemoveDepositConfirm(null)}>
             <View style={styles.deleteConfirmCard} onStartShouldSetResponder={() => true}>
               <View style={styles.deleteConfirmIconWrap}>
                 <Feather name="trash-2" size={24} color={C.bronze} />
@@ -3337,8 +3309,10 @@ const OrderList: React.FC = () => {
               </View>
             </View>
           </TouchableOpacity>
-        </Modal>
       )}
+
+</View>
+      </Modal>}
 
     </View>
   );
