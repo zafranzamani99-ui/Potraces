@@ -178,6 +178,7 @@ export interface Season {
   emoji?: string;
   recurringName?: string;
   createdAt: Date;
+  updatedAt?: Date;
 }
 
 export interface SellerCostCategory {
@@ -204,6 +205,7 @@ export interface IngredientCost {
   receiptUrl?: string;
   receiptLocalUri?: string;
   vendor?: string;
+  updatedAt?: Date;
 }
 
 export type RecurringFrequency = 'weekly' | 'biweekly' | 'monthly';
@@ -228,6 +230,7 @@ export interface SellerCustomer {
   note?: string;
   isVip?: boolean;
   createdAt: Date;
+  updatedAt?: Date;
 }
 
 export interface CostTemplate {
@@ -235,6 +238,7 @@ export interface CostTemplate {
   description: string;
   amount: number;
   category?: string;
+  updatedAt?: Date;
 }
 
 export interface SellerState {

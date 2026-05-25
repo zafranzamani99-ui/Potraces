@@ -826,13 +826,17 @@ export async function pullAll(): Promise<void> {
         costBudget: rs.cost_budget ?? undefined,
         revenueTarget: rs.revenue_target ?? undefined,
         createdAt: sd(rs.created_at),
+        updatedAt: sd(rs.updated_at),
       };
 
       if (!local) {
         updatedSeasons.push(remoteItem);
         seasonsChanged = true;
-      } else if (rs.updated_at && sd(rs.updated_at).getTime() > sd(local.createdAt).getTime()) {
-        // Seasons don't have updatedAt locally — compare remote updated_at with local createdAt as best approximation
+      } else if (rs.updated_at && sd(rs.updated_at).getTime() > sd(local.updatedAt ?? local.createdAt).getTime()) {
+        // Accept remote only if newer than our last local edit (updatedAt),
+        // falling back to createdAt for rows that predate the updatedAt field.
+        // Previously compared against createdAt, so remote ALWAYS won and silently
+        // clobbered local edits to name/budget/target.
         updatedSeasons = updatedSeasons.map((s) =>
           s.id === rs.local_id ? remoteItem : s
         );
@@ -867,13 +871,15 @@ export async function pullAll(): Promise<void> {
         note: rc.note ?? undefined,
         isVip: rc.is_vip ?? false,
         createdAt: sd(rc.created_at),
+        updatedAt: sd(rc.updated_at),
       };
 
       if (!local) {
         updatedCustomers.push(remoteItem);
         customersChanged = true;
-      } else if (rc.updated_at && sd(rc.updated_at).getTime() > sd(local.createdAt).getTime()) {
-        // Customers don't have updatedAt locally — compare remote updated_at with local createdAt
+      } else if (rc.updated_at && sd(rc.updated_at).getTime() > sd(local.updatedAt ?? local.createdAt).getTime()) {
+        // Accept remote only if newer than our last local edit (updatedAt),
+        // falling back to createdAt for rows predating updatedAt.
         updatedCustomers = updatedCustomers.map((c) =>
           c.id === rc.local_id ? remoteItem : c
         );
@@ -973,13 +979,15 @@ export async function pullAll(): Promise<void> {
         category: rc.category ?? undefined,
         receiptUrl: rc.receipt_url ?? undefined,
         vendor: rc.vendor ?? undefined,
+        updatedAt: sd(rc.updated_at),
       };
 
       if (!local) {
         updatedCosts.push(remoteItem);
         costsChanged = true;
-      } else if (rc.updated_at && sd(rc.updated_at).getTime() > sd(local.date).getTime()) {
-        // IngredientCost doesn't have updatedAt — use date as approximation
+      } else if (rc.updated_at && sd(rc.updated_at).getTime() > sd(local.updatedAt ?? local.date).getTime()) {
+        // Accept remote only if newer than our last local edit (updatedAt),
+        // falling back to the cost date for rows predating updatedAt.
         updatedCosts = updatedCosts.map((c) =>
           c.id === rc.local_id ? remoteItem : c
         );
@@ -1051,13 +1059,22 @@ export async function pullAll(): Promise<void> {
         description: rt.description,
         amount: rt.amount,
         category: rt.category ?? undefined,
+        updatedAt: sd(rt.updated_at),
       };
 
       if (!local) {
         updatedTpls.push(remoteItem);
         tplsChanged = true;
+      } else if (
+        rt.updated_at &&
+        sd(rt.updated_at).getTime() > (local.updatedAt ? new Date(local.updatedAt).getTime() : 0)
+      ) {
+        // Was add-only, so template edits on another device never propagated.
+        // Accept remote when newer than our last local edit; fall back to 0 when
+        // local has no updatedAt so the first remote edit wins.
+        updatedTpls = updatedTpls.map((t) => (t.id === rt.local_id ? remoteItem : t));
+        tplsChanged = true;
       }
-      // CostTemplate has no timestamps locally for comparison, so only add new ones
     }
 
     if (tplsChanged) {

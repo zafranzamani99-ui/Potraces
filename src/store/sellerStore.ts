@@ -392,9 +392,10 @@ export const useSellerStore = create<SellerState>()(
           // first match, so a second active season would be invisible and
           // silently split new orders. Auto-end any currently active season
           // when starting a new active one.
+          const now = new Date();
           const others = season.isActive
             ? state.seasons.map((s) =>
-                s.isActive ? { ...s, isActive: false, endDate: s.endDate ?? new Date() } : s
+                s.isActive ? { ...s, isActive: false, endDate: s.endDate ?? now, updatedAt: now } : s
               )
             : state.seasons;
           return {
@@ -402,7 +403,8 @@ export const useSellerStore = create<SellerState>()(
               {
                 ...season,
                 id: newId(),
-                createdAt: new Date(),
+                createdAt: now,
+                updatedAt: now,
               },
               ...others,
             ],
@@ -412,7 +414,7 @@ export const useSellerStore = create<SellerState>()(
       endSeason: (id) =>
         set((state) => ({
           seasons: state.seasons.map((s) =>
-            s.id === id ? { ...s, isActive: false, endDate: new Date() } : s
+            s.id === id ? { ...s, isActive: false, endDate: new Date(), updatedAt: new Date() } : s
           ),
         })),
 
@@ -469,21 +471,21 @@ export const useSellerStore = create<SellerState>()(
       updateSeasonName: (seasonId, name) =>
         set((state) => ({
           seasons: state.seasons.map((s) =>
-            s.id === seasonId ? { ...s, name } : s
+            s.id === seasonId ? { ...s, name, updatedAt: new Date() } : s
           ),
         })),
 
       updateSeasonBudget: (seasonId, budget) =>
         set((state) => ({
           seasons: state.seasons.map((s) =>
-            s.id === seasonId ? { ...s, costBudget: budget } : s
+            s.id === seasonId ? { ...s, costBudget: budget, updatedAt: new Date() } : s
           ),
         })),
 
       updateSeasonTarget: (seasonId, target) =>
         set((state) => ({
           seasons: state.seasons.map((s) =>
-            s.id === seasonId ? { ...s, revenueTarget: target } : s
+            s.id === seasonId ? { ...s, revenueTarget: target, updatedAt: new Date() } : s
           ),
         })),
 
@@ -497,7 +499,7 @@ export const useSellerStore = create<SellerState>()(
           set((st) => ({
             seasons: st.seasons.map((s) =>
               s.id === newSeasonId
-                ? { ...s, costBudget: template.costBudget, revenueTarget: template.revenueTarget }
+                ? { ...s, costBudget: template.costBudget, revenueTarget: template.revenueTarget, updatedAt: new Date() }
                 : s
             ),
           }));
@@ -511,6 +513,7 @@ export const useSellerStore = create<SellerState>()(
             ...c,
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             date: now,
+            updatedAt: now,
             seasonId: newSeasonId,
             syncedToPersonal: false,
             personalTransactionId: undefined,
@@ -551,7 +554,7 @@ export const useSellerStore = create<SellerState>()(
         const id = Date.now().toString();
         set((state) => ({
           ingredientCosts: [
-            { ...cost, id },
+            { ...cost, id, updatedAt: new Date() },
             ...state.ingredientCosts,
           ],
         }));
@@ -561,7 +564,7 @@ export const useSellerStore = create<SellerState>()(
       updateIngredientCost: (id, updates) =>
         set((state) => ({
           ingredientCosts: state.ingredientCosts.map((c) =>
-            c.id === id ? { ...c, ...updates } : c
+            c.id === id ? { ...c, ...updates, updatedAt: new Date() } : c
           ),
         })),
 
@@ -610,10 +613,10 @@ export const useSellerStore = create<SellerState>()(
             _deletedCostCategoryIds: [...state._deletedCostCategoryIds, id],
             // Reassign anything pointing at the deleted category to the protected "Other" sink
             ingredientCosts: state.ingredientCosts.map((c) =>
-              c.category === id ? { ...c, category: sink } : c
+              c.category === id ? { ...c, category: sink, updatedAt: new Date() } : c
             ),
             costTemplates: state.costTemplates.map((t) =>
-              t.category === id ? { ...t, category: sink } : t
+              t.category === id ? { ...t, category: sink, updatedAt: new Date() } : t
             ),
             recurringCosts: state.recurringCosts.map((r) =>
               r.category === id ? { ...r, category: sink } : r
@@ -756,7 +759,7 @@ export const useSellerStore = create<SellerState>()(
       addSellerCustomer: (customer) =>
         set((state) => ({
           sellerCustomers: [
-            { ...customer, id: Date.now().toString(), createdAt: new Date() },
+            { ...customer, id: Date.now().toString(), createdAt: new Date(), updatedAt: new Date() },
             ...state.sellerCustomers,
           ],
         })),
@@ -764,7 +767,7 @@ export const useSellerStore = create<SellerState>()(
       updateSellerCustomer: (id, updates) =>
         set((state) => ({
           sellerCustomers: state.sellerCustomers.map((c) =>
-            c.id === id ? { ...c, ...updates } : c
+            c.id === id ? { ...c, ...updates, updatedAt: new Date() } : c
           ),
         })),
 
@@ -840,7 +843,7 @@ export const useSellerStore = create<SellerState>()(
       addCostTemplate: (template) =>
         set((state) => ({
           costTemplates: [
-            { ...template, id: Date.now().toString() },
+            { ...template, id: Date.now().toString(), updatedAt: new Date() },
             ...state.costTemplates,
           ],
         })),
@@ -848,7 +851,7 @@ export const useSellerStore = create<SellerState>()(
       updateCostTemplate: (id, updates) =>
         set((state) => ({
           costTemplates: state.costTemplates.map((t) =>
-            t.id === id ? { ...t, ...updates } : t
+            t.id === id ? { ...t, ...updates, updatedAt: new Date() } : t
           ),
         })),
 
@@ -901,6 +904,7 @@ export const useSellerStore = create<SellerState>()(
               description: recurring.description,
               amount: recurring.amount,
               date: new Date(),
+              updatedAt: new Date(),
               seasonId: seasonId ?? recurring.seasonId,
               syncedToPersonal: false,
               category: recurring.category,
