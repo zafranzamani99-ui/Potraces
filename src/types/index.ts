@@ -273,6 +273,7 @@ export interface SellerState {
   updateOrder: (id: string, updates: Partial<Pick<SellerOrder, 'customerName' | 'note' | 'deliveryDate' | 'customerPhone' | 'customerAddress' | 'isPaid' | 'paymentMethod' | 'paidAt'>>) => void;
   updateOrderItems: (id: string, items: SellerOrderItem[]) => void;
   updateOrderWithItems: (id: string, items: SellerOrderItem[], updates: Partial<SellerOrder>) => void;
+  untransferOrder: (id: string) => void;
   recordPayment: (id: string, amount: number, paymentMethod: SellerPaymentMethod, note?: string) => void;
   updateDeposit: (id: string, index: number, amount: number, method: SellerPaymentMethod, note?: string) => void;
   removeDeposit: (id: string, index: number) => void;

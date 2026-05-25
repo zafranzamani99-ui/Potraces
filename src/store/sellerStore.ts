@@ -398,6 +398,29 @@ export const useSellerStore = create<SellerState>()(
         }
       },
 
+      // Reverse a single order's transfer: pull its amount back out of personal
+      // and return it to the untransferred pool (so it can be edited, then
+      // re-transferred in a later batch). Other orders in the same batch keep
+      // their transfer.
+      untransferOrder: (id) => {
+        let order: SellerOrder | undefined;
+        set((state) => {
+          order = state.orders.find((o) => o.id === id);
+          if (!order || !order.transferredToPersonal) return state;
+          return {
+            orders: state.orders.map((o) =>
+              o.id === id
+                ? { ...o, transferredToPersonal: false, transferId: undefined, updatedAt: new Date() }
+                : o
+            ),
+          };
+        });
+        // `order` was captured pre-mutation, so it still carries the transferId.
+        if (order && order.transferredToPersonal && order.transferId) {
+          reconcileTransferIncome(order.transferId, -order.totalAmount, true);
+        }
+      },
+
       recordPayment: (id, amount, paymentMethod, note) =>
         set((state) => ({
           orders: state.orders.map((o) => {

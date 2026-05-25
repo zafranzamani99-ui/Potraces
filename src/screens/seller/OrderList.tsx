@@ -639,6 +639,7 @@ const OrderList: React.FC = () => {
   const updateOrderStatus = useSellerStore((s) => s.updateOrderStatus);
   const updateOrder = useSellerStore((s) => s.updateOrder);
   const updateOrderWithItems = useSellerStore((s) => s.updateOrderWithItems);
+  const untransferOrder = useSellerStore((s) => s.untransferOrder);
   const recordPayment = useSellerStore((s) => s.recordPayment);
   const updateDeposit = useSellerStore((s) => s.updateDeposit);
   const removeDeposit = useSellerStore((s) => s.removeDeposit);
@@ -1133,7 +1134,7 @@ const OrderList: React.FC = () => {
   const handleDeleteOrder = useCallback(
     (order: SellerOrder) => {
       const msg = order.transferredToPersonal
-        ? 'this order was already transferred to personal. deleting it will leave a phantom income in your personal wallet.\n\ndelete anyway?'
+        ? `this order was sent to personal. deleting it will also remove its ${currency} ${order.totalAmount.toFixed(2)} from your personal wallet.\n\ndelete anyway?`
         : 'delete this order?';
       Alert.alert(
         '',
@@ -1159,7 +1160,7 @@ const OrderList: React.FC = () => {
         ]
       );
     },
-    [deleteOrder, showToast]
+    [deleteOrder, showToast, currency]
   );
 
   // Send payment reminder
@@ -1299,7 +1300,6 @@ const OrderList: React.FC = () => {
 
   // Edit mode handlers
   const handleStartEdit = useCallback((order: SellerOrder) => {
-    const isSettled = order.isPaid && (order.status === 'delivered' || order.status === 'completed');
     const doEdit = () => {
       setIsEditing(true);
       setEditNote(order.note || '');
@@ -1312,6 +1312,27 @@ const OrderList: React.FC = () => {
           : null
       );
     };
+
+    // A transferred order's income already sits in the personal wallet. Editing
+    // it directly would desync the two sides, so move that amount back out of
+    // personal first (it returns to the pool to transfer again next batch),
+    // then open the editor. One tap, no hunting for an "undo" button elsewhere.
+    if (order.transferredToPersonal) {
+      Alert.alert(
+        'this order was sent to personal',
+        `${currency} ${order.totalAmount.toFixed(2)} from this order is already in your personal wallet.\n\nto change it, we'll move that amount back out of personal first — you can send it again in the next transfer. continue?`,
+        [
+          { text: 'cancel', style: 'cancel' },
+          {
+            text: 'move back & edit',
+            onPress: () => { untransferOrder(order.id); doEdit(); },
+          },
+        ]
+      );
+      return;
+    }
+
+    const isSettled = order.isPaid && (order.status === 'delivered' || order.status === 'completed');
     if (isSettled) {
       Alert.alert(
         'this order is already paid & delivered',
@@ -1324,7 +1345,7 @@ const OrderList: React.FC = () => {
     } else {
       doEdit();
     }
-  }, []);
+  }, [currency, untransferOrder]);
 
   const handleSaveEdit = useCallback(() => {
     if (!selectedOrder) return;
