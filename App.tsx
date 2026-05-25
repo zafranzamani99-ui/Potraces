@@ -18,7 +18,7 @@ import * as Notifications from 'expo-notifications';
 import { globalShowToast } from './src/context/ToastContext';
 import { useSellerStore } from './src/store/sellerStore';
 import { useAppStore } from './src/store/appStore';
-import { useSettingsStore } from './src/store/settingsStore';
+import { useSettingsStore, clearBusinessLocalData } from './src/store/settingsStore';
 import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import BiometricGate from './src/components/common/BiometricGate';
@@ -224,8 +224,12 @@ export default function App() {
         auth.reset();
         clearProfileCache();
         // Disable personal sync — it can't run without a session.
-        // Keep local data intact; user can re-enable after signing back in.
         useSettingsStore.getState().setPersonalSyncEnabled(false);
+        // Clear business-mode local data so a forced/expired sign-out (not just
+        // the explicit Settings one) can't leave the previous seller's data for
+        // the next user on a shared device. Personal data is left intact — its
+        // sync is opt-in, so it may be the only copy.
+        clearBusinessLocalData().catch(() => {});
       }
     });
     return () => subscription.unsubscribe();

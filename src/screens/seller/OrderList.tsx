@@ -639,6 +639,7 @@ const OrderList: React.FC = () => {
   const updateOrderStatus = useSellerStore((s) => s.updateOrderStatus);
   const updateOrder = useSellerStore((s) => s.updateOrder);
   const updateOrderItems = useSellerStore((s) => s.updateOrderItems);
+  const updateOrderWithItems = useSellerStore((s) => s.updateOrderWithItems);
   const recordPayment = useSellerStore((s) => s.recordPayment);
   const updateDeposit = useSellerStore((s) => s.updateDeposit);
   const removeDeposit = useSellerStore((s) => s.removeDeposit);
@@ -1366,11 +1367,14 @@ const OrderList: React.FC = () => {
     }
 
     if (itemsChanged && editItems.length > 0) {
-      updateOrderItems(selectedOrder.id, editItems);
+      // Atomic: items + metadata applied in a single store mutation so a sync
+      // can never push a half-updated order.
+      updateOrderWithItems(selectedOrder.id, editItems, updates);
+    } else if (Object.keys(updates).length > 0) {
+      updateOrder(selectedOrder.id, updates);
     }
 
     if (Object.keys(updates).length > 0 || itemsChanged) {
-      if (Object.keys(updates).length > 0) updateOrder(selectedOrder.id, updates);
       // Read fresh from store to ensure we have the latest state
       const freshOrder = useSellerStore.getState().orders.find(o => o.id === selectedOrder.id);
       setSelectedOrder(freshOrder || { ...selectedOrder, ...updates, items: itemsChanged ? editItems : selectedOrder.items, totalAmount: newTotal, updatedAt: new Date() });
@@ -1378,7 +1382,7 @@ const OrderList: React.FC = () => {
       showToast('order updated.', 'info');
     }
     setIsEditing(false);
-  }, [selectedOrder, editNote, editPhone, editAddress, editDeliveryDate, editItems, updateOrder, updateOrderItems, showToast]);
+  }, [selectedOrder, editNote, editPhone, editAddress, editDeliveryDate, editItems, updateOrder, updateOrderItems, updateOrderWithItems, showToast]);
 
 
   // Undo paid (with warning)

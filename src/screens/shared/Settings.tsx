@@ -813,18 +813,19 @@ const Settings: React.FC = () => {
         {
           text: t.settings.signOut,
           onPress: async () => {
-            // Flush any unsynced seller changes to the server, THEN clear local
-            // business data so the next user on a shared device can't see it.
-            // If the flush fails (offline), keep local data to avoid losing it —
-            // online sign-out is secure, offline sign-out errs toward not losing work.
+            // Best-effort flush so unsynced changes reach the server first, then
+            // clear local business data REGARDLESS of flush success — on a shared
+            // device the next user must never see the previous seller's data.
+            // (Synced data re-pulls on next sign-in; only never-synced offline
+            // changes are lost, which is the accepted trade-off for not leaking.)
             const { isAuthenticated, isVerified } = useAuthStore.getState();
             if (isAuthenticated && isVerified) {
               try {
                 const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
                 await syncAll(products, orders, seasons, sellerCustomers);
-                await clearBusinessLocalData();
-              } catch { /* offline or sync failed — keep local data intact */ }
+              } catch { /* offline / sync failed — clear anyway */ }
             }
+            await clearBusinessLocalData();
             // Reset auth while Settings still covers the screen
             useAuthStore.getState().reset();
             clearProfileCache();

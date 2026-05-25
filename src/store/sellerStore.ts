@@ -242,11 +242,16 @@ export const useSellerStore = create<SellerState>()(
         })),
 
       deleteOrder: (id) => {
-        const order = get().orders.find((o) => o.id === id);
+        // Read the order INSIDE set() against the exact state being mutated, then
+        // capture it for the post-set cross-store reconcile (which can't live
+        // inside set since it mutates other stores).
+        let order: SellerOrder | undefined;
         set((state) => {
-          const updatedProducts = order
+          const found = state.orders.find((o) => o.id === id);
+          order = found;
+          const updatedProducts = found
             ? state.products.map((p) => {
-                const item = order.items.find((i) => i.productId === p.id);
+                const item = found.items.find((i) => i.productId === p.id);
                 if (item) {
                   const updates: any = { ...p, totalSold: Math.max(0, p.totalSold - item.quantity), updatedAt: new Date() };
                   if (p.trackStock && p.stockQuantity != null) {
@@ -270,8 +275,9 @@ export const useSellerStore = create<SellerState>()(
       },
 
       deleteOrders: (ids) => {
-        const toDelete = get().orders.filter((o) => ids.includes(o.id));
+        let toDelete: SellerOrder[] = [];
         set((state) => {
+          toDelete = state.orders.filter((o) => ids.includes(o.id));
           // Aggregate quantity adjustments per product
           const adjustments = new Map<string, number>();
           for (const order of toDelete) {
@@ -309,11 +315,13 @@ export const useSellerStore = create<SellerState>()(
       },
 
       updateOrderItems: (id, newItems) => {
-        const order = get().orders.find((o) => o.id === id);
-        if (!order) return;
-        const oldTotal = order.totalAmount;
         const newTotal = roundMoney(newItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0));
+        let order: SellerOrder | undefined;
+        let oldTotal = 0;
         set((state) => {
+          order = state.orders.find((o) => o.id === id);
+          if (!order) return state;
+          oldTotal = order.totalAmount;
           const oldItems = order.items;
           // Build per-product quantity diffs
           const diffs = new Map<string, number>();
@@ -342,7 +350,50 @@ export const useSellerStore = create<SellerState>()(
           };
         });
         // Keep transferred-to-personal income in step with the new order total.
-        if (order.transferredToPersonal && order.transferId) {
+        if (order && order.transferredToPersonal && order.transferId) {
+          reconcileTransferIncome(order.transferId, newTotal - oldTotal, false);
+        }
+      },
+
+      // Atomic items + metadata update — one set() so a sync can never observe a
+      // half-updated order (new items but stale metadata, or vice versa).
+      updateOrderWithItems: (id, newItems, updates) => {
+        const newTotal = roundMoney(newItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0));
+        let order: SellerOrder | undefined;
+        let oldTotal = 0;
+        set((state) => {
+          order = state.orders.find((o) => o.id === id);
+          if (!order) return state;
+          oldTotal = order.totalAmount;
+          const oldItems = order.items;
+          const diffs = new Map<string, number>();
+          for (const item of oldItems) diffs.set(item.productId, -(item.quantity));
+          for (const item of newItems) diffs.set(item.productId, (diffs.get(item.productId) || 0) + item.quantity);
+
+          const updatedProducts = state.products.map((p) => {
+            const diff = diffs.get(p.id);
+            if (diff) {
+              const u: any = { ...p, totalSold: Math.max(0, p.totalSold + diff), updatedAt: new Date() };
+              if (p.trackStock && p.stockQuantity != null) {
+                u.stockQuantity = Math.max(0, p.stockQuantity - diff);
+              }
+              return u;
+            }
+            return p;
+          });
+
+          const { _resetPayments, ...rest } = updates as Partial<SellerOrder> & { _resetPayments?: boolean };
+          const extra = _resetPayments ? { deposits: [] as DepositEntry[], paidAmount: 0 } : {};
+          return {
+            orders: state.orders.map((o) =>
+              o.id === id
+                ? { ...o, ...rest, ...extra, items: newItems, totalAmount: newTotal, updatedAt: new Date() }
+                : o
+            ),
+            products: updatedProducts,
+          };
+        });
+        if (order && order.transferredToPersonal && order.transferId) {
           reconcileTransferIncome(order.transferId, newTotal - oldTotal, false);
         }
       },
@@ -421,8 +472,9 @@ export const useSellerStore = create<SellerState>()(
         })),
 
       deleteSeason: (id) => {
-        const seasonOrders = get().orders.filter((o) => o.seasonId === id);
+        let seasonOrders: SellerOrder[] = [];
         set((state) => {
+          seasonOrders = state.orders.filter((o) => o.seasonId === id);
           const deletedOrderIds = seasonOrders.map((o) => o.id);
           // Reverse product totalSold + stock for every order in this season
           // (same as deleteOrders — otherwise products keep phantom sales).
@@ -702,7 +754,9 @@ export const useSellerStore = create<SellerState>()(
               : [],
             date: row.created_at ? new Date(row.created_at as string) : new Date(),
             deliveryDate: row.delivery_date ? new Date(row.delivery_date as string) : undefined,
-            seasonId: undefined,
+            // Attribute online orders to the active season so they count toward
+            // season income/target instead of being invisible (was hardcoded undefined).
+            seasonId: state.seasons.find((s) => s.isActive)?.id,
             source: 'order_link' as const,
             createdAt: row.created_at ? new Date(row.created_at as string) : new Date(),
             updatedAt: row.updated_at ? new Date(row.updated_at as string) : new Date(),
