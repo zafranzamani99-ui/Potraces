@@ -26,7 +26,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { useSettingsStore } from '../../store/settingsStore';
+import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useAppStore } from '../../store/appStore';
@@ -47,8 +47,9 @@ import UnitManager from '../../components/common/UnitManager';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import { signOut } from '../../services/supabase';
-import { clearProfileCache } from '../../services/sellerSync';
+import { clearProfileCache, syncAll } from '../../services/sellerSync';
 import { useAuthStore } from '../../store/authStore';
+import { useSellerStore } from '../../store/sellerStore';
 import { syncPersonal, disablePersonalSync } from '../../services/personalSync';
 import { resetBackoff } from '../../services/syncBackoff';
 import { getOrCreateReferralCode, referralMessage } from '../../services/referrals';
@@ -812,6 +813,18 @@ const Settings: React.FC = () => {
         {
           text: t.settings.signOut,
           onPress: async () => {
+            // Flush any unsynced seller changes to the server, THEN clear local
+            // business data so the next user on a shared device can't see it.
+            // If the flush fails (offline), keep local data to avoid losing it —
+            // online sign-out is secure, offline sign-out errs toward not losing work.
+            const { isAuthenticated, isVerified } = useAuthStore.getState();
+            if (isAuthenticated && isVerified) {
+              try {
+                const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
+                await syncAll(products, orders, seasons, sellerCustomers);
+                await clearBusinessLocalData();
+              } catch { /* offline or sync failed — keep local data intact */ }
+            }
             // Reset auth while Settings still covers the screen
             useAuthStore.getState().reset();
             clearProfileCache();

@@ -27,7 +27,57 @@ import { useSavingsStore } from './savingsStore';
 import { clearBusinessDataRemote, signOut } from '../services/supabase';
 import { clearProfileCache } from '../services/sellerSync';
 import { DEFAULT_PAYMENT_METHODS } from '../constants/taxCategories';
+import { DEFAULT_COST_CATEGORIES } from '../constants';
 import { CategoryOption } from '../types';
+
+/**
+ * Clear all business-mode data from local state + AsyncStorage. LOCAL ONLY —
+ * never touches remote. Used on sign-out (so the next user on a shared device
+ * can't see the previous seller's orders/products/customers) and could back
+ * the destructive clear-data flow. Resets the tombstone arrays too, otherwise
+ * a stale deleted-id could delete the next user's remote rows on first sync.
+ */
+export async function clearBusinessLocalData(): Promise<void> {
+  useBusinessStore.setState({
+    incomeType: null,
+    businessSetupComplete: false,
+    businessTransactions: [],
+    clients: [],
+    riderCosts: [],
+    incomeStreams: [],
+    transfers: [],
+    products: [],
+    sales: [],
+    suppliers: [],
+  });
+  useSellerStore.setState({
+    products: [], orders: [], seasons: [], ingredientCosts: [],
+    customUnits: [], sellerCustomers: [], seenOnlineOrderIds: [],
+    costTemplates: [], recurringCosts: [],
+    costCategories: DEFAULT_COST_CATEGORIES, costCategoriesSeeded: false,
+    stockAdjustments: [], productOrder: [],
+    _deletedProductIds: [], _deletedOrderIds: [], _deletedSeasonIds: [],
+    _deletedCustomerIds: [], _deletedCostIds: [], _deletedCostCategoryIds: [],
+  });
+  useStallStore.setState({
+    sessions: [], activeSessionId: null, products: [], regularCustomers: [],
+  });
+  useFreelancerStore.setState({ clients: [] });
+  usePartTimeStore.setState({ jobDetails: { jobName: '', setupComplete: false } });
+  useOnTheRoadStore.setState({
+    roadDetails: { description: '', vehicleType: 'motorcycle', setupComplete: false },
+  });
+  useMixedStore.setState({
+    mixedDetails: { streams: [], hasRoadCosts: false, setupComplete: false },
+    lastUsedStream: null,
+  });
+  useCRMStore.setState({ customers: [], orders: [] });
+
+  await Promise.all([
+    'business-storage', 'seller-storage', 'stall-storage', 'freelancer-storage',
+    'parttime-storage', 'ontheroad-storage', 'mixed-storage', 'crm-storage',
+  ].map((k) => AsyncStorage.removeItem(k).catch(() => {})));
+}
 
 export interface PaymentQr {
   uri: string;
