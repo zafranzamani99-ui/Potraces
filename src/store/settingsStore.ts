@@ -11,7 +11,7 @@ import { useAppStore } from './appStore';
 import { useWalletStore } from './walletStore';
 import { usePremiumStore } from './premiumStore';
 import { useStallStore } from './stallStore';
-import { useSellerStore } from './sellerStore';
+import { useSellerStore, clearSellerCaches } from './sellerStore';
 import { useCategoryStore } from './categoryStore';
 import { useFreelancerStore } from './freelancerStore';
 import { usePartTimeStore } from './partTimeStore';
@@ -72,6 +72,9 @@ export async function clearBusinessLocalData(): Promise<void> {
     lastUsedStream: null,
   });
   useCRMStore.setState({ customers: [], orders: [] });
+
+  // Module-level derived caches survive the store reset above — clear them too.
+  clearSellerCaches();
 
   await Promise.all([
     'business-storage', 'seller-storage', 'stall-storage', 'freelancer-storage',

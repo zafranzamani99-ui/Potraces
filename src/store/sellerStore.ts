@@ -67,6 +67,15 @@ let _seasonOrdersCache: { seasonId: string; ref: any[]; val: any[] } = { seasonI
 let _seasonCostsCache: { seasonId: string; ref: any[]; val: any[] } = { seasonId: '', ref: [], val: [] };
 let _seasonStatsCache: { seasonId: string; ordersRef: any[]; costsRef: any[]; val: any } = { seasonId: '', ordersRef: [], costsRef: [], val: null };
 
+// Reset the module-level derived caches. The store state is cleared on sign-out
+// but these module vars survive, so without this a freshly signed-in user could
+// briefly read the previous user's cached season stats.
+export function clearSellerCaches(): void {
+  _seasonOrdersCache = { seasonId: '', ref: [], val: [] };
+  _seasonCostsCache = { seasonId: '', ref: [], val: [] };
+  _seasonStatsCache = { seasonId: '', ordersRef: [], costsRef: [], val: null };
+}
+
 export const useSellerStore = create<SellerState>()(
   persist(
     (set, get) => ({
@@ -378,16 +387,27 @@ export const useSellerStore = create<SellerState>()(
 
       // ─── Seasons ────────────────────────────────────────
       addSeason: (season) =>
-        set((state) => ({
-          seasons: [
-            {
-              ...season,
-              id: newId(),
-              createdAt: new Date(),
-            },
-            ...state.seasons,
-          ],
-        })),
+        set((state) => {
+          // Only one active season at a time. getActiveSeason() returns the
+          // first match, so a second active season would be invisible and
+          // silently split new orders. Auto-end any currently active season
+          // when starting a new active one.
+          const others = season.isActive
+            ? state.seasons.map((s) =>
+                s.isActive ? { ...s, isActive: false, endDate: s.endDate ?? new Date() } : s
+              )
+            : state.seasons;
+          return {
+            seasons: [
+              {
+                ...season,
+                id: newId(),
+                createdAt: new Date(),
+              },
+              ...others,
+            ],
+          };
+        }),
 
       endSeason: (id) =>
         set((state) => ({
@@ -646,15 +666,23 @@ export const useSellerStore = create<SellerState>()(
           // Deduplicate by supabaseId
           if (state.orders.some((o) => o.supabaseId === (row.id as string))) return state;
 
+          const linkItems = (row.items as SellerOrderItem[]) || [];
+          // Recompute the total from line items rather than trusting the
+          // client-sent total_amount (which the public order page computes in
+          // JS and a malicious caller could tamper with). Fall back to the sent
+          // total only if the items carry no usable prices.
+          const itemsTotal = linkItems.reduce((s, i) => s + (i.unitPrice || 0) * (i.quantity || 0), 0);
+          const sentTotal = parseFloat(String(row.total_amount)) || 0;
+
           const newOrder = {
             id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
             supabaseId: row.id as string,
             orderNumber: (row.order_number as string | null) ?? generateOrderCode(state.orders),
-            items: (row.items as SellerOrderItem[]) || [],
+            items: linkItems,
             customerName: (row.customer_name as string | null) ?? undefined,
             customerPhone: (row.customer_phone as string | null) ?? undefined,
             customerAddress: (row.customer_address as string | null) ?? undefined,
-            totalAmount: parseFloat(String(row.total_amount)) || 0,
+            totalAmount: itemsTotal > 0 ? itemsTotal : sentTotal,
             status: ((row.status as string) || 'pending') as OrderStatus,
             isPaid: Boolean(row.is_paid),
             paidAmount: row.paid_amount != null ? parseFloat(String(row.paid_amount)) : undefined,

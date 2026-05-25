@@ -109,9 +109,7 @@ const SellerDashboard: React.FC = () => {
       .reduce((s, o) => s + o.totalAmount, 0);
     const _totalCosts = currentCosts.reduce((s, c) => s + c.amount, 0);
     const _kept = _totalIncome - _totalCosts;
-    const _unpaidOrders = currentOrders.filter(
-      (o) => !o.isPaid && o.status !== 'pending' && o.status !== 'confirmed'
-    );
+    const _unpaidOrders = currentOrders.filter((o) => !o.isPaid);
     const _pendingOrders = currentOrders.filter(
       (o) => o.status === 'pending'
     );
@@ -354,8 +352,8 @@ const SellerDashboard: React.FC = () => {
 
   // AI insight
   const insight = useMemo(
-    () => explainSellerMonth(currentOrders, previousOrders, currentCosts),
-    [currentOrders, previousOrders, currentCosts]
+    () => explainSellerMonth(currentOrders, previousOrders, currentCosts, currency),
+    [currentOrders, previousOrders, currentCosts, currency]
   );
 
   // Items still to make — aggregate qty from pending/confirmed/ready orders

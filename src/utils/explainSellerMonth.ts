@@ -7,7 +7,8 @@ import { SellerOrder, IngredientCost } from '../types';
 export function explainSellerMonth(
   orders: SellerOrder[],
   previousOrders: SellerOrder[],
-  costs: IngredientCost[]
+  costs: IngredientCost[],
+  currency: string
 ): string | null {
   if (orders.length === 0) return null;
 
@@ -21,7 +22,7 @@ export function explainSellerMonth(
   // Unpaid orders are significant
   if (unpaid.length >= 3) {
     const unpaidTotal = unpaid.reduce((s, o) => s + o.totalAmount, 0);
-    return `${unpaid.length} orders still unpaid \u2014 RM ${unpaidTotal.toFixed(0)} pending.`;
+    return `${unpaid.length} orders still unpaid \u2014 ${currency} ${unpaidTotal.toFixed(0)} pending.`;
   }
 
   // Costs eating into income
@@ -56,7 +57,7 @@ export function explainSellerMonth(
 
   // Good month
   if (kept > 0 && orders.length >= 2) {
-    return `${orders.length} orders, and you kept RM ${kept.toFixed(0)} after costs.`;
+    return `${orders.length} orders, and you kept ${currency} ${kept.toFixed(0)} after costs.`;
   }
 
   return null;

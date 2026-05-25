@@ -155,13 +155,14 @@ const SeasonSummary: React.FC = () => {
 
     // Top products
     const productCounts: Record<string, { name: string; qty: number; cameIn: number }> = {};
-    for (const order of seasonOrders) {
+    for (const order of paidOrders) {
       for (const item of order.items) {
-        if (!productCounts[item.productName]) {
-          productCounts[item.productName] = { name: item.productName, qty: 0, cameIn: 0 };
+        const key = item.productId || item.productName;
+        if (!productCounts[key]) {
+          productCounts[key] = { name: item.productName, qty: 0, cameIn: 0 };
         }
-        productCounts[item.productName].qty += item.quantity;
-        productCounts[item.productName].cameIn += item.unitPrice * item.quantity;
+        productCounts[key].qty += item.quantity;
+        productCounts[key].cameIn += item.unitPrice * item.quantity;
       }
     }
     const topProducts = Object.values(productCounts)
@@ -266,7 +267,7 @@ const SeasonSummary: React.FC = () => {
   }, [untransferredAmount]);
 
   const handleTransferToPersonal = useCallback(() => {
-    const amount = parseFloat(transferAmount);
+    const amount = Math.round(parseFloat(transferAmount) * 100) / 100;
     if (!amount || amount <= 0 || !season) return;
     if (amount > untransferredAmount) {
       showToast(t.seller.cannotTransferMore, 'error');
