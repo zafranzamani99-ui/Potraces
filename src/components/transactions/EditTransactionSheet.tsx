@@ -354,6 +354,9 @@ const EditTransactionSheet: React.FC<EditTransactionSheetProps> = ({
   );
 
   const isLinkedDebt = !!transaction?.linkedDebtId;
+  // Income transferred from business mode is owned by the seller side — lock its
+  // amount here (like debt-linked payments); only description/tags are editable.
+  const isAmountLocked = isLinkedDebt || !!transaction?.id?.startsWith('transfer-');
   const canSave = !!editAmount && parseFloat(editAmount) > 0;
 
   // Wrapped save: flips isSaving on, calls synchronous onSave, holds spinner ~180ms so the
@@ -451,7 +454,7 @@ const EditTransactionSheet: React.FC<EditTransactionSheetProps> = ({
                   type={editType}
                   onTypeChange={onEditTypeChange}
                   currency={currency}
-                  isLocked={isLinkedDebt}
+                  isLocked={isAmountLocked}
                   C={C}
                 />
 

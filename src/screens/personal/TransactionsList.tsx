@@ -556,8 +556,13 @@ const TransactionsList: React.FC = () => {
     }
 
     const isDebtLinked = !!editingTransaction.linkedDebtId;
+    // Income transferred from business mode is owned by the seller side — its
+    // amount is what the seller-side reconcile adjusts when source orders change.
+    // Editing the amount here would desync the two sides, so (like debt-linked
+    // payments) only description + tags are editable.
+    const isTransferLinked = editingTransaction.id.startsWith('transfer-');
 
-    if (isDebtLinked) {
+    if (isDebtLinked || isTransferLinked) {
       updateTransaction(editingTransaction.id, {
         description: editDescription.trim(),
         tags: editTags ? editTags.split(',').map((t) => t.trim()).filter(Boolean) : [],
