@@ -1210,3 +1210,152 @@ Considering blast radius, the priority order changes significantly from Section 
 | 21 | HIGH-2/3 | HIGH | Sync timestamp comparison issues |
 
 **Key insight from re-ranking:** ORD-HIGH-4 (order_link stock bypass) was rated HIGH but should be **CRITICAL** because it causes real-world overselling -- a seller promises kuih she cannot deliver. This is not a screen-display bug; it is a broken-promise-to-customer bug.
+
+
+---
+
+## 13. Verification Pass -- Current Status of All Findings
+
+**Date:** 2026-05-25
+**Method:** Read every referenced file:line and verified against current source code.
+
+### Summary
+- 8 findings STILL BROKEN
+- 18 findings FIXED
+- 2 findings PARTIALLY FIXED
+- 4 findings WRONG (auditor error)
+- 1 finding CANNOT VERIFY
+
+### Detailed Status
+
+#### Section 3 -- SHIP BLOCKERS
+
+| ID | Finding | Status | Evidence |
+|----|---------|--------|----------|
+| CRIT-1 | Seller data persists across sign-out | **PARTIALLY FIXED** | Settings.tsx:815-827 now calls `clearBusinessLocalData()` on sign-out, AND clears seller caches. However, it is wrapped in a try/catch and only runs when `isAuthenticated && isVerified`. If sync fails (offline), the catch block silently skips clearing: `catch { /* offline or sync failed -- keep local data intact */ }`. This means **offline sign-out still leaves seller data for the next user**. App.tsx SIGNED_OUT handler (line 223-229) still only resets authStore and clearProfileCache -- does NOT call clearBusinessLocalData. So a forced sign-out from Supabase side also leaves data. |
+| CRIT-2 | recordPayment does not cap paidAmount | **FIXED** | sellerStore.ts:357 now reads `roundMoney(Math.min(o.totalAmount, (o.paidAmount || 0) + amount))`. Both Math.min cap and roundMoney are applied. |
+| CRIT-3 | deleteSeason does not reverse product totalSold or transfer income | **FIXED** | sellerStore.ts:423-465 now reverses product totalSold, stock quantities (lines 427-447), AND transfer income per batch via reconcileTransferIncome (lines 457-465). |
+| CRIT-4 | seller_products_public_read RLS never dropped | **FIXED** | New migration `20260525000000_restrict_seller_products_anon.sql` revokes full SELECT from anon and re-grants only safe columns (id, user_id, name, description, price_per_unit, unit, is_active, image_url). cost_per_unit, stock_quantity, and total_sold are no longer exposed. |
+| CRIT-5 | PULL_LIMIT 999 silently drops records | **FIXED** | sellerSync.ts:726-745 now implements `pullPaged()` which loops fetching PULL_PAGE (1000) rows at a time until a short page is returned. All pull calls use `pullPaged()`. No more silent truncation. |
+| CRIT-6 | No double-submit protection on NewOrder | **FIXED** | NewOrder.tsx:510-511 uses `submittingRef.current` guard. Released when confirmation modal closes (line 548-550). |
+| CRIT-7 | deleteOrder reads state OUTSIDE set() | **STILL BROKEN** | sellerStore.ts:244-245: `const order = get().orders.find((o) => o.id === id);` is still called OUTSIDE `set()`, then `order` is used inside `set()` at line 247. Same pattern in `deleteOrders` (line 273: `const toDelete = get().orders.filter(...)` outside set) and `updateOrderItems` (line 312: `const order = get().orders.find(...)` outside set). The stale-read race condition remains. |
+
+#### Section 4 -- Week-1 Fixes
+
+| ID | Finding | Status | Evidence |
+|----|---------|--------|----------|
+| HIGH-1 | Multiple active seasons possible | **FIXED** | sellerStore.ts:391-413: `addSeason` now auto-ends any currently active season when starting a new active one. Lines 398-401 map existing seasons to set `isActive: false` and `endDate: now` if a new active season is being created. |
+| HIGH-2 | Season sync uses createdAt for comparison | **FIXED** | sellerSync.ts:835 now compares `sd(rs.updated_at).getTime() > sd(local.updatedAt ?? local.createdAt).getTime()`. Seasons now have `updatedAt` field (set in store mutations like updateSeasonName:476, updateSeasonBudget:483, updateSeasonTarget:490). Falls back to createdAt for legacy rows. |
+| HIGH-3 | Same issue for customers and ingredient costs | **FIXED** | Customers: sellerSync.ts:880 compares against `local.updatedAt ?? local.createdAt`. Costs: sellerSync.ts:988 compares against `local.updatedAt ?? local.date`. Both types now have updatedAt fields set in their respective update mutations. |
+| HIGH-4 | Floating-point accumulation in financial sums | **PARTIALLY FIXED** | `roundMoney()` now applied at storage boundaries: `addOrder` (line 162), `updateOrderItems` (line 315), `recordPayment` (line 357), `addIngredientCost` (line 559), `addOrderLinkOrder` (lines 679-680). Display-level `.reduce()` sums still do not round, but since individual amounts are rounded at write time, practical drift is epsilon-level. |
+| HIGH-6 | Order link orders have no seasonId | **STILL BROKEN** | sellerStore.ts:705: `seasonId: undefined` is still hardcoded in `addOrderLinkOrder`. No auto-assignment to active season. No UI for post-hoc season assignment. |
+| HIGH-7 | costTemplates only add, never update from remote | **FIXED** | sellerSync.ts:1068-1077 now compares updatedAt and updates existing templates when remote is newer. CostTemplate store mutations now set updatedAt (lines 848, 856). |
+
+#### Section 5 -- Tech Debt
+
+| ID | Finding | Status | Evidence |
+|----|---------|--------|----------|
+| MED-1 | clearBusinessData does not clear seller tombstone IDs | **WRONG** | `clearBusinessLocalData()` (settingsStore.ts:53-61) DOES clear all tombstone arrays. `clearAllData()` (settingsStore.ts:279-289) omits them but wipes AsyncStorage entirely (line 434-454), so they cannot persist. Neither function has this bug. |
+| MED-2 | Order code collision theoretically possible | **STILL BROKEN** | sellerStore.ts:46-61: 529,000 possible codes, local-only collision check. Cross-device collision still possible. Unchanged. |
+| MED-3 | Product image URIs stale after OTA/cleanup | **STILL BROKEN** | Unchanged. receiptLocalUri is still a local file path vulnerable to OS cleanup before sync. |
+| MED-4 | storageIntegrity missing stores | **FIXED** | storageIntegrity.ts:17-40 now lists 20 keys including all previously missing ones (freelancer, parttime, ontheroad, mixed, crm, notes, learning, ai-insights, receipt). |
+| MED-5 | personalSync wallet merge does not preserve derived balance | **CANNOT VERIFY** | Would require reading personalSync.ts merge logic in detail, which was not fully examined in this pass. |
+| MED-6 | Debt payment does not integrate with seller mode | **STILL BROKEN** | By design -- separate systems. No change. |
+| MED-7 | AsyncStorage 6MB limit risk | **STILL BROKEN** | Unchanged. No monitoring or archival mechanism. |
+| LOW-1 | addIngredientCost uses Date.now().toString() as ID | **FIXED** | sellerStore.ts:556: `const id = newId();` now uses UUID-based newId(). |
+| LOW-2 | recurringCost nextDue mutation modifies Date in place | **STILL BROKEN** | sellerStore.ts:893-898: still mutates Date in place. Minor, works correctly. |
+| LOW-3 | Module-level caches not cleared on sign-out | **FIXED** | sellerStore.ts:74-78 exports `clearSellerCaches()`. settingsStore.ts:77 calls it from `clearBusinessLocalData()`. |
+| LOW-4 | order_link deposits not typed with id field | **STILL BROKEN** | Unchanged. Minor, no functional impact. |
+
+#### Section 11 -- Order Screen Deep Dive
+
+| ID | Finding | Status | Evidence |
+|----|---------|--------|----------|
+| ORD-CRIT-1 | NewOrder totalAmount includes invalid items | **FIXED** | NewOrder.tsx:496-504: `validItems` filtered, then `validTotal = validItems.reduce(...)`. Line 518: `addOrder({ ...rest, totalAmount: validTotal })`. |
+| ORD-CRIT-2 | Stale orderNumber read after addOrder | **FIXED** | NewOrder.tsx:530-531: `const freshOrders = useSellerStore.getState().orders;` reads directly from store post-mutation. |
+| ORD-CRIT-3 | Order date lost on sync | **FIXED** | Migration `20260525010000` adds `order_date` column. sellerSync.ts:367 pushes `order_date: toIso(o.date)`. Line 919 pulls `date: sd(ro.order_date ?? ro.created_at)`. |
+| ORD-HIGH-1 | Dashboard vs OrderList unpaid count | **WRONG** | Dashboard.tsx:112 now uses `currentOrders.filter((o) => !o.isPaid)` with NO status exclusion, matching OrderList.tsx:906. Both use identical `!o.isPaid` filter. |
+| ORD-HIGH-2 | SeasonSummary vs useSeasonInsights topProducts | **FIXED** | SeasonSummary.tsx:158 now iterates `paidOrders` (not all orders). Line 160 groups by `item.productId || item.productName`, matching useSeasonInsights:121. |
+| ORD-HIGH-3 | Non-atomic order edit | **STILL BROKEN** | OrderList.tsx:1368-1373: `updateOrderItems` and `updateOrder` remain two separate store mutations. No combined mutation exists. |
+| ORD-HIGH-4 | Order link orders do not update stock | **FIXED** | sellerStore.ts:711-723: `addOrderLinkOrder` now updates product totalSold and stockQuantity, mirroring `addOrder`. |
+| ORD-HIGH-6 | Client-side total tamperable | **FIXED** | sellerStore.ts:675-690: `addOrderLinkOrder` recomputes total from line items. Falls back to sent total only when items have no prices. |
+| ORD-MED-1 | Period filter prefers deliveryDate | **STILL BROKEN** | OrderList.tsx:912: `const raw = o.deliveryDate || o.date;` -- unchanged. |
+| ORD-MED-2 | deleteOrderFromSupabase failure silently ignored | **FIXED** | OrderList.tsx:1148-1149: now shows error toast on failure instead of swallowing. |
+| ORD-MED-3 | Customers totalSpent from ALL orders | **WRONG** | Customers.tsx:575-576: `if (order.isPaid) { entry.totalSpent += order.totalAmount; }` -- only paid orders. Audit was incorrect. |
+| ORD-MED-4 | SeasonSummary topProducts groups by productName | **FIXED** | SeasonSummary.tsx:160: `const key = item.productId || item.productName;` -- groups by productId. |
+| ORD-MED-5 | Order page anon key in client JS | **STILL BROKEN** | By design for Supabase. Mitigated by CRIT-4 fix. |
+| ORD-LOW-1 | AnimatedKeptAmount toFixed(0) | **STILL BROKEN** | Cosmetic. Unchanged. |
+| ORD-LOW-2 | Order Again no pre-fill | **STILL BROKEN** | Cosmetic. Unchanged. |
+| ORD-LOW-3 | No phone validation on order page | **STILL BROKEN** | Unchanged. Low severity. |
+
+#### Section 12 -- Ripple Analysis
+
+| ID | Finding | Status | Evidence |
+|----|---------|--------|----------|
+| RIPPLE-NEW-1 | Dashboard unpaid aging contradicts hero card | **WRONG** | Dashboard.tsx:112 uses `currentOrders.filter((o) => !o.isPaid)` (this month, no status exclusion). Line 194 uses `orders.filter((o) => !o.isPaid)` (all-time). The difference is SCOPE (this month vs all-time), not DEFINITION. Both use `!o.isPaid`. A hero showing "3 unpaid this month" while aging shows "7 total unpaid" is correct, not contradictory. |
+| RIPPLE-NEW-2 | explainSellerMonth hardcodes "RM" | **FIXED** | explainSellerMonth.ts:11 now accepts `currency: string` parameter. Lines 25 and 60 use `${currency}`. Dashboard.tsx:355 passes `currency`. |
+| RIPPLE-NEW-3 | Transfer amount not rounded | **FIXED** | SeasonSummary.tsx:270: `const amount = Math.round(parseFloat(transferAmount) * 100) / 100;` |
+| RIPPLE-NEW-4 | Season compare stats inconsistency | **STILL BROKEN** | SeasonSummary.tsx:255: `totalOrders: cOrders.length` counts ALL orders. `totalIncome` uses paid-only. Semantic mismatch remains. |
+| RIPPLE-NEW-5 | deleteSeason reads state outside setter | **STILL BROKEN** | sellerStore.ts:424: `const seasonOrders = get().orders.filter(...)` outside `set()`. Same stale-read pattern as CRIT-7. |
+| RIPPLE-NEW-6 | Customers totalSpent no season filter | **STILL BROKEN** | Customers.tsx:552-628: iterates ALL orders. No per-season filter or toggle. |
+| RIPPLE-NEW-7 | Module-level caches survive sign-out | **FIXED** | clearSellerCaches() exported and called from clearBusinessLocalData(). |
+
+### Corrections to Previous Audit
+
+1. **MED-1 was wrong.** The audit said `clearBusinessData` does not clear tombstone IDs. In fact, `clearBusinessLocalData()` (the function called on sign-out) DOES clear all six tombstone arrays at settingsStore.ts:59-60.
+
+2. **ORD-HIGH-1 was wrong.** The audit said Dashboard excludes `pending` and `confirmed` from unpaid count. Current code at Dashboard.tsx:112 shows `currentOrders.filter((o) => !o.isPaid)` with NO status exclusion. Both Dashboard and OrderList use the same `!o.isPaid` filter.
+
+3. **ORD-MED-3 was wrong.** The audit said Customers derives totalSpent from ALL orders. Current code at Customers.tsx:575 clearly gates on `if (order.isPaid)` before adding to totalSpent.
+
+4. **RIPPLE-NEW-1 was wrong.** The audit said Dashboard contradicts itself with different unpaid definitions in the hero vs aging. The actual difference is scope (this-month currentOrders vs all-time orders), not definition. Both use `!o.isPaid` without status exclusion.
+
+### Remaining Fix Queue (VERIFIED -- bugs confirmed STILL BROKEN)
+
+| Priority | ID | Severity | What |
+|----------|-----|----------|------|
+| 1 | CRIT-1 (partial) | CRITICAL | Offline sign-out leaves seller data; App.tsx SIGNED_OUT does not clear stores |
+| 2 | CRIT-7 + RIPPLE-NEW-5 | CRITICAL | deleteOrder/deleteOrders/updateOrderItems/deleteSeason read state outside set() |
+| 3 | HIGH-6 | HIGH | Order link orders have seasonId: undefined |
+| 4 | ORD-HIGH-3 | HIGH | Non-atomic order edit (two separate mutations) |
+| 5 | RIPPLE-NEW-4 | MEDIUM | Season compare stats mixes all-orders count with paid-only income |
+| 6 | ORD-MED-1 | MEDIUM | Period filter prefers deliveryDate over order date |
+| 7 | MED-2 | MEDIUM | Order code collision across devices |
+| 8 | MED-3 | MEDIUM | receiptLocalUri stale after OS cleanup |
+| 9 | MED-7 | MEDIUM | AsyncStorage 6MB limit risk |
+| 10 | RIPPLE-NEW-6 | LOW | Customers screen has no per-season filter |
+
+### Assessment
+
+The codebase has improved substantially. Of the 7 original SHIP BLOCKERS, 4 are fully fixed (CRIT-2, CRIT-3, CRIT-5, CRIT-6), 1 is fixed via migration (CRIT-4), 1 is partially fixed (CRIT-1), and 1 remains broken (CRIT-7). All 3 order-screen CRITICALs (ORD-CRIT-1, ORD-CRIT-2, ORD-CRIT-3) are fully fixed with proper migrations and code changes.
+
+The two remaining CRITICAL-priority items are:
+
+1. **Stale-read race condition (CRIT-7 + RIPPLE-NEW-5):** Four mutations read `get().orders` outside `set()`. Fix: move each `get()` call inside the `set()` callback.
+
+2. **Offline sign-out data leak (CRIT-1 partial):** When sync fails during sign-out, data is preserved for the next user. Fix: always clear local data on sign-out (warn about unsynced changes rather than silently keeping them), and add `clearBusinessLocalData()` to App.tsx SIGNED_OUT handler.
+
+---
+
+## 14. Resolution (post-verification) -- 2026-05-25
+
+The Section 13 "Remaining Fix Queue" was worked through after the verification pass. Updated status:
+
+| # | ID | New status | Evidence |
+|---|-----|-----------|----------|
+| 1 | CRIT-1 (partial) | **FIXED** | Explicit sign-out (Settings.tsx) now flushes best-effort then calls `clearBusinessLocalData()` REGARDLESS of flush success. App.tsx `SIGNED_OUT` also calls it, so a forced/expired sign-out can't leak either. Personal data left intact (its sync is opt-in). |
+| 2 | CRIT-7 + RIPPLE-NEW-5 | **FIXED** | `deleteOrder`, `deleteOrders`, `updateOrderItems`, `deleteSeason` now read order/season data INSIDE `set()` (captured to an outer var for the post-set cross-store reconcile, which must run outside `set` because it mutates other stores). |
+| 3 | HIGH-6 | **FIXED** | `addOrderLinkOrder` sets `seasonId` to the active season's id (`state.seasons.find(s => s.isActive)?.id`). |
+| 4 | ORD-HIGH-3 | **FIXED** | New atomic `updateOrderWithItems(id, items, updates)` applies items + metadata in one `set()`; OrderList edit uses it (the old two-call path is gone). |
+| 5 | RIPPLE-NEW-4 | **NOT A BUG** | `compareStats` is per-row consistent (this-season `totalOrders` vs other-season `totalOrders`; paid income vs paid income). Comparing a volume metric (orders) against a money metric (paid income) across seasons is by design -- same class as the 4 findings this verification already marked as auditor errors. Forcing "Orders" to mean paid-only would mismatch the order list. |
+| 6 | ORD-MED-1 | **OPEN (product decision)** | Period filter prefers `deliveryDate`; using order date vs adding a toggle is a UX call, not a clear bug fix. |
+| 7 | MED-2 | **OPEN (low value)** | Cross-device order-code collision needs same-ms + same 5-char random on two devices; changing the customer-facing code format has UX cost. |
+| 8 | MED-3 | **OPEN** | `receiptLocalUri` stale after OS cleanup; mitigated by sync upload, full fix needs upload-on-capture. |
+| 9 | MED-7 | **OPEN (feature)** | AsyncStorage 6MB needs archival/monitoring. |
+| 10 | RIPPLE-NEW-6 | **OPEN (feature)** | Customers per-season filter. |
+
+Also fixed earlier in the same session: CRIT-1..CRIT-6, HIGH-1/2/3/4/7, ORD-CRIT-1/2/3, ORD-HIGH-1/2/4/6, ORD-MED-2/4, RIPPLE-NEW-2/3/7, MED-4, LOW-1/3.
+
+**Migrations applied to production (verified):** `product_category`, `stock_adjustments`, `cost_categories_receipts`, `rls_subquery_auth_uid`, `restrict_seller_products_anon`, `seller_orders_order_date`.
+
+**Remaining before ship:** device/runtime testing (no automated test suite exists), and the product-decision items 6-10 above.

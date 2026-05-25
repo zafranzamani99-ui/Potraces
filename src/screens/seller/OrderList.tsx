@@ -638,7 +638,6 @@ const OrderList: React.FC = () => {
   const products = useSellerStore((s) => s.products);
   const updateOrderStatus = useSellerStore((s) => s.updateOrderStatus);
   const updateOrder = useSellerStore((s) => s.updateOrder);
-  const updateOrderItems = useSellerStore((s) => s.updateOrderItems);
   const updateOrderWithItems = useSellerStore((s) => s.updateOrderWithItems);
   const recordPayment = useSellerStore((s) => s.recordPayment);
   const updateDeposit = useSellerStore((s) => s.updateDeposit);
@@ -1382,7 +1381,7 @@ const OrderList: React.FC = () => {
       showToast('order updated.', 'info');
     }
     setIsEditing(false);
-  }, [selectedOrder, editNote, editPhone, editAddress, editDeliveryDate, editItems, updateOrder, updateOrderItems, updateOrderWithItems, showToast]);
+  }, [selectedOrder, editNote, editPhone, editAddress, editDeliveryDate, editItems, updateOrder, updateOrderWithItems, showToast]);
 
 
   // Undo paid (with warning)
