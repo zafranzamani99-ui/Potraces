@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SellerState, OrderStatus, SellerOrder, SellerOrderItem, SellerPaymentMethod, RecurringFrequency, DepositEntry, SellerCostCategory } from '../types';
 import { DEFAULT_COST_CATEGORIES } from '../constants';
 import { newId } from '../utils/id';
+import { roundMoney } from '../utils/money';
 import { usePersonalStore } from './personalStore';
 import { useBusinessStore } from './businessStore';
 
@@ -158,6 +159,7 @@ export const useSellerStore = create<SellerState>()(
             orders: [
               {
                 ...order,
+                totalAmount: roundMoney(order.totalAmount),
                 id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
                 orderNumber: generateOrderCode(state.orders),
                 createdAt: new Date(),
@@ -310,7 +312,7 @@ export const useSellerStore = create<SellerState>()(
         const order = get().orders.find((o) => o.id === id);
         if (!order) return;
         const oldTotal = order.totalAmount;
-        const newTotal = newItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+        const newTotal = roundMoney(newItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0));
         set((state) => {
           const oldItems = order.items;
           // Build per-product quantity diffs
@@ -352,7 +354,7 @@ export const useSellerStore = create<SellerState>()(
             if (amount <= 0) return o;
             // Cap at the order total so paidAmount can't exceed what's owed
             // (mirrors updateDeposit). Prevents "Paid RM80 / RM50" states.
-            const newPaidAmount = Math.min(o.totalAmount, (o.paidAmount || 0) + amount);
+            const newPaidAmount = roundMoney(Math.min(o.totalAmount, (o.paidAmount || 0) + amount));
             const fullyPaid = newPaidAmount >= o.totalAmount;
             const entry = { amount, method: paymentMethod, date: new Date(), ...(note ? { note } : {}) };
             return {
@@ -551,10 +553,10 @@ export const useSellerStore = create<SellerState>()(
 
       // ─── Ingredient Costs ──────────────────────────────
       addIngredientCost: (cost) => {
-        const id = Date.now().toString();
+        const id = newId();
         set((state) => ({
           ingredientCosts: [
-            { ...cost, id, updatedAt: new Date() },
+            { ...cost, id, amount: roundMoney(cost.amount), updatedAt: new Date() },
             ...state.ingredientCosts,
           ],
         }));
@@ -674,8 +676,8 @@ export const useSellerStore = create<SellerState>()(
           // client-sent total_amount (which the public order page computes in
           // JS and a malicious caller could tamper with). Fall back to the sent
           // total only if the items carry no usable prices.
-          const itemsTotal = linkItems.reduce((s, i) => s + (i.unitPrice || 0) * (i.quantity || 0), 0);
-          const sentTotal = parseFloat(String(row.total_amount)) || 0;
+          const itemsTotal = roundMoney(linkItems.reduce((s, i) => s + (i.unitPrice || 0) * (i.quantity || 0), 0));
+          const sentTotal = roundMoney(parseFloat(String(row.total_amount)) || 0);
 
           const newOrder = {
             id: Date.now().toString() + Math.random().toString(36).slice(2, 6),

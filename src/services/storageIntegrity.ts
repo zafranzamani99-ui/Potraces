@@ -31,6 +31,12 @@ const PERSISTED_STORE_KEYS = [
   'auth-storage',
   'ai-insights-storage',
   'receipt-storage',
+  'freelancer-storage',
+  'parttime-storage',
+  'ontheroad-storage',
+  'mixed-storage',
+  'crm-storage',
+  'notes-storage',
 ] as const;
 
 export type StoreKey = typeof PERSISTED_STORE_KEYS[number];

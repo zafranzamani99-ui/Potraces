@@ -1145,7 +1145,9 @@ const OrderList: React.FC = () => {
             style: 'destructive',
             onPress: () => {
               if (order.supabaseId) {
-                deleteOrderFromSupabase(order.supabaseId).catch(() => {});
+                deleteOrderFromSupabase(order.supabaseId).catch(() =>
+                  showToast("couldn't remove from server — will retry on next sync", 'error')
+                );
               }
               deleteOrder(order.id);
               setSelectedOrder(null);
@@ -1500,7 +1502,9 @@ const OrderList: React.FC = () => {
           onPress: () => {
             const ordersToDelete = orders.filter(o => ids.includes(o.id));
             for (const o of ordersToDelete) {
-              if (o.supabaseId) deleteOrderFromSupabase(o.supabaseId).catch(() => {});
+              if (o.supabaseId) deleteOrderFromSupabase(o.supabaseId).catch(() =>
+                showToast("couldn't remove some orders from server — will retry on next sync", 'error')
+              );
             }
             deleteOrders(ids);
             setSelectedIds(new Set());
