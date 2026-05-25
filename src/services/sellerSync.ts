@@ -722,6 +722,27 @@ export async function pushStockAdjustments(adjustments: StockAdjustment[]): Prom
  * if the remote updated_at is newer than the local updatedAt.
  * Must run BEFORE push to prevent tombstone logic from deleting remote data.
  */
+// Fetch every row for a query, one page at a time. A single .range(0, 999)
+// silently drops rows past 999 — and because the push step hard-deletes remote
+// rows missing from the local set, a truncated pull could permanently delete a
+// heavy seller's older orders. Paginating until a short page guarantees the
+// local store sees the complete remote picture before any tombstone deletion.
+const PULL_PAGE = 1000;
+async function pullPaged<T = any>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>,
+): Promise<T[]> {
+  const all: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await build(from, from + PULL_PAGE - 1);
+    if (error) throw error;
+    if (data && data.length) all.push(...data);
+    if (!data || data.length < PULL_PAGE) break;
+    from += PULL_PAGE;
+  }
+  return all;
+}
+
 export async function pullAll(): Promise<void> {
   const session = await getSession();
   if (!session) return;
@@ -733,15 +754,9 @@ export async function pullAll(): Promise<void> {
   const deletedCustomerIds = new Set(store._deletedCustomerIds);
   const deletedCostIds = new Set(store._deletedCostIds || []);
 
-  const PULL_LIMIT = 999;
-
   // Pull products
-  const { data: remoteProducts, error: productsErr } = await supabase
-    .from('seller_products')
-    .select('*')
-    .eq('user_id', userId)
-    .range(0, PULL_LIMIT);
-  if (productsErr) throw productsErr;
+  const remoteProducts = await pullPaged((from, to) =>
+    supabase.from('seller_products').select('*').eq('user_id', userId).range(from, to));
 
   if (remoteProducts && remoteProducts.length > 0) {
     const localProductMap = new Map(store.products.map((p) => [p.id, p]));
@@ -787,12 +802,8 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull seasons
-  const { data: remoteSeasons, error: seasonsErr } = await supabase
-    .from('seller_seasons')
-    .select('*')
-    .eq('user_id', userId)
-    .range(0, PULL_LIMIT);
-  if (seasonsErr) throw seasonsErr;
+  const remoteSeasons = await pullPaged((from, to) =>
+    supabase.from('seller_seasons').select('*').eq('user_id', userId).range(from, to));
 
   if (remoteSeasons && remoteSeasons.length > 0) {
     const localSeasonMap = new Map(store.seasons.map((s) => [s.id, s]));
@@ -834,12 +845,8 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull customers
-  const { data: remoteCustomers, error: customersErr } = await supabase
-    .from('seller_customers')
-    .select('*')
-    .eq('user_id', userId)
-    .range(0, PULL_LIMIT);
-  if (customersErr) throw customersErr;
+  const remoteCustomers = await pullPaged((from, to) =>
+    supabase.from('seller_customers').select('*').eq('user_id', userId).range(from, to));
 
   if (remoteCustomers && remoteCustomers.length > 0) {
     const localCustomerMap = new Map(store.sellerCustomers.map((c) => [c.id, c]));
@@ -879,13 +886,8 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull app orders
-  const { data: remoteOrders, error: ordersErr } = await supabase
-    .from('seller_orders')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('source', 'app')
-    .range(0, PULL_LIMIT);
-  if (ordersErr) throw ordersErr;
+  const remoteOrders = await pullPaged((from, to) =>
+    supabase.from('seller_orders').select('*').eq('user_id', userId).eq('source', 'app').range(from, to));
 
   if (remoteOrders && remoteOrders.length > 0) {
     const localOrderMap = new Map(store.orders.map((o) => [o.id, o]));
@@ -943,12 +945,8 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull ingredient costs
-  const { data: remoteIngredientCosts, error: ingredientCostsErr } = await supabase
-    .from('seller_ingredient_costs')
-    .select('*')
-    .eq('user_id', userId)
-    .range(0, PULL_LIMIT);
-  if (ingredientCostsErr) throw ingredientCostsErr;
+  const remoteIngredientCosts = await pullPaged((from, to) =>
+    supabase.from('seller_ingredient_costs').select('*').eq('user_id', userId).range(from, to));
 
   if (remoteIngredientCosts && remoteIngredientCosts.length > 0) {
     const localCostMap = new Map(store.ingredientCosts.map((c) => [c.id, c]));
@@ -992,12 +990,8 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull recurring costs
-  const { data: remoteRecurringCosts, error: recurringCostsErr } = await supabase
-    .from('seller_recurring_costs')
-    .select('*')
-    .eq('user_id', userId)
-    .range(0, PULL_LIMIT);
-  if (recurringCostsErr) throw recurringCostsErr;
+  const remoteRecurringCosts = await pullPaged((from, to) =>
+    supabase.from('seller_recurring_costs').select('*').eq('user_id', userId).range(from, to));
 
   if (remoteRecurringCosts && remoteRecurringCosts.length > 0) {
     const localRcMap = new Map(store.recurringCosts.map((r) => [r.id, r]));
@@ -1037,12 +1031,8 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull cost templates
-  const { data: remoteCostTemplates, error: costTemplatesErr } = await supabase
-    .from('seller_cost_templates')
-    .select('*')
-    .eq('user_id', userId)
-    .range(0, PULL_LIMIT);
-  if (costTemplatesErr) throw costTemplatesErr;
+  const remoteCostTemplates = await pullPaged((from, to) =>
+    supabase.from('seller_cost_templates').select('*').eq('user_id', userId).range(from, to));
 
   if (remoteCostTemplates && remoteCostTemplates.length > 0) {
     const localTplMap = new Map(store.costTemplates.map((t) => [t.id, t]));
@@ -1073,12 +1063,8 @@ export async function pullAll(): Promise<void> {
   }
 
   // Pull stock adjustments
-  const { data: remoteAdj, error: adjErr } = await supabase
-    .from('seller_stock_adjustments')
-    .select('*')
-    .eq('user_id', userId)
-    .range(0, PULL_LIMIT);
-  if (adjErr) throw adjErr;
+  const remoteAdj = await pullPaged((from, to) =>
+    supabase.from('seller_stock_adjustments').select('*').eq('user_id', userId).range(from, to));
 
   if (remoteAdj && remoteAdj.length > 0) {
     const localAdjMap = new Map(store.stockAdjustments.map((a) => [a.id, a]));
@@ -1115,12 +1101,8 @@ export async function pullAll(): Promise<void> {
     .eq('user_id', userId);
   const remoteDeletedCatIds = new Set((remoteDeletedCats ?? []).map((r) => r.local_id as string));
 
-  const { data: remoteCats, error: catsErr } = await supabase
-    .from('seller_cost_categories')
-    .select('*')
-    .eq('user_id', userId)
-    .range(0, PULL_LIMIT);
-  if (catsErr) throw catsErr;
+  const remoteCats = await pullPaged((from, to) =>
+    supabase.from('seller_cost_categories').select('*').eq('user_id', userId).range(from, to));
 
   {
     const localCatMap = new Map(store.costCategories.map((c) => [c.id, c]));
