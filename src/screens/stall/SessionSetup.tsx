@@ -12,8 +12,8 @@ import {
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -28,6 +28,7 @@ interface ProductSetupItem {
 
 const SessionSetup: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { products, startSession } = useStallStore();
@@ -128,6 +129,8 @@ const SessionSetup: React.FC = () => {
             returnKeyType="done"
             accessibilityLabel="Session name, optional"
             accessibilityHint="Enter a name for this selling session"
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         </View>
 
@@ -159,7 +162,7 @@ const SessionSetup: React.FC = () => {
                     ]}
                   >
                     {item.included && (
-                      <Feather name="check" size={14} color="#FFFFFF" />
+                      <Feather name="check" size={14} color={C.onAccent} />
                     )}
                   </View>
                   <View style={styles.productInfo}>
@@ -188,6 +191,8 @@ const SessionSetup: React.FC = () => {
                     returnKeyType="done"
                     accessibilityLabel={`Starting quantity for ${item.name}`}
                     accessibilityHint="Optional. Enter how many you brought to sell"
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
                   />
                 )}
               </View>
@@ -241,6 +246,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['4xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   header: {
     flexDirection: 'row',
@@ -257,6 +265,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
     marginBottom: SPACING['3xl'],
   },
 
@@ -388,7 +397,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   startButtonText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   skipLink: {
     alignItems: 'center',

@@ -781,7 +781,7 @@ const SavingsTracker: React.FC = () => {
 
         {/* ═══ ACCOUNT CARDS ═══ */}
         {ready && (sortedAccounts.length > 0 ? (
-          sortedAccounts.map((account) => {
+          sortedAccounts.map((account, idx) => {
             const info = account.typeInfo;
             const { gain, returnPct, monthGain, goalEta, projectedAnnual } = account;
             const lastSnapshot = account.history.length > 0
@@ -801,7 +801,7 @@ const SavingsTracker: React.FC = () => {
               ? Math.min(100, Math.round((account.currentValue / account.target) * 100)) : null;
 
             return (
-              <Card key={account.id} style={styles.accountCard}>
+              <Card key={`${account.id}_${idx}`} style={styles.accountCard}>
                 {/* Header row: icon + name + edit */}
                 <View style={styles.accountHeader}>
                   <View style={[styles.accountTypeIcon, { backgroundColor: withAlpha(info.color, 0.1) }]}>
@@ -1332,7 +1332,7 @@ const SavingsTracker: React.FC = () => {
                       : snap.snapshotType === 'withdrawal' ? 'arrow-down-left'
                       : 'refresh-cw';
                     return (
-                      <View key={snap.id} style={styles.historyItem}>
+                      <View key={`${snap.id}_${idx}`} style={styles.historyItem}>
                         <View style={styles.historyItemIcon}>
                           <Feather name={typeIcon as keyof typeof Feather.glyphMap} size={12} color={C.textMuted} />
                         </View>

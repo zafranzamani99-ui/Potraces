@@ -31,7 +31,7 @@ import NotesHome from '../screens/notes/NotesHome';
 // Legacy screens (still used as fallback)
 import POS from '../screens/business/POS';
 import CRM from '../screens/business/CRM';
-import Inventory from '../screens/business/Inventory';
+import ProductsLegacy from '../screens/business/Inventory';
 
 // Income-type-specific screens used as tabs
 import ClientList from '../screens/business/ClientList';
@@ -79,7 +79,7 @@ const ICON_MAP: Record<string, keyof typeof Feather.glyphMap> = {
   Reports: 'bar-chart-2',
   Settings: 'settings',
   // Legacy
-  Inventory: 'package',
+  Products: 'package',
   POS: 'shopping-cart',
   CRM: 'user-check',
 };
@@ -160,7 +160,7 @@ const BusinessNavigator: React.FC = () => {
         return (
           <>
             <Tab.Screen name="Dashboard" component={BusinessDashboard} options={{ title: t.tabs.home, headerShown: false }} />
-            <Tab.Screen name="Inventory" component={Inventory} options={{ title: 'Products' }} />
+            <Tab.Screen name="Products" component={ProductsLegacy} options={{ title: 'Products' }} />
             <Tab.Screen name="POS" component={POS} options={{ title: 'POS' }} />
             <Tab.Screen name="CRM" component={CRM} options={{ title: 'CRM' }} />
             <Tab.Screen name="Settings" component={Settings} options={{ title: t.tabs.settings }} />
@@ -178,7 +178,7 @@ const BusinessNavigator: React.FC = () => {
         />
       )}
       screenOptions={({ route }) => ({
-        lazy: false,
+        lazy: true,
         freezeOnBlur: true,
         tabBarIcon: ({ color, size }: { color: string; size: number }) =>
           getIcon(route.name, color, size),

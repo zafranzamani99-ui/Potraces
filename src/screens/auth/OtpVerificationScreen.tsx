@@ -164,7 +164,7 @@ const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.iconCircle}>
-            <Feather name="shield" size={28} color={C.accent} />
+            <Feather name="send" size={26} color={C.accent} />
           </View>
           <Text style={styles.title}>{tr.auth.otpTitle}</Text>
           <Text style={styles.subtitle}>

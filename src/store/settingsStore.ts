@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
 import { startOfMonth } from 'date-fns';
 import { usePersonalStore } from './personalStore';
 import { useBusinessStore } from './businessStore';
@@ -17,6 +18,12 @@ import { usePartTimeStore } from './partTimeStore';
 import { useOnTheRoadStore } from './onTheRoadStore';
 import { useMixedStore } from './mixedStore';
 import { useAuthStore } from './authStore';
+import { useNotesStore } from './notesStore';
+import { useLearningStore } from './learningStore';
+import { usePlaybookStore } from './playbookStore';
+import { useAIInsightsStore } from './aiInsightsStore';
+import { useReceiptStore } from './receiptStore';
+import { useSavingsStore } from './savingsStore';
 import { clearBusinessDataRemote, signOut } from '../services/supabase';
 import { clearProfileCache } from '../services/sellerSync';
 import { DEFAULT_PAYMENT_METHODS } from '../constants/taxCategories';
@@ -50,6 +57,12 @@ interface SettingsState {
   biometricLockTimeoutMin: number;
   walletEchoHidden: boolean;
   setWalletEchoHidden: (value: boolean) => void;
+  /** Show "archive" tab on the Debts/Splits screens. Default: false (off). */
+  debtsShowArchive: boolean;
+  setDebtsShowArchive: (value: boolean) => void;
+  /** Show reminder/request buttons on debt cards. Default: false (off). */
+  debtsShowReminder: boolean;
+  setDebtsShowReminder: (value: boolean) => void;
   budgetEchoHidden: boolean;
   setBudgetEchoHidden: (value: boolean) => void;
   commitmentEchoHidden: boolean;
@@ -84,7 +97,7 @@ interface SettingsState {
   dismissHint: (id: string) => void;
   setBiometricLockEnabled: (value: boolean) => void;
   setBiometricLockTimeoutMin: (value: number) => void;
-  clearAllData: () => void;
+  clearAllData: () => Promise<void>;
   clearBusinessData: () => Promise<void>;
 }
 
@@ -110,6 +123,10 @@ export const useSettingsStore = create<SettingsState>()(
       biometricLockTimeoutMin: 5,
       walletEchoHidden: true,
       setWalletEchoHidden: (walletEchoHidden) => set({ walletEchoHidden }),
+      debtsShowArchive: false,
+      setDebtsShowArchive: (debtsShowArchive) => set({ debtsShowArchive }),
+      debtsShowReminder: true,
+      setDebtsShowReminder: (debtsShowReminder) => set({ debtsShowReminder }),
       budgetEchoHidden: true,
       setBudgetEchoHidden: (budgetEchoHidden) => set({ budgetEchoHidden }),
       commitmentEchoHidden: false,
@@ -177,7 +194,8 @@ export const useSettingsStore = create<SettingsState>()(
         dismissedHints: s.dismissedHints.includes(id) ? s.dismissedHints : [...s.dismissedHints, id],
       })),
 
-      clearAllData: () => {
+      clearAllData: async () => {
+        // 1. Reset every persisted store in-memory.
         usePersonalStore.setState({
           transactions: [],
           subscriptions: [],
@@ -267,6 +285,51 @@ export const useSettingsStore = create<SettingsState>()(
           scanResetDate: startOfMonth(new Date()),
         });
 
+        useNotesStore.setState({
+          pages: [],
+          activePageId: null,
+          isFirstWrite: true,
+        });
+
+        useLearningStore.setState({
+          categoryPatterns: [],
+          personAliases: [],
+          walletPreferences: [],
+          typeCorrections: [],
+          skippedKeywords: {},
+        });
+
+        usePlaybookStore.setState({
+          playbooks: [],
+          echoMemory: [],
+        });
+
+        useAIInsightsStore.setState({
+          spendingMirrorText: null,
+          spendingMirrorGeneratedAt: null,
+          spendingMirrorMonthKey: null,
+          isGenerating: false,
+          breathingRooms: [],
+          freshStartDismissedMonth: null,
+          reportNarratives: {},
+          chatMessages: [],
+          conversations: [],
+        });
+
+        useReceiptStore.setState({
+          receipts: [],
+          draft: null,
+          _deletedReceiptIds: [],
+        });
+
+        useSavingsStore.setState({
+          accounts: [],
+          sortBy: 'manual',
+          accountOrder: [],
+          lastOpenedValue: null,
+          _deletedSavingsIds: [],
+        });
+
         useAppStore.setState({ mode: 'personal' });
 
         set({
@@ -286,6 +349,64 @@ export const useSettingsStore = create<SettingsState>()(
           gettingStartedDismissed: false,
           dismissedHints: [],
         });
+
+        // 2. Delete remote business data + auth user (best-effort).
+        try {
+          await clearBusinessDataRemote();
+        } catch {
+          // Personal-only users won't have remote data — ignore.
+        }
+
+        // 3. Sign out of Supabase so the session can't rehydrate the user.
+        try {
+          await signOut();
+        } catch {
+          // Already signed out — ignore.
+        }
+        useAuthStore.getState().reset();
+        clearProfileCache();
+
+        // 4. Wipe FileSystem assets (payment QRs + scanned receipts).
+        const docDir = FileSystem.documentDirectory;
+        if (docDir) {
+          await Promise.all([
+            FileSystem.deleteAsync(`${docDir}payment-qrs/`, { idempotent: true }).catch(() => {}),
+            FileSystem.deleteAsync(`${docDir}receipts/`, { idempotent: true }).catch(() => {}),
+          ]);
+        }
+
+        // 5. Nuke AsyncStorage so nothing rehydrates on next launch.
+        //    This is the single most important step — without it, every store's
+        //    persisted snapshot would resurrect on the next app start.
+        try {
+          await AsyncStorage.clear();
+        } catch {
+          // Fall back to removing every known key explicitly if .clear() fails.
+          await Promise.all([
+            'settings-storage',
+            'personal-storage',
+            'business-storage',
+            'stall-storage',
+            'seller-storage',
+            'category-storage',
+            'debt-storage',
+            'crm-storage',
+            'freelancer-storage',
+            'parttime-storage',
+            'ontheroad-storage',
+            'mixed-storage',
+            'wallet-storage',
+            'premium-storage',
+            'notes-storage',
+            'learning-storage',
+            'playbook-storage',
+            'ai-insights-storage',
+            'receipt-storage',
+            'savings-storage',
+            'app-storage',
+            'auth-storage',
+          ].map((k) => AsyncStorage.removeItem(k).catch(() => {})));
+        }
       },
 
       clearBusinessData: async () => {

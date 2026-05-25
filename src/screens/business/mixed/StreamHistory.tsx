@@ -11,7 +11,7 @@ import { formatDistanceToNow, format, startOfMonth, endOfMonth, isWithinInterval
 import { useBusinessStore } from '../../../store/businessStore';
 import { useMixedStore } from '../../../store/mixedStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 
@@ -249,6 +249,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   listContent: {
     paddingHorizontal: SPACING['2xl'],
     paddingBottom: SPACING['3xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
   row: {
     flexDirection: 'row',

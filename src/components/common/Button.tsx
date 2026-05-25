@@ -43,13 +43,13 @@ const makeVariantConfig = (C: typeof CALM): Record<
 > => ({
   primary: {
     bg: C.accent,
-    text: '#FFFFFF',
+    text: C.onAccent,
     border: C.accent,
     filled: true,
   },
   secondary: {
     bg: C.positive,
-    text: '#FFFFFF',
+    text: C.onAccent,
     border: C.positive,
     filled: true,
   },
@@ -67,13 +67,13 @@ const makeVariantConfig = (C: typeof CALM): Record<
   },
   danger: {
     bg: C.neutral,
-    text: '#FFFFFF',
+    text: C.onAccent,
     border: C.neutral,
     filled: true,
   },
   success: {
     bg: C.positive,
-    text: '#FFFFFF',
+    text: C.onAccent,
     border: C.positive,
     filled: true,
   },
@@ -162,8 +162,8 @@ const Button: React.FC<ButtonProps> = ({
     alignSelf: fullWidth ? 'stretch' : 'auto',
   };
 
-  const labelColor = variantCfg.filled ? '#FFFFFF' : variantCfg.text;
-  const indicatorColor = variantCfg.filled ? '#FFFFFF' : C.accent;
+  const labelColor = variantCfg.filled ? C.onAccent : variantCfg.text;
+  const indicatorColor = variantCfg.filled ? C.onAccent : C.accent;
 
   const renderIcon = () => {
     if (loading || !icon) return null;

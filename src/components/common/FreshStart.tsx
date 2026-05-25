@@ -22,8 +22,8 @@ import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useCategories } from '../../hooks/useCategories';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { lightTap, mediumTap } from '../../services/haptics';
 
 interface FreshStartProps {
@@ -32,6 +32,7 @@ interface FreshStartProps {
 
 const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
   const now = new Date();
@@ -181,6 +182,8 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
                         keyboardType="numeric"
                         placeholder={lastSpent ? lastSpent.toFixed(0) : '—'}
                         placeholderTextColor={C.textMuted}
+                        keyboardAppearance={isDark ? 'dark' : 'light'}
+                        selectionColor={C.accent}
                       />
                     </View>
                   </View>
@@ -288,7 +291,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: withAlpha(C.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -367,6 +370,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 });

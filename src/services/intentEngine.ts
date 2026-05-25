@@ -30,6 +30,34 @@ const categoryList = [
   ...INCOME_CATEGORIES.map((c) => `${c.id}: ${c.name}`),
 ].join(', ');
 
+const VALID_INTENTS: ExtractionIntent[] = [
+  'expense', 'income', 'debt', 'debt_update', 'bnpl',
+  'seller_order', 'seller_cost', 'query', 'savings_goal',
+  'subscription', 'playbook', 'plain',
+];
+
+const INCOME_CATEGORY_IDS = new Set(INCOME_CATEGORIES.map((c) => c.id));
+const ALL_CATEGORY_IDS = new Set([
+  ...EXPENSE_CATEGORIES.map((c) => c.id),
+  ...INCOME_CATEGORIES.map((c) => c.id),
+]);
+
+function normalizeExtractionType(
+  rawIntent: string,
+  item: Record<string, any>,
+): { type: ExtractionIntent; category: string | null } {
+  if (VALID_INTENTS.includes(rawIntent as ExtractionIntent)) {
+    return { type: rawIntent as ExtractionIntent, category: item.category || null };
+  }
+  if (ALL_CATEGORY_IDS.has(rawIntent)) {
+    return {
+      type: INCOME_CATEGORY_IDS.has(rawIntent) ? 'income' : 'expense',
+      category: rawIntent,
+    };
+  }
+  return { type: 'expense', category: item.category || null };
+}
+
 function makeId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -73,6 +101,13 @@ For each financial item found, return a JSON object:
     }
   ]
 }
+
+CRITICAL — DO NOT CONFUSE INTENT WITH CATEGORY:
+- The "intent" field MUST be one of: expense|income|debt|debt_update|bnpl|seller_order|seller_cost|savings_goal|playbook|plain
+- The "category" field uses IDs from AVAILABLE CATEGORIES (bills, food, transport, debt_payment, etc.)
+- NEVER put a category ID in the "intent" field
+- "digi bill 240" → intent: "expense", category: "bills"
+- "bayar hutang 500" → intent: "debt_update", category: "debt_payment"
 
 COMMON NOTE FORMATS:
 Users often write quick structured notes. Understand these patterns:
@@ -166,30 +201,34 @@ function parseGeminiResponse(raw: string): IntentResult | null {
     if (fenceMatch) cleaned = fenceMatch[1].trim();
 
     const parsed = JSON.parse(cleaned);
-    const intent: ExtractionIntent = parsed.intent || 'plain';
+    const intent: ExtractionIntent = VALID_INTENTS.includes(parsed.intent as ExtractionIntent)
+      ? parsed.intent
+      : 'plain';
     // Gemini may return items array, or a flat object (single-item like playbook)
     let items: any[] = Array.isArray(parsed.items) ? parsed.items : [];
     if (items.length === 0 && parsed.amount && parsed.description) {
-      // Flat single-item response — wrap it
       items = [parsed];
     }
 
-    const extractions: AIExtraction[] = items.map((item) => ({
-      id: makeId(),
-      type: (item.intent || intent) as ExtractionIntent,
-      rawText: item.description || '',
-      extractedData: {
-        amount: Number(item.amount) || 0,
-        description: item.description || '',
-        category: item.category || null,
-        transactionType: item.type || 'expense',
-        wallet: item.wallet || null,
-        person: item.person || null,
-        allocations: item.allocations || null,
-      },
-      status: 'pending' as const,
-      confirmedAt: undefined,
-    }));
+    const extractions: AIExtraction[] = items.map((item) => {
+      const normalized = normalizeExtractionType(item.intent || intent, item);
+      return {
+        id: makeId(),
+        type: normalized.type,
+        rawText: item.description || '',
+        extractedData: {
+          amount: Number(item.amount) || 0,
+          description: item.description || '',
+          category: normalized.category || item.category || null,
+          transactionType: item.type || 'expense',
+          wallet: item.wallet || null,
+          person: item.person || null,
+          allocations: item.allocations || null,
+        },
+        status: 'pending' as const,
+        confirmedAt: undefined,
+      };
+    });
 
     return {
       intent,

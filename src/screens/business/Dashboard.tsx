@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, InteractionManager } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, InteractionManager, RefreshControl } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
@@ -7,13 +7,14 @@ import { Feather } from '@expo/vector-icons';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import type { BusinessTransaction, RiderCost } from '../../types';
 import { explainBusinessMonth } from '../../utils/explainBusinessMonth';
 import WeekBar from '../../components/common/WeekBar';
 import ModeToggle from '../../components/common/ModeToggle';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
+import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
 
 const BusinessDashboard: React.FC = () => {
   const C = useCalm();
@@ -122,6 +123,7 @@ const BusinessDashboard: React.FC = () => {
   }, [businessTransactions]);
 
   const [ready, setReady] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => setReady(true));
     return () => task.cancel();
@@ -257,13 +259,25 @@ const BusinessDashboard: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              setTimeout(() => setRefreshing(false), 600);
+            }}
+            tintColor={C.accent}
+            colors={[C.accent]}
+          />
+        }
       >
         <ModeToggle />
-        {/* Zone 1 — Net */}
-        <Text style={styles.netLabel}>{netLabel}</Text>
-        <Text style={styles.netAmount}>
-          {currency} {(incomeType === 'rider' ? net : totalIncome).toFixed(2)}
-        </Text>
+        {/* Zone 1 — Net (canonical hero) */}
+        <BusinessHeroNumber
+          amount={incomeType === 'rider' ? net : totalIncome}
+          label={netLabel.toLowerCase()}
+          prefix={currency}
+        />
 
         {/* Zone 2 — WeekBar */}
         <View style={styles.weekBarSection}>
@@ -355,6 +369,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['5xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // Zone 1

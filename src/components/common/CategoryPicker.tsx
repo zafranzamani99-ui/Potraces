@@ -82,7 +82,7 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
           <Feather
             name={item.icon as keyof typeof Feather.glyphMap}
             size={18}
-            color={isSelected ? '#fff' : item.color}
+            color={isSelected ? C.onAccent : item.color}
           />
         </View>
         <Text
@@ -122,13 +122,13 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({
       <Feather
         name={category.icon as keyof typeof Feather.glyphMap}
         size={20}
-        color={selectedId === category.id ? '#fff' : category.color}
+        color={selectedId === category.id ? C.onAccent : category.color}
       />
       <Text
         style={[
           styles.categoryText,
           {
-            color: selectedId === category.id ? '#fff' : C.textPrimary,
+            color: selectedId === category.id ? C.onAccent : C.textPrimary,
           },
         ]}
       >

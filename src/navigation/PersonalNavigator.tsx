@@ -26,7 +26,7 @@ const PersonalNavigator: React.FC = () => {
         />
       )}
       screenOptions={({ route }) => ({
-        lazy: false,
+        lazy: true,
         freezeOnBlur: true,
         tabBarIcon: ({ color, size }: { color: string; size: number }) => {
           let iconName: keyof typeof Feather.glyphMap = 'circle';

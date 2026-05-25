@@ -83,7 +83,7 @@ const GradientButton: React.FC<GradientButtonProps> = ({
 
   const renderIcon = () => {
     if (loading || !icon) return null;
-    return <Feather name={icon} size={sizeCfg.iconSize} color="#FFFFFF" />;
+    return <Feather name={icon} size={sizeCfg.iconSize} color={C.onAccent} />;
   };
 
   return (
@@ -107,7 +107,7 @@ const GradientButton: React.FC<GradientButtonProps> = ({
         >
           {loading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator size="small" color={C.onAccent} />
               <Text style={[styles.label, { fontSize: sizeCfg.fontSize }, textStyle]}>Loading...</Text>
             </View>
           ) : (
@@ -133,7 +133,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   content: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   loadingContainer: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  label: { color: '#FFFFFF', fontWeight: TYPOGRAPHY.weight.semibold },
+  label: { color: C.onAccent, fontWeight: TYPOGRAPHY.weight.semibold },
   disabled: { opacity: 0.5 },
 });
 

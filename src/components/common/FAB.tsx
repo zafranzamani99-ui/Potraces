@@ -86,7 +86,7 @@ const FAB: React.FC<FABProps> = ({
         onPressOut={handlePressOut}
         style={[styles.button, { backgroundColor: color }]}
       >
-        <Feather name={icon} size={ICON_SIZE} color="#FFFFFF" />
+        <Feather name={icon} size={ICON_SIZE} color={C.onAccent} />
       </Pressable>
     </Animated.View>
   );

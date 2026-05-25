@@ -186,17 +186,16 @@ export const usePersonalStore = create<PersonalState>()(
           ),
         })),
 
-      markSubscriptionPaid: (id) =>
+      markSubscriptionPaid: (id, transactionId?, walletId?) =>
         set((state) => ({
           subscriptions: state.subscriptions.map((sub) => {
             if (sub.id !== id) return sub;
-            // Advance next billing date by one cycle
-            let next = sub.nextBillingDate;
+            let next = new Date(sub.nextBillingDate);
             switch (sub.billingCycle) {
-              case 'weekly':    next = new Date(next); next.setDate(next.getDate() + 7);    break;
-              case 'quarterly': next = new Date(next); next.setMonth(next.getMonth() + 3);  break;
-              case 'yearly':    next = new Date(next); next.setFullYear(next.getFullYear() + 1); break;
-              default:          next = new Date(next); next.setMonth(next.getMonth() + 1);  break;
+              case 'weekly':    next.setDate(next.getDate() + 7);    break;
+              case 'quarterly': next.setMonth(next.getMonth() + 3);  break;
+              case 'yearly':    next.setFullYear(next.getFullYear() + 1); break;
+              default:          next.setMonth(next.getMonth() + 1);  break;
             }
             const newCompleted = sub.isInstallment
               ? Math.min((sub.completedInstallments || 0) + 1, sub.totalInstallments || 9999)
@@ -212,12 +211,68 @@ export const usePersonalStore = create<PersonalState>()(
               outstandingBalance: newOutstanding,
               paymentHistory: [
                 ...(sub.paymentHistory || []),
-                { id: `pay-${Date.now()}`, paidAt: new Date(), amount: sub.amount },
+                { id: `pay-${Date.now()}`, paidAt: new Date(), amount: sub.amount, transactionId, walletId },
               ],
               updatedAt: new Date(),
             };
           }),
         })),
+
+      undoSubscriptionPayment: (subId, paymentId) => {
+        const state = usePersonalStore.getState() as PersonalState;
+        const sub = state.subscriptions.find((s) => s.id === subId);
+        if (!sub) return;
+        const payment = (sub.paymentHistory || []).find((p) => p.id === paymentId);
+        if (!payment || payment.undoneAt) return;
+
+        // Roll back billing date by one cycle
+        let prev = new Date(sub.nextBillingDate);
+        switch (sub.billingCycle) {
+          case 'weekly':    prev.setDate(prev.getDate() - 7);    break;
+          case 'quarterly': prev.setMonth(prev.getMonth() - 3);  break;
+          case 'yearly':    prev.setFullYear(prev.getFullYear() - 1); break;
+          default:          prev.setMonth(prev.getMonth() - 1);  break;
+        }
+        const rolledCompleted = sub.isInstallment
+          ? Math.max((sub.completedInstallments || 0) - 1, 0)
+          : sub.completedInstallments;
+        const rolledOutstanding = sub.outstandingBalance !== undefined
+          ? sub.outstandingBalance + payment.amount
+          : undefined;
+
+        // Reverse wallet deduction if payment had a linked wallet
+        if (payment.walletId) {
+          useWalletStore.getState().addToWallet(payment.walletId, payment.amount);
+        }
+        // Delete the linked transaction if one was created
+        if (payment.transactionId) {
+          set((s) => ({
+            transactions: s.transactions.filter((t) => t.id !== payment.transactionId),
+          }));
+        }
+
+        // Find most recent active payment to update lastPaidAt
+        const activePayments = (sub.paymentHistory || [])
+          .filter((p) => p.id !== paymentId && !p.undoneAt)
+          .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+
+        set((s) => ({
+          subscriptions: s.subscriptions.map((item) => {
+            if (item.id !== subId) return item;
+            return {
+              ...item,
+              nextBillingDate: prev,
+              completedInstallments: rolledCompleted,
+              outstandingBalance: rolledOutstanding,
+              lastPaidAt: activePayments[0]?.paidAt ?? undefined,
+              paymentHistory: (item.paymentHistory || []).map((p) =>
+                p.id === paymentId ? { ...p, undoneAt: new Date() } : p
+              ),
+              updatedAt: new Date(),
+            };
+          }),
+        }));
+      },
 
       addTransferIncome: (transfer) => {
         const walletId = (transfer as Transfer & { walletId?: string }).walletId;

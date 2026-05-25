@@ -36,7 +36,7 @@ import { useReceiptStore } from '../../store/receiptStore';
 import { exportTransactionsCsv, exportWalletsCsv, exportSubscriptionsCsv, exportReceiptsCsv } from '../../services/exportService';
 import { exportMonthlyStatement, exportTaxYearPdf } from '../../services/pdfExport';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { FREE_TIER, PREMIUM_CONFIG } from '../../constants/premium';
 import { RootStackParamList } from '../../types';
 import Card from '../../components/common/Card';
@@ -52,7 +52,7 @@ import { useAuthStore } from '../../store/authStore';
 import { syncPersonal, disablePersonalSync } from '../../services/personalSync';
 import { resetBackoff } from '../../services/syncBackoff';
 import { getOrCreateReferralCode, referralMessage } from '../../services/referrals';
-import { useCalm } from '../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { loadDummyData } from '../../utils/dummyData';
 import type { ThemePreference, AppLanguage } from '../../store/settingsStore';
@@ -166,7 +166,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   premiumBadgeText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#fff',
+    color: C.onAccent,
   },
   unsubscribeText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -206,7 +206,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   subscribeButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#fff',
+    color: C.onAccent,
   },
   qrSubtitle: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -535,6 +535,7 @@ const Settings: React.FC = () => {
   const setLanguage = useSettingsStore((s) => s.setLanguage);
 
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
 
@@ -696,8 +697,7 @@ const Settings: React.FC = () => {
         allowsEditing: true,
         quality: 0.7,
       });
-      setQrLoadingIndex(null);
-      if (result.canceled || !result.assets?.[0]) return;
+      if (result.canceled || !result.assets?.[0]) { setQrLoadingIndex(null); return; }
       const srcUri = result.assets[0].uri;
       let destUri = srcUri;
       try {
@@ -710,11 +710,11 @@ const Settings: React.FC = () => {
         destUri = srcUri;
       }
       const defaultLabel = replaceIndex !== undefined ? (paymentQrs[replaceIndex]?.label || '') : '';
-      // Delay modal open — iOS needs time to fully dismiss the native image picker
+      setQrLoadingIndex(null);
       setTimeout(() => {
         setQrLabelInput(defaultLabel);
         setQrLabelModal({ visible: true, uri: destUri, replaceIndex, defaultLabel });
-      }, 500);
+      }, 50);
     } catch {
       setQrLoadingIndex(null);
     }
@@ -768,10 +768,9 @@ const Settings: React.FC = () => {
                   style: 'destructive',
                   onPress: async () => {
                     try {
-                      if (mode === 'business' || businessModeEnabled) {
-                        await clearBusinessData();
-                      }
-                      clearAllData();
+                      // clearAllData now handles both personal + business cleanup,
+                      // remote wipe, sign out, FileSystem deletion, and AsyncStorage clear.
+                      await clearAllData();
                       showToast(t.settings.accountDeleted, 'success');
                     } catch (err: any) {
                       Alert.alert(t.settings.errorLabel, err?.message || t.settings.deletionError);
@@ -784,7 +783,7 @@ const Settings: React.FC = () => {
         },
       ]
     );
-  }, [clearAllData, clearBusinessData, businessModeEnabled, mode, showToast, t]);
+  }, [clearAllData, showToast, t]);
 
   const handleClearBusinessData = useCallback(() => {
     Alert.alert(
@@ -973,6 +972,8 @@ const Settings: React.FC = () => {
               style={[styles.input, { color: C.textPrimary }]}
               returnKeyType="done"
               onSubmitEditing={Keyboard.dismiss}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
           </View>
         </Card>
@@ -1029,7 +1030,7 @@ const Settings: React.FC = () => {
               value={hapticEnabled}
               onValueChange={handleHapticToggle}
               trackColor={{ false: C.border, true: C.positive }}
-              thumbColor="#FFFFFF"
+              thumbColor={C.surface}
             />
           </View>
 
@@ -1049,7 +1050,7 @@ const Settings: React.FC = () => {
               value={notificationsEnabled}
               onValueChange={handleNotificationsToggle}
               trackColor={{ false: C.border, true: C.positive }}
-              thumbColor="#FFFFFF"
+              thumbColor={C.surface}
             />
           </View>
 
@@ -1069,7 +1070,7 @@ const Settings: React.FC = () => {
               value={spendingAlertsEnabled}
               onValueChange={(v) => { lightTap(); setSpendingAlertsEnabled(v); }}
               trackColor={{ false: C.border, true: C.positive }}
-              thumbColor="#FFFFFF"
+              thumbColor={C.surface}
             />
           </View>
 
@@ -1089,7 +1090,7 @@ const Settings: React.FC = () => {
               value={quickAddConfirm}
               onValueChange={(v) => { lightTap(); setQuickAddConfirm(v); }}
               trackColor={{ false: C.border, true: C.positive }}
-              thumbColor="#FFFFFF"
+              thumbColor={C.surface}
             />
           </View>
 
@@ -1109,7 +1110,7 @@ const Settings: React.FC = () => {
               value={businessModeEnabled}
               onValueChange={handleBusinessModeToggle}
               trackColor={{ false: C.border, true: C.positive }}
-              thumbColor="#FFFFFF"
+              thumbColor={C.surface}
             />
           </View>
         </Card>
@@ -1131,7 +1132,7 @@ const Settings: React.FC = () => {
               value={biometricLockEnabled}
               onValueChange={handleBiometricToggle}
               trackColor={{ false: C.border, true: C.positive }}
-              thumbColor="#FFFFFF"
+              thumbColor={C.surface}
             />
           </View>
 
@@ -1192,7 +1193,7 @@ const Settings: React.FC = () => {
               value={personalSyncEnabled}
               onValueChange={handlePersonalSyncToggle}
               trackColor={{ false: C.border, true: C.positive }}
-              thumbColor="#FFFFFF"
+              thumbColor={C.surface}
             />
           </View>
 
@@ -1339,7 +1340,7 @@ const Settings: React.FC = () => {
               value={!walletEchoHidden}
               onValueChange={(v) => { lightTap(); setWalletEchoHidden(!v); }}
               trackColor={{ false: C.border, true: C.positive }}
-              thumbColor="#FFFFFF"
+              thumbColor={C.surface}
             />
           </View>
           <View style={styles.settingRow}>
@@ -1348,7 +1349,7 @@ const Settings: React.FC = () => {
               value={!budgetEchoHidden}
               onValueChange={(v) => { lightTap(); setBudgetEchoHidden(!v); }}
               trackColor={{ false: C.border, true: C.positive }}
-              thumbColor="#FFFFFF"
+              thumbColor={C.surface}
             />
           </View>
           <View style={styles.settingRow}>
@@ -1357,7 +1358,7 @@ const Settings: React.FC = () => {
               value={!commitmentEchoHidden}
               onValueChange={(v) => { lightTap(); setCommitmentEchoHidden(!v); }}
               trackColor={{ false: C.border, true: C.positive }}
-              thumbColor="#FFFFFF"
+              thumbColor={C.surface}
             />
           </View>
         </Card>
@@ -1520,7 +1521,7 @@ const Settings: React.FC = () => {
           {tier === 'premium' ? (
             <View style={styles.premiumStatusRow}>
               <View style={styles.premiumBadge}>
-                <Feather name="award" size={14} color="#fff" />
+                <Feather name="award" size={14} color={C.onAccent} />
                 <Text style={styles.premiumBadgeText}>{t.settings.premiumBadge}</Text>
               </View>
               <TouchableOpacity
@@ -1585,7 +1586,7 @@ const Settings: React.FC = () => {
                 }}
                 activeOpacity={0.7}
               >
-                <Feather name="award" size={18} color="#fff" />
+                <Feather name="award" size={18} color={C.onAccent} />
                 <Text style={styles.subscribeButtonText}>
                   {t.settings.subscribeButton
                     .replace('{currency}', PREMIUM_CONFIG.currency)
@@ -1791,12 +1792,12 @@ const Settings: React.FC = () => {
         </>}
       </ScrollView>
 
-      {/* QR Action Sheet — Modal is safe here (no native picker launched from inside) */}
+      {/* QR Action Sheet — animationType="none" so dismiss is instant before image picker */}
       <Modal
         visible={qrActionIndex !== null}
         transparent
         statusBarTranslucent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setQrActionIndex(null)}
       >
         <Pressable style={styles.qrActionOverlay} onPress={() => setQrActionIndex(null)}>
@@ -1869,6 +1870,8 @@ const Settings: React.FC = () => {
               placeholderTextColor={C.textMuted}
               autoFocus
               selectTextOnFocus
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <View style={{ flexDirection: 'row', gap: SPACING.md, justifyContent: 'flex-end' }}>
               <TouchableOpacity
@@ -1896,7 +1899,7 @@ const Settings: React.FC = () => {
                   setQrLabelModal((s) => ({ ...s, visible: false }));
                 }}
               >
-                <Text style={{ color: '#fff', fontWeight: TYPOGRAPHY.weight.semibold }}>{t.settings.qrSave}</Text>
+                <Text style={{ color: C.onAccent, fontWeight: TYPOGRAPHY.weight.semibold }}>{t.settings.qrSave}</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

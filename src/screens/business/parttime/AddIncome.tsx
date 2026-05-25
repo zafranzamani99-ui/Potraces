@@ -9,20 +9,21 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import CalendarPicker from '../../../components/common/CalendarPicker';
 import { format } from 'date-fns';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { usePartTimeStore } from '../../../store/partTimeStore';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, successNotification } from '../../../services/haptics';
 import { RootStackParamList } from '../../../types';
 
 const AddIncome: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RootStackParamList, 'PartTimeAddIncome'>>();
@@ -129,6 +130,8 @@ const AddIncome: React.FC = () => {
             keyboardType="decimal-pad"
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         </View>
 
@@ -190,16 +193,15 @@ const AddIncome: React.FC = () => {
         </TouchableOpacity>
 
         {showDatePicker && (
-          <DateTimePicker
-            value={date}
-            mode="date"
-            display="spinner"
-            onChange={(_, selectedDate) => {
-              if (selectedDate) setDate(selectedDate);
-              setShowDatePicker(false);
-            }}
-            maximumDate={new Date()}
-          />
+          <View style={styles.calendarWrapper}>
+            <CalendarPicker
+              value={date}
+              onChange={(selectedDate) => {
+                setDate(selectedDate);
+                setShowDatePicker(false);
+              }}
+            />
+          </View>
         )}
 
         {/* Note */}
@@ -213,6 +215,8 @@ const AddIncome: React.FC = () => {
             placeholderTextColor={C.textMuted}
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         </View>
 
@@ -251,6 +255,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['5xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   // Amount
@@ -299,7 +306,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   streamButtonTextActive: {
-    color: '#FFFFFF',
+    color: C.onAccent,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
@@ -317,6 +324,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
+  },
+
+  calendarWrapper: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
 
   // Note
@@ -350,7 +366,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   saveButtonTextDisabled: {
     color: C.textMuted,

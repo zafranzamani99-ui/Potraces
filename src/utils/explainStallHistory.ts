@@ -83,7 +83,7 @@ export const explainStallHistory = (sessions: StallSession[]): string | null => 
   if (topProduct && Object.keys(productTotals).length > 1) {
     const ratio = topProduct.total / totalRevenue;
     if (ratio > 0.5) {
-      return `${topProduct.name} makes up more than half your revenue.`;
+      return `${topProduct.name} makes up more than half of what came in.`;
     }
   }
 

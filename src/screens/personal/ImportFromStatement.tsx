@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTap } from '../../services/haptics';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
+import WalletPicker from '../../components/common/WalletPicker';
 import {
   pickStatementPdf,
   parseStatement,
@@ -51,7 +52,6 @@ const ImportFromStatement: React.FC = () => {
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<string | undefined>(defaultWallet?.id);
   const [remaining, setRemaining] = useState<number | null>(null);
-  const [walletPickerOpen, setWalletPickerOpen] = useState(false);
   const [categoryPicker, setCategoryPicker] = useState<{ rowId: string; type: 'income' | 'expense' } | null>(null);
 
   const handlePick = useCallback(async () => {
@@ -143,7 +143,14 @@ const ImportFromStatement: React.FC = () => {
     const bad = isNaN(new Date(item.date).getTime());
     return (
       <View style={[styles.row, !item._include && styles.rowDim]}>
-        <TouchableOpacity onPress={() => toggleRow(item._id)} style={styles.checkbox}>
+        <TouchableOpacity
+          onPress={() => toggleRow(item._id)}
+          style={styles.checkbox}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: item._include }}
+          accessibilityLabel={`include ${item.description || 'transaction'}`}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
           <Feather
             name={item._include ? 'check-square' : 'square'}
             size={22}
@@ -160,13 +167,15 @@ const ImportFromStatement: React.FC = () => {
           </View>
           <View style={styles.rowBottom}>
             <Text style={styles.rowMeta}>
-              {bad ? '⚠ bad date' : new Date(item.date).toLocaleDateString()}
+              {bad ? 'bad date' : new Date(item.date).toLocaleDateString()}
             </Text>
             <TouchableOpacity
               onPress={() => setCategoryPicker({ rowId: item._id, type: item.type })}
               style={styles.categoryChip}
+              accessibilityRole="button"
+              accessibilityLabel={`change category, currently ${item._category ?? 'uncategorized'}`}
             >
-              <Feather name="tag" size={11} color={C.textSecondary} />
+              <Feather name="tag" size={12} color={C.textSecondary} />
               <Text style={styles.categoryChipText}>{item._category ?? 'uncategorized'}</Text>
             </TouchableOpacity>
           </View>
@@ -202,7 +211,12 @@ const ImportFromStatement: React.FC = () => {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="back"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Feather name="chevron-left" size={24} color={C.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.title}>import statement</Text>
@@ -227,11 +241,15 @@ const ImportFromStatement: React.FC = () => {
   }
 
   // step === 'review'
-  const selectedWallet = wallets.find((w) => w.id === selectedWalletId);
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => { setStep('start'); setRows([]); }}>
+        <TouchableOpacity
+          onPress={() => { setStep('start'); setRows([]); }}
+          accessibilityRole="button"
+          accessibilityLabel="back to start"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
           <Feather name="chevron-left" size={24} color={C.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.title}>review {rows.length} rows</Text>
@@ -239,20 +257,28 @@ const ImportFromStatement: React.FC = () => {
       </View>
 
       <Card style={styles.walletCard}>
-        <Text style={styles.walletLabel}>add to wallet</Text>
-        <TouchableOpacity style={styles.walletPicker} onPress={() => setWalletPickerOpen(true)}>
-          <Feather name={selectedWallet ? 'credit-card' : 'alert-circle'} size={16} color={C.accent} />
-          <Text style={styles.walletPickerText}>
-            {selectedWallet ? selectedWallet.name : 'pick a wallet'}
-          </Text>
-          <Feather name="chevron-down" size={14} color={C.textSecondary} />
-        </TouchableOpacity>
+        <WalletPicker
+          wallets={wallets}
+          selectedId={selectedWalletId ?? null}
+          onSelect={(id) => { lightTap(); setSelectedWalletId(id); }}
+          label="add to wallet"
+        />
 
         <View style={styles.bulkActions}>
-          <TouchableOpacity onPress={() => selectAll(true)} style={styles.bulkBtn}>
+          <TouchableOpacity
+            onPress={() => selectAll(true)}
+            style={styles.bulkBtn}
+            accessibilityRole="button"
+            accessibilityLabel="select all rows"
+          >
             <Text style={styles.bulkBtnText}>select all</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => selectAll(false)} style={styles.bulkBtn}>
+          <TouchableOpacity
+            onPress={() => selectAll(false)}
+            style={styles.bulkBtn}
+            accessibilityRole="button"
+            accessibilityLabel="clear all selections"
+          >
             <Text style={styles.bulkBtnText}>clear</Text>
           </TouchableOpacity>
           {remaining !== null && (
@@ -280,26 +306,6 @@ const ImportFromStatement: React.FC = () => {
         />
       </View>
 
-      {/* Wallet picker modal */}
-      <Modal visible={walletPickerOpen} transparent animationType="fade" onRequestClose={() => setWalletPickerOpen(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setWalletPickerOpen(false)}>
-          <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.pickerTitle}>choose a wallet</Text>
-            {wallets.map((w) => (
-              <TouchableOpacity
-                key={w.id}
-                onPress={() => { setSelectedWalletId(w.id); setWalletPickerOpen(false); }}
-                style={styles.pickerItem}
-              >
-                <Feather name="credit-card" size={16} color={C.accent} />
-                <Text style={styles.pickerItemText}>{w.name}</Text>
-                {w.id === selectedWalletId && <Feather name="check" size={16} color={C.positive} />}
-              </TouchableOpacity>
-            ))}
-          </Pressable>
-        </Pressable>
-      </Modal>
-
       {/* Category picker modal */}
       <Modal visible={!!categoryPicker} transparent animationType="fade" onRequestClose={() => setCategoryPicker(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setCategoryPicker(null)}>
@@ -310,6 +316,8 @@ const ImportFromStatement: React.FC = () => {
                 key={c.id}
                 onPress={() => pickCategory(c.name)}
                 style={styles.pickerItem}
+                accessibilityRole="button"
+                accessibilityLabel={`select category ${c.name}`}
               >
                 <Feather name="tag" size={16} color={C.accent} />
                 <Text style={styles.pickerItemText}>{c.name}</Text>
@@ -336,7 +344,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   title: { fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary },
   startBody: { flex: 1, paddingHorizontal: SPACING.lg, justifyContent: 'center', alignItems: 'center' },
   heroIcon: {
-    width: 80, height: 80, borderRadius: 40,
+    width: 80, height: 80, borderRadius: RADIUS.full,
     backgroundColor: withAlpha(C.accent, 0.1),
     alignItems: 'center', justifyContent: 'center',
     marginBottom: SPACING.md,
@@ -352,7 +360,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: TYPOGRAPHY.size.sm * 1.5,
   },
   fineprint: {
     textAlign: 'center',
@@ -361,29 +369,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   walletCard: { marginHorizontal: SPACING.lg, marginBottom: SPACING.sm, padding: SPACING.md },
-  walletLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    marginBottom: SPACING.xs,
-    textTransform: 'uppercase',
-  },
-  walletPicker: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: withAlpha(C.accent, 0.05),
-  },
-  walletPickerText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
   bulkActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -392,7 +377,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   bulkBtn: {
     paddingHorizontal: SPACING.md,
-    paddingVertical: 4,
+    paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
     borderWidth: 1,
     borderColor: C.border,
@@ -409,17 +394,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderBottomColor: C.border,
   },
   rowDim: { opacity: 0.4 },
-  checkbox: { padding: 2 },
+  checkbox: { padding: SPACING.xs },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   rowDesc: { flex: 1, fontSize: TYPOGRAPHY.size.sm, color: C.textPrimary, fontWeight: TYPOGRAPHY.weight.medium },
   rowAmount: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold },
-  rowBottom: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 4 },
+  rowBottom: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.xs },
   rowMeta: { fontSize: TYPOGRAPHY.size.xs, color: C.textSecondary },
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.full,
     backgroundColor: withAlpha(C.accent, 0.08),
@@ -438,7 +423,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: withAlpha('#000000', 0.5),
+    backgroundColor: withAlpha(C.dimBg, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
     padding: SPACING.lg,

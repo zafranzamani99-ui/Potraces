@@ -10,8 +10,8 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useOnTheRoadStore } from '../../../store/onTheRoadStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { successNotification } from '../../../services/haptics';
 
 type VehicleType = 'car' | 'motorcycle' | 'bicycle' | 'other';
@@ -24,6 +24,7 @@ const VEHICLES: { type: VehicleType; emoji: string; label: string }[] = [
 
 const OnTheRoadSetup: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
   const { roadDetails, setRoadDetails } = useOnTheRoadStore();
@@ -74,6 +75,8 @@ const OnTheRoadSetup: React.FC = () => {
           placeholder="Grab driver, Foodpanda rider, runner..."
           placeholderTextColor={C.textMuted}
           returnKeyType="next"
+          keyboardAppearance={isDark ? 'dark' : 'light'}
+          selectionColor={C.accent}
         />
 
         <Text style={styles.subHeading}>what do you drive?</Text>
@@ -127,6 +130,8 @@ const OnTheRoadSetup: React.FC = () => {
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
             autoFocus
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         )}
 
@@ -157,6 +162,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['5xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   heading: {
@@ -250,7 +258,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 
   optionalNote: {

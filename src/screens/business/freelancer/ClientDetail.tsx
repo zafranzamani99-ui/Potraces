@@ -13,12 +13,13 @@ import { format } from 'date-fns';
 import { useFreelancerStore } from '../../../store/freelancerStore';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { RootStackParamList } from '../../../types';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap } from '../../../services/haptics';
 import { useT } from '../../../i18n';
+import BusinessHeroNumber from '../../../components/business/BusinessHeroNumber';
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -26,6 +27,7 @@ function toDate(d: Date | string): Date {
 
 const ClientDetail: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<RouteProp<RootStackParamList, 'FreelancerClientDetail'>>();
@@ -128,6 +130,8 @@ const ClientDetail: React.FC = () => {
             onBlur={saveName}
             onSubmitEditing={saveName}
             returnKeyType="done"
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         ) : (
           <TouchableOpacity onPress={() => setEditingName(true)}>
@@ -147,6 +151,8 @@ const ClientDetail: React.FC = () => {
             onBlur={saveContact}
             onSubmitEditing={saveContact}
             returnKeyType="done"
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         ) : (
           <TouchableOpacity onPress={() => setEditingContact(true)}>
@@ -169,6 +175,8 @@ const ClientDetail: React.FC = () => {
             onSubmitEditing={saveNotes}
             returnKeyType="done"
             multiline
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         ) : (
           <TouchableOpacity onPress={() => setEditingNotes(true)}>
@@ -182,11 +190,14 @@ const ClientDetail: React.FC = () => {
           <Text style={styles.autoDetectedLabel}>{t.freelancer.addedFromPayment}</Text>
         )}
 
-        {/* Hero — Total Earned */}
-        <Text style={styles.totalEarned}>
-          {currency} {totalEarned.toLocaleString()}
-        </Text>
-        <Text style={styles.totalLabel}>{t.freelancer.totalEarned}</Text>
+        {/* Hero — Total Earned (canonical hero) */}
+        <View style={styles.heroSection}>
+          <BusinessHeroNumber
+            amount={totalEarned}
+            label={t.freelancer.totalEarned}
+            prefix={currency}
+          />
+        </View>
 
         {/* Stats line */}
         {avgGap !== null && (
@@ -245,6 +256,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['5xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   // Name
@@ -288,13 +302,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 
   // Hero total
-  totalEarned: {
-    ...TYPE.balance,
-    color: C.textPrimary,
+  heroSection: {
     marginTop: SPACING.xl,
-  },
-  totalLabel: {
-    ...TYPE.muted,
     marginBottom: SPACING.lg,
   },
 

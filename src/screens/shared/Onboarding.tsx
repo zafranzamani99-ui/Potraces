@@ -11,9 +11,10 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useAppStore } from '../../store/appStore';
 import { useT } from '../../i18n';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -29,14 +30,24 @@ interface OnboardingPage extends OnboardingSlideMeta {
   description: string;
 }
 
-type PageItem = { type: 'welcome' } | { type: 'slide'; data: OnboardingPage };
+type PageItem =
+  | { type: 'welcome' }
+  | { type: 'slide'; data: OnboardingPage }
+  | { type: 'mode' };
 
+// FIRSTRUN-C4 — cut 5 feature slides to 3. Removed: '3' split & '5' receipts/pulse.
+// Their value resurfaces as in-context FeatureHints when the user reaches those screens.
 const SLIDE_META: OnboardingSlideMeta[] = [
   { id: '1', icon: 'dollar-sign', accentColor: '#4F5104' },
   { id: '2', icon: 'shopping-bag', accentColor: '#B2780A' },
-  { id: '3', icon: 'users', accentColor: '#2E7D5B' },
   { id: '4', icon: 'edit-3', accentColor: '#8B7355' },
-  { id: '5', icon: 'camera', accentColor: '#3A7D8C' },
+];
+
+type ModeChoice = 'personal' | 'business' | 'both';
+const MODE_OPTIONS: { id: ModeChoice; icon: keyof typeof Feather.glyphMap }[] = [
+  { id: 'personal', icon: 'user' },
+  { id: 'business', icon: 'briefcase' },
+  { id: 'both', icon: 'layers' },
 ];
 
 // ─── Mini Visual Mockups ──────────────────────────────────
@@ -58,7 +69,7 @@ const SlideMockup: React.FC<{ slideId: string; accent: string; C: typeof CALM }>
     backgroundColor: C.surface,
     padding: SPACING.md,
     overflow: 'hidden' as const,
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   };
 
   switch (slideId) {
@@ -173,6 +184,7 @@ const SlideMockup: React.FC<{ slideId: string; accent: string; C: typeof CALM }>
 
 const Onboarding: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
@@ -180,43 +192,71 @@ const Onboarding: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [name, setName] = useState('');
   const [selectedLang, setSelectedLang] = useState<'en' | 'ms'>('en');
+  const [selectedMode, setSelectedMode] = useState<ModeChoice | null>(null);
   const setHasCompletedOnboarding = useSettingsStore((s) => s.setHasCompletedOnboarding);
   const setUserName = useSettingsStore((s) => s.setUserName);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
+  const setDefaultMode = useSettingsStore((s) => s.setDefaultMode);
+  const setMode = useAppStore((s) => s.setMode);
 
   const PAGES: OnboardingPage[] = useMemo(() => [
     { ...SLIDE_META[0], title: t.onboarding.trackMoney, description: t.onboarding.trackMoneyDesc },
     { ...SLIDE_META[1], title: t.onboarding.runBusiness, description: t.onboarding.runBusinessDesc },
-    { ...SLIDE_META[2], title: t.onboarding.splitSettle, description: t.onboarding.splitSettleDesc },
-    { ...SLIDE_META[3], title: t.onboarding.notesEcho, description: t.onboarding.notesEchoDesc },
-    { ...SLIDE_META[4], title: t.onboarding.receiptsPulse, description: t.onboarding.receiptsPulseDesc },
+    { ...SLIDE_META[2], title: t.onboarding.notesEcho, description: t.onboarding.notesEchoDesc },
   ], [t]);
 
   const ALL_PAGES: PageItem[] = useMemo(() => [
     { type: 'welcome' },
     ...PAGES.map(p => ({ type: 'slide' as const, data: p })),
+    { type: 'mode' as const },
   ], [PAGES]);
 
-  const handleWelcomeDone = useCallback(() => {
-    if (name.trim()) setUserName(name.trim());
-    setLanguage(selectedLang);
-  }, [name, selectedLang, setUserName, setLanguage]);
+  // FIRSTRUN-H6 — persist on every change so swiping past welcome cannot lose the name.
+  const handleNameChange = useCallback((next: string) => {
+    setName(next);
+    const trimmed = next.trim();
+    // setUserName accepts string; clear via empty string is fine here.
+    setUserName(trimmed);
+  }, [setUserName]);
+
+  const handleLangChange = useCallback((lang: 'en' | 'ms') => {
+    setSelectedLang(lang);
+    setLanguage(lang);
+  }, [setLanguage]);
+
+  // FIRSTRUN-C2 — apply mode choice. Default 'personal' if user skips before picking.
+  const applyModeChoice = useCallback((choice: ModeChoice | null) => {
+    const resolved: ModeChoice = choice ?? 'personal';
+    if (resolved === 'business') {
+      setDefaultMode('business');
+      setMode('business');
+    } else {
+      // 'personal' and 'both' both land in personal first; 'both' just keeps business
+      // discoverable (user can flip in Settings).
+      setDefaultMode('personal');
+      setMode('personal');
+    }
+  }, [setDefaultMode, setMode]);
 
   const handleComplete = useCallback(() => {
-    // Always persist welcome inputs before marking onboarding done,
-    // even if the user skipped past the welcome slide.
-    handleWelcomeDone();
+    // Inputs are already persisted on change; this is a final safety net.
+    if (name.trim()) setUserName(name.trim());
+    setLanguage(selectedLang);
+    applyModeChoice(selectedMode);
     setHasCompletedOnboarding(true);
-  }, [setHasCompletedOnboarding, handleWelcomeDone]);
+  }, [name, selectedLang, selectedMode, setUserName, setLanguage, applyModeChoice, setHasCompletedOnboarding]);
 
   const handleNext = useCallback(() => {
-    if (currentIndex === 0) handleWelcomeDone();
     if (currentIndex < ALL_PAGES.length - 1) {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true });
     } else {
       handleComplete();
     }
-  }, [currentIndex, handleComplete, handleWelcomeDone, ALL_PAGES.length]);
+  }, [currentIndex, handleComplete, ALL_PAGES.length]);
+
+  const handleModePick = useCallback((choice: ModeChoice) => {
+    setSelectedMode(choice);
+  }, []);
 
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -232,7 +272,7 @@ const Onboarding: React.FC = () => {
     if (item.type === 'welcome') {
       return (
         <View style={styles.page}>
-          <Text style={styles.welcomeTitle}>{t.onboarding.hiThere}</Text>
+          <Text style={styles.welcomeTitle} accessibilityRole="header">{t.onboarding.hiThere}</Text>
           <Text style={styles.description}>{t.onboarding.letsSetUp}</Text>
 
           <View style={styles.welcomeForm}>
@@ -240,32 +280,88 @@ const Onboarding: React.FC = () => {
             <TextInput
               style={styles.welcomeInput}
               value={name}
-              onChangeText={setName}
+              onChangeText={handleNameChange}
               placeholder={t.onboarding.nameOptional}
               placeholderTextColor={C.textMuted}
               autoCapitalize="words"
               returnKeyType="done"
+              accessibilityLabel={t.onboarding.whatCallYou}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
 
             <Text style={[styles.welcomeLabel, { marginTop: SPACING['2xl'] }]}>{t.onboarding.language}</Text>
             <View style={styles.langRow}>
               <TouchableOpacity
                 style={[styles.langCard, selectedLang === 'en' && styles.langCardActive]}
-                onPress={() => { setSelectedLang('en'); setLanguage('en'); }}
+                onPress={() => handleLangChange('en')}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="English"
+                accessibilityState={{ selected: selectedLang === 'en' }}
               >
                 <Text style={styles.langFlag}>EN</Text>
                 <Text style={[styles.langCardText, selectedLang === 'en' && styles.langCardTextActive]}>English</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.langCard, selectedLang === 'ms' && styles.langCardActive]}
-                onPress={() => { setSelectedLang('ms'); setLanguage('ms'); }}
+                onPress={() => handleLangChange('ms')}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Bahasa Melayu"
+                accessibilityState={{ selected: selectedLang === 'ms' }}
               >
                 <Text style={styles.langFlag}>BM</Text>
                 <Text style={[styles.langCardText, selectedLang === 'ms' && styles.langCardTextActive]}>Bahasa Melayu</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      );
+    }
+
+    if (item.type === 'mode') {
+      return (
+        <View style={styles.page}>
+          <Text style={styles.title} accessibilityRole="header">{t.onboarding.modePickTitle}</Text>
+          <Text style={styles.description}>{t.onboarding.modePickSubtitle}</Text>
+
+          <View style={styles.modeList}>
+            {MODE_OPTIONS.map((opt) => {
+              const active = selectedMode === opt.id;
+              const label = t.onboarding[
+                opt.id === 'personal' ? 'modeTrackMine'
+                : opt.id === 'business' ? 'modeRunSomething'
+                : 'modeBoth'
+              ];
+              const sub = t.onboarding[
+                opt.id === 'personal' ? 'modeTrackMineSub'
+                : opt.id === 'business' ? 'modeRunSomethingSub'
+                : 'modeBothSub'
+              ];
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[styles.modeCard, active && styles.modeCardActive]}
+                  onPress={() => handleModePick(opt.id)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                  accessibilityState={{ selected: active }}
+                >
+                  <View style={[styles.modeIconWrap, active && styles.modeIconWrapActive]}>
+                    <Feather name={opt.icon} size={20} color={active ? C.accent : C.textSecondary} />
+                  </View>
+                  <View style={styles.modeTextWrap}>
+                    <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>{label}</Text>
+                    <Text style={styles.modeSub}>{sub}</Text>
+                  </View>
+                  {active && (
+                    <Feather name="check" size={18} color={C.accent} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       );
@@ -277,23 +373,28 @@ const Onboarding: React.FC = () => {
         <View style={styles.mockupContainer}>
           <SlideMockup slideId={slide.id} accent={slide.accentColor} C={C} />
         </View>
-        <Text style={styles.title}>{slide.title}</Text>
+        <Text style={styles.title} accessibilityRole="header">{slide.title}</Text>
         <Text style={styles.description}>{slide.description}</Text>
       </View>
     );
-  }, [name, selectedLang, C, t, insets.top, handleWelcomeDone]);
+  }, [name, selectedLang, selectedMode, C, t, styles, handleNameChange, handleLangChange, handleModePick]);
 
   const isLastPage = currentIndex === ALL_PAGES.length - 1;
+  // FIRSTRUN-C4 — skip available on every page except the final mode-pick (where the button
+  // IS the commit). Welcome inputs are persisted on change, so skipping from there is safe.
+  const canSkip = !isLastPage;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      {/* Skip button — top right, hidden on welcome and last page */}
+      {/* Skip button — top right, present on every page except the final mode-pick. */}
       <View style={styles.header}>
-        {currentIndex > 0 && currentIndex < ALL_PAGES.length - 1 ? (
+        {canSkip ? (
           <TouchableOpacity
             onPress={handleComplete}
             style={styles.skipButton}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={t.onboarding.skip}
           >
             <Text style={styles.skipText}>{t.onboarding.skip}</Text>
           </TouchableOpacity>
@@ -328,11 +429,12 @@ const Onboarding: React.FC = () => {
       {/* Bottom: dots + button */}
       <View style={styles.footer}>
         <View style={styles.dotsContainer}>
-          {ALL_PAGES.map((_, index) => {
-            const slideIndex = index - 1;
-            const accentColor = index === 0
-              ? C.accent
-              : PAGES[slideIndex]?.accentColor ?? C.accent;
+          {ALL_PAGES.map((page, index) => {
+            // Welcome and mode pages share the personal accent so the dot palette stays calm.
+            const slideIndex = page.type === 'slide' ? index - 1 : -1;
+            const accentColor = slideIndex >= 0
+              ? PAGES[slideIndex]?.accentColor ?? C.accent
+              : C.accent;
             return (
               <View
                 key={`dot-${index}`}
@@ -347,26 +449,42 @@ const Onboarding: React.FC = () => {
           })}
         </View>
 
-        <TouchableOpacity
-          style={[styles.button, {
-            backgroundColor: currentIndex === 0
-              ? C.accent
-              : PAGES[currentIndex - 1]?.accentColor ?? C.accent,
-          }]}
-          onPress={handleNext}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.buttonText}>
-            {currentIndex === 0
+        {(() => {
+          const currentPage = ALL_PAGES[currentIndex];
+          const slideIndex = currentPage?.type === 'slide' ? currentIndex - 1 : -1;
+          const buttonAccent = slideIndex >= 0
+            ? PAGES[slideIndex]?.accentColor ?? C.accent
+            : C.accent;
+          // Final page = mode-pick. Disable until the user picks one.
+          const isModePage = currentPage?.type === 'mode';
+          const disabled = isModePage && selectedMode == null;
+          const label =
+            currentIndex === 0
               ? t.onboarding.letsGo
               : isLastPage
                 ? t.onboarding.getStarted
-                : t.common.next}
-          </Text>
-          {!isLastPage && (
-            <Feather name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 6 }} />
-          )}
-        </TouchableOpacity>
+                : t.common.next;
+          return (
+            <TouchableOpacity
+              style={[
+                styles.button,
+                { backgroundColor: buttonAccent },
+                disabled && styles.buttonDisabled,
+              ]}
+              onPress={handleNext}
+              activeOpacity={0.8}
+              disabled={disabled}
+              accessibilityRole="button"
+              accessibilityLabel={label}
+              accessibilityState={{ disabled }}
+            >
+              <Text style={styles.buttonText}>{label}</Text>
+              {!isLastPage && (
+                <Feather name="arrow-right" size={18} color={C.surface} style={{ marginLeft: SPACING.xs }} />
+              )}
+            </TouchableOpacity>
+          );
+        })()}
       </View>
     </View>
   );
@@ -464,10 +582,62 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '100%',
     maxWidth: 320,
   },
+  buttonDisabled: {
+    opacity: 0.45,
+  },
   buttonText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.surface,
+  },
+  modeList: {
+    width: '100%',
+    marginTop: SPACING['2xl'],
+    gap: SPACING.md,
+  },
+  modeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: C.surface,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    gap: SPACING.md,
+  },
+  modeCardActive: {
+    borderColor: C.accent,
+    backgroundColor: withAlpha(C.accent, 0.06),
+  },
+  modeIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(C.textMuted, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeIconWrapActive: {
+    backgroundColor: withAlpha(C.accent, 0.12),
+  },
+  modeTextWrap: {
+    flex: 1,
+  },
+  modeLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  modeLabelActive: {
+    color: C.accent,
+  },
+  modeSub: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.textSecondary,
+    marginTop: SPACING.xs / 2,
+    lineHeight: TYPOGRAPHY.size.sm * TYPOGRAPHY.lineHeight.normal,
   },
   welcomeForm: {
     width: '100%',

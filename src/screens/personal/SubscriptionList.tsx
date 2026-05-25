@@ -13,35 +13,47 @@ import Reanimated, {
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
+  withTiming,
+  withDelay,
+  withSequence,
+  Easing,
+  interpolate,
   runOnJS,
   SharedValue,
+  FadeIn,
+  FadeInDown,
+  ZoomIn,
+  BounceIn,
 } from 'react-native-reanimated';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   format, differenceInDays, isSameDay,
   addWeeks, addMonths, addQuarters, addYears,
   subWeeks, subMonths, subQuarters, subYears,
-  endOfMonth, startOfDay,
+  endOfMonth, startOfMonth, startOfDay,
   isValid,
 } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, BILLING_CYCLES, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, BILLING_CYCLES, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import WalletLogo from '../../components/common/WalletLogo';
 import CommitmentForm from '../../components/commitments/CommitmentForm';
+import EmptyState from '../../components/common/EmptyState';
 import { useToast } from '../../context/ToastContext';
 import { useRoute, RouteProp, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { usePremiumStore } from '../../store/premiumStore';
 import EchoInlineChat from '../../components/common/EchoInlineChat';
 import TypewriterText from '../../components/common/TypewriterText';
 import PaywallModal from '../../components/common/PaywallModal';
-import { lightTap, mediumTap } from '../../services/haptics';
+import { lightTap, mediumTap, successNotification } from '../../services/haptics';
 import { useLearningStore } from '../../store/learningStore';
 import { useT } from '../../i18n';
 import { Subscription } from '../../types';
@@ -113,6 +125,7 @@ function SubSwipeAction({
 }
 
 type CommitmentKind = 'bills' | 'payments' | 'subs';
+type StatusFilter = 'all' | 'upcoming' | 'overdue' | 'cleared' | 'paused' | 'archived';
 
 type ModalView = 'form' | 'cyclePicker' | 'calendar' | 'walletPicker';
 
@@ -122,15 +135,27 @@ type SubscriptionListParams = {
 
 // ─── Brand Color Helpers ──────────────────────────────────
 // Curated on-palette colors so each name gets a stable, distinct circle
+function renderIcon(iconId: string, size: number, color: string) {
+  const [lib, name] = iconId.includes('/') ? iconId.split('/') : ['f', iconId];
+  switch (lib) {
+    case 'm': return <MaterialCommunityIcons name={name as any} size={size} color={color} />;
+    case 'i': return <Ionicons name={name as any} size={size} color={color} />;
+    case 'fa': return <FontAwesome5 name={name as any} size={size} color={color} />;
+    default: return <Feather name={name as any} size={size} color={color} />;
+  }
+}
+
 const AVATAR_PALETTE = [
   '#4F5104',  // olive
   '#8B7355',  // bronze
-  '#B2780A',  // gold
-  '#A688B8',  // mauve
+  '#C1694F',  // terracotta
   '#6BA3BE',  // sky blue
-  '#7A9B6A',  // sage
-  '#B8907D',  // dusty rose-brown
-  '#5C7A8C',  // slate blue
+  '#A688B8',  // mauve
+  '#B2780A',  // gold
+  '#5C7A4B',  // sage
+  '#7A6B5D',  // warm grey
+  '#9B8E6E',  // khaki
+  '#6D7F5C',  // moss
 ];
 
 function avatarColorForName(name: string): string {
@@ -156,11 +181,53 @@ function getPrevBillingDate(nextBillingDate: Date, cycle: string): Date {
 function isClearedThisCycle(sub: Subscription): boolean {
   if (!sub.lastPaidAt) return false;
   const prevBilling = getPrevBillingDate(sub.nextBillingDate, sub.billingCycle);
-  return sub.lastPaidAt >= prevBilling;
+  if (sub.lastPaidAt >= prevBilling) return true;
+  // Paid early (before due date) — nextBillingDate already advanced, check two cycles back
+  if (sub.nextBillingDate > new Date()) {
+    return sub.lastPaidAt >= getPrevBillingDate(prevBilling, sub.billingCycle);
+  }
+  return false;
+}
+
+function isInstallmentComplete(sub: Subscription): boolean {
+  return !!(sub.isInstallment && sub.totalInstallments && (sub.completedInstallments || 0) >= sub.totalInstallments);
 }
 
 function isSubOverdue(sub: Subscription): boolean {
   return !isClearedThisCycle(sub) && sub.nextBillingDate < startOfDay(new Date());
+}
+
+function getSubsForMonth(subs: Subscription[], monthOffset: number): Subscription[] {
+  const target = addMonths(new Date(), monthOffset);
+  const mStart = startOfMonth(target);
+  const mEnd = endOfMonth(target);
+  return subs.filter(sub => {
+    if (!sub.isActive || sub.isPaused || isInstallmentComplete(sub)) return false;
+    let date = new Date(sub.nextBillingDate);
+    let i = 0;
+    if (date > mEnd) {
+      while (date > mEnd && i < 60) {
+        switch (sub.billingCycle) {
+          case 'weekly': date = subWeeks(date, 1); break;
+          case 'quarterly': date = subMonths(date, 3); break;
+          case 'yearly': date = subYears(date, 1); break;
+          default: date = subMonths(date, 1); break;
+        }
+        i++;
+      }
+    } else {
+      while (date < mStart && i < 60) {
+        switch (sub.billingCycle) {
+          case 'weekly': date = addWeeks(date, 1); break;
+          case 'quarterly': date = addMonths(date, 3); break;
+          case 'yearly': date = addYears(date, 1); break;
+          default: date = addMonths(date, 1); break;
+        }
+        i++;
+      }
+    }
+    return date >= mStart && date <= mEnd;
+  });
 }
 
 function getDueDateInfo(date: Date): { text: string; accent: 'today' | 'overdue' | 'none' } {
@@ -190,9 +257,85 @@ function getNextBillingDate(start: Date, cycle: string): Date {
   return next;
 }
 
+// ─── Floating celebration dot ─────────────────────────────
+// ─── Celebration animation components ────────────────────
+const ConfettiPiece: React.FC<{
+  color: string; size: number; angle: number; distance: number; delay: number;
+}> = ({ color, size, angle, distance, delay: d }) => {
+  const progress = useSharedValue(0);
+  const drift = useSharedValue(0);
+
+  React.useEffect(() => {
+    progress.value = withDelay(d, withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) }));
+    drift.value = withDelay(d + 700, withRepeat(
+      withSequence(
+        withTiming(5, { duration: 1800 + Math.random() * 600, easing: Easing.inOut(Easing.ease) }),
+        withTiming(-5, { duration: 1800 + Math.random() * 600, easing: Easing.inOut(Easing.ease) }),
+      ), -1, true,
+    ));
+  }, []);
+
+  const rad = (angle * Math.PI) / 180;
+  const tx = Math.cos(rad) * distance;
+  const ty = Math.sin(rad) * distance;
+
+  const style = useAnimatedStyle(() => {
+    const p = progress.value;
+    return {
+      transform: [
+        { translateX: tx * p },
+        { translateY: ty * p + drift.value },
+        { scale: p < 0.2 ? p / 0.2 : 1 - (p - 0.2) * 0.35 },
+        { rotate: `${p * 270 * (angle > 180 ? -1 : 1)}deg` },
+      ],
+      opacity: p < 0.1 ? p * 10 : p > 0.65 ? Math.max(0.12, (1 - p) * 2.85) : 1,
+    };
+  });
+
+  return (
+    <Reanimated.View style={[{
+      position: 'absolute', width: size, height: size, borderRadius: size / 2,
+      backgroundColor: color,
+    }, style]} />
+  );
+};
+
+const GlowRing: React.FC<{ color: string; size: number; delay?: number }> = ({ color, size, delay: d = 0 }) => {
+  const ringScale = useSharedValue(0.8);
+  const ringOp = useSharedValue(0);
+
+  React.useEffect(() => {
+    ringOp.value = withDelay(d, withRepeat(
+      withSequence(
+        withTiming(0.28, { duration: 900, easing: Easing.out(Easing.ease) }),
+        withTiming(0, { duration: 1100, easing: Easing.in(Easing.ease) }),
+      ), -1,
+    ));
+    ringScale.value = withDelay(d, withRepeat(
+      withSequence(
+        withTiming(1.6, { duration: 2000, easing: Easing.out(Easing.ease) }),
+        withTiming(0.8, { duration: 0 }),
+      ), -1,
+    ));
+  }, []);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: ringScale.value }],
+    opacity: ringOp.value,
+  }));
+
+  return (
+    <Reanimated.View style={[{
+      position: 'absolute', width: size, height: size, borderRadius: size / 2,
+      borderWidth: 2, borderColor: color,
+    }, style]} />
+  );
+};
+
 // ─── Component ────────────────────────────────────────────
 const SubscriptionList: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
@@ -203,7 +346,7 @@ const SubscriptionList: React.FC = () => {
   const {
     subscriptions, transactions, addSubscription, updateSubscription, deleteSubscription,
     incrementInstallment, toggleSubscriptionPause, markSubscriptionPaid,
-    addTransaction,
+    undoSubscriptionPayment, addTransaction,
   } = usePersonalStore();
   const wallets = useWalletStore(s => s.wallets);
   const deductFromWallet = useWalletStore(s => s.deductFromWallet);
@@ -213,10 +356,28 @@ const SubscriptionList: React.FC = () => {
   // ── View state ──────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
   const [showAnnual, setShowAnnual] = useState(false);
+  const [heroMonthOffset, setHeroMonthOffset] = useState(0);
+  const heroTouchRef = useRef({ x: 0, time: 0 });
+  const slideX = useSharedValue(0);
+
+  const changeMonth = useCallback((newOffset: number) => {
+    const dir = newOffset > heroMonthOffset ? 1 : -1;
+    slideX.value = dir * 40;
+    slideX.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
+    setHeroMonthOffset(newOffset);
+  }, [heroMonthOffset, slideX]);
+
+  const slideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: slideX.value }],
+    opacity: interpolate(Math.abs(slideX.value), [0, 40], [1, 0.5]),
+  }));
   const [groupBy, setGroupBy] = useState<'status' | 'category'>('status');
   const [activeTab, setActiveTab] = useState<CommitmentKind>('subs');
+  const initialTabSet = useRef(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedCalDay, setSelectedCalDay] = useState<Date | null>(null);
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
 
   // ── Modal state ─────────────────────────────────────────
   const [modalVisible, setModalVisible] = useState(false);
@@ -225,9 +386,17 @@ const SubscriptionList: React.FC = () => {
 
   // ── Mark as paid sheet ───────────────────────────────────
   const [markPaidSub, setMarkPaidSub] = useState<Subscription | null>(null);
+  const [payWarning, setPayWarning] = useState<{ sub: Subscription; reason: 'double' | 'early'; detail: string } | null>(null);
+  const [celebrationSub, setCelebrationSub] = useState<{ id: string; name: string; amount: number; cycle: string; totalPaid: number; installments?: number } | null>(null);
 
   // ── Delete confirm ───────────────────────────────────────
   const [deleteConfirmSub, setDeleteConfirmSub] = useState<Subscription | null>(null);
+
+  // ── Detail view ─────────────────────────────────────────
+  const [detailSub, setDetailSub] = useState<Subscription | null>(null);
+
+  // ── How it works ────────────────────────────────────────
+  const [howItWorksVisible, setHowItWorksVisible] = useState(false);
 
   // ── Form state ───────────────────────────────────────────
   const [name, setName] = useState('');
@@ -267,24 +436,36 @@ const SubscriptionList: React.FC = () => {
   // ─── Header Echo button (only when FAB is hidden) ─
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight: () => subscriptions.length > 0 && echoHidden ? (
-        <TouchableOpacity
-          onPress={() => {
-            lightTap();
-            if (tier !== 'premium') { setPaywallVisible(true); return; }
-            setEchoHidden(false);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Open Echo assistant"
-          style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Feather
-            name="zap"
-            size={20}
-            color={tier !== 'premium' ? C.textMuted : C.textPrimary}
-          />
-        </TouchableOpacity>
-      ) : null,
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <TouchableOpacity
+            onPress={() => { lightTap(); setHowItWorksVisible(true); }}
+            accessibilityRole="button"
+            accessibilityLabel="How it works"
+            style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Feather name="help-circle" size={19} color={C.textMuted} />
+          </TouchableOpacity>
+          {subscriptions.length > 0 && echoHidden && (
+            <TouchableOpacity
+              onPress={() => {
+                lightTap();
+                if (tier !== 'premium') { setPaywallVisible(true); return; }
+                setEchoHidden(false);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Open Echo assistant"
+              style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Feather
+                name="zap"
+                size={20}
+                color={tier !== 'premium' ? C.textMuted : C.textPrimary}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+      ),
     });
   }, [echoHidden, tier, subscriptions.length, navigation, C, setEchoHidden]);
 
@@ -349,7 +530,7 @@ const SubscriptionList: React.FC = () => {
   // ─── Computed ──────────────────────────────────────────
   const totalMonthly = useMemo(() =>
     subscriptions
-      .filter(s => s.isActive && !s.isPaused)
+      .filter(s => s.isActive && !s.isPaused && !isInstallmentComplete(s))
       .reduce((sum, s) => {
         switch (s.billingCycle) {
           case 'weekly':    return sum + s.amount * 4;
@@ -363,7 +544,7 @@ const SubscriptionList: React.FC = () => {
 
   const totalAnnual = useMemo(() =>
     subscriptions
-      .filter(s => s.isActive && !s.isPaused)
+      .filter(s => s.isActive && !s.isPaused && !isInstallmentComplete(s))
       .reduce((sum, s) => {
         switch (s.billingCycle) {
           case 'weekly':    return sum + s.amount * 52;
@@ -378,8 +559,8 @@ const SubscriptionList: React.FC = () => {
   const heroStats = useMemo(() => {
     const active = subscriptions.filter(s => s.isActive);
     const monthEnd = endOfMonth(new Date());
-    const cleared = active.filter(s => !s.isPaused && isClearedThisCycle(s)).length;
-    const pending = active.filter(s => !s.isPaused && !isClearedThisCycle(s) && s.nextBillingDate <= monthEnd).length;
+    const cleared = active.filter(s => !s.isPaused && (isInstallmentComplete(s) || isClearedThisCycle(s))).length;
+    const pending = active.filter(s => !s.isPaused && !isInstallmentComplete(s) && !isClearedThisCycle(s) && s.nextBillingDate <= monthEnd).length;
     const paused  = active.filter(s => s.isPaused).length;
     return { cleared, pending, paused };
   }, [subscriptions]);
@@ -572,6 +753,20 @@ const SubscriptionList: React.FC = () => {
     }
   }, [commitmentGreetingPool, subscriptions, totalAnnual, currency]));
 
+  // ── Auto-advance overdue nextBillingDate on focus ───────
+  useFocusEffect(useCallback(() => {
+    const today = startOfDay(new Date());
+    subscriptions.forEach(sub => {
+      if (!sub.isActive || sub.isPaused) return;
+      if (new Date(sub.nextBillingDate) < today) {
+        const advanced = getNextBillingDate(new Date(sub.startDate), sub.billingCycle);
+        if (advanced.getTime() !== new Date(sub.nextBillingDate).getTime()) {
+          updateSubscription(sub.id, { nextBillingDate: advanced });
+        }
+      }
+    });
+  }, [subscriptions, updateSubscription]));
+
   const afterCommitments = useMemo(() => {
     const walletBalance = wallets
       .filter(w => w.type !== 'credit')
@@ -599,6 +794,36 @@ const SubscriptionList: React.FC = () => {
     return 'subs';
   }, []);
 
+  // ── Smart default tab — land on the most urgent tab ─────
+  useEffect(() => {
+    if (initialTabSet.current || subscriptions.length === 0) return;
+    initialTabSet.current = true;
+
+    const today = startOfDay(new Date());
+    const active = subscriptions.filter(s => s.isActive && !s.isPaused && !isInstallmentComplete(s));
+
+    const overdueByCat: Record<CommitmentKind, number> = { bills: 0, payments: 0, subs: 0 };
+    let nearestDue: { kind: CommitmentKind; date: number } | null = null;
+
+    for (const sub of active) {
+      const kind = classifyKind(sub);
+      if (!isClearedThisCycle(sub)) {
+        if (sub.nextBillingDate < today) {
+          overdueByCat[kind]++;
+        }
+        const t = sub.nextBillingDate.getTime();
+        if (!nearestDue || t < nearestDue.date) {
+          nearestDue = { kind, date: t };
+        }
+      }
+    }
+
+    if (overdueByCat.bills > 0) { setActiveTab('bills'); return; }
+    if (overdueByCat.payments > 0) { setActiveTab('payments'); return; }
+    if (overdueByCat.subs > 0) { setActiveTab('subs'); return; }
+    if (nearestDue) { setActiveTab(nearestDue.kind); }
+  }, [subscriptions, classifyKind]);
+
   // ── Tab counts (for label badges) ───────────────────────
   const tabCounts = useMemo(() => {
     const active = subscriptions.filter(s => s.isActive);
@@ -618,7 +843,7 @@ const SubscriptionList: React.FC = () => {
 
     for (const sub of active) {
       if (sub.isPaused) { paused.push(sub); continue; }
-      if (isClearedThisCycle(sub)) { paid.push(sub); continue; }
+      if (isInstallmentComplete(sub) || isClearedThisCycle(sub)) { paid.push(sub); continue; }
       remaining.push(sub);
     }
 
@@ -634,6 +859,89 @@ const SubscriptionList: React.FC = () => {
     paid:      sections.paid.filter(s => classifyKind(s) === activeTab),
     paused:    sections.paused.filter(s => classifyKind(s) === activeTab),
   }), [sections, activeTab, classifyKind]);
+
+  // ── Status-filtered list (used by context chips) ─────────
+  const statusFilteredList = useMemo(() => {
+    const today = startOfDay(new Date());
+    const monthEnd = endOfMonth(new Date());
+
+    if (statusFilter === 'archived') {
+      return subscriptions.filter(s => !s.isActive);
+    }
+
+    const active = subscriptions.filter(s => s.isActive);
+
+    switch (statusFilter) {
+      case 'upcoming':
+        return active.filter(s => !s.isPaused && !isInstallmentComplete(s) && !isClearedThisCycle(s) && new Date(s.nextBillingDate) >= today && new Date(s.nextBillingDate) <= monthEnd)
+          .sort((a, b) => new Date(a.nextBillingDate).getTime() - new Date(b.nextBillingDate).getTime());
+      case 'overdue':
+        return active.filter(s => !s.isPaused && !isInstallmentComplete(s) && !isClearedThisCycle(s) && new Date(s.nextBillingDate) < today)
+          .sort((a, b) => new Date(a.nextBillingDate).getTime() - new Date(b.nextBillingDate).getTime());
+      case 'cleared':
+        return active.filter(s => !s.isPaused && (isInstallmentComplete(s) || isClearedThisCycle(s)));
+      case 'paused':
+        return active.filter(s => s.isPaused);
+      default:
+        return active;
+    }
+  }, [subscriptions, statusFilter]);
+
+  // ── Group by type (bills / payments / subscriptions) ────
+  const groupedByType = useMemo(() => {
+    const groups: { key: CommitmentKind; label: string; subs: Subscription[] }[] = [
+      { key: 'bills', label: 'bills', subs: [] },
+      { key: 'payments', label: 'payments', subs: [] },
+      { key: 'subs', label: 'subscriptions', subs: [] },
+    ];
+    statusFilteredList.forEach(sub => {
+      const kind = classifyKind(sub);
+      const group = groups.find(g => g.key === kind);
+      if (group) group.subs.push(sub);
+    });
+    return groups.filter(g => g.subs.length > 0);
+  }, [statusFilteredList, classifyKind]);
+
+  // ── Display data (tab + status composed) ────────────────
+  const displayData = useMemo(() => {
+    if (heroMonthOffset !== 0) {
+      const projected = getSubsForMonth(
+        subscriptions,
+        heroMonthOffset,
+      ).sort((a, b) => a.amount - b.amount);
+      const label = heroMonthOffset > 0 ? 'expected' : 'scheduled';
+      return [{ label, subs: projected, isCleared: false }];
+    }
+
+    const today = startOfDay(new Date());
+    const { remaining, paid, paused } = tabSections;
+    const overdue = remaining.filter(s => new Date(s.nextBillingDate) < today);
+    const upcoming = remaining.filter(s => new Date(s.nextBillingDate) >= today);
+
+    if (statusFilter === 'archived') {
+      const archived = subscriptions.filter(s => !s.isActive);
+      return [{ label: 'archived', subs: archived, isCleared: false }];
+    }
+
+    switch (statusFilter) {
+      case 'upcoming':
+        return [{ label: 'upcoming', subs: upcoming, isCleared: false }];
+      case 'overdue':
+        return [{ label: 'overdue', subs: overdue, isCleared: false }];
+      case 'cleared':
+        return [{ label: 'paid this cycle', subs: paid, isCleared: true }];
+      case 'paused':
+        return [{ label: 'paused', subs: paused, isCleared: false }];
+      default: {
+        const result: { label: string; subs: Subscription[]; isCleared: boolean }[] = [];
+        if (overdue.length > 0) result.push({ label: 'overdue', subs: overdue, isCleared: false });
+        if (upcoming.length > 0) result.push({ label: 'upcoming', subs: upcoming, isCleared: false });
+        if (paid.length > 0) result.push({ label: 'paid this cycle', subs: paid, isCleared: true });
+        if (paused.length > 0) result.push({ label: 'paused', subs: paused, isCleared: false });
+        return result;
+      }
+    }
+  }, [tabSections, statusFilter, subscriptions, heroMonthOffset, activeTab, classifyKind]);
 
   // ── Search result (flat filtered list) ──────────────────
   const searchResults = useMemo(() => {
@@ -783,6 +1091,30 @@ const SubscriptionList: React.FC = () => {
     showToast(message, 'error');
   }, [showToast]);
 
+  const handleSave = useCallback(() => {
+    if (!name.trim()) { showToast('name is required', 'error'); return; }
+    const parsed = parseFloat(amount);
+    if (!amount || isNaN(parsed) || parsed <= 0) { showToast('enter a valid amount', 'error'); return; }
+    handleFormSave({
+      name: name.trim(),
+      amount: parsed,
+      category,
+      billingCycle,
+      startDate,
+      nextBillingDate: startDate,
+      isActive: true,
+      reminderDays: parseInt(reminderDays, 10) || 3,
+      isPaused,
+      isInstallment,
+      totalInstallments: isInstallment ? (parseInt(totalInstallments, 10) || 0) : undefined,
+      completedInstallments: isInstallment ? (subscriptions.find(s => s.id === editingId)?.completedInstallments || 0) : undefined,
+      outstandingBalance: outstandingBalance ? parseFloat(outstandingBalance) : undefined,
+      note: note.trim() || undefined,
+      walletId: formWalletId,
+      paymentHistory: subscriptions.find(s => s.id === editingId)?.paymentHistory,
+    });
+  }, [name, amount, category, billingCycle, startDate, reminderDays, isPaused, isInstallment, totalInstallments, outstandingBalance, note, formWalletId, editingId, subscriptions, handleFormSave, showToast]);
+
   const handleConfirmDelete = useCallback(() => {
     if (!deleteConfirmSub) return;
     deleteSubscription(deleteConfirmSub.id);
@@ -790,11 +1122,43 @@ const SubscriptionList: React.FC = () => {
     showToast(t.subscriptions.commitmentRemoved, 'success');
   }, [deleteConfirmSub, deleteSubscription, showToast, t]);
 
+  const smartMarkPaid = useCallback((sub: Subscription) => {
+    const isInst = sub.isInstallment && sub.totalInstallments;
+    const instCompleted = (sub.completedInstallments || 0) >= (sub.totalInstallments || 0);
+
+    // Gate 1: installment fully completed — celebrate, don't allow more
+    if (isInst && instCompleted) {
+      const totalPaid = sub.amount * (sub.totalInstallments || 0);
+      successNotification();
+      setCelebrationSub({ id: sub.id, name: sub.name, amount: sub.amount, cycle: sub.billingCycle, totalPaid, installments: sub.totalInstallments });
+      return;
+    }
+
+    // Gate 2: already paid this cycle (skip for installments — they can pay ahead)
+    if (!isInst && isClearedThisCycle(sub)) {
+      const lastPaid = sub.lastPaidAt ? format(new Date(sub.lastPaidAt), 'MMM d') : 'recently';
+      setPayWarning({ sub, reason: 'double', detail: lastPaid });
+      return;
+    }
+
+    // Gate 3: not due for 30+ days (skip for installments — early payment is normal)
+    if (!isInst) {
+      const daysUntilDue = differenceInDays(startOfDay(sub.nextBillingDate), startOfDay(new Date()));
+      if (daysUntilDue > 30) {
+        setPayWarning({ sub, reason: 'early', detail: format(sub.nextBillingDate, 'MMM d, yyyy') });
+        return;
+      }
+    }
+
+    setMarkPaidSub(sub);
+  }, []);
+
   const handleMarkPaid = useCallback((withExpense: boolean) => {
     if (!markPaidSub) return;
-    markSubscriptionPaid(markPaidSub.id);
+    let txId: string | undefined;
+    const wId = withExpense ? markPaidSub.walletId : undefined;
     if (withExpense && markPaidSub.walletId) {
-      addTransaction({
+      txId = addTransaction({
         amount: markPaidSub.amount,
         category: markPaidSub.category,
         description: markPaidSub.name,
@@ -806,7 +1170,25 @@ const SubscriptionList: React.FC = () => {
       });
       deductFromWallet(markPaidSub.walletId, markPaidSub.amount);
     }
+    markSubscriptionPaid(markPaidSub.id, txId, wId);
     mediumTap();
+
+    // Check if installment just completed after this payment
+    const freshSub = usePersonalStore.getState().subscriptions.find(s => s.id === markPaidSub.id);
+    if (freshSub?.isInstallment && freshSub.totalInstallments &&
+        (freshSub.completedInstallments || 0) >= freshSub.totalInstallments) {
+      const totalPaid = freshSub.amount * freshSub.totalInstallments;
+      setMarkPaidSub(null);
+      setTimeout(() => {
+        successNotification();
+        setCelebrationSub({
+          id: freshSub.id, name: freshSub.name, amount: freshSub.amount, cycle: freshSub.billingCycle,
+          totalPaid, installments: freshSub.totalInstallments,
+        });
+      }, 300);
+      return;
+    }
+
     setMarkPaidSub(null);
     showToast('cleared.', 'success');
   }, [markPaidSub, markSubscriptionPaid, addTransaction, deductFromWallet, showToast]);
@@ -840,7 +1222,7 @@ const SubscriptionList: React.FC = () => {
     const accentColor = avatarColorForName(sub.name);
     const { text: dueDateText, accent } = getDueDateInfo(sub.nextBillingDate);
     const dueColor = isCleared ? C.textMuted
-      : accent === 'overdue' ? '#C1694F'
+      : accent === 'overdue' ? C.overdue
       : accent === 'today'   ? C.gold
       : C.textSecondary;
 
@@ -848,6 +1230,8 @@ const SubscriptionList: React.FC = () => {
     const completed = sub.completedInstallments || 0;
     const total = sub.totalInstallments || 1;
     const progress = isInstallmentSub ? Math.min(completed / total, 1) : 0;
+    const installmentDone = !!(isInstallmentSub && completed >= total);
+    const canPayInstallment = isInstallmentSub && !installmentDone;
 
     const subText = sub.isPaused
       ? `paused · ${getCycleLabel(sub.billingCycle)}`
@@ -860,58 +1244,77 @@ const SubscriptionList: React.FC = () => {
       isInstallmentSub ? `${completed}/${total}` :
       getCycleLabel(sub.billingCycle);
 
+    const statusBadge = installmentDone
+      ? { label: 'complete', color: C.positive, bg: withAlpha(C.positive, 0.10) }
+      : sub.isPaused
+        ? { label: 'paused', color: C.bronze, bg: withAlpha(C.bronze, 0.10) }
+        : isCleared
+          ? { label: sub.lastPaidAt ? `paid ${format(new Date(sub.lastPaidAt), 'MMM d')}` : 'paid', color: C.positive, bg: withAlpha(C.positive, 0.10) }
+          : accent === 'overdue'
+            ? { label: 'overdue', color: C.overdue, bg: withAlpha(C.overdue, 0.10) }
+            : accent === 'today'
+              ? { label: 'due today', color: C.gold, bg: withAlpha(C.gold, 0.12) }
+              : null;
+
     const rowContent = (
       <Pressable
-        style={[
-          styles.row,
-          isCleared && styles.rowCleared,
-          sub.isPaused && styles.rowPaused,
-        ]}
-        android_ripple={{ color: withAlpha(C.textMuted, 0.08) }}
-        onPress={() => handleEdit(sub.id)}
+        style={[styles.row, (isCleared || sub.isPaused || installmentDone) && styles.rowDimmed]}
+        android_ripple={{ color: withAlpha(C.textMuted, 0.06) }}
+        onPress={() => { lightTap(); setDetailSub(sub); }}
       >
-        {/* Avatar */}
-        <View style={[
-          styles.rowIcon,
-          { backgroundColor: withAlpha(accentColor, isCleared || sub.isPaused ? 0.07 : 0.14) },
-        ]}>
-          {isCleared
-            ? <Feather name="check" size={16} color={C.positive} />
-            : <Text style={[styles.rowIconLetter, { color: accentColor }]}>
-                {sub.name.charAt(0).toUpperCase()}
-              </Text>
-          }
-        </View>
+        {/* Squircle avatar */}
+        {installmentDone ? (
+          <View style={[styles.rowIcon, { backgroundColor: withAlpha(C.positive, 0.12) }]}>
+            <Feather name="check-circle" size={18} color={C.positive} />
+          </View>
+        ) : sub.imageUri ? (
+          <Image source={{ uri: sub.imageUri }} style={styles.rowIconImage} />
+        ) : sub.iconName ? (
+          <View style={[styles.rowIcon, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+            {renderIcon(sub.iconName, 18, C.accent)}
+          </View>
+        ) : (
+          <View style={[
+            styles.rowIcon,
+            { backgroundColor: isCleared ? withAlpha(C.positive, 0.12) : withAlpha(accentColor, 0.14) },
+          ]}>
+            {isCleared
+              ? <Feather name="check" size={16} color={C.positive} />
+              : <Text style={[styles.rowIconLetter, { color: accentColor }]}>{sub.name.charAt(0).toUpperCase()}</Text>
+            }
+          </View>
+        )}
 
-        {/* Center */}
+        {/* Center: name + meta row */}
         <View style={styles.rowInfo}>
-          <Text style={[styles.rowName, isCleared && styles.rowNameCleared]} numberOfLines={1}>
-            {sub.name}
-          </Text>
-          <Text style={[styles.rowSub, { color: dueColor }]} numberOfLines={1}>
-            {subText}
-          </Text>
+          <Text style={styles.rowName} numberOfLines={1}>{sub.name}</Text>
+          <View style={styles.rowMeta}>
+            <Text style={styles.rowCycleText}>{getCycleLabel(sub.billingCycle)}</Text>
+            {statusBadge && (
+              <View style={[styles.rowStatusPill, { backgroundColor: statusBadge.bg }]}>
+                <Text style={[styles.rowStatusText, { color: statusBadge.color }]}>{statusBadge.label}</Text>
+              </View>
+            )}
+            {!statusBadge && !isCleared && (
+              <Text style={styles.rowDueText}>{dueDateText}</Text>
+            )}
+          </View>
           {isInstallmentSub && (
             <View style={styles.progressBarContainer}>
-              <View style={[styles.progressBarFill, { width: `${Math.min(progress * 100, 100)}%` }]} />
+              <View style={[styles.progressBarFill, { width: `${Math.min(progress * 100, 100)}%`, backgroundColor: installmentDone ? C.positive : accentColor }]} />
             </View>
           )}
         </View>
 
-        {/* Right */}
+        {/* Right: amount */}
         <View style={styles.rowRight}>
-          <Text style={[styles.rowAmount, isCleared && styles.rowAmountCleared]}>
+          <Text style={[styles.rowAmount, (isCleared || installmentDone) && styles.rowAmountCleared]}>
             {currency} {sub.amount.toFixed(2)}
           </Text>
-          {rightSubText.length > 0 && (
-            <Text style={styles.rowRightSub}>{rightSubText}</Text>
+          {isInstallmentSub && (
+            <Text style={styles.rowInstFraction}>{(sub.completedInstallments || 0)}/{sub.totalInstallments}</Text>
           )}
         </View>
-
-        {/* Chevron — soft drill-in affordance (skip for cleared/paused) */}
-        {!isCleared && !sub.isPaused && (
-          <Feather name="chevron-right" size={16} color={C.textMuted} style={styles.rowChevron} />
-        )}
       </Pressable>
     );
 
@@ -920,7 +1323,7 @@ const SubscriptionList: React.FC = () => {
       hardSwipedRef.current.add(sub.id);
       s.close();
       mediumTap();
-      setMarkPaidSub(sub);
+      smartMarkPaid(sub);
     };
     const triggerEdit = (s: SwipeableMethods) => {
       hardSwipedRef.current.add(sub.id);
@@ -933,12 +1336,12 @@ const SubscriptionList: React.FC = () => {
       _prog: SharedValue<number>,
       drag: SharedValue<number>,
       swipeable: SwipeableMethods,
-    ) => (!isCleared && !sub.isPaused ? (
+    ) => ((!isCleared || canPayInstallment) && !sub.isPaused ? (
       <SubSwipeAction
         variant="paid"
         direction="right"
         drag={drag}
-        label="mark paid"
+        label={canPayInstallment ? `pay ${completed + 1}/${total}` : 'mark paid'}
         styles={styles}
         onTap={() => triggerPaid(swipeable)}
         onHardSwipe={() => triggerPaid(swipeable)}
@@ -1008,11 +1411,11 @@ const SubscriptionList: React.FC = () => {
 
     const chipBg = isCleared
       ? withAlpha(C.positive, 0.10)
-      : accent === 'overdue' ? withAlpha('#C1694F', 0.10)
+      : accent === 'overdue' ? withAlpha(C.overdue, 0.10)
       : accent === 'today'   ? withAlpha(C.gold, 0.10)
       : withAlpha(C.textMuted, 0.07);
     const chipColor = isCleared ? C.positive
-      : accent === 'overdue' ? '#C1694F'
+      : accent === 'overdue' ? C.overdue
       : accent === 'today'   ? C.gold
       : C.textMuted;
     const dueDateLabel = isCleared && sub.lastPaidAt ? `paid ${format(sub.lastPaidAt, 'MMM d')}` : dueDateText;
@@ -1029,17 +1432,25 @@ const SubscriptionList: React.FC = () => {
           {sub.name.charAt(0).toUpperCase()}
         </Text>
         {/* Icon */}
-        <View style={[styles.tileIcon, { backgroundColor: withAlpha(accentColor, isCleared ? 0.07 : 0.14) }]}>
-          {isCleared
-            ? <Feather name="check" size={16} color={accentColor} style={{ opacity: 0.6 }} />
-            : <Text style={[styles.rowIconLetter, { color: accentColor, fontSize: TYPOGRAPHY.size.base }]}>
-                {sub.name.charAt(0).toUpperCase()}
-              </Text>
-          }
-        </View>
+        {sub.imageUri ? (
+          <Image source={{ uri: sub.imageUri }} style={styles.tileIconImage} />
+        ) : sub.iconName ? (
+          <View style={[styles.tileIcon, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+            {renderIcon(sub.iconName, 18, C.accent)}
+          </View>
+        ) : (
+          <View style={[styles.tileIcon, { backgroundColor: withAlpha(accentColor, isCleared ? 0.07 : 0.14) }]}>
+            {isCleared
+              ? <Feather name="check" size={16} color={accentColor} style={{ opacity: 0.6 }} />
+              : <Text style={[styles.rowIconLetter, { color: accentColor, fontSize: TYPOGRAPHY.size.base }]}>
+                  {sub.name.charAt(0).toUpperCase()}
+                </Text>
+            }
+          </View>
+        )}
         <Text style={styles.tileName} numberOfLines={1}>{sub.name}</Text>
         <Text style={styles.tileAmount}>{currency} {sub.amount.toFixed(0)}</Text>
-        <Text style={[styles.rowRightSub, { color: chipColor, textAlign: 'center' }]}>{dueDateLabel}</Text>
+        <Text style={[styles.rowDueText, { color: chipColor, textAlign: 'center' }]}>{dueDateLabel}</Text>
       </TouchableOpacity>
     );
   }, [expenseCategories, handleEdit, currency, C, styles]);
@@ -1051,16 +1462,14 @@ const SubscriptionList: React.FC = () => {
     return (
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionLabel}>{label}</Text>
+          <Text style={styles.sectionLabel}>{label} ({subs.length})</Text>
           <Text style={styles.sectionTotal}>{currency} {sectionTotal.toFixed(2)}</Text>
         </View>
         <View style={styles.sectionCard}>
           {subs.map((sub, idx) => (
             <React.Fragment key={sub.id}>
               {renderRow(sub, isCleared)}
-              {idx < subs.length - 1 && (
-                <View style={[styles.rowDivider, { marginLeft: SPACING.xl + 44 + SPACING.md }]} />
-              )}
+              {idx < subs.length - 1 && <View style={styles.rowDivider} />}
             </React.Fragment>
           ))}
         </View>
@@ -1076,41 +1485,39 @@ const SubscriptionList: React.FC = () => {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionLabel}>looks recurring</Text>
         </View>
-        <View style={styles.sectionCard}>
-          {recurringDetection.map((s, idx) => (
-            <React.Fragment key={s.name}>
-              <TouchableOpacity
-                style={styles.suggestionRow}
-                onPress={() => {
-                  lightTap();
-                  resetForm();
-                  setName(s.name);
-                  setAmount(s.amount.toString());
-                  setCategory(s.category);
-                  setBillingCycle(s.cycle);
-                  setModalVisible(true);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={styles.suggestionLeft}>
-                  <View style={styles.suggestionBadge}>
-                    <Feather name="repeat" size={12} color={C.bronze} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.suggestionName} numberOfLines={1}>{s.name}</Text>
-                    <Text style={styles.suggestionMeta}>{currency} {s.amount.toFixed(2)} · {s.cycle}</Text>
-                  </View>
+        {recurringDetection.map((s, idx) => (
+          <React.Fragment key={s.name}>
+            <TouchableOpacity
+              style={styles.suggestionRow}
+              onPress={() => {
+                lightTap();
+                resetForm();
+                setName(s.name);
+                setAmount(s.amount.toString());
+                setCategory(s.category);
+                setBillingCycle(s.cycle);
+                setModalVisible(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={styles.suggestionLeft}>
+                <View style={styles.suggestionBadge}>
+                  <Feather name="repeat" size={12} color={C.bronze} />
                 </View>
-                <View style={styles.suggestionAction}>
-                  <Text style={styles.suggestionActionText}>track</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.suggestionName} numberOfLines={1}>{s.name}</Text>
+                  <Text style={styles.suggestionMeta}>{currency} {s.amount.toFixed(2)} · {s.cycle}</Text>
                 </View>
-              </TouchableOpacity>
-              {idx < recurringDetection.length - 1 && (
-                <View style={[styles.rowDivider, { marginLeft: 12 + 28 + SPACING.md }]} />
-              )}
-            </React.Fragment>
-          ))}
-        </View>
+              </View>
+              <View style={styles.suggestionAction}>
+                <Text style={styles.suggestionActionText}>track</Text>
+              </View>
+            </TouchableOpacity>
+            {idx < recurringDetection.length - 1 && (
+              <View style={styles.rowDivider} />
+            )}
+          </React.Fragment>
+        ))}
       </View>
     );
   }, [recurringDetection, currency, C, styles, resetForm]);
@@ -1234,71 +1641,312 @@ const SubscriptionList: React.FC = () => {
     );
   }, [calendarMonth, selectedCalDay, calendarBillMap, C, currency, styles, handleEdit]);
 
-  // ─── Centered hero (typographic, no card) ──────────────
+  // ─── Hero card ──────────────────────────────────────────
+  const annualizeAmount = useCallback((amount: number, cycle: string): number => {
+    switch (cycle) {
+      case 'weekly': return amount * 52;
+      case 'quarterly': return amount * 4;
+      case 'yearly': return amount;
+      default: return amount * 12;
+    }
+  }, []);
+
   const renderMonthHeader = () => {
-    if (subscriptions.length === 0) return null;
-    const remainingTotal = tabSections.remaining.reduce((s, x) => s + x.amount, 0);
-    const paidTotal = tabSections.paid.reduce((s, x) => s + x.amount, 0);
-    const heroLabel = activeTab === 'bills' ? 'your monthly bills'
-      : activeTab === 'payments' ? 'your monthly payments'
-      : 'your monthly subscriptions';
-    const heroAmount = remainingTotal + paidTotal;
-    const showSplit = remainingTotal > 0 && paidTotal > 0;
-    const allPaid = remainingTotal === 0 && paidTotal > 0;
+    const isCurrent = heroMonthOffset === 0;
+    const targetDate = isCurrent ? new Date() : addMonths(new Date(), heroMonthOffset);
+
+    let paidSubs: Subscription[];
+    let unpaidSubs: Subscription[];
+    let allSubs: Subscription[];
+
+    if (isCurrent) {
+      const { remaining, paid, paused } = tabSections;
+      allSubs = [...remaining, ...paid, ...paused];
+      paidSubs = paid;
+      unpaidSubs = remaining;
+    } else {
+      const projected = getSubsForMonth(subscriptions, heroMonthOffset);
+      allSubs = projected;
+      paidSubs = [];
+      unpaidSubs = projected;
+    }
+
+    const monthlyTotal = allSubs.filter(s => !s.isPaused).reduce((s, x) => s + x.amount, 0);
+    const yearlyTotal = allSubs.filter(s => !s.isPaused).reduce((s, x) => s + annualizeAmount(x.amount, x.billingCycle), 0);
+    const remainingTotal = unpaidSubs.reduce((s, x) => s + x.amount, 0);
+    const paidTotal = paidSubs.reduce((s, x) => s + x.amount, 0);
+    const showSplit = isCurrent && remainingTotal > 0 && paidTotal > 0;
+    const allPaid = isCurrent && unpaidSubs.length === 0 && paidSubs.length > 0;
+    const paidCount = paidSubs.length;
+    const activeCount = allSubs.length;
+    const barSubs = [...paidSubs, ...unpaidSubs];
+
+    const nextDueSub = [...unpaidSubs]
+      .sort((a, b) => new Date(a.nextBillingDate).getTime() - new Date(b.nextBillingDate).getTime())[0];
+    const nextDueDays = nextDueSub ? differenceInDays(startOfDay(new Date(nextDueSub.nextBillingDate)), startOfDay(new Date())) : null;
+    const overdueCount = isCurrent ? unpaidSubs.filter(s => new Date(s.nextBillingDate) < startOfDay(new Date())).length : 0;
+    const displayAmount = showAnnual ? yearlyTotal : monthlyTotal;
 
     return (
-      <View style={styles.monthHeader}>
-        <Text style={styles.monthLabel}>{heroLabel}</Text>
-        <Text style={styles.monthAmountLine}>
-          <Text style={styles.monthAmountPrefix}>{currency} </Text>
-          <Text style={styles.monthAmountInt}>
-            {heroAmount.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
-          </Text>
+      <Reanimated.View
+        style={[styles.monthHeader, slideStyle]}
+        onTouchStart={(e) => { heroTouchRef.current = { x: e.nativeEvent.pageX, time: Date.now() }; }}
+        onTouchEnd={(e) => {
+          const dx = e.nativeEvent.pageX - heroTouchRef.current.x;
+          const dt = Date.now() - heroTouchRef.current.time;
+          if (dt < 400 && Math.abs(dx) > 40) {
+            if (dx < 0 && heroMonthOffset < 1) { lightTap(); changeMonth(heroMonthOffset + 1); }
+            else if (dx > 0 && heroMonthOffset > -1) { lightTap(); changeMonth(heroMonthOffset - 1); }
+          }
+        }}
+      >
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroMonthNav}>
+            <Pressable
+              onPress={() => { if (heroMonthOffset > -1) { lightTap(); changeMonth(heroMonthOffset - 1); } }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{ opacity: heroMonthOffset > -1 ? 1 : 0.25 }}
+            >
+              <Feather name="chevron-left" size={16} color={C.textMuted} />
+            </Pressable>
+            <Text style={styles.heroMonth}>{format(targetDate, 'MMMM yyyy').toLowerCase()}</Text>
+            <Pressable
+              onPress={() => { if (heroMonthOffset < 1) { lightTap(); changeMonth(heroMonthOffset + 1); } }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{ opacity: heroMonthOffset < 1 ? 1 : 0.25 }}
+            >
+              <Feather name="chevron-right" size={16} color={C.textMuted} />
+            </Pressable>
+            {!isCurrent && (
+              <Pressable
+                onPress={() => { lightTap(); changeMonth(0); }}
+                style={styles.heroBackBtn}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Text style={styles.heroBackBtnText}>today</Text>
+              </Pressable>
+            )}
+          </View>
+          <View style={styles.heroSegment}>
+            <Pressable
+              onPress={() => { lightTap(); setShowAnnual(false); }}
+              style={[styles.heroSegBtn, !showAnnual && styles.heroSegBtnActive]}
+            >
+              <Text style={[styles.heroSegText, !showAnnual && styles.heroSegTextActive]}>/mo</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { lightTap(); setShowAnnual(true); }}
+              style={[styles.heroSegBtn, showAnnual && styles.heroSegBtnActive]}
+            >
+              <Text style={[styles.heroSegText, showAnnual && styles.heroSegTextActive]}>/yr</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <Text style={styles.heroAmount}>
+          <Text style={styles.heroAmountCurrency}>{currency} </Text>
+          {displayAmount.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
         </Text>
+
         {showSplit && (
-          <Text style={styles.monthSummary}>
-            <Text style={styles.monthSummaryAccent}>{currency} {remainingTotal.toFixed(2)}</Text>
-            <Text> due  ·  </Text>
-            <Text>{currency} {paidTotal.toFixed(2)} paid</Text>
-          </Text>
+          <View style={styles.heroBreakdownRow}>
+            <Text style={styles.heroBreakdownText}>
+              <Text style={styles.heroBreakdownBold}>{currency} {paidTotal.toFixed(0)}</Text> paid
+            </Text>
+            <Text style={styles.heroBreakdownDot}>·</Text>
+            <Text style={styles.heroBreakdownText}>
+              <Text style={styles.heroBreakdownBold}>{currency} {remainingTotal.toFixed(0)}</Text> remaining
+            </Text>
+          </View>
         )}
-        {allPaid && (
-          <Text style={styles.monthSummary}>all paid this cycle</Text>
+        {!isCurrent && activeCount > 0 && (
+          <View style={styles.heroBreakdownRow}>
+            <Feather name="calendar" size={12} color={C.textMuted} />
+            <Text style={[styles.heroBreakdownText, { marginLeft: 4 }]}>
+              <Text style={styles.heroBreakdownBold}>{activeCount}</Text> {activeCount === 1 ? 'commitment' : 'commitments'} {heroMonthOffset > 0 ? 'expected' : 'scheduled'}
+            </Text>
+          </View>
         )}
-      </View>
+        {isCurrent && !showSplit && !allPaid && activeCount > 0 && (
+          <View style={styles.heroBreakdownRow}>
+            <Text style={styles.heroBreakdownText}>
+              <Text style={styles.heroBreakdownBold}>{activeCount}</Text> {activeCount === 1 ? 'commitment' : 'commitments'} this month
+            </Text>
+          </View>
+        )}
+
+        {activeCount > 0 && (
+          <View style={styles.heroSegBar}>
+            {barSubs.map((sub, i) => {
+              const isPaid = paidSubs.some(p => p.id === sub.id);
+              return (
+                <View
+                  key={sub.id}
+                  style={[
+                    styles.heroSegBarItem,
+                    { flex: sub.amount, backgroundColor: isPaid ? C.accent : withAlpha(C.textMuted, 0.15) },
+                    i === 0 && { borderTopLeftRadius: 3, borderBottomLeftRadius: 3 },
+                    i === barSubs.length - 1 && { borderTopRightRadius: 3, borderBottomRightRadius: 3 },
+                  ]}
+                />
+              );
+            })}
+          </View>
+        )}
+
+        {activeCount > 0 && (
+          <>
+            <View style={styles.heroStripDivider} />
+            <View style={styles.heroStatsRow}>
+              {isCurrent ? (
+                <View style={styles.heroStatCol}>
+                  <Text style={styles.heroStatValue}>{paidCount}/{activeCount}</Text>
+                  <Text style={styles.heroStatLabel}>paid</Text>
+                </View>
+              ) : (
+                <View style={styles.heroStatCol}>
+                  <Text style={styles.heroStatValue}>{activeCount}</Text>
+                  <Text style={styles.heroStatLabel}>{heroMonthOffset > 0 ? 'expected' : 'billed'}</Text>
+                </View>
+              )}
+              {nextDueSub && nextDueDays !== null ? (
+                <View style={[styles.heroStatCol, styles.heroStatColBorder]}>
+                  <Text style={[
+                    styles.heroStatValue,
+                    isCurrent && nextDueDays < 0 && { color: C.bronze },
+                    isCurrent && nextDueDays === 0 && { color: C.accent },
+                  ]}>
+                    {isCurrent
+                      ? (nextDueDays === 0 ? 'today' : nextDueDays < 0 ? `${Math.abs(nextDueDays)}d late` : `${nextDueDays}d`)
+                      : format(new Date(nextDueSub.nextBillingDate), 'd MMM').toLowerCase()}
+                  </Text>
+                  <Text style={styles.heroStatLabel} numberOfLines={1}>
+                    {isCurrent ? nextDueSub.name.toLowerCase() : 'earliest'}
+                  </Text>
+                </View>
+              ) : (
+                <View style={[styles.heroStatCol, styles.heroStatColBorder]}>
+                  <Text style={[styles.heroStatValue, { color: C.accent }]}>—</Text>
+                  <Text style={styles.heroStatLabel}>{isCurrent ? 'next due' : 'earliest'}</Text>
+                </View>
+              )}
+              {isCurrent && overdueCount > 0 ? (
+                <View style={[styles.heroStatCol, styles.heroStatColBorder]}>
+                  <Text style={[styles.heroStatValue, { color: C.bronze }]}>{overdueCount}</Text>
+                  <Text style={styles.heroStatLabel}>overdue</Text>
+                </View>
+              ) : (
+                <View style={[styles.heroStatCol, styles.heroStatColBorder]}>
+                  <Text style={styles.heroStatValue}>{currency} {yearlyTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text>
+                  <Text style={styles.heroStatLabel}>yearly</Text>
+                </View>
+              )}
+            </View>
+          </>
+        )}
+
+        <View style={styles.heroPageDots}>
+          {[-1, 0, 1].map(i => (
+            <View key={i} style={[styles.heroPageDot, heroMonthOffset === i && styles.heroPageDotActive]} />
+          ))}
+        </View>
+      </Reanimated.View>
     );
   };
 
-  // ─── Tab bar (bills | payments | subscriptions) ────────
-  const renderTabs = () => {
+  // ─── Status context chips (tab-aware) ───────────────────
+  const statusCounts = useMemo(() => {
+    const today = startOfDay(new Date());
+    const { remaining, paid, paused } = tabSections;
+    const overdue = remaining.filter(s => new Date(s.nextBillingDate) < today);
+    const upcoming = remaining.filter(s => new Date(s.nextBillingDate) >= today);
+    const archivedCount = subscriptions.filter(s => !s.isActive).length;
+    return {
+      all: remaining.length + paid.length + paused.length,
+      upcoming: upcoming.length,
+      overdue: overdue.length,
+      cleared: paid.length,
+      paused: paused.length,
+      archived: archivedCount,
+    };
+  }, [tabSections, subscriptions]);
+
+
+  const renderContextChips = () => {
     if (subscriptions.length === 0) return null;
-    const tabs: { key: CommitmentKind; label: string }[] = [
+    // Type pills
+    const typePills: { key: CommitmentKind; label: string }[] = [
       { key: 'bills', label: 'bills' },
       { key: 'payments', label: 'payments' },
       { key: 'subs', label: 'subscriptions' },
     ];
+
+    // Status chips (only 3 inline)
+    const statusChips: { key: StatusFilter; label: string; icon: string }[] = [
+      { key: 'all', label: 'all', icon: 'layers' },
+      { key: 'upcoming', label: 'upcoming', icon: 'clock' },
+      { key: 'overdue', label: 'overdue', icon: 'alert-circle' },
+    ];
+
+    const hasActiveFilter = statusFilter === 'cleared' || statusFilter === 'paused' || statusFilter === 'archived';
+
     return (
-      <View style={styles.tabRow}>
-        {tabs.map(tab => {
-          const active = activeTab === tab.key;
-          const count = tabCounts[tab.key];
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              style={styles.tabBtn}
-              onPress={() => { lightTap(); setActiveTab(tab.key); }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.tabBtnInner}>
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab.label}</Text>
+      <View style={styles.chipSection}>
+        {/* Type tabs (underline style) */}
+        <View style={styles.typeTabRow}>
+          {typePills.map(pill => {
+            const active = activeTab === pill.key;
+            const count = tabCounts[pill.key];
+            return (
+              <TouchableOpacity
+                key={pill.key}
+                style={[styles.typeTab, active && styles.typeTabActive]}
+                onPress={() => { lightTap(); setActiveTab(pill.key); }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.typeTabText, active && styles.typeTabTextActive]}>
+                  {pill.label}
+                </Text>
                 {count > 0 && (
-                  <Text style={[styles.tabCount, active && styles.tabCountActive]}>{count}</Text>
+                  <View style={[styles.typeTabBadge, active && styles.typeTabBadgeActive]}>
+                    <Text style={[styles.typeTabBadgeText, active && styles.typeTabBadgeTextActive]}>{count}</Text>
+                  </View>
                 )}
-              </View>
-              {active && <View style={styles.tabIndicator} />}
-            </TouchableOpacity>
-          );
-        })}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Status pills + filter button */}
+        <View style={styles.statusRow}>
+          {statusChips.map(chip => {
+            const active = statusFilter === chip.key;
+            const count = statusCounts[chip.key];
+            return (
+              <TouchableOpacity
+                key={chip.key}
+                style={[styles.statusPill, active && styles.statusPillActive]}
+                onPress={() => { lightTap(); setStatusFilter(chip.key); }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.statusPillText, active && styles.statusPillTextActive]}>
+                  {chip.label}{count > 0 && chip.key !== 'all' ? ` ${count}` : ''}
+                </Text>
+                {!active && chip.key === 'overdue' && count > 0 && (
+                  <View style={styles.ctxOverdueDot} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+          <TouchableOpacity
+            style={[styles.filterBtn, hasActiveFilter && styles.filterBtnActive]}
+            onPress={() => { lightTap(); setFilterModalVisible(true); }}
+            activeOpacity={0.7}
+          >
+            <Feather name="sliders" size={14} color={hasActiveFilter ? C.accent : C.textMuted} />
+            {hasActiveFilter && <View style={styles.filterBtnDot} />}
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -1411,19 +2059,22 @@ const SubscriptionList: React.FC = () => {
   const renderFormView = () => {
     const editingSub = editingId ? subscriptions.find(s => s.id === editingId) : null;
     const showMarkPayment = editingSub?.isInstallment && editingSub?.totalInstallments;
+    const isEditingComplete = !!(editingSub?.isInstallment && editingSub?.totalInstallments && (editingSub.completedInstallments || 0) >= editingSub.totalInstallments);
     const selectedWallet = wallets.find(w => w.id === formWalletId);
 
     return (
       <>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>
+        {/* Minimal header */}
+        <View style={styles.formHeader}>
+          <Text style={styles.formHeaderTitle}>
             {editingId ? t.subscriptions.editSubscription.toLowerCase() : t.subscriptions.addSubscription.toLowerCase()}
           </Text>
           <TouchableOpacity
             onPress={() => { setModalVisible(false); resetForm(); }}
+            style={styles.formCloseBtn}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Feather name="x" size={22} color={C.textPrimary} />
+            <Feather name="x" size={18} color={C.textMuted} />
           </TouchableOpacity>
         </View>
 
@@ -1433,127 +2084,157 @@ const SubscriptionList: React.FC = () => {
           nestedScrollEnabled
           contentContainerStyle={{ paddingBottom: SPACING.lg }}
         >
-          {/* Name */}
-          <Text style={styles.fieldLabel}>name</Text>
-          <TextInput
-            style={styles.fieldInput}
-            value={name}
-            onChangeText={setName}
-            placeholder={t.subscriptions.namePlaceholder}
-            placeholderTextColor={C.textMuted}
-            returnKeyType="next"
-          />
-
-          {/* Amount */}
-          <Text style={styles.fieldLabel}>amount</Text>
-          <View style={styles.amountRow}>
-            <Text style={styles.amountPrefix}>{currency}</Text>
-            <TextInput
-              style={[styles.fieldInput, { flex: 1 }]}
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="0.00"
-              keyboardType="decimal-pad"
-              placeholderTextColor={C.textMuted}
-              returnKeyType="done"
-              onSubmitEditing={Keyboard.dismiss}
-            />
+          {/* ── Primary info group ── */}
+          <View style={styles.fgCard}>
+            <View style={styles.fgRow}>
+              <Text style={styles.fgLabel}>name</Text>
+              <TextInput
+                style={styles.fgInput}
+                value={name}
+                onChangeText={setName}
+                placeholder={t.subscriptions.namePlaceholder}
+                placeholderTextColor={C.textMuted}
+                returnKeyType="next"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
+              />
+            </View>
+            <View style={styles.fgDivider} />
+            <View style={[styles.fgRow, isEditingComplete && { opacity: 0.45 }]}>
+              <Text style={styles.fgLabel}>amount</Text>
+              <View style={styles.fgAmountWrap}>
+                <Text style={styles.fgAmountPrefix}>{currency}</Text>
+                <TextInput
+                  style={[styles.fgInput, styles.fgAmountInput]}
+                  value={amount}
+                  onChangeText={setAmount}
+                  placeholder="0.00"
+                  keyboardType="decimal-pad"
+                  placeholderTextColor={C.textMuted}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                  editable={!isEditingComplete}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
+                />
+              </View>
+            </View>
           </View>
 
-          {/* Note */}
-          <Text style={styles.fieldLabel}>note <Text style={styles.fieldLabelOptional}>(optional)</Text></Text>
-          <TextInput
-            style={styles.fieldInput}
-            value={note}
-            onChangeText={setNote}
-            placeholder="account login, cancellation date, linked card…"
-            placeholderTextColor={C.textMuted}
-            returnKeyType="next"
-          />
-
-          {/* Category */}
-          <CategoryPicker
-            categories={expenseCategories}
-            selectedId={category}
-            onSelect={setCategory}
-            label="category"
-            layout="dropdown"
-          />
-
-          {/* Billing Cycle */}
-          <Text style={styles.fieldLabel}>{t.subscriptions.repeats}</Text>
-          <TouchableOpacity
-            style={styles.fieldTouchable}
-            onPress={() => { lightTap(); setModalView('cyclePicker'); }}
-            activeOpacity={0.6}
-          >
-            <Text style={styles.fieldTouchableText}>{getCycleLabel(billingCycle)}</Text>
-            <Feather name="chevron-down" size={16} color={C.textMuted} />
-          </TouchableOpacity>
-
-          {/* Start Date */}
-          <Text style={styles.fieldLabel}>{t.subscriptions.startDate}</Text>
-          <TouchableOpacity
-            style={styles.fieldTouchable}
-            onPress={() => { lightTap(); setModalView('calendar'); }}
-            activeOpacity={0.6}
-          >
-            <Text style={styles.fieldTouchableText}>
-              {isValid(startDate) ? format(startDate, 'MMM dd, yyyy') : t.subscriptions.selectDate}
-            </Text>
-            <Feather name="calendar" size={16} color={C.textMuted} />
-          </TouchableOpacity>
-
-          {/* Wallet */}
-          <Text style={styles.fieldLabel}>wallet <Text style={styles.fieldLabelOptional}>(optional)</Text></Text>
-          <TouchableOpacity
-            style={styles.fieldTouchable}
-            onPress={() => { lightTap(); setModalView('walletPicker'); }}
-            activeOpacity={0.6}
-          >
-            {selectedWallet ? (
-              <View style={styles.walletPickerSelected}>
-                <WalletLogo wallet={selectedWallet} size={20} />
-                <Text style={styles.fieldTouchableText}>{selectedWallet.name}</Text>
+          {/* ── Schedule group ── */}
+          <Text style={styles.fgGroupLabel}>schedule</Text>
+          <View style={styles.fgCard}>
+            <TouchableOpacity
+              style={styles.fgTouchRow}
+              onPress={() => { lightTap(); setModalView('cyclePicker'); }}
+              activeOpacity={0.6}
+            >
+              <Text style={styles.fgLabel}>{t.subscriptions.repeats}</Text>
+              <View style={styles.fgValueChevron}>
+                <Text style={styles.fgValue}>{getCycleLabel(billingCycle)}</Text>
+                <Feather name="chevron-right" size={14} color={C.textMuted} />
               </View>
-            ) : (
-              <Text style={[styles.fieldTouchableText, { color: C.textMuted }]}>none</Text>
-            )}
-            <Feather name="chevron-down" size={16} color={C.textMuted} />
-          </TouchableOpacity>
+            </TouchableOpacity>
+            <View style={styles.fgDivider} />
+            <TouchableOpacity
+              style={styles.fgTouchRow}
+              onPress={() => { lightTap(); setModalView('calendar'); }}
+              activeOpacity={0.6}
+            >
+              <Text style={styles.fgLabel}>{t.subscriptions.startDate}</Text>
+              <View style={styles.fgValueChevron}>
+                <Text style={styles.fgValue}>
+                  {isValid(startDate) ? format(startDate, 'MMM dd, yyyy') : t.subscriptions.selectDate}
+                </Text>
+                <Feather name="chevron-right" size={14} color={C.textMuted} />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.fgDivider} />
+            <View style={styles.fgRow}>
+              <Text style={styles.fgLabel}>{t.subscriptions.reminder}</Text>
+              <View style={styles.fgReminderWrap}>
+                <TextInput
+                  style={styles.fgReminderInput}
+                  value={reminderDays}
+                  onChangeText={setReminderDays}
+                  placeholder="3"
+                  keyboardType="number-pad"
+                  placeholderTextColor={C.textMuted}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
+                />
+                <Text style={styles.fgReminderSuffix}>days before</Text>
+              </View>
+            </View>
+          </View>
 
-          {/* Reminder */}
-          <Text style={styles.fieldLabel}>{t.subscriptions.reminder}</Text>
-          <View style={styles.reminderRow}>
-            <TextInput
-              style={[styles.fieldInput, { width: 60, textAlign: 'center' }]}
-              value={reminderDays}
-              onChangeText={setReminderDays}
-              placeholder="3"
-              keyboardType="number-pad"
-              placeholderTextColor={C.textMuted}
-              returnKeyType="done"
-              onSubmitEditing={Keyboard.dismiss}
-            />
-            <Text style={styles.reminderSuffix}>{t.subscriptions.daysBefore}</Text>
+          {/* ── Details group ── */}
+          <Text style={styles.fgGroupLabel}>details</Text>
+          <View style={styles.fgCard}>
+            <View style={styles.fgPickerWrap}>
+              <CategoryPicker
+                categories={expenseCategories}
+                selectedId={category}
+                onSelect={setCategory}
+                label="category"
+                layout="dropdown"
+              />
+            </View>
+            <View style={styles.fgDivider} />
+            <TouchableOpacity
+              style={styles.fgTouchRow}
+              onPress={() => { lightTap(); setModalView('walletPicker'); }}
+              activeOpacity={0.6}
+            >
+              <Text style={styles.fgLabel}>wallet</Text>
+              <View style={styles.fgValueChevron}>
+                {selectedWallet ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
+                    <WalletLogo wallet={selectedWallet} size={18} />
+                    <Text style={styles.fgValue}>{selectedWallet.name}</Text>
+                  </View>
+                ) : (
+                  <Text style={[styles.fgValue, { color: C.textMuted }]}>none</Text>
+                )}
+                <Feather name="chevron-right" size={14} color={C.textMuted} />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.fgDivider} />
+            <View style={styles.fgRow}>
+              <Text style={styles.fgLabel}>note</Text>
+              <TextInput
+                style={[styles.fgInput, { textAlign: 'right' }]}
+                value={note}
+                onChangeText={setNote}
+                placeholder="optional"
+                placeholderTextColor={withAlpha(C.textMuted, 0.5)}
+                returnKeyType="next"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
+              />
+            </View>
           </View>
 
           {/* Installment toggle */}
           <TouchableOpacity
-            style={[styles.toggleCard, isInstallment && styles.toggleCardActive]}
-            onPress={() => { lightTap(); setIsInstallment(!isInstallment); }}
-            activeOpacity={0.7}
+            style={[styles.toggleCard, isInstallment && styles.toggleCardActive, isEditingComplete && { opacity: 0.45 }]}
+            onPress={() => { if (!isEditingComplete) { lightTap(); setIsInstallment(!isInstallment); } }}
+            activeOpacity={isEditingComplete ? 1 : 0.7}
+            disabled={isEditingComplete}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.toggleLabel}>{t.subscriptions.installmentLabel}</Text>
-              <Text style={styles.toggleHint}>{t.subscriptions.installmentHint}</Text>
+              <Text style={styles.toggleHint}>{isEditingComplete ? 'all payments completed' : t.subscriptions.installmentHint}</Text>
             </View>
             <Switch
               value={isInstallment}
-              onValueChange={val => { lightTap(); setIsInstallment(val); }}
-              trackColor={{ false: C.border, true: withAlpha(C.accent, 0.4) }}
-              thumbColor={isInstallment ? C.accent : '#FFFFFF'}
+              onValueChange={val => { if (!isEditingComplete) { lightTap(); setIsInstallment(val); } }}
+              trackColor={{ false: withAlpha(C.textPrimary, 0.12), true: withAlpha(C.accent, 0.4) }}
+              thumbColor={isInstallment ? C.accent : C.surface}
               pointerEvents="none"
+              disabled={isEditingComplete}
             />
           </TouchableOpacity>
 
@@ -1561,7 +2242,7 @@ const SubscriptionList: React.FC = () => {
             <>
               <Text style={styles.fieldLabel}>{t.subscriptions.totalInstallments}</Text>
               <TextInput
-                style={styles.fieldInput}
+                style={[styles.fieldInput, isEditingComplete && { opacity: 0.45 }]}
                 value={totalInstallments}
                 onChangeText={setTotalInstallments}
                 placeholder={t.subscriptions.totalInstallmentsPlaceholder}
@@ -1569,6 +2250,9 @@ const SubscriptionList: React.FC = () => {
                 placeholderTextColor={C.textMuted}
                 returnKeyType="next"
                 onSubmitEditing={Keyboard.dismiss}
+                editable={!isEditingComplete}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
               <Text style={styles.fieldLabel}>outstanding balance <Text style={styles.fieldLabelOptional}>(optional)</Text></Text>
               <View style={styles.amountRow}>
@@ -1582,6 +2266,8 @@ const SubscriptionList: React.FC = () => {
                   placeholderTextColor={C.textMuted}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
               </View>
             </>
@@ -1600,8 +2286,8 @@ const SubscriptionList: React.FC = () => {
             <Switch
               value={isPaused}
               onValueChange={val => { lightTap(); setIsPaused(val); }}
-              trackColor={{ false: C.border, true: withAlpha(C.bronze, 0.4) }}
-              thumbColor={isPaused ? C.bronze : '#FFFFFF'}
+              trackColor={{ false: withAlpha(C.textPrimary, 0.12), true: withAlpha(C.bronze, 0.4) }}
+              thumbColor={isPaused ? C.bronze : C.surface}
               pointerEvents="none"
             />
           </TouchableOpacity>
@@ -1660,6 +2346,7 @@ const SubscriptionList: React.FC = () => {
 
           {/* Save */}
           <TouchableOpacity style={styles.confirmBtn} onPress={handleSave} activeOpacity={0.7}>
+            <Feather name={editingId ? 'check' : 'plus'} size={18} color={C.onAccent} />
             <Text style={styles.confirmBtnText}>
               {editingId ? t.common.save.toLowerCase() : t.subscriptions.addSubscription.toLowerCase()}
             </Text>
@@ -1805,35 +2492,201 @@ const SubscriptionList: React.FC = () => {
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMarkPaidSub(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setMarkPaidSub(null)}>
           <View style={styles.markPaidCard} onStartShouldSetResponder={() => true}>
-            {/* Header */}
-            <Text style={styles.markPaidTitle}>{markPaidSub.name}</Text>
-            <Text style={styles.markPaidAmount}>{currency} {markPaidSub.amount.toFixed(2)}</Text>
-            <Text style={styles.markPaidNext}>next cycle starts {format(nextAfterPaid, 'MMM d')}</Text>
-
-            <View style={styles.markPaidDivider} />
-
-            {/* Primary action */}
-            <TouchableOpacity style={styles.markPaidBtn} onPress={() => handleMarkPaid(false)} activeOpacity={0.8}>
-              <Feather name="check-circle" size={18} color="#fff" />
-              <Text style={styles.markPaidBtnText}>mark as paid</Text>
+            {/* Dismiss X */}
+            <TouchableOpacity
+              onPress={() => setMarkPaidSub(null)}
+              style={styles.mpCloseBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Feather name="x" size={18} color={C.textMuted} />
             </TouchableOpacity>
 
-            {/* Expense log action (only if wallet linked) */}
-            {linkedWallet && (
-              <TouchableOpacity style={styles.markPaidBtnOutline} onPress={() => handleMarkPaid(true)} activeOpacity={0.8}>
-                <View style={styles.walletChip}>
-                  <WalletLogo wallet={linkedWallet} size={16} />
-                </View>
-                <Text style={styles.markPaidBtnOutlineText}>
-                  paid + log {currency} {markPaidSub.amount.toFixed(2)} from {linkedWallet.name}
-                </Text>
+            {/* Hero amount */}
+            <Text style={styles.mpHeroAmount}>
+              <Text style={styles.mpHeroCurrency}>{currency} </Text>
+              {markPaidSub.amount.toFixed(2)}
+            </Text>
+            <Text style={styles.mpName}>{markPaidSub.name}</Text>
+
+            {/* Next cycle pill */}
+            <View style={styles.mpNextPill}>
+              <Feather name="repeat" size={11} color={C.textMuted} />
+              <Text style={styles.mpNextText}>next cycle {format(nextAfterPaid, 'MMM d')}</Text>
+            </View>
+
+            {/* Actions */}
+            <View style={styles.mpActions}>
+              {linkedWallet && (
+                <TouchableOpacity
+                  style={[styles.markPaidBtn, { backgroundColor: withAlpha(linkedWallet.color, 0.15), borderWidth: 1, borderColor: withAlpha(linkedWallet.color, 0.25) }]}
+                  onPress={() => handleMarkPaid(true)}
+                  activeOpacity={0.8}
+                >
+                  <WalletLogo wallet={linkedWallet} size={18} />
+                  <Text style={[styles.markPaidBtnText, { color: linkedWallet.color }]}>
+                    pay from {linkedWallet.name}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity style={linkedWallet ? styles.mpWalletBtn : styles.markPaidBtn} onPress={() => handleMarkPaid(false)} activeOpacity={0.8}>
+                <Feather name="check" size={18} color={linkedWallet ? C.textSecondary : C.onAccent} />
+                <Text style={linkedWallet ? styles.mpWalletBtnText : styles.markPaidBtnText}>mark as paid</Text>
               </TouchableOpacity>
-            )}
-
-            <TouchableOpacity onPress={() => setMarkPaidSub(null)} style={styles.markPaidCancelRow}>
-              <Text style={styles.markPaidCancelText}>{t.common.cancel}</Text>
-            </TouchableOpacity>
+            </View>
           </View>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+  // ─── Pay warning modal (double-pay / too-early) ────────
+  const renderPayWarningModal = () => {
+    if (!payWarning) return null;
+    const { sub, reason, detail } = payWarning;
+    const isDouble = reason === 'double';
+
+    return (
+      <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setPayWarning(null)}>
+        <Pressable style={styles.overlayCenter} onPress={() => setPayWarning(null)}>
+          <View style={styles.warnCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.warnIconCircle}>
+              <Feather name={isDouble ? 'alert-circle' : 'clock'} size={24} color={C.gold} />
+            </View>
+            <Text style={styles.warnTitle}>
+              {isDouble ? 'already ' : 'not due '}
+              <Text style={styles.warnTitleAccent}>{isDouble ? 'paid' : 'yet'}</Text>
+            </Text>
+            <Text style={styles.warnBody}>
+              {isDouble
+                ? `you paid ${sub.name.toLowerCase()} on ${detail}.\npay again for this cycle?`
+                : `${sub.name.toLowerCase()} isn't due until ${detail}.\nmark it paid now?`}
+            </Text>
+            <Pressable
+              style={styles.warnPayBtn}
+              onPress={() => { setPayWarning(null); setTimeout(() => setMarkPaidSub(sub), 50); }}
+            >
+              <View style={styles.warnPayBtnInner}>
+                <Feather name="check" size={15} color={C.onAccent} />
+                <Text style={styles.warnPayBtnText}>pay anyway</Text>
+              </View>
+            </Pressable>
+            <Pressable
+              style={styles.warnDismiss}
+              onPress={() => setPayWarning(null)}
+              hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
+            >
+              {({ pressed }) => (
+                <Text style={[styles.warnDismissText, pressed && { opacity: 0.55 }]}>not now</Text>
+              )}
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+  // ─── Celebration modal (installment complete) ──────────
+  const handleArchive = useCallback((subId: string) => {
+    updateSubscription(subId, { isActive: false });
+    setCelebrationSub(null);
+    showToast('archived', 'success');
+  }, [updateSubscription, showToast]);
+
+  const renderCelebrationModal = () => {
+    if (!celebrationSub) return null;
+    const { id: celebId, name: cName, amount: cAmt, totalPaid, installments } = celebrationSub;
+
+    return (
+      <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setCelebrationSub(null)}>
+        <Pressable style={styles.overlayCenter} onPress={() => setCelebrationSub(null)}>
+          <Reanimated.View entering={ZoomIn.duration(320)}>
+            <View style={styles.celebCard} onStartShouldSetResponder={() => true}>
+
+              {/* Confetti burst + glow rings + icon */}
+              <View style={styles.celebBurstWrap}>
+                <GlowRing color={withAlpha(C.accent, 0.22)} size={72} delay={150} />
+                <GlowRing color={withAlpha(C.gold, 0.16)} size={96} delay={700} />
+
+                <ConfettiPiece angle={0} distance={58} size={6} color={withAlpha(C.gold, 0.7)} delay={60} />
+                <ConfettiPiece angle={30} distance={48} size={5} color={withAlpha(C.accent, 0.5)} delay={100} />
+                <ConfettiPiece angle={60} distance={62} size={7} color={withAlpha(C.bronze, 0.6)} delay={140} />
+                <ConfettiPiece angle={90} distance={52} size={4} color={withAlpha(C.gold, 0.55)} delay={80} />
+                <ConfettiPiece angle={120} distance={56} size={6} color={withAlpha(C.accent, 0.45)} delay={120} />
+                <ConfettiPiece angle={150} distance={46} size={5} color={withAlpha(C.bronze, 0.5)} delay={160} />
+                <ConfettiPiece angle={180} distance={60} size={6} color={withAlpha(C.gold, 0.6)} delay={70} />
+                <ConfettiPiece angle={210} distance={44} size={4} color={withAlpha(C.accent, 0.4)} delay={110} />
+                <ConfettiPiece angle={240} distance={54} size={7} color={withAlpha(C.bronze, 0.55)} delay={150} />
+                <ConfettiPiece angle={270} distance={50} size={5} color={withAlpha(C.gold, 0.5)} delay={90} />
+                <ConfettiPiece angle={300} distance={58} size={6} color={withAlpha(C.accent, 0.5)} delay={130} />
+                <ConfettiPiece angle={330} distance={42} size={4} color={withAlpha(C.bronze, 0.45)} delay={170} />
+
+                <Reanimated.View entering={BounceIn.delay(100).duration(700)} style={styles.celebIconCircle}>
+                  <Feather name="award" size={30} color={C.accent} />
+                </Reanimated.View>
+              </View>
+
+              {/* Title */}
+              <Reanimated.Text entering={FadeInDown.delay(300).duration(400).springify()} style={styles.celebTitle}>
+                {'all '}
+                <Text style={styles.celebTitleAccent}>done</Text>
+              </Reanimated.Text>
+
+              {/* Name pill */}
+              <Reanimated.View entering={FadeInDown.delay(420).duration(350).springify()} style={styles.celebNamePill}>
+                <Feather name="check" size={11} color={C.positive} />
+                <Text style={styles.celebNameText}>{cName.toLowerCase()}</Text>
+              </Reanimated.View>
+
+              {/* Stats */}
+              <Reanimated.View entering={FadeInDown.delay(540).duration(350).springify()} style={[styles.celebStatsRow, { alignSelf: 'stretch' }]}>
+                <View style={styles.celebStatPill}>
+                  <Text style={styles.celebStatValue}>{installments}</Text>
+                  <Text style={styles.celebStatLabel}>payments</Text>
+                </View>
+                <View style={styles.celebStatPill}>
+                  <Text style={styles.celebStatValue}>{currency} {totalPaid.toLocaleString()}</Text>
+                  <Text style={styles.celebStatLabel}>total paid</Text>
+                </View>
+              </Reanimated.View>
+
+              {/* Hint */}
+              <Reanimated.View entering={FadeInDown.delay(660).duration(350)} style={[styles.celebHint, { alignSelf: 'stretch' }]}>
+                <View style={styles.celebHintIcon}>
+                  <Feather name="trending-up" size={12} color={C.accent} />
+                </View>
+                <Text style={styles.celebHintText}>
+                  you now have {currency} {cAmt.toFixed(0)}/{celebrationSub.cycle} freed up — redirect it to savings or another commitment
+                </Text>
+              </Reanimated.View>
+
+              {/* Buttons */}
+              <Reanimated.View entering={FadeInDown.delay(780).duration(350)} style={{ alignSelf: 'stretch' }}>
+                <TouchableOpacity
+                  style={styles.celebDoneBtn}
+                  onPress={() => { successNotification(); setCelebrationSub(null); }}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.celebDoneBtnInner}>
+                    <Feather name="check" size={15} color={C.onAccent} />
+                    <Text style={styles.celebDoneBtnText}>nice</Text>
+                  </View>
+                </TouchableOpacity>
+                <Pressable
+                  style={styles.celebArchiveLink}
+                  onPress={() => handleArchive(celebId)}
+                  hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
+                >
+                  {({ pressed }) => (
+                    <View style={[styles.celebArchiveLinkInner, pressed && { opacity: 0.55 }]}>
+                      <Feather name="archive" size={12} color={C.textMuted} />
+                      <Text style={styles.celebArchiveLinkText}>archive this commitment</Text>
+                    </View>
+                  )}
+                </Pressable>
+              </Reanimated.View>
+            </View>
+          </Reanimated.View>
         </Pressable>
       </Modal>
     );
@@ -1846,34 +2699,520 @@ const SubscriptionList: React.FC = () => {
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDeleteConfirmSub(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setDeleteConfirmSub(null)}>
           <View style={styles.deleteCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.deleteCardTitle}>{t.subscriptions.deleteTitle}</Text>
-            <Text style={styles.deleteCardMsg}>
-              {t.subscriptions.removeConfirm.replace('{name}', deleteConfirmSub.name)}
+            {/* Icon */}
+            <View style={styles.delIconCircle}>
+              <Feather name="trash-2" size={18} color={C.neutral} />
+            </View>
+
+            <Text style={styles.delTitle}>
+              {'remove '}
+              <Text style={styles.delTitleAccent}>commitment</Text>
+              {'?'}
             </Text>
-            <TouchableOpacity style={styles.deleteCardBtn} onPress={handleConfirmDelete} activeOpacity={0.8}>
-              <Text style={styles.deleteCardBtnText}>{t.subscriptions.deleteAction}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setDeleteConfirmSub(null)} style={styles.deleteCardCancel}>
-              <Text style={styles.deleteCardCancelText}>{t.subscriptions.cancelAction}</Text>
-            </TouchableOpacity>
+
+            {/* Name badge */}
+            <View style={styles.delNameBadge}>
+              <Text style={styles.delNameText}>{deleteConfirmSub.name}</Text>
+            </View>
+
+            <Text style={styles.delMsg}>
+              this commitment and its payment history will be removed permanently.
+            </Text>
+
+            {/* Keep — primary (accent), delete — secondary link */}
+            <Pressable
+              style={styles.delKeepBtn}
+              onPress={() => setDeleteConfirmSub(null)}
+            >
+              <View style={styles.delKeepBtnInner}>
+                <Feather name="shield" size={14} color={C.onAccent} />
+                <Text style={styles.delKeepBtnText}>keep it</Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={styles.delConfirmRow}
+              onPress={handleConfirmDelete}
+              hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
+            >
+              {({ pressed }) => (
+                <View style={[styles.delConfirmInner, pressed && { opacity: 0.55 }]}>
+                  <Feather name="trash-2" size={12} color={C.textMuted} />
+                  <Text style={styles.delConfirmText}>{t.subscriptions.deleteAction}</Text>
+                </View>
+              )}
+            </Pressable>
           </View>
         </Pressable>
       </Modal>
     );
   };
 
+  // ─── Detail modal ───────────────────────────────────
+  const renderDetailModal = () => {
+    if (!detailSub) return null;
+    const sub = subscriptions.find(s => s.id === detailSub.id) || detailSub;
+    const accentColor = avatarColorForName(sub.name);
+    const cleared = isClearedThisCycle(sub);
+    const { text: dueDateText, accent } = getDueDateInfo(sub.nextBillingDate);
+    const dueColor = cleared ? C.positive : accent === 'overdue' ? C.overdue : accent === 'today' ? C.gold : C.textSecondary;
+    const linkedWallet = wallets.find(w => w.id === sub.walletId);
+    const isInstSub = sub.isInstallment && sub.totalInstallments;
+    const completed = sub.completedInstallments || 0;
+    const total = sub.totalInstallments || 1;
+    const instDone = !!(isInstSub && completed >= total);
+    const canPayInst = isInstSub && !instDone;
+    const isArchived = !sub.isActive;
+    const catObj = expenseCategories.find(c => c.id === sub.category);
+    const allPayments = (sub.paymentHistory || []).slice().reverse();
+    const activePayments = allPayments.filter(p => !p.undoneAt);
+    const history = activePayments.slice(0, 6);
+    const mostRecentPaymentId = activePayments[0]?.id;
+
+    return (
+      <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDetailSub(null)}>
+        <Pressable style={styles.overlayCenter} onPress={() => setDetailSub(null)}>
+          <View style={styles.dtCard} onStartShouldSetResponder={() => true}>
+            {/* Close */}
+            <TouchableOpacity
+              onPress={() => setDetailSub(null)}
+              style={styles.dtClose}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Feather name="x" size={18} color={C.textMuted} />
+            </TouchableOpacity>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={{ paddingBottom: SPACING.sm }}>
+              {/* Hero */}
+              <View style={styles.dtHero}>
+                {instDone || isArchived ? (
+                  <View style={[styles.dtAvatar, { backgroundColor: withAlpha(instDone ? C.positive : C.textMuted, 0.14) }]}>
+                    <Feather name={instDone ? 'check-circle' : 'archive'} size={22} color={instDone ? C.positive : C.textMuted} />
+                  </View>
+                ) : sub.imageUri ? (
+                  <Image source={{ uri: sub.imageUri }} style={styles.dtAvatarImage} />
+                ) : sub.iconName ? (
+                  <View style={[styles.dtAvatar, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                    {renderIcon(sub.iconName, 24, C.accent)}
+                  </View>
+                ) : (
+                  <View style={[styles.dtAvatar, { backgroundColor: cleared ? withAlpha(C.positive, 0.14) : withAlpha(accentColor, 0.14) }]}>
+                    {cleared
+                      ? <Feather name="check" size={22} color={C.positive} />
+                      : <Text style={[styles.dtAvatarLetter, { color: accentColor }]}>{sub.name.charAt(0).toUpperCase()}</Text>
+                    }
+                  </View>
+                )}
+                <Text style={styles.dtName}>{sub.name}</Text>
+                {catObj && (
+                  <View style={styles.dtCatBadge}>
+                    <Text style={styles.dtCatText}>{catObj.name.toLowerCase()}</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Amount */}
+              <View style={styles.dtAmountSection}>
+                <Text style={styles.dtAmount}>
+                  <Text style={styles.dtAmountCurrency}>{currency} </Text>
+                  {sub.amount.toFixed(2)}
+                </Text>
+                <Text style={styles.dtCycle}>{getCycleLabel(sub.billingCycle)}</Text>
+              </View>
+
+              {/* Status bar */}
+              {isInstSub && (
+                <View style={styles.dtProgressWrap}>
+                  <View style={styles.dtProgressBar}>
+                    <View style={[styles.dtProgressFill, instDone && { backgroundColor: C.positive }, { width: `${Math.min((completed / total) * 100, 100)}%` }]} />
+                  </View>
+                  <Text style={styles.dtProgressLabel}>{completed}/{total} payments{instDone ? ' · complete' : ''}</Text>
+                </View>
+              )}
+
+              {/* Info rows */}
+              <View style={styles.dtInfoSection}>
+                <View style={styles.dtInfoRow}>
+                  <View style={styles.dtInfoLeft}>
+                    <View style={styles.dtInfoIcon}>
+                      <Feather name="calendar" size={12} color={C.accent} />
+                    </View>
+                    <Text style={styles.dtInfoLabel}>{cleared ? 'paid' : 'next due'}</Text>
+                  </View>
+                  <Text style={[styles.dtInfoValue, { color: dueColor }]} numberOfLines={1}>
+                    {cleared && sub.lastPaidAt ? format(new Date(sub.lastPaidAt), 'MMM d, yyyy').toLowerCase() : dueDateText}
+                  </Text>
+                </View>
+
+                {linkedWallet && (
+                  <View style={styles.dtInfoRow}>
+                    <View style={styles.dtInfoLeft}>
+                      <View style={styles.dtInfoIcon}>
+                        <WalletLogo wallet={linkedWallet} size={18} />
+                      </View>
+                      <Text style={styles.dtInfoLabel}>wallet</Text>
+                    </View>
+                    <Text style={styles.dtInfoValue} numberOfLines={1}>{linkedWallet.name}</Text>
+                  </View>
+                )}
+
+                <View style={styles.dtInfoRow}>
+                  <View style={styles.dtInfoLeft}>
+                    <View style={styles.dtInfoIcon}>
+                      <Feather name="bell" size={12} color={C.accent} />
+                    </View>
+                    <Text style={styles.dtInfoLabel}>reminder</Text>
+                  </View>
+                  <Text style={styles.dtInfoValue}>{sub.reminderDays} days before</Text>
+                </View>
+
+                <View style={[styles.dtInfoRow, { borderBottomWidth: 0 }]}>
+                  <View style={styles.dtInfoLeft}>
+                    <View style={styles.dtInfoIcon}>
+                      <Feather name="play" size={12} color={C.accent} />
+                    </View>
+                    <Text style={styles.dtInfoLabel}>started</Text>
+                  </View>
+                  <Text style={styles.dtInfoValue}>{format(new Date(sub.startDate), 'MMM d, yyyy').toLowerCase()}</Text>
+                </View>
+              </View>
+
+              {sub.note ? (
+                <View style={styles.dtNoteWrap}>
+                  <Text style={styles.dtNoteLabel}>note</Text>
+                  <Text style={styles.dtNoteText} numberOfLines={3}>{sub.note}</Text>
+                </View>
+              ) : null}
+
+              {sub.isPaused && !instDone && !isArchived && (
+                <View style={[styles.dtStatusCard, { borderColor: withAlpha(C.bronze, 0.18) }]}>
+                  <View style={[styles.dtStatusIconCircle, { backgroundColor: withAlpha(C.bronze, 0.10) }]}>
+                    <Feather name="pause-circle" size={16} color={C.bronze} />
+                  </View>
+                  <View style={styles.dtStatusContent}>
+                    <Text style={[styles.dtStatusTitle, { color: C.bronze }]}>paused</Text>
+                    <Text style={styles.dtStatusSub}>due dates are skipped until resumed</Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Completed / archived status card — single unified element */}
+              {(instDone || isArchived) && (
+                <View style={[
+                  styles.dtStatusCard,
+                  { borderColor: withAlpha(instDone ? C.positive : C.textMuted, 0.18) },
+                ]}>
+                  <View style={[
+                    styles.dtStatusIconCircle,
+                    { backgroundColor: withAlpha(instDone ? C.positive : C.textMuted, 0.10) },
+                  ]}>
+                    <Feather
+                      name={instDone ? 'award' : 'archive'}
+                      size={16}
+                      color={instDone ? C.positive : C.textMuted}
+                    />
+                  </View>
+                  <View style={styles.dtStatusContent}>
+                    <Text style={[styles.dtStatusTitle, { color: instDone ? C.positive : C.textSecondary }]}>
+                      {instDone ? 'completed' : 'archived'}
+                    </Text>
+                    <Text style={styles.dtStatusSub}>
+                      {instDone && isArchived
+                        ? `${total} payments · ${currency} ${(sub.amount * total).toLocaleString()} total · archived`
+                        : instDone
+                          ? `${total} payments · ${currency} ${(sub.amount * total).toLocaleString()} total`
+                          : 'this commitment is no longer active'}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Payment history */}
+              {history.length > 0 && (
+                <View style={styles.dtHistorySection}>
+                  <Text style={styles.dtHistoryLabel}>payment history</Text>
+                  {history.map(p => {
+                    const isLatest = p.id === mostRecentPaymentId;
+                    return (
+                      <View key={p.id} style={styles.dtHistoryRow}>
+                        <Feather name="check-circle" size={12} color={C.positive} />
+                        <Text style={styles.dtHistoryDate}>{format(new Date(p.paidAt), 'MMM d, yyyy')}</Text>
+                        <Text style={styles.dtHistoryAmt}>{currency} {p.amount.toFixed(2)}</Text>
+                        {isLatest && !isArchived && (
+                          <Pressable
+                            onPress={() => {
+                              lightTap();
+                              Alert.alert(
+                                t.subscriptions.undoPayment,
+                                t.subscriptions.undoPaymentConfirm,
+                                [
+                                  { text: t.subscriptions.cancelAction, style: 'cancel' },
+                                  {
+                                    text: t.subscriptions.undoAction,
+                                    style: 'destructive',
+                                    onPress: () => {
+                                      undoSubscriptionPayment(sub.id, p.id);
+                                      showToast('payment undone', 'success');
+                                    },
+                                  },
+                                ],
+                              );
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={styles.dtHistoryUndo}
+                          >
+                            <Feather name="rotate-ccw" size={11} color={C.textMuted} />
+                          </Pressable>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Action zone — context-aware */}
+            <View style={styles.dtActions}>
+              {instDone || isArchived ? (
+                <>
+                  {/* Completed/archived: archive or restore as primary */}
+                  <Pressable
+                    style={[styles.dtActionPrimary, isArchived && { backgroundColor: C.textSecondary }]}
+                    onPress={() => {
+                      setDetailSub(null);
+                      lightTap();
+                      if (isArchived) {
+                        updateSubscription(sub.id, { isActive: true });
+                        showToast('restored', 'success');
+                      } else {
+                        handleArchive(sub.id);
+                      }
+                    }}
+                  >
+                    <View style={styles.dtActionPrimaryInner}>
+                      <Feather name={isArchived ? 'rotate-ccw' : 'archive'} size={16} color={C.onAccent} />
+                      <Text style={styles.dtActionPrimaryText}>{isArchived ? 'restore' : 'archive'}</Text>
+                    </View>
+                  </Pressable>
+                  <View style={styles.dtActionRow}>
+                    <Pressable
+                      style={styles.dtSecondaryLink}
+                      onPress={() => { setDetailSub(null); setTimeout(() => handleEdit(sub.id), 50); }}
+                      hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
+                    >
+                      {({ pressed }) => (
+                        <View style={[styles.dtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
+                          <Feather name="edit-2" size={13} color={C.textMuted} />
+                          <Text style={styles.dtSecondaryLinkText}>edit</Text>
+                        </View>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      style={styles.dtSecondaryLink}
+                      onPress={() => { setDetailSub(null); setTimeout(() => setDeleteConfirmSub(sub), 50); }}
+                      hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
+                    >
+                      {({ pressed }) => (
+                        <View style={[styles.dtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
+                          <Feather name="trash-2" size={13} color={C.textMuted} />
+                          <Text style={styles.dtSecondaryLinkText}>delete</Text>
+                        </View>
+                      )}
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <>
+                  {/* Active: mark paid + edit/pause */}
+                  {(!cleared || canPayInst) && !sub.isPaused && (
+                    <Pressable
+                      style={styles.dtActionPrimary}
+                      onPress={() => { setDetailSub(null); setTimeout(() => smartMarkPaid(sub), 50); }}
+                    >
+                      <View style={styles.dtActionPrimaryInner}>
+                        <Feather name="check" size={16} color={C.onAccent} />
+                        <Text style={styles.dtActionPrimaryText}>
+                          {canPayInst ? `pay ${completed + 1}/${total}` : 'mark paid'}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  )}
+                  <View style={styles.dtActionRow}>
+                    <Pressable
+                      style={styles.dtSecondaryLink}
+                      onPress={() => { setDetailSub(null); setTimeout(() => handleEdit(sub.id), 50); }}
+                      hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
+                    >
+                      {({ pressed }) => (
+                        <View style={[styles.dtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
+                          <Feather name="edit-2" size={13} color={C.textMuted} />
+                          <Text style={styles.dtSecondaryLinkText}>edit</Text>
+                        </View>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      style={styles.dtSecondaryLink}
+                      onPress={() => {
+                        lightTap();
+                        updateSubscription(sub.id, { isPaused: !sub.isPaused });
+                        showToast(sub.isPaused ? 'resumed' : 'paused', 'success');
+                      }}
+                      hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
+                    >
+                      {({ pressed }) => (
+                        <View style={[styles.dtSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
+                          <Feather name={sub.isPaused ? 'play-circle' : 'pause-circle'} size={13} color={C.textMuted} />
+                          <Text style={styles.dtSecondaryLinkText}>{sub.isPaused ? 'resume' : 'pause'}</Text>
+                        </View>
+                      )}
+                    </Pressable>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+  // ─── Filter modal (paid / paused) ──────────────────────
+  const renderFilterModal = () => {
+    const filterOptions: { key: StatusFilter; label: string; icon: string; count: number }[] = [
+      { key: 'cleared', label: 'paid this cycle', icon: 'check-circle', count: statusCounts.cleared },
+      { key: 'paused', label: 'paused', icon: 'pause-circle', count: statusCounts.paused },
+      { key: 'archived', label: 'archived', icon: 'archive', count: statusCounts.archived },
+    ];
+
+    return (
+      <Modal visible={filterModalVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setFilterModalVisible(false)}>
+        <Pressable style={styles.overlayCenter} onPress={() => setFilterModalVisible(false)}>
+          <View style={styles.filterModalCard} onStartShouldSetResponder={() => true}>
+            <Text style={styles.filterModalTitle}>filter by status</Text>
+            {filterOptions.map(opt => {
+              const active = statusFilter === opt.key;
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[styles.filterModalRow, active && styles.filterModalRowActive]}
+                  onPress={() => {
+                    lightTap();
+                    setStatusFilter(active ? 'all' : opt.key);
+                    setFilterModalVisible(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Feather name={opt.icon as any} size={18} color={active ? C.accent : C.textMuted} />
+                  <Text style={[styles.filterModalRowText, active && styles.filterModalRowTextActive]}>
+                    {opt.label}
+                  </Text>
+                  <Text style={[styles.filterModalRowCount, active && styles.filterModalRowCountActive]}>
+                    {opt.count}
+                  </Text>
+                  {active && <Feather name="check" size={16} color={C.accent} />}
+                </TouchableOpacity>
+              );
+            })}
+            {(statusFilter === 'cleared' || statusFilter === 'paused' || statusFilter === 'archived') && (
+              <TouchableOpacity
+                style={styles.filterModalClear}
+                onPress={() => { lightTap(); setStatusFilter('all'); setFilterModalVisible(false); }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.filterModalClearText}>clear filter</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+  // ─── How it works modal ──────────────────────────────
+  const HOW_ITEMS: { group: string; items: { icon: string; bold: string; rest: string }[] }[] = [
+    {
+      group: 'basics',
+      items: [
+        { icon: 'layers', bold: 'three types', rest: '— bills (utilities, rent), payments (loans, BNPL), and subscriptions (streaming, apps). each gets its own tab.' },
+        { icon: 'repeat', bold: 'billing cycle', rest: '— set weekly, monthly, quarterly, or yearly. due dates and yearly projections are auto-calculated.' },
+        { icon: 'credit-card', bold: 'link a wallet', rest: '— when you mark paid, the amount is auto-deducted from the linked wallet.' },
+      ],
+    },
+    {
+      group: 'paying',
+      items: [
+        { icon: 'check-circle', bold: 'swipe right to pay', rest: '— or tap the card to open detail, then choose mark as paid or pay from wallet.' },
+        { icon: 'rotate-ccw', bold: 'undo payment', rest: '— tap the undo icon on the most recent payment in the detail view. asks for confirmation first.' },
+        { icon: 'pause-circle', bold: 'pause & resume', rest: '— paused commitments skip due date tracking. resume anytime from the detail view.' },
+      ],
+    },
+    {
+      group: 'installments',
+      items: [
+        { icon: 'hash', bold: 'installment mode', rest: '— track progress like 4/12 payments for car loans or BNPL. completed installments show a green checkmark.' },
+        { icon: 'lock', bold: 'locked when complete', rest: '— once all payments are done, amount and installment fields are locked. you can still edit name and category.' },
+        { icon: 'clock', bold: 'payment history', rest: '— every paid cycle is logged with date and amount inside the detail view.' },
+      ],
+    },
+    {
+      group: 'planning',
+      items: [
+        { icon: 'calendar', bold: 'swipe to see months', rest: '— swipe the screen left or right to view last month, this month, or next month commitments.' },
+        { icon: 'archive', bold: 'archive', rest: '— completed or old commitments can be archived. find them via the filter icon.' },
+        { icon: 'bar-chart-2', bold: 'hero breakdown', rest: '— the card at top shows paid vs remaining, progress bar, next due date, and overdue count.' },
+      ],
+    },
+  ];
+
+  const renderHowItWorksModal = () => (
+    <Modal visible={howItWorksVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setHowItWorksVisible(false)}>
+      <Pressable style={styles.hiwOverlay} onPress={() => setHowItWorksVisible(false)}>
+        <View style={styles.hiwCard} onStartShouldSetResponder={() => true}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={{ paddingBottom: SPACING.sm }}>
+            <View style={styles.hiwCardHeader}>
+              <Text style={styles.hiwTitle}>how it works</Text>
+              <Text style={styles.hiwSubtitle}>everything about bills & commitments</Text>
+            </View>
+
+            {HOW_ITEMS.map((section) => (
+              <View key={section.group}>
+                <Text style={styles.hiwGroupLabel}>{section.group}</Text>
+                {section.items.map((item, ii) => (
+                  <View key={ii} style={styles.hiwItem}>
+                    <View style={styles.hiwIconCircle}>
+                      <Feather name={item.icon as any} size={14} color={C.textSecondary} />
+                    </View>
+                    <Text style={styles.hiwText}>
+                      <Text style={styles.hiwBold}>{item.bold}</Text>
+                      {' '}{item.rest}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+
+          <TouchableOpacity
+            style={styles.hiwDismiss}
+            onPress={() => setHowItWorksVisible(false)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.hiwDismissText}>got it</Text>
+          </TouchableOpacity>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+
   // ─── Empty state ─────────────────────────────────────
   const renderEmptyState = () => (
-    <View style={styles.emptyState}>
-      <View style={styles.emptyIconWrap}>
-        <Feather name="calendar" size={48} color={C.textMuted} />
-      </View>
-      <Text style={styles.emptyTitle}>{t.subscriptions.noBills}</Text>
-      <Text style={styles.emptyText}>{t.subscriptions.trackRecurring}</Text>
-      <TouchableOpacity style={styles.emptyButton} onPress={() => { lightTap(); setModalVisible(true); }} activeOpacity={0.7}>
-        <Text style={styles.emptyButtonText}>{t.subscriptions.addBill}</Text>
-      </TouchableOpacity>
-    </View>
+    <EmptyState
+      icon="calendar"
+      title={t.subscriptions.noBills}
+      message={t.subscriptions.trackRecurring}
+      actionLabel={t.subscriptions.addBill}
+      onAction={() => { lightTap(); setModalVisible(true); }}
+    />
   );
 
   // ─── Main Render ──────────────────────────────────────
@@ -1888,26 +3227,30 @@ const SubscriptionList: React.FC = () => {
         {subscriptions.length > 0 ? (
           <>
             {renderMonthHeader()}
-            {renderTabs()}
+            {heroMonthOffset === 0 && renderContextChips()}
 
             {/* Search */}
-            <View style={styles.searchContainer}>
-              <Feather name="search" size={16} color={C.textMuted} style={{ marginRight: SPACING.sm }} />
-              <TextInput
-                style={styles.searchInput}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholder="search commitments…"
-                placeholderTextColor={C.textMuted}
-                returnKeyType="search"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Feather name="x" size={16} color={C.textMuted} />
-                </TouchableOpacity>
-              )}
-            </View>
+            {heroMonthOffset === 0 && (
+              <View style={styles.searchContainer}>
+                <Feather name="search" size={16} color={C.textMuted} style={{ marginRight: SPACING.sm }} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="search commitments…"
+                  placeholderTextColor={C.textMuted}
+                  returnKeyType="search"
+                  onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Feather name="x" size={16} color={C.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
 
             {/* Search results */}
             {searchResults !== null ? (
@@ -1916,14 +3259,12 @@ const SubscriptionList: React.FC = () => {
                   <View style={styles.sectionHeader}>
                     <Text style={styles.sectionLabel}>{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}</Text>
                   </View>
-                  <View style={styles.sectionCard}>
                     {searchResults.map((sub, idx) => (
-                      <React.Fragment key={sub.id}>
-                        {renderRow(sub, isClearedThisCycle(sub))}
-                        {idx < searchResults.length - 1 && <View style={[styles.rowDivider, { marginLeft: SPACING.xl + 44 + SPACING.md }]} />}
-                      </React.Fragment>
-                    ))}
-                  </View>
+                    <React.Fragment key={sub.id}>
+                      {renderRow(sub, isClearedThisCycle(sub))}
+                      {idx < searchResults.length - 1 && <View style={styles.rowDivider} />}
+                    </React.Fragment>
+                  ))}
                 </View>
               ) : (
                 <View style={styles.noResults}>
@@ -1935,16 +3276,22 @@ const SubscriptionList: React.FC = () => {
             ) : (
               <>
                 {renderSuggestions()}
-                {tabSections.remaining.length === 0 && tabSections.paid.length === 0 && tabSections.paused.length === 0 ? (
+                {displayData.length === 0 ? (
                   <View style={styles.tabEmpty}>
-                    <Text style={styles.tabEmptyTitle}>nothing in {activeTab === 'subs' ? 'subscriptions' : activeTab} yet</Text>
-                    <Text style={styles.tabEmptyHint}>add one with the + button below</Text>
+                    <Text style={styles.tabEmptyTitle}>
+                      {statusFilter === 'all' ? `no ${activeTab} yet` : `nothing ${statusFilter}`}
+                    </Text>
+                    <Text style={styles.tabEmptyHint}>
+                      {statusFilter === 'all' ? 'add one with the + button below' : 'try a different filter'}
+                    </Text>
                   </View>
                 ) : (
                   <>
-                    {renderSection('remaining', tabSections.remaining, false)}
-                    {renderSection('paid', tabSections.paid, true)}
-                    {renderSection('paused', tabSections.paused, false)}
+                    {displayData.map(group => (
+                      <React.Fragment key={group.label}>
+                        {renderSection(group.label, group.subs, group.isCleared)}
+                      </React.Fragment>
+                    ))}
                   </>
                 )}
               </>
@@ -1963,13 +3310,13 @@ const SubscriptionList: React.FC = () => {
             onPress={() => { mediumTap(); resetForm(); setModalVisible(true); }}
             activeOpacity={0.8}
           >
-            <Feather name="plus" size={24} color="#FFFFFF" />
+            <Feather name="plus" size={24} color={C.onAccent} />
           </TouchableOpacity>
         </Animated.View>
       )}
 
       {/* ── Echo FAB + greeting bubble (standardized, draggable) ── */}
-      {subscriptions.length > 0 && !echoHidden && !modalVisible && !echoSheetVisible && !markPaidSub && !deleteConfirmSub ? (
+      {subscriptions.length > 0 && !echoHidden && !modalVisible && !echoSheetVisible && !markPaidSub && !deleteConfirmSub && !payWarning && !celebrationSub ? (
         <Animated.View
           style={[
             styles.commitmentEchoFabContainer,
@@ -2002,10 +3349,10 @@ const SubscriptionList: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Open Echo assistant (hold to hide)"
           >
-            <Feather name="zap" size={22} color="#fff" />
+            <Feather name="zap" size={22} color={C.onAccent} />
             {tier !== 'premium' && (
               <View style={styles.commitmentEchoFabLock}>
-                <Feather name="lock" size={9} color="#fff" />
+                <Feather name="lock" size={9} color={C.onAccent} />
               </View>
             )}
             <View style={styles.commitmentEchoFabPulse} />
@@ -2058,8 +3405,13 @@ const SubscriptionList: React.FC = () => {
         onDelete={handleFormDelete}
         onError={handleFormError}
       />
+      {renderDetailModal()}
       {renderMarkPaidModal()}
+      {renderPayWarningModal()}
+      {renderCelebrationModal()}
       {renderDeleteModal()}
+      {renderHowItWorksModal()}
+      {renderFilterModal()}
 
       {/* ── Echo inline chat sheet ── */}
       <EchoInlineChat
@@ -2088,111 +3440,412 @@ const SubscriptionList: React.FC = () => {
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.background },
   scrollView: { flex: 1 },
-  scrollContent: { padding: SPACING.xl },
+  scrollContent: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xl },
 
-  // ── Tab bar ───────────────────────────────────────────
-  tabRow: {
-    flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.border,
-    marginBottom: SPACING.lg,
+  // ── Tab chips ─────────────────────────────────────────
+  chipSection: {
+    marginBottom: SPACING.md,
   },
-  tabBtn: {
-    flex: 1,
+  chipScrollContent: {
+    gap: SPACING.xs + 2,
+  },
+  ctxChip: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.sm + 2,
-    position: 'relative',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 3,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
   },
-  tabBtnInner: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 6,
+  ctxChipActive: {
+    backgroundColor: withAlpha(C.accent, 0.10),
+    borderColor: C.accent,
   },
-  tabText: {
+  ctxChipText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
+    color: C.textSecondary,
   },
-  tabTextActive: {
-    color: C.textPrimary,
+  ctxChipTextActive: {
+    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
-  tabCount: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+  ctxChipCount: {
+    backgroundColor: withAlpha(C.textPrimary, 0.08),
+    borderRadius: RADIUS.full,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 5,
+  },
+  ctxChipCountActive: {
+    backgroundColor: withAlpha(C.accent, 0.18),
+  },
+  ctxChipCountText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
-  tabCountActive: {
+  ctxChipCountTextActive: {
     color: C.accent,
   },
-  tabIndicator: {
+  ctxOverdueDot: {
     position: 'absolute',
-    bottom: -1,
-    left: '22%',
-    right: '22%',
-    height: 2,
+    top: -1,
+    right: -1,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.overdue,
+  },
+  // ── Type tabs (underline) ───────────────────────────────
+  typeTabRow: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(C.textPrimary, 0.08),
+    marginBottom: SPACING.sm + 4,
+  },
+  typeTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: SPACING.sm + 3,
+    paddingHorizontal: SPACING.sm + 2,
+    marginRight: SPACING.sm + 4,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    marginBottom: -StyleSheet.hairlineWidth,
+  },
+  typeTabActive: {
+    borderBottomColor: C.accent,
+  },
+  typeTabText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+    letterSpacing: 0.1,
+  },
+  typeTabTextActive: {
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.bold,
+  },
+  typeTabBadge: {
+    backgroundColor: withAlpha(C.textPrimary, 0.07),
+    borderRadius: RADIUS.full,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  typeTabBadgeActive: {
+    backgroundColor: withAlpha(C.accent, 0.12),
+  },
+  typeTabBadgeText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textMuted,
+    fontVariant: ['tabular-nums'],
+  },
+  typeTabBadgeTextActive: {
+    color: C.accent,
+  },
+  // ── Status pills + filter button ───────────────────────
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs + 2,
+    marginBottom: SPACING.xs,
+  },
+  statusPill: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 3,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+  },
+  statusPillActive: {
     backgroundColor: C.accent,
-    borderRadius: 1,
+    borderColor: C.accent,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
+  },
+  statusPillText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+    letterSpacing: 0.1,
+  },
+  statusPillTextActive: {
+    color: C.onAccent,
+    fontWeight: TYPOGRAPHY.weight.bold,
+  },
+  filterBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, 0.03),
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 'auto' as any,
+  },
+  filterBtnActive: {
+    backgroundColor: withAlpha(C.accent, 0.08),
+    borderColor: withAlpha(C.accent, 0.3),
+  },
+  filterBtnDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.accent,
+  },
+  // ── Filter modal ──────────────────────────────────────
+  filterModalCard: {
+    width: '80%',
+    maxWidth: 320,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+  },
+  filterModalTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textMuted,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: SPACING.sm + 2,
+  },
+  filterModalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm + 2,
+    paddingVertical: SPACING.sm + 4,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.md,
+    marginBottom: 2,
+  },
+  filterModalRowActive: {
+    backgroundColor: withAlpha(C.accent, 0.08),
+  },
+  filterModalRowText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  filterModalRowTextActive: {
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  filterModalRowCount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  filterModalRowCountActive: {
+    color: C.accent,
+  },
+  filterModalClear: {
+    alignItems: 'center',
+    paddingVertical: SPACING.sm + 2,
+    marginTop: SPACING.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(C.textPrimary, 0.08),
+  },
+  filterModalClearText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.accent,
   },
   tabEmpty: {
     alignItems: 'center',
-    paddingVertical: SPACING['3xl'],
-    gap: SPACING.xs,
+    paddingVertical: SPACING['3xl'] + SPACING.md,
+    gap: SPACING.xs + 2,
   },
   tabEmptyTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textSecondary,
+    letterSpacing: -0.2,
   },
   tabEmptyHint: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textMuted,
+    letterSpacing: 0.1,
   },
 
-  // ── Centered hero (matches Wallet typography) ──────────
+  // ── Hero (left-aligned, no card) ────────────────────────
   monthHeader: {
+    backgroundColor: C === CALM_DARK ? withAlpha(C.accent, 0.06) : withAlpha(C.accent, 0.03),
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C === CALM_DARK ? withAlpha(C.accent, 0.15) : withAlpha(C.accent, 0.07),
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md + 2,
+    paddingBottom: SPACING.md + 2,
+    marginBottom: SPACING.md,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
+  },
+  heroTopRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: SPACING.xl,
-    paddingBottom: SPACING['2xl'],
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xs,
   },
-  monthLabel: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-    textAlign: 'center',
+  heroMonthNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
-  monthAmountLine: {
-    marginTop: SPACING.xs,
+  heroBackBtn: {
+    marginLeft: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.accent, 0.12),
+  },
+  heroBackBtnText: {
+    fontSize: 9,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.accent,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  heroPageDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: SPACING.sm + 2,
+  },
+  heroPageDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: withAlpha(C.textMuted, 0.18),
+  },
+  heroPageDotActive: {
+    backgroundColor: withAlpha(C.accent, 0.7),
+  },
+  heroMonth: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.accent,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+  heroAmount: {
+    fontSize: 44,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
-    textAlign: 'center',
+    letterSpacing: -1.2,
+    marginBottom: 2,
   },
-  monthAmountPrefix: {
+  heroAmountCurrency: {
     fontSize: 22,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textMuted,
   },
-  monthAmountInt: {
-    fontSize: 44,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    letterSpacing: -1,
+  heroSegment: {
+    flexDirection: 'row',
+    backgroundColor: withAlpha(C.accent, 0.10),
+    borderRadius: RADIUS.full,
+    padding: 2,
   },
-  monthSummary: {
-    fontSize: TYPOGRAPHY.size.sm,
+  heroSegBtn: {
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: 4,
+    borderRadius: RADIUS.full,
+  },
+  heroSegBtnActive: {
+    backgroundColor: C.accent,
+  },
+  heroSegText: {
+    fontSize: 11,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textMuted,
     fontVariant: ['tabular-nums'],
-    textAlign: 'center',
-    marginTop: SPACING.sm,
   },
-  monthSummaryAccent: {
-    color: C.textPrimary,
+  heroSegTextActive: {
+    color: C.onAccent,
+  },
+  heroBreakdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: SPACING.sm,
+  },
+  heroBreakdownText: {
+    fontSize: 12,
+    color: C.textMuted,
+    fontVariant: ['tabular-nums'],
+  },
+  heroBreakdownBold: {
     fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+  },
+  heroBreakdownDot: {
+    fontSize: 12,
+    color: withAlpha(C.textMuted, 0.4),
+  },
+  heroSegBar: {
+    flexDirection: 'row',
+    height: 6,
+    gap: 2,
+    marginBottom: SPACING.sm,
+  },
+  heroSegBarItem: {
+    height: '100%',
+  },
+  heroStripDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: withAlpha(C.accent, 0.12),
+    marginBottom: SPACING.sm,
+  },
+  heroStatsRow: {
+    flexDirection: 'row',
+  },
+  heroStatCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  heroStatColBorder: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: withAlpha(C.accent, 0.12),
+  },
+  heroStatValue: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+    marginBottom: 2,
+    letterSpacing: -0.3,
+  },
+  heroStatLabel: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: withAlpha(C.textMuted, 0.7),
+    letterSpacing: 0.4,
   },
 
   // ── Day strip ─────────────────────────────────────────
   dayStripWrap: {
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.md,
   },
   dayCol: {
     width: 44,
@@ -2204,12 +3857,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   dayColHasBill: {
     backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(C.textPrimary, 0.12),
   },
   dayColToday: {
     backgroundColor: withAlpha(C.accent, 0.10),
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(C.accent, 0.3),
   },
   dayColNum: {
@@ -2264,7 +3917,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   statsDivider: {
     width: 1,
     height: 12,
-    backgroundColor: C.border,
+    backgroundColor: withAlpha(C.textPrimary, 0.12),
   },
   statsCounts: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -2284,120 +3937,120 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: C.surface,
     borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.07),
     paddingHorizontal: SPACING.md,
-    marginBottom: SPACING.xl,
+    marginBottom: SPACING.md,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: SPACING.sm + 2,
+    paddingVertical: SPACING.sm + 3,
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
+    letterSpacing: -0.1,
   },
 
-  // ── Section ───────────────────────────────────────────
-  section: { marginBottom: SPACING.lg },
-  sectionLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-  },
+  // ── Section (borderless) ────────────────────────────────
+  section: { marginBottom: SPACING.md + 4 },
   sectionCard: {
     backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    overflow: 'hidden',
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: C.border,
-    ...SHADOWS.sm,
+    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.10) : withAlpha(C.textPrimary, 0.06),
+    overflow: 'hidden',
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
+  },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: withAlpha(C.textMuted, 0.7),
+    textTransform: 'uppercase',
+    letterSpacing: 1.4,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
-    marginLeft: SPACING.xs,
+    marginBottom: SPACING.xs + 2,
+    paddingHorizontal: SPACING.xs + 2,
   },
   sectionTotal: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
+    fontSize: 11,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textMuted,
     fontVariant: ['tabular-nums'],
+    letterSpacing: 0.2,
   },
 
-  // ── Row ───────────────────────────────────────────────
+  // ── Row (Bobby-inspired) ───────────────────────────────
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.lg,
+    paddingVertical: SPACING.sm + 4,
     paddingHorizontal: SPACING.md,
-    minHeight: 72,
-    backgroundColor: C.surface,
   },
-  rowCleared: { opacity: 0.55 },
-  rowPaused: { opacity: 0.6 },
+  rowDimmed: { opacity: 0.55 },
 
   rowIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.lg,
+    width: 40,
+    height: 40,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: SPACING.md,
+    marginRight: SPACING.sm + 2,
     flexShrink: 0,
   },
+  rowIconImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 11,
+    marginRight: SPACING.sm + 2,
+  },
   rowIconLetter: {
-    fontSize: TYPOGRAPHY.size.xl,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
-  rowChevron: {
-    marginLeft: SPACING.sm,
-    opacity: 0.3,
-  },
-  rowInfo: { flex: 1, marginRight: SPACING.sm },
-  rowNameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginBottom: 2 },
+  rowInfo: { flex: 1, marginRight: SPACING.md },
   rowName: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
-    flexShrink: 1,
+    letterSpacing: -0.2,
+    marginBottom: 3,
   },
-  rowNameCleared: { color: C.textSecondary },
-  pausedBadge: {
-    backgroundColor: withAlpha(C.bronze, 0.12),
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: SPACING.xs + 1,
-    paddingVertical: 1,
+  rowMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs + 2,
   },
-  pausedBadgeText: {
+  rowCycleText: {
     fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.bronze,
   },
-  rowSub: {
-    fontSize: TYPOGRAPHY.size.sm,
+  rowStatusPill: {
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.xs + 2,
+    paddingVertical: 2,
+  },
+  rowStatusText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    letterSpacing: 0.2,
+  },
+  rowDueText: {
+    fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
-    marginTop: 2,
-  },
-  rowRightSub: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    marginTop: 2,
-    fontVariant: ['tabular-nums'],
-  },
-  rowNote: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontStyle: 'italic',
-    marginTop: 2,
   },
 
   progressBarContainer: {
     height: 3,
-    backgroundColor: withAlpha(C.textMuted, 0.1),
+    backgroundColor: withAlpha(C.textMuted, 0.10),
     borderRadius: RADIUS.full,
-    marginTop: SPACING.xs,
+    marginTop: SPACING.xs + 1,
     overflow: 'hidden',
   },
   progressBarFill: {
@@ -2406,30 +4059,29 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.full,
   },
 
-  rowRight: { alignItems: 'flex-end', flexShrink: 0 },
-  rowInstallmentCount: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.bronze,
-    marginBottom: 2,
+  rowRight: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
   },
   rowAmount: {
-    fontSize: TYPOGRAPHY.size.lg,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
+    letterSpacing: -0.3,
   },
-  rowAmountCleared: { color: C.textSecondary },
-  rowRemaining: {
-    fontSize: TYPOGRAPHY.size.xs,
+  rowAmountCleared: { color: C.textMuted },
+  rowInstFraction: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textMuted,
-    marginTop: 2,
     fontVariant: ['tabular-nums'],
+    marginTop: 1,
   },
   rowDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: C.border,
-    marginRight: SPACING.md,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
+    marginLeft: SPACING.md + 40 + SPACING.sm + 2,
   },
 
   // ── Wallet chip ───────────────────────────────────────
@@ -2483,9 +4135,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING.md,
     alignItems: 'center',
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: C.border,
-    ...SHADOWS.xs,
+    borderWidth: C === CALM_DARK ? 1 : StyleSheet.hairlineWidth,
+    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.08) : withAlpha(C.textPrimary, 0.12),
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
   },
   tileCleared: { opacity: 0.55 },
   tileWatermark: {
@@ -2503,6 +4155,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: SPACING.sm,
+  },
+  tileIconImage: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
     marginBottom: SPACING.sm,
   },
   tileName: {
@@ -2534,47 +4192,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   noResultsText: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted },
 
-  // ── Empty state ───────────────────────────────────────
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING['5xl'],
-    paddingHorizontal: SPACING.xl,
-  },
-  emptyIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.xl,
-  },
-  emptyTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    marginBottom: SPACING.sm,
-  },
-  emptyText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textMuted,
-    textAlign: 'center',
-    lineHeight: TYPOGRAPHY.size.sm * 1.6,
-    marginBottom: SPACING.xl,
-  },
-  emptyButton: {
-    backgroundColor: C.accent,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
-  },
-  emptyButtonText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
-  },
-
   // ── FAB ───────────────────────────────────────────────
   fab: { position: 'absolute', right: SPACING.xl },
   fabInner: {
@@ -2584,7 +4201,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.md,
+    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
   // ── Echo FAB (matches Wallet/Budget standardized pattern) ─
   commitmentEchoFabContainer: {
@@ -2600,7 +4217,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.md,
+    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
   commitmentEchoFabPulse: {
     position: 'absolute',
@@ -2609,7 +4226,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#DEAB22',
+    backgroundColor: C.gold,
     borderWidth: 1.5,
     borderColor: C.accent,
   },
@@ -2623,8 +4240,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#fff',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.surface,
   },
   commitmentEchoGreetingBubble: {
     flexDirection: 'row',
@@ -2635,9 +4252,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm + 2,
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.2),
-    ...SHADOWS.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C === CALM_DARK ? withAlpha(C.accent, 0.3) : withAlpha(C.accent, 0.2),
+    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
   commitmentEchoGreetingDot: {
     width: 7,
@@ -2669,7 +4286,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Modal overlay ─────────────────────────────────────
   overlayCenter: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: withAlpha(C.dimBg, 0.45),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -2679,8 +4296,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     maxHeight: '85%',
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
+    borderWidth: C === CALM_DARK ? 1 : StyleSheet.hairlineWidth,
+    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
     padding: SPACING.xl,
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   modalHeader: {
     flexDirection: 'row',
@@ -2692,6 +4311,129 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
+  },
+  // ── Form header (finance) ───────────────────────────────
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.lg,
+  },
+  formHeaderTitle: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    letterSpacing: -0.4,
+  },
+  formCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: withAlpha(C.textMuted, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // ── Grouped form fields (finance style) ────────────────
+  fgGroupLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+    marginLeft: SPACING.xs,
+  },
+  fgCard: {
+    backgroundColor: withAlpha(C.textPrimary, 0.025),
+    borderRadius: RADIUS.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(C.textPrimary, 0.06),
+    overflow: 'hidden',
+  },
+  fgRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 4,
+    minHeight: 48,
+  },
+  fgTouchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 4,
+    minHeight: 48,
+  },
+  fgDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
+    marginLeft: SPACING.md,
+  },
+  fgLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  fgInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    paddingVertical: 0,
+    textAlign: 'right',
+  },
+  fgAmountWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  fgAmountPrefix: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+  },
+  fgAmountInput: {
+    flex: 0,
+    minWidth: 80,
+    fontVariant: ['tabular-nums'],
+  },
+  fgValueChevron: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  fgValue: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  fgReminderWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  fgReminderInput: {
+    width: 40,
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    textAlign: 'center',
+    backgroundColor: withAlpha(C.textPrimary, 0.04),
+    borderRadius: RADIUS.sm,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    fontVariant: ['tabular-nums'],
+  },
+  fgReminderSuffix: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+  },
+  fgPickerWrap: {
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: SPACING.xs,
   },
 
   // ── Form fields ───────────────────────────────────────
@@ -2707,8 +4449,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textMuted,
   },
   fieldInput: {
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(C.textPrimary, 0.12),
     paddingVertical: SPACING.sm,
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
@@ -2723,8 +4465,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(C.textPrimary, 0.12),
     paddingVertical: SPACING.sm + 2,
   },
   fieldTouchableText: { fontSize: TYPOGRAPHY.size.base, color: C.textPrimary },
@@ -2780,16 +4522,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Save button ───────────────────────────────────────
   confirmBtn: {
+    flexDirection: 'row',
     backgroundColor: C.accent,
     borderRadius: RADIUS.full,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.md + 2,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
     marginTop: SPACING.xl,
   },
   confirmBtnText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
+    letterSpacing: 0.2,
   },
 
   // ── Picker ────────────────────────────────────────────
@@ -2821,39 +4567,70 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.accent,
   },
 
-  // ── Mark as Paid modal ────────────────────────────────
+  // ── Mark as Paid modal (renovated) ─────────────────────
   markPaidCard: {
     width: '88%',
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
+    paddingTop: SPACING.xl + 4,
+    paddingBottom: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     alignItems: 'center',
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
-  markPaidTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
+  mpCloseBtn: {
+    position: 'absolute',
+    top: SPACING.md,
+    right: SPACING.md,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  mpHeroAmount: {
+    fontSize: 36,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
-    marginBottom: SPACING.xs,
-    textAlign: 'center',
-  },
-  markPaidAmount: {
-    fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.light,
-    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
-    marginBottom: SPACING.xs,
+    letterSpacing: C === CALM_DARK ? -1.0 : -1.2,
+    marginBottom: 4,
   },
-  markPaidNext: {
-    fontSize: TYPOGRAPHY.size.sm,
+  mpHeroCurrency: {
+    fontSize: 20,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textMuted,
-    marginBottom: SPACING.md,
   },
-  markPaidDivider: {
+  mpName: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    marginBottom: SPACING.md,
+    letterSpacing: -0.2,
+  },
+  mpNextPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.12 : 0.06),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 1,
+    marginBottom: SPACING.xl,
+  },
+  mpNextText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.1,
+  },
+  mpActions: {
     width: '100%',
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: C.border,
-    marginBottom: SPACING.lg,
+    gap: SPACING.sm,
   },
   markPaidBtn: {
     flexDirection: 'row',
@@ -2862,81 +4639,773 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.sm,
     backgroundColor: C.positive,
     borderRadius: RADIUS.full,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md + 2,
     width: '100%',
-    marginBottom: SPACING.sm,
   },
   markPaidBtnText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
+    letterSpacing: 0.2,
   },
-  markPaidBtnOutline: {
+  mpWalletBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.08 : 0.04),
     borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: 'transparent',
     paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
     width: '100%',
-    marginBottom: SPACING.sm,
   },
-  markPaidBtnOutlineText: {
+  mpWalletBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-    flexShrink: 1,
-    textAlign: 'center',
-  },
-  markPaidCancelRow: { paddingVertical: SPACING.sm },
-  markPaidCancelText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textMuted,
+    color: C.textSecondary,
+    letterSpacing: -0.1,
   },
 
-  // ── Delete confirm modal ──────────────────────────────
-  deleteCard: {
-    width: '88%',
+  // ── Pay warning modal ──────────────────────────────────
+  warnCard: {
+    width: '84%',
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    alignItems: 'center',
-    ...SHADOWS.lg,
+    borderWidth: 1,
+    borderColor: C === CALM_DARK ? withAlpha(C.gold, 0.25) : withAlpha(C.gold, 0.18),
+    paddingTop: SPACING.xl + 4,
+    paddingBottom: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    alignItems: 'center' as const,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
-  deleteCardTitle: {
+  warnIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: withAlpha(C.gold, 0.12),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: SPACING.md,
+  },
+  warnTitle: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: -0.4,
+    marginBottom: SPACING.sm,
+  },
+  warnTitleAccent: {
+    fontStyle: 'italic' as const,
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.gold,
+  },
+  warnBody: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    textAlign: 'center' as const,
+    lineHeight: 20,
+    marginBottom: SPACING.lg,
+    letterSpacing: 0.1,
+  },
+  warnPayBtn: {
+    width: '100%',
+    paddingVertical: SPACING.md + 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.gold,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: 48,
+  },
+  warnPayBtnInner: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+  },
+  warnPayBtnText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
+    letterSpacing: 0.2,
+  },
+  warnDismiss: {
+    marginTop: SPACING.sm + 2,
+    paddingVertical: SPACING.sm,
+  },
+  warnDismissText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.2,
+  },
+
+  // ── Celebration modal ─────────────────────────────────
+  celebCard: {
+    width: '84%',
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C === CALM_DARK ? withAlpha(C.accent, 0.25) : withAlpha(C.accent, 0.18),
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    alignItems: 'center' as const,
+    overflow: 'visible' as const,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+  },
+  celebBurstWrap: {
+    width: 120,
+    height: 120,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: SPACING.sm,
+  },
+  celebIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 20,
+    backgroundColor: withAlpha(C.accent, 0.10),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderWidth: 2,
+    borderColor: withAlpha(C.accent, 0.15),
+  },
+  celebTitle: {
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? -0.3 : -0.5,
+    marginBottom: SPACING.sm,
+  },
+  celebTitleAccent: {
+    fontStyle: 'italic' as const,
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.accent,
+  },
+  celebNamePill: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    backgroundColor: withAlpha(C.positive, 0.08),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 2,
+    marginBottom: SPACING.md + 2,
+  },
+  celebNameText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.positive,
+    letterSpacing: -0.1,
+  },
+  celebStatsRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'stretch' as const,
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+    width: '100%',
+  },
+  celebStatPill: {
+    flex: 1,
+    alignItems: 'center' as const,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.08 : 0.035),
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.sm,
+  },
+  celebStatValue: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
-    marginBottom: SPACING.sm,
-    textAlign: 'center',
+    fontVariant: ['tabular-nums'] as any,
+    letterSpacing: C === CALM_DARK ? -0.1 : -0.3,
   },
-  deleteCardMsg: {
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textSecondary,
-    textAlign: 'center',
-    marginBottom: SPACING.xl,
-    lineHeight: TYPOGRAPHY.size.base * 1.5,
+  celebStatLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginTop: 2,
   },
-  deleteCardBtn: {
-    backgroundColor: withAlpha(C.neutral, 0.12),
-    borderRadius: RADIUS.full,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xl,
+  celebHint: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: SPACING.sm,
+    backgroundColor: withAlpha(C.accent, 0.06),
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 4,
+    marginBottom: SPACING.lg,
+  },
+  celebHintIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: withAlpha(C.accent, 0.10),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  celebHintText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    lineHeight: 18,
+    flex: 1,
+    letterSpacing: 0.1,
+  },
+  celebDoneBtn: {
     width: '100%',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
+    paddingVertical: SPACING.md + 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.accent,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: 48,
   },
-  deleteCardBtnText: {
+  celebDoneBtnInner: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+  },
+  celebDoneBtnText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.neutral,
+    color: C.onAccent,
+    letterSpacing: 0.2,
   },
-  deleteCardCancel: { paddingVertical: SPACING.sm },
-  deleteCardCancelText: { fontSize: TYPOGRAPHY.size.sm, color: C.textMuted },
+  celebArchiveLink: {
+    alignSelf: 'center' as const,
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.xs + 2,
+    paddingHorizontal: SPACING.md,
+  },
+  celebArchiveLinkInner: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+  },
+  celebArchiveLinkText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+    letterSpacing: 0.1,
+  },
+
+  // ── Delete confirm modal (renovated) ───────────────────
+  deleteCard: {
+    width: '84%',
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
+    paddingTop: SPACING.xl + 4,
+    paddingBottom: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    alignItems: 'center',
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+  },
+  delIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: withAlpha(C.neutral, C === CALM_DARK ? 0.14 : 0.07),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.md,
+  },
+  delTitle: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    marginBottom: SPACING.md,
+    letterSpacing: -0.4,
+  },
+  delTitleAccent: {
+    fontStyle: 'italic',
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.accent,
+  },
+  delNameBadge: {
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.10 : 0.05),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md + 2,
+    paddingVertical: SPACING.xs + 2,
+    marginBottom: SPACING.md,
+  },
+  delNameText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    letterSpacing: -0.1,
+  },
+  delMsg: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    textAlign: 'center',
+    lineHeight: TYPOGRAPHY.size.sm * 1.6,
+    marginBottom: SPACING.xl,
+    paddingHorizontal: SPACING.sm,
+  },
+  delKeepBtn: {
+    width: '100%',
+    paddingVertical: SPACING.md + 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+    marginBottom: SPACING.xs,
+  },
+  delKeepBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  delKeepBtnText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
+    letterSpacing: 0.3,
+  },
+  delConfirmRow: {
+    alignSelf: 'center',
+    marginTop: SPACING.sm,
+  },
+  delConfirmInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+  },
+  delConfirmText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.2,
+  },
+
+  // ── How it works modal ─────────────────────────────────
+  hiwOverlay: {
+    flex: 1,
+    backgroundColor: withAlpha(C.dimBg, 0.45),
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+  },
+  hiwCard: {
+    width: '100%',
+    maxWidth: 380,
+    maxHeight: '75%',
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.md,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+  },
+  hiwCardHeader: {
+    marginBottom: SPACING.md,
+  },
+  hiwTitle: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? -0.1 : -0.3,
+  },
+  hiwSubtitle: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  hiwGroupLabel: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textMuted,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  hiwItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm + 2,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.07 : 0.025),
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.sm + 2,
+    marginBottom: 6,
+  },
+  hiwIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.05),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  hiwText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    lineHeight: 18,
+  },
+  hiwBold: {
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+  },
+  hiwDismiss: {
+    alignItems: 'center',
+    paddingVertical: SPACING.sm + 4,
+    marginTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: withAlpha(C.textPrimary, 0.06),
+  },
+  hiwDismissText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.accent,
+    letterSpacing: 0.2,
+  },
+
+  // ── Detail modal ──────────────────────────────────────
+  dtCard: {
+    width: '90%',
+    maxHeight: '82%',
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.12) : withAlpha(C.textPrimary, 0.08),
+    paddingTop: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+  },
+  dtClose: {
+    position: 'absolute',
+    top: SPACING.md,
+    right: SPACING.md,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  dtHero: {
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  dtAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.sm + 2,
+  },
+  dtAvatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    marginBottom: SPACING.sm + 2,
+  },
+  dtAvatarLetter: {
+    fontSize: 22,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    letterSpacing: -0.5,
+  },
+  dtName: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? -0.2 : -0.4,
+    marginBottom: SPACING.xs,
+    textAlign: 'center',
+  },
+  dtCatBadge: {
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.10 : 0.05),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: 3,
+  },
+  dtCatText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+    letterSpacing: 0.2,
+  },
+  dtAmountSection: {
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+    paddingVertical: SPACING.md,
+    marginHorizontal: SPACING.xs,
+    backgroundColor: C === CALM_DARK ? withAlpha(C.accent, 0.04) : withAlpha(C.accent, 0.03),
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C === CALM_DARK ? withAlpha(C.accent, 0.10) : withAlpha(C.accent, 0.06),
+  },
+  dtAmount: {
+    fontSize: 36,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: C === CALM_DARK ? -1.0 : -1.2,
+  },
+  dtAmountCurrency: {
+    fontSize: 18,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: withAlpha(C.textMuted, 0.6),
+  },
+  dtCycle: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    marginTop: SPACING.xs,
+    letterSpacing: 0.3,
+  },
+  dtProgressWrap: {
+    marginBottom: SPACING.lg,
+    gap: SPACING.xs,
+  },
+  dtProgressBar: {
+    height: 4,
+    backgroundColor: withAlpha(C.textMuted, 0.10),
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+  },
+  dtProgressFill: {
+    height: '100%',
+    backgroundColor: C.accent,
+    borderRadius: RADIUS.full,
+  },
+  dtProgressLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
+  dtInfoSection: {
+    backgroundColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.03) : C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.10) : withAlpha(C.textPrimary, 0.07),
+    overflow: 'hidden',
+    marginBottom: SPACING.lg,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
+  },
+  dtInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm + 4,
+    paddingHorizontal: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(C.textPrimary, 0.06),
+  },
+  dtInfoLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+  },
+  dtInfoIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    backgroundColor: withAlpha(C.accent, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.sm,
+  },
+  dtInfoLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  dtInfoValue: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
+    flexShrink: 0,
+    marginLeft: SPACING.md,
+    letterSpacing: -0.1,
+  },
+  dtNoteWrap: {
+    backgroundColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.04) : withAlpha(C.textPrimary, 0.025),
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    marginBottom: SPACING.md,
+    ...(C === CALM_DARK ? { borderWidth: 1, borderColor: withAlpha(C.textPrimary, 0.06) } : {}),
+  },
+  dtNoteLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textMuted,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  dtNoteText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    lineHeight: TYPOGRAPHY.size.sm * 1.5,
+  },
+  dtPausedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    marginTop: SPACING.xs,
+  },
+  dtPausedText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.bronze,
+  },
+  dtStatusCard: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.md - 2,
+    backgroundColor: C === CALM_DARK ? withAlpha(C.textPrimary, 0.04) : C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.08),
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+  },
+  dtStatusIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  dtStatusContent: {
+    flex: 1,
+  },
+  dtStatusTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    letterSpacing: 0.1,
+    marginBottom: 2,
+  },
+  dtStatusSub: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.textMuted,
+    letterSpacing: 0.05,
+    lineHeight: TYPOGRAPHY.size.xs * 1.45,
+  },
+  dtHistorySection: {
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  dtHistoryLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: SPACING.sm,
+  },
+  dtHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.xs + 2,
+  },
+  dtHistoryDate: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    flex: 1,
+  },
+  dtHistoryAmt: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  dtHistoryUndo: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.10 : 0.05),
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginLeft: 2,
+  },
+  dtActions: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(C.textPrimary, 0.06),
+    paddingTop: SPACING.md,
+    marginTop: SPACING.xs,
+  },
+  dtActionPrimary: {
+    width: '100%',
+    paddingVertical: SPACING.md + 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+    marginBottom: SPACING.xs,
+  },
+  dtActionPrimaryInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dtActionPrimaryText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
+    letterSpacing: 0.3,
+  },
+  dtSecondaryLink: {
+    alignSelf: 'center',
+    marginTop: SPACING.sm,
+  },
+  dtSecondaryLinkInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+  },
+  dtSecondaryLinkText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.2,
+  },
+  dtActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: SPACING.lg,
+  },
 
   // ── GroupBy toggle ─────────────────────────────────────────
   groupByRow: {
@@ -2949,8 +5418,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: C.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(C.textPrimary, 0.12),
     backgroundColor: C.surface,
   },
   groupByPillActive: {
@@ -3004,7 +5473,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.sm,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: C.accent,
   },
   suggestionActionText: {
@@ -3082,8 +5551,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: SPACING.lg,
     backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(C.textPrimary, 0.12),
     overflow: 'hidden',
   },
   calDayDetailDate: {
@@ -3102,8 +5571,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(C.textPrimary, 0.12),
   },
   calDayDetailLeft: {
     flexDirection: 'row',
@@ -3133,16 +5602,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   historySection: {
     marginTop: SPACING.xl,
     paddingTop: SPACING.lg,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(C.textPrimary, 0.12),
   },
   historyRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(C.textPrimary, 0.12),
   },
   historyDate: {
     fontSize: TYPOGRAPHY.size.sm,

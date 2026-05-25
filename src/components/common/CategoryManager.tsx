@@ -17,7 +17,7 @@ import DraggableFlatList, {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useCategoryStore } from '../../store/categoryStore';
 import { useCategories } from '../../hooks/useCategories';
 import { CategoryOption } from '../../types';
@@ -51,6 +51,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
   mode,
 }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
   const categories = useCategories(type, mode);
@@ -259,6 +260,8 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
                 placeholderTextColor={C.neutral}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
 
               {/* Icon Picker */}
@@ -513,7 +516,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 });
 

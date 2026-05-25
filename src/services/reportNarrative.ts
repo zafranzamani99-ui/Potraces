@@ -80,7 +80,8 @@ Rules:
 - Reference specific numbers from the data
 - Compare to last month if the data is there
 - Keep it under 50 words
-- Use "kept"/"came in"/"went out" language — never "revenue"/"profit"/"loss"/"savings"
+- NEVER use these banned words: "profit", "loss", "revenue", "ROI", "inventory", "savings"
+- Use approved Potraces vocabulary: "kept" (not profit/savings), "came in" (not revenue), "went out" (not loss), "efficiency" (not ROI), "products" (not inventory)
 - Malaysian context welcome (Manglish ok)
 - One observation about what's notable, one about the overall picture`;
 

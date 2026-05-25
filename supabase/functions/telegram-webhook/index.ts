@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')!;
+const WEBHOOK_SECRET = Deno.env.get('TELEGRAM_WEBHOOK_SECRET') || '';
 
 async function sendTelegramReply(chatId: number, text: string) {
   await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -13,9 +14,46 @@ async function sendTelegramReply(chatId: number, text: string) {
 }
 
 Deno.serve(async (req: Request) => {
+  // Admin: self-register the webhook with Telegram. Gated by the same secret.
+  // Usage: GET ...?action=register&secret=<TELEGRAM_WEBHOOK_SECRET>
+  if (req.method === 'GET') {
+    const url = new URL(req.url);
+    if (url.searchParams.get('action') === 'register') {
+      if (!WEBHOOK_SECRET || url.searchParams.get('secret') !== WEBHOOK_SECRET) {
+        return new Response('Forbidden', { status: 403 });
+      }
+      const webhookUrl = `${SUPABASE_URL}/functions/v1/telegram-webhook`;
+      const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: webhookUrl,
+          secret_token: WEBHOOK_SECRET,
+          allowed_updates: ['message'],
+          drop_pending_updates: true,
+        }),
+      });
+      const body = await r.text();
+      return new Response(body, { status: r.status, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response('OK', { status: 200 });
+  }
+
   // Telegram always sends POST
   if (req.method !== 'POST') {
     return new Response('OK', { status: 200 });
+  }
+
+  // Reject anything that isn't proven to be from Telegram.
+  // Telegram echoes the secret_token we registered with setWebhook back as this header.
+  // If the secret isn't configured we fail closed (refuse to process).
+  if (!WEBHOOK_SECRET) {
+    console.error('TELEGRAM_WEBHOOK_SECRET is not set — refusing all requests');
+    return new Response('Forbidden', { status: 403 });
+  }
+  const incomingSecret = req.headers.get('x-telegram-bot-api-secret-token') || '';
+  if (incomingSecret !== WEBHOOK_SECRET) {
+    return new Response('Forbidden', { status: 403 });
   }
 
   try {

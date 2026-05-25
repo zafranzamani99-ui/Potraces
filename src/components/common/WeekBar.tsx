@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { startOfWeek, addDays, isSameDay } from 'date-fns';
 import { Transaction } from '../../types';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useSettingsStore } from '../../store/settingsStore';
 import { lightTap } from '../../services/haptics';
@@ -72,7 +72,7 @@ function WeekBar({ transactions }: WeekBarProps) {
                     styles.barFill,
                     {
                       height: Math.max(height, 4),
-                      backgroundColor: isActive ? C.accent : withAlpha(C.textPrimary, 0.08),
+                      backgroundColor: isActive ? C.accent : withAlpha(C.textPrimary, C === CALM_DARK ? 0.14 : 0.08),
                     },
                   ]}
                 />

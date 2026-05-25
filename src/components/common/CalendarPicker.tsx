@@ -16,7 +16,7 @@ import {
 } from 'date-fns';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 
 interface CalendarPickerProps {
   value: Date;
@@ -35,6 +35,7 @@ const CHEVRON_STYLE = { marginLeft: 5 };
 
 const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, onChange }: CalendarPickerProps) {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const [viewMonth, setViewMonth] = useState(startOfMonth(value));
   const [showPicker, setShowPicker] = useState(false);
@@ -132,6 +133,8 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
               onSubmitEditing={commitYear}
               onBlur={onYearBlur}
               autoFocus
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
           ) : (
             <TouchableOpacity
@@ -334,7 +337,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.bold,
   },
   cellTextSelected: {
-    color: '#FFFFFF',
+    color: C.onAccent,
     fontWeight: TYPOGRAPHY.weight.bold,
   },
   todayDot: {
@@ -392,7 +395,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.3,
   },
   monthCellTextSelected: {
-    color: '#FFFFFF',
+    color: C.onAccent,
     fontWeight: TYPOGRAPHY.weight.bold,
   },
 });

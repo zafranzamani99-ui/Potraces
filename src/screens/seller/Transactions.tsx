@@ -27,7 +27,7 @@ import {
 } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, TYPE, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, TYPE, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { SellerPaymentMethod } from '../../types';
@@ -762,6 +762,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.xs,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   headerLabel: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -787,6 +790,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING.lg,
     borderWidth: 1,
     borderColor: C.border,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   summaryLabel: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -811,7 +817,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: withAlpha(C.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -823,6 +829,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.sm,
     gap: SPACING.sm,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   searchRow: {
     flex: 1,
@@ -901,6 +910,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   listContent: {
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING['2xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   dateHeaderRow: {
     flexDirection: 'row',

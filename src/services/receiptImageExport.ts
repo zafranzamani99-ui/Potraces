@@ -7,6 +7,12 @@ export async function shareCapturedReceipt(viewRef: React.RefObject<any>, fileBa
     format: 'png',
     quality: 1,
     result: 'tmpfile',
+    // Use renderInContext instead of drawViewHierarchyInRect on iOS.
+    // drawViewHierarchyInRect captures "as visible onscreen" and skips
+    // text color/style rendering for views outside the visible viewport
+    // (e.g. position: absolute, left: -9999). renderInContext traverses
+    // the CALayer tree directly and renders all attributes faithfully.
+    useRenderInContext: true,
   });
 
   const safeName = fileBaseName.replace(/[^a-z0-9_-]+/gi, '_').slice(0, 40) || 'receipt';

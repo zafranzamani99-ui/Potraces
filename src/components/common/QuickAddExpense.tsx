@@ -25,9 +25,9 @@ import { useWalletStore } from '../../store/walletStore';
 import { useCategoryStore } from '../../store/categoryStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePlaybookStore } from '../../store/playbookStore';
-import { CALM, SHADOWS, withAlpha, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
+import { CALM, CALM_DARK, SHADOWS, withAlpha, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
 import WalletLogo from './WalletLogo';
-import { useCalm } from '../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { lightTap, successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 import { useLearningStore } from '../../store/learningStore';
@@ -45,11 +45,24 @@ const CARD_PADDING = 20;
 const CONTENT_WIDTH = CARD_WIDTH - CARD_PADDING * 2;
 
 type Step = 'amount' | 'category' | 'wallet';
+type Direction = 'expense' | 'income';
 
-// Module-level ref for deep link trigger
-let _quickAddOpenRef: (() => void) | null = null;
-export function openQuickAdd() {
-  _quickAddOpenRef?.();
+interface QuickAddExpenseProps {
+  /**
+   * Initial direction the sheet opens in.
+   * Defaults to 'expense' for backward compat. Pass 'income' from
+   * income-earner entry points (e.g. GettingStarted "log money in")
+   * so the toggle isn't biased toward spending. Per FIRSTRUN-H7.
+   */
+  defaultDirection?: Direction;
+}
+
+// Module-level ref for deep link trigger.
+// Accepts an optional direction override so external callers (GettingStarted,
+// future deep links) can request the sheet pre-flipped to income.
+let _quickAddOpenRef: ((dir?: Direction) => void) | null = null;
+export function openQuickAdd(direction?: Direction) {
+  _quickAddOpenRef?.(direction);
 }
 
 // ─── Numpad Key ──────────────────────────────────────────────
@@ -77,8 +90,9 @@ const NumpadKey = React.memo(
 );
 
 // ─── Main Component ──────────────────────────────────────────
-const QuickAddExpense: React.FC = () => {
+const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'expense' }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
@@ -92,6 +106,7 @@ const QuickAddExpense: React.FC = () => {
   const wallets = useWalletStore((s) => s.wallets);
   const deductFromWallet = useWalletStore((s) => s.deductFromWallet);
   const addToWallet = useWalletStore((s) => s.addToWallet);
+  const addWallet = useWalletStore((s) => s.addWallet);
   const getExpenseCategories = useCategoryStore((s) => s.getExpenseCategories);
   const getIncomeCategories = useCategoryStore((s) => s.getIncomeCategories);
 
@@ -206,11 +221,14 @@ const QuickAddExpense: React.FC = () => {
   }, []);
 
   // ── Open ──────────────────────────────────────────────────
-  const handleOpen = useCallback(() => {
+  // Accepts an optional direction override (used by external openers like
+  // GettingStarted "log money in") so the sheet doesn't always default to
+  // expense. Falls back to the prop, then 'expense'.
+  const handleOpen = useCallback((dirOverride?: Direction) => {
     lightTap();
     setAmount('');
     setCategoryId('');
-    setTxType('expense');
+    setTxType(dirOverride || defaultDirection);
     setStep('amount');
     setConfirmVisible(false);
     bgCardScale.setValue(1);
@@ -223,7 +241,7 @@ const QuickAddExpense: React.FC = () => {
       Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 3 }),
       Animated.timing(cardOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
     ]).start();
-  }, [slideAnim, cardScale, cardOpacity, bgCardScale]);
+  }, [slideAnim, cardScale, cardOpacity, bgCardScale, defaultDirection]);
 
   useEffect(() => {
     _quickAddOpenRef = handleOpen;
@@ -320,6 +338,11 @@ const QuickAddExpense: React.FC = () => {
   }, [amount, animateTo]);
 
   // ── Save ────────────────────────────────────────────────────
+  // Canonical save contract for the personal-mode quick-add surface.
+  // Per UX-C1: this is the single source of truth for "log money in or out".
+  // Downstream surfaces (TransactionsList, ReceiptScanner, NoteEditor,
+  // MoneyChat) should mimic this contract — same duplicate guard, same
+  // wallet defaulting, same wallet auto-create fallback.
   const saveTransaction = useCallback(
     (catId: string, catName: string, walletId: string | null) => {
       const parsed = parseFloat(amount);
@@ -337,11 +360,14 @@ const QuickAddExpense: React.FC = () => {
       if (dup) {
         const mins = Math.max(1, Math.round((Date.now() - new Date(dup.createdAt).getTime()) / 60000));
         Alert.alert(
-          'similar transaction',
-          `you logged ${dup.description || dup.category} (${parsed.toFixed(2)}) ${mins} min ago. keep both or skip?`,
+          t.quickAdd.dupTitle,
+          t.quickAdd.dupBody
+            .replace('{name}', dup.description || dup.category)
+            .replace('{amount}', parsed.toFixed(2))
+            .replace('{mins}', String(mins)),
           [
-            { text: 'skip', style: 'cancel' },
-            { text: 'keep both', onPress: () => saveTransactionUnchecked(catId, catName, walletId) },
+            { text: t.quickAdd.dupSkip, style: 'cancel' },
+            { text: t.quickAdd.dupKeepBoth, onPress: () => saveTransactionUnchecked(catId, catName, walletId) },
           ],
         );
         return;
@@ -349,7 +375,7 @@ const QuickAddExpense: React.FC = () => {
       saveTransactionUnchecked(catId, catName, walletId);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [amount, txType, selectedCurrency, fxRates],
+    [amount, txType, selectedCurrency, fxRates, t],
   );
 
   const saveTransactionUnchecked = useCallback(
@@ -406,12 +432,12 @@ const QuickAddExpense: React.FC = () => {
         if (activePbs.length === 1) {
           linkToPb(activePbs[0].id);
         } else if (activePbs.length > 1) {
-          Alert.alert('link to playbook', 'which playbook?', [
+          Alert.alert(t.expense.linkPlaybook, t.expense.whichPlaybook, [
             ...activePbs.map((pb) => ({
               text: pb.name,
               onPress: () => linkToPb(pb.id),
             })),
-            { text: 'skip', style: 'cancel' as const },
+            { text: t.quickAdd.dupSkip, style: 'cancel' as const },
           ]);
         }
       }
@@ -421,14 +447,14 @@ const QuickAddExpense: React.FC = () => {
 
       successNotification();
       setVisible(false);
-      const label = txType === 'expense' ? 'went out' : 'came in';
+      const label = txType === 'expense' ? t.quickAdd.wentOut : t.quickAdd.cameIn;
       const capturedTxId = txId;
       const capturedWalletId = walletId;
       const capturedStored = storedAmount;
       const capturedType = txType;
       const capturedHasMultiple = hasMultipleWallets;
       showToast(`${currency} ${parsed.toFixed(2)} ${label}`, 'success', {
-        label: 'undo',
+        label: t.quickAdd.undo,
         onPress: () => {
           deleteTransaction(capturedTxId);
           if (capturedWalletId) {
@@ -464,7 +490,7 @@ const QuickAddExpense: React.FC = () => {
         }, 300);
       }
     },
-    [amount, txType, addTransaction, updateTransaction, deleteTransaction, deductFromWallet, addToWallet, currency, showToast, pbPromptScale, pbPromptOpacity, hasMultipleWallets],
+    [amount, txType, addTransaction, updateTransaction, deleteTransaction, deductFromWallet, addToWallet, currency, showToast, pbPromptScale, pbPromptOpacity, hasMultipleWallets, slideAnim, cardScale, cardOpacity, fxRates, selectedCurrency, t],
   );
 
   // ── Confirm overlay helpers ────────────────────────────────
@@ -488,24 +514,52 @@ const QuickAddExpense: React.FC = () => {
   }, [confirmCardOpacity, bgCardOpacity]);
 
   // ── Category select ─────────────────────────────────────────
+  // Per FIRSTRUN-H7: when the user has zero wallets, auto-create a default
+  // "Cash" wallet rather than silently saving a wallet-less transaction.
+  // This makes the surface honest about where money lives — the canonical
+  // contract for downstream entry surfaces (UX-C1) is: every saved
+  // transaction has a walletId.
+  const ensureDefaultWalletId = useCallback((): string | null => {
+    const existing = wallets.find((w) => w.isDefault) || wallets[0];
+    if (existing) return existing.id;
+    if (wallets.length === 0) {
+      // Auto-create a Cash wallet on first transaction.
+      // WalletType has no 'cash' member — 'ewallet' is the closest fit
+      // for informal physical cash holdings; this matches dummyData seeds.
+      addWallet({
+        name: t.quickAdd.cashWalletName,
+        type: 'ewallet',
+        balance: 0,
+        icon: 'dollar-sign',
+        color: C.accent,
+        isDefault: true,
+      });
+      // addWallet is void; pull the new id from the freshest store snapshot.
+      const fresh = useWalletStore.getState().wallets;
+      const created = fresh.find((w) => w.isDefault) || fresh[0];
+      return created?.id || null;
+    }
+    return null;
+  }, [wallets, addWallet, t, C.accent]);
+
   const handleCategorySelect = useCallback(
     (catId: string) => {
       lightTap();
       setCategoryId(catId);
       if (!hasMultipleWallets) {
         const cat = categories.find((c) => c.id === catId);
-        const defaultWallet = wallets.find((w) => w.isDefault) || wallets[0];
+        const walletId = ensureDefaultWalletId();
         if (quickAddConfirm) {
-          setPendingWalletId(defaultWallet?.id || null);
+          setPendingWalletId(walletId);
           showConfirmOverlay();
         } else {
-          saveTransaction(catId, cat?.name || catId, defaultWallet?.id || null);
+          saveTransaction(catId, cat?.name || catId, walletId);
         }
       } else {
         animateTo('wallet');
       }
     },
-    [hasMultipleWallets, wallets, categories, animateTo, saveTransaction, quickAddConfirm, showConfirmOverlay],
+    [hasMultipleWallets, categories, animateTo, saveTransaction, quickAddConfirm, showConfirmOverlay, ensureDefaultWalletId],
   );
 
   // ── Wallet select ───────────────────────────────────────────
@@ -561,12 +615,17 @@ const QuickAddExpense: React.FC = () => {
         ]}
         {...panResponder.panHandlers}
       >
-        <View style={styles.fab} accessibilityLabel="Quick add" accessibilityRole="button">
-          <Feather name="plus" size={26} color="#fff" />
+        <View
+          style={styles.fab}
+          accessibilityLabel={t.quickAdd.fabLabel}
+          accessibilityHint={t.quickAdd.fabHint}
+          accessibilityRole="button"
+        >
+          <Feather name="plus" size={26} color={C.onAccent} />
         </View>
         {showHint && (
           <Animated.View style={[styles.hint, { opacity: hintOpacity }]} pointerEvents="none">
-            <Text style={styles.hintText}>hold & drag to move</Text>
+            <Text style={styles.hintText}>{t.quickAdd.fabDragHint}</Text>
           </Animated.View>
         )}
       </Animated.View>
@@ -585,7 +644,7 @@ const QuickAddExpense: React.FC = () => {
           </TouchableWithoutFeedback>
           <Animated.View style={{ opacity: bgCardOpacity }}>
           <Animated.View
-            style={[styles.card, { transform: [{ scale: cardScale }, { scale: bgCardScale }], opacity: cardOpacity, elevation: 24 }]}
+            style={[styles.card, { transform: [{ scale: cardScale }, { scale: bgCardScale }], opacity: cardOpacity }, SHADOWS['2xl']]}
             onStartShouldSetResponder={() => true}
           >
             {/* ── Header row ──────────────────────────── */}
@@ -619,6 +678,10 @@ const QuickAddExpense: React.FC = () => {
                     <TouchableOpacity
                       onPress={() => { lightTap(); setCurrencyPickerOpen(true); }}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.quickAdd.changeCurrency}
+                      accessibilityHint={t.quickAdd.amountHint}
+                      hitSlop={HITSLOP_10}
                     >
                       <Text style={[styles.amountDisplay, !amount && { color: C.neutral }]}>
                         <Text style={styles.amountCurrency}>{selectedCurrency} </Text>
@@ -633,22 +696,30 @@ const QuickAddExpense: React.FC = () => {
                   </View>
 
                   {/* Type toggle */}
-                  <View style={styles.typeToggle}>
+                  <View style={styles.typeToggle} accessibilityRole="radiogroup">
                     <TouchableOpacity
                       style={[styles.typePill, txType === 'expense' && styles.typePillActive]}
                       onPress={() => { lightTap(); setTxType('expense'); }}
                       activeOpacity={0.7}
+                      hitSlop={HITSLOP_10}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: txType === 'expense' }}
+                      accessibilityLabel={t.quickAdd.wentOut}
                     >
-                      <Feather name="arrow-up-right" size={14} color={txType === 'expense' ? '#fff' : C.textMuted} />
-                      <Text style={[styles.typePillText, txType === 'expense' && styles.typePillTextActive]}>went out</Text>
+                      <Feather name="arrow-up-right" size={14} color={txType === 'expense' ? C.onAccent : C.textMuted} />
+                      <Text style={[styles.typePillText, txType === 'expense' && styles.typePillTextActive]}>{t.quickAdd.wentOut}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.typePill, txType === 'income' && styles.typePillActiveIncome]}
                       onPress={() => { lightTap(); setTxType('income'); }}
                       activeOpacity={0.7}
+                      hitSlop={HITSLOP_10}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: txType === 'income' }}
+                      accessibilityLabel={t.quickAdd.cameIn}
                     >
-                      <Feather name="arrow-down-left" size={14} color={txType === 'income' ? '#fff' : C.textMuted} />
-                      <Text style={[styles.typePillText, txType === 'income' && styles.typePillTextActive]}>came in</Text>
+                      <Feather name="arrow-down-left" size={14} color={txType === 'income' ? C.onAccent : C.textMuted} />
+                      <Text style={[styles.typePillText, txType === 'income' && styles.typePillTextActive]}>{t.quickAdd.cameIn}</Text>
                     </TouchableOpacity>
                   </View>
 
@@ -667,9 +738,12 @@ const QuickAddExpense: React.FC = () => {
                     onPress={handleAmountNext}
                     disabled={parsedAmount <= 0}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: parsedAmount <= 0 }}
+                    accessibilityLabel={t.a11y.forward}
                   >
-                    <Text style={styles.ctaText}>next</Text>
-                    <Feather name="arrow-right" size={16} color="#fff" />
+                    <Text style={styles.ctaText}>{t.quickAdd.next}</Text>
+                    <Feather name="arrow-right" size={16} color={C.onAccent} />
                   </TouchableOpacity>
                 </View>
 
@@ -687,6 +761,8 @@ const QuickAddExpense: React.FC = () => {
                         style={styles.catCell}
                         onPress={() => handleCategorySelect(cat.id)}
                         activeOpacity={0.55}
+                        accessibilityRole="button"
+                        accessibilityLabel={cat.name}
                       >
                         <View style={[styles.catIcon, { backgroundColor: withAlpha(cat.color, 0.1) }]}>
                           <Feather name={(cat.icon as keyof typeof Feather.glyphMap) || 'tag'} size={22} color={cat.color} />
@@ -717,6 +793,8 @@ const QuickAddExpense: React.FC = () => {
                           style={styles.walletRow}
                           onPress={() => handleWalletSelect(w.id)}
                           activeOpacity={0.55}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${w.name} · ${currency} ${w.balance.toFixed(2)}`}
                         >
                           <View style={[styles.walletIco, { backgroundColor: w.presetId ? C.background : withAlpha(w.color || C.accent, 0.08) }]}>
                             <WalletLogo wallet={w} size={44} />
@@ -728,7 +806,7 @@ const QuickAddExpense: React.FC = () => {
                           {w.isDefault && (
                             <Feather name="star" size={16} color={w.color || C.accent} />
                           )}
-                          <Feather name="chevron-right" size={16} color="#D4D4D4" />
+                          <Feather name="chevron-right" size={16} color={C.border} />
                         </TouchableOpacity>
                       ))}
                     </ScrollView>
@@ -750,7 +828,7 @@ const QuickAddExpense: React.FC = () => {
                 onStartShouldSetResponder={() => true}
               >
                 <Text style={styles.receiptAmount}>{currency} {parsedAmount.toFixed(2)}</Text>
-                <Text style={styles.receiptType}>{txType === 'expense' ? 'went out' : 'came in'}</Text>
+                <Text style={styles.receiptType}>{txType === 'expense' ? t.quickAdd.wentOut : t.quickAdd.cameIn}</Text>
 
                 <View style={styles.receiptDivider}>
                   {Array.from({ length: 22 }).map((_, i) => (
@@ -764,7 +842,7 @@ const QuickAddExpense: React.FC = () => {
                       <Feather name={(cat.icon as keyof typeof Feather.glyphMap) || 'tag'} size={20} color={cat.color} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.receiptRowLabel}>category</Text>
+                      <Text style={styles.receiptRowLabel}>{t.quickAdd.categoryLabel}</Text>
                       <Text style={styles.receiptRowValue}>{cat.name}</Text>
                     </View>
                   </View>
@@ -776,7 +854,7 @@ const QuickAddExpense: React.FC = () => {
                       <WalletLogo wallet={pendingWallet} size={40} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.receiptRowLabel}>wallet</Text>
+                      <Text style={styles.receiptRowLabel}>{t.quickAdd.walletLabel}</Text>
                       <Text style={styles.receiptRowValue}>{pendingWallet.name}</Text>
                       <Text style={styles.walletBal}>{currency} {pendingWallet.balance.toFixed(2)}</Text>
                     </View>
@@ -784,13 +862,26 @@ const QuickAddExpense: React.FC = () => {
                 )}
 
                 <View style={styles.receiptActions}>
-                  <TouchableOpacity style={styles.receiptSave} onPress={handleConfirmSave} activeOpacity={0.8}>
-                    <Feather name="check" size={16} color="#fff" />
-                    <Text style={styles.receiptSaveText}>save</Text>
+                  <TouchableOpacity
+                    style={styles.receiptSave}
+                    onPress={handleConfirmSave}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.common.save}
+                  >
+                    <Feather name="check" size={16} color={C.onAccent} />
+                    <Text style={styles.receiptSaveText}>{t.common.save}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.receiptChange} onPress={hideConfirmOverlay} activeOpacity={0.6} hitSlop={HITSLOP_10}>
+                  <TouchableOpacity
+                    style={styles.receiptChange}
+                    onPress={hideConfirmOverlay}
+                    activeOpacity={0.6}
+                    hitSlop={HITSLOP_10}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.quickAdd.change}
+                  >
                     <Feather name="chevron-left" size={13} color={C.textMuted} />
-                    <Text style={styles.receiptChangeText}>change</Text>
+                    <Text style={styles.receiptChangeText}>{t.quickAdd.change}</Text>
                   </TouchableOpacity>
                 </View>
               </Animated.View>
@@ -815,9 +906,9 @@ const QuickAddExpense: React.FC = () => {
               onPress={(e) => e.stopPropagation()}
             >
               <Text style={{ fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary, marginBottom: SPACING.md }}>
-                choose a currency
+                {t.quickAdd.chooseCurrency}
               </Text>
-              <ScrollView style={{ maxHeight: 320 }}>
+              <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                 {SUPPORTED_CURRENCIES.map((cur) => (
                   <TouchableOpacity
                     key={cur}
@@ -825,11 +916,15 @@ const QuickAddExpense: React.FC = () => {
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
+                      minHeight: 44,
                       paddingVertical: SPACING.sm,
                       paddingHorizontal: SPACING.sm,
                       borderRadius: RADIUS.md,
                       backgroundColor: cur === selectedCurrency ? withAlpha(C.accent, 0.1) : 'transparent',
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={cur}
+                    accessibilityState={{ selected: cur === selectedCurrency }}
                   >
                     <Text style={{ flex: 1, fontSize: TYPOGRAPHY.size.base, color: C.textPrimary, fontWeight: cur === selectedCurrency ? TYPOGRAPHY.weight.semibold : TYPOGRAPHY.weight.regular }}>
                       {cur}
@@ -839,7 +934,7 @@ const QuickAddExpense: React.FC = () => {
                 ))}
               </ScrollView>
               <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: SPACING.sm, textAlign: 'center' }}>
-                non-MYR amounts are stored as MYR-equivalent using today's rate
+                {t.quickAdd.fxNote}
               </Text>
             </Pressable>
           </Pressable>
@@ -857,17 +952,29 @@ const QuickAddExpense: React.FC = () => {
               <View style={styles.pbPromptIcon}>
                 <Feather name="book-open" size={28} color={C.accent} />
               </View>
-              <Text style={styles.pbPromptTitle}>create a playbook?</Text>
+              <Text style={styles.pbPromptTitle}>{t.quickAdd.pbTitle}</Text>
               <Text style={styles.pbPromptSub}>
-                track how you spend this {currency} {pbPrompt.amount.toFixed(2)}
+                {t.quickAdd.pbSub.replace('{currency}', currency).replace('{amount}', pbPrompt.amount.toFixed(2))}
               </Text>
               <View style={styles.pbPromptActions}>
-                <TouchableOpacity style={styles.pbPromptSkip} onPress={handlePbDismiss} activeOpacity={0.7}>
-                  <Text style={styles.pbPromptSkipText}>not now</Text>
+                <TouchableOpacity
+                  style={styles.pbPromptSkip}
+                  onPress={handlePbDismiss}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.quickAdd.notNow}
+                >
+                  <Text style={styles.pbPromptSkipText}>{t.quickAdd.notNow}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.pbPromptCreate} onPress={handlePbCreate} activeOpacity={0.8}>
-                  <Feather name="plus" size={16} color="#fff" />
-                  <Text style={styles.pbPromptCreateText}>create</Text>
+                <TouchableOpacity
+                  style={styles.pbPromptCreate}
+                  onPress={handlePbCreate}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.quickAdd.create}
+                >
+                  <Feather name="plus" size={16} color={C.onAccent} />
+                  <Text style={styles.pbPromptCreateText}>{t.quickAdd.create}</Text>
                 </TouchableOpacity>
               </View>
             </Animated.View>
@@ -883,12 +990,12 @@ export default React.memo(QuickAddExpense);
 // ─── Styles ──────────────────────────────────────────────────
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   /* ── FAB ─────────────────────────────────── */
-  fabWrap: { position: 'absolute', zIndex: 999, elevation: 10 },
+  fabWrap: { position: 'absolute', zIndex: 999, ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg) },
   fab: {
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: C.accent,
     alignItems: 'center', justifyContent: 'center',
-    ...SHADOWS.md,
+    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
   hint: {
     position: 'absolute',
@@ -901,7 +1008,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(C.textPrimary, 0.08),
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   hintText: {
     fontSize: 11,
@@ -926,7 +1033,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(C.textPrimary, 0.06),
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
 
   /* ── Header ──────────────────────────────── */
@@ -1011,7 +1118,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textMuted,
   },
   typePillTextActive: {
-    color: '#fff',
+    color: C.onAccent,
   },
 
   /* ── Numpad ──────────────────────────────── */
@@ -1037,7 +1144,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 14,
   },
-  ctaText: { fontSize: 15, fontWeight: '600', color: '#fff', letterSpacing: -0.2 },
+  ctaText: { fontSize: 15, fontWeight: '600', color: C.onAccent, letterSpacing: -0.2 },
 
   /* ── Summary badge ───────────────────────── */
   badge: {
@@ -1095,7 +1202,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingBottom: 20,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(C.textPrimary, 0.07),
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   receiptAmount: {
     fontSize: 40,
@@ -1165,13 +1272,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: 999,
     backgroundColor: C.accent,
     borderWidth: 1,
-    borderColor: withAlpha('#fff', 0.14),
-    ...SHADOWS.md,
+    borderColor: withAlpha(C.onAccent, 0.14),
+    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
   receiptSaveText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#fff',
+    color: C.onAccent,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
@@ -1205,7 +1312,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(C.textPrimary, 0.06),
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   pbPromptIcon: {
     width: 56,
@@ -1259,6 +1366,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   pbPromptCreateText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: C.onAccent,
   },
 });

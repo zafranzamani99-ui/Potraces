@@ -68,7 +68,8 @@ export const useWalletStore = create<WalletState>()(
           })),
         })),
 
-      deductFromWallet: (id, amount) =>
+      deductFromWallet: (id, amount) => {
+        if (!amount || !isFinite(amount) || amount <= 0) return;
         set((state) => ({
           wallets: state.wallets.map((w) => {
             if (w.id !== id) return w;
@@ -82,9 +83,11 @@ export const useWalletStore = create<WalletState>()(
             }
             return { ...w, balance: w.balance - amount, updatedAt: new Date() };
           }),
-        })),
+        }));
+      },
 
-      addToWallet: (id, amount) =>
+      addToWallet: (id, amount) => {
+        if (!amount || !isFinite(amount) || amount <= 0) return;
         set((state) => ({
           wallets: state.wallets.map((w) => {
             if (w.id !== id) return w;
@@ -98,7 +101,8 @@ export const useWalletStore = create<WalletState>()(
             }
             return { ...w, balance: w.balance + amount, updatedAt: new Date() };
           }),
-        })),
+        }));
+      },
 
       setWalletBalance: (id, balance) =>
         set((state) => ({

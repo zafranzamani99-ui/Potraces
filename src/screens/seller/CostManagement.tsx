@@ -16,6 +16,9 @@ import {
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { format, isToday, isYesterday, isValid } from 'date-fns';
@@ -23,12 +26,19 @@ import { useSellerStore } from '../../store/sellerStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { IngredientCost, RecurringFrequency } from '../../types';
 import { createTransfer } from '../../utils/transferBridge';
+import { scanSellerReceipt } from '../../services/receiptScanner';
+import { uploadReceiptImage, deleteReceiptImage } from '../../services/sellerSync';
+import CostCategoryPicker from '../../components/seller/CostCategoryPicker';
+import ReceiptViewer from '../../components/seller/ReceiptViewer';
+import PaywallModal from '../../components/common/PaywallModal';
+import ImageSourcePills from '../../components/common/ImageSourcePills';
 import {
   lightTap,
   successNotification,
@@ -68,6 +78,11 @@ const CostManagement: React.FC = () => {
   const deleteRecurringCost = useSellerStore((s) => s.deleteRecurringCost);
   const applyRecurringCost = useSellerStore((s) => s.applyRecurringCost);
   const activeSeason = useSellerStore((s) => s.getActiveSeason());
+  const costCategories = useSellerStore((s) => s.costCategories);
+  const getCostCategory = useSellerStore((s) => s.getCostCategory);
+  const canScanReceipt = usePremiumStore((s) => s.canScanReceipt);
+  const incrementScanCount = usePremiumStore((s) => s.incrementScanCount);
+  const getRemainingScans = usePremiumStore((s) => s.getRemainingScans);
   const addTransaction = usePersonalStore((s) => s.addTransaction);
   const deletePersonalTransaction = usePersonalStore((s) => s.deleteTransaction);
   const addTransferIncome = usePersonalStore((s) => s.addTransferIncome);
@@ -91,6 +106,16 @@ const CostManagement: React.FC = () => {
   const [costAmtError, setCostAmtError] = useState(false);
   const costDescShakeAnim = useRef(new Animated.Value(0)).current;
   const costAmtShakeAnim = useRef(new Animated.Value(0)).current;
+
+  // ─── Category / vendor / receipt state ─────────────────────
+  const [costCategory, setCostCategory] = useState('costcat_materials');
+  const [costVendor, setCostVendor] = useState('');
+  const [receiptLocalUri, setReceiptLocalUri] = useState<string | null>(null);
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [viewerUri, setViewerUri] = useState<string | null>(null);
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
@@ -137,10 +162,15 @@ const CostManagement: React.FC = () => {
   }, [activeSeason, ingredientCosts]);
 
   const filteredCostEntries = useMemo(() => {
-    if (!costSearch.trim()) return seasonCostEntries;
+    let base = categoryFilter
+      ? seasonCostEntries.filter((c) => (c.category ?? 'costcat_uncategorized') === categoryFilter)
+      : seasonCostEntries;
+    if (!costSearch.trim()) return base;
     const q = costSearch.trim().toLowerCase();
-    return seasonCostEntries.filter((c) => {
+    return base.filter((c) => {
       if (c.description.toLowerCase().includes(q)) return true;
+      if (c.vendor && c.vendor.toLowerCase().includes(q)) return true;
+      if (getCostCategory(c.category).name.toLowerCase().includes(q)) return true;
       const d = c.date instanceof Date ? c.date : new Date(c.date);
       if (!isValid(d)) return false;
       const dateStr = format(d, 'dd MMM yyyy').toLowerCase();
@@ -149,7 +179,25 @@ const CostManagement: React.FC = () => {
       if (isYesterday(d) && 'yesterday'.includes(q)) return true;
       return false;
     });
-  }, [seasonCostEntries, costSearch]);
+  }, [seasonCostEntries, costSearch, categoryFilter, getCostCategory]);
+
+  // Per-category spend breakdown for the active season (summary card).
+  const categoryBreakdown = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const c of seasonCostEntries) {
+      const id = c.category ?? 'costcat_uncategorized';
+      totals.set(id, (totals.get(id) ?? 0) + c.amount);
+    }
+    return Array.from(totals.entries())
+      .map(([id, total]) => ({ cat: getCostCategory(id), total }))
+      .sort((a, b) => b.total - a.total);
+  }, [seasonCostEntries, getCostCategory]);
+
+  // Categories that actually have entries — for filter chips.
+  const usedCategories = useMemo(
+    () => categoryBreakdown.map((b) => b.cat),
+    [categoryBreakdown],
+  );
 
   const groupedCostEntries = useMemo(() => {
     const groups: { label: string; entries: IngredientCost[] }[] = [];
@@ -227,16 +275,66 @@ const CostManagement: React.FC = () => {
       setEditingCostId(costToEdit.id);
       setCostDescription(costToEdit.description);
       setCostAmount(costToEdit.amount.toString());
+      setCostCategory(costToEdit.category ?? 'costcat_materials');
+      setCostVendor(costToEdit.vendor ?? '');
+      setReceiptUrl(costToEdit.receiptUrl ?? null);
+      setReceiptLocalUri(costToEdit.receiptLocalUri ?? null);
     } else {
       setEditingCostId(null);
       setCostDescription('');
       setCostAmount('');
+      setCostCategory('costcat_materials');
+      setCostVendor('');
+      setReceiptUrl(null);
+      setReceiptLocalUri(null);
     }
     setCostDescError(false);
     setCostAmtError(false);
     setSyncToPersonal(false);
     setShowCostModal(true);
   }, []);
+
+  // Map an AI-suggested category id to one that still exists; fall back to "Other".
+  const resolveCategory = useCallback((suggested?: string): string => {
+    if (suggested && costCategories.some((c) => c.id === suggested)) return suggested;
+    return 'costcat_other';
+  }, [costCategories]);
+
+  const handleScanReceipt = useCallback(async (source: 'camera' | 'gallery') => {
+    if (!canScanReceipt()) {
+      setPaywallVisible(true);
+      return;
+    }
+    const permission = source === 'camera'
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.status !== 'granted') {
+      showToast(t.seller.grantPermission.replace('{source}', source), 'error');
+      return;
+    }
+    const picker = source === 'camera' ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
+    const result = await picker({ mediaTypes: ['images'], quality: 0.8 });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const uri = result.assets[0].uri;
+    setReceiptLocalUri(uri);
+    setReceiptUrl(null);
+    setScanning(true);
+    try {
+      const parsed = await scanSellerReceipt(uri);
+      incrementScanCount();
+      if (parsed.total > 0) setCostAmount(parsed.total.toFixed(2));
+      const desc = parsed.vendor || parsed.items[0]?.name;
+      if (desc) setCostDescription(desc);
+      if (parsed.vendor) setCostVendor(parsed.vendor);
+      if (parsed.suggestedCategory) setCostCategory(resolveCategory(parsed.suggestedCategory));
+      successNotification();
+    } catch {
+      showToast(t.seller.receiptScanFailed, 'error');
+    } finally {
+      setScanning(false);
+    }
+  }, [canScanReceipt, incrementScanCount, resolveCategory, showToast, t]);
 
   const handleSaveCost = useCallback(() => {
     const hasDescErr = !costDescription.trim();
@@ -256,15 +354,27 @@ const CostManagement: React.FC = () => {
     const amount = parseFloat(costAmount) || 0;
     const desc = costDescription.trim();
 
+    const catName = getCostCategory(costCategory).name;
+    const vendor = costVendor.trim() || undefined;
+    // Trace category in the linked personal expense description for clarity.
+    const personalDesc = `seller (${catName.toLowerCase()}): ${desc}`;
+
     if (editingCostId) {
       // Read sync status directly from store (not closure) to avoid stale data
       const currentCost = useSellerStore.getState().ingredientCosts.find((c) => c.id === editingCostId);
-      updateIngredientCost(editingCostId, { description: desc, amount });
+      updateIngredientCost(editingCostId, {
+        description: desc,
+        amount,
+        category: costCategory,
+        vendor,
+        receiptUrl: receiptUrl ?? undefined,
+        receiptLocalUri: receiptUrl ? undefined : (receiptLocalUri ?? undefined),
+      });
       // Also update linked personal expense if synced
       if (currentCost?.syncedToPersonal && currentCost.personalTransactionId) {
         usePersonalStore.getState().updateTransaction(currentCost.personalTransactionId, {
           amount,
-          description: `seller: ${desc}`,
+          description: personalDesc,
         });
       }
       successNotification();
@@ -276,7 +386,7 @@ const CostManagement: React.FC = () => {
         personalTxId = addTransaction({
           amount,
           category: 'business cost',
-          description: `seller: ${desc}`,
+          description: personalDesc,
           date: new Date(),
           type: 'expense',
           mode: 'personal',
@@ -289,17 +399,27 @@ const CostManagement: React.FC = () => {
         amount,
         date: new Date(),
         seasonId: activeSeason?.id,
+        category: costCategory,
+        vendor,
+        receiptLocalUri: receiptLocalUri ?? undefined,
       });
 
       if (syncToPersonal && personalTxId) {
         markCostSynced(costId, personalTxId);
       }
 
+      // Upload an attached receipt now (best-effort; sync retries if offline).
+      if (receiptLocalUri) {
+        uploadReceiptImage(receiptLocalUri, costId).then((url) => {
+          if (url) updateIngredientCost(costId, { receiptUrl: url, receiptLocalUri: undefined });
+        });
+      }
+
       successNotification();
 
       // Save as template if toggled
       if (saveAsTemplate) {
-        addCostTemplate({ description: desc, amount });
+        addCostTemplate({ description: desc, amount, category: costCategory });
       }
 
       showToast(syncToPersonal ? t.seller.costLoggedPersonal : t.seller.costLogged, 'success');
@@ -310,9 +430,12 @@ const CostManagement: React.FC = () => {
     setEditingCostId(null);
     setCostDescription('');
     setCostAmount('');
+    setCostVendor('');
+    setReceiptLocalUri(null);
+    setReceiptUrl(null);
     setSyncToPersonal(false);
     setSaveAsTemplate(false);
-  }, [costDescription, costAmount, editingCostId, syncToPersonal, saveAsTemplate, addIngredientCost, updateIngredientCost, addTransaction, addCostTemplate, markCostSynced, activeSeason, showToast]);
+  }, [costDescription, costAmount, editingCostId, syncToPersonal, saveAsTemplate, costCategory, costVendor, receiptUrl, receiptLocalUri, getCostCategory, addIngredientCost, updateIngredientCost, addTransaction, addCostTemplate, markCostSynced, activeSeason, showToast]);
 
   const handleDeleteCost = useCallback((cost: IngredientCost) => {
     warningNotification();
@@ -334,6 +457,10 @@ const CostManagement: React.FC = () => {
             // Also delete linked personal expense if synced
             if (cost.syncedToPersonal && cost.personalTransactionId) {
               deletePersonalTransaction(cost.personalTransactionId);
+            }
+            // Remove the receipt image from storage so it doesn't orphan.
+            if (cost.receiptUrl) {
+              deleteReceiptImage(cost.id);
             }
             deleteIngredientCost(cost.id);
             showToast(t.seller.costDeleted, 'success');
@@ -425,6 +552,29 @@ const CostManagement: React.FC = () => {
               <Text style={styles.summaryBreakdownLabel}>{t.seller.costsLabel}</Text>
             </View>
           </View>
+
+          {categoryBreakdown.length > 1 && seasonStats.totalCosts > 0 && (
+            <View style={styles.catBreakdown}>
+              <View style={styles.catBar}>
+                {categoryBreakdown.map((b) => (
+                  <View
+                    key={b.cat.id}
+                    style={{ flex: b.total, backgroundColor: b.cat.color, height: '100%' }}
+                  />
+                ))}
+              </View>
+              <View style={styles.catLegend}>
+                {categoryBreakdown.slice(0, 4).map((b) => (
+                  <View key={b.cat.id} style={styles.catLegendItem}>
+                    <View style={[styles.catLegendDot, { backgroundColor: b.cat.color }]} />
+                    <Text style={styles.catLegendText} numberOfLines={1}>
+                      {b.cat.name} {Math.round((b.total / seasonStats.totalCosts) * 100)}%
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
         </Animated.View>
 
         {/* ─── Budget Bar ──────────────────────────────────── */}
@@ -514,6 +664,8 @@ const CostManagement: React.FC = () => {
                     onChangeText={setTransferAmount}
                     keyboardType="decimal-pad"
                     selectTextOnFocus
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
                   />
                 </View>
                 <TouchableOpacity
@@ -523,7 +675,7 @@ const CostManagement: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Confirm transfer"
                 >
-                  <Feather name="check" size={18} color="#fff" />
+                  <Feather name="check" size={18} color={C.onAccent} />
                 </TouchableOpacity>
               </View>
             ) : (
@@ -535,7 +687,7 @@ const CostManagement: React.FC = () => {
                 accessibilityLabel="Transfer to personal wallet"
               >
                 <Text style={styles.transferBtnText}>{t.seller.cmTransfer}</Text>
-                <Feather name="arrow-right" size={14} color="#fff" />
+                <Feather name="arrow-right" size={14} color={C.onAccent} />
               </TouchableOpacity>
             )}
           </Animated.View>
@@ -626,6 +778,8 @@ const CostManagement: React.FC = () => {
                 value={costSearch}
                 onChangeText={setCostSearch}
                 returnKeyType="search"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
               {costSearch.length > 0 && (
                 <TouchableOpacity
@@ -635,6 +789,48 @@ const CostManagement: React.FC = () => {
                   <Feather name="x" size={14} color={C.textMuted} />
                 </TouchableOpacity>
               )}
+            </View>
+          )}
+
+          {usedCategories.length > 1 && (
+            <View style={styles.filterChipsWrap}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterChipsContent}
+                keyboardShouldPersistTaps="handled"
+              >
+                <Pressable
+                  onPress={() => { lightTap(); setCategoryFilter(null); }}
+                  style={[styles.filterChip, !categoryFilter && styles.filterChipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: !categoryFilter }}
+                >
+                  <Text style={[styles.filterChipText, !categoryFilter && styles.filterChipTextActive]}>{t.seller.allCategories}</Text>
+                </Pressable>
+                {usedCategories.map((cat) => {
+                  const active = categoryFilter === cat.id;
+                  return (
+                    <Pressable
+                      key={cat.id}
+                      onPress={() => { lightTap(); setCategoryFilter(active ? null : cat.id); }}
+                      style={[styles.filterChip, active && { backgroundColor: withAlpha(cat.color, isDark ? 0.2 : 0.12), borderColor: cat.color }]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <Feather name={cat.icon as any} size={12} color={active ? cat.color : C.textSecondary} />
+                      <Text style={[styles.filterChipText, active && { color: cat.color }]}>{cat.name}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <LinearGradient
+                colors={[withAlpha(C.surface, 0), C.surface]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.filterFade}
+                pointerEvents="none"
+              />
             </View>
           )}
 
@@ -656,7 +852,8 @@ const CostManagement: React.FC = () => {
                   <View style={styles.historySectionLine} />
                 </View>
                 {group.entries.map((cost, i) => {
-                  const initial = cost.description.charAt(0).toUpperCase();
+                  const cat = getCostCategory(cost.category);
+                  const hasReceipt = !!(cost.receiptUrl || cost.receiptLocalUri);
                   return (
                     <View key={cost.id}>
                       {i > 0 && <View style={styles.historyItemDivider} />}
@@ -667,10 +864,10 @@ const CostManagement: React.FC = () => {
                         onLongPress={() => handleDeleteCost(cost)}
                         delayLongPress={500}
                         accessibilityRole="button"
-                        accessibilityLabel={`${cost.description}, ${currency} ${cost.amount.toFixed(2)}. Tap to edit, hold to delete.`}
+                        accessibilityLabel={`${cost.description}, ${cat.name}, ${currency} ${cost.amount.toFixed(2)}. Tap to edit, hold to delete.`}
                       >
-                        <View style={styles.historyAvatar}>
-                          <Text style={styles.historyAvatarText}>{initial}</Text>
+                        <View style={[styles.historyAvatar, { backgroundColor: withAlpha(cat.color, isDark ? 0.2 : 0.12) }]}>
+                          <Feather name={cat.icon as any} size={15} color={cat.color} />
                         </View>
                         <View style={styles.historyItemContent}>
                           <View style={styles.historyItemTop}>
@@ -681,14 +878,27 @@ const CostManagement: React.FC = () => {
                               {currency} {cost.amount.toFixed(2)}
                             </Text>
                           </View>
-                          {cost.syncedToPersonal && (
-                            <View style={styles.historyItemBottom}>
+                          <View style={styles.historyItemBottom}>
+                            <Text style={styles.historyCatLabel}>{cat.name}</Text>
+                            {cost.vendor ? <Text style={styles.historyVendor} numberOfLines={1}>· {cost.vendor}</Text> : null}
+                            {hasReceipt && (
+                              <Pressable
+                                onPress={() => setViewerUri(cost.receiptUrl || cost.receiptLocalUri || null)}
+                                hitSlop={8}
+                                style={styles.historyReceiptBtn}
+                                accessibilityRole="button"
+                                accessibilityLabel={t.seller.viewReceipt}
+                              >
+                                <Feather name="paperclip" size={10} color={C.bronze} />
+                              </Pressable>
+                            )}
+                            {cost.syncedToPersonal && (
                               <View style={styles.historyLinkedBadge}>
                                 <Feather name="link" size={9} color={C.bronze} />
                                 <Text style={styles.historyLinkedText}>{t.seller.synced}</Text>
                               </View>
-                            </View>
-                          )}
+                            )}
+                          </View>
                         </View>
                       </TouchableOpacity>
                     </View>
@@ -709,7 +919,7 @@ const CostManagement: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Log new cost"
         >
-          <Feather name="plus" size={20} color="#fff" />
+          <Feather name="plus" size={20} color={C.onAccent} />
           <Text style={styles.fabText}>{t.seller.logCost}</Text>
         </TouchableOpacity>
       </View>
@@ -717,61 +927,110 @@ const CostManagement: React.FC = () => {
       {/* ─── Recurring Cost Modal ──────────────────────────── */}
       {showRecurringModal && (<Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={() => setShowRecurringModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowRecurringModal(false)}>
-          <Pressable style={[styles.modalCard, { gap: SPACING.md }]} onPress={() => {}}>
-            <Text style={styles.modalTitle}>{t.seller.recurringCostTitle}</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={recurringDesc}
-              onChangeText={setRecurringDesc}
-              placeholder={t.seller.recurringDescPlaceholder}
-              placeholderTextColor={C.textMuted}
-              autoFocus
-            />
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-              <Text style={{ color: C.textMuted, fontSize: TYPOGRAPHY.size.sm }}>{currency}</Text>
-              <TextInput
-                style={[styles.modalInput, { flex: 1 }]}
-                value={recurringAmount}
-                onChangeText={setRecurringAmount}
-                placeholder={t.seller.amountPlaceholder}
-                placeholderTextColor={C.textMuted}
-                keyboardType="numeric"
-              />
-            </View>
-            <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-              {(['weekly', 'biweekly', 'monthly'] as const).map((f) => (
-                <TouchableOpacity
-                  key={f}
-                  style={[styles.freqPill, recurringFreq === f && styles.freqPillActive]}
-                  onPress={() => setRecurringFreq(f)}
-                  activeOpacity={0.7}
+          <KeyboardAwareScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            nestedScrollEnabled
+          >
+            <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  {'recurring '}<Text style={styles.modalTitleAccent}>cost</Text>
+                </Text>
+                <Pressable
+                  onPress={() => { lightTap(); setShowRecurringModal(false); }}
+                  style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
                 >
-                  <Text style={[styles.freqPillText, recurringFreq === f && styles.freqPillTextActive]}>
-                    {f === 'weekly' ? t.seller.weekly : f === 'biweekly' ? t.seller.every2wk : t.seller.monthly}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity
-              style={styles.modalSave}
-              activeOpacity={0.7}
-              onPress={() => {
-                const desc = recurringDesc.trim();
-                const amount = parseFloat(recurringAmount);
-                if (!desc || isNaN(amount) || amount <= 0) return;
-                const now = new Date();
-                let nextDue = new Date(now);
-                if (recurringFreq === 'weekly') nextDue.setDate(nextDue.getDate() + 7);
-                else if (recurringFreq === 'biweekly') nextDue.setDate(nextDue.getDate() + 14);
-                else nextDue.setMonth(nextDue.getMonth() + 1);
-                addRecurringCost({ description: desc, amount, frequency: recurringFreq, nextDue, isActive: true, seasonId: activeSeason?.id });
-                showToast(t.seller.recurringCostAdded, 'success');
-                setShowRecurringModal(false);
-              }}
-            >
-              <Text style={styles.modalSaveText}>{t.seller.saveLabel}</Text>
-            </TouchableOpacity>
-          </Pressable>
+                  <Feather name="x" size={18} color={C.textMuted} />
+                </Pressable>
+              </View>
+              <Text style={styles.modalSubtitle}>set up auto-tracking for regular expenses</Text>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>description</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={recurringDesc}
+                  onChangeText={setRecurringDesc}
+                  placeholder={t.seller.recurringDescPlaceholder}
+                  placeholderTextColor={C.textMuted}
+                  autoFocus
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.bronze}
+                />
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>amount</Text>
+                <View style={styles.currencyInputRow}>
+                  <Text style={styles.currencyPrefix}>{currency}</Text>
+                  <TextInput
+                    style={styles.currencyInput}
+                    value={recurringAmount}
+                    onChangeText={setRecurringAmount}
+                    placeholder={t.seller.amountPlaceholder}
+                    placeholderTextColor={C.textMuted}
+                    keyboardType="numeric"
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.bronze}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>frequency</Text>
+                <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+                  {(['weekly', 'biweekly', 'monthly'] as const).map((f) => (
+                    <Pressable
+                      key={f}
+                      style={({ pressed }) => [styles.freqPill, recurringFreq === f && styles.freqPillActive, pressed && { opacity: 0.7 }]}
+                      onPress={() => setRecurringFreq(f)}
+                    >
+                      <Text style={[styles.freqPillText, recurringFreq === f && styles.freqPillTextActive]}>
+                        {f === 'weekly' ? t.seller.weekly : f === 'biweekly' ? t.seller.every2wk : t.seller.monthly}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.modalActions}>
+                <Pressable
+                  onPress={() => { lightTap(); setShowRecurringModal(false); }}
+                  style={({ pressed }) => [styles.modalCancel, pressed && { opacity: 0.7 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                >
+                  <Text style={styles.modalCancelText}>{t.seller.cmCancel}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    const desc = recurringDesc.trim();
+                    const amount = parseFloat(recurringAmount);
+                    if (!desc || isNaN(amount) || amount <= 0) return;
+                    const now = new Date();
+                    let nextDue = new Date(now);
+                    if (recurringFreq === 'weekly') nextDue.setDate(nextDue.getDate() + 7);
+                    else if (recurringFreq === 'biweekly') nextDue.setDate(nextDue.getDate() + 14);
+                    else nextDue.setMonth(nextDue.getMonth() + 1);
+                    addRecurringCost({ description: desc, amount, frequency: recurringFreq, nextDue, isActive: true, seasonId: activeSeason?.id });
+                    showToast(t.seller.recurringCostAdded, 'success');
+                    setShowRecurringModal(false);
+                  }}
+                  style={({ pressed }) => [styles.modalConfirm, pressed && { opacity: 0.85 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Save recurring cost"
+                >
+                  <Text style={styles.modalConfirmText}>{t.seller.saveLabel}</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </KeyboardAwareScrollView>
         </Pressable>
       </Modal>)}
 
@@ -788,34 +1047,66 @@ const CostManagement: React.FC = () => {
           >
             <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>
-                  {editingCostId ? t.seller.editCost : t.seller.logCostHeader}
-                </Text>
-                <TouchableOpacity
+                <View style={styles.costTitleRow}>
+                  <Text style={styles.modalTitle}>
+                    {editingCostId ? 'edit ' : 'log '}<Text style={styles.modalTitleAccent}>cost</Text>
+                  </Text>
+                  <View style={styles.costDatePill}>
+                    <Feather name="calendar" size={12} color={C.textSecondary} />
+                    <Text style={styles.costDateText}>
+                      {editingCostId
+                        ? format(
+                            ingredientCosts.find((c) => c.id === editingCostId)?.date ?? new Date(),
+                            'dd MMM yyyy'
+                          )
+                        : format(new Date(), 'dd MMM yyyy')}
+                    </Text>
+                  </View>
+                </View>
+                <Pressable
                   onPress={() => {
                     lightTap();
                     setEditingCostId(null);
                     setShowCostModal(false);
                   }}
-                  style={styles.modalCloseBtn}
+                  style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   accessibilityRole="button"
                   accessibilityLabel="Close"
                 >
                   <Feather name="x" size={18} color={C.textMuted} />
-                </TouchableOpacity>
+                </Pressable>
               </View>
+              <Text style={styles.modalSubtitle}>{editingCostId ? 'update cost details' : 'track all your costs'}</Text>
 
-              <View style={styles.costDatePill}>
-                <Feather name="calendar" size={12} color={C.textSecondary} />
-                <Text style={styles.costDateText}>
-                  {editingCostId
-                    ? format(
-                        ingredientCosts.find((c) => c.id === editingCostId)?.date ?? new Date(),
-                        'dd MMM yyyy'
-                      )
-                    : format(new Date(), 'dd MMM yyyy')}
-                </Text>
+              {/* Scan receipt — shared camera/gallery source pills */}
+              <View style={styles.receiptRow}>
+                <ImageSourcePills
+                  onPick={handleScanReceipt}
+                  cameraLabel={t.seller.takePhoto}
+                  galleryLabel={t.seller.scanReceipt}
+                  loading={scanning}
+                  loadingLabel={t.seller.scanningReceipt}
+                />
+                {!scanning && (receiptUrl || receiptLocalUri) && (
+                  <Pressable
+                    onPress={() => setViewerUri(receiptUrl || receiptLocalUri)}
+                    style={styles.receiptThumbWrap}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.seller.viewReceipt}
+                  >
+                    <Image source={{ uri: (receiptUrl || receiptLocalUri)! }} style={styles.receiptThumb} contentFit="cover" />
+                    <Pressable
+                      onPress={() => { setReceiptUrl(null); setReceiptLocalUri(null); }}
+                      style={styles.receiptRemove}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.seller.removeReceipt}
+                    >
+                      <Feather name="x" size={11} color="#fff" />
+                    </Pressable>
+                  </Pressable>
+                )}
               </View>
 
               {/* Template suggestions */}
@@ -827,7 +1118,7 @@ const CostManagement: React.FC = () => {
                   </View>
                   <ScrollView style={styles.templateList} showsVerticalScrollIndicator={costTemplates.length > 4} nestedScrollEnabled>
                     {costTemplates.map((tmpl) => (
-                      <TouchableOpacity
+                      <Pressable
                         key={tmpl.id}
                         onPress={() => {
                           lightTap();
@@ -851,13 +1142,13 @@ const CostManagement: React.FC = () => {
                           ]);
                         }}
                         delayLongPress={400}
-                        style={styles.templateItem}
+                        style={({ pressed }) => [styles.templateItem, pressed && { opacity: 0.7 }]}
                         accessibilityRole="button"
                         accessibilityLabel={`Use template: ${tmpl.description}`}
                       >
                         <Text style={styles.templateItemName} numberOfLines={1}>{tmpl.description}</Text>
                         <Text style={styles.templateItemAmount}>{currency} {tmpl.amount.toFixed(2)}</Text>
-                      </TouchableOpacity>
+                      </Pressable>
                     ))}
                   </ScrollView>
                   <Text style={styles.templateHint}>{t.seller.templateHintTap}</Text>
@@ -874,6 +1165,8 @@ const CostManagement: React.FC = () => {
                     placeholder={t.seller.costDescPlaceholder}
                     placeholderTextColor={C.textMuted}
                     autoFocus
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.bronze}
                   />
                 </Animated.View>
               </View>
@@ -895,17 +1188,36 @@ const CostManagement: React.FC = () => {
                       placeholder="0.00"
                       placeholderTextColor={C.textMuted}
                       keyboardType="decimal-pad"
+                      keyboardAppearance={isDark ? 'dark' : 'light'}
+                      selectionColor={C.bronze}
                     />
                   </View>
                 </Animated.View>
               </View>
 
+              {/* Category dropdown */}
+              <View style={styles.fieldGroup}>
+                <CostCategoryPicker selected={costCategory} onSelect={setCostCategory} />
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>{t.seller.vendorLabel}</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={costVendor}
+                  onChangeText={setCostVendor}
+                  placeholder={t.seller.vendorPlaceholder}
+                  placeholderTextColor={C.textMuted}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.bronze}
+                />
+              </View>
+
               {/* Sync to personal toggle — only for new costs */}
               {!editingCostId && (
                 <>
-                  <TouchableOpacity
-                    style={styles.syncToggleRow}
-                    activeOpacity={0.7}
+                  <Pressable
+                    style={({ pressed }) => [styles.syncToggleRow, pressed && { opacity: 0.7 }]}
                     onPress={() => {
                       lightTap();
                       setSyncToPersonal((v) => !v);
@@ -917,13 +1229,12 @@ const CostManagement: React.FC = () => {
                         syncToPersonal && styles.syncToggleBoxActive,
                       ]}
                     >
-                      {syncToPersonal && <Feather name="check" size={12} color="#fff" />}
+                      {syncToPersonal && <Feather name="check" size={12} color={C.onAccent} />}
                     </View>
                     <Text style={styles.syncToggleText}>{t.seller.alsoRecordPersonal}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.syncToggleRow}
-                    activeOpacity={0.7}
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [styles.syncToggleRow, pressed && { opacity: 0.7 }]}
                     onPress={() => {
                       lightTap();
                       setSaveAsTemplate((v) => !v);
@@ -935,39 +1246,37 @@ const CostManagement: React.FC = () => {
                         saveAsTemplate && styles.syncToggleBoxActive,
                       ]}
                     >
-                      {saveAsTemplate && <Feather name="check" size={12} color="#fff" />}
+                      {saveAsTemplate && <Feather name="check" size={12} color={C.onAccent} />}
                     </View>
                     <Text style={styles.syncToggleText}>{t.seller.saveAsTemplate}</Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 </>
               )}
 
               <View style={styles.modalActions}>
-                <TouchableOpacity
+                <Pressable
                   onPress={() => {
                     lightTap();
                     setEditingCostId(null);
                     setSyncToPersonal(false);
                     setShowCostModal(false);
                   }}
-                  style={styles.modalCancel}
-                  activeOpacity={0.7}
+                  style={({ pressed }) => [styles.modalCancel, pressed && { opacity: 0.7 }]}
                   accessibilityRole="button"
                   accessibilityLabel="Cancel"
                 >
                   <Text style={styles.modalCancelText}>{t.seller.cmCancel}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                </Pressable>
+                <Pressable
                   onPress={handleSaveCost}
-                  style={styles.modalConfirm}
-                  activeOpacity={0.7}
+                  style={({ pressed }) => [styles.modalConfirm, pressed && { opacity: 0.85 }]}
                   accessibilityRole="button"
                   accessibilityLabel={editingCostId ? 'Save cost' : 'Log cost'}
                 >
                   <Text style={styles.modalConfirmText}>
                     {editingCostId ? t.seller.saveLabel : t.seller.logLabel}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
               </View>
             </Pressable>
           </KeyboardAwareScrollView>
@@ -985,16 +1294,20 @@ const CostManagement: React.FC = () => {
             >
               <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>{t.seller.editTemplate}</Text>
-                  <TouchableOpacity
+                  <Text style={styles.modalTitle}>
+                    {'edit '}<Text style={styles.modalTitleAccent}>template</Text>
+                  </Text>
+                  <Pressable
                     onPress={() => { lightTap(); setShowTemplateEditModal(false); }}
+                    style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     accessibilityRole="button"
                     accessibilityLabel="Close"
                   >
-                    <Feather name="x" size={20} color={C.textSecondary} />
-                  </TouchableOpacity>
+                    <Feather name="x" size={18} color={C.textMuted} />
+                  </Pressable>
                 </View>
+                <Text style={styles.modalSubtitle}>update your saved cost template</Text>
 
                 <TextInput
                   style={styles.modalInput}
@@ -1003,6 +1316,8 @@ const CostManagement: React.FC = () => {
                   placeholder={t.seller.templateDescPlaceholder}
                   placeholderTextColor={C.textMuted}
                   autoFocus
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.bronze}
                 />
 
                 <View style={styles.currencyInputRow}>
@@ -1014,18 +1329,19 @@ const CostManagement: React.FC = () => {
                     placeholder="0.00"
                     placeholderTextColor={C.textMuted}
                     keyboardType="decimal-pad"
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.bronze}
                   />
                 </View>
 
                 <View style={styles.modalActions}>
-                  <TouchableOpacity
+                  <Pressable
                     onPress={() => { lightTap(); setShowTemplateEditModal(false); }}
-                    style={styles.modalCancel}
-                    activeOpacity={0.7}
+                    style={({ pressed }) => [styles.modalCancel, pressed && { opacity: 0.7 }]}
                   >
                     <Text style={styles.modalCancelText}>{t.seller.cmCancel}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </Pressable>
+                  <Pressable
                     onPress={() => {
                       if (!templateDesc.trim() || !templateAmt.trim()) {
                         warningNotification();
@@ -1042,16 +1358,16 @@ const CostManagement: React.FC = () => {
                       showToast(t.seller.templateUpdated, 'success');
                       setShowTemplateEditModal(false);
                     }}
-                    style={styles.modalConfirm}
-                    activeOpacity={0.7}
+                    style={({ pressed }) => [styles.modalConfirm, pressed && { opacity: 0.85 }]}
                   >
                     <Text style={styles.modalConfirmText}>{t.seller.saveLabel}</Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 </View>
               </Pressable>
             </KeyboardAwareScrollView>
           </Pressable>
         )}
+
         </View>
       </Modal>)}
 
@@ -1067,20 +1383,20 @@ const CostManagement: React.FC = () => {
           >
             <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{t.seller.costBudget}</Text>
-                <TouchableOpacity
+                <Text style={styles.modalTitle}>
+                  {'cost '}<Text style={styles.modalTitleAccent}>budget</Text>
+                </Text>
+                <Pressable
                   onPress={() => { lightTap(); setShowBudgetModal(false); }}
+                  style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   accessibilityRole="button"
                   accessibilityLabel="Close"
                 >
-                  <Feather name="x" size={20} color={C.textSecondary} />
-                </TouchableOpacity>
+                  <Feather name="x" size={18} color={C.textMuted} />
+                </Pressable>
               </View>
-
-              <Text style={styles.budgetModalHint}>
-                {t.seller.cmBudgetHint.replace('{name}', activeSeason?.name || 'this season')}
-              </Text>
+              <Text style={styles.modalSubtitle}>{t.seller.cmBudgetHint.replace('{name}', activeSeason?.name || 'this season')}</Text>
 
               <View style={styles.currencyInputRow}>
                 <Text style={styles.currencyPrefix}>{currency}</Text>
@@ -1092,12 +1408,14 @@ const CostManagement: React.FC = () => {
                   placeholderTextColor={C.textMuted}
                   keyboardType="decimal-pad"
                   autoFocus
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.bronze}
                 />
               </View>
 
               <View style={styles.modalActions}>
                 {budget ? (
-                  <TouchableOpacity
+                  <Pressable
                     onPress={() => {
                       lightTap();
                       if (activeSeason) {
@@ -1106,38 +1424,44 @@ const CostManagement: React.FC = () => {
                       }
                       setShowBudgetModal(false);
                     }}
-                    style={styles.modalCancel}
-                    activeOpacity={0.7}
+                    style={({ pressed }) => [styles.modalCancel, pressed && { opacity: 0.7 }]}
                     accessibilityRole="button"
                     accessibilityLabel="Clear budget"
                   >
                     <Text style={styles.modalCancelText}>{t.seller.clearLabel}</Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 ) : (
-                  <TouchableOpacity
+                  <Pressable
                     onPress={() => { lightTap(); setShowBudgetModal(false); }}
-                    style={styles.modalCancel}
-                    activeOpacity={0.7}
+                    style={({ pressed }) => [styles.modalCancel, pressed && { opacity: 0.7 }]}
                     accessibilityRole="button"
                     accessibilityLabel="Cancel"
                   >
                     <Text style={styles.modalCancelText}>{t.seller.cmCancel}</Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 )}
-                <TouchableOpacity
+                <Pressable
                   onPress={handleSaveBudget}
-                  style={styles.modalConfirm}
-                  activeOpacity={0.7}
+                  style={({ pressed }) => [styles.modalConfirm, pressed && { opacity: 0.85 }]}
                   accessibilityRole="button"
                   accessibilityLabel="Save budget"
                 >
                   <Text style={styles.modalConfirmText}>{t.seller.saveLabel}</Text>
-                </TouchableOpacity>
+                </Pressable>
               </View>
             </Pressable>
           </KeyboardAwareScrollView>
         </Pressable>
       </Modal>)}
+
+      <ReceiptViewer uri={viewerUri} onClose={() => setViewerUri(null)} />
+
+      <PaywallModal
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+        feature="scan"
+        currentUsage={15 - getRemainingScans()}
+      />
     </View>
   );
 };
@@ -1156,6 +1480,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.lg,
     paddingBottom: SPACING['4xl'],
     gap: SPACING.md,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // ── Summary card ────────────────────────────────────────────
@@ -1380,7 +1707,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   transferBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // ── History card ────────────────────────────────────────────
@@ -1510,7 +1837,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   historyItemBottom: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: SPACING.xs,
+    marginTop: 2,
   },
   historyLinkedBadge: {
     flexDirection: 'row',
@@ -1537,21 +1865,21 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   fabText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // ── Modals ──────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: withAlpha(C.dimBg, 0.4),
   },
   modalScrollContent: {
     flexGrow: 1,
@@ -1561,11 +1889,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalContent: {
     backgroundColor: C.surface,
-    borderRadius: 20,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C.border,
     paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.xl,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.lg,
     width: '100%',
+    maxWidth: 420,
     gap: SPACING.lg,
   },
   modalHeader: {
@@ -1574,16 +1905,29 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'space-between',
   },
   modalTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
-    letterSpacing: -0.3,
+    letterSpacing: C === CALM_DARK ? -0.2 : -0.4,
+  },
+  modalTitleAccent: {
+    fontStyle: 'italic',
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.bronze,
+  },
+  modalSubtitle: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    letterSpacing: 0.1,
+    marginTop: -SPACING.sm,
   },
   modalCloseBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: C.background,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.06),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1592,20 +1936,19 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   fieldLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.8,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+    letterSpacing: 0.2,
   },
   modalInput: {
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
-    backgroundColor: C.background,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
   },
   modalInputError: {
     borderColor: BIZ.inputError,
@@ -1614,45 +1957,55 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalActions: {
     flexDirection: 'row',
     gap: SPACING.sm,
-    marginTop: SPACING.xs,
+    marginTop: SPACING.sm,
   },
   modalCancel: {
     flex: 1,
-    paddingVertical: SPACING.md,
-    backgroundColor: C.background,
-    borderRadius: RADIUS.lg,
-    minHeight: 48,
+    paddingVertical: SPACING.md + 2,
+    borderRadius: RADIUS.full,
+    minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
   },
   modalCancelText: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
   },
   modalConfirm: {
     flex: 2,
-    paddingVertical: SPACING.md,
-    backgroundColor: C.deepOlive,
-    borderRadius: RADIUS.lg,
-    minHeight: 48,
+    paddingVertical: SPACING.md + 2,
+    backgroundColor: C.bronze,
+    borderRadius: RADIUS.full,
+    minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalConfirmText: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
+  },
+  costTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: SPACING.sm,
+    flex: 1,
   },
   costDatePill: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
+    top: 4,
     gap: SPACING.xs,
     backgroundColor: C.background,
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
   },
   costDateText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1700,10 +2053,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   currencyInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.background,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingLeft: SPACING.md,
   },
   currencyInputRowError: {
@@ -1747,10 +2100,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
   },
-  budgetModalHint: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-  },
 
   // ─── Recurring costs ──────────────────────────────────────
   recurringCard: {
@@ -1758,7 +2107,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   recurringHeader: {
     flexDirection: 'row',
@@ -1830,21 +2179,29 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalCard: {
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.lg,
     marginHorizontal: SPACING.xl,
-    ...SHADOWS.lg,
+    maxWidth: 420,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   modalSave: {
-    backgroundColor: C.accent,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
+    backgroundColor: C.bronze,
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.md + 2,
     alignItems: 'center',
     marginTop: SPACING.xs,
+    minHeight: 52,
+    justifyContent: 'center',
   },
   modalSaveText: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
   freqPill: {
     flex: 1,
@@ -1853,7 +2210,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
   },
   freqPillActive: {
-    backgroundColor: withAlpha(C.accent, 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
   },
   freqPillText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1861,8 +2218,117 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   freqPillTextActive: {
-    color: C.accent,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+
+  // ─── Receipt + category UI ──────────────────────────────
+  receiptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  receiptThumbWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    overflow: 'visible',
+  },
+  receiptThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+  },
+  receiptRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: C.textPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyCatLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+  },
+  historyVendor: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    flexShrink: 1,
+  },
+  historyReceiptBtn: {
+    padding: 2,
+  },
+  filterChipsWrap: {
+    position: 'relative',
+    marginBottom: SPACING.md,
+  },
+  filterChipsContent: {
+    gap: SPACING.sm,
+    paddingRight: SPACING['2xl'],
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.background,
+  },
+  filterChipActive: {
+    backgroundColor: withAlpha(C.bronze, 0.12),
+    borderColor: C.bronze,
+  },
+  filterChipText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+  },
+  filterChipTextActive: {
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  filterFade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 28,
+  },
+  catBreakdown: {
+    marginTop: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  catBar: {
+    flexDirection: 'row',
+    height: 8,
+    borderRadius: RADIUS.sm,
+    overflow: 'hidden',
+    backgroundColor: C.border,
+  },
+  catLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.md,
+  },
+  catLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  catLegendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  catLegendText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
   },
 });
 

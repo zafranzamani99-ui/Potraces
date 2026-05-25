@@ -12,7 +12,7 @@ import { format } from 'date-fns';
 import { useBusinessStore } from '../../../store/businessStore';
 import { usePartTimeStore } from '../../../store/partTimeStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
 import { askPartTimeQuestion } from '../../../services/aiService';
 import { generateReportNarrative, ReportMonthData } from '../../../services/reportNarrative';
@@ -338,6 +338,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['5xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   sectionLabel: {
@@ -389,7 +392,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   periodTextActive: {
-    color: '#FFFFFF',
+    color: C.onAccent,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 

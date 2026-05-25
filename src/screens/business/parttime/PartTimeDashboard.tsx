@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
@@ -13,12 +14,13 @@ import { useBusinessStore } from '../../../store/businessStore';
 import { usePartTimeStore } from '../../../store/partTimeStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
 import { explainPartTimeMonth } from '../../../utils/explainPartTimeMonth';
 import WeekBar from '../../../components/common/WeekBar';
 import ModeToggle from '../../../components/common/ModeToggle';
 import PartTimeSetup from './PartTimeSetup';
+import BusinessHeroNumber from '../../../components/business/BusinessHeroNumber';
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -43,6 +45,7 @@ const PartTimeDashboard: React.FC = () => {
   const insets = useSafeAreaInsets();
 
   const [showPercentage, setShowPercentage] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const now = new Date();
   const monthStart = startOfMonth(now);
@@ -164,13 +167,25 @@ const PartTimeDashboard: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              setTimeout(() => setRefreshing(false), 600);
+            }}
+            tintColor={C.accent}
+            colors={[C.accent]}
+          />
+        }
       >
         <ModeToggle />
         {/* Zone 1 — Hero Number */}
-        <Text style={styles.heroAmount}>
-          {currency} {Math.round(totalIncome).toLocaleString()}
-        </Text>
-        <Text style={styles.heroLabel}>earned this month</Text>
+        <BusinessHeroNumber
+          amount={totalIncome}
+          label="earned this month"
+          prefix={currency}
+        />
 
         {/* Zone 2 — Stream Split */}
         <TouchableOpacity
@@ -316,19 +331,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['7xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
-  // Zone 1 — Hero
-  heroAmount: {
-    ...TYPE.hero,
-    color: C.textPrimary,
-    textAlign: 'center',
-  },
-  heroLabel: {
-    ...TYPE.muted,
-    textAlign: 'center',
-    marginTop: SPACING.xs,
-  },
 
   // Zone 2 — Stream Split
   splitSection: {
@@ -476,7 +483,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   fabText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 });
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 
 interface BusinessFABProps {
@@ -45,7 +45,7 @@ const BusinessFAB: React.FC<BusinessFABProps> = ({
         </TouchableOpacity>
       )}
       <TouchableOpacity
-        style={[styles.primary, { backgroundColor: accentColor }, SHADOWS.sm]}
+        style={[styles.primary, { backgroundColor: accentColor }, C === CALM_DARK ? SHADOWS.none : SHADOWS.sm]}
         onPress={onPress}
         activeOpacity={0.7}
         accessibilityLabel={label}
@@ -75,7 +75,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   primaryText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   secondary: {
     borderRadius: RADIUS.full,

@@ -13,8 +13,8 @@ import {
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useSettingsStore } from '../../store/settingsStore';
 import { DEFAULT_PAYMENT_METHODS } from '../../constants/taxCategories';
 import { CategoryOption } from '../../types';
@@ -39,6 +39,7 @@ interface PaymentMethodManagerProps {
 
 const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, onClose }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
   const getPaymentMethods = useSettingsStore((s) => s.getPaymentMethods);
@@ -217,6 +218,8 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
                 placeholderTextColor={C.neutral}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
 
               <Text style={styles.fieldLabel}>Icon</Text>
@@ -274,7 +277,7 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.textPrimary, 0.4),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -424,7 +427,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
   deleteButton: {
     flexDirection: 'row',

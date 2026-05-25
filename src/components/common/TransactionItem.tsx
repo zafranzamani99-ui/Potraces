@@ -1,11 +1,13 @@
 import React, { useRef, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
-import Swipeable from 'react-native-gesture-handler/Swipeable';
+import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { Feather } from '@expo/vector-icons';
-import { format, isValid } from 'date-fns';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, ICON_SIZE, withAlpha } from '../../constants';
-import WalletLogo from './WalletLogo';
+import { format, isValid, isToday, isYesterday } from 'date-fns';
+import Reanimated, { FadeIn } from 'react-native-reanimated';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, ICON_SIZE, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
+import WalletLogo from './WalletLogo';
 import { Transaction, CategoryOption, Wallet } from '../../types';
 import { lightTap } from '../../services/haptics';
 
@@ -21,8 +23,19 @@ interface TransactionItemProps {
   selectMode?: boolean;
   isFirst?: boolean;
   isLast?: boolean;
+  /** Row position in initial render — used for staggered entrance animation. */
+  index?: number;
 }
 
+/**
+ * Transaction row as a pill-shaped card — Phase C v2 redesign.
+ * Reference: user-supplied "My Transactions" screenshot — separated cards with
+ * generous icon, name + wallet sub-line, right-column amount-over-date.
+ *
+ * Always-do: S1 (RM tight-kerned), S5 (transaction as recorded moment),
+ * S7 (tabular-nums right-aligned), N8 (no red — olive for income, text-primary for expense).
+ * Motion: staggered FadeIn (M4 unfold-stagger).
+ */
 const TransactionItem: React.FC<TransactionItemProps> = ({
   transaction,
   currency,
@@ -35,24 +48,64 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   selectMode = false,
   isFirst = false,
   isLast = false,
+  index = 0,
 }) => {
-  const swipeableRef = useRef<Swipeable>(null);
+  const swipeableRef = useRef<SwipeableMethods>(null);
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const isExpense = transaction.type === 'expense';
   const editCount = transaction.editLog?.length ?? 0;
-  const lastEdit = editCount > 0 ? transaction.editLog![editCount - 1] : null;
-  const tags = transaction.tags?.slice(0, 3) ?? [];
+
+  // Casual date label for the right-bottom column.
+  // "today" / "yesterday" / "wed 28 apr" — Strava-borrowed lowercase register.
+  const casualDate = useMemo(() => {
+    if (!isValid(transaction.date)) return '—';
+    if (isToday(transaction.date)) return t.transactionList.today.toLowerCase();
+    if (isYesterday(transaction.date)) return t.transactionList.yesterday.toLowerCase();
+    return format(transaction.date, 'EEE d MMM').toLowerCase();
+  }, [transaction.date, t]);
+
+  // Time inline in the subline: "3:42 pm" — paired with wallet name.
+  const casualTime = useMemo(() => {
+    if (!isValid(transaction.date)) return '';
+    return format(transaction.date, 'h:mm a').toLowerCase();
+  }, [transaction.date]);
+
+  // Tags display — first 3 tags, no # prefix, mid-dot separated. "lunch · ali · kerja"
+  const tagDisplay = useMemo(() => {
+    if (!transaction.tags || transaction.tags.length === 0) return '';
+    return transaction.tags
+      .slice(0, 3)
+      .map((tag) => tag.replace(/^#/, '').trim())
+      .filter(Boolean)
+      .join(' · ');
+  }, [transaction.tags]);
+
+  // Time + day combined for the bottom-right slot. "3:42 pm today" / "3:42 pm wed 28 apr"
+  const timeDay = useMemo(() => {
+    if (!isValid(transaction.date)) return '';
+    return `${casualTime} ${casualDate}`;
+  }, [casualTime, casualDate, transaction.date]);
+
+  // Icon background tint — category color drives identity.
+  const iconBgColor = category?.color
+    ? withAlpha(category.color, 0.18)
+    : isExpense
+      ? withAlpha(C.textPrimary, C === CALM_DARK ? 0.10 : 0.06)
+      : withAlpha(C.deepOlive, 0.14);
+
+  const iconColor = category?.color || (isExpense ? C.textPrimary : C.deepOlive);
 
   const opacityAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = useCallback(() => {
     lightTap();
-    Animated.timing(opacityAnim, { toValue: 0.7, duration: 150, useNativeDriver: true }).start();
+    Animated.timing(opacityAnim, { toValue: 0.6, duration: 280, useNativeDriver: true }).start();
   }, [opacityAnim]);
 
   const handlePressOut = useCallback(() => {
-    Animated.timing(opacityAnim, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+    Animated.timing(opacityAnim, { toValue: 1, duration: 280, useNativeDriver: true }).start();
   }, [opacityAnim]);
 
   const handlePress = useCallback(() => {
@@ -73,10 +126,17 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
       style={styles.swipeDeleteBtn}
       onPress={handleSwipeDelete}
       activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={t.common.delete}
     >
-      <Feather name="trash-2" size={20} color="#fff" />
+      <Feather name="trash-2" size={20} color={C.surface} />
     </TouchableOpacity>
-  ), [handleSwipeDelete, styles.swipeDeleteBtn]);
+  ), [handleSwipeDelete, styles.swipeDeleteBtn, t, C.surface]);
+
+  // Format amount — RM tight-kerned to digits.
+  const sign = isExpense ? '−' : '+';
+  const amountStr = transaction.amount.toFixed(2);
+  const accessibilityLabel = `${transaction.description}, ${sign}${currency} ${amountStr}, ${casualDate}`;
 
   const content = (
     <TouchableOpacity
@@ -88,127 +148,120 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
       disabled={!onPress && !onLongPress}
       delayLongPress={400}
       accessibilityRole="button"
-      accessibilityLabel={`${category?.name || transaction.category} transaction: ${currency} ${transaction.amount.toFixed(2)}`}
-      accessibilityHint={onPress ? "Double tap to view details" : undefined}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={onPress ? t.common.tapToView : undefined}
     >
       <Animated.View style={[
-        styles.container,
+        styles.card,
         { opacity: opacityAnim },
-        !isFirst && styles.dividerTop,
-        isFirst && styles.firstItem,
-        isLast && styles.lastItem,
-        isSelected && styles.selectedBg,
+        isSelected && styles.cardSelected,
       ]}>
         {selectMode && (
           <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
-            {isSelected && <Feather name="check" size={14} color="#fff" />}
+            {isSelected && <Feather name="check" size={14} color={C.surface} />}
           </View>
         )}
 
-        <View
-          style={[
-            styles.iconContainer,
-            { backgroundColor: category?.color ? withAlpha(category.color, 0.08) : C.background }
-          ]}
-        >
+        {/* Left: 42px circular icon, color-extracted background tint, prominent. */}
+        <View style={[styles.iconWrap, { backgroundColor: iconBgColor }]}>
           <Feather
-            name={(category?.icon as keyof typeof Feather.glyphMap) || 'dollar-sign'}
+            name={(category?.icon as keyof typeof Feather.glyphMap) || (isExpense ? 'arrow-up-right' : 'arrow-down-left')}
             size={ICON_SIZE.sm}
-            color={category?.color || C.textPrimary}
+            color={iconColor}
           />
         </View>
-        <View style={styles.details}>
-          <View style={styles.categoryRow}>
-            <Text style={styles.category}>{category?.name || transaction.category}</Text>
-            {transaction.emotionalFlag && <View style={styles.emotionalDot} />}
-            {transaction.linkedDebtId && (
-              <View style={styles.linkedBadge}>
-                <Feather name="link" size={9} color={C.bronze} />
-              </View>
-            )}
+
+        {/* Middle body — 3-row vertical stack:
+              row 1: description + amount (top-aligned with each other)
+              row 2: tag line (only when present)
+              row 3: wallet/edited + time-day */}
+        <View style={styles.body}>
+          {/* Row 1: name + amount */}
+          <View style={styles.topRow}>
+            <View style={styles.nameRow}>
+              <Text style={styles.name} numberOfLines={1}>
+                {transaction.description || category?.name || '—'}
+              </Text>
+              {transaction.linkedDebtId && (
+                <Feather name="link" size={11} color={C.bronze} style={styles.nameBadge} />
+              )}
+              {transaction.emotionalFlag && <View style={styles.emotionalDot} />}
+            </View>
+            <Text style={[styles.amount, !isExpense && styles.amountIncome]} numberOfLines={1}>
+              {sign}{currency}{amountStr}
+            </Text>
           </View>
-          <Text style={styles.description} numberOfLines={1}>{transaction.description}</Text>
-          <Text style={styles.date}>
-            {isValid(transaction.date) ? format(transaction.date, 'HH:mm') : '—'}
-          </Text>
-          {lastEdit && (
-            <View style={styles.editedBadge}>
-              <Feather name="edit-2" size={9} color={C.bronze} />
-              <Text style={styles.editedBadgeText}>
-                edited {isValid(new Date(lastEdit.editedAt)) ? format(new Date(lastEdit.editedAt), 'MMM d, HH:mm') : '—'}
-                {editCount > 1 ? ` · ${editCount}×` : ''}
-                {lastEdit.previousType ? ` · was ${lastEdit.previousType}` : ''}
+
+          {/* Row 2: tag (only when present) */}
+          {tagDisplay ? (
+            <Text style={styles.tagLine} numberOfLines={1}>{tagDisplay}</Text>
+          ) : null}
+
+          {/* Row 3: wallet + edited (left) — time + day (right) */}
+          <View style={styles.bottomRow}>
+            <View style={styles.walletRow}>
+              {wallet && <WalletLogo wallet={wallet} size={14} />}
+              <Text style={styles.walletText} numberOfLines={1}>
+                {wallet?.name.toLowerCase() || category?.name?.toLowerCase() || ''}
+                {editCount > 0 ? (
+                  <Text style={styles.walletEditedNote}>
+                    {(wallet || category?.name) ? '  ·  ' : ''}{t.common.edited.toLowerCase()}
+                  </Text>
+                ) : null}
               </Text>
             </View>
-          )}
-          {wallet && (
-            <View style={styles.walletBadge}>
-              <WalletLogo wallet={wallet} size={14} />
-              <Text style={[styles.walletBadgeText, { color: wallet.color }]}>{wallet.name}</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.amountContainer}>
-          <Text style={[styles.amount, !isExpense && { color: C.accent }]}>
-            {isExpense ? '-' : '+'}{currency} {transaction.amount.toFixed(2)}
-          </Text>
-          {tags.length > 0 && (
-            <View style={styles.tagsRow}>
-              {tags.map((tag, i) => (
-                <View key={i} style={styles.tagContainer}>
-                  <Text style={styles.tag} numberOfLines={1}>{tag}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+            <Text style={styles.timeDay} numberOfLines={1}>{timeDay}</Text>
+          </View>
         </View>
       </Animated.View>
     </TouchableOpacity>
   );
 
+  // Staggered entrance — first 12 cards cascade at 50ms intervals (~600ms total),
+  // subsequent cards just fade in. Motion: M4 unfold-stagger.
+  const stagger = Math.min(index, 11) * 50;
+  const enteringAnim = FadeIn.duration(420).delay(stagger);
+
   if (onSwipeDelete && !selectMode) {
     return (
-      <Swipeable
-        ref={swipeableRef}
-        renderRightActions={renderRightActions}
-        overshootRight={false}
-        friction={2}
-      >
-        {content}
-      </Swipeable>
+      <Reanimated.View entering={enteringAnim}>
+        <ReanimatedSwipeable
+          ref={swipeableRef}
+          renderRightActions={renderRightActions}
+          overshootRight={false}
+          friction={1}
+          rightThreshold={40}
+        >
+          {content}
+        </ReanimatedSwipeable>
+      </Reanimated.View>
     );
   }
 
-  return content;
+  return <Reanimated.View entering={enteringAnim}>{content}</Reanimated.View>;
 };
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
-  container: {
+  // Pill-shaped card — generous radius, subtle shadow, surface background.
+  card: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start', // top-align so icon sits with the name on row 1
     backgroundColor: C.surface,
+    borderRadius: RADIUS.xl, // ~20px — high pill radius matching reference
     paddingHorizontal: SPACING.md,
-    paddingVertical: 12,
+    paddingVertical: SPACING.sm + 4, // 12 — generous internal padding
+    marginBottom: SPACING.sm + 2, // 10px gap between cards
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm), // subtle elevation per design-tokens
   },
-  dividerTop: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: C.border,
-  },
-  firstItem: {
-    borderTopLeftRadius: RADIUS.lg,
-    borderTopRightRadius: RADIUS.lg,
-  },
-  lastItem: {
-    borderBottomLeftRadius: RADIUS.lg,
-    borderBottomRightRadius: RADIUS.lg,
-  },
-  selectedBg: {
+  cardSelected: {
     backgroundColor: withAlpha(C.accent, 0.04),
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.25),
   },
   checkbox: {
     width: 22,
     height: 22,
-    borderRadius: 11,
+    borderRadius: RADIUS.full,
     borderWidth: 2,
     borderColor: C.border,
     alignItems: 'center',
@@ -219,64 +272,114 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.accent,
     borderColor: C.accent,
   },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  // Icon — 42px, prominent, color-tinted background per category.
+  iconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
   },
-  details: { flex: 1 },
-  categoryRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  emotionalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent },
-  category: {
-    fontSize: TYPOGRAPHY.size.base,
+  // Middle — vertical 3-row stack: name+amount, tag, wallet+timeDay
+  body: {
+    flex: 1,
+    minWidth: 0,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+  },
+  name: {
+    fontSize: TYPOGRAPHY.size.base, // 16
+    fontWeight: TYPOGRAPHY.weight.semibold, // bolder than base 500 — name carries the row
+    color: C.textPrimary,
+    flexShrink: 1,
+    letterSpacing: -0.1,
+  },
+  // Tag line (row 2) — slightly indented under name; muted but darker than wallet text
+  tagLine: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginTop: 4,
+    letterSpacing: 0.1,
+  },
+  // Bottom row (row 3) — wallet/edited (left) and time-day (right)
+  bottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    gap: SPACING.sm,
+  },
+  nameBadge: {
+    marginLeft: 6,
+  },
+  emotionalDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: C.bronze,
+    marginLeft: 6,
+  },
+  walletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  walletText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    flexShrink: 1,
+    letterSpacing: 0.1,
+  },
+  walletEditedNote: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.bronze,
+    fontStyle: 'italic',
+  },
+  // Amount — sits in the top row alongside the name (right-aligned via topRow's space-between)
+  amount: {
+    fontSize: TYPOGRAPHY.size.base, // 16
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
-    marginBottom: 1,
-  },
-  description: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, marginBottom: 1 },
-  date: { fontSize: TYPOGRAPHY.size.xs, color: C.textMuted },
-  amountContainer: { alignItems: 'flex-end', marginLeft: SPACING.sm },
-  amount: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
+    letterSpacing: -0.4, // RM tight-kerned to digits
   },
-  tagsRow: {
-    flexDirection: 'row',
-    gap: 4,
-    marginTop: 4,
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
+  amountIncome: {
+    color: C.deepOlive,
   },
-  tagContainer: {
-    backgroundColor: C.background,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: RADIUS.xs,
-    maxWidth: 70,
+  // Time + day — sits in the bottom row alongside wallet (right-aligned via bottomRow's space-between)
+  timeDay: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 0.1,
+    flexShrink: 0,
   },
-  tag: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.medium, color: C.textMuted },
-  editedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
-  editedBadgeText: { fontSize: 9, color: C.bronze },
-  walletBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
-  walletBadgeText: { fontSize: 10, fontWeight: TYPOGRAPHY.weight.medium },
-  linkedBadge: {
-    width: 15,
-    height: 15,
-    borderRadius: 3,
-    backgroundColor: withAlpha(C.bronze, 0.12),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // Pill-flush trash chip — full rounded corners, sits as a separate floating pill
+  // beside the card with a small left gap. No more sharp-rectangle white sliver.
   swipeDeleteBtn: {
     backgroundColor: C.neutral,
     justifyContent: 'center',
     alignItems: 'center',
-    width: 72,
+    width: 56,
+    marginLeft: SPACING.sm,
+    borderRadius: RADIUS.xl,
+    marginBottom: SPACING.sm + 2,
   },
 });
 

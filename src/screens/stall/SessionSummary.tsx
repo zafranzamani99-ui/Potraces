@@ -12,8 +12,8 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useStallStore } from '../../store/stallStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -21,11 +21,13 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallSession } from '../../utils/explainStallSession';
 import { RootStackParamList } from '../../types';
 import { useT } from '../../i18n';
+import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
 
 type SessionSummaryRoute = RouteProp<RootStackParamList, 'StallSessionSummary'>;
 
 const SessionSummary: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<SessionSummaryRoute>();
@@ -75,7 +77,7 @@ const SessionSummary: React.FC = () => {
     };
   }, [closedCount, lifetimeStats, summary]);
 
-  // Pre-fill transfer amount with session revenue
+  // Pre-fill transfer amount with session came-in total
   useEffect(() => {
     if (session && summary.totalRevenue > 0 && !session.transferredToPersonal) {
       setTransferAmount(summary.totalRevenue.toFixed(2));
@@ -150,7 +152,8 @@ const SessionSummary: React.FC = () => {
 
     for (const product of summary.productBreakdown) {
       const unitPrice = product.qtySold > 0 ? product.revenue / product.qtySold : 0;
-      message += `${product.productName}: ${product.qtySold} x ${currency}${unitPrice.toFixed(2)} = ${currency}${product.revenue.toFixed(2)}\n`;
+      const productCameIn = product.revenue;
+      message += `${product.productName}: ${product.qtySold} x ${currency}${unitPrice.toFixed(2)} = ${currency}${productCameIn.toFixed(2)}\n`;
     }
 
     try {
@@ -196,14 +199,15 @@ const SessionSummary: React.FC = () => {
           {format(session.closedAt || session.startedAt, 'EEEE, dd MMM yyyy')}
         </Text>
 
-        {/* Total revenue */}
-        <Text style={styles.revenueLabel}>{t.stall.totalRevenueLabel}</Text>
-        <Text
-          style={styles.revenueAmount}
-          accessibilityLabel={`Total revenue ${currency} ${summary.totalRevenue.toFixed(2)}`}
-        >
-          {currency} {summary.totalRevenue.toFixed(0)}
-        </Text>
+        {/* Total came in — canonical hero number */}
+        <View style={styles.heroWrap}>
+          <BusinessHeroNumber
+            amount={summary.totalRevenue}
+            label={t.stall.cameInLabel}
+            prefix={currency}
+            animated={false}
+          />
+        </View>
 
         {/* Duration, sale count */}
         <View style={styles.statsRow}>
@@ -226,7 +230,7 @@ const SessionSummary: React.FC = () => {
             <Text style={styles.splitLabel}>{t.stall.cashLabelCaps}</Text>
             <Text
               style={styles.splitValue}
-              accessibilityLabel={`Cash ${currency} ${summary.totalCash.toFixed(2)}`}
+              accessibilityLabel={`Cash came in ${currency} ${summary.totalCash.toFixed(2)}`}
             >
               {currency} {summary.totalCash.toFixed(0)}
             </Text>
@@ -237,7 +241,7 @@ const SessionSummary: React.FC = () => {
             <Text style={styles.splitLabel}>{t.stall.qrLabelCaps}</Text>
             <Text
               style={styles.splitValue}
-              accessibilityLabel={`QR payments ${currency} ${summary.totalQR.toFixed(2)}`}
+              accessibilityLabel={`QR came in ${currency} ${summary.totalQR.toFixed(2)}`}
             >
               {currency} {summary.totalQR.toFixed(0)}
             </Text>
@@ -248,22 +252,25 @@ const SessionSummary: React.FC = () => {
         {summary.productBreakdown.length > 0 && (
           <View style={styles.breakdownSection}>
             <Text style={styles.sectionLabel}>{t.stall.productsLabel}</Text>
-            {summary.productBreakdown.map((product, index) => (
-              <View key={`${product.productName}-${index}`} style={styles.productRow}>
-                <View style={styles.productInfo}>
-                  <Text style={styles.productName}>{product.productName}</Text>
-                  <Text style={styles.productQty}>
-                    {product.qtySold} {t.stall.soldLabel}
+            {summary.productBreakdown.map((product, index) => {
+              const productCameIn = product.revenue;
+              return (
+                <View key={`${product.productName}-${index}`} style={styles.productRow}>
+                  <View style={styles.productInfo}>
+                    <Text style={styles.productName}>{product.productName}</Text>
+                    <Text style={styles.productQty}>
+                      {product.qtySold} {t.stall.soldLabel}
+                    </Text>
+                  </View>
+                  <Text
+                    style={styles.productCameIn}
+                    accessibilityLabel={`${product.productName} came in ${currency} ${productCameIn.toFixed(2)}`}
+                  >
+                    {currency} {productCameIn.toFixed(2)}
                   </Text>
                 </View>
-                <Text
-                  style={styles.productRevenue}
-                  accessibilityLabel={`${product.productName} revenue ${currency} ${product.revenue.toFixed(2)}`}
-                >
-                  {currency} {product.revenue.toFixed(2)}
-                </Text>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
@@ -275,11 +282,11 @@ const SessionSummary: React.FC = () => {
           </View>
         )}
 
-        {/* Comparison to average */}
+        {/* Comparison to average came-in */}
         {comparison && (
           <View style={styles.comparisonCard}>
             <Text style={styles.comparisonText}>
-              {t.stall.revenueVsAverage
+              {t.stall.cameInVsAverage
                 .replace('{curr}', currency)
                 .replace('{amount}', summary.totalRevenue.toFixed(0))
                 .replace('{curr2}', currency)
@@ -316,6 +323,8 @@ const SessionSummary: React.FC = () => {
                 keyboardType="decimal-pad"
                 selectTextOnFocus
                 accessibilityLabel="Transfer amount"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
             </View>
             <TouchableOpacity
@@ -387,6 +396,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['4xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // ─── Header ──────────────────────────────────────────────────
@@ -402,16 +414,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING['3xl'],
   },
 
-  // ─── Revenue ─────────────────────────────────────────────────
-  revenueLabel: {
-    ...TYPE.label,
-    marginBottom: SPACING.xs,
-  },
-  revenueAmount: {
-    ...TYPE.balance,
-    color: C.textPrimary,
+  // ─── Came in (hero) ──────────────────────────────────────────
+  heroWrap: {
     marginBottom: SPACING.xl,
-    fontSize: TYPOGRAPHY.size['4xl'],
+    alignItems: 'center',
   },
 
   // ─── Stats row ───────────────────────────────────────────────
@@ -454,6 +460,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
   splitDivider: {
     width: 1,
@@ -489,7 +496,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     ...TYPE.muted,
     marginTop: 2,
   },
-  productRevenue: {
+  productCameIn: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
@@ -593,6 +600,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
     backgroundColor: C.surface,
     borderWidth: 1,
     borderColor: C.border,
@@ -612,7 +620,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   transferButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   skipLink: {
     alignItems: 'center',
@@ -674,7 +682,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   doneButtonText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 
   // ─── Empty state ─────────────────────────────────────────────

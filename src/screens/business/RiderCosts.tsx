@@ -11,13 +11,14 @@ import { Feather } from '@expo/vector-icons';
 import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { RiderCost } from '../../types';
 
 const RiderCostsScreen: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
 
@@ -146,6 +147,8 @@ const RiderCostsScreen: React.FC = () => {
               placeholder={t.business.riderAmountPlaceholder}
               placeholderTextColor={C.textSecondary}
               autoFocus
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <TouchableOpacity onPress={handleAdd} style={styles.doneButton}>
               <Text style={styles.doneText}>{t.business.riderDone}</Text>
@@ -154,7 +157,7 @@ const RiderCostsScreen: React.FC = () => {
         </View>
       ) : (
         <TouchableOpacity style={styles.addButton} onPress={() => setShowAdd(true)}>
-          <Feather name="plus" size={20} color="#fff" />
+          <Feather name="plus" size={20} color={C.onAccent} />
           <Text style={styles.addButtonText}>{t.business.riderAddCost}</Text>
         </TouchableOpacity>
       )}
@@ -171,6 +174,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     padding: SPACING['2xl'],
     gap: SPACING.lg,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   stat: {
     flex: 1,
@@ -192,6 +198,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   listContent: {
     padding: SPACING.lg,
     gap: SPACING.sm,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   costRow: {
     flexDirection: 'row',
@@ -253,7 +262,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   typeChipTextSelected: {
-    color: '#fff',
+    color: C.onAccent,
   },
   addRow: {
     flexDirection: 'row',
@@ -277,7 +286,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   doneText: {
-    color: '#fff',
+    color: C.onAccent,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
@@ -294,7 +303,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   addButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 });
 

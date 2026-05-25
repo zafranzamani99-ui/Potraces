@@ -14,12 +14,13 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useStallStore } from '../../store/stallStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { RegularCustomer } from '../../types';
 
 const RegularCustomers: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const {
     regularCustomers,
@@ -149,6 +150,8 @@ const RegularCustomers: React.FC = () => {
                 placeholderTextColor={C.textSecondary}
                 autoFocus
                 accessibilityLabel="Customer name"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
               <TextInput
                 style={styles.editInput}
@@ -157,6 +160,8 @@ const RegularCustomers: React.FC = () => {
                 placeholder="usual order (optional)"
                 placeholderTextColor={C.textSecondary}
                 accessibilityLabel="Usual order"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
               <TextInput
                 style={styles.editInput}
@@ -165,6 +170,8 @@ const RegularCustomers: React.FC = () => {
                 placeholder="note (optional)"
                 placeholderTextColor={C.textSecondary}
                 accessibilityLabel="Note about this customer"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
 
               <View style={styles.editActions}>
@@ -286,6 +293,8 @@ const RegularCustomers: React.FC = () => {
               placeholderTextColor={C.textSecondary}
               autoFocus
               accessibilityLabel="New customer name"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <TextInput
               style={styles.addInput}
@@ -294,6 +303,8 @@ const RegularCustomers: React.FC = () => {
               placeholder="e.g. 2 kuih seri muka + teh tarik"
               placeholderTextColor={C.textSecondary}
               accessibilityLabel="Usual order, optional"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <TextInput
               style={styles.addInput}
@@ -302,6 +313,8 @@ const RegularCustomers: React.FC = () => {
               placeholder="note (optional)"
               placeholderTextColor={C.textSecondary}
               accessibilityLabel="Note, optional"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <TouchableOpacity
               style={[
@@ -368,6 +381,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING.lg,
     paddingBottom: SPACING['4xl'],
     gap: SPACING.md,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // ─── Header ────────────────────────────────────────────
@@ -384,6 +400,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
   subheading: {
     ...TYPE.muted,
@@ -434,7 +451,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   addSaveText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 
   // ─── Customer card ────────────────────────────────────
@@ -469,6 +486,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
   usualOrder: {
     ...TYPE.insight,
@@ -552,7 +570,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveActionText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 
   // ─── Empty state ───────────────────────────────────────

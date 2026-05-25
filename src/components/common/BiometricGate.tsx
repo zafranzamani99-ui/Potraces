@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useCalm } from '../../hooks/useCalm';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 
 /**
  * Gates the app behind a biometric prompt when:
@@ -97,8 +97,8 @@ const BiometricGate: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             activeOpacity={0.85}
             disabled={authenticating}
           >
-            <Feather name="unlock" size={16} color="#fff" />
-            <Text style={styles.btnText}>{authenticating ? 'Authenticating…' : 'Unlock'}</Text>
+            <Feather name="unlock" size={16} color={C.onAccent} />
+            <Text style={[styles.btnText, { color: C.onAccent }]}>{authenticating ? 'Authenticating…' : 'Unlock'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   },
   iconCircle: {
     width: 72, height: 72, borderRadius: 36,
-    backgroundColor: 'rgba(79,81,4,0.08)',
+    backgroundColor: withAlpha(CALM.accent, 0.08),
     alignItems: 'center', justifyContent: 'center',
     marginBottom: SPACING.lg,
   },
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.full,
   },
-  btnText: { color: '#fff', fontWeight: TYPOGRAPHY.weight.semibold, fontSize: 15 },
+  btnText: { fontWeight: TYPOGRAPHY.weight.semibold, fontSize: 15 },
 });
 
 export default BiometricGate;

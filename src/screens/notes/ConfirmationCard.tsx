@@ -130,9 +130,12 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
           ) : null}
         </View>
 
-        {/* Right: amount */}
+        {/* Right: amount + edit hint */}
         {amount > 0 && (
           <Text style={styles.amount}>{currency} {amount.toFixed(2)}</Text>
+        )}
+        {onEdit && (
+          <Feather name="edit-2" size={12} color={withAlpha(C.textMuted, 0.45)} />
         )}
       </TouchableOpacity>
 
@@ -162,7 +165,7 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
           onPress={handleConfirm}
           activeOpacity={0.7}
         >
-          <Feather name="check" size={13} color="#fff" />
+          <Feather name="check" size={13} color={C.onAccent} />
           <Text style={styles.confirmText}>save</Text>
         </TouchableOpacity>
       </View>
@@ -246,7 +249,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   confirmText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
   doneRow: {
     flexDirection: 'row',

@@ -107,8 +107,20 @@ export interface SellerProduct {
   trackStock?: boolean;
   stockQuantity?: number;
   imageUrl?: string;
+  category?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export type StockAdjustmentReason = 'spoilage' | 'damage' | 'received' | 'correction' | 'returned';
+
+export interface StockAdjustment {
+  id: string;
+  productId: string;
+  delta: number;
+  reason: StockAdjustmentReason;
+  note?: string;
+  date: Date;
 }
 
 export interface DepositEntry {
@@ -163,7 +175,20 @@ export interface Season {
   note?: string;
   costBudget?: number;
   revenueTarget?: number;
+  emoji?: string;
+  recurringName?: string;
   createdAt: Date;
+}
+
+export interface SellerCostCategory {
+  id: string;
+  name: string;
+  nameBm: string;
+  icon: string;
+  color: string;
+  isDefault: boolean;
+  isProtected?: boolean;
+  sortOrder: number;
 }
 
 export interface IngredientCost {
@@ -175,6 +200,10 @@ export interface IngredientCost {
   seasonId?: string;
   syncedToPersonal?: boolean;
   personalTransactionId?: string;
+  category?: string;
+  receiptUrl?: string;
+  receiptLocalUri?: string;
+  vendor?: string;
 }
 
 export type RecurringFrequency = 'weekly' | 'biweekly' | 'monthly';
@@ -188,6 +217,7 @@ export interface RecurringCost {
   seasonId?: string;
   isActive: boolean;
   createdAt: Date;
+  category?: string;
 }
 
 export interface SellerCustomer {
@@ -204,6 +234,7 @@ export interface CostTemplate {
   id: string;
   description: string;
   amount: number;
+  category?: string;
 }
 
 export interface SellerState {
@@ -216,12 +247,17 @@ export interface SellerState {
   costTemplates: CostTemplate[];
   recurringCosts: RecurringCost[];
   productOrder: string[];
+  stockAdjustments: StockAdjustment[];
+  costCategories: SellerCostCategory[];
+  costCategoriesSeeded: boolean;
 
   // Pending deletion tracking — prevents pullAll from re-adding deleted items
   _deletedProductIds: string[];
   _deletedOrderIds: string[];
   _deletedSeasonIds: string[];
   _deletedCustomerIds: string[];
+  _deletedCostIds: string[];
+  _deletedCostCategoryIds: string[];
 
   addProduct: (product: Omit<SellerProduct, 'id' | 'totalSold' | 'createdAt' | 'updatedAt'>) => void;
   updateProduct: (id: string, updates: Partial<SellerProduct>) => void;
@@ -257,6 +293,8 @@ export interface SellerState {
   deleteIngredientCost: (id: string) => void;
   markCostSynced: (id: string, personalTransactionId: string) => void;
 
+  addStockAdjustment: (adj: Omit<StockAdjustment, 'id'>) => void;
+
   addCostTemplate: (template: Omit<CostTemplate, 'id'>) => void;
   updateCostTemplate: (id: string, updates: Partial<Omit<CostTemplate, 'id'>>) => void;
   deleteCostTemplate: (id: string) => void;
@@ -288,6 +326,17 @@ export interface SellerState {
   unhideUnit: (unit: string) => void;
   unitOrder: string[];
   setUnitOrder: (order: string[]) => void;
+
+  productCategories: string[];
+  addProductCategory: (cat: string) => void;
+  deleteProductCategory: (cat: string) => void;
+  renameProductCategory: (oldName: string, newName: string) => void;
+
+  addCostCategory: (cat: Omit<SellerCostCategory, 'id' | 'sortOrder' | 'isDefault'>) => void;
+  updateCostCategory: (id: string, updates: Partial<Omit<SellerCostCategory, 'id'>>) => void;
+  deleteCostCategory: (id: string) => void;
+  reorderCostCategories: (ids: string[]) => void;
+  getCostCategory: (id?: string) => SellerCostCategory;
 
   getSeasonOrders: (seasonId: string) => SellerOrder[];
   getSeasonCosts: (seasonId: string) => IngredientCost[];
@@ -434,7 +483,6 @@ export type RootStackParamList = {
   SeasonSummary: { seasonId?: string } | undefined;
   PastSeasons: undefined;
   SellerCosts: undefined;
-  SellerCustomersStack: undefined;
   Goals: undefined;
   FinancialPulse: undefined;
   ReceiptHistory: undefined;
@@ -570,7 +618,9 @@ export interface SubscriptionPayment {
   paidAt: Date;
   amount: number;
   transactionId?: string;
+  walletId?: string;
   note?: string;
+  undoneAt?: Date;
 }
 
 export interface Subscription {
@@ -589,6 +639,8 @@ export interface Subscription {
   completedInstallments?: number;
   walletId?: string;
   note?: string;
+  imageUri?: string;
+  iconName?: string;
   outstandingBalance?: number;
   lastPaidAt?: Date;
   paymentHistory?: SubscriptionPayment[];
@@ -775,6 +827,13 @@ export interface PaymentEdit {
   previousNote?: string;
 }
 
+export interface DebtEdit {
+  editedAt: Date;
+  field: 'totalAmount' | 'description' | 'contact';
+  previousValue: string | number;
+  newValue: string | number;
+}
+
 export interface Payment {
   id: string;
   amount: number;
@@ -789,6 +848,7 @@ export interface Payment {
 
 export interface Debt {
   id: string;
+  groupId?: string;
   contact: Contact;
   type: DebtType;
   totalAmount: number;
@@ -802,6 +862,10 @@ export interface Debt {
   splitId?: string;
   createdAt: Date;
   updatedAt: Date;
+  editLog?: DebtEdit[];
+  /** User-archived — hidden from default views unless "show archive" is on. */
+  isArchived?: boolean;
+  archivedAt?: Date;
 }
 
 export interface SplitParticipant {
@@ -834,6 +898,9 @@ export interface SplitExpense {
   updatedAt: Date;
   status?: 'draft' | 'final';
   draftReceipt?: ExtractedReceipt;
+  /** User-archived — hidden from default views unless "show archive" is on. */
+  isArchived?: boolean;
+  archivedAt?: Date;
 }
 
 // Receipt Scanner Types
@@ -854,6 +921,16 @@ export interface ExtractedReceipt {
   paymentMethod?: string;
   suggestedExpenseCategory?: string;
   suggestedTaxCategory?: string;
+}
+
+export interface SellerReceiptResult {
+  vendor?: string;
+  items: ReceiptItem[];
+  total: number;
+  date?: string;
+  invoiceNumber?: string;
+  suggestedCategory?: string; // a DEFAULT_COST_CATEGORIES id, validated by the caller
+  rawText: string;
 }
 
 // ─── RECEIPT & TAX TYPES ────────────────────────────────────
@@ -905,7 +982,6 @@ export interface ReceiptDraft {
   date: Date;
   category: string;
   myTaxCategory: string;
-  paymentMethod: string | null;
   location: string;
   imageUri: string | null;
   savedAt: Date;
@@ -999,7 +1075,8 @@ export interface PersonalState {
   deleteBudget: (id: string) => void;
   incrementInstallment: (id: string) => void;
   toggleSubscriptionPause: (id: string) => void;
-  markSubscriptionPaid: (id: string) => void;
+  markSubscriptionPaid: (id: string, transactionId?: string, walletId?: string) => void;
+  undoSubscriptionPayment: (subId: string, paymentId: string) => void;
   addTransferIncome: (transfer: Transfer) => void;
   addGoal: (goal: Omit<Goal, 'id' | 'currentAmount' | 'contributions' | 'milestones' | 'createdAt' | 'updatedAt'>) => void;
   updateGoal: (id: string, updates: Partial<Goal>) => void;
@@ -1058,13 +1135,17 @@ export interface DebtState {
   addDebt: (debt: Omit<Debt, 'id' | 'paidAmount' | 'status' | 'payments' | 'createdAt' | 'updatedAt'>) => string;
   updateDebt: (id: string, updates: Partial<Debt>) => void;
   deleteDebt: (id: string) => void;
+  archiveDebt: (id: string) => void;
+  unarchiveDebt: (id: string) => void;
   addPayment: (debtId: string, payment: Omit<Payment, 'id' | 'createdAt'>) => string | null;
   deletePayment: (debtId: string, paymentId: string) => void;
-  updatePayment: (debtId: string, paymentId: string, updates: Partial<Pick<Payment, 'amount' | 'note' | 'linkedTransactionId' | 'walletId'>>) => void;
+  updatePayment: (debtId: string, paymentId: string, updates: Partial<Pick<Payment, 'amount' | 'note' | 'linkedTransactionId' | 'walletId' | 'tipAmount'>>) => void;
 
   addSplit: (split: Omit<SplitExpense, 'id' | 'createdAt' | 'updatedAt'>) => string;
   updateSplit: (id: string, updates: Partial<SplitExpense>) => void;
   deleteSplit: (id: string) => void;
+  archiveSplit: (id: string) => void;
+  unarchiveSplit: (id: string) => void;
   markSplitParticipantPaid: (splitId: string, contactId: string) => void;
   unmarkSplitParticipantPaid: (splitId: string, contactId: string) => void;
 

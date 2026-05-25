@@ -3,7 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   Animated,
   Easing,
   Linking,
@@ -25,7 +25,7 @@ import { startOfMonth, endOfMonth, subMonths, subDays, isWithinInterval, isToday
 import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { explainSellerMonth } from '../../utils/explainSellerMonth';
 import { lightTap, mediumTap } from '../../services/haptics';
@@ -37,6 +37,8 @@ import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 
 import { useFadeSlide } from '../../utils/fadeSlide';
+import { useSeasonInsights } from '../../hooks/useSeasonInsights';
+import SeasonStartSheet from '../../components/seller/SeasonStartSheet';
 
 // ─── Component ───────────────────────────────────────────────
 const SellerDashboard: React.FC = () => {
@@ -59,7 +61,9 @@ const SellerDashboard: React.FC = () => {
   const inRange = (d: Date, start: Date, end: Date) =>
     isWithinInterval(d instanceof Date ? d : new Date(d), { start, end });
 
-  const activeSeason = seasons.find((s) => s.isActive);
+  const activeSeason = seasons.find((s) => s.isActive) || null;
+  const seasonInsights = useSeasonInsights(activeSeason);
+  const [showStartSheet, setShowStartSheet] = useState(false);
 
   // Breathing animation for active season dot
   const seasonBreathAnim = useRef(new Animated.Value(1)).current;
@@ -126,6 +130,21 @@ const SellerDashboard: React.FC = () => {
     };
   }, [currentOrders, currentCosts]);
 
+  const heroKept = activeSeason && seasonInsights ? seasonInsights.kept : kept;
+  const heroCosts = activeSeason && seasonInsights ? seasonInsights.costs : totalCosts;
+
+  const { seasonWeekly, seasonSparkMax } = useMemo(() => {
+    if (!activeSeason) return { seasonWeekly: [] as { date: Date; count: number; label: string }[], seasonSparkMax: 1 };
+    const sOrders = orders.filter((o) => o.seasonId === activeSeason.id);
+    const days: { date: Date; count: number; label: string }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = startOfDay(subDays(now, i));
+      const count = sOrders.filter((o) => isSameDay(o.date instanceof Date ? o.date : new Date(o.date), d)).length;
+      days.push({ date: d, count, label: format(d, 'EEE').slice(0, 3) });
+    }
+    return { seasonWeekly: days, seasonSparkMax: Math.max(...days.map((d) => d.count), 1) };
+  }, [orders, activeSeason]);
+
   // Production list — aggregated items across pending/confirmed/ready orders
   const productionList = useMemo(() => {
     const counts: Record<string, { name: string; qty: number; unit: string }> = {};
@@ -191,7 +210,7 @@ const SellerDashboard: React.FC = () => {
 
   const hasUrgency = deliverToday.length > 0 || overdueOrders.length > 0 || deliverTomorrow.length > 0;
 
-  // ── Today's earnings ──────────────────────────────────────
+  // ── Today's came in ──────────────────────────────────────
   const todaysOrders = useMemo(
     () => orders.filter((o) => {
       const d = o.date instanceof Date ? o.date : new Date(o.date);
@@ -199,7 +218,7 @@ const SellerDashboard: React.FC = () => {
     }),
     [orders]
   );
-  const todaysEarnings = todaysOrders.filter(o => o.isPaid).reduce((s, o) => s + o.totalAmount, 0);
+  const todaysCameIn = todaysOrders.filter(o => o.isPaid).reduce((s, o) => s + o.totalAmount, 0);
 
   // ── Today's deliveries with addresses ─────────────────────
   const todaysDeliveries = useMemo(() => {
@@ -290,7 +309,7 @@ const SellerDashboard: React.FC = () => {
     return ((kept - prevKept) / Math.abs(prevKept)) * 100;
   }, [kept, prevKept, previousOrders.length]);
 
-  // ── Profit margin ───────────────────────────────────────
+  // ── Kept rate ───────────────────────────────────────
   const { keptRate, totalOrderValue, collectionRate } = useMemo(() => {
     const _keptRate = totalIncome > 0 ? (kept / totalIncome) * 100 : null;
     const _totalOrderValue = currentOrders.reduce((s, o) => s + o.totalAmount, 0);
@@ -375,12 +394,57 @@ const SellerDashboard: React.FC = () => {
   const pipelineAnim = useFadeSlide(160);
   const inflowAnim = useFadeSlide(200);
   const productionAnim = useFadeSlide(180);
-  const earningsAnim = useFadeSlide(30);
+  const cameInAnim = useFadeSlide(30);
   const sparklineAnim = useFadeSlide(40);
   const deliveryRouteAnim = useFadeSlide(200);
   const topCustomerAnim = useFadeSlide(220);
   const emptyStateAnim = useFadeSlide(80);
   const gettingStartedAnim = useFadeSlide(80);
+  const breakEvenAnim = useFadeSlide(100);
+
+  // Hero count-up — first session open only, 400ms, hero number only
+  const hasCountedUp = useRef(false);
+  const heroCountRef = useRef(new Animated.Value(0)).current;
+  const [displayKept, setDisplayKept] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (hasCountedUp.current) {
+      setDisplayKept(null);
+      return;
+    }
+    if (heroKept === 0) return;
+    hasCountedUp.current = true;
+    const listener = heroCountRef.addListener(({ value }) => {
+      setDisplayKept(Math.round(value));
+    });
+    Animated.timing(heroCountRef, {
+      toValue: heroKept,
+      duration: 400,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start(() => {
+      lightTap();
+      setDisplayKept(null);
+    });
+    return () => heroCountRef.removeListener(listener);
+  }, [heroKept]);
+
+  // MoM badge pop — only when positive (celebrate wins, quiet on losses)
+  const momPopAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (momDelta !== null && momDelta >= 0) {
+      momPopAnim.setValue(0);
+      Animated.spring(momPopAnim, {
+        toValue: 1,
+        damping: 15,
+        stiffness: 400,
+        delay: 500,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      momPopAnim.setValue(1);
+    }
+  }, [momDelta !== null]);
 
   // ── Maps app picker (delivery route) ─────────────────────
   // Update after deploying to Vercel — replace with your actual Vercel URL
@@ -533,9 +597,8 @@ const SellerDashboard: React.FC = () => {
         <Animated.View style={seasonAnim}>
           {activeSeason ? (
             <View style={styles.seasonRow}>
-              <TouchableOpacity
-                style={styles.seasonPill}
-                activeOpacity={0.7}
+              <Pressable
+                style={({ pressed }) => [styles.seasonPill, pressed && { opacity: 0.7 }]}
                 onPress={() => {
                   lightTap();
                   navigation.getParent()?.navigate('SeasonSummary', { seasonId: activeSeason.id });
@@ -544,55 +607,73 @@ const SellerDashboard: React.FC = () => {
                 accessibilityLabel={`Active season: ${activeSeason.name}. Tap to view summary.`}
               >
                 <Animated.View style={{ opacity: seasonBreathAnim }}>
-                  <Feather name="calendar" size={20} color={C.accent} />
+                  <Feather name="calendar" size={20} color={C.bronze} />
                 </Animated.View>
                 <Text style={styles.seasonPillText}>{activeSeason.name}</Text>
                 <Feather name="chevron-right" size={14} color={C.textMuted} />
-              </TouchableOpacity>
-              <TouchableOpacity
+              </Pressable>
+              <Pressable
                 onPress={goToPastSeasons}
-                activeOpacity={0.7}
+                style={({ pressed }) => pressed && { opacity: 0.7 }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 accessibilityRole="button"
                 accessibilityLabel="View all seasons"
               >
                 <Text style={styles.viewAllSeasonsText}>view all seasons</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
           ) : (
-            <TouchableOpacity
-              style={styles.seasonPillEmpty}
-              activeOpacity={0.6}
-              onPress={goToPastSeasons}
+            <Pressable
+              style={({ pressed }) => [styles.seasonStatusRow, pressed && { opacity: 0.7 }]}
+              onPress={() => { lightTap(); setShowStartSheet(true); }}
               accessibilityRole="button"
-              accessibilityLabel="No active season. Tap to manage seasons."
+              accessibilityLabel="Start a new season"
             >
-              <Feather name="calendar" size={13} color={C.textMuted} />
-              <Text style={styles.seasonPillEmptyText}>no active season</Text>
-            </TouchableOpacity>
+              <View style={styles.seasonStatusLeft}>
+                <Feather name="calendar" size={15} color={C.textMuted} />
+                <Text style={styles.seasonStatusText}>no season running</Text>
+              </View>
+              <View style={styles.seasonStatusRight}>
+                <Text style={styles.seasonStatusAction}>start</Text>
+                <Feather name="arrow-right" size={14} color={C.bronze} />
+              </View>
+            </Pressable>
           )}
         </Animated.View>
 
         {/* ── Hero section + sparkline ──────────────────── */}
         <Animated.View style={[styles.heroSection, heroAnim]}>
           <View style={styles.heroLabelRow}>
-            <Text style={styles.heroLabel}>PROFIT THIS MONTH</Text>
-            <View style={{ flex: 1 }} />
-            {momDelta !== null && (
-              <View style={styles.heroMomBadge}>
-                <Feather
-                  name={momDelta >= 0 ? 'trending-up' : 'trending-down'}
-                  size={12}
-                  color={momDelta >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark)}
-                />
-                <Text style={[styles.heroMomText, { color: momDelta >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark) }]}>
-                  {momDelta >= 0 ? '+' : ''}{momDelta.toFixed(0)}%
+            {activeSeason && seasonInsights ? (
+              <>
+                <Text style={styles.heroLabel}>
+                  {activeSeason.emoji ? `${activeSeason.emoji} ` : ''}{activeSeason.name.toUpperCase()}
                 </Text>
-              </View>
+                <View style={{ flex: 1 }} />
+                <View style={styles.seasonDayBadge}>
+                  <Text style={styles.seasonDayBadgeText}>day {seasonInsights.dayNumber}</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.heroLabel}>KEPT THIS MONTH</Text>
+                <View style={{ flex: 1 }} />
+                {momDelta !== null && (
+                  <Animated.View style={[styles.heroMomBadge, { transform: [{ scale: momPopAnim }] }]}>
+                    <Feather
+                      name={momDelta >= 0 ? 'trending-up' : 'trending-down'}
+                      size={12}
+                      color={momDelta >= 0 ? C.bronze : semantic(BIZ_SAFE.loss, isDark)}
+                    />
+                    <Text style={[styles.heroMomText, { color: momDelta >= 0 ? C.bronze : semantic(BIZ_SAFE.loss, isDark) }]}>
+                      {momDelta >= 0 ? '+' : ''}{momDelta.toFixed(0)}%
+                    </Text>
+                  </Animated.View>
+                )}
+              </>
             )}
-            <TouchableOpacity
-              style={styles.qrButton}
-              activeOpacity={0.7}
+            <Pressable
+              style={({ pressed }) => [styles.qrButton, pressed && { opacity: 0.7 }]}
               onPress={() => {
                 lightTap();
                 if (paymentQrs.length > 0) {
@@ -613,11 +694,10 @@ const SellerDashboard: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Show payment QR"
             >
-              <Feather name="maximize" size={20} color={paymentQrs.length > 0 ? C.accent : C.textMuted} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.shopLinkBtn}
-              activeOpacity={0.7}
+              <Feather name="maximize" size={20} color={paymentQrs.length > 0 ? C.bronze : C.textMuted} />
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.shopLinkBtn, pressed && { opacity: 0.7 }]}
               onPress={() => {
                 lightTap();
                 setShopModalSlug(shopSlug || '');
@@ -631,74 +711,161 @@ const SellerDashboard: React.FC = () => {
               accessibilityLabel="My shop link"
             >
               <Feather name="link-2" size={22} color={shopLinkUrl ? semantic(BIZ_SAFE.success, isDark) : C.textMuted} />
-            </TouchableOpacity>
+            </Pressable>
           </View>
-          <Text
-            style={[styles.heroAmount, { color: kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark) }]}
-            accessibilityLabel={`Profit this month: ${currency} ${kept.toFixed(2)}`}
-          >
-            {currency} {kept.toFixed(0)}
-          </Text>
-          {totalCosts > 0 && (
-            <Text style={[styles.heroCostsSubtitle, kept < 0 && { color: semantic(BIZ_SAFE.loss, isDark) }]}>
-              after {currency} {totalCosts.toFixed(0)} in costs
-            </Text>
-          )}
-          {keptRate !== null && totalIncome > 0 && (
-            <Text style={styles.heroMargin}>
-              kept {keptRate.toFixed(0)}%
-              {todaysOrders.length > 0 && (
-                <Text style={styles.heroTodayInline}>
-                  {'  ·  '}today {currency} {todaysEarnings.toFixed(0)}
+
+          {activeSeason && seasonInsights ? (
+            <>
+              <Pressable
+                onPress={() => navigation.getParent()?.navigate('SeasonSummary', { seasonId: activeSeason.id })}
+                style={({ pressed }) => pressed && { opacity: 0.7 }}
+              >
+                <Text
+                  style={[styles.heroAmount, { color: C.textPrimary }]}
+                  accessibilityLabel={`Kept this season: ${currency} ${heroKept.toFixed(2)}`}
+                >
+                  {currency} {displayKept !== null ? displayKept : heroKept.toFixed(0)}
+                </Text>
+                <Text style={styles.seasonKeptLabel}>kept so far</Text>
+              </Pressable>
+              {seasonInsights.costs > 0 && (
+                <Text style={[styles.heroCostsSubtitle, heroKept < 0 && { color: semantic(BIZ_SAFE.loss, isDark) }]}>
+                  after {currency} {seasonInsights.costs.toFixed(0)} in costs
                 </Text>
               )}
-            </Text>
-          )}
-          {keptRate === null && todaysOrders.length > 0 && (
-            <Text style={styles.heroMargin}>
-              today {currency} {todaysEarnings.toFixed(0)} · {todaysOrders.length} {todaysOrders.length === 1 ? 'order' : 'orders'}
-            </Text>
-          )}
-
-          {/* Inline 7-day sparkline */}
-          {!isFirstTime && (
-            <TouchableOpacity
-              style={styles.heroSparkline}
-              activeOpacity={0.7}
-              onPress={goToOrders}
-              accessibilityRole="button"
-              accessibilityLabel="7-day order activity"
-            >
-              <View style={styles.heroSparklineBars}>
-                {weeklyActivity.map((day, i) => {
-                  const heightPct = sparklineMax > 0 ? (day.count / sparklineMax) * 100 : 0;
-                  const isActive = isToday(day.date);
-                  return (
-                    <View key={i} style={styles.heroSparklineCol}>
-                      <View style={styles.heroSparklineTrack}>
-                        <View
-                          style={[
-                            styles.heroSparklineBar,
-                            {
-                              height: `${Math.max(heightPct, 6)}%`,
-                              backgroundColor: isActive
-                                ? withAlpha(kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark), 0.9)
-                                : withAlpha(kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark), 0.18),
-                            },
-                          ]}
-                        />
-                      </View>
-                      <Text style={[styles.heroSparklineLabel, isActive && styles.heroSparklineLabelActive]}>
-                        {day.label}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-              <Text style={styles.heroSparklineHint}>
-                {weeklyActivity.reduce((s, d) => s + d.count, 0)} orders this week
+              {seasonInsights.targetPct !== null && (
+                <View style={styles.seasonTargetWrap}>
+                  <View style={styles.seasonTargetTrack}>
+                    <View style={[styles.seasonTargetFill, { width: `${Math.min(100, seasonInsights.targetPct)}%` }]} />
+                  </View>
+                  <Text style={styles.seasonTargetText}>
+                    {seasonInsights.targetPct >= 100
+                      ? 'target reached!'
+                      : `${seasonInsights.targetPct.toFixed(0)}% of target`}
+                  </Text>
+                </View>
+              )}
+              {seasonInsights.breakEvenDay != null && (
+                <View style={styles.seasonBreakEven}>
+                  <Feather name="check-circle" size={12} color={C.bronze} />
+                  <Text style={styles.seasonBreakEvenText}>
+                    covered costs · day {seasonInsights.breakEvenDay}
+                  </Text>
+                </View>
+              )}
+              <Text style={styles.heroMargin}>
+                {seasonInsights.todaysOrderCount > 0
+                  ? `today ${currency} ${seasonInsights.todaysCameIn.toFixed(0)} · ${seasonInsights.todaysOrderCount} order${seasonInsights.todaysOrderCount === 1 ? '' : 's'}`
+                  : seasonInsights.totalOrders > 0
+                    ? `${seasonInsights.totalOrders} orders this season`
+                    : 'your first order will appear here'}
               </Text>
-            </TouchableOpacity>
+              {seasonInsights.totalOrders > 0 && (
+                <Pressable
+                  style={({ pressed }) => [styles.heroSparkline, pressed && { opacity: 0.7 }]}
+                  onPress={goToOrders}
+                  accessibilityRole="button"
+                  accessibilityLabel="7-day season activity"
+                >
+                  <View style={styles.heroSparklineBars}>
+                    {seasonWeekly.map((day, i) => {
+                      const heightPct = seasonSparkMax > 0 ? (day.count / seasonSparkMax) * 100 : 0;
+                      const isAct = isToday(day.date);
+                      return (
+                        <View key={i} style={styles.heroSparklineCol}>
+                          <View style={styles.heroSparklineTrack}>
+                            <View
+                              style={[
+                                styles.heroSparklineBar,
+                                {
+                                  height: `${Math.max(heightPct, 6)}%`,
+                                  backgroundColor: isAct
+                                    ? withAlpha(C.bronze, 0.85)
+                                    : withAlpha(C.bronze, 0.15),
+                                },
+                              ]}
+                            />
+                          </View>
+                          <Text style={[styles.heroSparklineLabel, isAct && styles.heroSparklineLabelActive]}>
+                            {day.label}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                  <Text style={styles.heroSparklineHint}>
+                    {seasonWeekly.reduce((s, d) => s + d.count, 0)} orders this week
+                  </Text>
+                </Pressable>
+              )}
+            </>
+          ) : (
+            <>
+              <Text
+                style={[styles.heroAmount, { color: C.textPrimary }]}
+                accessibilityLabel={`Kept this month: ${currency} ${kept.toFixed(2)}`}
+              >
+                {currency} {displayKept !== null ? displayKept : kept.toFixed(0)}
+              </Text>
+              {totalCosts > 0 && (
+                <Text style={[styles.heroCostsSubtitle, kept < 0 && { color: semantic(BIZ_SAFE.loss, isDark) }]}>
+                  after {currency} {totalCosts.toFixed(0)} in costs
+                </Text>
+              )}
+              {keptRate !== null && totalIncome > 0 && (
+                <Text style={styles.heroMargin}>
+                  kept {keptRate.toFixed(0)}%
+                  {todaysOrders.length > 0 && (
+                    <Text style={styles.heroTodayInline}>
+                      {'  ·  '}today {currency} {todaysCameIn.toFixed(0)}
+                    </Text>
+                  )}
+                </Text>
+              )}
+              {keptRate === null && todaysOrders.length > 0 && (
+                <Text style={styles.heroMargin}>
+                  today {currency} {todaysCameIn.toFixed(0)} · {todaysOrders.length} {todaysOrders.length === 1 ? 'order' : 'orders'}
+                </Text>
+              )}
+              {!isFirstTime && (
+                <Pressable
+                  style={({ pressed }) => [styles.heroSparkline, pressed && { opacity: 0.7 }]}
+                  onPress={goToOrders}
+                  accessibilityRole="button"
+                  accessibilityLabel="7-day order activity"
+                >
+                  <View style={styles.heroSparklineBars}>
+                    {weeklyActivity.map((day, i) => {
+                      const heightPct = sparklineMax > 0 ? (day.count / sparklineMax) * 100 : 0;
+                      const isActive = isToday(day.date);
+                      return (
+                        <View key={i} style={styles.heroSparklineCol}>
+                          <View style={styles.heroSparklineTrack}>
+                            <View
+                              style={[
+                                styles.heroSparklineBar,
+                                {
+                                  height: `${Math.max(heightPct, 6)}%`,
+                                  backgroundColor: isActive
+                                    ? withAlpha(C.bronze, 0.85)
+                                    : withAlpha(C.bronze, 0.15),
+                                },
+                              ]}
+                            />
+                          </View>
+                          <Text style={[styles.heroSparklineLabel, isActive && styles.heroSparklineLabelActive]}>
+                            {day.label}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                  <Text style={styles.heroSparklineHint}>
+                    {weeklyActivity.reduce((s, d) => s + d.count, 0)} orders this week
+                  </Text>
+                </Pressable>
+              )}
+            </>
           )}
         </Animated.View>
 
@@ -712,29 +879,26 @@ const SellerDashboard: React.FC = () => {
         {/* ── Quick actions — secondary shortcuts only ── */}
         <Animated.View style={quickActionsAnim}>
           <View style={styles.quickActionsRow}>
-            <TouchableOpacity
-              style={[styles.quickActionButton, { borderColor: withAlpha(C.accent, 0.25), backgroundColor: withAlpha(C.accent, 0.08) }]}
-              activeOpacity={0.7}
+            <Pressable
+              style={({ pressed }) => [styles.quickActionButton, { borderColor: withAlpha(C.gold, 0.25), backgroundColor: withAlpha(C.gold, 0.08) }, pressed && { opacity: 0.7 }]}
               onPress={goToProducts}
               accessibilityRole="button"
               accessibilityLabel="View products"
             >
-              <Feather name="package" size={16} color={C.accent} />
-              <Text style={[styles.quickActionLabel, { color: C.accent }]}>products</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickActionButton}
-              activeOpacity={0.7}
+              <Feather name="package" size={16} color={C.gold} />
+              <Text style={[styles.quickActionLabel, { color: C.gold }]}>products</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.quickActionButton, pressed && { opacity: 0.7 }]}
               onPress={goToCosts}
               accessibilityRole="button"
               accessibilityLabel="Manage costs"
             >
               <Feather name="shopping-bag" size={16} color={C.bronze} />
               <Text style={styles.quickActionLabel}>costs</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.quickActionButton, { borderColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.25), backgroundColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.08) }]}
-              activeOpacity={0.7}
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.quickActionButton, { borderColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.25), backgroundColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.08) }, pressed && { opacity: 0.7 }]}
               onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'online' }); }}
               accessibilityRole="button"
               accessibilityLabel="View online orders"
@@ -746,22 +910,21 @@ const SellerDashboard: React.FC = () => {
                   <Text style={styles.notiBadgeText}>{unseenOnlineCount}</Text>
                 </View>
               )}
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </Animated.View>
 
         {/* ── Production checklist (preview) ──────────────── */}
         {productionList.length > 0 && !isFirstTime && (
           <Animated.View style={urgencyAnim}>
-            <TouchableOpacity
-              style={styles.itemStatsCard}
-              activeOpacity={0.8}
+            <Pressable
+              style={({ pressed }) => [styles.itemStatsCard, pressed && { opacity: 0.8 }]}
               onPress={() => { lightTap(); setShowItemsModal(true); }}
             >
               {/* Header */}
               <View style={styles.productionHeader}>
                 <View style={styles.productionHeaderLeft}>
-                  <Feather name="list" size={16} color={C.accent} />
+                  <Feather name="list" size={16} color={C.bronze} />
                   <Text style={styles.productionHeaderText}>TO MAKE</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
@@ -777,11 +940,10 @@ const SellerDashboard: React.FC = () => {
               {productionList.slice(0, 4).map((item, index) => {
                 const done = !!checkedItems[item.name];
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     key={item.name}
-                    style={[styles.productionRow, index === Math.min(productionList.length, 4) - 1 && styles.productionRowLast]}
-                    activeOpacity={0.7}
-                    delayPressIn={50}
+                    style={({ pressed }) => [styles.productionRow, index === Math.min(productionList.length, 4) - 1 && styles.productionRowLast, pressed && { opacity: 0.7 }]}
+                    unstable_pressDelay={50}
                     onPress={() => { toggleChecked(item.name); }}
                   >
                     <View style={styles.productionItemLeft}>
@@ -795,7 +957,7 @@ const SellerDashboard: React.FC = () => {
                     <Text style={[styles.productionItemQty, done && styles.productionItemQtyDone]}>
                       {item.qty} {item.unit}
                     </Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 );
               })}
               {productionList.length > 4 && (
@@ -803,24 +965,24 @@ const SellerDashboard: React.FC = () => {
                   <Text style={styles.itemStatsMoreText}>+{productionList.length - 4} more items</Text>
                 </View>
               )}
-            </TouchableOpacity>
+            </Pressable>
           </Animated.View>
         )}
 
         {/* ── Break-even indicator ─────────────────────── */}
         {totalCosts > 0 && (
-          <View style={[styles.breakEvenCard, kept >= 0 ? styles.breakEvenCardCovered : styles.breakEvenCardShort]}>
+          <Animated.View style={[styles.breakEvenCard, kept >= 0 ? styles.breakEvenCardCovered : styles.breakEvenCardShort, breakEvenAnim]}>
             <Feather
               name={kept >= 0 ? 'check-circle' : 'target'}
               size={14}
-              color={kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : C.bronze}
+              color={C.bronze}
             />
-            <Text style={[styles.breakEvenText, { color: kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : C.bronze }]}>
+            <Text style={[styles.breakEvenText, { color: C.bronze }]}>
               {kept >= 0
                 ? `costs covered · ${currency} ${kept.toFixed(0)} above break-even`
                 : `need ${currency} ${Math.abs(kept).toFixed(0)} more to cover costs`}
             </Text>
-          </View>
+          </Animated.View>
         )}
 
         {/* ── First-time getting started ─────────────── */}
@@ -834,9 +996,8 @@ const SellerDashboard: React.FC = () => {
             {/* Step 1: Start a season */}
             {!seasonDone && (
             <View style={styles.gettingStartedStep}>
-              <TouchableOpacity
-                style={styles.stepLeft}
-                activeOpacity={0.7}
+              <Pressable
+                style={({ pressed }) => [styles.stepLeft, pressed && { opacity: 0.7 }]}
                 onPress={goToPastSeasons}
                 accessibilityRole="button"
                 accessibilityLabel="Step 1: Start a season"
@@ -850,24 +1011,22 @@ const SellerDashboard: React.FC = () => {
                   <Text style={styles.stepHint}>e.g. Raya 2025, CNY, or any event</Text>
                 </View>
                 <Feather name="chevron-right" size={16} color={C.textMuted} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.skipBtn}
-                activeOpacity={0.7}
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.skipBtn, pressed && { opacity: 0.7 }]}
                 onPress={() => skipOnboardingStep('season')}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Text style={styles.skipText}>skip</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
             )}
 
             {/* Step 2: Add products */}
             {!productsDone && (
             <View style={styles.gettingStartedStep}>
-              <TouchableOpacity
-                style={styles.stepLeft}
-                activeOpacity={0.7}
+              <Pressable
+                style={({ pressed }) => [styles.stepLeft, pressed && { opacity: 0.7 }]}
                 onPress={goToProducts}
                 accessibilityRole="button"
                 accessibilityLabel="Step 2: Add products"
@@ -881,24 +1040,22 @@ const SellerDashboard: React.FC = () => {
                   <Text style={styles.stepHint}>name, price, and unit</Text>
                 </View>
                 <Feather name="chevron-right" size={16} color={C.textMuted} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.skipBtn}
-                activeOpacity={0.7}
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.skipBtn, pressed && { opacity: 0.7 }]}
                 onPress={() => skipOnboardingStep('products')}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Text style={styles.skipText}>skip</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
             )}
 
             {/* Step 3: Take first order */}
             {!ordersDone && (
             <View style={[styles.gettingStartedStep, styles.gettingStartedStepLast]}>
-              <TouchableOpacity
-                style={styles.stepLeft}
-                activeOpacity={0.7}
+              <Pressable
+                style={({ pressed }) => [styles.stepLeft, pressed && { opacity: 0.7 }]}
                 onPress={goToNewOrder}
                 accessibilityRole="button"
                 accessibilityLabel="Step 3: Create an order"
@@ -912,15 +1069,14 @@ const SellerDashboard: React.FC = () => {
                   <Text style={styles.stepHint}>customer name, product, quantity</Text>
                 </View>
                 <Feather name="chevron-right" size={16} color={C.textMuted} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.skipBtn}
-                activeOpacity={0.7}
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.skipBtn, pressed && { opacity: 0.7 }]}
                 onPress={() => skipOnboardingStep('orders')}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Text style={styles.skipText}>skip</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
             )}
           </Animated.View>
@@ -932,25 +1088,23 @@ const SellerDashboard: React.FC = () => {
                 <Feather name="calendar" size={32} color={C.textMuted} />
                 <Text style={styles.emptyStateTitle}>no orders this month yet.</Text>
                 <Text style={styles.emptyStateSubtitle}>tap + to record a new order.</Text>
-                <TouchableOpacity
-                  style={styles.emptyStateCta}
-                  activeOpacity={0.7}
+                <Pressable
+                  style={({ pressed }) => [styles.emptyStateCta, pressed && { opacity: 0.7 }]}
                   onPress={goToNewOrder}
                   accessibilityRole="button"
                   accessibilityLabel="Create new order"
                 >
                   <Feather name="plus" size={16} color={C.bronze} />
                   <Text style={styles.emptyStateCtaText}>new order</Text>
-                </TouchableOpacity>
+                </Pressable>
               </Animated.View>
             )}
 
             {/* ── Action cards (pipeline) ──────────────── */}
             <Animated.View style={[styles.actionCardsRow, pipelineAnim]}>
               {/* Orders card */}
-              <TouchableOpacity
-                style={[styles.actionCard, pendingOrders.length > 0 && { borderLeftWidth: 3, borderLeftColor: semantic(BIZ_SAFE.pending, isDark), backgroundColor: withAlpha(semantic(BIZ_SAFE.pending, isDark), 0.04) }]}
-                activeOpacity={0.7}
+              <Pressable
+                style={({ pressed }) => [styles.actionCard, pendingOrders.length > 0 && { borderLeftWidth: 3, borderLeftColor: semantic(BIZ_SAFE.pending, isDark), backgroundColor: withAlpha(semantic(BIZ_SAFE.pending, isDark), 0.04) }, pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] }]}
                 onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'pending' }); }}
                 accessibilityRole="button"
                 accessibilityLabel={`${pendingOrders.length} pending orders. Tap to view.`}
@@ -963,33 +1117,32 @@ const SellerDashboard: React.FC = () => {
                   <Text style={[styles.actionCardNumber, pendingOrders.length > 0 && { color: semantic(BIZ_SAFE.pending, isDark) }]}>{pendingOrders.length}</Text>
                   <Text style={styles.actionCardLabel}>pending</Text>
                 </View>
-              </TouchableOpacity>
+              </Pressable>
 
               {/* To make card */}
-              <TouchableOpacity
-                style={[styles.actionCard, confirmedOrders.length > 0 && { borderLeftWidth: 3, borderLeftColor: C.accent, backgroundColor: withAlpha(C.accent, 0.04) }]}
-                activeOpacity={0.7}
+              <Pressable
+                style={({ pressed }) => [styles.actionCard, confirmedOrders.length > 0 && { borderLeftWidth: 3, borderLeftColor: C.bronze, backgroundColor: withAlpha(C.bronze, 0.04) }, pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] }]}
                 onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'confirmed' }); }}
                 accessibilityRole="button"
                 accessibilityLabel={`${confirmedOrders.length} orders to make. Tap to view confirmed orders.`}
               >
                 <View style={styles.actionCardInner}>
                   <View style={styles.actionCardTop}>
-                    <Feather name="clock" size={18} color={confirmedOrders.length > 0 ? C.accent : C.textSecondary} />
+                    <Feather name="clock" size={18} color={confirmedOrders.length > 0 ? C.bronze : C.textSecondary} />
                     <Feather name="chevron-right" size={14} color={C.textMuted} />
                   </View>
-                  <Text style={[styles.actionCardNumber, confirmedOrders.length > 0 && { color: C.accent }]}>{confirmedOrders.length}</Text>
+                  <Text style={[styles.actionCardNumber, confirmedOrders.length > 0 && { color: C.bronze }]}>{confirmedOrders.length}</Text>
                   <Text style={styles.actionCardLabel}>to make</Text>
                 </View>
-              </TouchableOpacity>
+              </Pressable>
 
               {/* Unpaid card */}
-              <TouchableOpacity
-                style={[
+              <Pressable
+                style={({ pressed }) => [
                   styles.actionCard,
                   unpaidOrders.length > 0 && styles.actionCardUnpaid,
+                  pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] },
                 ]}
-                activeOpacity={0.7}
                 onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'unpaid' }); }}
                 accessibilityRole="button"
                 accessibilityLabel={`${unpaidOrders.length} unpaid orders, ${currency} ${unpaidTotal.toFixed(2)} pending. Tap to view.`}
@@ -1018,7 +1171,7 @@ const SellerDashboard: React.FC = () => {
                     </Text>
                   )}
                 </View>
-              </TouchableOpacity>
+              </Pressable>
             </Animated.View>
 
 
@@ -1050,8 +1203,8 @@ const SellerDashboard: React.FC = () => {
                         {delivery.items.map((i) => `${i.quantity} ${i.productName}`).join(', ')}
                       </Text>
                       {delivery.address ? (
-                        <TouchableOpacity
-                          activeOpacity={0.7}
+                        <Pressable
+                          style={({ pressed }) => pressed && { opacity: 0.7 }}
                           onPress={() => handleOpenMaps(delivery.address!)}
                           accessibilityRole="link"
                           accessibilityLabel={`Open map for ${delivery.address}`}
@@ -1059,33 +1212,31 @@ const SellerDashboard: React.FC = () => {
                           <Text style={styles.deliveryRouteAddress} numberOfLines={1}>
                             {delivery.address}
                           </Text>
-                        </TouchableOpacity>
+                        </Pressable>
                       ) : (
                         <Text style={styles.deliveryRouteNoAddress}>no address</Text>
                       )}
                     </View>
                     <View style={styles.deliveryRouteActions}>
                       {delivery.customerPhone && (
-                        <TouchableOpacity
-                          style={styles.deliveryRouteCall}
-                          activeOpacity={0.7}
+                        <Pressable
+                          style={({ pressed }) => [styles.deliveryRouteCall, pressed && { opacity: 0.7 }]}
                           onPress={() => { lightTap(); Linking.openURL(`tel:${delivery.customerPhone}`); }}
                           accessibilityRole="button"
                           accessibilityLabel={`Call ${delivery.customerName}`}
                         >
                           <Feather name="phone" size={16} color={C.gold} />
-                        </TouchableOpacity>
+                        </Pressable>
                       )}
                       {delivery.customerPhone && (
-                        <TouchableOpacity
-                          style={styles.deliveryRouteCall}
-                          activeOpacity={0.7}
+                        <Pressable
+                          style={({ pressed }) => [styles.deliveryRouteCall, pressed && { opacity: 0.7 }]}
                           onPress={() => handleWhatsApp(delivery.customerPhone!)}
                           accessibilityRole="button"
                           accessibilityLabel={`WhatsApp ${delivery.customerName}`}
                         >
                           <Feather name="message-circle" size={16} color={C.gold} />
-                        </TouchableOpacity>
+                        </Pressable>
                       )}
                     </View>
                   </View>
@@ -1093,41 +1244,41 @@ const SellerDashboard: React.FC = () => {
               </Animated.View>
             )}
 
-            {/* ── Revenue breakdown ──────────────────── */}
-            <Animated.View style={[styles.revenueCard, inflowAnim]}>
+            {/* ── Came in breakdown ──────────────────── */}
+            <Animated.View style={[styles.cameInCard, inflowAnim]}>
               {/* Came in row */}
-              <View style={styles.revenueRow}>
-                <View style={styles.revenueRowLeft}>
+              <View style={styles.cameInRow}>
+                <View style={styles.cameInRowLeft}>
                   <Feather name="arrow-down-circle" size={15} color={semantic(BIZ_SAFE.success, isDark)} />
-                  <Text style={styles.revenueRowLabel}>came in</Text>
+                  <Text style={styles.cameInRowLabel}>came in</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.revenueRowAmount}>{currency} {totalIncome.toFixed(2)}</Text>
+                  <Text style={styles.cameInRowAmount}>{currency} {totalIncome.toFixed(2)}</Text>
                   {unpaidTotal > 0 && (
-                    <Text style={styles.revenueRowNote}>+ {currency} {unpaidTotal.toFixed(0)} unpaid</Text>
+                    <Text style={styles.cameInRowNote}>+ {currency} {unpaidTotal.toFixed(0)} unpaid</Text>
                   )}
                 </View>
               </View>
 
               {/* Costs row */}
-              <View style={styles.revenueRow}>
-                <View style={styles.revenueRowLeft}>
+              <View style={styles.cameInRow}>
+                <View style={styles.cameInRowLeft}>
                   <Feather name="shopping-bag" size={15} color={C.bronze} />
-                  <Text style={styles.revenueRowLabel}>costs</Text>
+                  <Text style={styles.cameInRowLabel}>costs</Text>
                 </View>
-                <Text style={styles.revenueRowAmount}>{currency} {totalCosts.toFixed(2)}</Text>
+                <Text style={styles.cameInRowAmount}>{currency} {totalCosts.toFixed(2)}</Text>
               </View>
 
               {/* Divider */}
-              <View style={styles.revenueDivider} />
+              <View style={styles.cameInDivider} />
 
               {/* Kept row */}
-              <View style={[styles.revenueRow, { paddingVertical: 0 }]}>
-                <View style={styles.revenueRowLeft}>
-                  <Feather name="pocket" size={15} color={kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark)} />
-                  <Text style={[styles.revenueKeptLabel, { color: kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark) }]}>kept</Text>
+              <View style={[styles.cameInRow, { paddingVertical: 0 }]}>
+                <View style={styles.cameInRowLeft}>
+                  <Feather name="pocket" size={15} color={kept >= 0 ? C.bronze : semantic(BIZ_SAFE.loss, isDark)} />
+                  <Text style={[styles.cameInKeptLabel, { color: kept >= 0 ? C.bronze : semantic(BIZ_SAFE.loss, isDark) }]}>kept</Text>
                 </View>
-                <Text style={[styles.revenueKeptAmount, { color: kept >= 0 ? semantic(BIZ_SAFE.profit, isDark) : semantic(BIZ_SAFE.loss, isDark) }]}>
+                <Text style={[styles.cameInKeptAmount, { color: kept >= 0 ? C.bronze : semantic(BIZ_SAFE.loss, isDark) }]}>
                   {currency} {kept.toFixed(2)}
                 </Text>
               </View>
@@ -1136,17 +1287,16 @@ const SellerDashboard: React.FC = () => {
         )}
 
         {/* ── Change setup link ────────────────────────── */}
-        <TouchableOpacity
+        <Pressable
           onPress={() => { lightTap(); useBusinessStore.getState().resetSetup(); }}
-          style={styles.changeSetup}
-          activeOpacity={0.7}
+          style={({ pressed }) => [styles.changeSetup, pressed && { opacity: 0.7 }]}
           accessibilityRole="button"
           accessibilityLabel="Change business setup"
         >
           <Text style={styles.changeSetupText}>
             change business type
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </ScrollView>
 
       {/* ── Shop link modal ──────────────────────────────── */}
@@ -1158,67 +1308,70 @@ const SellerDashboard: React.FC = () => {
         animationType="none"
         onRequestClose={() => setShowShopModal(false)}
       >
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }}>
-        <TouchableOpacity
-          style={[styles.shopModalOverlay, { backgroundColor: 'transparent' }]}
-          activeOpacity={1}
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: withAlpha(C.dimBg, 0.4) }}>
+        <Pressable
+          style={styles.shopModalOverlay}
           onPress={() => { Keyboard.dismiss(); setShowShopModal(false); }}
         >
-          <TouchableOpacity activeOpacity={1} style={styles.shopModalCard} onPress={() => Keyboard.dismiss()}>
-            {/* Header */}
-            <View style={styles.shopModalHeader}>
-              <View style={styles.shopModalIconWrap}>
-                <Feather name="link-2" size={18} color={semantic(BIZ_SAFE.success, isDark)} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.shopModalTitle}>my shop link</Text>
-                <Text style={styles.shopModalSubtitle}>set up your online order page</Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowShopModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Feather name="x" size={18} color={C.textMuted} />
-              </TouchableOpacity>
-            </View>
+          <Pressable style={styles.shopModalCard} onPress={() => Keyboard.dismiss()}>
 
-            {/* ── Section: Your Link (summary card) ── */}
+          <View style={styles.shopModalHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.shopModalTitle}>
+                my shop <Text style={styles.shopModalTitleAccent}>link</Text>
+              </Text>
+              <Text style={styles.shopModalSubtitle}>set up your online order page</Text>
+            </View>
+            <Pressable
+              onPress={() => setShowShopModal(false)}
+              style={({ pressed }) => [styles.shopModalCloseBtn, pressed && { opacity: 0.7 }]}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Feather name="x" size={16} color={C.textMuted} />
+            </Pressable>
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            contentContainerStyle={styles.shopModalScroll}
+          >
+            {/* ── Your Link ── */}
             {shopModalSlug.length > 0 && shopSlug && (
-              <>
-                <View style={styles.slmSectionHeader}>
-                  <Feather name="globe" size={14} color={C.textMuted} />
-                  <Text style={styles.slmSectionLabel}>your link</Text>
+              <Pressable
+                style={({ pressed }) => [styles.slmLinkCard, pressed && { opacity: 0.7 }]}
+                onPress={async () => {
+                  const url = `${ORDER_PAGE_BASE}/?slug=${shopSlug}`;
+                  await Clipboard.setStringAsync(url);
+                  setShopLinkCopied(true);
+                  setTimeout(() => setShopLinkCopied(false), 2000);
+                }}
+              >
+                <View style={styles.slmLinkIconWrap}>
+                  <Feather name="globe" size={16} color={semantic(BIZ_SAFE.success, isDark)} />
                 </View>
-                <TouchableOpacity
-                  style={styles.slmLinkCard}
-                  onPress={async () => {
-                    const url = `${ORDER_PAGE_BASE}/?slug=${shopSlug}`;
-                    await Clipboard.setStringAsync(url);
-                    setShopLinkCopied(true);
-                    setTimeout(() => setShopLinkCopied(false), 2000);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.slmLinkUrl} numberOfLines={1}>
-                      {ORDER_PAGE_BASE}/?slug={shopModalSlug}
-                    </Text>
-                  </View>
-                  <View style={styles.slmCopyPill}>
-                    <Feather name={shopLinkCopied ? 'check' : 'copy'} size={13} color={shopLinkCopied ? C.textMuted : semantic(BIZ_SAFE.success, isDark)} />
-                    <Text style={[styles.slmCopyPillText, shopLinkCopied && { color: C.textMuted }]}>
-                      {shopLinkCopied ? 'copied' : 'copy'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.slmLinkUrl} numberOfLines={1}>
+                    {ORDER_PAGE_BASE}/?slug={shopModalSlug}
+                  </Text>
+                </View>
+                <View style={styles.slmCopyPill}>
+                  <Feather name={shopLinkCopied ? 'check' : 'copy'} size={13} color={shopLinkCopied ? C.textMuted : semantic(BIZ_SAFE.success, isDark)} />
+                  <Text style={[styles.slmCopyPillText, shopLinkCopied && { color: C.textMuted }]}>
+                    {shopLinkCopied ? 'copied' : 'copy'}
+                  </Text>
+                </View>
+              </Pressable>
             )}
 
             {/* ── Shop Logo ── */}
             <View style={styles.logoPickerWrap}>
               <View style={styles.logoCircleWrap}>
-                <TouchableOpacity
-                  style={styles.logoCircle}
+                <Pressable
+                  style={({ pressed }) => [styles.logoCircle, pressed && { opacity: 0.7 }]}
                   onPress={shopLogoUrl ? () => setPreviewLogoVisible(true) : handlePickLogo}
                   disabled={shopLogoUploading}
-                  activeOpacity={0.7}
                 >
                   {shopLogoUploading ? (
                     <Feather name="loader" size={20} color={C.textMuted} />
@@ -1227,128 +1380,125 @@ const SellerDashboard: React.FC = () => {
                   ) : (
                     <Feather name="shopping-bag" size={22} color={C.textMuted} />
                   )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.logoBadge}
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.logoBadge, pressed && { opacity: 0.7 }]}
                   onPress={handlePickLogo}
                   disabled={shopLogoUploading}
-                  activeOpacity={0.7}
                 >
-                  <Feather name="camera" size={10} color="#fff" />
-                </TouchableOpacity>
+                  <Feather name="camera" size={10} color={C.onAccent} />
+                </Pressable>
               </View>
-              <TouchableOpacity onPress={handlePickLogo} disabled={shopLogoUploading} activeOpacity={0.7}>
+              <Pressable onPress={handlePickLogo} disabled={shopLogoUploading} style={({ pressed }) => pressed && { opacity: 0.7 }}>
                 <Text style={styles.logoLabel}>
                   {shopLogoUploading ? 'uploading...' : shopLogoUrl ? 'change logo' : 'add shop logo'}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
 
-            {/* ── Section: Shop Details ── */}
-            <View style={styles.slmSectionHeader}>
-              <Feather name="settings" size={14} color={C.textMuted} />
-              <Text style={styles.slmSectionLabel}>shop details</Text>
-            </View>
-            <View style={styles.slmGroupCard}>
-              <View style={styles.slmGroupField}>
-                <Text style={styles.slmGroupFieldLabel}>shop name</Text>
-                <TextInput
-                  style={styles.slmGroupInput}
-                  value={shopModalName}
-                  onChangeText={setShopModalName}
-                  placeholder="e.g. Kuih Raya Mak Cik Ton"
-                  placeholderTextColor={C.textMuted}
-                  autoCapitalize="words"
-                />
-              </View>
-              <View style={styles.slmGroupDivider} />
-              <View style={styles.slmGroupField}>
-                <Text style={styles.slmGroupFieldLabel}>
-                  shop url{' '}
-                  {!shopSlug && <Text style={styles.shopModalFieldHint}>(lowercase, numbers, -)</Text>}
-                </Text>
-                <TextInput
-                  style={[styles.slmGroupInput, !!shopSlug && { color: C.textMuted }]}
-                  value={shopModalSlug}
-                  onChangeText={(t) => setShopModalSlug(t.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                  placeholder="e.g. kuih-raya-ton"
-                  placeholderTextColor={C.textMuted}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!shopSlug}
-                />
-                <Text style={[styles.shopModalFieldHint, { marginTop: 3, color: shopSlug ? C.textMuted : C.bronze }]}>
-                  {shopSlug ? 'link cannot be changed' : 'choose carefully — this is permanent'}
-                </Text>
-              </View>
+            {/* ── Shop Name ── */}
+            <View style={styles.slmFieldCard}>
+              <Text style={styles.slmFieldLabel}>shop name</Text>
+              <TextInput
+                style={styles.slmFieldInput}
+                value={shopModalName}
+                onChangeText={setShopModalName}
+                placeholder="e.g. Kuih Raya Mak Cik Ton"
+                placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+                autoCapitalize="words"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={semantic(BIZ_SAFE.success, isDark)}
+              />
             </View>
 
-            {/* ── Section: WhatsApp (from account) ── */}
-            <View style={styles.slmSectionHeader}>
-              <Feather name="phone" size={14} color={C.textMuted} />
-              <Text style={styles.slmSectionLabel}>whatsapp</Text>
-              <Text style={[styles.shopModalFieldHint, { marginLeft: 4 }]}>required</Text>
-            </View>
-            <View style={styles.slmGroupCard}>
-              <View style={styles.slmGroupField}>
-                <Text style={styles.slmGroupFieldLabel}>your number</Text>
-                <Text style={[styles.slmGroupInput, { paddingVertical: 10 }]}>
-                  {useAuthStore.getState().phone ?? '(not set)'}
-                </Text>
-                <Text style={[styles.shopModalFieldHint, { marginTop: 3 }]}>
-                  customers tap this to whatsapp you after ordering. tied to your signup — contact support to change.
-                </Text>
-              </View>
+            {/* ── Shop URL ── */}
+            <View style={styles.slmFieldCard}>
+              <Text style={styles.slmFieldLabel}>
+                shop url{' '}
+                {!shopSlug && <Text style={styles.slmFieldHint}>(lowercase, numbers, -)</Text>}
+              </Text>
+              <TextInput
+                style={[styles.slmFieldInput, !!shopSlug && { color: C.textMuted }]}
+                value={shopModalSlug}
+                onChangeText={(t) => setShopModalSlug(t.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                placeholder="e.g. kuih-raya-ton"
+                placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!shopSlug}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={semantic(BIZ_SAFE.success, isDark)}
+              />
+              <Text style={[styles.slmFieldHint, { marginTop: 4, color: shopSlug ? C.textMuted : C.bronze }]}>
+                {shopSlug ? 'link cannot be changed' : 'choose carefully — this is permanent'}
+              </Text>
             </View>
 
-            {/* ── Section: Customer Notice ── */}
-            <View style={styles.slmSectionHeader}>
-              <Feather name="message-circle" size={14} color={C.textMuted} />
-              <Text style={styles.slmSectionLabel}>customer notice</Text>
-              <Text style={[styles.shopModalFieldHint, { marginLeft: 4 }]}>optional</Text>
-            </View>
-            <View style={styles.slmGroupCard}>
-              <View style={styles.slmGroupField}>
-                <TextInput
-                  style={[styles.slmGroupInput, { minHeight: 56, textAlignVertical: 'top' }]}
-                  value={shopModalNotice}
-                  onChangeText={setShopModalNotice}
-                  placeholder="e.g. COD Ipoh only. Luar kawasan sila WhatsApp kami"
-                  placeholderTextColor={C.textMuted}
-                  multiline
-                  maxLength={200}
-                />
-                <Text style={[styles.shopModalFieldHint, { marginTop: 3 }]}>
-                  shown on your order page for customers
-                </Text>
+            {/* ── WhatsApp ── */}
+            <View style={styles.slmFieldCard}>
+              <View style={styles.slmFieldLabelRow}>
+                <Text style={styles.slmFieldLabel}>whatsapp</Text>
+                <View style={styles.slmRequiredPill}>
+                  <Text style={styles.slmRequiredPillText}>required</Text>
+                </View>
               </View>
+              <Text style={styles.slmFieldValue}>
+                {useAuthStore.getState().phone ?? '(not set)'}
+              </Text>
+              <Text style={[styles.slmFieldHint, { marginTop: 4 }]}>
+                customers tap this to whatsapp you
+              </Text>
+            </View>
+
+            {/* ── Customer Notice ── */}
+            <View style={styles.slmFieldCard}>
+              <View style={styles.slmFieldLabelRow}>
+                <Text style={styles.slmFieldLabel}>customer notice</Text>
+                <Text style={styles.slmFieldHintInline}>optional</Text>
+              </View>
+              <TextInput
+                style={[styles.slmFieldInput, { minHeight: 60, textAlignVertical: 'top' }]}
+                value={shopModalNotice}
+                onChangeText={setShopModalNotice}
+                placeholder="e.g. COD Ipoh only. Luar kawasan sila WhatsApp kami"
+                placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+                multiline
+                maxLength={200}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={semantic(BIZ_SAFE.success, isDark)}
+              />
+              <Text style={[styles.slmFieldHint, { marginTop: 4 }]}>
+                shown on your order page
+              </Text>
             </View>
 
             {shopError && (
-              <Text style={styles.shopModalError}>{shopError}</Text>
+              <View style={styles.shopModalErrorBox}>
+                <Feather name="alert-circle" size={14} color={C.bronze} />
+                <Text style={styles.shopModalErrorText}>{shopError}</Text>
+              </View>
             )}
 
-            <TouchableOpacity
-              style={[styles.shopModalSaveBtn, (shopSaving || !shopModalSlug) && { opacity: 0.5 }]}
+            <Pressable
+              style={({ pressed }) => [styles.shopModalSaveBtn, (shopSaving || !shopModalSlug) && { opacity: 0.5 }, pressed && shopModalSlug && !shopSaving && { opacity: 0.85 }]}
               disabled={shopSaving || !shopModalSlug}
               onPress={handleSaveShopLink}
-              activeOpacity={0.8}
             >
-              <Feather name="check" size={15} color="#fff" />
+              <Feather name="check" size={16} color={C.onAccent} />
               <Text style={styles.shopModalSaveBtnText}>
-                {shopSaving ? 'saving...' : 'save'}
+                {shopSaving ? 'saving...' : 'save shop link'}
               </Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
+            </Pressable>
+          </ScrollView>
+          </Pressable>
+        </Pressable>
         {previewLogoVisible && shopLogoUrl && (
-          <TouchableOpacity
+          <Pressable
             style={styles.logoPreviewOverlay}
-            activeOpacity={1}
             onPress={() => setPreviewLogoVisible(false)}
           >
             <Image source={{ uri: shopLogoUrl }} style={styles.logoPreviewImage} resizeMode="contain" />
-          </TouchableOpacity>
+          </Pressable>
         )}
         </KeyboardAvoidingView>
       </Modal>
@@ -1366,10 +1516,10 @@ const SellerDashboard: React.FC = () => {
         <View style={styles.slmConfirmOverlay}>
           <View style={styles.slmConfirmCard}>
             <View style={{ alignItems: 'center', marginBottom: SPACING.md }}>
-              <View style={[styles.shopModalIconWrap, { width: 44, height: 44, borderRadius: 22, marginBottom: SPACING.sm }]}>
+              <View style={styles.slmConfirmIconWrap}>
                 <Feather name="link-2" size={20} color={semantic(BIZ_SAFE.success, isDark)} />
               </View>
-              <Text style={[styles.shopModalTitle, { fontSize: TYPOGRAPHY.size.base }]}>confirm shop link</Text>
+              <Text style={styles.slmConfirmTitle}>confirm shop link</Text>
             </View>
 
             <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, textAlign: 'center', marginBottom: SPACING.sm }}>
@@ -1385,21 +1535,19 @@ const SellerDashboard: React.FC = () => {
             </Text>
 
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-              <TouchableOpacity
-                style={styles.slmConfirmCancelBtn}
+              <Pressable
+                style={({ pressed }) => [styles.slmConfirmCancelBtn, pressed && { opacity: 0.7 }]}
                 onPress={() => { setShowSlugConfirm(false); setTimeout(() => setShowShopModal(true), 50); }}
-                activeOpacity={0.7}
               >
                 <Text style={styles.slmConfirmCancelText}>go back</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.slmConfirmBtn}
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.slmConfirmBtn, pressed && { opacity: 0.8 }]}
                 onPress={() => { setShowSlugConfirm(false); doSaveShopLink(); }}
-                activeOpacity={0.8}
               >
-                <Feather name="check" size={15} color="#fff" />
+                <Feather name="check" size={15} color={C.onAccent} />
                 <Text style={styles.shopModalSaveBtnText}>confirm</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -1415,33 +1563,31 @@ const SellerDashboard: React.FC = () => {
           animationType="fade"
           onRequestClose={() => setShowItemsModal(false)}
         >
-          <TouchableOpacity
+          <Pressable
             style={styles.itemsModalOverlay}
-            activeOpacity={1}
             onPress={() => setShowItemsModal(false)}
           >
             <View style={styles.itemsModalCard} onStartShouldSetResponder={() => true}>
               <View style={styles.itemsModalHeader}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-                  <Feather name="list" size={16} color={C.accent} />
+                  <Feather name="list" size={16} color={C.bronze} />
                   <Text style={styles.itemsModalTitle}>to make</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                   <Text style={styles.productionCount}>{checkedCount}/{productionList.length} done</Text>
-                  <TouchableOpacity onPress={() => setShowItemsModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Pressable onPress={() => setShowItemsModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                     <Feather name="x" size={18} color={C.textMuted} />
-                  </TouchableOpacity>
+                  </Pressable>
                 </View>
               </View>
               <ScrollView showsVerticalScrollIndicator={false} bounces={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                 {productionList.map((item, index) => {
                   const done = !!checkedItems[item.name];
                   return (
-                    <TouchableOpacity
+                    <Pressable
                       key={item.name}
-                      style={[styles.productionRow, index === productionList.length - 1 && styles.productionRowLast]}
-                      activeOpacity={0.7}
-                      delayPressIn={50}
+                      style={({ pressed }) => [styles.productionRow, index === productionList.length - 1 && styles.productionRowLast, pressed && { opacity: 0.7 }]}
+                      unstable_pressDelay={50}
                       onPress={() => toggleChecked(item.name)}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: done }}
@@ -1457,12 +1603,12 @@ const SellerDashboard: React.FC = () => {
                       <Text style={[styles.productionItemQty, done && styles.productionItemQtyDone]}>
                         {item.qty} {item.unit}
                       </Text>
-                    </TouchableOpacity>
+                    </Pressable>
                   );
                 })}
               </ScrollView>
             </View>
-          </TouchableOpacity>
+          </Pressable>
         </Modal>
       )}
 
@@ -1477,13 +1623,13 @@ const SellerDashboard: React.FC = () => {
       >
         <View style={styles.qrModalOverlay}>
           <StatusBar barStyle="light-content" />
-          <TouchableOpacity
+          <Pressable
             style={styles.qrCloseBtn}
             onPress={() => setQrModalVisible(false)}
             hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
           >
             <Feather name="x" size={28} color="#fff" />
-          </TouchableOpacity>
+          </Pressable>
 
           {paymentQrs[qrViewIndex] && (
             <Text style={styles.qrLabel}>{paymentQrs[qrViewIndex].label}</Text>
@@ -1503,7 +1649,7 @@ const SellerDashboard: React.FC = () => {
           {paymentQrs.length > 1 && (
             <View style={styles.qrTabs}>
               {paymentQrs.map((qr, i) => (
-                <TouchableOpacity
+                <Pressable
                   key={i}
                   style={[styles.qrTab, qrViewIndex === i && styles.qrTabActive]}
                   onPress={() => { lightTap(); setQrViewIndex(i); }}
@@ -1511,7 +1657,7 @@ const SellerDashboard: React.FC = () => {
                   <Text style={[styles.qrTabText, qrViewIndex === i && styles.qrTabTextActive]}>
                     {qr.label}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
               ))}
             </View>
           )}
@@ -1519,6 +1665,11 @@ const SellerDashboard: React.FC = () => {
       </Modal>
       )}
 
+      <SeasonStartSheet
+        visible={showStartSheet}
+        onClose={() => setShowStartSheet(false)}
+        onViewPast={goToPastSeasons}
+      />
     </View>
   );
 };
@@ -1537,6 +1688,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     paddingHorizontal: SPACING['2xl'], // 24pt
     paddingBottom: SPACING['5xl'],     // 48pt
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // ── Season context ────────────────────────────────────────
@@ -1545,7 +1699,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: SPACING.md,
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.sm,
   },
   seasonPill: {
     flexDirection: 'row',
@@ -1560,24 +1714,37 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
-  seasonPillEmpty: {
+  seasonStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    paddingVertical: SPACING.xs,
+  },
+  seasonStatusLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  seasonStatusText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+  },
+  seasonStatusRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    alignSelf: 'flex-start',
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-    paddingVertical: 4,
   },
-  seasonPillEmptyText: {
+  seasonStatusAction: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.regular,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+    color: C.bronze,
   },
   viewAllSeasonsText: {
-    fontSize: TYPOGRAPHY.size.sm, // 13
-    color: C.bronze, // #B2780A
-    fontWeight: TYPOGRAPHY.weight.medium, // 500
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
     textDecorationLine: 'underline',
   },
 
@@ -1588,7 +1755,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.md,
     borderLeftWidth: 3,
     borderLeftColor: BIZ.warning,
   },
@@ -1656,7 +1823,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderLeftColor: BIZ.overdue,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.md,
   },
   unpaidAgingRow: {
     flexDirection: 'row',
@@ -1685,22 +1852,22 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.sm,
     minHeight: 52,
     borderRadius: RADIUS.xl,
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
-    marginBottom: SPACING.sm,
-    ...SHADOWS.md,
+    marginBottom: SPACING.md,
+    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
   primaryCtaText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
     letterSpacing: 0.2,
   },
   quickActionsRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.lg,
   },
   quickActionButton: {
     flex: 1,
@@ -1736,19 +1903,19 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   notiBadgeText: {
     fontSize: 10,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // ── Hero section ──────────────────────────────────────────
   heroSection: {
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl,
   },
   heroLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.md,
   },
   heroLabel: {
     ...TYPE.label, // fontSize 12, color #6B6B6B, uppercase, letterSpacing 1
@@ -1757,7 +1924,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: withAlpha(BIZ.profit, 0.08),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: RADIUS.full,
@@ -1773,7 +1940,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: '300' as const,
     color: C.textPrimary,
     marginBottom: SPACING.xs,
-    letterSpacing: -1,
+    letterSpacing: C === CALM_DARK ? -0.8 : -1,
   },
   heroCostsSubtitle: {
     ...TYPE.muted, // fontSize 12, color #A0A0A0
@@ -1787,6 +1954,56 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
+
+  // ── Season hero ─────────────────────────────────────────────
+  seasonDayBadge: {
+    backgroundColor: withAlpha(C.bronze, C === CALM_DARK ? 0.15 : 0.08),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: 3,
+    marginRight: SPACING.xs,
+  },
+  seasonDayBadgeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+    color: C.bronze,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
+  seasonKeptLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    marginTop: -2,
+  },
+  seasonTargetWrap: {
+    marginTop: SPACING.md,
+    gap: SPACING.xs,
+  },
+  seasonTargetTrack: {
+    height: 8,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
+    borderRadius: 4,
+    overflow: 'hidden' as const,
+  },
+  seasonTargetFill: {
+    height: 8,
+    backgroundColor: C.bronze,
+    borderRadius: 4,
+  },
+  seasonTargetText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
+  seasonBreakEven: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+  },
+  seasonBreakEvenText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
   },
 
   // ── Inline hero sparkline ─────────────────────────────────
@@ -1844,8 +2061,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.md,
   },
   breakEvenCardCovered: {
-    backgroundColor: withAlpha(BIZ.profit, 0.08),
-    borderColor: withAlpha(BIZ.profit, 0.25),
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    borderColor: withAlpha(C.bronze, 0.25),
   },
   breakEvenCardShort: {
     backgroundColor: withAlpha(C.bronze, 0.08),
@@ -1859,9 +2076,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── AI insight ────────────────────────────────────────────
   insightContainer: {
     borderLeftWidth: 3,
-    borderLeftColor: C.accent, // olive — intelligence
+    borderLeftColor: C.bronze,
     paddingLeft: SPACING.lg, // 16pt
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.xl,
   },
   insightText: {
     ...TYPE.insight, // fontSize 14, lineHeight 22
@@ -1912,7 +2129,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginRight: SPACING.sm, // 8pt
   },
   stepNumberDone: {
-    backgroundColor: C.accent, // olive — progress
+    backgroundColor: C.bronze,
   },
   stepNumberText: {
     fontSize: TYPOGRAPHY.size.xs, // 11
@@ -2018,7 +2235,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   productionHeaderText: {
     ...TYPE.label,
-    color: C.accent,
+    color: C.bronze,
   },
   productionCount: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -2055,8 +2272,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
 
-  // ── Revenue breakdown ─────────────────────────────────────
-  revenueCard: {
+  // ── Came in breakdown ─────────────────────────────────────
+  cameInCard: {
     backgroundColor: C.surface,
     borderWidth: 1,
     borderColor: C.border,
@@ -2066,46 +2283,45 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingBottom: SPACING.md,
     marginBottom: SPACING.xl,
   },
-  revenueRow: {
+  cameInRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingVertical: SPACING.xs + 2,
   },
-  revenueRowLeft: {
+  cameInRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
   },
-  revenueRowLabel: {
+  cameInRowLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.regular,
     color: C.textSecondary,
   },
-  revenueRowAmount: {
+  cameInRowAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
-  revenueRowNote: {
+  cameInRowNote: {
     fontSize: TYPOGRAPHY.size.xs,
     color: BIZ.unpaid,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     marginTop: 2,
   },
-  revenueDivider: {
+  cameInDivider: {
     height: 1,
     backgroundColor: C.border,
     marginVertical: SPACING.xs + 2,
   },
-  revenueProfitSection: {},
-  revenueKeptLabel: {
+  cameInKeptLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
-  revenueKeptAmount: {
+  cameInKeptAmount: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
     fontVariant: ['tabular-nums'],
@@ -2162,8 +2378,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: 3,
   },
 
-  // ── Today's earnings row ────────────────────────────────
-  earningsRow: {
+  // ── Today's came in row ────────────────────────────────
+  cameInOuterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
@@ -2173,27 +2389,27 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderWidth: 1,
     borderColor: C.border,
     borderRadius: RADIUS.lg,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.md,
     minHeight: 44,
   },
-  earningsLeft: {
+  cameInOuterLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
   },
-  earningsLabel: {
+  cameInOuterLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
   },
-  earningsValue: {
+  cameInOuterValue: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: BIZ.profit,
+    color: C.bronze,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     marginLeft: 'auto' as const,
   },
-  earningsCount: {
+  cameInOuterCount: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
@@ -2202,13 +2418,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Production checklist additions ─────────────────────
   productionProgressTrack: {
     height: 5,
-    backgroundColor: withAlpha(C.accent, 0.15),
+    backgroundColor: withAlpha(C.bronze, 0.15),
     borderRadius: 3,
     marginBottom: SPACING.sm,
   },
   productionProgressFill: {
     height: 5,
-    backgroundColor: C.accent,
+    backgroundColor: C.bronze,
     borderRadius: 3,
   },
   productionCheckbox: {
@@ -2221,8 +2437,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center' as const,
   },
   productionCheckboxDone: {
-    backgroundColor: C.accent,
-    borderColor: C.accent,
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
   },
   productionItemNameDone: {
     textDecorationLine: 'line-through' as const,
@@ -2316,7 +2532,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderColor: C.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.lg,
   },
   sparklineHeader: {
     flexDirection: 'row',
@@ -2438,7 +2654,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.md,
   },
   topCustomerHeaderLeft: {
     flexDirection: 'row',
@@ -2528,113 +2744,137 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Shop link modal ──
   shopModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: SPACING.xl,
+    paddingHorizontal: SPACING.lg,
   },
   shopModalCard: {
     backgroundColor: C.background,
     borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.lg,
     width: '100%',
+    maxWidth: 420,
+    maxHeight: '85%',
   },
   shopModalHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.lg,
-  },
-  shopModalIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(BIZ.success, 0.1),
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
   },
   shopModalTitle: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? -0.2 : -0.4,
+  },
+  shopModalTitleAccent: {
+    fontStyle: 'italic',
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C === CALM_DARK ? BIZ_SAFE.success.dark : BIZ_SAFE.success.light,
   },
   shopModalSubtitle: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
-    marginTop: 1,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    marginTop: 2,
+    letterSpacing: 0.1,
   },
-  shopModalFieldHint: {
-    fontSize: 10,
-    fontWeight: '400',
-    textTransform: 'none' as const,
-    letterSpacing: 0,
-    color: C.textMuted,
+  shopModalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.06),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -SPACING.sm - 2,
+    marginTop: 2,
   },
-  shopModalError: {
-    fontSize: 12,
-    color: BIZ.destructive,
-    marginBottom: SPACING.sm,
+  shopModalScroll: {
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.md,
+  },
+  shopModalErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm - 2,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    marginBottom: SPACING.sm + 2,
+  },
+  shopModalErrorText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    flex: 1,
+    lineHeight: 18,
   },
   shopModalSaveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.xs,
+    gap: 8,
     backgroundColor: BIZ.success,
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.sm + 2,
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.md + 2,
     marginTop: SPACING.md,
+    minHeight: 52,
   },
   shopModalSaveBtnText: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
+    letterSpacing: 0.3,
   },
 
   // ── Shop logo picker ──
   logoPickerWrap: {
     alignItems: 'center',
-    paddingVertical: SPACING.md,
-    gap: 6,
+    paddingVertical: SPACING.lg,
+    gap: 8,
   },
   logoCircleWrap: {
-    width: 72,
-    height: 72,
+    width: 80,
+    height: 80,
     position: 'relative',
   },
   logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: withAlpha(C.accent, 0.06),
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: withAlpha(BIZ.success, C === CALM_DARK ? 0.10 : 0.06),
     borderWidth: 1.5,
-    borderColor: C.border,
+    borderColor: withAlpha(C.textPrimary, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   logoImage: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
   logoBadge: {
     position: 'absolute',
     bottom: 0,
     right: 0,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: C.accent,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: BIZ.success,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: C.surface,
+    borderWidth: 2.5,
+    borderColor: C.background,
   },
   logoLabel: {
-    fontSize: 11,
-    color: C.textMuted,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C === CALM_DARK ? BIZ_SAFE.success.dark : BIZ_SAFE.success.light,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   logoPreviewOverlay: {
@@ -2643,7 +2883,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.9)',
+    backgroundColor: withAlpha(C.dimBg, 0.9),
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 999,
@@ -2654,61 +2894,84 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: 16,
   },
 
-  // ── Shop link modal — grouped sections ──
-  slmSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginBottom: 6,
-    marginTop: SPACING.sm,
-    paddingHorizontal: 2,
-  },
-  slmSectionLabel: {
-    fontSize: 11,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textMuted,
-    letterSpacing: 0.3,
-  },
-  slmGroupCard: {
+  // ── Shop link modal — field cards ──
+  slmFieldCard: {
     backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: C.border,
-    overflow: 'hidden',
+    borderColor: withAlpha(C.textPrimary, 0.08),
+    paddingHorizontal: SPACING.md + 2,
+    paddingVertical: SPACING.sm + 4,
+    marginBottom: SPACING.sm + 2,
   },
-  slmGroupField: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
-  },
-  slmGroupFieldLabel: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase' as const,
+  slmFieldLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  slmFieldLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
     marginBottom: 4,
   },
-  slmGroupInput: {
-    fontSize: TYPOGRAPHY.size.sm,
+  slmFieldInput: {
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
     paddingVertical: 2,
-    paddingHorizontal: 0,
+    minHeight: 22,
   },
-  slmGroupDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: C.border,
-    marginHorizontal: SPACING.md,
+  slmFieldValue: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    paddingVertical: 4,
+  },
+  slmFieldHint: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.textMuted,
+    lineHeight: 14,
+  },
+  slmFieldHintInline: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.textMuted,
+  },
+  slmRequiredPill: {
+    backgroundColor: withAlpha(BIZ.success, 0.08),
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+  },
+  slmRequiredPillText: {
+    fontSize: 9,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C === CALM_DARK ? BIZ_SAFE.success.dark : BIZ_SAFE.success.light,
+    letterSpacing: 0.3,
   },
   slmLinkCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.surface,
+    backgroundColor: withAlpha(BIZ.success, C === CALM_DARK ? 0.10 : 0.06),
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: withAlpha(BIZ.success, 0.3),
+    borderColor: withAlpha(BIZ.success, C === CALM_DARK ? 0.25 : 0.15),
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     gap: SPACING.sm,
+    marginBottom: SPACING.sm + 2,
+  },
+  slmLinkIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: withAlpha(BIZ.success, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   slmLinkUrl: {
     fontSize: 12,
@@ -2719,7 +2982,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: withAlpha(BIZ.success, 0.08),
+    backgroundColor: withAlpha(BIZ.success, C === CALM_DARK ? 0.12 : 0.08),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm + 2,
     paddingVertical: 5,
@@ -2729,19 +2992,35 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: BIZ.success,
   },
+
+  // ── Slug confirm modal ──
   slmConfirmOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: withAlpha(C.dimBg, 0.45),
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
   slmConfirmCard: {
-    backgroundColor: C.background,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 420,
+  },
+  slmConfirmIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: withAlpha(BIZ.success, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.sm,
+  },
+  slmConfirmTitle: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
   },
   slmConfirmCancelBtn: {
     flex: 1,
@@ -2825,7 +3104,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
   },
   itemStatsCountBadge: {
-    backgroundColor: withAlpha(C.accent, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 3,
@@ -2835,7 +3114,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   itemStatsCountText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
+    color: C.bronze,
     fontVariant: ['tabular-nums'] as any,
   },
   itemStatsMore: {
@@ -2853,7 +3132,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Items modal ──
   itemsModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.xl,
@@ -2862,10 +3141,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     width: '100%',
+    maxWidth: 420,
     maxHeight: '65%',
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.lg,
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   itemsModalHeader: {
     flexDirection: 'row',
@@ -2888,7 +3168,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(C.accent, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },

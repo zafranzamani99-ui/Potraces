@@ -5,7 +5,7 @@ import { BarChart, PieChart } from 'react-native-chart-kit';
 import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, COLORS, SPACING, TYPOGRAPHY, RADIUS, PRODUCT_CATEGORIES, TYPE, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, COLORS, SPACING, TYPOGRAPHY, RADIUS, PRODUCT_CATEGORIES, TYPE, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { generateReportNarrative, ReportMonthData } from '../../services/reportNarrative';
@@ -328,6 +328,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.lg,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // Stats row

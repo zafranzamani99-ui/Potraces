@@ -13,7 +13,7 @@ import { format } from 'date-fns';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallHistory } from '../../utils/explainStallHistory';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { StallSession, SessionCondition } from '../../types';
 
@@ -78,7 +78,7 @@ const SessionHistory: React.FC = () => {
           style={styles.sessionCard}
           onPress={() => handleSessionPress(item.id)}
           activeOpacity={0.85}
-          accessibilityLabel={`Session ${displayName}, total revenue ${currency} ${item.totalRevenue.toFixed(2)}, ${summary.saleCount} sales`}
+          accessibilityLabel={`Session ${displayName}, total came in ${currency} ${item.totalRevenue.toFixed(2)}, ${summary.saleCount} sales`}
           accessibilityHint="Tap to view session details"
           accessibilityRole="button"
         >
@@ -115,8 +115,8 @@ const SessionHistory: React.FC = () => {
 
           <View style={styles.cardFooter}>
             <Text
-              style={styles.cardRevenue}
-              accessibilityLabel={`Revenue ${currency} ${item.totalRevenue.toFixed(2)}`}
+              style={styles.cardCameIn}
+              accessibilityLabel={`Came in ${currency} ${item.totalRevenue.toFixed(2)}`}
             >
               {currency} {item.totalRevenue.toFixed(0)}
             </Text>
@@ -163,7 +163,7 @@ const SessionHistory: React.FC = () => {
               <Text style={styles.lifetimeNumber}>
                 {currency} {lifetimeStats.totalRevenue.toFixed(0)}
               </Text>
-              <Text style={styles.lifetimeLabel}>lifetime</Text>
+              <Text style={styles.lifetimeLabel}>lifetime came in</Text>
             </View>
             <View style={styles.lifetimeStat}>
               <View style={[styles.statIcon, { backgroundColor: withAlpha(C.gold, 0.12) }]}>
@@ -225,6 +225,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING.lg,
     paddingBottom: SPACING['4xl'],
     gap: SPACING.md,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // ─── Header ────────────────────────────────────────────
@@ -235,6 +238,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
     marginBottom: SPACING.lg,
   },
 
@@ -266,6 +270,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
   lifetimeLabel: {
     ...TYPE.muted,
@@ -318,11 +323,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   cardFooter: {
     gap: SPACING.xs,
   },
-  cardRevenue: {
+  cardCameIn: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
   cardMeta: {
     flexDirection: 'row',

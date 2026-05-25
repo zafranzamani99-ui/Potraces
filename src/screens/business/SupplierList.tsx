@@ -16,8 +16,8 @@ import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
@@ -26,6 +26,7 @@ import { useT } from '../../i18n';
 
 const SupplierList: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const tr = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
@@ -145,6 +146,8 @@ const SupplierList: React.FC = () => {
               placeholderTextColor={C.textSecondary}
               returnKeyType="search"
               onSubmitEditing={Keyboard.dismiss}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
@@ -282,6 +285,8 @@ const SupplierList: React.FC = () => {
                   placeholder={tr.business.supplierNamePlaceholder}
                   placeholderTextColor={C.textSecondary}
                   returnKeyType="next"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <Text style={styles.label}>{tr.business.supplierContactPerson}</Text>
@@ -292,6 +297,8 @@ const SupplierList: React.FC = () => {
                   placeholder={tr.business.supplierContactPlaceholder}
                   placeholderTextColor={C.textSecondary}
                   returnKeyType="next"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <Text style={styles.label}>{tr.business.supplierPhone}</Text>
@@ -304,6 +311,8 @@ const SupplierList: React.FC = () => {
                   keyboardType="phone-pad"
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <Text style={styles.label}>{tr.business.supplierEmail}</Text>
@@ -316,6 +325,8 @@ const SupplierList: React.FC = () => {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   returnKeyType="next"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <Text style={styles.label}>{tr.business.supplierAddress}</Text>
@@ -327,6 +338,8 @@ const SupplierList: React.FC = () => {
                   placeholderTextColor={C.textSecondary}
                   multiline
                   numberOfLines={2}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <Text style={styles.label}>{tr.business.supplierPaymentTerms}</Text>
@@ -338,6 +351,8 @@ const SupplierList: React.FC = () => {
                   placeholderTextColor={C.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <View style={styles.modalActions}>
@@ -374,6 +389,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING.lg,
     paddingBottom: 80,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // Search
@@ -508,6 +526,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
     maxHeight: '90%',
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center' as const,
   },
   modalHeader: {
     flexDirection: 'row',

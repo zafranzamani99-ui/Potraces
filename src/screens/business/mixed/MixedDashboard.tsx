@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
@@ -13,12 +14,13 @@ import { useBusinessStore } from '../../../store/businessStore';
 import { useMixedStore } from '../../../store/mixedStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
 import { explainMixedMonth } from '../../../utils/explainMixedMonth';
 import WeekBar from '../../../components/common/WeekBar';
 import ModeToggle from '../../../components/common/ModeToggle';
 import MixedSetup from './MixedSetup';
+import BusinessHeroNumber from '../../../components/business/BusinessHeroNumber';
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -50,6 +52,7 @@ const MixedDashboard: React.FC = () => {
   const insets = useSafeAreaInsets();
 
   const [showCostPercentage, setShowCostPercentage] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const now = new Date();
   const monthStart = startOfMonth(now);
@@ -186,15 +189,25 @@ const MixedDashboard: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              setTimeout(() => setRefreshing(false), 600);
+            }}
+            tintColor={C.accent}
+            colors={[C.accent]}
+          />
+        }
       >
         <ModeToggle />
         {/* Zone 1 — Hero: Total Income */}
-        <Text style={styles.heroAmount}>
-          {currency} {Math.round(mixedDetails.hasRoadCosts ? net : total).toLocaleString()}
-        </Text>
-        <Text style={styles.heroLabel}>
-          {mixedDetails.hasRoadCosts ? 'kept this month' : 'earned this month'}
-        </Text>
+        <BusinessHeroNumber
+          amount={mixedDetails.hasRoadCosts ? net : total}
+          label={mixedDetails.hasRoadCosts ? 'kept this month' : 'earned this month'}
+          prefix={currency}
+        />
 
         {/* Zone 2 — Stream Breakdown Bar */}
         {total > 0 ? (
@@ -379,18 +392,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['7xl'],
-  },
-
-  // Zone 1 — Hero
-  heroAmount: {
-    ...TYPE.hero,
-    color: C.textPrimary,
-    textAlign: 'center',
-  },
-  heroLabel: {
-    ...TYPE.muted,
-    textAlign: 'center',
-    marginTop: SPACING.xs,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   // Zone 2 — Stream Breakdown
@@ -588,7 +592,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   fabText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 });
 

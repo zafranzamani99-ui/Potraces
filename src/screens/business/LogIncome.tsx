@@ -15,8 +15,8 @@ import { useNavigation } from '@react-navigation/native';
 import { useBusinessStore } from '../../store/businessStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { parseTextInput } from '../../services/aiService';
 import { transcribeAudio } from '../../services/speechService';
@@ -26,6 +26,7 @@ type InputMode = 'text' | 'voice';
 
 const LogIncome: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
 
@@ -195,6 +196,8 @@ const LogIncome: React.FC = () => {
                 keyboardType="numeric"
                 placeholder={t.business.logAmountPlaceholder}
                 placeholderTextColor={C.textSecondary}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
             </View>
           )}
@@ -236,6 +239,8 @@ const LogIncome: React.FC = () => {
                 keyboardType="numeric"
                 placeholder={t.business.logAmountPlaceholder}
                 placeholderTextColor={C.textSecondary}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
               <TouchableOpacity onPress={handleSaveCost} style={styles.costSaveButton}>
                 <Text style={styles.costSaveText}>{t.business.logDone}</Text>
@@ -264,6 +269,8 @@ const LogIncome: React.FC = () => {
             keyboardType="numeric"
             placeholder="0"
             placeholderTextColor={C.border}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         </View>
 
@@ -273,14 +280,14 @@ const LogIncome: React.FC = () => {
             style={[styles.pill, mode === 'text' && styles.pillActive]}
             onPress={() => setMode('text')}
           >
-            <Feather name="type" size={16} color={mode === 'text' ? '#fff' : C.textSecondary} />
+            <Feather name="type" size={16} color={mode === 'text' ? C.onAccent : C.textSecondary} />
             <Text style={[styles.pillText, mode === 'text' && styles.pillTextActive]}>{t.business.logModeType}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.pill, mode === 'voice' && styles.pillActive]}
             onPress={() => setMode('voice')}
           >
-            <Feather name="mic" size={16} color={mode === 'voice' ? '#fff' : C.textSecondary} />
+            <Feather name="mic" size={16} color={mode === 'voice' ? C.onAccent : C.textSecondary} />
             <Text style={[styles.pillText, mode === 'voice' && styles.pillTextActive]}>{t.business.logModeVoice}</Text>
           </TouchableOpacity>
         </View>
@@ -297,6 +304,8 @@ const LogIncome: React.FC = () => {
               multiline
               onSubmitEditing={handleTextParse}
               returnKeyType="done"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             {textInput.trim().length > 0 && (
               <TouchableOpacity onPress={handleTextParse} style={styles.parseButton}>
@@ -313,7 +322,7 @@ const LogIncome: React.FC = () => {
             onPressOut={handleVoiceStop}
             activeOpacity={0.7}
           >
-            <Feather name="mic" size={32} color={isRecording ? '#fff' : C.bronze} />
+            <Feather name="mic" size={32} color={isRecording ? C.onAccent : C.bronze} />
             <Text style={[styles.voiceHint, isRecording && styles.voiceHintRecording]}>
               {isRecording ? t.business.logListening : t.business.logHoldToSpeak}
             </Text>
@@ -334,6 +343,8 @@ const LogIncome: React.FC = () => {
           onChangeText={setNote}
           placeholder={t.business.logNotePlaceholder}
           placeholderTextColor={C.textSecondary}
+          keyboardAppearance={isDark ? 'dark' : 'light'}
+          selectionColor={C.accent}
         />
 
         {/* Stream selector for mixed/parttime */}
@@ -388,6 +399,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING['2xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // Amount
@@ -432,7 +446,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   pillTextActive: {
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // Text input
@@ -460,7 +474,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.full,
   },
   parseButtonText: {
-    color: '#fff',
+    color: C.onAccent,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
@@ -486,7 +500,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   voiceHintRecording: {
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // Processing
@@ -542,7 +556,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   streamChipTextSelected: {
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // Save
@@ -558,7 +572,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // Saved state
@@ -568,6 +582,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     padding: SPACING['2xl'],
     gap: SPACING.lg,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   savedText: {
     fontSize: TYPOGRAPHY.size.xl,
@@ -642,7 +659,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   costTypeTextSelected: {
-    color: '#fff',
+    color: C.onAccent,
   },
   costAmountInput: {
     ...TYPE.insight,
@@ -664,7 +681,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   costSaveText: {
-    color: '#fff',
+    color: C.onAccent,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
   },

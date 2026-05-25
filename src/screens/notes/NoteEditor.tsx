@@ -20,8 +20,8 @@ import { format } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNotesStore } from '../../store/notesStore';
 import { useWalletStore } from '../../store/walletStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { lightTap, mediumTap, warningNotification } from '../../services/haptics';
 import { useIntentEngine } from '../../hooks/useIntentEngine';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
@@ -40,9 +40,9 @@ import PaywallModal from '../../components/common/PaywallModal';
 const EDIT_TYPES: { key: ExtractionIntent; label: string; icon: keyof typeof Feather.glyphMap }[] = [
   { key: 'expense', label: 'Expense', icon: 'arrow-up-right' },
   { key: 'income', label: 'Income', icon: 'arrow-down-left' },
-  { key: 'debt', label: 'Debt', icon: 'repeat' },
-  { key: 'debt_update', label: 'Payment', icon: 'check-circle' },
-  { key: 'seller_cost', label: 'Cost', icon: 'shopping-bag' },
+  { key: 'subscription', label: 'Bill', icon: 'repeat' },
+  { key: 'debt', label: 'Debt', icon: 'users' },
+  { key: 'savings_goal', label: 'Savings', icon: 'target' },
   { key: 'playbook', label: 'Playbook', icon: 'book-open' },
 ];
 
@@ -50,6 +50,7 @@ const AUTO_SAVE_DELAY = 600; // ms
 
 const NoteEditor: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
@@ -57,9 +58,10 @@ const NoteEditor: React.FC = () => {
     switch (key) {
       case 'expense': return t.notes.typeExpense;
       case 'income': return t.notes.typeIncome;
+      case 'subscription': return t.notes.typeBill ?? 'Bill';
       case 'debt': return t.notes.typeDebt;
       case 'debt_update': return t.notes.typePayment;
-      case 'seller_cost': return t.notes.typeCost;
+      case 'savings_goal': return t.notes.typeSavings ?? 'Savings';
       case 'playbook': return t.notes.typePlaybook;
       default: return String(key);
     }
@@ -137,15 +139,41 @@ const NoteEditor: React.FC = () => {
   const [editModalAnim, setEditModalAnim] = useState<'fade' | 'none'>('fade');
   const [showTypePicker, setShowTypePicker] = useState(false);
 
+  const [multilineFocused, setMultilineFocused] = useState(false);
+
   const expenseCategories = useCategories('expense');
   const incomeCategories = useCategories('income');
   const wallets = useWalletStore((s) => s.wallets);
+  const addWallet = useWalletStore((s) => s.addWallet);
 
   const editCategories = editType === 'income' ? incomeCategories : expenseCategories;
-  const showEditCategory = ['expense', 'income', 'subscription'].includes(editType);
-  const showEditWallet = ['expense', 'income'].includes(editType);
+  const showEditCategory = ['expense', 'income', 'subscription', 'savings_goal'].includes(editType);
+  const showEditWallet = ['expense', 'income', 'subscription'].includes(editType);
   const showEditPerson = ['debt', 'debt_update'].includes(editType);
   const showEditDebtDirection = editType === 'debt';
+
+  // UX-C1 swap-in: align with QuickAddExpense canonical contract.
+  // Every saved expense/income transaction must have a walletId. When the
+  // user has zero wallets, auto-create a default "Cash" wallet rather than
+  // silently saving wallet-less. Mirrors QuickAddExpense.ensureDefaultWalletId.
+  const ensureDefaultWalletId = useCallback((): string | null => {
+    const existing = wallets.find((w) => w.isDefault) || wallets[0];
+    if (existing) return existing.id;
+    if (wallets.length === 0) {
+      addWallet({
+        name: t.quickAdd.cashWalletName,
+        type: 'ewallet',
+        balance: 0,
+        icon: 'dollar-sign',
+        color: C.accent,
+        isDefault: true,
+      });
+      const fresh = useWalletStore.getState().wallets;
+      const created = fresh.find((w) => w.isDefault) || fresh[0];
+      return created?.id || null;
+    }
+    return null;
+  }, [wallets, addWallet, t, C.accent]);
 
   const handleEditNavToSettings = useCallback(() => {
     setEditModalAnim('none');
@@ -194,6 +222,7 @@ const NoteEditor: React.FC = () => {
     const hideSub = Keyboard.addListener(hideEvent, () => {
       setKeyboardVisible(false);
       setKeyboardHeight(0);
+      setMultilineFocused(false);
     });
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
@@ -251,13 +280,19 @@ const NoteEditor: React.FC = () => {
     lightTap();
     setShowTypePicker(false);
     setEditingExtraction(ext);
-    setEditType(ext.type);
+    const validIntents: ExtractionIntent[] = [
+      'expense', 'income', 'debt', 'debt_update', 'bnpl',
+      'seller_order', 'seller_cost', 'query', 'savings_goal',
+      'subscription', 'playbook', 'plain',
+    ];
+    const safeType = validIntents.includes(ext.type) ? ext.type : 'expense';
+    setEditType(safeType);
     setEditAmount(ext.extractedData.amount?.toString() || '');
     setEditDescription(ext.extractedData.description || '');
     setEditPerson(ext.extractedData.person || '');
 
     // Match category
-    const cats = ext.type === 'income' ? incomeCategories : expenseCategories;
+    const cats = safeType === 'income' ? incomeCategories : expenseCategories;
     const catStr = (ext.extractedData.category || '').toLowerCase().replace(/[\s&]+/g, '_');
     const catMatch = cats.find((c) => c.id === catStr)
       || cats.find((c) => c.name.toLowerCase().replace(/[\s&]+/g, '_') === catStr)
@@ -303,7 +338,17 @@ const NoteEditor: React.FC = () => {
 
     // Resolve category and wallet
     const selectedCat = editCategories.find((c) => c.id === editCategoryId);
-    const selectedWallet = wallets.find((w) => w.id === editWalletId);
+    let selectedWallet = wallets.find((w) => w.id === editWalletId);
+
+    // UX-C1: for expense/income, if no wallet was resolved (e.g. zero-wallet
+    // user or extraction with no matching wallet name), auto-create the
+    // canonical Cash wallet so the saved transaction has a walletId.
+    if (!selectedWallet && (editType === 'expense' || editType === 'income')) {
+      const ensuredId = ensureDefaultWalletId();
+      if (ensuredId) {
+        selectedWallet = useWalletStore.getState().wallets.find((w) => w.id === ensuredId);
+      }
+    }
 
     // For debt, derive transactionType from debt direction
     const txnType = editType === 'debt'
@@ -324,7 +369,7 @@ const NoteEditor: React.FC = () => {
     const id = orig.id;
     setEditingExtraction(null);
     confirmExtraction(id);
-  }, [editingExtraction, editType, editAmount, editDescription, editPerson, editCategoryId, editWalletId, editDebtType, editCategories, wallets, pageId, updateExtraction, confirmExtraction]);
+  }, [editingExtraction, editType, editAmount, editDescription, editPerson, editCategoryId, editWalletId, editDebtType, editCategories, wallets, pageId, updateExtraction, confirmExtraction, ensureDefaultWalletId]);
 
   const handleEditCancel = useCallback(() => {
     setEditingExtraction(null);
@@ -388,6 +433,8 @@ const NoteEditor: React.FC = () => {
           style={styles.backBtn}
           onPress={handleBack}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityLabel={t.common.back}
+          accessibilityRole="button"
         >
           <Feather name="chevron-left" size={22} color={C.textPrimary} />
         </TouchableOpacity>
@@ -401,6 +448,9 @@ const NoteEditor: React.FC = () => {
           ]}
           onPress={handleMicPress}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityLabel={isRecording ? t.notes.stopRecording : t.notes.recordVoice}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isRecording, busy: isTranscribing }}
         >
           {isTranscribing ? (
             <ActivityIndicator size="small" color={C.bronze} />
@@ -408,7 +458,7 @@ const NoteEditor: React.FC = () => {
             <Feather
               name={isRecording ? 'mic-off' : 'mic'}
               size={18}
-              color={isRecording ? '#fff' : C.textMuted}
+              color={isRecording ? C.surface : C.textMuted}
             />
           )}
         </TouchableOpacity>
@@ -431,6 +481,8 @@ const NoteEditor: React.FC = () => {
             });
           }}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityLabel={t.notes.openMoneyChat}
+          accessibilityRole="button"
         >
           <Feather name="message-circle" size={18} color={C.textMuted} />
         </TouchableOpacity>
@@ -438,6 +490,8 @@ const NoteEditor: React.FC = () => {
           style={styles.deleteBtn}
           onPress={handleDelete}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityLabel={t.notes.deleteNoteSingular}
+          accessibilityRole="button"
         >
           <Feather name="trash-2" size={18} color={C.textMuted} />
         </TouchableOpacity>
@@ -483,6 +537,8 @@ const NoteEditor: React.FC = () => {
           scrollEnabled={false}
           autoCorrect={false}
           autoCapitalize="none"
+          keyboardAppearance={isDark ? 'dark' : 'light'}
+          selectionColor={C.accent}
         >
           <Text style={styles.titleLine}>{title}</Text>
           {body !== '' && <Text style={styles.bodyLine}>{'\n' + body}</Text>}
@@ -606,6 +662,8 @@ const NoteEditor: React.FC = () => {
               onPress={() => { setEditingExtraction(null); setShowExtractModal(false); }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={styles.extractClose}
+              accessibilityLabel={t.common.close}
+              accessibilityRole="button"
             >
               <Feather name="x" size={18} color={C.textMuted} />
             </TouchableOpacity>
@@ -661,14 +719,6 @@ const NoteEditor: React.FC = () => {
                 pointerEvents="box-none"
               >
                 <View style={styles.editInnerCard} onStartShouldSetResponder={() => true}>
-                <TouchableOpacity
-                  onPress={handleEditCancel}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  style={styles.editOverlayBack}
-                >
-                  <Feather name="arrow-left" size={18} color={C.textMuted} />
-                </TouchableOpacity>
-
                 <ScrollView
                   keyboardShouldPersistTaps="handled"
                   nestedScrollEnabled
@@ -676,27 +726,34 @@ const NoteEditor: React.FC = () => {
                   bounces={false}
                   contentContainerStyle={styles.editScrollContent}
                 >
-                  {/* Type selector */}
-                  <View style={styles.editField}>
-                    <Text style={styles.editLabel}>{t.notes.type}</Text>
+                  {/* Header — type selector as pill + close */}
+                  <View style={styles.editHeader}>
                     <TouchableOpacity
-                      style={styles.editTypeSelect}
+                      style={styles.editTypePill}
                       onPress={() => { lightTap(); setShowTypePicker(true); }}
                       activeOpacity={0.7}
                     >
                       <Feather
                         name={EDIT_TYPES.find((et) => et.key === editType)?.icon || 'circle'}
-                        size={14}
+                        size={13}
                         color={C.bronze}
                       />
-                      <Text style={styles.editTypeSelectText}>
+                      <Text style={styles.editTypePillText}>
                         {editTypeLabel(editType)}
                       </Text>
-                      <Feather name="chevron-down" size={14} color={C.textMuted} />
+                      <Feather name="chevron-down" size={12} color={C.textMuted} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleEditCancel}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityLabel={t.common.back}
+                      accessibilityRole="button"
+                    >
+                      <Feather name="x" size={18} color={C.textMuted} />
                     </TouchableOpacity>
                   </View>
 
-                  {/* Amount */}
+                  {/* Amount — hero style */}
                   <View style={styles.editAmountSection}>
                     <Text style={styles.editAmountPrefix}>{currency}</Text>
                     <TextInput
@@ -705,52 +762,70 @@ const NoteEditor: React.FC = () => {
                       onChangeText={setEditAmount}
                       keyboardType="decimal-pad"
                       placeholder="0.00"
-                      placeholderTextColor={C.border}
+                      placeholderTextColor={withAlpha(C.textMuted, 0.4)}
+                      keyboardAppearance={isDark ? 'dark' : 'light'}
+                      selectionColor={C.accent}
                     />
                   </View>
 
-                  {/* Description */}
-                  <TextInput
-                    style={styles.editDescInput}
-                    value={editDescription}
-                    onChangeText={setEditDescription}
-                    placeholder={t.notes.description}
-                    placeholderTextColor={C.textMuted}
-                  />
+                  {/* Description field card */}
+                  <View style={styles.editFieldCard} onStartShouldSetResponder={() => true}>
+                    <Text style={styles.editFieldLabel}>{t.notes.description}</Text>
+                    <TextInput
+                      style={[styles.editFieldInput, styles.editFieldMultiline]}
+                      value={editDescription}
+                      onChangeText={setEditDescription}
+                      placeholder={t.notes.description}
+                      placeholderTextColor={C.textMuted}
+                      multiline
+                      textAlignVertical="top"
+                      returnKeyType="default"
+                      onFocus={() => setMultilineFocused(true)}
+                      onBlur={() => setMultilineFocused(false)}
+                      keyboardAppearance={isDark ? 'dark' : 'light'}
+                      selectionColor={C.accent}
+                    />
+                  </View>
 
                   {/* Category */}
                   {showEditCategory && (
-                    <CategoryPicker
-                      categories={editCategories}
-                      selectedId={editCategoryId}
-                      onSelect={setEditCategoryId}
-                      label={t.notes.category}
-                      layout="dropdown"
-                      onNavigateToSettings={handleEditNavToSettings}
-                    />
+                    <View style={styles.editPickerCard}>
+                      <CategoryPicker
+                        categories={editCategories}
+                        selectedId={editCategoryId}
+                        onSelect={setEditCategoryId}
+                        label={t.notes.category}
+                        layout="dropdown"
+                        onNavigateToSettings={handleEditNavToSettings}
+                      />
+                    </View>
                   )}
 
                   {/* Wallet */}
                   {showEditWallet && wallets.length > 0 && (
-                    <WalletPicker
-                      wallets={wallets}
-                      selectedId={editWalletId}
-                      onSelect={setEditWalletId}
-                      label={t.notes.wallet}
-                    />
+                    <View style={styles.editPickerCard}>
+                      <WalletPicker
+                        wallets={wallets}
+                        selectedId={editWalletId}
+                        onSelect={setEditWalletId}
+                        label={t.notes.wallet}
+                      />
+                    </View>
                   )}
 
                   {/* Person + debt direction */}
                   {showEditPerson && (
                     <>
-                      <View style={styles.editField}>
-                        <Text style={styles.editLabel}>{t.notes.person}</Text>
+                      <View style={styles.editFieldCard} onStartShouldSetResponder={() => true}>
+                        <Text style={styles.editFieldLabel}>{t.notes.person}</Text>
                         <TextInput
-                          style={styles.editDescInput}
+                          style={styles.editFieldInput}
                           value={editPerson}
                           onChangeText={setEditPerson}
                           placeholder={t.notes.personName}
                           placeholderTextColor={C.textMuted}
+                          keyboardAppearance={isDark ? 'dark' : 'light'}
+                          selectionColor={C.accent}
                         />
                       </View>
                       {showEditDebtDirection && (
@@ -783,9 +858,12 @@ const NoteEditor: React.FC = () => {
                     style={[styles.editConfirmBtn, !editAmount && styles.editConfirmBtnDisabled]}
                     onPress={handleEditSave}
                     disabled={!editAmount}
-                    activeOpacity={0.7}
+                    activeOpacity={0.8}
+                    accessibilityLabel={t.notes.confirm}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: !editAmount }}
                   >
-                    <Feather name="check" size={15} color="#fff" />
+                    <Feather name="check" size={15} color={C.onAccent} />
                     <Text style={styles.editConfirmText}>{t.notes.confirm}</Text>
                   </TouchableOpacity>
                 </ScrollView>
@@ -793,47 +871,55 @@ const NoteEditor: React.FC = () => {
               </KeyboardAvoidingView>
             </>
           )}
-        </View>
-      </Modal>
 
-      {/* Type picker — floats over extraction modal */}
-      <Modal
-        visible={showTypePicker}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowTypePicker(false)}
-      >
-        <TouchableOpacity
-          style={styles.typePickerOverlay}
-          activeOpacity={1}
-          onPress={() => setShowTypePicker(false)}
-        >
-          <View style={styles.typePickerCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.typePickerTitle}>{t.notes.selectType}</Text>
-            {EDIT_TYPES.map((et) => {
-              const active = editType === et.key;
-              return (
-                <TouchableOpacity
-                  key={et.key}
-                  style={[styles.typePickerOption, active && styles.typePickerOptionActive]}
-                  onPress={() => {
-                    setEditType(et.key);
-                    setShowTypePicker(false);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.typePickerIcon, active && styles.typePickerIconActive]}>
-                    <Feather name={et.icon} size={18} color={active ? C.bronze : C.textMuted} />
-                  </View>
-                  <Text style={[styles.typePickerText, active && styles.typePickerTextActive]}>
-                    {editTypeLabel(et.key)}
-                  </Text>
-                  {active && <Feather name="check" size={18} color={C.bronze} />}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </TouchableOpacity>
+          {/* Type picker overlay — inside extraction Modal, over edit card */}
+          {showTypePicker && (
+            <>
+              <Pressable
+                style={styles.typePickerOverlay}
+                onPress={() => setShowTypePicker(false)}
+              />
+              <View style={styles.typePickerCenter} pointerEvents="box-none">
+                <View style={styles.typePickerCard} onStartShouldSetResponder={() => true}>
+                  <Text style={styles.typePickerTitle}>{t.notes.selectType}</Text>
+                  {EDIT_TYPES.map((et) => {
+                    const active = editType === et.key;
+                    return (
+                      <TouchableOpacity
+                        key={et.key}
+                        style={[styles.typePickerOption, active && styles.typePickerOptionActive]}
+                        onPress={() => {
+                          setEditType(et.key);
+                          setShowTypePicker(false);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.typePickerIcon, active && styles.typePickerIconActive]}>
+                          <Feather name={et.icon} size={18} color={active ? C.bronze : C.textMuted} />
+                        </View>
+                        <Text style={[styles.typePickerText, active && styles.typePickerTextActive]}>
+                          {editTypeLabel(et.key)}
+                        </Text>
+                        {active && <Feather name="check" size={18} color={C.bronze} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </>
+          )}
+
+          {/* Floating gold done FAB — LAST element so it's always on top */}
+          {keyboardVisible && multilineFocused && (
+            <TouchableOpacity
+              style={[styles.doneFab, { bottom: keyboardHeight + 16, zIndex: 200 }]}
+              onPress={() => Keyboard.dismiss()}
+              activeOpacity={0.8}
+            >
+              <Feather name="check" size={20} color={C.onAccent} />
+            </TouchableOpacity>
+          )}
+        </View>
       </Modal>
 
       <PaywallModal
@@ -849,7 +935,7 @@ const NoteEditor: React.FC = () => {
           onPress={() => Keyboard.dismiss()}
           activeOpacity={0.8}
         >
-          <Feather name="check" size={20} color="#fff" />
+          <Feather name="check" size={20} color={C.onAccent} />
         </TouchableOpacity>
       )}
     </View>
@@ -983,7 +1069,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingBottom: SPACING.lg,
     borderWidth: 1,
     borderColor: C.border,
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   extractClose: {
     position: 'absolute',
@@ -992,8 +1078,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     zIndex: 1,
   },
   editOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: withAlpha(C.textPrimary, 0.4),
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     zIndex: 20,
   },
   editOverlayCard: {
@@ -1010,16 +1100,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '88%',
     maxHeight: '80%',
     backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
+    borderRadius: RADIUS['2xl'],
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
+    paddingTop: SPACING.md + 2,
     paddingBottom: SPACING.lg,
     borderWidth: 1,
-    borderColor: C.border,
-    ...SHADOWS.lg,
-  },
-  editOverlayBack: {
-    marginBottom: SPACING.sm,
+    borderColor: withAlpha(C.textPrimary, 0.06),
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   extractHeader: {
     flexDirection: 'row',
@@ -1123,17 +1210,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     paddingTop: SPACING.xl,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 24,
-      },
-      android: {
-        elevation: 12,
-      },
-    }),
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS['2xl']),
   },
   editClose: {
     position: 'absolute',
@@ -1142,47 +1219,58 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     zIndex: 1,
   },
   editScrollContent: {
-    gap: SPACING.sm,
+    gap: SPACING.sm + 2,
+    paddingBottom: SPACING.xs,
   },
-  editTypeSelect: {
+  editHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: SPACING.sm,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: RADIUS.md,
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xs,
   },
-  editTypeSelectText: {
-    flex: 1,
+  editTypePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    borderRadius: RADIUS.full,
+    paddingVertical: 6,
+    paddingHorizontal: SPACING.sm + 4,
+  },
+  editTypePillText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: C.textPrimary,
-    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    letterSpacing: 0.1,
   },
   typePickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: withAlpha(C.dimBg, 0.4),
+    zIndex: 100,
+  },
+  typePickerCenter: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+    zIndex: 101,
   },
   typePickerCard: {
-    width: '75%',
+    width: '80%',
+    maxWidth: 300,
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     gap: 2,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 12,
-      },
-    }),
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.xl),
   },
   typePickerTitle: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1204,7 +1292,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: withAlpha(C.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1225,33 +1313,57 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'baseline',
     gap: 4,
     paddingVertical: SPACING.xs,
+    paddingHorizontal: 2,
   },
   editAmountPrefix: {
-    fontSize: 18,
+    fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textMuted,
   },
   editAmountInput: {
     flex: 1,
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     padding: 0,
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
   },
-  editDescInput: {
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-    paddingVertical: SPACING.sm,
+  editFieldCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+    paddingHorizontal: SPACING.md + 2,
+    paddingVertical: SPACING.sm + 4,
   },
-  editField: {
-    gap: 4,
-  },
-  editLabel: {
+  editFieldLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
-    marginBottom: 2,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  editFieldInput: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    paddingVertical: 2,
+    letterSpacing: -0.1,
+  },
+  editFieldMultiline: {
+    minHeight: 44,
+    paddingTop: 4,
+    paddingBottom: 4,
+    lineHeight: 20,
+  },
+  editPickerCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
   },
   editDebtRow: {
     flexDirection: 'row',
@@ -1260,15 +1372,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   editDebtToggle: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: RADIUS.md,
-    backgroundColor: C.background,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.08 : 0.04),
   },
   editDebtTheyOwe: {
     backgroundColor: withAlpha(C.deepOlive, 0.12),
   },
   editDebtIOwe: {
-    backgroundColor: withAlpha('#C1694F', 0.12),
+    backgroundColor: withAlpha(C.bronze, 0.12),
   },
   editDebtText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1280,7 +1392,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   editDebtTextIOwe: {
-    color: '#C1694F',
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   editConfirmBtn: {
@@ -1289,9 +1401,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     backgroundColor: C.deepOlive,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.full,
     paddingVertical: SPACING.md,
-    marginTop: SPACING.xs,
+    marginTop: SPACING.sm,
   },
   editConfirmBtnDisabled: {
     opacity: 0.4,
@@ -1299,7 +1411,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   editConfirmText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.surface,
   },
   // Floating done button
   doneFab: {

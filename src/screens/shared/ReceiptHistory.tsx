@@ -93,6 +93,8 @@ const ReceiptHistory: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
       >
         {/* ── Year Tabs (pbTab pattern) ── */}
         <View style={styles.tabRow}>
@@ -244,6 +246,7 @@ const ReceiptHistory: React.FC = () => {
                             </>
                           )}
                         </View>
+                        <Text style={styles.receiptSavedDate}>saved {format(item.createdAt, 'dd MMM yyyy, h:mm a')}</Text>
                       </View>
                     </Pressable>
                   </Swipeable>
@@ -255,7 +258,7 @@ const ReceiptHistory: React.FC = () => {
         ) : (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconCircle}>
-              <Feather name="archive" size={48} color={C.textMuted} />
+              <Feather name="camera" size={24} color={C.textMuted} />
             </View>
             <Text style={styles.emptyTitle}>{t.receipts.noReceipts}</Text>
             <Text style={styles.emptyMessage}>
@@ -265,8 +268,10 @@ const ReceiptHistory: React.FC = () => {
               style={styles.emptyButton}
               onPress={() => navigation.navigate('ReceiptScanner')}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={t.receipts.scanReceipt}
             >
-              <Feather name="camera" size={18} color="#fff" />
+              <Feather name="camera" size={16} color="#fff" />
               <Text style={styles.emptyButtonText}>{t.receipts.scanReceipt}</Text>
             </TouchableOpacity>
           </View>
@@ -316,6 +321,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   tabText: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
+    letterSpacing: 0.2,
   },
   tabTextActive: {
     fontWeight: TYPOGRAPHY.weight.semibold,
@@ -331,15 +337,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     ...SHADOWS.sm,
   },
   heroLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textMuted,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
     marginBottom: SPACING.xs,
-    textTransform: 'lowercase',
   },
   heroAmount: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.light,
     color: C.textPrimary,
+    letterSpacing: -0.5,
     marginBottom: SPACING.lg,
     fontVariant: ['tabular-nums'] as any,
   },
@@ -377,11 +386,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
+    letterSpacing: 0.2,
     flex: 1,
   },
   taxRowAmount: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
+    letterSpacing: 0.2,
     fontVariant: ['tabular-nums'] as any,
   },
 
@@ -411,8 +422,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   reminderText: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
+    letterSpacing: 0.2,
     flex: 1,
-    lineHeight: 18,
+    lineHeight: TYPOGRAPHY.size.xs * TYPOGRAPHY.lineHeight.normal,
   },
 
   // ── Grouped card (wallet-style) ──
@@ -448,12 +460,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 2,
+    marginBottom: SPACING.xs / 2,
   },
   receiptTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
+    letterSpacing: 0.2,
     flex: 1,
     marginRight: SPACING.sm,
   },
@@ -461,6 +474,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: 0.2,
     fontVariant: ['tabular-nums'] as any,
   },
   receiptMeta: {
@@ -470,6 +484,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   receiptDate: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
+    letterSpacing: 0.2,
+  },
+  receiptSavedDate: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    letterSpacing: 0.2,
+    marginTop: SPACING.xs / 2,
   },
   receiptDot: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -499,20 +520,28 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   emptyIconCircle: {
-    marginBottom: SPACING.lg,
+    width: 64,
+    height: 64,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.accent, 0.06),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.xl,
   },
   emptyTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: 0.2,
     marginBottom: SPACING.xs,
   },
   emptyMessage: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
     textAlign: 'center',
+    letterSpacing: 0.2,
     marginBottom: SPACING.xl,
-    lineHeight: 20,
+    lineHeight: TYPOGRAPHY.size.sm * TYPOGRAPHY.lineHeight.normal,
   },
   emptyButton: {
     flexDirection: 'row',
@@ -520,13 +549,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.sm,
     backgroundColor: C.accent,
     paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.sm + SPACING.xs / 2,
     borderRadius: RADIUS.full,
   },
   emptyButtonText: {
-    fontSize: TYPOGRAPHY.size.base,
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
+    letterSpacing: 0.2,
   },
 
   // ── FAB ──

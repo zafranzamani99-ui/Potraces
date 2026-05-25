@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { TouchableOpacity } from 'react-native';
+import { Alert, BackHandler, TouchableOpacity } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -45,7 +45,6 @@ import SellerProducts from '../screens/seller/Products';
 import SeasonSummary from '../screens/seller/SeasonSummary';
 import PastSeasons from '../screens/seller/PastSeasons';
 import SellerCosts from '../screens/seller/CostManagement';
-import SellerCustomersScreen from '../screens/seller/Customers';
 import SellerOrderList from '../screens/seller/OrderList';
 import SellerTransactions from '../screens/seller/Transactions';
 import StallSessionSetup from '../screens/stall/SessionSetup';
@@ -219,6 +218,19 @@ const RootNavigator: React.FC = () => {
   const mode = useAppStore((state) => state.mode);
   const hasCompletedOnboarding = useSettingsStore((s) => s.hasCompletedOnboarding);
   const C = useCalm();
+  useEffect(() => {
+    const onBackPress = () => {
+      if (navigationRef.current?.canGoBack()) return false;
+      Alert.alert('Exit Potraces?', undefined, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Exit', style: 'destructive', onPress: () => BackHandler.exitApp() },
+      ]);
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, []);
+
   const navTheme = {
     ...(C.background === '#121212' ? DarkTheme : DefaultTheme),
     colors: {
@@ -313,26 +325,12 @@ const RootNavigator: React.FC = () => {
         <Stack.Screen
           name="ReceiptHistory"
           component={ReceiptHistory}
-          options={{
-            headerShown: true,
-            headerTitle: 'Receipts',
-            headerBackTitle: ' ',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-          }}
+          options={makeBackHeader(C, mode, 'Receipts')}
         />
         <Stack.Screen
           name="ReceiptDetail"
           component={ReceiptDetail}
-          options={{
-            headerShown: true,
-            headerTitle: 'Receipt',
-            headerBackTitle: ' ',
-            headerStyle: { backgroundColor: C.background },
-            headerTintColor: C.textPrimary,
-            headerTitleStyle: { fontWeight: '600' as const, fontSize: 18 },
-          }}
+          options={makeBackHeader(C, mode, 'Receipt')}
         />
         <Stack.Screen
           name="ImportFromStatement"
@@ -418,11 +416,6 @@ const RootNavigator: React.FC = () => {
           name="SellerCosts"
           component={SellerCosts}
           options={makeBackHeader(C, mode, 'Costs')}
-        />
-        <Stack.Screen
-          name="SellerCustomersStack"
-          component={SellerCustomersScreen}
-          options={makeBackHeader(C, mode, 'Customers')}
         />
         <Stack.Screen
           name="SeasonSummary"

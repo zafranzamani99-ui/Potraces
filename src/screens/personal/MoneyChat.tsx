@@ -25,7 +25,7 @@ import { useAppStore } from '../../store/appStore';
 import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useLearningStore } from '../../store/learningStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { AIMessage, AIMessageAction } from '../../types';
@@ -37,18 +37,6 @@ import { sendChatMessage } from '../../services/moneyChat';
 import { parseActions, executeAction, ChatAction, ChatActionType } from '../../services/chatActions';
 import { lightTap, successNotification } from '../../services/haptics';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
-
-const PERSONAL_SUGGESTIONS = [
-  'Where does most of my money go?',
-  'How much did I spend on food?',
-  'Add rm15 lunch at mamak',
-];
-
-const BUSINESS_SUGGESTIONS = [
-  'How was this month compared to last?',
-  'Can I afford a new phone?',
-  'Is my income stable?',
-];
 
 const ACTION_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   add_expense: 'arrow-up-right',
@@ -82,36 +70,44 @@ const ACTION_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   add_wallet: 'credit-card',
 };
 
-const ACTION_LABELS: Record<string, string> = {
-  add_expense: 'Expense',
-  add_income: 'Income',
-  add_debt: 'Debt',
-  add_subscription: 'Subscription',
-  split_bill: 'Split',
-  debt_update: 'Payment',
-  transfer: 'Transfer',
-  add_goal_contribution: 'Goal',
-  cancel_subscription: 'Cancel',
-  forgive_debt: 'Forgive',
-  update_subscription: 'Update',
-  add_bnpl: 'BNPL',
-  repay_credit: 'Repay',
-  update_savings: 'Update Savings',
-  add_savings_account: 'New Account',
-  create_goal: 'New Goal',
-  withdraw_goal: 'Withdraw',
-  delete_transaction: 'Delete',
-  edit_transaction: 'Edit',
-  add_budget: 'Set Budget',
-  edit_budget: 'Edit Budget',
-  delete_budget: 'Remove Budget',
-  delete_debt: 'Delete Debt',
-  edit_debt: 'Edit Debt',
-  pause_goal: 'Pause Goal',
-  archive_goal: 'Archive Goal',
-  delete_goal: 'Delete Goal',
-  pause_subscription: 'Pause Sub',
-  add_wallet: 'Add Wallet',
+// Resolve translatable action labels per chat-action type. Uses i18n so
+// labels match the canonical t.quickAdd / t.moneyChat vocab in both locales.
+const getActionLabel = (
+  type: string,
+  t: ReturnType<typeof useT>,
+): string => {
+  const map: Record<string, string> = {
+    add_expense: t.moneyChat.actionTypeExpense,
+    add_income: t.moneyChat.actionTypeIncome,
+    add_debt: t.moneyChat.actionTypeDebt,
+    add_subscription: t.moneyChat.actionTypeSubscription,
+    split_bill: t.moneyChat.actionTypeSplit,
+    debt_update: t.moneyChat.actionTypePayment,
+    transfer: t.moneyChat.actionTypeTransfer,
+    add_goal_contribution: t.moneyChat.actionTypeGoal,
+    cancel_subscription: t.moneyChat.actionTypeCancel,
+    forgive_debt: t.moneyChat.actionTypeForgive,
+    update_subscription: t.moneyChat.actionTypeUpdate,
+    add_bnpl: t.moneyChat.actionTypeBnpl,
+    repay_credit: t.moneyChat.actionTypeRepay,
+    update_savings: t.moneyChat.actionTypeUpdateSavings,
+    add_savings_account: t.moneyChat.actionTypeNewAccount,
+    create_goal: t.moneyChat.actionTypeNewGoal,
+    withdraw_goal: t.moneyChat.actionTypeWithdraw,
+    delete_transaction: t.moneyChat.actionTypeDelete,
+    edit_transaction: t.moneyChat.actionTypeEdit,
+    add_budget: t.moneyChat.actionTypeSetBudget,
+    edit_budget: t.moneyChat.actionTypeEditBudget,
+    delete_budget: t.moneyChat.actionTypeRemoveBudget,
+    delete_debt: t.moneyChat.actionTypeDeleteDebt,
+    edit_debt: t.moneyChat.actionTypeEditDebt,
+    pause_goal: t.moneyChat.actionTypePauseGoal,
+    archive_goal: t.moneyChat.actionTypeArchiveGoal,
+    delete_goal: t.moneyChat.actionTypeDeleteGoal,
+    pause_subscription: t.moneyChat.actionTypePauseSub,
+    add_wallet: t.moneyChat.actionTypeAddWallet,
+  };
+  return map[type] || type;
 };
 
 // Typing indicator — 3 olive dots with staggered animation
@@ -184,16 +180,21 @@ const HighlightedText = memo(({ text, style }: { text: string; style: any }) => 
 // Confirmed/failed action card (shown in chat history)
 const ActionCard = memo(({ action }: { action: AIMessageAction }) => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   if (!action.message && !action.description) return null;
 
   const label = action.message
     || (action.description && action.amount
       ? `${action.description} — RM ${action.amount.toFixed(2)}`
-      : action.description || 'Done');
+      : action.description || t.moneyChat.done);
 
   return (
-    <View style={[styles.actionCard, action.success ? styles.actionCardSuccess : styles.actionCardFail]}>
+    <View
+      style={[styles.actionCard, action.success ? styles.actionCardSuccess : styles.actionCardFail]}
+      accessibilityRole="text"
+      accessibilityLabel={label}
+    >
       <View style={styles.actionCardRow}>
         <Feather
           name={action.success ? (ACTION_ICONS[action.type] || 'check') : 'x'}
@@ -217,13 +218,22 @@ const PendingChip = memo(({
   onPress: () => void;
 }) => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const icon = ACTION_ICONS[action.type] || 'plus';
-  const typeLabel = ACTION_LABELS[action.type] || action.type;
+  const typeLabel = getActionLabel(action.type, t);
   const personLabel = action.person ? ` · ${action.person}` : '';
+  const amountLabel = action.amount != null ? ` RM ${action.amount.toFixed(2)}` : '';
 
   return (
-    <TouchableOpacity style={styles.pendingChip} activeOpacity={0.7} onPress={onPress}>
+    <TouchableOpacity
+      style={styles.pendingChip}
+      activeOpacity={0.7}
+      onPress={onPress}
+      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+      accessibilityRole="button"
+      accessibilityLabel={`${typeLabel}: ${action.description}${personLabel}${amountLabel}`}
+    >
       <View style={styles.pendingChipIconWrap}>
         <Feather name={icon} size={12} color={C.bronze} />
       </View>
@@ -235,12 +245,12 @@ const PendingChip = memo(({
   );
 });
 
-// Common action types the user can switch between
-const SWITCHABLE_TYPES: { key: ChatActionType; label: string; icon: keyof typeof Feather.glyphMap }[] = [
-  { key: 'add_expense', label: 'Expense', icon: 'arrow-up-right' },
-  { key: 'add_income', label: 'Income', icon: 'arrow-down-left' },
-  { key: 'add_debt', label: 'Debt', icon: 'repeat' },
-  { key: 'add_subscription', label: 'Sub', icon: 'credit-card' },
+// Common action types the user can switch between (label resolved at render via i18n)
+const SWITCHABLE_TYPE_KEYS: { key: ChatActionType; icon: keyof typeof Feather.glyphMap }[] = [
+  { key: 'add_expense', icon: 'arrow-up-right' },
+  { key: 'add_income', icon: 'arrow-down-left' },
+  { key: 'add_debt', icon: 'repeat' },
+  { key: 'add_subscription', icon: 'credit-card' },
 ];
 
 // Floating modal for editing + confirming a pending action
@@ -371,7 +381,7 @@ const ActionEditModal = ({
             >
               {/* Type selector — tap to open picker */}
               <View style={styles.editField}>
-                <Text style={styles.editLabel}>type</Text>
+                <Text style={styles.editLabel}>{t.moneyChat.typeLabel}</Text>
                 <TouchableOpacity
                   style={styles.typeSelect}
                   onPress={() => {
@@ -379,14 +389,16 @@ const ActionEditModal = ({
                     setShowTypePicker(true);
                   }}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${t.moneyChat.typeLabel}: ${getActionLabel(actionType, t)}`}
                 >
                   <Feather
-                    name={SWITCHABLE_TYPES.find((t) => t.key === actionType)?.icon || 'circle'}
+                    name={SWITCHABLE_TYPE_KEYS.find((s) => s.key === actionType)?.icon || 'circle'}
                     size={14}
                     color={C.bronze}
                   />
                   <Text style={styles.typeSelectText}>
-                    {SWITCHABLE_TYPES.find((t) => t.key === actionType)?.label || actionType}
+                    {getActionLabel(actionType, t)}
                   </Text>
                   <Feather name="chevron-down" size={14} color={C.textMuted} />
                 </TouchableOpacity>
@@ -402,6 +414,7 @@ const ActionEditModal = ({
                   keyboardType="decimal-pad"
                   placeholder="0.00"
                   placeholderTextColor={C.border}
+                  accessibilityLabel="amount"
                 />
               </View>
 
@@ -410,8 +423,9 @@ const ActionEditModal = ({
                 style={styles.descInput}
                 value={desc}
                 onChangeText={setDesc}
-                placeholder="description"
+                placeholder={t.moneyChat.descPlaceholder}
                 placeholderTextColor={C.textMuted}
+                accessibilityLabel={t.moneyChat.descPlaceholder}
               />
 
               {/* Category dropdown */}
@@ -420,7 +434,7 @@ const ActionEditModal = ({
                   categories={categories}
                   selectedId={categoryId}
                   onSelect={setCategoryId}
-                  label="category"
+                  label={t.quickAdd.categoryLabel}
                   layout="dropdown"
                   onNavigateToSettings={handleNavigateToSettings}
                 />
@@ -432,7 +446,7 @@ const ActionEditModal = ({
                   wallets={wallets}
                   selectedId={walletId}
                   onSelect={setWalletId}
-                  label="wallet"
+                  label={t.quickAdd.walletLabel}
                 />
               )}
 
@@ -440,13 +454,14 @@ const ActionEditModal = ({
               {showPerson && (
                 <>
                   <View style={styles.editField}>
-                    <Text style={styles.editLabel}>person</Text>
+                    <Text style={styles.editLabel}>{t.moneyChat.personLabel}</Text>
                     <TextInput
                       style={styles.descInput}
                       value={person}
                       onChangeText={setPerson}
-                      placeholder="name"
+                      placeholder={t.moneyChat.namePlaceholder}
                       placeholderTextColor={C.textMuted}
+                      accessibilityLabel={t.moneyChat.personLabel}
                     />
                   </View>
                   <View style={styles.debtToggleRow}>
@@ -454,28 +469,40 @@ const ActionEditModal = ({
                       style={[styles.debtToggle, debtType === 'they_owe' && styles.debtToggleTheyOwe]}
                       onPress={() => setDebtType('they_owe')}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: debtType === 'they_owe' }}
+                      accessibilityLabel={t.moneyChat.theyOweMe}
                     >
                       <Text style={[styles.debtToggleText, debtType === 'they_owe' && styles.debtToggleTextTheyOwe]}>
-                        they owe me
+                        {t.moneyChat.theyOweMe}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.debtToggle, debtType === 'i_owe' && styles.debtToggleIOwe]}
                       onPress={() => setDebtType('i_owe')}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: debtType === 'i_owe' }}
+                      accessibilityLabel={t.moneyChat.iOweThem}
                     >
                       <Text style={[styles.debtToggleText, debtType === 'i_owe' && styles.debtToggleTextIOwe]}>
-                        I owe them
+                        {t.moneyChat.iOweThem}
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </>
               )}
 
-              {/* Confirm */}
-              <TouchableOpacity style={styles.confirmBtnFull} onPress={handleConfirm} activeOpacity={0.7}>
+              {/* Save — canonical primary action verb (UX-C1 swap-in) */}
+              <TouchableOpacity
+                style={styles.confirmBtnFull}
+                onPress={handleConfirm}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.moneyChat.save}
+              >
                 <Feather name="check" size={15} color="#fff" />
-                <Text style={styles.confirmBtnText}>{t.chat.confirm}</Text>
+                <Text style={styles.confirmBtnText}>{t.moneyChat.save}</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -496,23 +523,27 @@ const ActionEditModal = ({
         >
           <View style={styles.typePickerCard} onStartShouldSetResponder={() => true}>
             <Text style={styles.typePickerTitle}>{t.chat.selectType}</Text>
-            {SWITCHABLE_TYPES.map((t) => {
-              const active = actionType === t.key;
+            {SWITCHABLE_TYPE_KEYS.map((s) => {
+              const active = actionType === s.key;
+              const label = getActionLabel(s.key, t);
               return (
                 <TouchableOpacity
-                  key={t.key}
+                  key={s.key}
                   style={[styles.typePickerOption, active && styles.typePickerOptionActive]}
                   onPress={() => {
-                    setActionType(t.key);
+                    setActionType(s.key);
                     setShowTypePicker(false);
                   }}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={label}
                 >
                   <View style={[styles.typePickerIcon, active && styles.typePickerIconActive]}>
-                    <Feather name={t.icon} size={18} color={active ? C.bronze : C.textMuted} />
+                    <Feather name={s.icon} size={18} color={active ? C.bronze : C.textMuted} />
                   </View>
                   <Text style={[styles.typePickerText, active && styles.typePickerTextActive]}>
-                    {t.label}
+                    {label}
                   </Text>
                   {active && <Feather name="check" size={18} color={C.bronze} />}
                 </TouchableOpacity>
@@ -622,7 +653,22 @@ const MoneyChat: React.FC = () => {
   const recordingAnim = useRef(new Animated.Value(1)).current;
 
   const isBusinessMode = mode === 'business';
-  const suggestions = isBusinessMode ? BUSINESS_SUGGESTIONS : PERSONAL_SUGGESTIONS;
+  const suggestions = useMemo(
+    () => (
+      isBusinessMode
+        ? [
+            t.moneyChat.suggestionMonthCompare,
+            t.moneyChat.suggestionAffordPhone,
+            t.moneyChat.suggestionIncomeStable,
+          ]
+        : [
+            t.moneyChat.suggestionWhereGoes,
+            t.moneyChat.suggestionFoodSpend,
+            t.moneyChat.suggestionAddLunch,
+          ]
+    ),
+    [isBusinessMode, t],
+  );
 
   // Auto-archive previous chat on mount → start fresh each time
   useEffect(() => {
@@ -777,7 +823,7 @@ const MoneyChat: React.FC = () => {
     if (result.success) successNotification();
     else lightTap();
 
-    // Show result as a clear text message
+    // Calm tone, no emojis (per language rules)
     const prefix = result.success ? 'Recorded \u2705' : 'Failed \u274C';
     addChatMessage({
       role: 'assistant',
@@ -1383,10 +1429,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-      android: { elevation: 4 },
-    }),
+    ...SHADOWS.sm,
   },
 
   // Pending actions — scrollable chips
@@ -1452,17 +1495,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     paddingTop: SPACING.xl,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 24,
-      },
-      android: {
-        elevation: 12,
-      },
-    }),
+    ...SHADOWS['2xl'],
   },
   modalClose: {
     position: 'absolute',
@@ -1508,15 +1541,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     gap: 2,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-      },
-      android: { elevation: 12 },
-    }),
+    ...SHADOWS.xl,
   },
   typePickerTitle: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1796,15 +1821,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 24,
-      },
-      android: { elevation: 12 },
-    }),
+    ...SHADOWS['2xl'],
   },
   historyHeader: {
     flexDirection: 'row',
@@ -1860,15 +1877,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 24,
-      },
-      android: { elevation: 12 },
-    }),
+    ...SHADOWS['2xl'],
   },
   selectTextHeader: {
     flexDirection: 'row',

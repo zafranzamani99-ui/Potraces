@@ -18,14 +18,14 @@ import {
 import { ScrollView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { format, addDays, isWithinInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear, subMonths, getDaysInMonth } from 'date-fns';
+import { format, addDays, isWithinInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear, startOfDay, subMonths, getDaysInMonth } from 'date-fns';
 
 import { useNavigation } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import ModeToggle from '../../components/common/ModeToggle';
@@ -66,21 +66,24 @@ const getGreetingKey = (): 'goodMorning' | 'goodAfternoon' | 'goodEvening' => {
   return 'goodEvening';
 };
 
-const QUICK_ACTIONS = [
-  { key: 'wallets' as const, icon: 'credit-card' as const, screen: 'WalletManagement', color: '#6BA3BE' },
-  { key: 'savings' as const, icon: 'archive' as const, screen: 'SavingsTracker', color: '#A688B8' },
-  { key: 'debts' as const, icon: 'git-branch' as const, screen: 'DebtTracking', color: '#C1694F' },
-  { key: 'bills' as const, icon: 'refresh-cw' as const, screen: 'SubscriptionList', color: CALM.accent },
-  { key: 'budgets' as const, icon: 'sliders' as const, screen: 'BudgetPlanning', color: CALM.bronze },
-  { key: 'reports' as const, icon: 'trending-up' as const, screen: 'PersonalReports', color: '#8B7355' },
-  { key: 'goals' as const, icon: 'flag' as const, screen: 'Goals', color: '#D4884A' },
-  { key: 'receipts' as const, icon: 'file-text' as const, screen: 'ReceiptHistory', color: '#8B7355' },
-  { key: 'chat' as const, icon: 'zap' as const, screen: 'MoneyChat', color: CALM.gold },
-  { key: 'pulse' as const, icon: 'activity' as const, screen: 'FinancialPulse', color: '#7B8D6E' },
+// Quick-action color tokens. Resolved against the active palette so dark-mode
+// contrast is preserved (DESIGN-H1, UX-H5). No more raw hex.
+const getQuickActions = (C: typeof CALM) => [
+  { key: 'wallets' as const, icon: 'credit-card' as const, screen: 'WalletManagement', color: C.accent },
+  { key: 'savings' as const, icon: 'archive' as const, screen: 'SavingsTracker', color: C.neutral },
+  { key: 'debts' as const, icon: 'git-branch' as const, screen: 'DebtTracking', color: C.bronze },
+  { key: 'bills' as const, icon: 'refresh-cw' as const, screen: 'SubscriptionList', color: C.accent },
+  { key: 'budgets' as const, icon: 'sliders' as const, screen: 'BudgetPlanning', color: C.bronze },
+  { key: 'reports' as const, icon: 'trending-up' as const, screen: 'PersonalReports', color: C.deepOlive },
+  { key: 'goals' as const, icon: 'flag' as const, screen: 'Goals', color: C.gold },
+  { key: 'receipts' as const, icon: 'file-text' as const, screen: 'ReceiptHistory', color: C.deepOlive },
+  { key: 'chat' as const, icon: 'zap' as const, screen: 'MoneyChat', color: C.gold },
+  { key: 'pulse' as const, icon: 'activity' as const, screen: 'FinancialPulse', color: C.accent },
 ];
 
 const PersonalDashboard: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
@@ -230,7 +233,8 @@ const PersonalDashboard: React.FC = () => {
 
   const netThisMonth = useMemo(() => stats.income - stats.expenses, [stats.income, stats.expenses]);
 
-  // Dynamic hero headline — warm, contextual
+  // Dynamic hero headline — warm, contextual. All strings flow through useT()
+  // (FIRSTRUN-H3 i18n parity).
   const heroHeadline = useMemo(() => {
     const now = new Date();
     const dayOfMonth = now.getDate();
@@ -238,14 +242,17 @@ const PersonalDashboard: React.FC = () => {
     const savingsRate = stats.income > 0
       ? Math.round(((stats.income - stats.expenses) / stats.income) * 100)
       : 0;
-    const breathingRoom = heroBalance - stats.expenses;
+    const h = t.dashboard.hero;
 
     // Context-aware sub-line
     let subLine = '';
     if (stats.income > 0 && daysLeft > 0) {
-      subLine = `${currency} ${Math.abs(netThisMonth).toFixed(0)} ${netThisMonth >= 0 ? 'kept' : 'over'} · ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`;
+      const dayWord = daysLeft !== 1 ? h.daysLeft : h.dayLeft;
+      const verb = netThisMonth >= 0 ? h.kept : h.over;
+      subLine = `${currency} ${Math.abs(netThisMonth).toFixed(0)} ${verb} · ${daysLeft} ${dayWord}`;
     } else if (stats.income > 0) {
-      subLine = `${currency} ${Math.abs(netThisMonth).toFixed(0)} ${netThisMonth >= 0 ? 'kept this month' : 'over this month'}`;
+      const verb = netThisMonth >= 0 ? h.keptThisMonth : h.overThisMonth;
+      subLine = `${currency} ${Math.abs(netThisMonth).toFixed(0)} ${verb}`;
     }
 
     // Big income day detected (payday)
@@ -256,7 +263,7 @@ const PersonalDashboard: React.FC = () => {
       })
       .reduce((s, tx) => s + tx.amount, 0);
     if (todayIncome > stats.income * 0.5 && todayIncome > 0) {
-      return { headline: 'payday landed', subLine: `${currency} ${todayIncome.toFixed(0)} came in today` };
+      return { headline: h.paydayLanded, subLine: `${currency} ${todayIncome.toFixed(0)} ${h.cameInToday}` };
     }
 
     // No spending in 2+ days
@@ -267,25 +274,25 @@ const PersonalDashboard: React.FC = () => {
       return diffDays < 2;
     });
     if (recentExpenses.length === 0 && stats.transactionCount > 3) {
-      return { headline: 'quiet stretch', subLine };
+      return { headline: h.quietStretch, subLine };
     }
 
     // First day of month
     if (dayOfMonth === 1) {
-      return { headline: 'fresh start', subLine: `new month — ${currency} ${heroBalance.toFixed(0)} to work with` };
+      return { headline: h.freshStart, subLine: `${h.newMonth} — ${currency} ${heroBalance.toFixed(0)} ${h.toWorkWith}` };
     }
 
     // Last 3 days
     if (daysLeft <= 3 && daysLeft >= 0 && stats.income > 0) {
-      return { headline: `wrapping up`, subLine: `${savingsRate}% kept so far` };
+      return { headline: h.wrappingUp, subLine: `${savingsRate}% ${h.keptSoFar}` };
     }
 
     // Savings-rate based
-    if (savingsRate >= 20) return { headline: 'comfortable month so far', subLine };
-    if (savingsRate >= 5) return { headline: 'steady month', subLine };
-    if (savingsRate >= 0) return { headline: 'tight but managing', subLine };
-    return { headline: 'a stretch this month', subLine };
-  }, [stats, heroBalance, netThisMonth, currency, transactions]);
+    if (savingsRate >= 20) return { headline: h.comfortable, subLine };
+    if (savingsRate >= 5) return { headline: h.steady, subLine };
+    if (savingsRate >= 0) return { headline: h.tight, subLine };
+    return { headline: h.stretch, subLine };
+  }, [stats, heroBalance, netThisMonth, currency, transactions, t]);
 
   const recentTransactions = useMemo(() => {
     return [...transactions]
@@ -357,6 +364,38 @@ const PersonalDashboard: React.FC = () => {
     }, 1000);
   }, []);
 
+  // Quick actions resolved against the active palette (SCALE-H2: stable ref
+  // per palette change so child renders don't churn).
+  const quickActions = useMemo(() => getQuickActions(C), [C]);
+
+  const billsBadge = useMemo(() => {
+    const today = startOfDay(new Date());
+    return subscriptions.filter(sub => {
+      if (!sub.isActive || sub.isPaused) return false;
+      if (sub.isInstallment && sub.totalInstallments && (sub.completedInstallments || 0) >= sub.totalInstallments) return false;
+      const dueDate = new Date(sub.nextBillingDate);
+      return dueDate <= addDays(today, sub.reminderDays || 3);
+    }).length;
+  }, [subscriptions]);
+
+  // First-run surface precedence (FIRSTRUN-C3, UX-H3):
+  //   1. GettingStarted — wins while the setup ladder is incomplete; this is
+  //      what new users actually need (wallet → first txn → budget).
+  //   2. FreshStart — fills days 1-5 only after the ladder is done, when the
+  //      monthly reset card is the most useful surface left.
+  //   3. EmptyState (inside Details) — fallback when zero transactions.
+  // Never render both at once.
+  const gettingStartedDismissed = useSettingsStore((s) => s.gettingStartedDismissed);
+  const ladderComplete = wallets.length > 0 && transactions.length > 0 && budgets.length > 0;
+  const showGettingStarted = useMemo(
+    () => !gettingStartedDismissed && !ladderComplete && transactions.length < 5,
+    [gettingStartedDismissed, ladderComplete, transactions.length],
+  );
+  const showFreshStart = useMemo(() => {
+    const now = new Date();
+    return now.getDate() <= 5 && !showGettingStarted;
+  }, [showGettingStarted]);
+
   const editCategories = useMemo(
     () => editType === 'expense' ? expenseCategories : incomeCategories,
     [editType, expenseCategories, incomeCategories]
@@ -382,12 +421,12 @@ const PersonalDashboard: React.FC = () => {
     if (!editingTransaction) return;
 
     if (!editAmount || parseFloat(editAmount) <= 0) {
-      showToast('Please enter a valid amount', 'error');
+      showToast(t.transaction.invalidAmount, 'error');
       return;
     }
 
     if (!editDescription.trim()) {
-      showToast('Please add a description', 'error');
+      showToast(t.transaction.missingDescription, 'error');
       return;
     }
 
@@ -465,8 +504,8 @@ const PersonalDashboard: React.FC = () => {
 
     setEditModalVisible(false);
     setEditingTransaction(null);
-    showToast('transaction updated.', 'success');
-  }, [editingTransaction, editAmount, editDescription, editCategory, editType, editWalletId, editTags, addToWallet, deductFromWallet, updateTransaction, updateIngredientCost, showToast]);
+    showToast(t.transaction.transactionUpdated, 'success');
+  }, [editingTransaction, editAmount, editDescription, editCategory, editType, editWalletId, editTags, addToWallet, deductFromWallet, updateTransaction, updateIngredientCost, showToast, t]);
 
   const handleDeleteTransaction = useCallback(() => {
     if (!editingTransaction) return;
@@ -500,32 +539,32 @@ const PersonalDashboard: React.FC = () => {
       deleteTransaction(editingTransaction.id);
       setEditModalVisible(false);
       setEditingTransaction(null);
-      showToast('Transaction deleted', 'success');
+      showToast(t.transaction.transactionDeleted, 'success');
     };
 
     // Extra warning if linked to a debt payment
     if (linkedDebtId) {
       Alert.alert(
-        'Delete Transaction?',
-        'This will also remove the linked debt payment record.',
+        t.transaction.deleteWithLinkTitle,
+        t.transaction.deleteWithLinkMessage,
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete Both', style: 'destructive', onPress: doDelete },
+          { text: t.common.cancel, style: 'cancel' },
+          { text: t.transaction.deleteBoth, style: 'destructive', onPress: doDelete },
         ]
       );
     } else {
       Alert.alert(
-        'Delete Transaction',
+        t.transaction.deleteTransactionTitle,
         isTransferLinked
-          ? 'This income was transferred from seller mode. Deleting it will allow you to re-transfer those orders.\n\nDelete anyway?'
-          : 'Are you sure you want to delete this transaction?',
+          ? t.transaction.deleteTransferMessage
+          : t.transaction.deleteConfirm,
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: doDelete },
+          { text: t.common.cancel, style: 'cancel' },
+          { text: t.common.delete, style: 'destructive', onPress: doDelete },
         ]
       );
     }
-  }, [editingTransaction, addToWallet, deductFromWallet, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, showToast]);
+  }, [editingTransaction, addToWallet, deductFromWallet, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, showToast, t]);
 
   const handleEditTypeChange = useCallback((newType: 'expense' | 'income') => {
     setEditType(newType);
@@ -580,17 +619,19 @@ const PersonalDashboard: React.FC = () => {
                 setQrModalVisible(true);
               } else {
                 Alert.alert(
-                  'No Payment QR',
-                  'Add your payment QR code in Settings so you can show it here.',
+                  t.dashboard.noQrTitle,
+                  t.dashboard.noQrMessage,
                   [
-                    { text: 'Later', style: 'cancel' },
-                    { text: 'Go to Settings', onPress: () => navigation.navigate('Settings', { scrollTo: 'qr' }) },
+                    { text: t.common.later, style: 'cancel' },
+                    { text: t.dashboard.goToSettings, onPress: () => navigation.navigate('Settings', { scrollTo: 'qr' }) },
                   ]
                 );
               }
             }}
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={t.dashboard.showPaymentQr}
           >
             <Feather name="maximize" size={22} color={paymentQrs.length > 0 ? C.accent : C.textMuted} />
           </TouchableOpacity>
@@ -612,11 +653,10 @@ const PersonalDashboard: React.FC = () => {
           <WeekBar transactions={transactions} />
         </RAnimated.View>
 
-        {/* Fresh Start — 1st of month ritual */}
-        <FreshStart />
-
-        {/* Getting Started — first-time action strip */}
-        <GettingStarted />
+        {/* First-run surfaces — exactly one renders at a time. See precedence
+            rule above. FreshStart wins on days 1-5; GettingStarted otherwise. */}
+        {showFreshStart && <FreshStart />}
+        {showGettingStarted && <GettingStarted />}
 
         {/* Zone 5 — Insight Strip */}
         <RAnimated.View entering={FadeInDown.delay(150).duration(200)} style={styles.insightStripWrap}>
@@ -656,7 +696,7 @@ const PersonalDashboard: React.FC = () => {
               <View style={[styles.insightIconBg, { backgroundColor: withAlpha(insightStrip.velocityColor, 0.10) }]}>
                 <Feather name="trending-up" size={16} color={insightStrip.velocityColor} />
               </View>
-              <Text style={styles.insightCardLabel}>pace</Text>
+              <Text style={styles.insightCardLabel}>{t.dashboard.pace}</Text>
             </View>
             <Text style={[styles.insightValue, { color: C.textPrimary }]}>
               {insightStrip.velocityPercent}%
@@ -675,7 +715,7 @@ const PersonalDashboard: React.FC = () => {
               <View style={[styles.insightIconBg, { backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, 0.10) }]}>
                 <Feather name="pocket" size={16} color={kept.keptThisMonth >= 0 ? C.positive : C.neutral} />
               </View>
-              <Text style={styles.insightCardLabel}>kept</Text>
+              <Text style={styles.insightCardLabel}>{t.dashboard.hero.kept}</Text>
             </View>
             <Text style={[styles.insightValue, { color: C.textPrimary }]}>
               {kept.keptThisMonth >= 0 ? '+' : ''}{currency} {kept.keptThisMonth.toFixed(0)}
@@ -718,9 +758,9 @@ const PersonalDashboard: React.FC = () => {
               <Text style={styles.insightCardLabel}>{t.dashboard.comingUp}</Text>
             </View>
             <Text style={[styles.insightValue, { color: C.textPrimary }]}>
-              {insightStrip.upcomingCount} {insightStrip.upcomingCount === 1 ? 'bill' : 'bills'}
+              {insightStrip.upcomingCount} {insightStrip.upcomingCount === 1 ? t.dashboard.billOne : t.dashboard.billMany}
             </Text>
-            <Text style={styles.insightContext}>{currency} {insightStrip.upcomingTotal.toFixed(0)} this week</Text>
+            <Text style={styles.insightContext}>{currency} {insightStrip.upcomingTotal.toFixed(0)} {t.dashboard.thisWeekLower}</Text>
           </TouchableOpacity>
         </ScrollView>
         <LinearGradient
@@ -744,15 +784,22 @@ const PersonalDashboard: React.FC = () => {
                 contentContainerStyle={styles.quickActionsRow}
                 style={styles.quickActionsScroll}
               >
-                {QUICK_ACTIONS.slice(rowIdx * 5, rowIdx * 5 + 5).map((action) => (
+                {quickActions.slice(rowIdx * 5, rowIdx * 5 + 5).map((action) => (
                   <TouchableOpacity
                     key={action.key}
                     style={styles.quickActionBtn}
                     onPress={() => handleQuickAction(action.screen)}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.dashboard[action.key]}
                   >
                     <View style={[styles.quickActionIcon, { backgroundColor: withAlpha(action.color, 0.08) }]}>
                       <Feather name={action.icon} size={22} color={action.color} />
+                      {action.key === 'bills' && billsBadge > 0 && (
+                        <View style={styles.quickActionBadge}>
+                          <Text style={styles.quickActionBadgeText}>{billsBadge}</Text>
+                        </View>
+                      )}
                     </View>
                     <Text style={styles.quickActionLabel} numberOfLines={1}>
                       {t.dashboard[action.key]}
@@ -795,18 +842,18 @@ const PersonalDashboard: React.FC = () => {
                   return (
                     <View key={sub.id} style={styles.upcomingItem}>
                       <Text style={styles.upcomingName} numberOfLines={1}>{sub.name}</Text>
-                      <Text style={styles.upcomingDays}>{daysUntil <= 0 ? 'Today' : `${daysUntil}d`}</Text>
+                      <Text style={styles.upcomingDays}>{daysUntil <= 0 ? t.dashboard.today : `${daysUntil}d`}</Text>
                       <Text style={styles.upcomingAmount}>{currency} {sub.amount.toFixed(2)}</Text>
                     </View>
                   );
                 })}
                 <View style={styles.upcomingFooter}>
                   <Text style={styles.upcomingFooterTotal}>
-                    Total: {currency} {stats.upcomingTotal.toFixed(2)}
+                    {t.dashboard.total}: {currency} {stats.upcomingTotal.toFixed(2)}
                   </Text>
                   {stats.upcomingBillsList.length > 3 && (
                     <Text style={styles.upcomingFooterMore}>
-                      +{stats.upcomingBillsList.length - 3} more
+                      +{stats.upcomingBillsList.length - 3} {t.dashboard.more}
                     </Text>
                   )}
                 </View>
@@ -827,18 +874,18 @@ const PersonalDashboard: React.FC = () => {
           {(stats.youOwe > 0 || stats.owedToYou > 0) && (
             <View style={styles.statsGrid}>
               <StatCard
-                title="You Owe"
+                title={t.dashboard.youOwe}
                 value={`${currency} ${stats.youOwe.toFixed(2)}`}
                 icon="arrow-up-circle"
                 iconColor={C.neutral}
-                subtitle="Outstanding"
+                subtitle={t.dashboard.outstanding}
               />
               <StatCard
-                title="Owed to You"
+                title={t.dashboard.owedToYou}
                 value={`${currency} ${stats.owedToYou.toFixed(2)}`}
                 icon="arrow-down-circle"
                 iconColor={C.positive}
-                subtitle="Outstanding"
+                subtitle={t.dashboard.outstanding}
               />
             </View>
           )}
@@ -882,8 +929,8 @@ const PersonalDashboard: React.FC = () => {
             ) : (
               <EmptyState
                 icon="inbox"
-                title="No Transactions Yet"
-                message="Start tracking your expenses by adding your first transaction"
+                title={t.dashboard.noTransactionsTitle}
+                message={t.dashboard.noTransactionsMessage}
               />
             )}
           </View>
@@ -906,16 +953,21 @@ const PersonalDashboard: React.FC = () => {
             <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{t.transaction.editTransaction}</Text>
-                <TouchableOpacity onPress={() => {
-                  setEditModalVisible(false);
-                  setEditingTransaction(null);
-                }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setEditModalVisible(false);
+                    setEditingTransaction(null);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.common.close}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
                   <Feather name="x" size={24} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
 
               <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
-                <Text style={styles.label}>Type</Text>
+                <Text style={styles.label}>{t.transaction.type}</Text>
                 <View style={styles.typeContainer}>
                   <TouchableOpacity
                     style={[
@@ -924,14 +976,17 @@ const PersonalDashboard: React.FC = () => {
                       { borderColor: C.accent },
                     ]}
                     onPress={() => handleEditTypeChange('expense')}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.transaction.expense}
+                    accessibilityState={{ selected: editType === 'expense' }}
                   >
                     <Feather
                       name="arrow-down-circle"
                       size={20}
-                      color={editType === 'expense' ? '#fff' : C.accent}
+                      color={editType === 'expense' ? C.surface : C.accent}
                     />
                     <Text style={[styles.typeText, editType === 'expense' && styles.typeTextActive]}>
-                      Expense
+                      {t.transaction.expense}
                     </Text>
                   </TouchableOpacity>
 
@@ -942,19 +997,22 @@ const PersonalDashboard: React.FC = () => {
                       { borderColor: C.positive },
                     ]}
                     onPress={() => handleEditTypeChange('income')}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.transaction.income}
+                    accessibilityState={{ selected: editType === 'income' }}
                   >
                     <Feather
                       name="arrow-up-circle"
                       size={20}
-                      color={editType === 'income' ? '#fff' : C.positive}
+                      color={editType === 'income' ? C.surface : C.positive}
                     />
                     <Text style={[styles.typeText, editType === 'income' && styles.typeTextActive]}>
-                      Income
+                      {t.transaction.income}
                     </Text>
                   </TouchableOpacity>
                 </View>
 
-                <Text style={styles.label}>Amount</Text>
+                <Text style={styles.label}>{t.transaction.amount}</Text>
                 <TextInput
                   style={styles.input}
                   value={editAmount}
@@ -964,13 +1022,16 @@ const PersonalDashboard: React.FC = () => {
                   placeholderTextColor={C.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
+                  accessibilityLabel={t.transaction.amount}
                 />
 
                 <CategoryPicker
                   categories={editCategories}
                   selectedId={editCategory}
                   onSelect={setEditCategory}
-                  label="Category"
+                  label={t.transaction.category}
                   layout="dropdown"
                 />
 
@@ -978,7 +1039,7 @@ const PersonalDashboard: React.FC = () => {
                   wallets={wallets}
                   selectedId={editWalletId}
                   onSelect={setEditWalletId}
-                  label="Wallet"
+                  label={t.transaction.wallet}
                 />
 
                 <Text style={styles.label}>{t.transaction.description}</Text>
@@ -986,31 +1047,37 @@ const PersonalDashboard: React.FC = () => {
                   style={styles.input}
                   value={editDescription}
                   onChangeText={setEditDescription}
-                  placeholder="What was this for?"
+                  placeholder={t.transaction.descriptionPlaceholder}
                   placeholderTextColor={C.textSecondary}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
+                  accessibilityLabel={t.transaction.description}
                 />
 
-                <Text style={styles.label}>Tags (optional)</Text>
+                <Text style={styles.label}>{t.transaction.tagsOptional}</Text>
                 <TextInput
                   style={styles.input}
                   value={editTags}
                   onChangeText={setEditTags}
-                  placeholder="personal, family, work"
+                  placeholder={t.transaction.tagsPlaceholder}
                   placeholderTextColor={C.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
+                  accessibilityLabel={t.transaction.tagsOptional}
                 />
 
                 <View style={styles.modalActions}>
                   <Button
-                    title="Delete"
+                    title={t.common.delete}
                     onPress={handleDeleteTransaction}
                     variant="danger"
                     icon="trash-2"
                     style={styles.deleteButton}
                   />
                   <Button
-                    title="Update"
+                    title={t.common.save}
                     onPress={handleUpdateTransaction}
                     icon="check"
                     style={{ flex: 1 }}
@@ -1038,6 +1105,8 @@ const PersonalDashboard: React.FC = () => {
             style={styles.qrCloseBtn}
             onPress={() => setQrModalVisible(false)}
             hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+            accessibilityRole="button"
+            accessibilityLabel={t.common.close}
           >
             <Feather name="x" size={28} color="#fff" />
           </TouchableOpacity>
@@ -1363,6 +1432,24 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
     textAlign: 'center',
   },
+  quickActionBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  quickActionBadgeText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.onAccent,
+    fontVariant: ['tabular-nums' as const],
+  },
 
   // Section
   section: {
@@ -1403,6 +1490,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
   label: {
     fontSize: TYPOGRAPHY.size.base,
@@ -1444,7 +1532,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
   },
   typeTextActive: {
-    color: '#fff',
+    color: C.onAccent,
   },
   modalActions: {
     flexDirection: 'row',

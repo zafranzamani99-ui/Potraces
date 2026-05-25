@@ -40,7 +40,8 @@ function detectQueryType(text: string): QueryType {
   // Wallet/balance queries
   if (/baki|balance|wallet|duit|berapa ada/i.test(lower)) return 'wallet_balance';
 
-  // Seller revenue
+  // Seller "came in" (revenue intent — keyword whitelist still includes user-facing
+  // legacy terms so we can detect the question even though we never use them in output)
   if (/jualan|sales|revenue|came in|order.*bulan/i.test(lower)) return 'seller_revenue';
 
   // Seller costs
@@ -182,7 +183,8 @@ RULES:
 - Speak like a Malaysian friend — warm, casual, mix English and Malay naturally
 - NEVER judge. NEVER advise. Just observe and answer.
 - NEVER say "you should", "consider", "try to"
-- Use Potraces language: "kept" not "saved/profit", "came in" not "revenue", "went out" not "spent/loss"
+- NEVER use these banned words in your output: "profit", "loss", "revenue", "ROI", "inventory"
+- Use Potraces approved vocabulary: "kept" (not profit/saved), "came in" (not revenue), "went out" (not loss/spent), "efficiency" (not ROI), "products" (not inventory)
 - Keep answers SHORT — 2-4 sentences max. This appears inline in a note.
 - Use ${currency} formatting: "${currency} X.XX"
 

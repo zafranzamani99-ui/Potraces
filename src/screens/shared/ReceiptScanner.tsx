@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,18 +11,26 @@ import {
   Modal,
   FlatList,
   Dimensions,
+  NativeModules,
+  Animated,
+  Easing,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-// Lazy-loaded: native module crashes Expo Go if imported at top level
-const getDocumentScanner = () => require('react-native-document-scanner-plugin').default as typeof import('react-native-document-scanner-plugin').default;
+const getDocumentScanner = (): typeof import('react-native-document-scanner-plugin').default | null => {
+  try {
+    if (!NativeModules.DocumentScanner) return null;
+    return require('react-native-document-scanner-plugin').default;
+  } catch { return null; }
+};
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { format, getYear, parse, isValid } from 'date-fns';
 import { scanReceipt } from '../../services/receiptScanner';
 import { enqueueReceipt } from '../../services/receiptQueue';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import NetInfo from '@react-native-community/netinfo';
 import { usePersonalStore } from '../../store/personalStore';
 import { useAppStore } from '../../store/appStore';
@@ -31,9 +39,10 @@ import { useReceiptStore } from '../../store/receiptStore';
 import { useCategoryStore } from '../../store/categoryStore';
 import { usePlaybookStore } from '../../store/playbookStore';
 import { useToast } from '../../context/ToastContext';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { LinearGradient } from 'expo-linear-gradient';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
-import { useCalm } from '../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
@@ -44,7 +53,6 @@ import CalendarPicker from '../../components/common/CalendarPicker';
 // CollapsibleSection removed — always show content expanded
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import CategoryManager from '../../components/common/CategoryManager';
-import PaymentMethodManager from '../../components/common/PaymentMethodManager';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useWalletStore } from '../../store/walletStore';
 import type { RootStackParamList, ExtractedReceipt, ReceiptItem, MyTaxCategory } from '../../types';
@@ -76,11 +84,14 @@ function parseReceiptDate(dateStr?: string): Date {
   const normalized = normalizeMalayDate(dateStr);
   // Try common Malaysian receipt date formats
   const formats = [
+    'dd/MM/yyyy h:mm:ss a', 'dd/MM/yyyy HH:mm:ss',
+    'dd/MM/yyyy h:mm a', 'dd/MM/yyyy HH:mm',
+    'dd-MM-yyyy h:mm:ss a', 'dd-MM-yyyy HH:mm:ss',
+    'dd-MM-yyyy h:mm a', 'dd-MM-yyyy HH:mm',
     'dd/MM/yyyy', 'dd-MM-yyyy', 'dd.MM.yyyy',
-    'yyyy-MM-dd', 'MM/dd/yyyy',
-    'dd/MM/yyyy HH:mm', 'dd-MM-yyyy HH:mm',
-    'yyyy-MM-dd HH:mm:ss',
+    'yyyy-MM-dd HH:mm:ss', 'yyyy-MM-dd',
     'dd MMM yyyy', 'dd MMMM yyyy',
+    'MM/dd/yyyy',
   ];
   for (const fmt of formats) {
     try {
@@ -95,6 +106,7 @@ function parseReceiptDate(dateStr?: string): Date {
 
 const ReceiptScanner: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<NavigationProp>();
@@ -114,10 +126,8 @@ const ReceiptScanner: React.FC = () => {
   const tier = usePremiumStore((s) => s.tier);
   const wallets = useWalletStore((s) => s.wallets);
   const deductFromWallet = useWalletStore((s) => s.deductFromWallet);
-  const getPaymentMethods = useSettingsStore((s) => s.getPaymentMethods);
 
   const expenseCategories = useMemo(() => getExpenseCategories('personal'), [getExpenseCategories]);
-  const paymentMethods = useMemo(() => getPaymentMethods(), [getPaymentMethods]);
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [paywallVisible, setPaywallVisible] = useState(false);
@@ -135,7 +145,6 @@ const ReceiptScanner: React.FC = () => {
   const [editDate, setEditDate] = useState(new Date());
   const [editCategory, setEditCategory] = useState('other');
   const [editMyTaxCategory, setEditMyTaxCategory] = useState('none');
-  const [editPaymentMethod, setEditPaymentMethod] = useState<string | null>(null);
   const [editLocation, setEditLocation] = useState('');
   const [newItemName, setNewItemName] = useState('');
   const [newItemAmount, setNewItemAmount] = useState('');
@@ -143,13 +152,39 @@ const ReceiptScanner: React.FC = () => {
   // UI state
   const [taxPickerVisible, setTaxPickerVisible] = useState(false);
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
-  const [paymentPickerVisible, setPaymentPickerVisible] = useState(false);
   const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
   const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
-  const [paymentManagerVisible, setPaymentManagerVisible] = useState(false);
   const [imageViewVisible, setImageViewVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [recordOnly, setRecordOnly] = useState(false);
+
+  const scanLineAnim = useRef(new Animated.Value(0)).current;
+  const scanPulseAnim = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    if (!loading) {
+      scanLineAnim.setValue(0);
+      scanPulseAnim.setValue(0.4);
+      return;
+    }
+    const line = Animated.loop(
+      Animated.timing(scanLineAnim, {
+        toValue: 1,
+        duration: 2400,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      })
+    );
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanPulseAnim, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(scanPulseAnim, { toValue: 0.4, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+    line.start();
+    pulse.start();
+    return () => { line.stop(); pulse.stop(); };
+  }, [loading]);
 
   const selectedTaxCat = useMemo(
     () => MYTAX_CATEGORIES.find((c) => c.id === editMyTaxCategory) || MYTAX_CATEGORIES[0],
@@ -159,11 +194,6 @@ const ReceiptScanner: React.FC = () => {
     () => expenseCategories.find((c) => c.id === editCategory),
     [expenseCategories, editCategory]
   );
-  const selectedPayment = useMemo(
-    () => paymentMethods.find((m) => m.id === editPaymentMethod),
-    [paymentMethods, editPaymentMethod]
-  );
-
   const handleLoadDraft = useCallback(() => {
     const d = useReceiptStore.getState().draft;
     if (!d) return;
@@ -174,7 +204,6 @@ const ReceiptScanner: React.FC = () => {
     setEditDate(d.date instanceof Date ? d.date : new Date(d.date));
     setEditCategory(d.category);
     setEditMyTaxCategory(d.myTaxCategory);
-    setEditPaymentMethod(d.paymentMethod);
     setEditLocation(d.location);
     if (d.imageUri) setImageUri(d.imageUri);
     setReceipt({ items: d.items, total: parseFloat(d.total) } as ExtractedReceipt);
@@ -190,16 +219,20 @@ const ReceiptScanner: React.FC = () => {
   };
 
   const handleTakePhoto = useCallback(async () => {
-    try {
-      const result = await getDocumentScanner().scanDocument({
-        maxNumDocuments: 1,
-      });
-      if (result.scannedImages && result.scannedImages.length > 0) {
-        setImageUri(result.scannedImages[0]);
-        setReceipt(null);
-      }
-    } catch {
-      // User cancelled or scanner unavailable — fall back to camera
+    let scannedUri: string | null = null;
+    const scanner = getDocumentScanner();
+    if (scanner) {
+      try {
+        const result = await scanner.scanDocument({ maxNumDocuments: 1 });
+        if (result.scannedImages && result.scannedImages.length > 0) {
+          scannedUri = result.scannedImages[0];
+        }
+      } catch { /* fall through to ImagePicker */ }
+    }
+    if (scannedUri) {
+      setImageUri(scannedUri);
+      setReceipt(null);
+    } else {
       const granted = await requestPermission('camera');
       if (!granted) {
         Alert.alert(t.receipts.permissionRequired, t.receipts.cameraPermissionMsg);
@@ -253,7 +286,6 @@ const ReceiptScanner: React.FC = () => {
       setEditDate(parseReceiptDate(extracted.date));
       setEditCategory(extracted.suggestedExpenseCategory || 'other');
       setEditMyTaxCategory(extracted.suggestedTaxCategory || 'none');
-      setEditPaymentMethod(extracted.paymentMethod || null);
       setEditLocation(extracted.location || '');
       showToast(t.receipts.receiptExtracted, 'success');
     } catch (error: any) {
@@ -288,7 +320,6 @@ const ReceiptScanner: React.FC = () => {
     setEditDate(new Date());
     setEditCategory('other');
     setEditMyTaxCategory('none');
-    setEditPaymentMethod(null);
     setEditLocation('');
     setNewItemName('');
     setNewItemAmount('');
@@ -364,16 +395,28 @@ const ReceiptScanner: React.FC = () => {
         }
       }
 
-      // 3. Persist image only after critical writes succeed
+      // 3. Persist image only after critical writes succeed.
+      // SCALE-H8: compress at storage time (~600 KB → ~150 KB per receipt).
+      // Keeps documentDirectory growth bounded for users who scan weekly.
       if (imageUri) {
         try {
           const dir = `${FileSystem.documentDirectory}receipts/`;
           const dirInfo = await FileSystem.getInfoAsync(dir);
           if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-          const ext = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
-          const filename = `receipt_${Date.now()}.${ext}`;
-          await FileSystem.copyAsync({ from: imageUri, to: dir + filename });
-          persistedUri = dir + filename;
+          const filename = `receipt_${Date.now()}.jpg`;
+          const target = dir + filename;
+          try {
+            const compressed = await manipulateAsync(
+              imageUri,
+              [{ resize: { width: 1280 } }],
+              { compress: 0.8, format: SaveFormat.JPEG }
+            );
+            await FileSystem.copyAsync({ from: compressed.uri, to: target });
+          } catch {
+            // Compression failed — fall back to raw copy so the receipt is never lost
+            await FileSystem.copyAsync({ from: imageUri, to: target });
+          }
+          persistedUri = target;
           if (txId) {
             updateTransaction(txId, { receiptUrl: persistedUri });
           }
@@ -394,7 +437,6 @@ const ReceiptScanner: React.FC = () => {
         date: editDate,
         category: editCategory,
         myTaxCategory: editMyTaxCategory,
-        paymentMethod: editPaymentMethod || undefined,
         location: editLocation || undefined,
         walletId: recordOnly ? undefined : (selectedWalletId || undefined),
         imageUri: persistedUri,
@@ -446,7 +488,7 @@ const ReceiptScanner: React.FC = () => {
     }
   }, [
     editTotal, editTitle, editVendor, editCategory, editDate, editMyTaxCategory,
-    editPaymentMethod, editLocation, editItems, receipt, selectedWalletId,
+    editLocation, editItems, receipt, selectedWalletId,
     imageUri, mode, recordOnly, addTransaction, updateTransaction, deductFromWallet,
     addReceipt, showToast, navigation,
   ]);
@@ -460,12 +502,13 @@ const ReceiptScanner: React.FC = () => {
       date: editDate,
       category: editCategory,
       myTaxCategory: editMyTaxCategory,
-      paymentMethod: editPaymentMethod,
       location: editLocation,
       imageUri,
     });
     showToast(t.receipts.draftSaved, 'success');
-  }, [editTitle, editVendor, editItems, editTotal, editDate, editCategory, editMyTaxCategory, editPaymentMethod, editLocation, imageUri, saveDraft, showToast]);
+    handleReset();
+    navigation.goBack();
+  }, [editTitle, editVendor, editItems, editTotal, editDate, editCategory, editMyTaxCategory, editLocation, imageUri, saveDraft, showToast, handleReset, navigation]);
 
   const handleSplitBill = () => {
     const total = parseFloat(editTotal);
@@ -504,7 +547,7 @@ const ReceiptScanner: React.FC = () => {
           <Feather
             name={item.icon as keyof typeof Feather.glyphMap}
             size={18}
-            color={isSelected ? '#fff' : itemColor}
+            color={isSelected ? C.onAccent : itemColor}
           />
         </View>
         <View style={{ flex: 1 }}>
@@ -529,48 +572,62 @@ const ReceiptScanner: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Hero / Capture Section */}
+        {/* ══════════════════════════════════════════════════════
+            STATE 1: Capture (no image)
+            ══════════════════════════════════════════════════════ */}
         {!imageUri && (
           <Card style={styles.heroCard}>
-            <View style={styles.heroIcon}>
-              <Feather name="camera" size={48} color={C.accent} />
-            </View>
             <Text style={styles.heroTitle}>{t.receipts.saveReceiptTitle}</Text>
             <Text style={styles.heroSubtitle}>
               {t.receipts.saveReceiptSubtitle}
             </Text>
+
+            {/* Shutter button */}
+            <View style={styles.shutterRing}>
+              <TouchableOpacity
+                style={styles.shutterButton}
+                onPress={handleTakePhoto}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.receipts.takePhotoLabel}
+              >
+                <Feather name="camera" size={28} color={C.onAccent} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Gallery link */}
+            <TouchableOpacity
+              style={styles.galleryLink}
+              onPress={handlePickImage}
+              activeOpacity={0.6}
+              accessibilityRole="button"
+              accessibilityLabel={t.receipts.fromGallery}
+            >
+              <Feather name="image" size={16} color={C.accent} />
+              <Text style={styles.galleryLinkText}>{t.receipts.fromGallery}</Text>
+            </TouchableOpacity>
+
             {tier === 'free' && (
               <Text style={styles.scanLimitText}>
                 {getRemainingScans()} {t.receipts.scansRemaining}
               </Text>
             )}
 
-            <View style={styles.captureButtons}>
-              <TouchableOpacity style={styles.captureButton} onPress={handleTakePhoto} activeOpacity={0.7}>
-                <View style={[styles.captureIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
-                  <Feather name="camera" size={24} color={C.accent} />
-                </View>
-                <Text style={styles.captureLabel}>{t.receipts.takePhotoLabel}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.captureButton} onPress={handlePickImage} activeOpacity={0.7}>
-                <View style={[styles.captureIcon, { backgroundColor: withAlpha(C.positive, 0.12) }]}>
-                  <Feather name="image" size={24} color={C.positive} />
-                </View>
-                <Text style={styles.captureLabel}>{t.receipts.fromGallery}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* View receipts link */}
-            <TouchableOpacity
-              style={styles.viewReceiptsLink}
-              onPress={() => navigation.navigate('ReceiptHistory')}
-              activeOpacity={0.6}
-            >
-              <Feather name="archive" size={14} color={C.accent} />
-              <Text style={styles.viewReceiptsText}>{t.receipts.viewMyReceipts}</Text>
-            </TouchableOpacity>
           </Card>
+        )}
+
+        {/* View receipts link — outside card, between card and draft */}
+        {!imageUri && !receipt && (
+          <TouchableOpacity
+            style={styles.viewReceiptsLink}
+            onPress={() => navigation.navigate('ReceiptHistory')}
+            activeOpacity={0.6}
+            accessibilityRole="button"
+            accessibilityLabel={t.receipts.viewMyReceipts}
+          >
+            <Feather name="archive" size={14} color={C.textSecondary} />
+            <Text style={styles.viewReceiptsText}>{t.receipts.viewMyReceipts}</Text>
+          </TouchableOpacity>
         )}
 
         {/* Draft card */}
@@ -579,13 +636,15 @@ const ReceiptScanner: React.FC = () => {
             style={styles.draftCard}
             onPress={handleLoadDraft}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t.receipts.continueDraft}
           >
-            <View style={[styles.taxTriggerIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
+            <View style={[styles.draftIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
               <Feather name="bookmark" size={18} color={C.accent} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.thumbnailLabel}>{t.receipts.continueDraft}</Text>
-              <Text style={styles.thumbnailHint}>
+              <Text style={styles.draftTitle}>{t.receipts.continueDraft}</Text>
+              <Text style={styles.draftHint}>
                 {draft.title || t.receipts.untitled} · {currency} {draft.total}
               </Text>
             </View>
@@ -593,149 +652,271 @@ const ReceiptScanner: React.FC = () => {
           </TouchableOpacity>
         )}
 
-        {/* Image Preview (compact when extracted) */}
+        {/* ══════════════════════════════════════════════════════
+            STATE 2: Preview (image taken, no extraction)
+            ══════════════════════════════════════════════════════ */}
         {imageUri && !receipt && !loading && (
-          <Card style={styles.previewCard}>
-            <View style={styles.previewHeader}>
-              <Text style={styles.sectionTitle}>{t.receipts.receiptImage}</Text>
-              <TouchableOpacity onPress={handleReset} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Feather name="x-circle" size={22} color={C.neutral} />
+          <View>
+            <View style={styles.previewImageWrap}>
+              <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="contain" />
+              <TouchableOpacity
+                style={styles.previewCloseBtn}
+                onPress={handleReset}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.receipts.removeImageA11y}
+              >
+                <Feather name="x" size={18} color="#fff" />
               </TouchableOpacity>
             </View>
-            <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="contain" />
             <Button
               title={t.receipts.extractWithAi}
               onPress={handleExtract}
               icon="cpu"
-              style={{ marginTop: SPACING.lg }}
+              size="large"
+              style={styles.extractButton}
+              accessibilityLabel={t.receipts.extractWithAi}
             />
-          </Card>
+          </View>
         )}
 
-        {/* Loading State — skeleton */}
+        {/* ══════════════════════════════════════════════════════
+            STATE 3: Loading
+            ══════════════════════════════════════════════════════ */}
         {loading && (
-          <Card style={styles.loadingCard}>
-            <SkeletonLoader shape="line" style={{ width: '60%', height: 20 }} />
-            <SkeletonLoader shape="line" style={{ width: '40%', height: 16, marginTop: SPACING.md }} />
-            <SkeletonLoader shape="box" style={{ width: '100%', height: 120, marginTop: SPACING.lg }} />
-            <SkeletonLoader shape="line" style={{ width: '80%', height: 16, marginTop: SPACING.md }} />
-            <SkeletonLoader shape="line" style={{ width: '50%', height: 16, marginTop: SPACING.sm }} />
-            <Text style={[styles.loadingSubtext, { marginTop: SPACING.lg }]}>{t.receipts.aiExtracting}</Text>
-          </Card>
+          <View>
+            {imageUri && (
+              <View style={styles.loadingImageWrap}>
+                <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="contain" />
+                <View style={styles.loadingImageDim} />
+                <Animated.View
+                  style={[
+                    styles.scanLine,
+                    {
+                      transform: [{
+                        translateY: scanLineAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, 280],
+                        }),
+                      }],
+                    },
+                  ]}
+                />
+              </View>
+            )}
+            <Animated.View style={[styles.loadingTextWrap, { opacity: scanPulseAnim }]}>
+              <Feather name="cpu" size={16} color={C.accent} />
+              <Text style={styles.loadingSubtext}>{t.receipts.aiExtracting}</Text>
+            </Animated.View>
+          </View>
         )}
 
-        {/* Extracted Data Form */}
+        {/* ══════════════════════════════════════════════════════
+            STATE 4: Extracted Form — fintech-grade review
+            ══════════════════════════════════════════════════════ */}
         {receipt && !loading && (
           <>
-            {/* Receipt thumbnail */}
+            {/* 1. Receipt Image Banner */}
             {imageUri && (
-              <TouchableOpacity
-                onPress={() => setImageViewVisible(true)}
-                activeOpacity={0.8}
-                style={styles.thumbnailRow}
-              >
-                <Image source={{ uri: imageUri }} style={styles.thumbnail} resizeMode="cover" />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.thumbnailLabel}>{t.receipts.receiptImageLower}</Text>
-                  <Text style={styles.thumbnailHint}>{t.receipts.tapToViewFullSize}</Text>
-                </View>
-                <TouchableOpacity onPress={handleReset} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Feather name="x-circle" size={20} color={C.neutral} />
+              <View style={styles.bannerWrap}>
+                <TouchableOpacity
+                  onPress={() => setImageViewVisible(true)}
+                  activeOpacity={0.9}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.receipts.viewFullImageA11y}
+                  style={styles.bannerTouchable}
+                >
+                  <Image source={{ uri: imageUri }} style={styles.bannerImage} resizeMode="cover" />
+                  <LinearGradient
+                    colors={['transparent', withAlpha(C.dimBg, 0.55)]}
+                    style={styles.bannerGradient}
+                  >
+                    <View style={styles.bannerBadge}>
+                      <Feather name="maximize-2" size={12} color="#fff" />
+                      <Text style={styles.bannerBadgeText}>{t.receipts.tapToViewFullSize}</Text>
+                    </View>
+                  </LinearGradient>
                 </TouchableOpacity>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.bannerCloseBtn}
+                  onPress={handleReset}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.receipts.removeImageA11y}
+                >
+                  <Feather name="x" size={16} color="#fff" />
+                </TouchableOpacity>
+              </View>
             )}
 
-            <Card style={styles.dataCard}>
-              {/* Title */}
-              <Text style={styles.formLabel}>{t.receipts.title}</Text>
-              <TextInput
-                style={styles.formInput}
-                value={editTitle}
-                onChangeText={setEditTitle}
-                placeholder={t.receipts.titlePlaceholder}
-                placeholderTextColor={C.textSecondary}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              {/* Total */}
-              <View style={[styles.summaryRow, styles.totalRow, { marginTop: SPACING.lg }]}>
-                <Text style={styles.totalLabel}>{t.receipts.totalLabel}</Text>
-                <View style={styles.totalInputContainer}>
-                  <Text style={styles.totalCurrency}>{currency}</Text>
+            {/* 2. Hero Total Section */}
+            <View style={styles.heroTotal}>
+              <View style={styles.heroAmountRow}>
+                <Text style={styles.heroCurrencyPrefix}>{currency}</Text>
+                <TextInput
+                  style={styles.heroAmountInput}
+                  value={editTotal}
+                  onChangeText={setEditTotal}
+                  keyboardType="decimal-pad"
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                  accessibilityLabel={t.receipts.totalLabel}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
+                />
+              </View>
+              <View style={styles.heroMetaRow}>
+                <View style={styles.heroVendorWrap}>
+                  <Feather name="shopping-bag" size={14} color={C.textSecondary} />
                   <TextInput
-                    style={styles.totalInput}
-                    value={editTotal}
-                    onChangeText={setEditTotal}
-                    keyboardType="decimal-pad"
+                    style={styles.heroVendorInput}
+                    value={editTitle}
+                    onChangeText={(v) => { setEditTitle(v); setEditVendor(v); }}
+                    placeholder={t.receipts.titlePlaceholder}
+                    placeholderTextColor={C.textMuted}
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
+                    accessibilityLabel={t.receipts.title}
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
                   />
+                </View>
+                <TouchableOpacity
+                  style={styles.heroDatePill}
+                  onPress={() => setCalendarPickerVisible(true)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.receipts.dateLabel}
+                >
+                  <Feather name="calendar" size={13} color={C.accent} />
+                  <Text style={styles.heroDateText}>{format(editDate, 'dd MMM')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* 3. Classification Pills Row */}
+            <View style={styles.pillsRow}>
+              {/* Category pill */}
+              <TouchableOpacity
+                style={[
+                  styles.classificationPill,
+                  selectedCat?.color ? { borderColor: withAlpha(selectedCat.color, 0.3) } : undefined,
+                ]}
+                onPress={() => setCategoryPickerVisible(true)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.receipts.expenseCategory}
+              >
+                <Feather
+                  name={(selectedCat?.icon || 'tag') as keyof typeof Feather.glyphMap}
+                  size={14}
+                  color={selectedCat?.color || C.textSecondary}
+                />
+                <Text style={styles.pillText}>{selectedCat?.name || t.receipts.selectCategory}</Text>
+              </TouchableOpacity>
+
+              {/* Tax pill */}
+              <TouchableOpacity
+                style={[
+                  styles.classificationPill,
+                  selectedTaxCat.id !== 'none' ? { borderColor: withAlpha(C.accent, 0.3) } : undefined,
+                ]}
+                onPress={() => setTaxPickerVisible(true)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.receipts.taxRelief}
+              >
+                <Feather
+                  name={selectedTaxCat.icon as keyof typeof Feather.glyphMap}
+                  size={14}
+                  color={selectedTaxCat.id === 'none' ? C.textSecondary : C.accent}
+                />
+                <Text style={styles.pillText}>{selectedTaxCat.name}</Text>
+              </TouchableOpacity>
+
+            </View>
+
+            {/* 4. Items Card */}
+            <Card style={styles.itemsCard}>
+              <View style={styles.itemsHeader}>
+                <Text style={styles.itemsSectionLabel}>{t.receipts.itemsLabel}</Text>
+                <View style={styles.itemsCountBadge}>
+                  <Text style={styles.itemsCountText}>{editItems.length}</Text>
                 </View>
               </View>
 
-              {/* Date */}
-              <Text style={styles.formLabel}>{t.receipts.dateLabel}</Text>
-              <TouchableOpacity
-                style={styles.taxTrigger}
-                onPress={() => setCalendarPickerVisible(true)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.taxTriggerIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
-                  <Feather name="calendar" size={18} color={C.accent} />
-                </View>
-                <Text style={[styles.taxTriggerName, { flex: 1 }]}>{format(editDate, 'dd MMM yyyy')}</Text>
-                <Feather name="chevron-right" size={18} color={C.textSecondary} />
-              </TouchableOpacity>
-
-              {/* Items */}
-              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>{t.receipts.itemsLabel} ({editItems.length})</Text>
               {editItems.map((item, index) => (
-                <View key={index} style={styles.itemRow}>
-                  <TextInput
-                    style={[styles.formInput, { flex: 2 }]}
-                    value={item.name}
-                    onChangeText={(v) => handleUpdateItemName(index, v)}
-                    multiline
-                    blurOnSubmit
-                  />
-                  <TextInput
-                    style={[styles.formInput, { flex: 1, textAlign: 'right' }]}
-                    value={item.amount.toFixed(2)}
-                    onChangeText={(v) => handleUpdateItemAmount(index, v)}
-                    keyboardType="decimal-pad"
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                  <TouchableOpacity onPress={() => handleRemoveItem(index)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Feather name="trash-2" size={18} color={C.neutral} />
-                  </TouchableOpacity>
+                <View key={index}>
+                  {index > 0 && <View style={styles.itemDivider} />}
+                  <View style={styles.itemRow}>
+                    <TextInput
+                      style={styles.itemNameInput}
+                      value={item.name}
+                      onChangeText={(v) => handleUpdateItemName(index, v)}
+                      multiline
+                      blurOnSubmit
+                      accessibilityLabel={`${t.receipts.itemsLabel} ${index + 1}`}
+                      keyboardAppearance={isDark ? 'dark' : 'light'}
+                      selectionColor={C.accent}
+                    />
+                    <TextInput
+                      style={styles.itemAmountInput}
+                      value={item.amount.toFixed(2)}
+                      onChangeText={(v) => handleUpdateItemAmount(index, v)}
+                      keyboardType="decimal-pad"
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                      accessibilityLabel={`${t.receipts.itemsLabel} ${index + 1} amount`}
+                      keyboardAppearance={isDark ? 'dark' : 'light'}
+                      selectionColor={C.accent}
+                    />
+                    <TouchableOpacity
+                      onPress={() => handleRemoveItem(index)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.receipts.removeItemA11y}
+                      style={styles.itemRemoveBtn}
+                    >
+                      <Feather name="x" size={15} color={C.textMuted} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
 
-              {/* Add new item */}
+              {/* Add new item row */}
+              <View style={styles.itemDivider} />
               <View style={styles.itemRow}>
                 <TextInput
-                  style={[styles.formInput, { flex: 2 }]}
+                  style={[styles.itemNameInput, styles.itemPlaceholderInput]}
                   value={newItemName}
                   onChangeText={setNewItemName}
                   placeholder={t.receipts.newItemPlaceholder}
-                  placeholderTextColor={C.textSecondary}
+                  placeholderTextColor={C.textMuted}
                   multiline
                   blurOnSubmit
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
                 <TextInput
-                  style={[styles.formInput, { flex: 1, textAlign: 'right' }]}
+                  style={[styles.itemAmountInput, styles.itemPlaceholderInput]}
                   value={newItemAmount}
                   onChangeText={setNewItemAmount}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={C.textSecondary}
+                  placeholderTextColor={C.textMuted}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
-                <TouchableOpacity style={styles.addItemBtn} onPress={handleAddItem}>
-                  <Feather name="plus" size={18} color="#fff" />
+                <TouchableOpacity
+                  style={styles.addItemBtn}
+                  onPress={handleAddItem}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.receipts.addItemA11y}
+                >
+                  <Feather name="plus" size={14} color={C.onAccent} />
                 </TouchableOpacity>
               </View>
 
@@ -756,126 +937,92 @@ const ReceiptScanner: React.FC = () => {
                   )}
                 </View>
               )}
-
-              {/* Expense Category */}
-              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>{t.receipts.expenseCategory}</Text>
-              <TouchableOpacity
-                style={styles.taxTrigger}
-                onPress={() => setCategoryPickerVisible(true)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.taxTriggerIcon, { backgroundColor: withAlpha(selectedCat?.color || C.accent, 0.12) }]}>
-                  <Feather
-                    name={(selectedCat?.icon || 'tag') as keyof typeof Feather.glyphMap}
-                    size={18}
-                    color={selectedCat?.color || C.accent}
-                  />
-                </View>
-                <Text style={[styles.taxTriggerName, { flex: 1 }]}>{selectedCat?.name || t.receipts.selectCategory}</Text>
-                <Feather name="chevron-right" size={18} color={C.textSecondary} />
-              </TouchableOpacity>
-
-              {/* Tax Relief */}
-              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>{t.receipts.taxRelief}</Text>
-              <TouchableOpacity
-                style={styles.taxTrigger}
-                onPress={() => setTaxPickerVisible(true)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.taxTriggerIcon, { backgroundColor: withAlpha(selectedTaxCat.id === 'none' ? C.neutral : C.accent, 0.12) }]}>
-                  <Feather
-                    name={selectedTaxCat.icon as keyof typeof Feather.glyphMap}
-                    size={18}
-                    color={selectedTaxCat.id === 'none' ? C.neutral : C.accent}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.taxTriggerName}>{selectedTaxCat.name}</Text>
-                  {selectedTaxCat.limit !== null && (
-                    <Text style={styles.taxTriggerLimit}>{t.receipts.limit}: RM {selectedTaxCat.limit.toLocaleString()}</Text>
-                  )}
-                </View>
-                <Feather name="chevron-right" size={18} color={C.textSecondary} />
-              </TouchableOpacity>
-
-              {/* Payment Method */}
-              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>{t.receipts.paymentMethod}</Text>
-              <TouchableOpacity
-                style={styles.taxTrigger}
-                onPress={() => setPaymentPickerVisible(true)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.taxTriggerIcon, { backgroundColor: withAlpha(selectedPayment?.color || C.neutral, 0.12) }]}>
-                  <Feather
-                    name={(selectedPayment?.icon || 'credit-card') as keyof typeof Feather.glyphMap}
-                    size={18}
-                    color={selectedPayment?.color || C.neutral}
-                  />
-                </View>
-                <Text style={[styles.taxTriggerName, { flex: 1 }]}>{selectedPayment?.name || t.receipts.selectPaymentMethod}</Text>
-                <Feather name="chevron-right" size={18} color={C.textSecondary} />
-              </TouchableOpacity>
-
-              {/* Location */}
-              <Text style={[styles.formLabel, { marginTop: SPACING.lg }]}>{t.receipts.location}</Text>
-              <TextInput
-                style={[styles.formInput, { minHeight: 40, textAlignVertical: 'top' }]}
-                value={editLocation}
-                onChangeText={setEditLocation}
-                placeholder={t.receipts.locationPlaceholder}
-                placeholderTextColor={C.textSecondary}
-                multiline
-                blurOnSubmit
-              />
             </Card>
 
-            {/* Record Only Toggle */}
-            <TouchableOpacity
-              style={[styles.recordOnlyToggle, recordOnly && { backgroundColor: withAlpha(C.accent, 0.08), borderColor: C.accent }]}
-              onPress={() => setRecordOnly((v) => !v)}
-              activeOpacity={0.7}
-            >
-              <Feather name={recordOnly ? 'check-square' : 'square'} size={18} color={recordOnly ? C.accent : C.textMuted} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.recordOnlyLabel, recordOnly && { color: C.accent }]}>{t.receipts.recordOnly}</Text>
-                <Text style={styles.recordOnlyHint}>{t.receipts.recordOnlyHint}</Text>
+            {/* 5. Details Card */}
+            <Card style={styles.detailsCard}>
+              {/* Location row */}
+              <View style={styles.detailRow}>
+                <Feather name="map-pin" size={16} color={C.textSecondary} />
+                <TextInput
+                  style={styles.detailInput}
+                  value={editLocation}
+                  onChangeText={setEditLocation}
+                  placeholder={t.receipts.locationPlaceholder}
+                  placeholderTextColor={C.textMuted}
+                  multiline
+                  blurOnSubmit
+                  accessibilityLabel={t.receipts.location}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
+                />
               </View>
-            </TouchableOpacity>
 
-            {/* Wallet Selection */}
+              <View style={styles.detailDivider} />
+
+              {/* Record-only toggle */}
+              <TouchableOpacity
+                style={styles.detailRow}
+                onPress={() => setRecordOnly((v) => !v)}
+                activeOpacity={0.7}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: recordOnly }}
+                accessibilityLabel={t.receipts.recordOnly}
+              >
+                <Feather
+                  name={recordOnly ? 'check-square' : 'square'}
+                  size={16}
+                  color={recordOnly ? C.accent : C.textMuted}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.detailLabel, recordOnly && { color: C.accent }]}>{t.receipts.recordOnly}</Text>
+                  <Text style={styles.detailHint}>{t.receipts.recordOnlyHint}</Text>
+                </View>
+              </TouchableOpacity>
+            </Card>
+
+            {/* 6. Wallet Picker */}
             {!recordOnly && (
               <WalletPicker
                 wallets={wallets}
                 selectedId={selectedWalletId}
                 onSelect={setSelectedWalletId}
-                label={t.receipts.deductFromWallet}
+                label="paid from wallet"
               />
             )}
 
-            {/* Action Buttons */}
-            <View style={styles.actionButtons}>
-              <Button
-                title={saving ? t.receipts.savingEllipsis : t.receipts.saveReceiptBtn}
-                onPress={handleSaveReceipt}
-                icon="check-circle"
-                style={{ flex: 1 }}
-                disabled={saving}
-              />
-              <Button
-                title={t.receipts.saveDraft}
-                onPress={handleSaveDraft}
-                icon="bookmark"
-                variant="secondary"
-                style={{ flex: 1 }}
-              />
-            </View>
+            {/* 7. Save Actions */}
             <Button
-              title={t.receipts.splitThisBill}
-              onPress={handleSplitBill}
-              icon="scissors"
-              variant="secondary"
-              style={{ marginTop: SPACING.sm }}
+              title={saving ? t.receipts.savingEllipsis : t.receipts.saveReceiptBtn}
+              onPress={handleSaveReceipt}
+              icon="check"
+              style={styles.saveButton}
+              disabled={saving}
+              accessibilityLabel={t.receipts.saveReceiptA11y}
             />
+            <View style={styles.secondaryActions}>
+              <TouchableOpacity
+                style={styles.secondaryLink}
+                onPress={handleSaveDraft}
+                activeOpacity={0.6}
+                accessibilityRole="button"
+                accessibilityLabel={t.receipts.saveDraftA11y}
+              >
+                <Feather name="bookmark" size={16} color={C.textSecondary} />
+                <Text style={styles.secondaryLinkText}>{t.receipts.saveDraft}</Text>
+              </TouchableOpacity>
+              <View style={styles.secondaryDot} />
+              <TouchableOpacity
+                style={styles.secondaryLink}
+                onPress={handleSplitBill}
+                activeOpacity={0.6}
+                accessibilityRole="button"
+                accessibilityLabel={t.receipts.splitBillA11y}
+              >
+                <Feather name="scissors" size={16} color={C.textSecondary} />
+                <Text style={styles.secondaryLinkText}>{t.receipts.splitThisBill}</Text>
+              </TouchableOpacity>
+            </View>
           </>
         )}
       </KeyboardAwareScrollView>
@@ -886,7 +1033,12 @@ const ReceiptScanner: React.FC = () => {
           <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
               <Text style={styles.dropdownTitle}>{t.receipts.taxReliefCategory}</Text>
-              <TouchableOpacity onPress={() => setTaxPickerVisible(false)}>
+              <TouchableOpacity
+                onPress={() => setTaxPickerVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.receipts.closePickerA11y}
+              >
                 <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
@@ -912,7 +1064,12 @@ const ReceiptScanner: React.FC = () => {
           <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
               <Text style={styles.dropdownTitle}>{t.receipts.expenseCategory}</Text>
-              <TouchableOpacity onPress={() => setCategoryPickerVisible(false)}>
+              <TouchableOpacity
+                onPress={() => setCategoryPickerVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.receipts.closePickerA11y}
+              >
                 <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
@@ -934,7 +1091,7 @@ const ReceiptScanner: React.FC = () => {
                     activeOpacity={0.7}
                   >
                     <View style={[styles.taxItemIcon, { backgroundColor: isSelected ? cat.color : withAlpha(cat.color, 0.15) }]}>
-                      <Feather name={cat.icon as keyof typeof Feather.glyphMap} size={18} color={isSelected ? '#fff' : cat.color} />
+                      <Feather name={cat.icon as keyof typeof Feather.glyphMap} size={18} color={isSelected ? C.onAccent : cat.color} />
                     </View>
                     <Text style={[styles.taxItemName, isSelected && { color: cat.color, fontWeight: TYPOGRAPHY.weight.bold }]}>{cat.name}</Text>
                     {isSelected && <Feather name="check" size={18} color={cat.color} />}
@@ -956,63 +1113,18 @@ const ReceiptScanner: React.FC = () => {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── Payment Method Picker Modal ── */}
-      <Modal visible={paymentPickerVisible} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setPaymentPickerVisible(false)}>
-        <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setPaymentPickerVisible(false)}>
-          <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
-            <View style={styles.dropdownHeader}>
-              <Text style={styles.dropdownTitle}>{t.receipts.paymentMethod}</Text>
-              <TouchableOpacity onPress={() => setPaymentPickerVisible(false)}>
-                <Feather name="x" size={22} color={C.textPrimary} />
-              </TouchableOpacity>
-            </View>
-            <FlatList
-              data={paymentMethods}
-              keyExtractor={(item) => item.id}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
-              removeClippedSubviews
-              maxToRenderPerBatch={10}
-              windowSize={5}
-              renderItem={({ item: pm }) => {
-                const isSelected = pm.id === editPaymentMethod;
-                return (
-                  <TouchableOpacity
-                    style={[styles.taxItem, isSelected && { backgroundColor: withAlpha(pm.color, 0.1) }]}
-                    onPress={() => { setEditPaymentMethod(pm.id); setPaymentPickerVisible(false); }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.taxItemIcon, { backgroundColor: isSelected ? pm.color : withAlpha(pm.color, 0.15) }]}>
-                      <Feather name={pm.icon as keyof typeof Feather.glyphMap} size={18} color={isSelected ? '#fff' : pm.color} />
-                    </View>
-                    <Text style={[styles.taxItemName, isSelected && { color: pm.color, fontWeight: TYPOGRAPHY.weight.bold }]}>{pm.name}</Text>
-                    {isSelected && <Feather name="check" size={18} color={pm.color} />}
-                  </TouchableOpacity>
-                );
-              }}
-              ListFooterComponent={
-                <TouchableOpacity
-                  style={styles.manageLink}
-                  onPress={() => { setPaymentPickerVisible(false); setTimeout(() => setPaymentManagerVisible(true), 50); }}
-                  activeOpacity={0.6}
-                >
-                  <Feather name="settings" size={14} color={C.accent} />
-                  <Text style={styles.manageLinkText}>{t.receipts.managePaymentMethods}</Text>
-                </TouchableOpacity>
-              }
-            />
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
       {/* ── Calendar Picker Modal ── */}
       <Modal visible={calendarPickerVisible} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setCalendarPickerVisible(false)}>
         <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setCalendarPickerVisible(false)}>
           <View style={styles.dropdownModal} onStartShouldSetResponder={() => true}>
             <View style={styles.dropdownHeader}>
               <Text style={styles.dropdownTitle}>{t.receipts.dateLabel}</Text>
-              <TouchableOpacity onPress={() => setCalendarPickerVisible(false)}>
+              <TouchableOpacity
+                onPress={() => setCalendarPickerVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={t.receipts.closePickerA11y}
+              >
                 <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
@@ -1032,6 +1144,9 @@ const ReceiptScanner: React.FC = () => {
           <TouchableOpacity
             style={styles.imageOverlayClose}
             onPress={() => setImageViewVisible(false)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={t.receipts.closePickerA11y}
           >
             <Feather name="x" size={28} color="#fff" />
           </TouchableOpacity>
@@ -1056,10 +1171,6 @@ const ReceiptScanner: React.FC = () => {
         type="expense"
       />
 
-      <PaymentMethodManager
-        visible={paymentManagerVisible}
-        onClose={() => setPaymentManagerVisible(false)}
-      />
       <ScreenGuide
         id="guide_receipts"
         title={t.guide.scanReceipts}
@@ -1081,19 +1192,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingBottom: SPACING['5xl'],
   },
 
-  // ── Hero ──
+  // ══════════════════════════════════════════════════════════
+  // STATE 1: Capture
+  // ══════════════════════════════════════════════════════════
   heroCard: {
     alignItems: 'center',
-    paddingVertical: SPACING['3xl'],
-  },
-  heroIcon: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: withAlpha(C.accent, 0.08),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.lg,
+    paddingVertical: SPACING['4xl'],
   },
   heroTitle: {
     fontSize: TYPOGRAPHY.size['2xl'],
@@ -1105,49 +1209,60 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: TYPOGRAPHY.size.sm * TYPOGRAPHY.lineHeight.normal,
+    marginBottom: SPACING['3xl'],
+    paddingHorizontal: SPACING.xl,
+  },
+  shutterRing: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 3,
+    borderColor: withAlpha(C.accent, 0.2),
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: SPACING.xl,
-    paddingHorizontal: SPACING.lg,
+  },
+  shutterButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  galleryLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  galleryLinkText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.2,
   },
   scanLimitText: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
+    letterSpacing: 0.2,
     marginBottom: SPACING.md,
-  },
-  captureButtons: {
-    flexDirection: 'row',
-    gap: SPACING.xl,
-  },
-  captureButton: {
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  captureIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  captureLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
   },
   viewReceiptsLink: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: SPACING.xs,
-    marginTop: SPACING.xl,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: RADIUS.full,
-    backgroundColor: C.pillBg,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.sm,
   },
   viewReceiptsText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: C.accent,
+    color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.2,
   },
 
   // ── Draft ──
@@ -1160,110 +1275,315 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.md,
     borderWidth: 1,
     borderColor: withAlpha(C.accent, 0.15),
-    ...SHADOWS.xs,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
+  },
+  draftIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+  },
+  draftTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    letterSpacing: 0.2,
+  },
+  draftHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    letterSpacing: 0.2,
+    marginTop: SPACING.xs / 2,
   },
 
-  // ── Preview ──
-  previewCard: {
-    marginBottom: SPACING.md,
-  },
-  previewHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  // ══════════════════════════════════════════════════════════
+  // STATE 2: Preview
+  // ══════════════════════════════════════════════════════════
+  previewImageWrap: {
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
     marginBottom: SPACING.md,
   },
   previewImage: {
     width: '100%',
-    height: 280,
+    height: 300,
     borderRadius: RADIUS.xl,
     backgroundColor: C.background,
   },
+  previewCloseBtn: {
+    position: 'absolute',
+    top: SPACING.md,
+    right: SPACING.md,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  extractButton: {
+    marginTop: SPACING.sm,
+    borderRadius: RADIUS.xl,
+  },
 
-  // ── Thumbnail ──
-  thumbnailRow: {
+  // ══════════════════════════════════════════════════════════
+  // STATE 3: Loading
+  // ══════════════════════════════════════════════════════════
+  loadingImageWrap: {
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+    marginBottom: SPACING.md,
+  },
+  loadingImageDim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: withAlpha(C.background, 0.3),
+    borderRadius: RADIUS.xl,
+  },
+  scanLine: {
+    position: 'absolute',
+    top: SPACING.sm,
+    left: SPACING.md,
+    right: SPACING.md,
+    height: 2,
+    backgroundColor: C.accent,
+    borderRadius: RADIUS.full,
+    opacity: 0.6,
+  },
+  loadingTextWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: SPACING.md,
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    marginBottom: SPACING.md,
-    ...SHADOWS.xs,
-  },
-  thumbnail: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.sm,
-    backgroundColor: C.background,
-    marginRight: SPACING.md,
-  },
-  thumbnailLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-  },
-  thumbnailHint: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    marginTop: 2,
-  },
-
-  // ── Loading ──
-  loadingCard: {
-    paddingVertical: SPACING['3xl'],
-    paddingHorizontal: SPACING.xl,
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.xl,
   },
   loadingSubtext: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
-    textAlign: 'center',
+    letterSpacing: 0.2,
   },
 
-  // ── Data card ──
-  dataCard: {
-    marginBottom: SPACING.md,
+  // ══════════════════════════════════════════════════════════
+  // STATE 4: Extracted Form
+  // ══════════════════════════════════════════════════════════
+
+  // ── 1. Receipt Image Banner ──
+  bannerWrap: {
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+    backgroundColor: C.surface,
+    marginBottom: SPACING.xl,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
-  sectionTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    marginBottom: SPACING.md,
+  bannerTouchable: {
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
   },
-  formLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-    marginBottom: SPACING.xs,
-    marginTop: SPACING.lg,
+  bannerImage: {
+    width: '100%',
+    height: 180,
   },
-  formInput: {
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
+  bannerGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 56,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-start',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-    borderWidth: 1,
-    borderColor: C.inputBorder,
+    paddingBottom: SPACING.sm,
   },
-  itemRow: {
+  bannerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-  },
-  addItemBtn: {
-    width: 36,
-    height: 36,
+    gap: SPACING.xs,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    backgroundColor: C.accent,
+  },
+  bannerBadgeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: '#fff',
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.2,
+  },
+  bannerCloseBtn: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.sm,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
+  // ── 2. Hero Total ──
+  heroTotal: {
+    marginBottom: SPACING.lg,
+  },
+  heroAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+  },
+  heroCurrencyPrefix: {
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.light,
+    color: C.textSecondary,
+    marginRight: SPACING.xs,
+  },
+  heroAmountInput: {
+    fontSize: 40,
+    fontWeight: TYPOGRAPHY.weight.light,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+    letterSpacing: -1,
+    textAlign: 'center',
+    minWidth: 120,
+    paddingVertical: SPACING.xs,
+  },
+  heroMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
+  heroVendorWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: SPACING.xs,
+    marginRight: SPACING.md,
+  },
+  heroVendorInput: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    flex: 1,
+    paddingVertical: SPACING.xs,
+  },
+  heroDatePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: C.pillBg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+  },
+  heroDateText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.accent,
+    letterSpacing: 0.2,
+  },
+
+  // ── 3. Classification Pills ──
+  pillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  classificationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  pillText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    letterSpacing: 0.2,
+  },
+
+  // ── 4. Items Card ──
+  itemsCard: {
+    marginBottom: SPACING.md,
+  },
+  itemsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  itemsSectionLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textMuted,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  itemsCountBadge: {
+    backgroundColor: C.pillBg,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs / 2, // 2px — tight badge around count
+    borderRadius: RADIUS.full,
+  },
+  itemsCountText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+  },
+  itemDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+  },
+  itemNameInput: {
+    flex: 2,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    paddingVertical: SPACING.xs,
+  },
+  itemAmountInput: {
+    flex: 0,
+    minWidth: 72,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+    textAlign: 'right',
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.xs,
+  },
+  itemPlaceholderInput: {
+    color: C.textMuted,
+  },
+  itemRemoveBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: SPACING.xs,
+  },
+  addItemBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: SPACING.xs,
+  },
+
   // ── Summary ──
   summarySection: {
-    marginTop: SPACING.lg,
+    marginTop: SPACING.md,
     paddingTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: C.border,
@@ -1277,6 +1597,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   summaryLabel: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
+    letterSpacing: 0.2,
   },
   summaryValue: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1284,75 +1605,77 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
   },
-  totalRow: {
-    paddingTop: SPACING.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: C.border,
-    marginTop: SPACING.sm,
+
+  // ── 5. Details Card ──
+  detailsCard: {
+    marginTop: SPACING.md,
+    marginBottom: SPACING.md,
   },
-  totalLabel: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  detailInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
+    paddingVertical: SPACING.xs,
   },
-  totalInputContainer: {
+  detailDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+  },
+  detailLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    letterSpacing: 0.2,
+  },
+  detailHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    letterSpacing: 0.2,
+    marginTop: 1,
+  },
+
+  // ── 7. Save Actions ──
+  saveButton: {
+    marginTop: SPACING.xl,
+  },
+  secondaryActions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: SPACING.xl,
+    marginTop: SPACING.md,
+    marginBottom: SPACING['3xl'],
+  },
+  secondaryLink: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
   },
-  totalCurrency: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-  },
-  totalInput: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'] as any,
-    minWidth: 80,
-    textAlign: 'right',
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderWidth: 1,
-    borderColor: C.inputBorder,
-  },
-
-  // ── Tax Relief Trigger ──
-  taxTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: SPACING.md,
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: C.inputBorder,
-  },
-  taxTriggerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.md,
-  },
-  taxTriggerName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-  },
-  taxTriggerLimit: {
-    fontSize: TYPOGRAPHY.size.xs,
+  secondaryLinkText: {
+    fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
-    marginTop: 2,
+    letterSpacing: 0.2,
+  },
+  secondaryDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: C.border,
   },
 
-  // ── Picker Modal (CategoryPicker dropdown style) ──
+  // ══════════════════════════════════════════════════════════
+  // Picker Modals (preserved — shared across all states)
+  // ══════════════════════════════════════════════════════════
   dropdownOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
@@ -1375,10 +1698,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
+    letterSpacing: -0.3,
   },
   taxHeaderSubtitle: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
+    letterSpacing: 0.2,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
   },
@@ -1405,6 +1730,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   taxItemDesc: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
+    letterSpacing: 0.2,
     marginTop: 1,
   },
   taxLimitBadge: {
@@ -1420,8 +1746,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.accent,
     fontVariant: ['tabular-nums'] as any,
   },
-
-  // ── Manage link (inside picker modals) ──
   manageLink: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1435,35 +1759,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     color: C.accent,
     fontWeight: TYPOGRAPHY.weight.medium,
-  },
-
-  // ── Record Only Toggle ──
-  recordOnlyToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: C.border,
-    marginBottom: SPACING.md,
-  },
-  recordOnlyLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  recordOnlyHint: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    marginTop: 1,
-  },
-
-  // ── Actions ──
-  actionButtons: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING.lg,
+    letterSpacing: 0.2,
   },
 
   // ── Full-screen image overlay ──

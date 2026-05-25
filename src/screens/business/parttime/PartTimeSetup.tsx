@@ -12,14 +12,15 @@ import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { usePartTimeStore } from '../../../store/partTimeStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { successNotification } from '../../../services/haptics';
 
 const PAY_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
 const PartTimeSetup: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
   const { jobDetails, setJobDetails } = usePartTimeStore();
@@ -63,6 +64,8 @@ const PartTimeSetup: React.FC = () => {
           placeholder="what's your main job?"
           placeholderTextColor={C.textMuted}
           returnKeyType="next"
+          keyboardAppearance={isDark ? 'dark' : 'light'}
+          selectionColor={C.accent}
         />
 
         <View style={styles.amountRow}>
@@ -76,6 +79,8 @@ const PartTimeSetup: React.FC = () => {
             keyboardType="decimal-pad"
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         </View>
 
@@ -144,6 +149,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['5xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   heading: {
@@ -227,7 +235,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   payDayOptionTextActive: {
-    color: '#FFFFFF',
+    color: C.onAccent,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
@@ -243,7 +251,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 
   optionalNote: {

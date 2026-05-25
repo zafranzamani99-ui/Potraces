@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTap } from '../../services/haptics';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
+import WalletPicker from '../../components/common/WalletPicker';
 import {
   pickCsv,
   parseDateCell,
@@ -70,7 +71,6 @@ const ImportFromCsv: React.FC = () => {
   const [csv, setCsv] = useState<CsvParseResult | null>(null);
   const [mapping, setMapping] = useState<ColumnRole[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<string | undefined>(defaultWallet?.id);
-  const [walletPickerOpen, setWalletPickerOpen] = useState(false);
   const [rolePicker, setRolePicker] = useState<number | null>(null);
   const [skipRows, setSkipRows] = useState<Set<number>>(new Set());
 
@@ -257,7 +257,12 @@ const ImportFromCsv: React.FC = () => {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="back"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Feather name="chevron-left" size={24} color={C.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.title}>import csv</Text>
@@ -279,11 +284,15 @@ const ImportFromCsv: React.FC = () => {
   }
 
   // step === 'map'
-  const selectedWallet = wallets.find((w) => w.id === selectedWalletId);
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => { setStep('start'); setCsv(null); }}>
+        <TouchableOpacity
+          onPress={() => { setStep('start'); setCsv(null); }}
+          accessibilityRole="button"
+          accessibilityLabel="back"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
           <Feather name="chevron-left" size={24} color={C.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.title}>map columns · {csv?.rows.length ?? 0} rows</Text>
@@ -299,21 +308,24 @@ const ImportFromCsv: React.FC = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: SPACING.sm, paddingVertical: SPACING.xs }}
           renderItem={({ item, index }) => (
-            <TouchableOpacity onPress={() => setRolePicker(index)} style={styles.colChip}>
+            <TouchableOpacity
+              onPress={() => setRolePicker(index)}
+              style={styles.colChip}
+              accessibilityRole="button"
+              accessibilityLabel={`${item} column, currently ${ROLE_LABELS[mapping[index] ?? 'ignore']}`}
+            >
               <Text style={styles.colChipHeader} numberOfLines={1}>{item}</Text>
               <Text style={styles.colChipRole}>{ROLE_LABELS[mapping[index] ?? 'ignore']}</Text>
             </TouchableOpacity>
           )}
         />
-        <View style={styles.walletLine}>
-          <Text style={styles.walletLabel}>wallet</Text>
-          <TouchableOpacity style={styles.walletPicker} onPress={() => setWalletPickerOpen(true)}>
-            <Feather name={selectedWallet ? 'credit-card' : 'alert-circle'} size={14} color={C.accent} />
-            <Text style={styles.walletPickerText}>
-              {selectedWallet ? selectedWallet.name : 'pick'}
-            </Text>
-            <Feather name="chevron-down" size={12} color={C.textSecondary} />
-          </TouchableOpacity>
+        <View style={styles.walletPickerWrap}>
+          <WalletPicker
+            wallets={wallets}
+            selectedId={selectedWalletId ?? null}
+            onSelect={setSelectedWalletId}
+            label="wallet"
+          />
         </View>
         {badCount > 0 && (
           <Text style={styles.warnText}>⚠ {badCount} rows can't be imported (missing date or amount)</Text>
@@ -339,25 +351,6 @@ const ImportFromCsv: React.FC = () => {
         />
       </View>
 
-      <Modal visible={walletPickerOpen} transparent animationType="fade" onRequestClose={() => setWalletPickerOpen(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setWalletPickerOpen(false)}>
-          <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.pickerTitle}>choose a wallet</Text>
-            {wallets.map((w) => (
-              <TouchableOpacity
-                key={w.id}
-                onPress={() => { setSelectedWalletId(w.id); setWalletPickerOpen(false); }}
-                style={styles.pickerItem}
-              >
-                <Feather name="credit-card" size={16} color={C.accent} />
-                <Text style={styles.pickerItemText}>{w.name}</Text>
-                {w.id === selectedWalletId && <Feather name="check" size={16} color={C.positive} />}
-              </TouchableOpacity>
-            ))}
-          </Pressable>
-        </Pressable>
-      </Modal>
-
       <Modal visible={rolePicker !== null} transparent animationType="fade" onRequestClose={() => setRolePicker(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setRolePicker(null)}>
           <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
@@ -372,6 +365,8 @@ const ImportFromCsv: React.FC = () => {
                   setRolePicker(null);
                 }}
                 style={styles.pickerItem}
+                accessibilityRole="button"
+                accessibilityLabel={ROLE_LABELS[role]}
               >
                 <Text style={styles.pickerItemText}>{ROLE_LABELS[role]}</Text>
                 {rolePicker !== null && mapping[rolePicker] === role && (
@@ -425,26 +420,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: SPACING.xs,
   },
-  walletLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: SPACING.sm,
-  },
-  walletPicker: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 6,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: withAlpha(C.accent, 0.05),
-  },
-  walletPickerText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textPrimary,
+  walletPickerWrap: {
+    marginTop: SPACING.md,
   },
   colChip: {
     paddingHorizontal: SPACING.md,
@@ -500,7 +477,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: withAlpha('#000000', 0.5),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'center',
     alignItems: 'center',
     padding: SPACING.lg,

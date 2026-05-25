@@ -27,13 +27,10 @@ const GettingStarted: React.FC = () => {
 
   if (dismissed || transactions.length >= 5) return null;
 
+  // Ladder order: Wallet (rung 1) → Transactions (rung 2) → Budget (rung 4).
+  // "write a note" (rung 3) is a power-user surface and is intentionally
+  // omitted from first-run pills per audit FIRSTRUN-L2.
   const items: { icon: keyof typeof Feather.glyphMap; label: string; done: boolean; onPress: () => void }[] = [
-    {
-      icon: 'plus-circle',
-      label: t.gettingStarted.addFirstExpense,
-      done: transactions.length > 0,
-      onPress: () => { lightTap(); openQuickAdd(); },
-    },
     {
       icon: 'credit-card',
       label: t.gettingStarted.setUpWallet,
@@ -41,16 +38,16 @@ const GettingStarted: React.FC = () => {
       onPress: () => { lightTap(); navigation.getParent()?.navigate('WalletManagement'); },
     },
     {
+      icon: 'plus-circle',
+      label: t.gettingStarted.logMoneyInOrOut,
+      done: transactions.length > 0,
+      onPress: () => { lightTap(); openQuickAdd(); },
+    },
+    {
       icon: 'sliders',
       label: t.gettingStarted.setABudget,
       done: budgets.length > 0,
       onPress: () => { lightTap(); navigation.getParent()?.navigate('BudgetPlanning'); },
-    },
-    {
-      icon: 'edit-3',
-      label: t.gettingStarted.writeANote,
-      done: false,
-      onPress: () => { lightTap(); navigation.getParent()?.navigate('Notes'); },
     },
   ];
 
@@ -63,7 +60,9 @@ const GettingStarted: React.FC = () => {
         <Text style={styles.label}>{t.gettingStarted.letsGetStarted}</Text>
         <TouchableOpacity
           onPress={() => { lightTap(); setDismissed(true); }}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+          accessibilityRole="button"
+          accessibilityLabel={t.gettingStarted.dismiss}
         >
           <Feather name="x" size={14} color={C.textMuted} />
         </TouchableOpacity>
@@ -81,6 +80,9 @@ const GettingStarted: React.FC = () => {
               style={styles.chip}
               onPress={item.onPress}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={item.label}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
             >
               <View style={styles.chipIcon}>
                 <Feather name={item.icon} size={14} color={C.accent} />
@@ -144,9 +146,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderColor: C.border,
   },
   chipIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 24,
+    height: 24,
+    borderRadius: RADIUS.full,
     backgroundColor: withAlpha(C.accent, 0.08),
     justifyContent: 'center',
     alignItems: 'center',

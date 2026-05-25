@@ -1,7 +1,7 @@
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { callGeminiAPI, isGeminiAvailable, getCooldownSecondsLeft } from './geminiClient';
-import { ExtractedReceipt } from '../types';
+import { ExtractedReceipt, SellerReceiptResult } from '../types';
 
 /**
  * Resize + compress the image so Gemini processes it faster and more accurately.
@@ -169,6 +169,117 @@ export async function scanReceipt(imageUri: string): Promise<ExtractedReceipt> {
       paymentMethod: parsed.paymentMethod || undefined,
       suggestedExpenseCategory: parsed.suggestedExpenseCategory || undefined,
       suggestedTaxCategory: parsed.suggestedTaxCategory || undefined,
+    };
+  } catch {
+    throw new Error('Could not parse receipt data. Please try again.');
+  }
+}
+
+const SELLER_RECEIPT_PROMPT = `You are a parser for Malaysian small-business COST documents. The image is one of:
+- a supplier / wholesale invoice (itemized, e.g. NSK, Bataras, Mr DIY, fabric/craft shops)
+- a non-itemized bill (utility like TNB/Air/Unifi, rent receipt, platform fee/commission statement like Shopee/Grab/Lazada)
+
+Focus ONLY on the document — ignore background objects (table, hands).
+
+Return JSON only:
+{
+  "vendor": "supplier / biller / store name, or null",
+  "items": [{ "name": "item name", "amount": 8.49 }],
+  "total": 65.10,
+  "date": "date string or null",
+  "invoiceNumber": "invoice / bill / reference number or null",
+  "suggestedCategory": "one of: costcat_materials, costcat_packaging, costcat_equipment, costcat_utilities, costcat_rent, costcat_transport, costcat_marketing, costcat_fees, costcat_labor, costcat_other"
+}
+
+Rules:
+- amounts must be numbers, not strings; strip RM prefix
+- "amount" per item = the RIGHTMOST number on its line (line total), NOT unit price
+- "total" = final amount due / grand total / jumlah / amount payable
+- For a NON-itemized bill, return "items": [] and put the charge in "total"
+- vendor = the company/shop/biller name, usually at the top
+- if no total line, sum the items
+- if truly unreadable, return {"vendor": null, "items": [], "total": 0}
+
+Category hints (map to the BEST fit):
+- flour, sugar, fabric, thread, beads, wood, raw stock, COGS → costcat_materials
+- boxes, bags, labels, wrapping, containers → costcat_packaging
+- mixer, oven, sewing machine, laptop, tools, furniture → costcat_equipment
+- TNB / electricity, Air / water, Unifi / internet, phone bill → costcat_utilities
+- stall rent, kitchen rent, studio, shoplot lease → costcat_rent
+- petrol, delivery, courier, Grab/Lalamove ride → costcat_transport
+- ads, flyers, banner, boosted posts, printing promo → costcat_marketing
+- platform commission, Shopee/Grab/Lazada fee, bank charge, software subscription → costcat_fees
+- hired help, part-time wages, assistant pay → costcat_labor
+- anything unclear → costcat_other`;
+
+const VALID_COST_CATEGORY_IDS = new Set([
+  'costcat_materials', 'costcat_packaging', 'costcat_equipment', 'costcat_utilities',
+  'costcat_rent', 'costcat_transport', 'costcat_marketing', 'costcat_fees',
+  'costcat_labor', 'costcat_other',
+]);
+
+export async function scanSellerReceipt(imageUri: string): Promise<SellerReceiptResult> {
+  if (!isGeminiAvailable()) {
+    const secs = getCooldownSecondsLeft();
+    if (secs > 0) throw new Error(`AI is cooling down — try again in ${secs}s`);
+    throw new Error('AI is not available. Check your API key.');
+  }
+
+  const base64 = await prepareImage(imageUri);
+
+  const data = await callGeminiAPI(
+    {
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: SELLER_RECEIPT_PROMPT },
+            { inlineData: { mimeType: 'image/jpeg', data: base64 } },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 16384,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    },
+    30_000,
+    true
+  );
+
+  if (!data) {
+    const secs = getCooldownSecondsLeft();
+    if (secs > 0) throw new Error(`AI is busy — try again in ${secs}s`);
+    throw new Error('Could not reach AI. Please try again.');
+  }
+
+  const candidate = data?.candidates?.[0];
+  if (data?.promptFeedback?.blockReason) {
+    throw new Error('AI could not process this image. Try a different photo.');
+  }
+
+  const text = candidate?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('No response from AI. Please try a clearer photo.');
+
+  try {
+    const parsed = JSON.parse(stripJsonFences(text));
+    const suggested = typeof parsed.suggestedCategory === 'string' && VALID_COST_CATEGORY_IDS.has(parsed.suggestedCategory)
+      ? parsed.suggestedCategory
+      : undefined;
+
+    return {
+      vendor: parsed.vendor || undefined,
+      items: Array.isArray(parsed.items)
+        ? parsed.items
+            .filter((i: any) => i.name && typeof i.amount === 'number' && i.amount > 0)
+            .map((i: any) => ({ name: String(i.name), amount: Number(i.amount) }))
+        : [],
+      total: Number(parsed.total) || 0,
+      date: parsed.date || undefined,
+      invoiceNumber: parsed.invoiceNumber || undefined,
+      suggestedCategory: suggested,
+      rawText: text,
     };
   } catch {
     throw new Error('Could not parse receipt data. Please try again.');

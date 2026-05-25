@@ -17,8 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import Button from '../../components/common/Button';
 import FAB from '../../components/common/FAB';
 import Card from '../../components/common/Card';
@@ -28,6 +28,7 @@ import { useToast } from '../../context/ToastContext';
 
 const Inventory: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
@@ -228,7 +229,7 @@ const Inventory: React.FC = () => {
               <Feather
                 name="grid"
                 size={14}
-                color={selectedCategory === null ? '#fff' : C.textSecondary}
+                color={selectedCategory === null ? C.onAccent : C.textSecondary}
               />
               <Text
                 style={[styles.categoryTabText, selectedCategory === null && styles.categoryTabTextActive]}
@@ -245,7 +246,7 @@ const Inventory: React.FC = () => {
                 <Feather
                   name={cat.icon as keyof typeof Feather.glyphMap}
                   size={14}
-                  color={selectedCategory === cat.id ? '#fff' : C.textSecondary}
+                  color={selectedCategory === cat.id ? C.onAccent : C.textSecondary}
                 />
                 <Text
                   style={[styles.categoryTabText, selectedCategory === cat.id && styles.categoryTabTextActive]}
@@ -593,6 +594,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING.lg,
     paddingBottom: 80,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // Category tabs
@@ -625,7 +629,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   categoryTabTextActive: {
-    color: '#fff',
+    color: C.onAccent,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
@@ -780,6 +784,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopRightRadius: RADIUS['2xl'],
     padding: SPACING['2xl'],
     maxHeight: '90%',
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center' as const,
   },
   modalHeader: {
     flexDirection: 'row',

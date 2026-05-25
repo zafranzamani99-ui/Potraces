@@ -47,7 +47,7 @@ OPENER RULE (CRITICAL — NEVER BREAK):
 
 ABSOLUTE RULES:
 1. NEVER say "you should", "you need to", "I recommend", "consider", "try to"
-2. NEVER use words: "profit", "loss", "revenue", "ROI", "budget" (use "kept", "went out", "came in", "breathing room")
+2. NEVER use these banned words: "profit", "loss", "revenue", "ROI", "inventory", "budget" — use Potraces approved vocabulary: "kept" (not profit), "went out" (not loss), "came in" (not revenue), "efficiency" (not ROI), "products" (not inventory), "breathing room" (not budget)
 3. NEVER judge spending. "${currency} 400 went to Shopee" is observation. "That's a lot" is judgment. Only observe.
 4. NEVER compare the user to others or averages. Their money story is only theirs.
 5. NEVER use red/alarm/danger language. Even bad news is stated calmly.
@@ -730,15 +730,15 @@ ${savingsLines}`;
               const existing = acc.find((p) => p.name === item.productName);
               if (existing) {
                 existing.sold += item.quantity;
-                existing.revenue += item.quantity * item.unitPrice;
+                existing.cameIn += item.quantity * item.unitPrice;
               } else {
-                acc.push({ name: item.productName, sold: item.quantity, revenue: item.quantity * item.unitPrice });
+                acc.push({ name: item.productName, sold: item.quantity, cameIn: item.quantity * item.unitPrice });
               }
               return acc;
             },
-            [] as { name: string; sold: number; revenue: number }[]
+            [] as { name: string; sold: number; cameIn: number }[]
           )
-          .sort((a, b) => b.revenue - a.revenue)
+          .sort((a, b) => b.cameIn - a.cameIn)
           .slice(0, 5);
 
         ctx += `\n\nBusiness (${biz.incomeType}) — ${activeSeason.name}:
@@ -747,7 +747,7 @@ Costs: ${currency} ${stats.totalCosts.toFixed(2)}
 Kept: ${currency} ${stats.kept.toFixed(2)}
 Orders: ${stats.totalOrders} (${stats.unpaidCount} unpaid, ${currency} ${stats.unpaidAmount.toFixed(2)})
 Top products:
-${topProducts.map((p) => `  ${p.name}: ${p.sold} sold, ${currency} ${p.revenue.toFixed(2)}`).join('\n')}`;
+${topProducts.map((p) => `  ${p.name}: ${p.sold} sold, ${currency} ${p.cameIn.toFixed(2)}`).join('\n')}`;
       }
     } else if (biz.incomeType) {
       const recentBiz = biz.businessTransactions.filter((t) => {

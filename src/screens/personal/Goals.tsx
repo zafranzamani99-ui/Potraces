@@ -30,13 +30,14 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { useWalletStore } from '../../store/walletStore';
 import {
   CALM,
+  CALM_DARK,
   SPACING,
   TYPOGRAPHY,
   RADIUS,
   SHADOWS,
   withAlpha,
 } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import Sparkline from '../../components/common/Sparkline';
 import CalendarPicker from '../../components/common/CalendarPicker';
@@ -93,6 +94,7 @@ const MAX_GOALS = 10;
 // ── MAIN COMPONENT ────────────────────────────────────────────
 const Goals: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
 
@@ -695,6 +697,10 @@ const Goals: React.FC = () => {
                   style={[styles.filterChip, filter === opt.key && styles.filterChipActive]}
                   onPress={() => { selectionChanged(); setFilter(opt.key); }}
                   activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={opt.label}
+                  accessibilityState={{ selected: filter === opt.key }}
                 >
                   <Text style={[styles.filterChipText, filter === opt.key && styles.filterChipTextActive]}>
                     {opt.label}
@@ -707,8 +713,12 @@ const Goals: React.FC = () => {
                   style={[styles.filterChip, sort === opt.key && styles.filterChipActive]}
                   onPress={() => { selectionChanged(); setSort(sort === opt.key ? 'manual' : opt.key); }}
                   activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={opt.label}
+                  accessibilityState={{ selected: sort === opt.key }}
                 >
-                  <Feather name={opt.icon} size={12} color={sort === opt.key ? '#FFFFFF' : C.textMuted} style={{ marginRight: 4 }} />
+                  <Feather name={opt.icon} size={12} color={sort === opt.key ? C.onAccent : C.textMuted} style={{ marginRight: 4 }} />
                   <Text style={[styles.filterChipText, sort === opt.key && styles.filterChipTextActive]}>
                     {opt.label}
                   </Text>
@@ -859,6 +869,9 @@ const Goals: React.FC = () => {
                                 style={[styles.quickBtn, { backgroundColor: withAlpha(goal.color, 0.08) }]}
                                 onPress={() => openContribute(goal, amt)}
                                 activeOpacity={0.7}
+                                hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                                accessibilityRole="button"
+                                accessibilityLabel={`${t.goals.contribute} ${currency} ${amt}`}
                               >
                                 <Text style={[styles.quickBtnText, { color: goal.color }]}>+{amt}</Text>
                               </TouchableOpacity>
@@ -867,6 +880,9 @@ const Goals: React.FC = () => {
                               style={[styles.quickBtn, { backgroundColor: withAlpha(C.textMuted, 0.06) }]}
                               onPress={() => openContribute(goal)}
                               activeOpacity={0.7}
+                              hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                              accessibilityRole="button"
+                              accessibilityLabel={t.goals.custom}
                             >
                               <Text style={[styles.quickBtnText, { color: C.textSecondary }]}>{t.goals.custom}</Text>
                             </TouchableOpacity>
@@ -900,6 +916,9 @@ const Goals: React.FC = () => {
                               style={styles.actionIconBtn}
                               onPress={() => openContribute(goal, undefined, true)}
                               activeOpacity={0.7}
+                              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                              accessibilityRole="button"
+                              accessibilityLabel={t.goals.withdraw}
                             >
                               <Feather name="minus-circle" size={15} color={C.textMuted} />
                             </TouchableOpacity>
@@ -909,6 +928,9 @@ const Goals: React.FC = () => {
                               style={styles.actionIconBtn}
                               onPress={() => openHistory(goal)}
                               activeOpacity={0.7}
+                              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                              accessibilityRole="button"
+                              accessibilityLabel={t.goals.history}
                             >
                               <Feather name="clock" size={15} color={C.textMuted} />
                             </TouchableOpacity>
@@ -917,6 +939,9 @@ const Goals: React.FC = () => {
                             style={styles.actionIconBtn}
                             onPress={() => handleTogglePause(goal)}
                             activeOpacity={0.7}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={goal.isPaused ? t.goals.resume : t.goals.pause}
                           >
                             <Feather name={goal.isPaused ? 'play' : 'pause'} size={15} color={C.textMuted} />
                           </TouchableOpacity>
@@ -971,6 +996,9 @@ const Goals: React.FC = () => {
                             style={styles.restoreBtn}
                             onPress={() => handleUnarchive(goal.id)}
                             activeOpacity={0.7}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={t.goals.restore}
                           >
                             <Feather name="rotate-ccw" size={14} color={C.accent} />
                           </TouchableOpacity>
@@ -1010,8 +1038,10 @@ const Goals: React.FC = () => {
             style={styles.fabInner}
             onPress={() => { mediumTap(); openAddGoal(); }}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={t.goals.addGoal}
           >
-            <Feather name="plus" size={24} color="#FFFFFF" />
+            <Feather name="plus" size={24} color={C.onAccent} />
           </TouchableOpacity>
         </Animated.View>
       )}
@@ -1033,7 +1063,7 @@ const Goals: React.FC = () => {
             <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editingGoal ? t.goals.editGoalTitle : t.goals.createGoal}</Text>
-                <TouchableOpacity onPress={closeGoalModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <TouchableOpacity onPress={closeGoalModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} accessibilityRole="button" accessibilityLabel={t.goals.close}>
                   <Feather name="x" size={22} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
@@ -1058,6 +1088,10 @@ const Goals: React.FC = () => {
                           ]}
                           onPress={() => applyTemplate(tmpl)}
                           activeOpacity={0.7}
+                          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={tmpl.name}
+                          accessibilityState={{ selected: goalName === tmpl.name }}
                         >
                           <Feather name={tmpl.icon} size={14} color={goalName === tmpl.name ? tmpl.color : C.textSecondary} />
                           <Text style={[styles.templateChipText, goalName === tmpl.name && { color: tmpl.color }]}>
@@ -1078,6 +1112,8 @@ const Goals: React.FC = () => {
                   placeholderTextColor={C.textMuted}
                   returnKeyType="next"
                   maxLength={50}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <Text style={styles.fieldLabel}>{t.goals.amount}</Text>
@@ -1092,6 +1128,8 @@ const Goals: React.FC = () => {
                     placeholderTextColor={C.textMuted}
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
                   />
                 </View>
 
@@ -1119,6 +1157,9 @@ const Goals: React.FC = () => {
                       style={styles.clearDeadlineBtn}
                       onPress={() => { setGoalDeadline(undefined); setShowCalendar(false); }}
                       activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.goals.clearDeadline}
                     >
                       <Text style={styles.clearDeadlineText}>{t.goals.clearDeadline}</Text>
                     </TouchableOpacity>
@@ -1162,7 +1203,7 @@ const Goals: React.FC = () => {
                         accessibilityLabel={`Color ${color}`}
                         accessibilityState={{ selected: isSelected }}
                       >
-                        {isSelected && <Feather name="check" size={16} color="#FFFFFF" />}
+                        {isSelected && <Feather name="check" size={16} color={C.onAccent} />}
                       </TouchableOpacity>
                     );
                   })}
@@ -1197,6 +1238,9 @@ const Goals: React.FC = () => {
                     style={styles.deleteBtn}
                     onPress={() => { setGoalModalVisible(false); resetGoalForm(); handleDeleteGoal(editingGoal); }}
                     activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.goals.deleteThisGoal}
                   >
                     <Feather name="trash-2" size={14} color={C.neutral} />
                     <Text style={styles.deleteBtnText}>{t.goals.deleteThisGoal}</Text>
@@ -1225,7 +1269,7 @@ const Goals: React.FC = () => {
             <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{isWithdrawMode ? t.goals.withdraw : t.goals.contribute.toLowerCase()}</Text>
-                <TouchableOpacity onPress={closeContributeModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <TouchableOpacity onPress={closeContributeModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} accessibilityRole="button" accessibilityLabel={t.goals.close}>
                   <Feather name="x" size={22} color={C.textPrimary} />
                 </TouchableOpacity>
               </View>
@@ -1266,6 +1310,10 @@ const Goals: React.FC = () => {
                         ]}
                         onPress={() => { lightTap(); setContributeAmount(amt.toString()); }}
                         activeOpacity={0.7}
+                        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${currency} ${amt}`}
+                        accessibilityState={{ selected: contributeAmount === amt.toString() }}
                       >
                         <Text style={[styles.quickBtnText, { color: contributingGoal.color }]}>+{amt}</Text>
                       </TouchableOpacity>
@@ -1285,6 +1333,8 @@ const Goals: React.FC = () => {
                     placeholderTextColor={C.textMuted}
                     returnKeyType="next"
                     autoFocus
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
                   />
                 </View>
 
@@ -1336,6 +1386,10 @@ const Goals: React.FC = () => {
                         style={[styles.walletChip, !contributeWalletId && styles.walletChipActive]}
                         onPress={() => setContributeWalletId(undefined)}
                         activeOpacity={0.7}
+                        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.goals.none}
+                        accessibilityState={{ selected: !contributeWalletId }}
                       >
                         <Text style={[styles.walletChipText, !contributeWalletId && styles.walletChipTextActive]}>{t.goals.none}</Text>
                       </TouchableOpacity>
@@ -1345,6 +1399,10 @@ const Goals: React.FC = () => {
                           style={[styles.walletChip, contributeWalletId === w.id && styles.walletChipActive]}
                           onPress={() => { lightTap(); setContributeWalletId(w.id); }}
                           activeOpacity={0.7}
+                          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={w.name}
+                          accessibilityState={{ selected: contributeWalletId === w.id }}
                         >
                           <Text style={[styles.walletChipText, contributeWalletId === w.id && styles.walletChipTextActive]}>
                             {w.name}
@@ -1364,6 +1422,8 @@ const Goals: React.FC = () => {
                   placeholderTextColor={C.textMuted}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <TouchableOpacity
@@ -1394,7 +1454,7 @@ const Goals: React.FC = () => {
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle} numberOfLines={1}>{historyGoal?.name || t.goals.history}</Text>
-              <TouchableOpacity onPress={() => setHistoryModalVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <TouchableOpacity onPress={() => setHistoryModalVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} accessibilityRole="button" accessibilityLabel={t.goals.close}>
                 <Feather name="x" size={22} color={C.textPrimary} />
               </TouchableOpacity>
             </View>
@@ -1442,7 +1502,9 @@ const Goals: React.FC = () => {
                           <TouchableOpacity
                             onPress={() => handleUndoContribution(historyGoal.id, c)}
                             activeOpacity={0.7}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={t.goals.undo}
                           >
                             <Feather name="corner-down-left" size={16} color={C.neutral} />
                           </TouchableOpacity>
@@ -1543,7 +1605,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textMuted,
   },
   filterChipTextActive: {
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 
   // ── Section Label ──
@@ -1562,7 +1624,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
-    ...SHADOWS.xs,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
   },
   cardDivider: {
     height: StyleSheet.hairlineWidth,
@@ -1684,7 +1746,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   walletChip: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, borderWidth: 1, borderColor: C.border, marginRight: SPACING.xs },
   walletChipActive: { backgroundColor: C.accent, borderColor: C.accent },
   walletChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: C.textSecondary },
-  walletChipTextActive: { color: '#FFFFFF' },
+  walletChipTextActive: { color: C.onAccent },
 
   // ── Action Row ──
   actionRow: {
@@ -1768,7 +1830,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   emptyButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 
   // ── Archived ──
@@ -1807,7 +1869,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.md,
+    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
 
   // ── Modal (centered floating card) ──
@@ -1828,7 +1890,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1840,6 +1902,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
 
   // ── Modal Fields ──
@@ -1891,7 +1954,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   iconPickerItem: { width: 48, height: 48, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', backgroundColor: C.background, borderWidth: 1.5, borderColor: C.border },
   colorPickerRow: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
   colorPickerItem: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  colorPickerItemSelected: { borderWidth: 3, borderColor: C.surface, shadowColor: '#000', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 3 },
+  colorPickerItemSelected: { borderWidth: 3, borderColor: C.surface, ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm) },
 
   // ── Preview ──
   goalPreview: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.background, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.lg, gap: SPACING.sm },
@@ -1910,7 +1973,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   confirmBtnText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, marginTop: SPACING.lg, paddingVertical: SPACING.sm },
   deleteBtnText: { fontSize: TYPOGRAPHY.size.sm, color: C.neutral },

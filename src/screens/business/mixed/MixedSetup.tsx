@@ -11,13 +11,14 @@ import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useMixedStore } from '../../../store/mixedStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { successNotification, lightTap } from '../../../services/haptics';
 
 const MixedSetup: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const PLACEHOLDERS = [
     t.mixed.streamPlaceholder1,
@@ -117,6 +118,8 @@ const MixedSetup: React.FC = () => {
                   Keyboard.dismiss();
                 }
               }}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             {(streams.length > 1 || stream.trim().length > 0) && (
               <TouchableOpacity
@@ -221,6 +224,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['5xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   heading: {
@@ -300,7 +306,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   toggleTextActive: {
-    color: '#FFFFFF',
+    color: C.onAccent,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
@@ -316,7 +322,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 
   optionalNote: {

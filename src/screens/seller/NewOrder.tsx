@@ -29,8 +29,8 @@ import CalendarPicker from '../../components/common/CalendarPicker';
 import { format, addDays, isValid } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { SellerOrderItem, SellerProduct, SellerOrder } from '../../types';
 import { parseWhatsAppOrder, detectWhatsAppSections, WhatsAppSection } from '../../utils/parseWhatsAppOrder';
 import { parseWhatsAppOrderAI } from '../../services/aiService';
@@ -58,6 +58,7 @@ const SelectedItemRow = React.memo(({ item, index, currency, qty, isEditing, edi
   styles: ReturnType<typeof makeStyles>;
 }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   return (
   <View style={[styles.selectedItemRow, index > 0 && styles.selectedItemRowBorder]}>
     <View style={styles.selectedItemLeft}>
@@ -80,6 +81,7 @@ const SelectedItemRow = React.memo(({ item, index, currency, qty, isEditing, edi
           onSubmitEditing={() => onEditSubmit(item.productId)}
           onBlur={() => onEditSubmit(item.productId)}
           keyboardType="decimal-pad" selectTextOnFocus autoFocus maxLength={6}
+          keyboardAppearance={isDark ? 'dark' : 'light'} selectionColor={C.accent}
         />
       ) : (
         <TouchableOpacity onPress={() => onEditStart(item.productId, item.quantity)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -103,10 +105,12 @@ const SelectedItemRow = React.memo(({ item, index, currency, qty, isEditing, edi
 // ─── MAIN COMPONENT ────────────────────────────────────────────
 const NewOrder: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const products = useSellerStore((s) => s.products);
+  const productOrder = useSellerStore((s) => s.productOrder);
   const addOrder = useSellerStore((s) => s.addOrder);
   const orders = useSellerStore((s) => s.orders);
   const sellerCustomers = useSellerStore((s) => s.sellerCustomers);
@@ -363,37 +367,51 @@ const NewOrder: React.FC = () => {
 
   // Product add/remove
   const handleAddProduct = useCallback((product: SellerProduct) => {
+    const p = products.find((pr) => pr.id === product.id) || product;
+    if (p.trackStock && p.stockQuantity != null && p.stockQuantity <= 0) {
+      showToast(`${p.name} is out of stock`, 'error');
+      return;
+    }
     selectionChanged();
     setItems((prev) => {
-      const existing = prev.find((i) => i.productId === product.id);
+      const existing = prev.find((i) => i.productId === p.id);
       if (existing) {
+        const newQty = existing.quantity + 1;
+        if (p.trackStock && p.stockQuantity != null && newQty > p.stockQuantity) {
+          return prev;
+        }
         return prev.map((i) =>
-          i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i
+          i.productId === p.id ? { ...i, quantity: newQty } : i
         );
       }
       return [
         ...prev,
         {
-          productId: product.id,
-          productName: product.name,
+          productId: p.id,
+          productName: p.name,
           quantity: 1,
-          unitPrice: product.pricePerUnit,
-          unit: product.unit,
+          unitPrice: p.pricePerUnit,
+          unit: p.unit,
         },
       ];
     });
-  }, []);
+  }, [products, showToast]);
 
   const handleUpdateQuantity = useCallback((productId: string, qty: number) => {
     selectionChanged();
     if (qty <= 0) {
       setItems((prev) => prev.filter((i) => i.productId !== productId));
     } else {
+      const product = products.find((p) => p.id === productId);
+      if (product?.trackStock && product.stockQuantity != null && qty > product.stockQuantity) {
+        showToast(`only ${product.stockQuantity} ${product.unit} of ${product.name} in stock`, 'error');
+        return;
+      }
       setItems((prev) =>
         prev.map((i) => (i.productId === productId ? { ...i, quantity: qty } : i))
       );
     }
-  }, []);
+  }, [products, showToast]);
 
   // Confirmation text
   const confirmationText = useMemo(() => {
@@ -606,14 +624,17 @@ const NewOrder: React.FC = () => {
 
   // ── Sort products: items with quantity first ──────────────
   const sortedProducts = useMemo(() => {
+    const orderMap = new Map(productOrder.map((id, i) => [id, i]));
     return [...activeProducts].sort((a, b) => {
       const qtyA = itemQtyMap[a.id] || 0;
       const qtyB = itemQtyMap[b.id] || 0;
       if (qtyA > 0 && qtyB === 0) return -1;
       if (qtyA === 0 && qtyB > 0) return 1;
-      return 0;
+      const posA = orderMap.get(a.id) ?? Infinity;
+      const posB = orderMap.get(b.id) ?? Infinity;
+      return posA - posB;
     });
-  }, [activeProducts, itemQtyMap]);
+  }, [activeProducts, itemQtyMap, productOrder]);
 
   // ── Filtered products (search) ────────────────────────────
   const filteredSortedProducts = useMemo(() => {
@@ -662,6 +683,8 @@ const NewOrder: React.FC = () => {
                 placeholder="who's this for?"
                 placeholderTextColor={C.textMuted}
                 accessibilityLabel="Customer name"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
               {!customerName.trim() && (
                 <TouchableOpacity
@@ -701,6 +724,8 @@ const NewOrder: React.FC = () => {
                     placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     keyboardType="phone-pad"
                     accessibilityLabel="Phone"
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
                   />
                 </View>
                 <View style={styles.customerFieldDivider} />
@@ -713,6 +738,8 @@ const NewOrder: React.FC = () => {
                     placeholder="delivery address"
                     placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     accessibilityLabel="Address"
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
                   />
                 </View>
               </>
@@ -803,7 +830,7 @@ const NewOrder: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel={showWhatsAppPaste ? 'Close WhatsApp import' : 'Import from WhatsApp'}
               >
-                <Feather name="clipboard" size={13} color={showWhatsAppPaste ? '#fff' : C.bronze} />
+                <Feather name="clipboard" size={13} color={showWhatsAppPaste ? C.onAccent : C.bronze} />
                 <Text style={[styles.waPasteBtnText, showWhatsAppPaste && styles.waPasteBtnTextActive]}>
                   paste order
                 </Text>
@@ -816,7 +843,7 @@ const NewOrder: React.FC = () => {
               >
                 {({ pressed }) => (
                   <>
-                    <Feather name="plus" size={13} color="#fff" />
+                    <Feather name="plus" size={13} color={C.onAccent} />
                     <Text style={[styles.addItemsPillText, pressed && styles.addItemsPillTextPressed]}>
                       {items.length > 0 ? 'add more' : 'add items'}
                     </Text>
@@ -837,6 +864,8 @@ const NewOrder: React.FC = () => {
                   multiline
                   numberOfLines={2}
                   accessibilityLabel="WhatsApp message"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
                 {detectedSections.length > 1 && (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sectionChipsRow}>
@@ -870,10 +899,10 @@ const NewOrder: React.FC = () => {
                 >
                   {({ pressed }) => (
                     isParsing ? (
-                      <ActivityIndicator size="small" color={whatsAppText.trim() ? (pressed ? '#fff' : C.textPrimary) : C.textMuted} />
+                      <ActivityIndicator size="small" color={whatsAppText.trim() ? (pressed ? C.onAccent : C.textPrimary) : C.textMuted} />
                     ) : (
                       <>
-                        <Feather name="zap" size={15} color={!whatsAppText.trim() ? C.textMuted : pressed ? '#fff' : C.textPrimary} />
+                        <Feather name="zap" size={15} color={!whatsAppText.trim() ? C.textMuted : pressed ? C.onAccent : C.textPrimary} />
                         <Text style={[styles.whatsAppParseBtnText, !whatsAppText.trim() && styles.whatsAppParseBtnTextDisabled, whatsAppText.trim() && pressed && styles.whatsAppParseBtnTextPressed]}>
                           extract
                         </Text>
@@ -910,7 +939,7 @@ const NewOrder: React.FC = () => {
                   >
                     {({ pressed }) => (
                       <>
-                        <Feather name="rotate-ccw" size={14} color={pressed ? '#fff' : C.bronze} />
+                        <Feather name="rotate-ccw" size={14} color={pressed ? C.onAccent : C.bronze} />
                         <Text style={[styles.reorderPillText, pressed && styles.reorderPillTextPressed]} numberOfLines={1}>
                           {format(
                             order.date instanceof Date ? order.date : new Date(order.date),
@@ -1004,7 +1033,7 @@ const NewOrder: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel="Pick a date"
                   >
-                    <Feather name="calendar" size={14} color={deliveryMode === 'pick' ? '#fff' : C.bronze} />
+                    <Feather name="calendar" size={14} color={deliveryMode === 'pick' ? C.onAccent : C.bronze} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1044,6 +1073,8 @@ const NewOrder: React.FC = () => {
                 accessibilityLabel="Order note"
                 multiline
                 scrollEnabled={false}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
             </View>
           </View>
@@ -1098,7 +1129,7 @@ const NewOrder: React.FC = () => {
             </View>
             <View style={styles.saveButtonTotalWrap}>
               <Text style={styles.saveButtonTotal}>{currency} {total.toFixed(2)}</Text>
-              <Feather name="chevron-right" size={18} color="#fff" />
+              <Feather name="chevron-right" size={18} color={C.onAccent} />
             </View>
           </Pressable>
         </View>
@@ -1267,6 +1298,8 @@ const NewOrder: React.FC = () => {
                 placeholder="search products..."
                 placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 accessibilityLabel="Search products"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
               {productSearch.length > 0 && (
                 <TouchableOpacity
@@ -1363,6 +1396,8 @@ const NewOrder: React.FC = () => {
                                 selectTextOnFocus
                                 autoFocus
                                 maxLength={6}
+                                keyboardAppearance={isDark ? 'dark' : 'light'}
+                                selectionColor={C.accent}
                               />
                             ) : (
                               <TouchableOpacity
@@ -1452,6 +1487,8 @@ const NewOrder: React.FC = () => {
                 value={contactSearch}
                 onChangeText={setContactSearch}
                 autoFocus
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
               {contactSearch.length > 0 && (
                 <TouchableOpacity onPress={() => setContactSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -1526,7 +1563,7 @@ const NewOrder: React.FC = () => {
                   { transform: [{ scale: checkScaleAnim }] },
                 ]}
               >
-                <Feather name="check" size={24} color="#fff" />
+                <Feather name="check" size={24} color={C.onAccent} />
               </Animated.View>
               <View>
                 <Text style={styles.modalTitle}>order saved</Text>
@@ -1568,7 +1605,7 @@ const NewOrder: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Send via WhatsApp"
               >
-                <Feather name="message-circle" size={16} color="#fff" />
+                <Feather name="message-circle" size={16} color={C.onAccent} />
                 <Text style={styles.modalWhatsAppText}>send via WhatsApp</Text>
               </TouchableOpacity>
 
@@ -1603,6 +1640,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.md,
     paddingBottom: 80,
     gap: SPACING.lg,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // ── Section structure ───────────────────────────────────────
@@ -1646,7 +1686,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   avatarText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // ── Customer card ─────────────────────────────────────────
@@ -1674,7 +1714,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: withAlpha(C.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
@@ -1738,7 +1778,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
   },
   recentPillAvatarPressed: {
-    backgroundColor: withAlpha('#fff', 0.2),
+    backgroundColor: withAlpha(C.onAccent, 0.2),
   },
   recentPillAvatarText: {
     fontSize: 10,
@@ -1746,7 +1786,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
   },
   recentPillAvatarTextPressed: {
-    color: '#fff',
+    color: C.onAccent,
   },
   recentName: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1755,7 +1795,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     maxWidth: 100,
   },
   recentNamePressed: {
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // ── Autocomplete suggestions ──────────────────────────────
@@ -1785,7 +1825,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
   },
   suggestionTextPressed: {
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // ── Reorder pills ─────────────────────────────────────────
@@ -1813,7 +1853,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
   },
   reorderPillTextPressed: {
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // ── WhatsApp (inline in menu) ─────────────────────────────
@@ -1858,7 +1898,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     maxWidth: 140,
   },
   sectionChipTextActive: {
-    color: '#fff',
+    color: C.onAccent,
   },
   sectionChipCount: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1874,11 +1914,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   sectionChipCountActive: {
     color: C.accent,
-    backgroundColor: withAlpha('#fff', 0.85),
+    backgroundColor: withAlpha(C.onAccent, 0.85),
   },
   whatsAppParseBtn: {
     flexDirection: 'row',
-    backgroundColor: withAlpha(C.textPrimary, 0.06),
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.10 : 0.06),
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
@@ -1898,7 +1938,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
   },
   whatsAppParseBtnTextPressed: {
-    color: '#fff',
+    color: C.onAccent,
   },
   whatsAppParseBtnTextDisabled: {
     color: C.textMuted,
@@ -1947,7 +1987,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   addItemsPillText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
   addItemsPillTextPressed: {},
   waPasteBtn: {
@@ -1968,10 +2008,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
   },
   waPasteBtnTextActive: {
-    color: '#fff',
+    color: C.onAccent,
   },
   itemCountBadge: {
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     borderRadius: RADIUS.full,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -1981,7 +2021,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   itemCountText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#fff',
+    color: C.onAccent,
   },
   noProductsLink: {
     alignItems: 'center',
@@ -2122,7 +2162,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2205,7 +2245,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Contact picker ────────────────────────────────────────
   contactModalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.textPrimary, 0.4),
+    backgroundColor: withAlpha(C.dimBg, 0.4),
     justifyContent: 'flex-end',
   },
   contactPickerSheet: {
@@ -2213,7 +2253,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     maxHeight: '75%',
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   contactSheetHandle: {
     width: 36,
@@ -2302,7 +2342,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Product picker modal ──────────────────────────────────
   pickerOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.textPrimary, 0.5),
+    backgroundColor: withAlpha(C.dimBg, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
@@ -2345,7 +2385,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: withAlpha(C.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2389,7 +2429,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.2,
   },
   pickerSectionBadge: {
-    backgroundColor: withAlpha(C.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
     borderRadius: RADIUS.full,
     paddingHorizontal: 7,
     paddingVertical: 2,
@@ -2434,7 +2474,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.full,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xl,
-    backgroundColor: withAlpha(C.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
   },
   pickerDoneBtnHasItems: {
     backgroundColor: C.bronze,
@@ -2448,10 +2488,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textMuted,
   },
   pickerDoneBtnTextHasItems: {
-    color: '#fff',
+    color: C.onAccent,
   },
   pickerDoneBtnTextPressed: {
-    color: withAlpha('#fff', 0.9),
+    color: withAlpha(C.onAccent, 0.9),
   },
 
   // ── Order slip ────────────────────────────────────────────
@@ -2523,7 +2563,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Review modal ─────────────────────────────────────────
   reviewOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.textPrimary, 0.5),
+    backgroundColor: withAlpha(C.dimBg, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
@@ -2566,7 +2606,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: withAlpha(C.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2623,7 +2663,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   confirmBtnLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
   confirmBtnChip: {
     paddingHorizontal: SPACING.xs,
@@ -2631,7 +2671,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   confirmBtnTotal: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#fff',
+    color: C.onAccent,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   cancelBtn: {
@@ -2655,7 +2695,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   datePickerCard: {
     borderRadius: RADIUS.xl,
     alignSelf: 'stretch',
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   datePickerCardInner: {
     backgroundColor: C.surface,
@@ -2731,7 +2771,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: withAlpha(C.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     marginLeft: SPACING.xs,
@@ -2756,7 +2796,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
   },
   dPillTextActive: {
-    color: '#fff',
+    color: C.onAccent,
   },
   deliveryBadge: {
     flexDirection: 'row',
@@ -2794,7 +2834,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingLeft: SPACING.lg,
     paddingRight: SPACING.md,
     minHeight: 48,
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   saveButtonPressed: {
     transform: [{ scale: 0.97 }],
@@ -2805,12 +2845,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveButtonLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#fff',
+    color: C.onAccent,
     letterSpacing: -0.2,
   },
   saveButtonMeta: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: withAlpha('#fff', 0.65),
+    color: withAlpha(C.onAccent, 0.65),
   },
   saveButtonTotalWrap: {
     flexDirection: 'row' as const,
@@ -2820,7 +2860,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveButtonTotal: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#fff',
+    color: C.onAccent,
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
     letterSpacing: -0.3,
   },
@@ -2828,18 +2868,19 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Confirmation modal ────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.textPrimary, 0.5),
+    backgroundColor: withAlpha(C.dimBg, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
   modalCard: {
     width: '100%',
+    maxWidth: 420,
     backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     gap: SPACING.lg,
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   modalHeader: {
     flexDirection: 'row',
@@ -2914,20 +2955,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalWhatsAppText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
   modalDoneButton: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.xl,
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     minHeight: 48,
   },
   modalDoneText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // ── QR panel ─────────────────────────────────────────────
@@ -2963,7 +3004,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textMuted,
   },
   qrTabTextActive: {
-    color: '#fff',
+    color: C.onAccent,
     fontWeight: '600',
   },
   qrImage: {

@@ -8,11 +8,13 @@ import { useBusinessStore } from '../../../store/businessStore';
 import { useFreelancerStore } from '../../../store/freelancerStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
 import { explainFreelancerMonth } from '../../../utils/explainFreelancerMonth';
 import WeekBar from '../../../components/common/WeekBar';
 import ModeToggle from '../../../components/common/ModeToggle';
+import BusinessHeroNumber from '../../../components/business/BusinessHeroNumber';
+import { RefreshControl } from 'react-native';
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -21,6 +23,7 @@ function toDate(d: Date | string): Date {
 const FreelancerDashboard: React.FC = () => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const [refreshing, setRefreshing] = React.useState(false);
   const { businessTransactions } = useBusinessStore();
   const {
     clients,
@@ -134,18 +137,30 @@ const FreelancerDashboard: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              setTimeout(() => setRefreshing(false), 600);
+            }}
+            tintColor={C.accent}
+            colors={[C.accent]}
+          />
+        }
       >
         <ModeToggle />
         {/* Zone 1 — Hero Number */}
-        <Text style={styles.heroAmount}>
-          {currency} {Math.round(sixMonthAvg).toLocaleString()}
-        </Text>
-        <Text style={styles.heroLabel}>your monthly average</Text>
-        {currentMonthPayments.length > 0 && (
-          <Text style={styles.currentMonth}>
-            this month so far: {currency} {Math.round(currentMonthTotal).toLocaleString()}
-          </Text>
-        )}
+        <BusinessHeroNumber
+          amount={sixMonthAvg}
+          label="your monthly average"
+          sublabel={
+            currentMonthPayments.length > 0
+              ? `this month so far: ${currency} ${Math.round(currentMonthTotal).toLocaleString()}`
+              : undefined
+          }
+          prefix={currency}
+        />
 
         {/* Zone 2 — WeekBar */}
         <View style={styles.weekBarSection}>
@@ -245,23 +260,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['7xl'],
-  },
-
-  // Zone 1 — Hero
-  heroAmount: {
-    ...TYPE.hero,
-    color: C.textPrimary,
-    textAlign: 'center',
-  },
-  heroLabel: {
-    ...TYPE.muted,
-    textAlign: 'center',
-    marginTop: SPACING.xs,
-  },
-  currentMonth: {
-    ...TYPE.muted,
-    textAlign: 'center',
-    marginTop: SPACING.xs,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   // Zone 2
@@ -362,7 +363,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   fabText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 });
 

@@ -44,23 +44,23 @@ export const WALLET_ICONS = [
   'globe',
 ] as const;
 
-// Type-specific wallet icons
+// Type-specific wallet icons — 12 per type for meaningful choices
 export const WALLET_ICONS_BY_TYPE: Record<WalletType, string[]> = {
-  bank: ['home', 'briefcase', 'dollar-sign', 'shield', 'lock', 'globe'],
-  ewallet: ['smartphone', 'zap', 'send', 'wifi', 'gift', 'globe'],
-  credit: ['credit-card', 'shopping-bag', 'tag', 'percent', 'shopping-cart', 'gift'],
+  bank: ['home', 'briefcase', 'dollar-sign', 'shield', 'lock', 'globe', 'trending-up', 'award', 'umbrella', 'bookmark', 'archive', 'key'],
+  ewallet: ['smartphone', 'zap', 'send', 'wifi', 'gift', 'globe', 'coffee', 'shopping-bag', 'truck', 'music', 'camera', 'credit-card'],
+  credit: ['credit-card', 'shopping-bag', 'tag', 'percent', 'shopping-cart', 'gift', 'star', 'clock', 'repeat', 'layers', 'bookmark', 'award'],
 };
 
-// Wallet color presets — vivid + muted mix for brand matching
+// Wallet color presets — earthy + muted tones, no harsh reds/pinks
 export const WALLET_COLORS = [
-  '#E53935',  // red
-  '#F57C00',  // orange
-  '#FFC300',  // bright yellow
+  '#C1694F',  // terracotta
+  '#D4A052',  // warm amber
+  '#D9BD55',  // muted gold
   '#00B14F',  // green
   '#0052A5',  // blue
   '#5E72E4',  // indigo
   '#A06CD5',  // purple
-  '#E91E8C',  // pink
+  '#7A8B69',  // sage
   '#00897B',  // teal
   '#4F5104',  // olive
   '#B2780A',  // bronze

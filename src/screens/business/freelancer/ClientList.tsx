@@ -15,8 +15,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { useFreelancerStore } from '../../../store/freelancerStore';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { lightTap } from '../../../services/haptics';
 import { useToast } from '../../../context/ToastContext';
 import { useT } from '../../../i18n';
@@ -29,6 +29,7 @@ type SortMode = 'recent' | 'total';
 
 const FreelancerClientList: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
@@ -206,6 +207,8 @@ const FreelancerClientList: React.FC = () => {
               placeholderTextColor={C.textMuted}
               autoFocus
               returnKeyType="next"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <TextInput
               style={styles.modalInput}
@@ -214,6 +217,8 @@ const FreelancerClientList: React.FC = () => {
               placeholder={t.freelancer.contactPlaceholder}
               placeholderTextColor={C.textMuted}
               returnKeyType="next"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <TextInput
               style={styles.modalInput}
@@ -223,6 +228,8 @@ const FreelancerClientList: React.FC = () => {
               placeholderTextColor={C.textMuted}
               returnKeyType="done"
               onSubmitEditing={handleAddClient}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
 
             <TouchableOpacity
@@ -293,6 +300,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   listContent: {
     paddingHorizontal: SPACING['2xl'],
     paddingBottom: SPACING['3xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
   clientRow: {
     flexDirection: 'row',
@@ -344,12 +354,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
+    alignItems: 'center',
     padding: SPACING['2xl'],
   },
   modalContent: {
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING['2xl'],
+    width: '100%',
+    maxWidth: 420,
   },
   modalTitle: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -382,7 +395,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   saveButtonTextDisabled: {
     color: C.textMuted,

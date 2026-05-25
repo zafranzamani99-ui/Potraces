@@ -18,8 +18,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePlaybookStore } from '../../store/playbookStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -193,6 +193,7 @@ const SpendingRow = React.memo(({
 
 const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose, onNavigate, initialOblExpanded = false }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
   const insets = useSafeAreaInsets();
@@ -749,6 +750,8 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                 placeholderTextColor={withAlpha(C.textMuted, 0.5)}
                 returnKeyType="next"
                 onSubmitEditing={() => addAmountRef.current?.focus()}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
             </View>
             <View style={styles.addAmountRow}>
@@ -756,6 +759,8 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
               <TextInput
                 ref={addAmountRef}
                 style={[styles.addAmountInput, { color: C.textPrimary }]}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
                 value={addAmount}
                 onChangeText={setAddAmount}
                 placeholder="amount"
@@ -832,6 +837,8 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                 multiline
                 editable={!readOnly}
                 scrollEnabled={false}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
             )}
           </View>
@@ -991,6 +998,8 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                 placeholderTextColor={C.textMuted}
                 autoFocus
                 returnKeyType="next"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
               <View style={[styles.floatEditAmountRow, { borderColor: withAlpha(C.accent, 0.2), backgroundColor: withAlpha(C.textMuted, 0.05) }]}>
                 <Text style={[styles.floatEditCurrency, { color: C.textMuted }]}>{currency}</Text>
@@ -1003,6 +1012,8 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                   keyboardType="decimal-pad"
                   returnKeyType="done"
                   onSubmitEditing={handleEditModalSave}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
               </View>
               <TouchableOpacity style={[styles.floatEditSave, { backgroundColor: C.accent }]} onPress={handleEditModalSave} activeOpacity={0.85}>
@@ -1142,6 +1153,8 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                     returnKeyType="send"
                     editable={!echoChatLoading}
                     multiline={false}
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
                   />
                   <TouchableOpacity
                     onPress={handleSendEchoChat}
@@ -1289,7 +1302,7 @@ const makeStyles = (C: typeof CALM) =>
     },
     closeBtn: {
       width: 36, height: 36, borderRadius: RADIUS.full,
-      backgroundColor: withAlpha(C.textMuted, 0.06),
+      backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.12 : 0.06),
       alignItems: 'center', justifyContent: 'center',
     },
     topBarTitle: {

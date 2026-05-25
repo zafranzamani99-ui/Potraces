@@ -16,8 +16,8 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 
 import { successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
@@ -35,6 +35,7 @@ interface CartItem {
 
 const SellScreen: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
   const { products, getActiveSession, addSale } = useStallStore();
@@ -298,6 +299,8 @@ const SellScreen: React.FC = () => {
               placeholderTextColor={C.neutral}
               returnKeyType="search"
               onSubmitEditing={Keyboard.dismiss}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
@@ -522,7 +525,7 @@ const SellScreen: React.FC = () => {
                       <Feather
                         name="percent"
                         size={14}
-                        color={discountType === 'percentage' ? '#fff' : C.textSecondary}
+                        color={discountType === 'percentage' ? C.onAccent : C.textSecondary}
                       />
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -536,7 +539,7 @@ const SellScreen: React.FC = () => {
                         style={{
                           fontSize: TYPOGRAPHY.size.xs,
                           fontWeight: TYPOGRAPHY.weight.bold,
-                          color: discountType === 'fixed' ? '#fff' : C.textSecondary,
+                          color: discountType === 'fixed' ? C.onAccent : C.textSecondary,
                         }}
                       >
                         {currency}
@@ -553,6 +556,8 @@ const SellScreen: React.FC = () => {
                   keyboardType="decimal-pad"
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
               </View>
             )}
@@ -614,7 +619,7 @@ const SellScreen: React.FC = () => {
                 accessibilityLabel={`Pay QR, ${currency} ${totalAmount.toFixed(2)}`}
                 accessibilityRole="button"
               >
-                <Feather name="smartphone" size={18} color={cart.length > 0 ? '#FFFFFF' : C.neutral} />
+                <Feather name="smartphone" size={18} color={cart.length > 0 ? C.onAccent : C.neutral} />
                 <Text style={[styles.qrButtonText, cart.length === 0 && { color: C.neutral }]}>
                   QR
                 </Text>
@@ -652,6 +657,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
   sessionSplit: {
     ...TYPE.muted,
@@ -718,6 +724,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexWrap: 'wrap',
     gap: SPACING.md,
     paddingBottom: SPACING['3xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   productCardWrapper: {
     width: '47.5%',
@@ -788,7 +797,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   cartBadgeText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#fff',
+    color: C.onAccent,
   },
   noResults: {
     width: '100%',
@@ -825,6 +834,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
   clearCart: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -941,6 +951,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
     minWidth: 30,
     textAlign: 'center',
   },
@@ -1047,12 +1058,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
   totalAmount: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.bronze,
     fontVariant: ['tabular-nums'],
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
 
   // Payment buttons
@@ -1076,6 +1089,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
   qrButton: {
     flex: 1,
@@ -1093,7 +1107,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   qrButtonText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
 
   // ─── Empty states ──────────────────────────────────────

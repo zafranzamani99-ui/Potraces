@@ -1,6 +1,7 @@
 import { AIMessage, Transaction, IncomeType, BusinessTransaction, RiderCost, Client, SellerProduct, FreelancerClient, PartTimeJobDetails, OnTheRoadDetails, MixedModeDetails } from '../types';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants';
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 // ─── Anthropic API Types ────────────────────────────────
 
@@ -21,6 +22,9 @@ interface RawParsedProduct {
   costPerUnit?: unknown;
   unit?: unknown;
   description?: unknown;
+  category?: unknown;
+  stock?: unknown;
+  isDuplicate?: unknown;
 }
 
 /** Shape of a raw WhatsApp order item from AI JSON before validation. */
@@ -302,24 +306,18 @@ export interface ParsedProduct {
   costPerUnit?: number;
   unit: string;
   description?: string;
+  category?: string;
+  stock?: number;
+  isDuplicate?: boolean;
 }
 
-const PRODUCT_PARSE_SYSTEM = (units: string[]) =>
-  `You are a product list parser for a Malaysian home-based food seller app.
-Given raw text or an image of a product list, extract all products.
-Available units: ${units.join(', ')}. Pick the best match or use "balang" as default.
-Currency is MYR (RM). Prices may be written as "RM 5", "5.00", "rm5", etc.
-
-IMPORTANT: Return ONLY a valid JSON array. No explanation, no markdown, no text before or after.
-Each item: { "name": string, "pricePerUnit": number, "costPerUnit": number | null, "unit": string, "description": string | null }
-
-Rules:
-- name should be clean and capitalized properly (e.g. "Kuih Lapis" not "kuih lapis")
-- If cost/margin info is given, include costPerUnit
-- If description is given, include it
-- If no price found for an item, set pricePerUnit to 0
-- Return [] if the text/image doesn't contain any products
-- Output MUST start with [ and end with ]`;
+const PRODUCT_PARSE_SYSTEM = (units: string[], existingProducts?: string[]) =>
+  `Extract products from Malaysian seller input. JSON array only, no markdown.
+Units: ${units.join(',')}. Map Malay: biji/keping→pcs,bungkus→pack,kotak→box,balang→jar,loyang→tray. Default pcs.
+MYR currency (rm5,RM 5,5 ringgit). Title case names.
+Category if obvious: kuih→Kuih,biskut/cookies→Biskut,minuman→Minuman,nasi→Nasi,roti→Roti.
+${existingProducts?.length ? `Existing: ${existingProducts.slice(0, 20).join(',')}. isDuplicate=true if match.` : 'isDuplicate=false.'}
+[{"name":"","pricePerUnit":0,"costPerUnit":null,"unit":"pcs","description":null,"category":null,"stock":null,"isDuplicate":false}]`;
 
 function extractJsonArray(raw: string): unknown[] | null {
   // Try direct parse first
@@ -350,21 +348,46 @@ function parseParsedProducts(raw: string): ParsedProduct[] | null {
       name: String(p.name || '').trim(),
       pricePerUnit: Number(p.pricePerUnit) || 0,
       costPerUnit: p.costPerUnit ? Number(p.costPerUnit) : undefined,
-      unit: String(p.unit || 'balang'),
+      unit: String(p.unit || 'pcs'),
       description: p.description ? String(p.description).trim() : undefined,
+      category: p.category ? String(p.category).trim() : undefined,
+      stock: p.stock ? Number(p.stock) : undefined,
+      isDuplicate: Boolean(p.isDuplicate),
     };
   }).filter((p: ParsedProduct) => p.name.length > 0);
 }
 
 export async function parseProductList(
   text: string,
-  existingUnits: string[]
+  existingUnits: string[],
+  existingProducts?: string[]
 ): Promise<ParsedProduct[] | null> {
+  const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+  const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
+
+  if (GEMINI_KEY) {
+    try {
+      const response = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: PRODUCT_PARSE_SYSTEM(existingUnits, existingProducts) + '\n\n' + text }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 1024, responseMimeType: 'application/json' },
+        }),
+      });
+      if (response.ok) {
+        const data: GeminiVisionResponse = await response.json();
+        const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (raw) return parseParsedProducts(raw);
+      }
+    } catch {}
+  }
+
   try {
     const result = await callAnthropic(
-      PRODUCT_PARSE_SYSTEM(existingUnits),
+      PRODUCT_PARSE_SYSTEM(existingUnits, existingProducts),
       [{ role: 'user', content: text }],
-      1024
+      2048
     );
     if (!result) return null;
     return parseParsedProducts(result);
@@ -379,7 +402,8 @@ export async function parseProductList(
  */
 export async function parseProductImage(
   imageUri: string,
-  existingUnits: string[]
+  existingUnits: string[],
+  existingProducts?: string[]
 ): Promise<ParsedProduct[] | null> {
   const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
   const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
@@ -387,7 +411,8 @@ export async function parseProductImage(
     return null;
   }
 
-  const base64 = await readAsStringAsync(imageUri, { encoding: EncodingType.Base64 });
+  const resized = await manipulateAsync(imageUri, [{ resize: { width: 1024 } }], { compress: 0.7, format: SaveFormat.JPEG, base64: true });
+  const base64 = resized.base64 || await readAsStringAsync(resized.uri, { encoding: EncodingType.Base64 });
 
   const response = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
     method: 'POST',
@@ -396,12 +421,12 @@ export async function parseProductImage(
       contents: [
         {
           parts: [
-            { text: PRODUCT_PARSE_SYSTEM(existingUnits) },
+            { text: PRODUCT_PARSE_SYSTEM(existingUnits, existingProducts) },
             { inlineData: { mimeType: 'image/jpeg', data: base64 } },
           ],
         },
       ],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 4096, responseMimeType: 'application/json' },
+      generationConfig: { temperature: 0.1, maxOutputTokens: 1024, responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } },
     }),
   });
 
@@ -542,8 +567,8 @@ export function buildFreelancerContext(
 const FREELANCER_SYSTEM_PROMPT = `This person freelances for a living. Irregular income is their normal — never treat it as a problem.
 Never suggest they need more clients, more hustle, or higher rates unless they directly ask.
 If asked about financial planning, use their 6-month average as the planning number, not current month.
-Never use: revenue, sales, pipeline, billable hours, utilization, invoice.
-Always use: earned, came in, payments, clients, work.
+NEVER use these banned words: profit, loss, revenue, ROI, inventory, sales, pipeline, billable hours, utilization, invoice.
+Always use approved Potraces vocabulary: kept (not profit), came in (not revenue), went out (not loss), costs (not expenses), efficiency (not ROI), products (not inventory), earned, payments, clients, work.
 Malaysian context. Mix of English and Malay is natural. Under 4 sentences. No jargon.`;
 
 /**
@@ -772,8 +797,8 @@ The number that matters most is what they kept (net earnings), not what they ear
 Never suggest they should work more hours, take more trips, drive more efficiently, or optimize routes.
 If costs increased, state it as an observation with the biggest category. Never frame it as a warning.
 If net earnings dropped, stay silent or be neutral. Never alarm.
-Never use: expenses, profit, loss, overhead, margin, operating costs, burn rate, revenue, sales.
-Always use: earned, costs, kept, came in, went out, net.
+NEVER use these banned words: profit, loss, revenue, ROI, inventory, expenses, overhead, margin, operating costs, burn rate, sales.
+Always use approved Potraces vocabulary: earned, costs (not expenses), kept (not profit), came in (not revenue), went out (not loss), efficiency (not ROI), products (not inventory), net.
 Malaysian context. Mix of English and Malay is natural. Under 4 sentences. No jargon.`;
 
 /**
@@ -891,8 +916,8 @@ Never rank their streams as "main" or "side" — they are all just streams. Trea
 If one stream dominates, state it as a simple observation. If a new stream appears, note it neutrally.
 The most useful thing is helping them see the overall picture of where money came from.
 If they ask about planning, use their 6-month average total as the planning number.
-Never use: diversified, portfolio, revenue streams, income optimization, primary, secondary, main income, side income, hustle, grind.
-Always use: streams, sources, came in from, earned from, what came in, kept.
+NEVER use these banned words: profit, loss, revenue, ROI, inventory, diversified, portfolio, revenue streams, income optimization, primary, secondary, main income, side income, hustle, grind.
+Always use approved Potraces vocabulary: streams, sources, came in from (not revenue), earned from, what came in, kept (not profit), went out (not loss), products (not inventory), efficiency (not ROI).
 Malaysian context. Mix of English and Malay is natural. Under 4 sentences. No jargon.`;
 
 /**

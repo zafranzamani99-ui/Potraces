@@ -12,8 +12,8 @@ import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, BIZ } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, BIZ } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { IncomeStream } from '../../types';
 
@@ -21,6 +21,7 @@ const PRESET_COLORS = [CALM.accent, CALM.bronze, CALM.gold, BIZ.success, BIZ.unp
 
 const IncomeStreamsScreen: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { incomeStreams, businessTransactions, addIncomeStream } = useBusinessStore();
@@ -104,7 +105,7 @@ const IncomeStreamsScreen: React.FC = () => {
       />
 
       <TouchableOpacity style={styles.addButton} onPress={() => setShowAdd(true)}>
-        <Feather name="plus" size={20} color="#fff" />
+        <Feather name="plus" size={20} color={C.onAccent} />
         <Text style={styles.addButtonText}>{t.business.streamsAddStream}</Text>
       </TouchableOpacity>
 
@@ -119,6 +120,8 @@ const IncomeStreamsScreen: React.FC = () => {
               placeholder={t.business.streamsLabelPlaceholder}
               placeholderTextColor={C.textSecondary}
               autoFocus
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <View style={styles.colorPicker}>
               {PRESET_COLORS.map((color) => (
@@ -158,11 +161,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
     padding: SPACING['2xl'],
     paddingBottom: SPACING.md,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   listContent: {
     padding: SPACING.lg,
     paddingTop: 0,
     gap: SPACING.md,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   streamCard: {
     backgroundColor: C.surface,
@@ -213,7 +222,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   addButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
   modalOverlay: {
     flex: 1,
@@ -227,6 +236,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     width: '100%',
+    maxWidth: 420,
     gap: SPACING.lg,
   },
   modalTitle: {
@@ -278,7 +288,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalConfirmText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 });
 

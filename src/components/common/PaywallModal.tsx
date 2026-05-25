@@ -155,7 +155,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
 
             {/* Subscribe button */}
             <TouchableOpacity style={styles.subscribeButton} onPress={handleSubscribe}>
-              <Feather name="award" size={18} color="#FFFFFF" />
+              <Feather name="award" size={18} color={C.onAccent} />
               <Text style={styles.subscribeText}>
                 {`Subscribe - ${PREMIUM_CONFIG.currency} ${PREMIUM_CONFIG.price}/${PREMIUM_CONFIG.period}`}
               </Text>
@@ -204,7 +204,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   headerTitle: {
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#FFFFFF',
+    color: C.onAccent,
     marginBottom: SPACING.xs,
   },
   headerSubtitle: {
@@ -251,7 +251,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   premiumBadgeText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   tierFeatures: {
     gap: SPACING.sm,
@@ -279,7 +279,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   subscribeText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   dismissBtn: {
     alignItems: 'center',

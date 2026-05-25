@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
-import { SellerProduct, SellerOrder, Season, SellerCustomer, IngredientCost, RecurringCost, CostTemplate, OrderStatus, SellerPaymentMethod, RecurringFrequency } from '../types';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { SellerProduct, SellerOrder, Season, SellerCustomer, IngredientCost, RecurringCost, CostTemplate, StockAdjustment, OrderStatus, SellerPaymentMethod, RecurringFrequency, SellerCostCategory } from '../types';
 import { useSellerStore } from '../store/sellerStore';
 
 // ─── Safe date parsing ────────────────────────────────────────────────────────
@@ -124,14 +125,20 @@ export async function uploadProductImage(imageUri: string, productId: string): P
   if (!session) return null;
 
   try {
+    const compressed = await manipulateAsync(
+      imageUri,
+      [{ resize: { width: 800 } }],
+      { compress: 0.7, format: SaveFormat.JPEG },
+    );
+
     const path = `${session.user.id}/${productId}.jpg`;
 
     const formData = new FormData();
     formData.append('', {
-      uri: imageUri,
+      uri: compressed.uri,
       name: 'product.jpg',
       type: 'image/jpeg',
-    } as any); // RN FormData type limitation
+    } as any);
 
     const { error } = await supabase.storage
       .from('product-images')
@@ -148,6 +155,56 @@ export async function uploadProductImage(imageUri: string, productId: string): P
     return urlData.publicUrl + '?t=' + Date.now();
   } catch (e: any) {
     return null;
+  }
+}
+
+/** Upload a cost receipt image. Returns public URL or null on error. */
+export async function uploadReceiptImage(imageUri: string, costId: string): Promise<string | null> {
+  const session = await getSession();
+  if (!session) return null;
+
+  try {
+    // Wider than product images (800px) so receipt text stays legible.
+    const compressed = await manipulateAsync(
+      imageUri,
+      [{ resize: { width: 1200 } }],
+      { compress: 0.7, format: SaveFormat.JPEG },
+    );
+
+    const path = `${session.user.id}/${costId}.jpg`;
+
+    const formData = new FormData();
+    formData.append('', {
+      uri: compressed.uri,
+      name: 'receipt.jpg',
+      type: 'image/jpeg',
+    } as any);
+
+    const { error } = await supabase.storage
+      .from('receipt-images')
+      .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
+
+    if (error) return null;
+
+    const { data: urlData } = supabase.storage
+      .from('receipt-images')
+      .getPublicUrl(path);
+
+    return urlData.publicUrl + '?t=' + Date.now();
+  } catch (e: any) {
+    return null;
+  }
+}
+
+/** Delete a cost receipt image from storage. Best-effort; ignores errors. */
+export async function deleteReceiptImage(costId: string): Promise<void> {
+  const session = await getSession();
+  if (!session) return;
+  try {
+    const path = `${session.user.id}/${costId}.jpg`;
+    await supabase.storage.from('receipt-images').remove([path]);
+  } catch {
+    // best-effort
   }
 }
 
@@ -246,6 +303,8 @@ export async function pushProducts(products: SellerProduct[]): Promise<void> {
       track_stock: p.trackStock ?? false,
       stock_quantity: p.stockQuantity ?? null,
       image_url: p.imageUrl ?? null,
+      category: p.category ?? null,
+      updated_at: toIso(p.updatedAt),
     }));
 
     await supabase
@@ -476,6 +535,9 @@ export async function pushIngredientCosts(ingredientCosts: IngredientCost[]): Pr
       product_id: c.productId ?? null,
       synced_to_personal: c.syncedToPersonal ?? false,
       personal_transaction_id: c.personalTransactionId ?? null,
+      category: c.category ?? null,
+      receipt_url: c.receiptUrl ?? null,
+      vendor: c.vendor ?? null,
     }));
 
     await supabase
@@ -520,6 +582,7 @@ export async function pushRecurringCosts(recurringCosts: RecurringCost[]): Promi
       next_due: toIso(r.nextDue) ?? new Date().toISOString(),
       season_local_id: r.seasonId ?? null,
       is_active: r.isActive,
+      category: r.category ?? null,
     }));
 
     await supabase
@@ -560,6 +623,7 @@ export async function pushCostTemplates(costTemplates: CostTemplate[]): Promise<
       local_id: t.id,
       description: t.description,
       amount: t.amount,
+      category: t.category ?? null,
     }));
 
     await supabase
@@ -589,6 +653,67 @@ export async function pushCostTemplates(costTemplates: CostTemplate[]): Promise<
   }
 }
 
+export async function pushCostCategories(categories: SellerCostCategory[], deletedIds: string[]): Promise<void> {
+  const session = await getSession();
+  if (!session) return;
+
+  if (categories.length > 0) {
+    const rows = categories.map((c) => ({
+      user_id: session.user.id,
+      local_id: c.id, // deterministic for defaults — idempotent across devices
+      name: c.name,
+      name_bm: c.nameBm,
+      icon: c.icon,
+      color: c.color,
+      is_default: c.isDefault,
+      is_protected: c.isProtected ?? false,
+      sort_order: c.sortOrder,
+      updated_at: new Date().toISOString(),
+    }));
+
+    await supabase
+      .from('seller_cost_categories')
+      .upsert(rows, { onConflict: 'user_id,local_id' });
+  }
+
+  // Durable deletion: record a tombstone (survives so other devices learn of the
+  // deletion) AND hard-delete the live row. Without the tombstone, another device
+  // that still holds the category would re-upsert and resurrect it.
+  if (deletedIds.length > 0) {
+    await supabase
+      .from('seller_deleted_cost_categories')
+      .upsert(
+        deletedIds.map((id) => ({ user_id: session.user.id, local_id: id })),
+        { onConflict: 'user_id,local_id' },
+      );
+    await supabase
+      .from('seller_cost_categories')
+      .delete()
+      .eq('user_id', session.user.id)
+      .in('local_id', deletedIds);
+  }
+}
+
+export async function pushStockAdjustments(adjustments: StockAdjustment[]): Promise<void> {
+  const session = await getSession();
+  if (!session) return;
+  if (adjustments.length === 0) return;
+
+  const rows = adjustments.map((a) => ({
+    user_id: session.user.id,
+    local_id: a.id,
+    product_local_id: a.productId,
+    delta: a.delta,
+    reason: a.reason,
+    note: a.note ?? null,
+    adjustment_date: toIso(a.date),
+  }));
+
+  await supabase
+    .from('seller_stock_adjustments')
+    .upsert(rows, { onConflict: 'user_id,local_id' });
+}
+
 // ─── Pull from Supabase ───────────────────────────────────────────────────────
 
 /**
@@ -606,12 +731,16 @@ export async function pullAll(): Promise<void> {
   const deletedOrderIds = new Set(store._deletedOrderIds);
   const deletedSeasonIds = new Set(store._deletedSeasonIds);
   const deletedCustomerIds = new Set(store._deletedCustomerIds);
+  const deletedCostIds = new Set(store._deletedCostIds || []);
+
+  const PULL_LIMIT = 999;
 
   // Pull products
   const { data: remoteProducts, error: productsErr } = await supabase
     .from('seller_products')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .range(0, PULL_LIMIT);
   if (productsErr) throw productsErr;
 
   if (remoteProducts && remoteProducts.length > 0) {
@@ -636,6 +765,7 @@ export async function pullAll(): Promise<void> {
         trackStock: rp.track_stock ?? false,
         stockQuantity: rp.stock_quantity ?? undefined,
         imageUrl: rp.image_url ?? undefined,
+        category: rp.category ?? undefined,
         createdAt: sd(rp.created_at),
         updatedAt: sd(rp.updated_at),
       };
@@ -660,7 +790,8 @@ export async function pullAll(): Promise<void> {
   const { data: remoteSeasons, error: seasonsErr } = await supabase
     .from('seller_seasons')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .range(0, PULL_LIMIT);
   if (seasonsErr) throw seasonsErr;
 
   if (remoteSeasons && remoteSeasons.length > 0) {
@@ -706,7 +837,8 @@ export async function pullAll(): Promise<void> {
   const { data: remoteCustomers, error: customersErr } = await supabase
     .from('seller_customers')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .range(0, PULL_LIMIT);
   if (customersErr) throw customersErr;
 
   if (remoteCustomers && remoteCustomers.length > 0) {
@@ -751,7 +883,8 @@ export async function pullAll(): Promise<void> {
     .from('seller_orders')
     .select('*')
     .eq('user_id', userId)
-    .eq('source', 'app');
+    .eq('source', 'app')
+    .range(0, PULL_LIMIT);
   if (ordersErr) throw ordersErr;
 
   if (remoteOrders && remoteOrders.length > 0) {
@@ -813,7 +946,8 @@ export async function pullAll(): Promise<void> {
   const { data: remoteIngredientCosts, error: ingredientCostsErr } = await supabase
     .from('seller_ingredient_costs')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .range(0, PULL_LIMIT);
   if (ingredientCostsErr) throw ingredientCostsErr;
 
   if (remoteIngredientCosts && remoteIngredientCosts.length > 0) {
@@ -823,6 +957,7 @@ export async function pullAll(): Promise<void> {
 
     for (const rc of remoteIngredientCosts) {
       if (!rc.local_id) continue;
+      if (deletedCostIds.has(rc.local_id)) continue;
       const local = localCostMap.get(rc.local_id);
 
       const remoteItem: IngredientCost = {
@@ -834,6 +969,9 @@ export async function pullAll(): Promise<void> {
         productId: rc.product_id ?? undefined,
         syncedToPersonal: rc.synced_to_personal ?? false,
         personalTransactionId: rc.personal_transaction_id ?? undefined,
+        category: rc.category ?? undefined,
+        receiptUrl: rc.receipt_url ?? undefined,
+        vendor: rc.vendor ?? undefined,
       };
 
       if (!local) {
@@ -857,7 +995,8 @@ export async function pullAll(): Promise<void> {
   const { data: remoteRecurringCosts, error: recurringCostsErr } = await supabase
     .from('seller_recurring_costs')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .range(0, PULL_LIMIT);
   if (recurringCostsErr) throw recurringCostsErr;
 
   if (remoteRecurringCosts && remoteRecurringCosts.length > 0) {
@@ -878,6 +1017,7 @@ export async function pullAll(): Promise<void> {
         seasonId: rr.season_local_id ?? undefined,
         isActive: rr.is_active,
         createdAt: sd(rr.created_at),
+        category: rr.category ?? undefined,
       };
 
       if (!local) {
@@ -900,7 +1040,8 @@ export async function pullAll(): Promise<void> {
   const { data: remoteCostTemplates, error: costTemplatesErr } = await supabase
     .from('seller_cost_templates')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .range(0, PULL_LIMIT);
   if (costTemplatesErr) throw costTemplatesErr;
 
   if (remoteCostTemplates && remoteCostTemplates.length > 0) {
@@ -916,6 +1057,7 @@ export async function pullAll(): Promise<void> {
         id: rt.local_id,
         description: rt.description,
         amount: rt.amount,
+        category: rt.category ?? undefined,
       };
 
       if (!local) {
@@ -927,6 +1069,95 @@ export async function pullAll(): Promise<void> {
 
     if (tplsChanged) {
       useSellerStore.setState({ costTemplates: updatedTpls });
+    }
+  }
+
+  // Pull stock adjustments
+  const { data: remoteAdj, error: adjErr } = await supabase
+    .from('seller_stock_adjustments')
+    .select('*')
+    .eq('user_id', userId)
+    .range(0, PULL_LIMIT);
+  if (adjErr) throw adjErr;
+
+  if (remoteAdj && remoteAdj.length > 0) {
+    const localAdjMap = new Map(store.stockAdjustments.map((a) => [a.id, a]));
+    let adjChanged = false;
+    let updatedAdj = [...store.stockAdjustments];
+
+    for (const ra of remoteAdj) {
+      if (!ra.local_id) continue;
+      const local = localAdjMap.get(ra.local_id);
+
+      if (!local) {
+        updatedAdj.push({
+          id: ra.local_id,
+          productId: ra.product_local_id,
+          delta: ra.delta,
+          reason: ra.reason as StockAdjustment['reason'],
+          note: ra.note ?? undefined,
+          date: sd(ra.adjustment_date),
+        });
+        adjChanged = true;
+      }
+    }
+
+    if (adjChanged) {
+      updatedAdj.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      useSellerStore.setState({ stockAdjustments: updatedAdj });
+    }
+  }
+
+  // Pull cost categories (tombstone-aware so deletions propagate across devices)
+  const { data: remoteDeletedCats } = await supabase
+    .from('seller_deleted_cost_categories')
+    .select('local_id')
+    .eq('user_id', userId);
+  const remoteDeletedCatIds = new Set((remoteDeletedCats ?? []).map((r) => r.local_id as string));
+
+  const { data: remoteCats, error: catsErr } = await supabase
+    .from('seller_cost_categories')
+    .select('*')
+    .eq('user_id', userId)
+    .range(0, PULL_LIMIT);
+  if (catsErr) throw catsErr;
+
+  {
+    const localCatMap = new Map(store.costCategories.map((c) => [c.id, c]));
+    // Drop locally-held categories that another device has tombstoned.
+    let merged = store.costCategories.filter((c) => !remoteDeletedCatIds.has(c.id));
+    let catsChanged = merged.length !== store.costCategories.length;
+
+    for (const rc of remoteCats ?? []) {
+      if (!rc.local_id || remoteDeletedCatIds.has(rc.local_id)) continue;
+      const remoteItem: SellerCostCategory = {
+        id: rc.local_id,
+        name: rc.name,
+        nameBm: rc.name_bm,
+        icon: rc.icon,
+        color: rc.color,
+        isDefault: rc.is_default ?? false,
+        isProtected: rc.is_protected ?? false,
+        sortOrder: rc.sort_order ?? 0,
+      };
+      const local = localCatMap.get(rc.local_id);
+      if (!local) {
+        merged.push(remoteItem);
+        catsChanged = true;
+      } else if (
+        local.name !== remoteItem.name || local.nameBm !== remoteItem.nameBm ||
+        local.icon !== remoteItem.icon || local.color !== remoteItem.color ||
+        local.sortOrder !== remoteItem.sortOrder
+      ) {
+        // Propagate renames/reorders from other devices (remote wins).
+        merged = merged.map((c) => (c.id === rc.local_id ? remoteItem : c));
+        catsChanged = true;
+      }
+    }
+
+    if (catsChanged) {
+      merged.sort((a, b) => a.sortOrder - b.sortOrder);
+      useSellerStore.setState({ costCategories: merged, costCategoriesSeeded: true });
     }
   }
 }
@@ -957,7 +1188,29 @@ export async function syncAll(
     }
 
     // Re-read store after pull (may have new items merged in)
-    const store = useSellerStore.getState();
+    let store = useSellerStore.getState();
+
+    // Upload any receipts captured offline (have a local uri but no remote url yet).
+    // Retry-safe: a failed upload simply leaves receiptLocalUri for the next sync.
+    const pendingReceipts = store.ingredientCosts.filter((c) => c.receiptLocalUri && !c.receiptUrl);
+    if (pendingReceipts.length > 0) {
+      let anyUploaded = false;
+      const updated = [...store.ingredientCosts];
+      for (const cost of pendingReceipts) {
+        const url = await uploadReceiptImage(cost.receiptLocalUri!, cost.id);
+        if (url) {
+          const idx = updated.findIndex((c) => c.id === cost.id);
+          if (idx >= 0) {
+            updated[idx] = { ...updated[idx], receiptUrl: url, receiptLocalUri: undefined };
+            anyUploaded = true;
+          }
+        }
+      }
+      if (anyUploaded) {
+        useSellerStore.setState({ ingredientCosts: updated });
+        store = useSellerStore.getState();
+      }
+    }
 
     const results = await Promise.allSettled([
       pushProducts(store.products),
@@ -967,9 +1220,11 @@ export async function syncAll(
       pushIngredientCosts(store.ingredientCosts),
       pushRecurringCosts(store.recurringCosts),
       pushCostTemplates(store.costTemplates),
+      pushStockAdjustments(store.stockAdjustments),
+      pushCostCategories(store.costCategories, store._deletedCostCategoryIds),
     ]);
 
-    const pushNames = ['products', 'orders', 'seasons', 'customers', 'ingredientCosts', 'recurringCosts', 'costTemplates'];
+    const pushNames = ['products', 'orders', 'seasons', 'customers', 'ingredientCosts', 'recurringCosts', 'costTemplates', 'stockAdjustments', 'costCategories'];
     results.forEach((result, i) => {
       if (result.status === 'rejected') {
         if (__DEV__) console.warn(`[sellerSync] push ${pushNames[i]} failed:`, result.reason instanceof Error ? result.reason.message : result.reason);
@@ -982,6 +1237,8 @@ export async function syncAll(
     if (results[1].status === 'fulfilled') cleared._deletedOrderIds = [];
     if (results[2].status === 'fulfilled') cleared._deletedSeasonIds = [];
     if (results[3].status === 'fulfilled') cleared._deletedCustomerIds = [];
+    if (results[4].status === 'fulfilled') cleared._deletedCostIds = [];
+    if (results[8].status === 'fulfilled') cleared._deletedCostCategoryIds = [];
     if (Object.keys(cleared).length > 0) {
       useSellerStore.setState(cleared as Partial<ReturnType<typeof useSellerStore.getState>>);
     }

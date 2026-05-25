@@ -9,18 +9,18 @@ import { Wallet } from '../../types';
 function WalletLogo({ wallet, size = 40 }: { wallet: Wallet; size?: number }) {
   if (wallet.presetId === 'credit_card' && wallet.creditBank && wallet.creditNetwork) {
     return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
         <Image
           source={BANK_LOGOS_SMALL[wallet.creditBank] ?? BANK_LOGOS[wallet.creditBank]}
-          style={{ width: size * 0.75, height: size * 0.5 }}
+          style={{ width: size * 0.7, height: size * 0.45 }}
           contentFit="contain"
           cachePolicy="memory-disk"
           transition={0}
         />
-        <Text style={{ color: CALM.border, fontSize: 14 }}>|</Text>
+        <Text style={{ color: CALM.border, fontSize: 12, marginHorizontal: -1 }}>|</Text>
         <Image
           source={CARD_NETWORK_LOGOS[wallet.creditNetwork]}
-          style={{ width: size * 0.6, height: size * 0.38 }}
+          style={{ width: size * 0.55, height: size * 0.35 }}
           contentFit="contain"
           cachePolicy="memory-disk"
           transition={0}

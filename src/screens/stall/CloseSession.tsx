@@ -11,15 +11,17 @@ import {
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { SessionCondition } from '../../types';
 import { useT } from '../../i18n';
+import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
 
 const CloseSession: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const CONDITIONS: { value: SessionCondition; label: string; icon: string }[] = [
@@ -106,15 +108,16 @@ const CloseSession: React.FC = () => {
 
         <Text style={styles.heading}>{t.stall.closeSessionHeading}</Text>
 
-        {/* Session summary */}
+        {/* Session summary — canonical hero number */}
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>{t.stall.totalRevenueLabel}</Text>
-          <Text
-            style={styles.summaryRevenue}
-            accessibilityLabel={`Total revenue ${currency} ${summary.totalRevenue.toFixed(2)}`}
-          >
-            {currency} {summary.totalRevenue.toFixed(0)}
-          </Text>
+          <View style={styles.summaryHeroWrap}>
+            <BusinessHeroNumber
+              amount={summary.totalRevenue}
+              label={t.stall.cameInLabel}
+              prefix={currency}
+              animated={false}
+            />
+          </View>
 
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
@@ -210,6 +213,8 @@ const CloseSession: React.FC = () => {
             textAlignVertical="top"
             accessibilityLabel="Session note, optional"
             accessibilityHint="Add a note about this selling session"
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         </View>
 
@@ -239,6 +244,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['4xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   header: {
     flexDirection: 'row',
@@ -255,6 +263,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
     marginBottom: SPACING['3xl'],
   },
 
@@ -267,15 +276,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING['2xl'],
     marginBottom: SPACING['3xl'],
   },
-  summaryLabel: {
-    ...TYPE.label,
-    marginBottom: SPACING.xs,
-  },
-  summaryRevenue: {
-    ...TYPE.balance,
-    color: C.textPrimary,
+  summaryHeroWrap: {
     marginBottom: SPACING.xl,
-    fontSize: TYPOGRAPHY.size['4xl'],
+    alignItems: 'center',
   },
   summaryRow: {
     flexDirection: 'row',
@@ -289,6 +292,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
   },
   summaryItemLabel: {
     ...TYPE.muted,
@@ -378,7 +382,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   closeButtonText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 
   // ─── Empty state ─────────────────────────────────────────────

@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
@@ -13,12 +14,13 @@ import { useBusinessStore } from '../../../store/businessStore';
 import { useOnTheRoadStore } from '../../../store/onTheRoadStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
 import { explainOnTheRoadMonth } from '../../../utils/explainOnTheRoadMonth';
 import WeekBar from '../../../components/common/WeekBar';
 import ModeToggle from '../../../components/common/ModeToggle';
 import OnTheRoadSetup from './OnTheRoadSetup';
+import BusinessHeroNumber from '../../../components/business/BusinessHeroNumber';
 
 const CATEGORY_EMOJIS: Record<string, string> = {
   petrol: '\u26FD',
@@ -52,6 +54,7 @@ const OnTheRoadDashboard: React.FC = () => {
   const insets = useSafeAreaInsets();
 
   const [showCostPercentage, setShowCostPercentage] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const now = new Date();
   const monthStart = startOfMonth(now);
@@ -167,11 +170,25 @@ const OnTheRoadDashboard: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              setTimeout(() => setRefreshing(false), 600);
+            }}
+            tintColor={C.accent}
+            colors={[C.accent]}
+          />
+        }
       >
         <ModeToggle />
         {/* Zone 1 — Hero: Net Earnings */}
-        <Text style={styles.heroAmount}>{formatNet(net)}</Text>
-        <Text style={styles.heroLabel}>kept this month</Text>
+        <BusinessHeroNumber
+          amount={net}
+          label="kept this month"
+          prefix={currency}
+        />
 
         {/* Zone 2 — Gross vs Costs */}
         <TouchableOpacity
@@ -351,18 +368,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['7xl'],
-  },
-
-  // Zone 1 — Hero
-  heroAmount: {
-    ...TYPE.hero,
-    color: C.textPrimary,
-    textAlign: 'center',
-  },
-  heroLabel: {
-    ...TYPE.muted,
-    textAlign: 'center',
-    marginTop: SPACING.xs,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   // Zone 2 — Breakdown
@@ -561,7 +569,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   fabText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 });
 

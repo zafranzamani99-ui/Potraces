@@ -25,7 +25,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { createTransfer } from '../../utils/transferBridge';
 import { lightTap, mediumTap, successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 
@@ -155,18 +155,18 @@ const SeasonSummary: React.FC = () => {
     const kept = totalIncome - totalCosts;
 
     // Top products
-    const productCounts: Record<string, { name: string; qty: number; revenue: number }> = {};
+    const productCounts: Record<string, { name: string; qty: number; cameIn: number }> = {};
     for (const order of seasonOrders) {
       for (const item of order.items) {
         if (!productCounts[item.productName]) {
-          productCounts[item.productName] = { name: item.productName, qty: 0, revenue: 0 };
+          productCounts[item.productName] = { name: item.productName, qty: 0, cameIn: 0 };
         }
         productCounts[item.productName].qty += item.quantity;
-        productCounts[item.productName].revenue += item.unitPrice * item.quantity;
+        productCounts[item.productName].cameIn += item.unitPrice * item.quantity;
       }
     }
     const topProducts = Object.values(productCounts)
-      .sort((a, b) => b.revenue - a.revenue)
+      .sort((a, b) => b.cameIn - a.cameIn)
       .slice(0, 5);
 
     // Unique customers
@@ -333,7 +333,7 @@ const SeasonSummary: React.FC = () => {
     if (stats.topProducts.length > 0) {
       text += `PRODUK TERLARIS / TOP PRODUCTS:\n`;
       stats.topProducts.forEach((p, i) => {
-        text += `${i + 1}. ${p.name} \u2014 ${p.qty} unit \u2014 ${currency} ${p.revenue.toFixed(0)}\n`;
+        text += `${i + 1}. ${p.name} \u2014 ${p.qty} unit \u2014 ${currency} ${p.cameIn.toFixed(0)}\n`;
       });
       text += `${line}\n`;
     }
@@ -376,7 +376,7 @@ const SeasonSummary: React.FC = () => {
         [''],
         ['TOP PRODUCTS'],
         ['Product', 'Quantity', 'Came In'],
-        ...stats.topProducts.map((p) => [p.name, p.qty, p.revenue]),
+        ...stats.topProducts.map((p) => [p.name, p.qty, p.cameIn]),
       ];
       const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
 
@@ -437,7 +437,7 @@ const SeasonSummary: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Start a season"
           >
-            <Feather name="plus" size={18} color="#fff" />
+            <Feather name="plus" size={18} color={C.onAccent} />
             <Text style={styles.startSeasonButtonText}>{t.seller.startASeason}</Text>
           </TouchableOpacity>
         </View>
@@ -532,7 +532,7 @@ const SeasonSummary: React.FC = () => {
           </View>
         </FadeInSection>
 
-        {/* Revenue target progress */}
+        {/* Came-in target progress */}
         <FadeInSection delay={175}>
           {season.revenueTarget ? (
             <View style={styles.targetCard}>
@@ -686,6 +686,8 @@ const SeasonSummary: React.FC = () => {
                       onChangeText={setTransferAmount}
                       keyboardType="decimal-pad"
                       selectTextOnFocus
+                      keyboardAppearance={isDark ? 'dark' : 'light'}
+                      selectionColor={C.accent}
                     />
                   </View>
                   <TouchableOpacity
@@ -1172,6 +1174,8 @@ const SeasonSummary: React.FC = () => {
               placeholderTextColor={C.textSecondary}
               autoFocus
               selectTextOnFocus
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <View style={styles.renameModalActions}>
               <TouchableOpacity
@@ -1214,6 +1218,8 @@ const SeasonSummary: React.FC = () => {
               keyboardType="numeric"
               autoFocus
               selectTextOnFocus
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <View style={styles.renameModalActions}>
               <TouchableOpacity
@@ -1283,6 +1289,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],   // 24pt horizontal
     paddingTop: SPACING['2xl'],          // 24pt top
     paddingBottom: SPACING['5xl'],       // 48pt bottom
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // -- No season state ----------------------------------------------
@@ -1309,17 +1318,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING['2xl'],
     marginTop: SPACING.lg,
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   startSeasonButtonText: {
     fontSize: TYPOGRAPHY.size.base,      // 15
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // -- Season header ------------------------------------------------
@@ -1539,7 +1548,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   transferConfirmText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // -- Top products -------------------------------------------------
@@ -1569,7 +1578,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   rankText: {
     fontSize: 12,
     fontWeight: TYPOGRAPHY.weight.bold,  // 700
-    color: '#fff',
+    color: C.onAccent,
   },
   topName: {
     ...TYPE.insight,                     // fontSize 14, lineHeight 22
@@ -1673,8 +1682,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     width: '100%',
+    maxWidth: 420,
     maxHeight: '70%',
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   listModalHeader: {
     flexDirection: 'row',
@@ -1851,16 +1861,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     minHeight: 52,
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   newSeasonButtonText: {
     fontSize: TYPOGRAPHY.size.base,      // 15
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // -- Report buttons (completed season) ---------------------------------
@@ -1975,6 +1985,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     width: '100%',
+    maxWidth: 420,
     gap: SPACING.lg,
   },
   renameModalTitle: {
@@ -2017,13 +2028,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   renameModalConfirmText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // -- Modal overlay ----------------------------------------------------
   modalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.textPrimary, 0.5),
+    backgroundColor: withAlpha(C.dimBg, 0.5),
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING['2xl'],
@@ -2035,7 +2046,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING.xl,
     gap: SPACING.lg,
     width: '100%',
-    ...SHADOWS.lg,
+    maxWidth: 420,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   endModalHeader: {
     flexDirection: 'row',
@@ -2107,13 +2119,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: SPACING.md,
     borderRadius: RADIUS.xl,
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     minHeight: 48,
   },
   endModalConfirmText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // ─── Season comparison ────────────────────────────────────
@@ -2135,7 +2147,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING.md,
     marginBottom: SPACING.sm,
     gap: SPACING.sm,
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   comparePickerRow: {
     flexDirection: 'row',

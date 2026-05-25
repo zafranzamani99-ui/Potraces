@@ -22,12 +22,13 @@ import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import {
   CALM,
+  CALM_DARK,
   SPACING,
   TYPOGRAPHY,
   RADIUS,
   withAlpha,
 } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
@@ -64,6 +65,7 @@ const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
 // ─── COMPONENT ────────────────────────────────────────────────
 const CRM: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
@@ -573,6 +575,8 @@ const CRM: React.FC = () => {
             placeholderTextColor={C.neutral}
             returnKeyType="search"
             clearButtonMode="while-editing"
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         </View>
 
@@ -722,6 +726,8 @@ const CRM: React.FC = () => {
                   returnKeyType="next"
                   onSubmitEditing={() => phoneRef.current?.focus()}
                   autoCapitalize="words"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <Text style={styles.formLabel}>Phone</Text>
@@ -735,6 +741,8 @@ const CRM: React.FC = () => {
                   keyboardType="phone-pad"
                   returnKeyType="next"
                   onSubmitEditing={() => emailRef.current?.focus()}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <Text style={styles.formLabel}>Email</Text>
@@ -749,6 +757,8 @@ const CRM: React.FC = () => {
                   autoCapitalize="none"
                   returnKeyType="next"
                   onSubmitEditing={() => companyRef.current?.focus()}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <Text style={styles.formLabel}>Company</Text>
@@ -761,6 +771,8 @@ const CRM: React.FC = () => {
                   placeholderTextColor={C.neutral}
                   returnKeyType="next"
                   onSubmitEditing={() => addressRef.current?.focus()}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <Text style={styles.formLabel}>Address (for COD)</Text>
@@ -777,6 +789,8 @@ const CRM: React.FC = () => {
                   blurOnSubmit
                   returnKeyType="next"
                   onSubmitEditing={() => notesRef.current?.focus()}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <Text style={styles.formLabel}>Notes</Text>
@@ -791,6 +805,8 @@ const CRM: React.FC = () => {
                   numberOfLines={3}
                   textAlignVertical="top"
                   blurOnSubmit
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -1228,6 +1244,8 @@ const CRM: React.FC = () => {
                             placeholder="Search products..."
                             placeholderTextColor={C.neutral}
                             autoFocus
+                            keyboardAppearance={isDark ? 'dark' : 'light'}
+                            selectionColor={C.accent}
                           />
                           {productPickerSearch.length > 0 && (
                             <TouchableOpacity onPress={() => setProductPickerSearch('')}>
@@ -1277,6 +1295,8 @@ const CRM: React.FC = () => {
                         placeholder="Qty"
                         placeholderTextColor={C.neutral}
                         keyboardType="number-pad"
+                        keyboardAppearance={isDark ? 'dark' : 'light'}
+                        selectionColor={C.accent}
                       />
                       <TextInput
                         style={[styles.formInput, styles.itemPriceInput]}
@@ -1287,6 +1307,8 @@ const CRM: React.FC = () => {
                         placeholder="Price"
                         placeholderTextColor={C.neutral}
                         keyboardType="decimal-pad"
+                        keyboardAppearance={isDark ? 'dark' : 'light'}
+                        selectionColor={C.accent}
                       />
                       <TouchableOpacity
                         style={styles.removeItemButton}
@@ -1343,7 +1365,7 @@ const CRM: React.FC = () => {
                           style={[
                             styles.statusPickerText,
                             orderStatus === status
-                              ? { color: '#FFFFFF' }
+                              ? { color: C.onAccent }
                               : { color: ORDER_STATUS_COLORS[status] },
                           ]}
                         >
@@ -1368,6 +1390,8 @@ const CRM: React.FC = () => {
                   blurOnSubmit
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <View style={styles.modalActions}>
@@ -1465,6 +1489,8 @@ const CRM: React.FC = () => {
                         keyboardType="decimal-pad"
                         returnKeyType="done"
                         onSubmitEditing={handleRecordPayment}
+                        keyboardAppearance={isDark ? 'dark' : 'light'}
+                        selectionColor={C.accent}
                         autoFocus
                       />
                     </>
@@ -1509,6 +1535,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING.lg,
     paddingBottom: 80,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   // ── Stats Row ───────────────────────────────────────────────
   statsRow: {
@@ -1657,6 +1686,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopRightRadius: RADIUS.xl,
     padding: SPACING['2xl'],
     maxHeight: '90%',
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center' as const,
   },
   detailModalContent: {
     maxHeight: '95%',
@@ -1980,7 +2012,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(C.neutral, 0.08),
+    backgroundColor: withAlpha(C.neutral, C === CALM_DARK ? 0.16 : 0.08),
   },
   addItemRow: {
     flexDirection: 'row',

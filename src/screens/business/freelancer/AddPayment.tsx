@@ -11,14 +11,14 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import CalendarPicker from '../../../components/common/CalendarPicker';
 import { format, differenceInDays } from 'date-fns';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useFreelancerStore } from '../../../store/freelancerStore';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, successNotification } from '../../../services/haptics';
 import { useT } from '../../../i18n';
@@ -29,6 +29,7 @@ function toDate(d: Date | string): Date {
 
 const AddPayment: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation();
@@ -211,6 +212,8 @@ const AddPayment: React.FC = () => {
             keyboardType="decimal-pad"
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         </View>
 
@@ -283,6 +286,8 @@ const AddPayment: React.FC = () => {
             autoFocus
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         )}
 
@@ -300,16 +305,15 @@ const AddPayment: React.FC = () => {
         </TouchableOpacity>
 
         {showDatePicker && (
-          <DateTimePicker
-            value={date}
-            mode="date"
-            display="spinner"
-            onChange={(_, selectedDate) => {
-              if (selectedDate) setDate(selectedDate);
-              setShowDatePicker(false);
-            }}
-            maximumDate={new Date()}
-          />
+          <View style={styles.calendarWrapper}>
+            <CalendarPicker
+              value={date}
+              onChange={(selectedDate) => {
+                setDate(selectedDate);
+                setShowDatePicker(false);
+              }}
+            />
+          </View>
         )}
 
         {/* Note */}
@@ -323,6 +327,8 @@ const AddPayment: React.FC = () => {
             placeholderTextColor={C.textMuted}
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         </View>
 
@@ -373,6 +379,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['5xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   // Amount
@@ -412,6 +421,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   fieldPlaceholder: {
     color: C.textMuted,
+  },
+
+  calendarWrapper: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
 
   // Client picker
@@ -487,7 +505,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   saveButtonTextDisabled: {
     color: C.textMuted,

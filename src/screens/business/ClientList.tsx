@@ -12,13 +12,14 @@ import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { Client } from '../../types';
 
 const ClientList: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { clients, addClient, logClientPayment, addBusinessTransaction } = useBusinessStore();
@@ -143,7 +144,7 @@ const ClientList: React.FC = () => {
         style={styles.addButton}
         onPress={() => setShowAddClient(true)}
       >
-        <Feather name="plus" size={20} color="#fff" />
+        <Feather name="plus" size={20} color={C.onAccent} />
         <Text style={styles.addButtonText}>{t.business.clientsAddClient}</Text>
       </TouchableOpacity>
 
@@ -159,6 +160,8 @@ const ClientList: React.FC = () => {
               placeholder={t.business.clientsNamePlaceholder}
               placeholderTextColor={C.textSecondary}
               autoFocus
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <View style={styles.modalActions}>
               <TouchableOpacity onPress={() => setShowAddClient(false)} style={styles.modalCancel}>
@@ -187,6 +190,8 @@ const ClientList: React.FC = () => {
               placeholderTextColor={C.textSecondary}
               keyboardType="numeric"
               autoFocus
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -219,11 +224,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
     padding: SPACING['2xl'],
     paddingBottom: SPACING.md,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   listContent: {
     padding: SPACING.lg,
     paddingTop: 0,
     gap: SPACING.md,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   clientCard: {
     backgroundColor: C.surface,
@@ -304,7 +315,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   addButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
   modalOverlay: {
     flex: 1,
@@ -318,6 +329,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.lg,
     padding: SPACING.xl,
     width: '100%',
+    maxWidth: 420,
     gap: SPACING.lg,
   },
   modalTitle: {
@@ -356,7 +368,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalConfirmText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 });
 

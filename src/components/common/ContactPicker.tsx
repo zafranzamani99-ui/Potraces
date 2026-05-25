@@ -18,8 +18,8 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { Contact } from '../../types';
 import Button from './Button';
 
@@ -30,6 +30,8 @@ interface ContactPickerProps {
   label?: string;
   includeSelf?: boolean;
   selfName?: string;
+  /** When true, skip rendering the internal label — caller renders its own. */
+  hideLabel?: boolean;
 }
 
 const ContactPicker: React.FC<ContactPickerProps> = ({
@@ -38,9 +40,11 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
   mode = 'single',
   label = 'Contact',
   includeSelf = false,
-  selfName = 'Me',
+  selfName = 'me',
+  hideLabel = false,
 }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const [phoneModalVisible, setPhoneModalVisible] = useState(false);
@@ -154,7 +158,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>{label}</Text>
+      {!hideLabel && <Text style={styles.label}>{label}</Text>}
 
       {/* Selected contacts pills */}
       {selectedContacts.length > 0 && (
@@ -191,18 +195,18 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
               }}
               activeOpacity={0.7}
             >
-              <Feather name="user" size={18} color={selfSelected ? '#fff' : C.accent} />
+              <Feather name="user" size={14} color={selfSelected ? C.onAccent : C.accent} />
               <Text style={[styles.actionText, selfSelected && styles.actionTextSelected]}>{selfName}</Text>
             </TouchableOpacity>
           );
         })()}
         <TouchableOpacity style={styles.actionButton} onPress={loadPhoneContacts} activeOpacity={0.7}>
-          <Feather name="book" size={18} color={C.accent} />
-          <Text style={styles.actionText}>From Contacts</Text>
+          <Feather name="book" size={14} color={C.accent} />
+          <Text style={styles.actionText}>from contacts</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionButton} onPress={() => setManualModalVisible(true)} activeOpacity={0.7}>
-          <Feather name="edit-3" size={18} color={C.accent} />
-          <Text style={styles.actionText}>Add Manually</Text>
+          <Feather name="edit-3" size={14} color={C.accent} />
+          <Text style={styles.actionText}>add manually</Text>
         </TouchableOpacity>
       </View>
 
@@ -230,6 +234,8 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                 autoCorrect={false}
                 returnKeyType="search"
                 onSubmitEditing={Keyboard.dismiss}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
 
               <FlatList
@@ -289,6 +295,8 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                   returnKeyType="next"
                   autoFocus
                   onSubmitEditing={() => phoneInputRef.current?.focus()}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <Text style={styles.inputLabel}>Phone (optional)</Text>
@@ -302,6 +310,8 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                   keyboardType="phone-pad"
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
                 />
 
                 <View style={styles.modalActions}>
@@ -361,31 +371,33 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    gap: SPACING.md,
+    gap: SPACING.sm,
   },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
+    gap: 6,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.sm,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: withAlpha(C.textPrimary, 0.08),
   },
   actionText: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.accent,
+    letterSpacing: 0.1,
   },
   actionButtonSelected: {
     backgroundColor: C.accent,
     borderColor: C.accent,
   },
   actionTextSelected: {
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // Modals

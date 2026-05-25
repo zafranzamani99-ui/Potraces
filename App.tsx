@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { RootSiblingParent } from 'react-native-root-siblings';
 import RootNavigator from './src/navigation/RootNavigator';
 import { COLORS, SPACING, TYPOGRAPHY } from './src/constants';
 import { useIsDark } from './src/hooks/useCalm';
@@ -330,23 +331,25 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <KeyboardProvider>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={{ flex: 1 }}>
-              <ToastProvider>
-                <StatusBar style={isDark ? 'light' : 'dark'} />
-                <BiometricGate>
-                  <PersonalSyncManager />
-                  <RootNavigator />
-                </BiometricGate>
-              </ToastProvider>
-            </View>
-          </TouchableWithoutFeedback>
-        </GestureHandlerRootView>
-      </KeyboardProvider>
-    </SafeAreaProvider>
+    <RootSiblingParent>
+      <SafeAreaProvider>
+        <KeyboardProvider>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+              <View style={{ flex: 1 }}>
+                <ToastProvider>
+                  <StatusBar style={isDark ? 'light' : 'dark'} />
+                  <BiometricGate>
+                    <PersonalSyncManager />
+                    <RootNavigator />
+                  </BiometricGate>
+                </ToastProvider>
+              </View>
+            </TouchableWithoutFeedback>
+          </GestureHandlerRootView>
+        </KeyboardProvider>
+      </SafeAreaProvider>
+    </RootSiblingParent>
   );
 }
 

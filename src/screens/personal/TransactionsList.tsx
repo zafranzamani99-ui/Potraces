@@ -12,14 +12,20 @@ import {
   Keyboard,
   InteractionManager,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import Reanimated, {
+  FadeInDown,
+} from 'react-native-reanimated';
+import { useNavigation } from '@react-navigation/native';
 import { format, isValid, startOfMonth, endOfMonth, subMonths, isWithinInterval, startOfYear, getDay, getDaysInMonth } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
@@ -30,6 +36,7 @@ import Button from '../../components/common/Button';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import WhyCategoryChip from '../../components/common/WhyCategoryChip';
+import EditTransactionSheet from '../../components/transactions/EditTransactionSheet';
 import { Transaction, CategoryOption } from '../../types';
 import { useWalletStore } from '../../store/walletStore';
 import { useSellerStore } from '../../store/sellerStore';
@@ -74,6 +81,7 @@ const TransactionsList: React.FC = () => {
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
 
   const TYPE_FILTERS = useMemo(() => [
     { key: 'all' as FilterType, label: t.transactionList.all.toLowerCase() },
@@ -145,6 +153,7 @@ const TransactionsList: React.FC = () => {
   const [editType, setEditType] = useState<'expense' | 'income'>('expense');
   const [editTags, setEditTags] = useState('');
   const [editWalletId, setEditWalletId] = useState<string | null>(null);
+  const [editDate, setEditDate] = useState<Date>(new Date());
 
   // ── Pull-to-refresh ────────────────────────────────────────
   const [refreshing, setRefreshing] = useState(false);
@@ -157,10 +166,15 @@ const TransactionsList: React.FC = () => {
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set());
   const pendingDeleteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  // Cleanup timers on unmount
+  // Cleanup timers on unmount — clear handles AND empty the Map so any stragglers
+  // can't fire store mutations against an unmounted component.
   useEffect(() => {
+    const timers = pendingDeleteTimers.current;
     return () => {
-      pendingDeleteTimers.current.forEach((timer) => clearTimeout(timer));
+      timers.forEach((handle) => {
+        if (handle) clearTimeout(handle);
+      });
+      timers.clear();
     };
   }, []);
 
@@ -276,7 +290,7 @@ const TransactionsList: React.FC = () => {
         } else {
           try {
             titleDate = new Date(dateKey + 'T00:00:00');
-            title = isValid(titleDate) ? format(titleDate, 'EEEE, MMM d').toLowerCase() : t.transactionList.unknownDate;
+            title = isValid(titleDate) ? format(titleDate, 'EEE, MMM d').toLowerCase() : t.transactionList.unknownDate;
           } catch {
             title = t.transactionList.unknownDate;
           }
@@ -312,7 +326,31 @@ const TransactionsList: React.FC = () => {
     return { income, expenses, net: income - expenses };
   }, [filteredTransactions]);
 
-  const editCategories = useMemo(() => editType === 'expense' ? expenseCategories : incomeCategories, [editType, expenseCategories, incomeCategories]);
+  // ── Sparkline data — last 14 days of daily nets (Strava-borrowed activity chart) ──
+  const sparklineData = useMemo(() => {
+    if (sortBy !== 'date') return [];
+    return sections
+      .filter((s) => s.titleDate)
+      .slice(0, 14)
+      .map((s) => s.dailyNet)
+      .reverse(); // oldest → newest, left to right
+  }, [sections, sortBy]);
+
+  const sparklineMax = useMemo(
+    () => Math.max(1, ...sparklineData.map((v) => Math.abs(v))),
+    [sparklineData]
+  );
+
+  // ── Streak — consecutive most-recent days where dailyNet > 0 (Strava-borrowed badge) ──
+  const streakDays = useMemo(() => {
+    if (sortBy !== 'date') return 0;
+    let count = 0;
+    for (const s of sections) {
+      if (s.dailyNet > 0) count++;
+      else break;
+    }
+    return count;
+  }, [sections, sortBy]);
 
   // ── Filter modal handlers ────────────────────────────────────
   const openFilterModal = useCallback(() => {
@@ -382,7 +420,23 @@ const TransactionsList: React.FC = () => {
 
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
-    const title = (selectedIds.size > 1 ? t.transactionList.deleteNTitlePlural : t.transactionList.deleteNTitle).replace('{n}', String(selectedIds.size));
+
+    const deletableIds = new Set<string>();
+    let debtLinkedCount = 0;
+    for (const id of selectedIds) {
+      const txn = transactions.find((t) => t.id === id);
+      if (!txn) continue;
+      if (txn.linkedDebtId) { debtLinkedCount++; continue; }
+      deletableIds.add(id);
+    }
+
+    if (debtLinkedCount > 0) {
+      showToast(t.transactionList.debtLinkedCannotDelete, 'info');
+    }
+
+    if (deletableIds.size === 0) { exitSelectMode(); return; }
+
+    const title = (deletableIds.size > 1 ? t.transactionList.deleteNTitlePlural : t.transactionList.deleteNTitle).replace('{n}', String(deletableIds.size));
     Alert.alert(
       title,
       t.transactionList.deleteNMsg,
@@ -393,25 +447,18 @@ const TransactionsList: React.FC = () => {
           style: 'destructive',
           onPress: () => {
             const currentWallets = useWalletStore.getState().wallets;
-            for (const id of selectedIds) {
+            for (const id of deletableIds) {
               const txn = transactions.find((t) => t.id === id);
               if (!txn) continue;
-              // Reverse wallet
               if (txn.walletId && currentWallets.some((w) => w.id === txn.walletId)) {
                 if (txn.type === 'expense') addToWallet(txn.walletId, txn.amount);
                 else deductFromWallet(txn.walletId, txn.amount);
               }
-              // Transfer handling
               if (txn.id.startsWith('transfer-')) {
                 const transferId = txn.id.replace('transfer-', '');
                 unmarkOrdersTransferred(transferId);
                 deleteTransfer(transferId);
               }
-              // Debt payment cleanup
-              if (txn.linkedDebtId && txn.linkedPaymentId) {
-                useDebtStore.getState().deletePayment(txn.linkedDebtId, txn.linkedPaymentId);
-              }
-              // Seller cost cleanup
               const linkedCost = useSellerStore.getState().ingredientCosts.find(
                 (c) => c.personalTransactionId === txn.id
               );
@@ -419,7 +466,7 @@ const TransactionsList: React.FC = () => {
               usePlaybookStore.getState().unlinkAllFromTransaction(id);
               deleteTransaction(id);
             }
-            showToast((selectedIds.size > 1 ? t.transactionList.nDeletedPlural : t.transactionList.nDeleted).replace('{n}', String(selectedIds.size)), 'success');
+            showToast((deletableIds.size > 1 ? t.transactionList.nDeletedPlural : t.transactionList.nDeleted).replace('{n}', String(deletableIds.size)), 'success');
             exitSelectMode();
           },
         },
@@ -440,6 +487,7 @@ const TransactionsList: React.FC = () => {
     setEditType(transaction.type);
     setEditTags(transaction.tags?.join(', ') || '');
     setEditWalletId(transaction.walletId || null);
+    setEditDate(isValid(transaction.date) ? transaction.date : new Date());
     setEditModalVisible(true);
   }, [selectMode, toggleSelect]);
 
@@ -447,8 +495,12 @@ const TransactionsList: React.FC = () => {
     const txn = transactions.find((t) => t.id === id);
     if (!txn) return;
 
-    // Linked transactions need confirmation — open edit modal instead
-    if (txn.linkedDebtId || txn.id.startsWith('transfer-')) {
+    if (txn.linkedDebtId) {
+      showToast(t.transactionList.debtLinkedCannotDelete, 'info');
+      return;
+    }
+
+    if (txn.id.startsWith('transfer-')) {
       handleEditTransaction(txn);
       return;
     }
@@ -498,13 +550,26 @@ const TransactionsList: React.FC = () => {
   const handleUpdateTransaction = useCallback(() => {
     if (!editingTransaction) return;
 
-    if (!editAmount || parseFloat(editAmount) <= 0) {
-      showToast(t.expense.invalidAmount, 'error');
+    if (!editDescription.trim()) {
+      showToast(t.transaction.missingDescription, 'error');
       return;
     }
 
-    if (!editDescription.trim()) {
-      showToast(t.expense.noDescription, 'error');
+    const isDebtLinked = !!editingTransaction.linkedDebtId;
+
+    if (isDebtLinked) {
+      updateTransaction(editingTransaction.id, {
+        description: editDescription.trim(),
+        tags: editTags ? editTags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+      });
+      setEditModalVisible(false);
+      setEditingTransaction(null);
+      showToast(t.transactionList.transactionUpdated, 'success');
+      return;
+    }
+
+    if (!editAmount || parseFloat(editAmount) <= 0) {
+      showToast(t.transaction.invalidAmount, 'error');
       return;
     }
 
@@ -573,9 +638,9 @@ const TransactionsList: React.FC = () => {
       (c) => c.personalTransactionId === editingTransaction.id
     );
     if (linkedCost) {
-      const desc = editDescription.trim();
+      const desc2 = editDescription.trim();
       updateIngredientCost(linkedCost.id, {
-        description: desc.startsWith('seller: ') ? desc.replace('seller: ', '') : desc,
+        description: desc2.startsWith('seller: ') ? desc2.replace('seller: ', '') : desc2,
         amount: newAmount,
       });
     }
@@ -588,9 +653,13 @@ const TransactionsList: React.FC = () => {
   const handleDeleteTransaction = useCallback(() => {
     if (!editingTransaction) return;
 
+    if (editingTransaction.linkedDebtId) {
+      showToast(t.transactionList.debtLinkedCannotDelete, 'info');
+      return;
+    }
+
     const isTransferLinked = editingTransaction.id.startsWith('transfer-');
     const transferId = isTransferLinked ? editingTransaction.id.replace('transfer-', '') : null;
-    const { linkedDebtId, linkedPaymentId } = editingTransaction;
 
     const doDelete = () => {
       if (editingTransaction.walletId) {
@@ -607,9 +676,6 @@ const TransactionsList: React.FC = () => {
         unmarkOrdersTransferred(transferId);
         deleteTransfer(transferId);
       }
-      if (linkedDebtId && linkedPaymentId) {
-        useDebtStore.getState().deletePayment(linkedDebtId, linkedPaymentId);
-      }
       const linkedCost = useSellerStore.getState().ingredientCosts.find(
         (c) => c.personalTransactionId === editingTransaction.id
       );
@@ -622,18 +688,6 @@ const TransactionsList: React.FC = () => {
       setEditingTransaction(null);
       showToast(t.transactionList.deleted, 'success');
     };
-
-    if (linkedDebtId) {
-      Alert.alert(
-        t.transaction.deleteConfirm,
-        t.transactionList.linkedDebtDeleteMsg,
-        [
-          { text: t.common.cancel, style: 'cancel' },
-          { text: t.transaction.deleteBoth, style: 'destructive', onPress: doDelete },
-        ]
-      );
-      return;
-    }
 
     Alert.alert(
       t.transaction.deleteConfirm,
@@ -678,26 +732,13 @@ const TransactionsList: React.FC = () => {
       selectMode={selectMode}
       isFirst={index === 0}
       isLast={index === section.data.length - 1}
+      index={index}
     />
   ), [currency, categoryMap, walletMap, handleItemPress, handleItemLongPress, handleSwipeDelete, selectMode, selectedIds]);
 
-  const renderSectionHeader = useCallback(({ section }: { section: { title: string; dailyNet: number; microInsight: string } }) => (
-    <View style={styles.sectionHeader}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-        <Text style={styles.sectionHeaderText}>{section.title}</Text>
-        {section.microInsight !== '' && sortBy === 'date' && (
-          <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginLeft: 4 }}>
-            {' \u00B7 '}{section.microInsight}
-          </Text>
-        )}
-      </View>
-      {section.dailyNet !== 0 && sortBy === 'date' && (
-        <Text style={[styles.sectionHeaderNet, section.dailyNet > 0 && { color: C.accent }]}>
-          {section.dailyNet > 0 ? '+' : '-'}{formatAmount(section.dailyNet, currency, 0)}
-        </Text>
-      )}
-    </View>
-  ), [currency, sortBy]);
+  // Section headers killed for the pill-card layout \u2014 each card carries its own date.
+  // Matches reference pattern (My Transactions screenshot): separated cards, no day-group chrome.
+  const renderSectionHeader = useCallback(() => null, []);
 
   // ── Categories for filter modal ──────────────────────────────
   const filterCategories = useMemo(() => {
@@ -727,11 +768,21 @@ const TransactionsList: React.FC = () => {
       {/* Select mode header */}
       {selectMode ? (
         <View style={styles.selectHeader}>
-          <TouchableOpacity onPress={exitSelectMode} style={styles.selectHeaderBtn}>
+          <TouchableOpacity
+            onPress={exitSelectMode}
+            style={styles.selectHeaderBtn}
+            accessibilityLabel={t.common.done.toLowerCase()}
+            accessibilityRole="button"
+          >
             <Text style={styles.selectHeaderBtnText}>{t.common.done.toLowerCase()}</Text>
           </TouchableOpacity>
           <Text style={styles.selectHeaderTitle}>{selectedIds.size} {t.transactionList.selected}</Text>
-          <TouchableOpacity onPress={selectAll} style={styles.selectHeaderBtn}>
+          <TouchableOpacity
+            onPress={selectAll}
+            style={styles.selectHeaderBtn}
+            accessibilityLabel={t.transactionList.selectAll.toLowerCase()}
+            accessibilityRole="button"
+          >
             <Text style={styles.selectHeaderBtnText}>{t.transactionList.selectAll.toLowerCase()}</Text>
           </TouchableOpacity>
         </View>
@@ -747,40 +798,66 @@ const TransactionsList: React.FC = () => {
               placeholder={t.transactionList.searchPlaceholder}
               placeholderTextColor={C.textMuted}
               returnKeyType="search"
+              accessibilityLabel={t.transactionList.searchPlaceholder}
+              accessibilityRole="search"
             />
             {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+                accessibilityLabel={t.common.clear.toLowerCase()}
+                accessibilityRole="button"
+              >
                 <Feather name="x-circle" size={16} color={C.textMuted} />
               </TouchableOpacity>
             )}
           </View>
 
-          {/* Filter Row */}
-          <View style={styles.filterRow}>
-            {TYPE_FILTERS.map((f) => (
-              <TouchableOpacity
-                key={f.key}
-                style={[styles.filterChip, typeFilter === f.key && styles.filterChipActive]}
-                onPress={() => { lightTap(); setTypeFilter(f.key); }}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.filterChipText, typeFilter === f.key && styles.filterChipTextActive]}>
-                  {f.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-
-            {/* Filter button */}
-            <TouchableOpacity style={styles.filterButton} onPress={openFilterModal} activeOpacity={0.7}>
-              <Feather name="sliders" size={16} color={hasAdvancedFilters ? C.accent : C.textMuted} />
-              {hasAdvancedFilters && <View style={styles.filterDot} />}
+          {/* Filter pills — 3 separate pills matching reference: dark filled active, light unfilled inactive.
+              Each pill stands alone with horizontal scroll if it overflows. */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterPillsScroll}
+            contentContainerStyle={styles.filterPillsContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {TYPE_FILTERS.map((f) => {
+              const active = typeFilter === f.key;
+              return (
+                <TouchableOpacity
+                  key={f.key}
+                  style={[styles.filterPill, active && styles.filterPillActive]}
+                  onPress={() => { lightTap(); setTypeFilter(f.key); }}
+                  activeOpacity={0.7}
+                  accessibilityLabel={f.label}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity
+              style={[styles.filterPill, hasAdvancedFilters && styles.filterPillAdvActive]}
+              onPress={openFilterModal}
+              activeOpacity={0.7}
+              accessibilityLabel={t.transactionList.filter.toLowerCase()}
+              accessibilityRole="button"
+            >
+              <Feather
+                name="sliders"
+                size={13}
+                color={hasAdvancedFilters ? C.accent : C.textMuted}
+                style={{ marginRight: 5 }}
+              />
+              <Text style={[styles.filterPillText, hasAdvancedFilters && { color: C.accent }]}>
+                {t.transactionList.filter.toLowerCase()}
+              </Text>
             </TouchableOpacity>
-
-            {/* Item count */}
-            <View style={styles.summaryPill}>
-              <Text style={styles.summaryText}>{filteredTransactions.length}</Text>
-            </View>
-          </View>
+          </ScrollView>
 
           {/* Active filter chips */}
           {hasAdvancedFilters && (
@@ -823,34 +900,26 @@ const TransactionsList: React.FC = () => {
         </>
       )}
 
-      {/* Totals Bar */}
-      <View style={styles.totalsBar}>
-        <View style={styles.totalItem}>
-          <Text style={styles.totalLabel}>{t.pulse.cameIn}</Text>
-          <Text style={[styles.totalValue, { color: C.accent }]}>
-            +{formatAmount(totals.income, currency, 0)}
+      {/* Quiet header zone — reference-grade discipline.
+          Title + 1-line summary. NO gradient, NO sparkline, NO streak, NO AI chip.
+          The richness comes from the cards below, not from chrome up here. */}
+      {!selectMode && (
+        <Reanimated.View
+          entering={FadeInDown.duration(480).springify().damping(20).stiffness(110).mass(0.7)}
+          style={styles.headerZone}
+        >
+          <Text style={styles.headerTitle}>
+            {t.transactionList.youKept.toLowerCase()}{' '}
+            <Text style={styles.headerTitleAmount}>
+              {totals.net >= 0 ? '+' : '−'}{formatAmount(Math.abs(totals.net), currency, 0)}
+            </Text>
+            {' '}
+            <Text style={styles.headerTitlePeriod}>
+              {((DATE_RANGES.find(d => d.key === dateRange)?.label) ?? t.transactionList.all).toLowerCase()}
+            </Text>
           </Text>
-        </View>
-        <View style={styles.totalDivider} />
-        <View style={styles.totalItem}>
-          <Text style={styles.totalLabel}>{t.pulse.wentOut}</Text>
-          <Text style={[styles.totalValue, { color: C.textPrimary }]}>
-            -{formatAmount(totals.expenses, currency, 0)}
-          </Text>
-        </View>
-        <View style={styles.totalDivider} />
-        <View style={styles.totalItem}>
-          <Text style={styles.totalLabel}>{t.transactionList.net}</Text>
-          <Text
-            style={[
-              styles.totalValue,
-              { color: totals.net >= 0 ? C.accent : C.neutral },
-            ]}
-          >
-            {totals.net >= 0 ? '+' : '-'}{formatAmount(totals.net, currency, 0)}
-          </Text>
-        </View>
-      </View>
+        </Reanimated.View>
+      )}
 
       {/* Transaction List */}
       {sections.length > 0 && sections.some((s) => s.data.length > 0) ? (
@@ -875,20 +944,26 @@ const TransactionsList: React.FC = () => {
         />
       ) : (
         <View style={styles.emptyContainer}>
-          <EmptyState
-            icon="inbox"
-            title={searchQuery || hasAdvancedFilters ? t.transactionList.noResults : t.dashboard.noTransactions}
-            message={
-              searchQuery
-                ? t.transactionList.nothingMatching.replace('{query}', searchQuery)
-                : hasAdvancedFilters
-                ? t.transactionList.noResults
-                : t.dashboard.addFirst
-            }
-          />
+          {/* Typographic empty state — no icon, no illustration.
+              Vocabulary: Mercury § 2 (typography-as-design), Linear § 3 ("nothing here yet" muted line).
+              Avoids: N6 (no pastel illustrations or stock empty-state icons). */}
+          <Text style={styles.emptyHeadline}>
+            {searchQuery
+              ? `${t.transactionList.noResults.toLowerCase()}`
+              : hasAdvancedFilters
+              ? t.transactionList.noResults.toLowerCase()
+              : t.dashboard.noTransactions.toLowerCase()}
+          </Text>
+          <Text style={styles.emptySubline}>
+            {searchQuery
+              ? t.transactionList.nothingMatching.replace('{query}', searchQuery).toLowerCase()
+              : hasAdvancedFilters
+              ? t.transactionList.clearAllFilters.toLowerCase()
+              : t.dashboard.addFirst.toLowerCase()}
+          </Text>
           {hasAdvancedFilters && (
             <TouchableOpacity
-              style={styles.clearFiltersBtn}
+              style={styles.clearAllTextBtn}
               onPress={() => {
                 lightTap();
                 setDateRange('all_time');
@@ -897,8 +972,12 @@ const TransactionsList: React.FC = () => {
                 setSearchQuery('');
                 setTypeFilter('all');
               }}
+              accessibilityRole="button"
+              accessibilityLabel={t.transactionList.clearAllFilters.toLowerCase()}
             >
-              <Text style={styles.clearFiltersBtnText}>{t.transactionList.clearAllFilters}</Text>
+              <Text style={styles.clearAllTextBtnLabel}>
+                {t.transactionList.clearAllFilters.toLowerCase()}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -913,7 +992,7 @@ const TransactionsList: React.FC = () => {
             disabled={selectedIds.size === 0}
             activeOpacity={0.7}
           >
-            <Feather name="trash-2" size={18} color="#fff" />
+            <Feather name="trash-2" size={18} color={C.surface} />
             <Text style={styles.bulkDeleteText}>
               {selectedIds.size > 0
                 ? (selectedIds.size > 1 ? t.transactionList.deleteItemsPlural : t.transactionList.deleteItems).replace('{n}', String(selectedIds.size))
@@ -939,6 +1018,8 @@ const TransactionsList: React.FC = () => {
               <TouchableOpacity
                 onPress={() => setFilterModalVisible(false)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityLabel={t.common.close.toLowerCase()}
+                accessibilityRole="button"
               >
                 <View style={styles.closeCircle}>
                   <Feather name="x" size={16} color={C.textSecondary} />
@@ -977,7 +1058,7 @@ const TransactionsList: React.FC = () => {
                     <Feather
                       name={(cat.icon as keyof typeof Feather.glyphMap) || 'tag'}
                       size={14}
-                      color={tempCategories.has(cat.id) ? '#fff' : cat.color || C.textSecondary}
+                      color={tempCategories.has(cat.id) ? C.surface : cat.color || C.textSecondary}
                     />
                     <Text style={[styles.filterOptionText, tempCategories.has(cat.id) && styles.filterOptionTextActive]}>
                       {cat.name}
@@ -1033,7 +1114,7 @@ const TransactionsList: React.FC = () => {
                       {s}
                     </Text>
                     {tempSortBy === s && (
-                      <Feather name={tempSortOrder === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color="#fff" />
+                      <Feather name={tempSortOrder === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={C.surface} />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -1054,165 +1135,32 @@ const TransactionsList: React.FC = () => {
       </Modal>
       )}
 
-      {/* ── Edit Modal (centered floating card) ─────────────────── */}
-      {editModalVisible && (
-      <Modal
-        visible
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={() => {
-          setEditModalVisible(false);
-          setEditingTransaction(null);
-        }}
-      >
-        <Pressable style={styles.editModalOverlay} onPress={() => { Keyboard.dismiss(); setEditModalVisible(false); setEditingTransaction(null); }}>
-          <View style={styles.editModalContent} onStartShouldSetResponder={() => true}>
-            <View style={styles.editModalHeader}>
-              <Text style={styles.editModalTitle}>{t.transaction.editTransaction.toLowerCase()}</Text>
-              <TouchableOpacity onPress={() => {
-                setEditModalVisible(false);
-                setEditingTransaction(null);
-              }}>
-                <View style={styles.closeCircle}>
-                  <Feather name="x" size={16} color={C.textSecondary} />
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING.lg, insets.bottom) }}>
-              <Text style={styles.editLabel}>type</Text>
-              <View style={[styles.typeContainer, editingTransaction?.linkedDebtId ? { opacity: 0.6 } : undefined]}>
-                <TouchableOpacity
-                  style={[
-                    styles.typeButton,
-                    editType === 'expense' && [styles.typeButtonActive, { backgroundColor: C.accent }],
-                    { borderColor: C.accent },
-                  ]}
-                  onPress={() => !editingTransaction?.linkedDebtId && handleEditTypeChange('expense')}
-                  activeOpacity={editingTransaction?.linkedDebtId ? 1 : 0.7}
-                >
-                  <Feather
-                    name="arrow-down-circle"
-                    size={18}
-                    color={editType === 'expense' ? '#FFFFFF' : C.accent}
-                  />
-                  <Text style={[styles.typeText, editType === 'expense' && styles.typeTextActive]}>
-                    {t.transaction.expense.toLowerCase()}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.typeButton,
-                    editType === 'income' && [styles.typeButtonActive, { backgroundColor: C.accent }],
-                    { borderColor: C.accent },
-                  ]}
-                  onPress={() => !editingTransaction?.linkedDebtId && handleEditTypeChange('income')}
-                  activeOpacity={editingTransaction?.linkedDebtId ? 1 : 0.7}
-                >
-                  <Feather
-                    name="arrow-up-circle"
-                    size={18}
-                    color={editType === 'income' ? '#FFFFFF' : C.accent}
-                  />
-                  <Text style={[styles.typeText, editType === 'income' && styles.typeTextActive]}>
-                    {t.transaction.income.toLowerCase()}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              {editingTransaction?.linkedDebtId && (
-                <View style={styles.typeLockedCaption}>
-                  <Feather name="lock" size={10} color={C.textMuted} />
-                  <Text style={styles.typeLockedCaptionText}>{t.transactionList.typeLocked}</Text>
-                </View>
-              )}
-
-              <Text style={styles.editLabel}>{t.transaction.amount.toLowerCase()}</Text>
-              <TextInput
-                style={styles.editInput}
-                value={editAmount}
-                onChangeText={setEditAmount}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                placeholderTextColor={C.textMuted}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              <CategoryPicker
-                categories={editCategories}
-                selectedId={editCategory}
-                onSelect={setEditCategory}
-                label={t.transaction.category.toLowerCase()}
-                layout="dropdown"
-              />
-
-              <WhyCategoryChip
-                description={editDescription}
-                category={editCategory}
-                cached={editingTransaction?.categoryExplanation}
-                onExplained={(text) => {
-                  if (editingTransaction) {
-                    updateTransaction(editingTransaction.id, { categoryExplanation: text });
-                  }
-                }}
-              />
-
-              <WalletPicker
-                wallets={wallets}
-                selectedId={editWalletId}
-                onSelect={setEditWalletId}
-                label={t.transaction.wallet.toLowerCase()}
-              />
-
-              <Text style={styles.editLabel}>{t.transaction.description.toLowerCase()}</Text>
-              <TextInput
-                style={styles.editInput}
-                value={editDescription}
-                onChangeText={setEditDescription}
-                placeholder={t.expense.whatWasThis.toLowerCase()}
-                placeholderTextColor={C.textMuted}
-              />
-
-              <Text style={styles.editLabel}>{t.expense.tagsOptional.toLowerCase()}</Text>
-              <TextInput
-                style={styles.editInput}
-                value={editTags}
-                onChangeText={setEditTags}
-                placeholder={t.expense.tagsPlaceholder}
-                placeholderTextColor={C.textMuted}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
-
-              {editingTransaction?.linkedDebtId && (
-                <View style={styles.linkedNotice}>
-                  <Feather name="link" size={12} color={C.bronze} />
-                  <Text style={styles.linkedNoticeText}>{t.transactionList.amountSyncsNotice}</Text>
-                </View>
-              )}
-
-              <View style={styles.modalActions}>
-                <Button
-                  title={t.common.delete.toLowerCase()}
-                  onPress={handleDeleteTransaction}
-                  variant="danger"
-                  icon="trash-2"
-                  style={styles.deleteButton}
-                />
-                <Button
-                  title={t.common.save.toLowerCase()}
-                  onPress={handleUpdateTransaction}
-                  icon="check"
-                  style={{ flex: 1 }}
-                />
-              </View>
-            </KeyboardAwareScrollView>
-          </View>
-        </Pressable>
-      </Modal>
-      )}
+      {/* ── Edit bottom-sheet (extracted) ─────────────────── */}
+      <EditTransactionSheet
+        visible={editModalVisible}
+        transaction={editingTransaction}
+        wallets={wallets}
+        expenseCategories={expenseCategories}
+        incomeCategories={incomeCategories}
+        currency={currency}
+        onRequestClose={() => { setEditModalVisible(false); setEditingTransaction(null); }}
+        onSave={handleUpdateTransaction}
+        onDelete={handleDeleteTransaction}
+        editAmount={editAmount}
+        setEditAmount={setEditAmount}
+        editDescription={editDescription}
+        setEditDescription={setEditDescription}
+        editCategory={editCategory}
+        setEditCategory={setEditCategory}
+        editType={editType}
+        onEditTypeChange={handleEditTypeChange}
+        editTags={editTags}
+        setEditTags={setEditTags}
+        editWalletId={editWalletId}
+        setEditWalletId={setEditWalletId}
+        editDate={editDate}
+        setEditDate={setEditDate}
+      />
     </View>
   );
 };
@@ -1223,155 +1171,133 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.background,
   },
 
-  // ── Search ───────────────────────────────────────────────────
+  // ── Header zone — quiet 1-line summary, no chrome ──────────
+  headerZone: {
+    paddingHorizontal: SPACING['2xl'],
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.md,
+  },
+  headerTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: -0.1,
+  },
+  headerTitleAmount: {
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.4,
+  },
+  headerTitlePeriod: {
+    fontStyle: 'italic',
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.textMuted,
+  },
+
+  // ── Search bar — quietened ───────────────────────────────────
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: withAlpha(C.textPrimary, 0.04),
     marginHorizontal: SPACING['2xl'],
-    marginTop: SPACING.md,
+    marginTop: SPACING.sm,
     paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.full, // pill, not rounded-rect
     gap: SPACING.sm,
   },
   searchInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.base,
+    fontSize: TYPOGRAPHY.size.sm,
     color: C.textPrimary,
-    paddingVertical: 12,
+    paddingVertical: SPACING.sm + 2, // 10
   },
 
-  // ── Filter row ───────────────────────────────────────────────
-  filterRow: {
+  // ── Filter pills — separate pills, dark active, light inactive (reference-matched) ──
+  filterPillsScroll: {
+    marginTop: SPACING.md,
+    flexGrow: 0,
+  },
+  filterPillsContent: {
+    paddingHorizontal: SPACING['2xl'],
+    gap: SPACING.sm,
+    paddingRight: SPACING['2xl'] + SPACING.md, // extra right padding for scroll fade
+  },
+  filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING['2xl'],
-    marginTop: SPACING.md,
-    gap: SPACING.sm,
-  },
-  filterChip: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md + 2, // 18
+    paddingVertical: SPACING.sm + 2,   // 10
     borderRadius: RADIUS.full,
-    backgroundColor: C.surface,
+    backgroundColor: withAlpha(C.textPrimary, 0.04),
   },
-  filterChipActive: {
-    backgroundColor: C.accent,
+  filterPillActive: {
+    backgroundColor: C.textPrimary,
   },
-  filterChipText: {
+  filterPillAdvActive: {
+    backgroundColor: withAlpha(C.accent, 0.10),
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.20),
+  },
+  filterPillText: {
     fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
+    letterSpacing: 0.1,
   },
-  filterChipTextActive: {
-    color: '#FFFFFF',
-  },
-  filterButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: C.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 'auto',
-  },
-  filterDot: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: C.accent,
-  },
-  summaryPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.accent, 0.08),
-  },
-  summaryText: {
-    fontSize: TYPOGRAPHY.size.xs,
+  filterPillTextActive: {
+    color: C.surface,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
-    fontVariant: ['tabular-nums'],
   },
 
-  // ── Active filter chips ──────────────────────────────────────
+  // ── Active filter chips (lighter, less chunky) ───────────────
   activeFiltersRow: {
     paddingHorizontal: SPACING['2xl'],
     paddingTop: SPACING.sm,
-    gap: SPACING.sm,
+    gap: SPACING.xs + 2,
   },
   activeFilterChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.xs / 2 + 2,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.accent, 0.08),
+    backgroundColor: withAlpha(C.accent, 0.06),
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.12),
   },
   activeFilterText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.accent,
-  },
-
-  // ── Totals bar ───────────────────────────────────────────────
-  totalsBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: SPACING['2xl'],
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-    padding: SPACING.md,
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  totalItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  totalLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-    marginBottom: 2,
-  },
-  totalValue: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    fontVariant: ['tabular-nums'],
-  },
-  totalDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 28,
-    backgroundColor: C.border,
+    letterSpacing: 0.1,
   },
 
   // ── Section headers ──────────────────────────────────────────
-  sectionHeader: {
+  // Calm Record section header — hairline | inline summary | hairline
+  // Vocabulary: Linear § 3 (1px hair lines, no chunky chrome) + Mercury § 2 (quiet typography).
+  sectionHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: SPACING['2xl'],
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.sm,
     backgroundColor: C.background,
+    gap: SPACING.sm,
   },
-  sectionHeaderText: {
-    fontSize: TYPOGRAPHY.size.sm,
+  sectionHeaderRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+  },
+  sectionHeaderInline: {
+    fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textMuted,
-  },
-  sectionHeaderNet: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
     fontVariant: ['tabular-nums'],
+    letterSpacing: 0.2, // small airy tracking for the muted summary
   },
 
   // ── List ─────────────────────────────────────────────────────
@@ -1385,268 +1311,207 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING['2xl'],
   },
-  clearFiltersBtn: {
-    marginTop: SPACING.md,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.accent, 0.08),
-  },
-  clearFiltersBtnText: {
-    fontSize: TYPOGRAPHY.size.sm,
+  // ── Empty state — typographic, no icon (avoids N6) ──────────
+  emptyHeadline: {
+    fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    textAlign: 'center',
+    marginBottom: SPACING.xs + 2,
+    letterSpacing: -0.2,
+  },
+  emptySubline: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    textAlign: 'center',
+    lineHeight: TYPOGRAPHY.size.sm * 1.6, // Mercury § 2 — generous body line-height
+    paddingHorizontal: SPACING.lg,
+  },
+  clearAllTextBtn: {
+    marginTop: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  clearAllTextBtnLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
     color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    letterSpacing: 0.1,
   },
 
-  // ── Select mode ──────────────────────────────────────────────
+  // ── Select mode — quieter pill chrome, no chunky borders ─
   selectHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING['2xl'],
-    paddingVertical: SPACING.md,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.md,
   },
   selectHeaderTitle: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: -0.2,
+    fontVariant: ['tabular-nums'],
   },
   selectHeaderBtn: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.accent, 0.08),
+    backgroundColor: withAlpha(C.textPrimary, 0.05),
   },
   selectHeaderBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.accent,
+    color: C.textPrimary,
+    letterSpacing: 0.1,
   },
   selectBottomBar: {
     paddingHorizontal: SPACING['2xl'],
     paddingTop: SPACING.md,
     backgroundColor: C.background,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: C.border,
+    // Soft top shadow instead of hard hairline border (cleaner)
+    shadowColor: C.textPrimary,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 4,
   },
+  // Bulk delete — no red. Neutral fill, semibold white text. Per N8.
   bulkDeleteBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: '#C1694F',
-    paddingVertical: 14,
-    borderRadius: RADIUS.lg,
+    backgroundColor: C.textPrimary, // dark fill — confidence without red
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
   },
   bulkDeleteText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.surface,
+    letterSpacing: 0.2,
   },
 
-  // ── Modal shared ─────────────────────────────────────────────
+  // ── Modal shared — softer backdrop alpha ───────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: withAlpha(C.textPrimary, 0.5),
+    backgroundColor: withAlpha(C.dimBg, 0.42),
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // ── Modal close — quieter, smaller circle with subtle tint ─
   closeCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: withAlpha(C.textMuted, 0.08),
+    width: 30,
+    height: 30,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, 0.05),
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  // ── Filter modal ─────────────────────────────────────────────
+  // ── Filter modal — pill cards inside, refined header, confident CTAs ─
   filterModalContent: {
-    width: '88%',
-    maxHeight: '80%',
+    width: '90%',
+    maxHeight: '82%',
     backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING['2xl'],
+    borderRadius: RADIUS['2xl'] ?? 24, // larger radius for the modal itself — pill-card feel
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.md,
+    ...SHADOWS.lg,
   },
   filterModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.md,
   },
   filterModalTitle: {
     fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: -0.4,
   },
   filterSectionLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textMuted,
     marginTop: SPACING.lg,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.sm + 2,
+    letterSpacing: 0.6, // airy tracking for label-like all-lowercase labels
+    textTransform: 'lowercase',
   },
   filterChipGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: SPACING.sm,
   },
+  // Option chips inside the filter modal — match the reference's pill pattern.
+  // Inactive: subtle tinted background. Active: dark fill (matches the All/Income/Expense pill on the screen).
   filterOptionChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 6,
+    paddingHorizontal: SPACING.md + 2,
+    paddingVertical: SPACING.sm + 2,
     borderRadius: RADIUS.full,
-    backgroundColor: C.background,
+    backgroundColor: withAlpha(C.textPrimary, 0.04),
   },
   filterOptionChipActive: {
-    backgroundColor: C.accent,
+    backgroundColor: C.textPrimary,
   },
   filterOptionText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
+    letterSpacing: 0.1,
   },
   filterOptionTextActive: {
-    color: '#fff',
+    color: C.surface,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
   filterModalActions: {
     flexDirection: 'row',
     gap: SPACING.md,
     marginTop: SPACING.lg,
+    paddingTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: C.border,
-    paddingTop: SPACING.lg,
+    borderTopColor: withAlpha(C.textPrimary, 0.06),
   },
+  // Clear button — quieter text-button style, not a filled pill (visual hierarchy: clear < apply)
   clearAllBtn: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: RADIUS.lg,
-    backgroundColor: C.background,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, 0.04),
   },
   clearAllText: {
-    fontSize: TYPOGRAPHY.size.base,
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
+    letterSpacing: 0.1,
   },
+  // Apply button — confident olive pill, the primary action.
   applyBtn: {
-    flex: 1,
+    flex: 1.4, // slightly bigger than clear — primary visual weight
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
     backgroundColor: C.accent,
   },
   applyText: {
-    fontSize: TYPOGRAPHY.size.base,
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.surface,
+    letterSpacing: 0.2,
   },
 
-  // ── Edit modal ───────────────────────────────────────────────
-  editModalOverlay: {
-    flex: 1,
-    backgroundColor: withAlpha(C.textPrimary, 0.5),
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  editModalContent: {
-    width: '90%',
-    maxHeight: '85%',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING['2xl'],
-  },
-  editModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  editModalTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-  },
-  editLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-    marginBottom: 4,
-    marginTop: SPACING.sm,
-  },
-  editInput: {
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: 12,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-  },
-  typeContainer: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-  },
-  typeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1.5,
-    backgroundColor: C.background,
-    gap: SPACING.sm,
-  },
-  typeButtonActive: {},
-  typeText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  typeTextActive: {
-    color: '#FFFFFF',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING.lg,
-  },
-  deleteButton: {
-    flex: 1,
-    borderColor: C.neutral,
-  },
-  typeLockedCaption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 6,
-    marginBottom: SPACING.sm,
-  },
-  typeLockedCaptionText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-  },
-  linkedNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: withAlpha(C.bronze, 0.08),
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 8,
-    marginTop: SPACING.sm,
-  },
-  linkedNoticeText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.bronze,
-    flex: 1,
-  },
 });
 
 export default TransactionsList;

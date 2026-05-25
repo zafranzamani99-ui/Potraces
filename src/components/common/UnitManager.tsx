@@ -18,7 +18,7 @@ import DraggableFlatList, {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useSellerStore } from '../../store/sellerStore';
 import { lightTap } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
@@ -37,6 +37,7 @@ interface UnitItem {
 
 const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { showToast } = useToast();
   const customUnits = useSellerStore((s) => s.customUnits);
@@ -283,6 +284,8 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
                 autoFocus
                 autoCapitalize="none"
                 onSubmitEditing={handleSave}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
             </View>
 
@@ -485,7 +488,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 });
 

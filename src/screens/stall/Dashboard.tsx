@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,17 +6,19 @@ import {
   TouchableOpacity,
   Animated,
   Easing,
+  RefreshControl,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallHistory } from '../../utils/explainStallHistory';
 import ModeToggle from '../../components/common/ModeToggle';
+import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
 
 // ─── Animation helper ────────────────────────────────────────
 function useFadeSlide(delay: number) {
@@ -60,6 +62,16 @@ const StallDashboard: React.FC = () => {
 
   const activeSession = getActiveSession();
   const hasActiveSession = !!activeSession;
+
+  // Pull-to-refresh — no-op revalidation (touches stallStore to re-derive)
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    // No-op: re-reading from store via getActiveSession + getLifetimeStats triggers re-render.
+    getActiveSession();
+    getLifetimeStats();
+    setTimeout(() => setRefreshing(false), 400);
+  }, [getActiveSession, getLifetimeStats]);
 
   // Pulsing dot animation
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -121,6 +133,13 @@ const StallDashboard: React.FC = () => {
           style={styles.scrollView}
           contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={C.bronze}
+            />
+          }
         >
           <ModeToggle />
           {/* Selling now indicator */}
@@ -136,15 +155,14 @@ const StallDashboard: React.FC = () => {
             <Text style={styles.sessionName}>{activeSession.name}</Text>
           ) : null}
 
-          {/* Running total — bronze-tinted card */}
+          {/* Running total — canonical hero number */}
           <View style={styles.runningTotalCard}>
-            <Text style={styles.runningTotalLabel}>TOTAL</Text>
-            <Text
-              style={styles.runningTotal}
-              accessibilityLabel={`Total revenue ${currency} ${activeSession.totalRevenue.toFixed(2)}`}
-            >
-              {currency} {activeSession.totalRevenue.toFixed(0)}
-            </Text>
+            <BusinessHeroNumber
+              amount={activeSession.totalRevenue}
+              label="came in this session"
+              prefix={currency}
+              animated={false}
+            />
 
             {/* Cash / QR pills */}
             <View style={styles.pillRow}>
@@ -215,6 +233,13 @@ const StallDashboard: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={C.bronze}
+          />
+        }
       >
         <ModeToggle />
         {/* Heading */}
@@ -232,7 +257,7 @@ const StallDashboard: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Start a new selling session"
           >
-            <Feather name="play" size={20} color="#FFFFFF" />
+            <Feather name="play" size={20} color={C.onAccent} />
             <Text style={styles.startButtonText}>start selling</Text>
           </TouchableOpacity>
         </Animated.View>
@@ -257,11 +282,11 @@ const StallDashboard: React.FC = () => {
                 </View>
                 <Text
                   style={styles.lifetimeNumber}
-                  accessibilityLabel={`Total revenue ${currency} ${lifetimeStats.totalRevenue.toFixed(2)}`}
+                  accessibilityLabel={`Total came in ${currency} ${lifetimeStats.totalRevenue.toFixed(2)}`}
                 >
                   {currency} {lifetimeStats.totalRevenue.toFixed(0)}
                 </Text>
-                <Text style={styles.lifetimeLabel}>total revenue</Text>
+                <Text style={styles.lifetimeLabel}>lifetime came in</Text>
               </View>
               <View style={styles.lifetimeStat}>
                 <View style={[styles.statIcon, { backgroundColor: withAlpha(C.gold, 0.12) }]}>
@@ -269,7 +294,7 @@ const StallDashboard: React.FC = () => {
                 </View>
                 <Text
                   style={styles.lifetimeNumber}
-                  accessibilityLabel={`Average per session ${currency} ${lifetimeStats.avgPerSession.toFixed(2)}`}
+                  accessibilityLabel={`Average came in per session ${currency} ${lifetimeStats.avgPerSession.toFixed(2)}`}
                 >
                   {currency} {lifetimeStats.avgPerSession.toFixed(0)}
                 </Text>
@@ -314,6 +339,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['4xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // ─── State A: No active session ─────────────────────────────
@@ -321,6 +349,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
     marginBottom: SPACING.xs,
   },
   headingSubtitle: {
@@ -342,7 +371,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   startButtonText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   lifetimeSection: {
     marginBottom: SPACING.xl,
@@ -377,6 +406,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
     marginBottom: SPACING.xs,
   },
   lifetimeLabel: {

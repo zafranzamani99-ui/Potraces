@@ -1,12 +1,29 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
-import { CALM, TYPE, SPACING, TYPOGRAPHY } from '../../constants';
+import { Text, StyleSheet, Animated } from 'react-native';
+import { CALM, TYPE, SPACING } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 
+/**
+ * Canonical hero-number primitive for ALL 7 dashboards
+ * (personal, seller, stall, business parent, freelancer, mixed,
+ * on-the-road, part-time).
+ *
+ * Always uses `...TYPE.amount` (full spread → preserves
+ * `fontVariant: ['tabular-nums']`) so digits never jiggle.
+ *
+ * Props:
+ *  - amount    : the number to display (will be Math.round'd for ticker)
+ *  - label     : sub-label below the number (e.g. "kept this month")
+ *  - sublabel? : optional second line under the label
+ *  - prefix?   : currency / symbol shown before the number ("RM" default)
+ *  - currency? : alias of `prefix` (back-compat)
+ *  - animated? : count-up animation, default true
+ */
 interface BusinessHeroNumberProps {
   amount: number;
   label: string;
   sublabel?: string;
+  prefix?: string;
   currency?: string;
   animated?: boolean;
 }
@@ -15,21 +32,23 @@ const BusinessHeroNumber: React.FC<BusinessHeroNumberProps> = ({
   amount,
   label,
   sublabel,
-  currency = 'RM',
+  prefix,
+  currency,
   animated = true,
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
+  // prefix is the canonical name; currency kept for back-compat
+  const symbol = prefix ?? currency ?? 'RM';
   const animatedValue = useRef(new Animated.Value(0)).current;
   const opacityValue = useRef(new Animated.Value(animated ? 0 : 1)).current;
-  const displayAmount = useRef(0);
   const [displayText, setDisplayText] = React.useState(
-    animated ? `${currency} 0` : `${currency} ${Math.round(amount).toLocaleString()}`
+    animated ? `${symbol} 0` : `${symbol} ${Math.round(amount).toLocaleString()}`
   );
 
   useEffect(() => {
     if (!animated) {
-      setDisplayText(`${currency} ${Math.round(amount).toLocaleString()}`);
+      setDisplayText(`${symbol} ${Math.round(amount).toLocaleString()}`);
       return;
     }
 
@@ -49,8 +68,7 @@ const BusinessHeroNumber: React.FC<BusinessHeroNumberProps> = ({
     });
 
     const listenerId = animatedValue.addListener(({ value }) => {
-      displayAmount.current = value;
-      setDisplayText(`${currency} ${Math.round(value).toLocaleString()}`);
+      setDisplayText(`${symbol} ${Math.round(value).toLocaleString()}`);
     });
 
     Animated.parallel([fadeAnim, countAnim]).start();
@@ -58,11 +76,11 @@ const BusinessHeroNumber: React.FC<BusinessHeroNumberProps> = ({
     return () => {
       animatedValue.removeListener(listenerId);
     };
-  }, [amount, currency, animated]);
+  }, [amount, symbol, animated]);
 
   return (
     <Animated.View style={[styles.container, { opacity: opacityValue }]}>
-      <Text style={styles.amount} accessibilityLabel={`${currency} ${Math.round(amount)}`}>
+      <Text style={styles.amount} accessibilityLabel={`${symbol} ${Math.round(amount)}`}>
         {displayText}
       </Text>
       <Text style={styles.label}>{label}</Text>
@@ -76,7 +94,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
   },
   amount: {
-    ...TYPE.balance,
+    // Full spread of TYPE.amount preserves fontVariant: ['tabular-nums']
+    // so the count-up animation doesn't shift the layout each tick.
+    ...TYPE.amount,
     color: C.textPrimary,
     textAlign: 'center',
   },

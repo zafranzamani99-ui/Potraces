@@ -14,7 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { format, differenceInDays, differenceInHours } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useToast } from '../../context/ToastContext';
@@ -323,7 +323,7 @@ const PastSeasons: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Start your first season"
             >
-              <Feather name="plus" size={18} color="#fff" />
+              <Feather name="plus" size={18} color={C.onAccent} />
               <Text style={styles.emptyCTAText}>{t.seller.startFirstSeason}</Text>
             </TouchableOpacity>
           </View>
@@ -344,7 +344,7 @@ const PastSeasons: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Start new season"
           >
-            <Feather name="plus" size={20} color="#fff" />
+            <Feather name="plus" size={20} color={C.onAccent} />
             <Text style={styles.addButtonText}>{t.seller.startNewSeason}</Text>
           </TouchableOpacity>
         </View>
@@ -362,6 +362,8 @@ const PastSeasons: React.FC = () => {
                 placeholder={t.seller.newSeasonPlaceholder}
                 placeholderTextColor={C.textSecondary}
                 autoFocus
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
               {pastSeasons.length > 0 && (
                 <View style={styles.templateSection}>
@@ -431,6 +433,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],     // 24pt horizontal
     paddingTop: SPACING.lg,                // 16pt top
     paddingBottom: SPACING['3xl'],         // 32pt bottom (room for add button)
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   listContentEmpty: {
     flex: 1,
@@ -546,7 +551,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   activeBadgeText: {
     fontSize: 11,
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: '#fff',
+    color: C.onAccent,
     textTransform: 'uppercase',
   },
   pulsingDot: {
@@ -598,17 +603,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
     alignSelf: 'stretch',
     marginTop: SPACING.sm,
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   emptyCTAText: {
     fontSize: TYPOGRAPHY.size.base,        // 15
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // -- Bottom-anchored add button -----------------------------------
@@ -621,15 +626,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.lg,
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   addButtonText: {
     fontSize: TYPOGRAPHY.size.base,        // 15
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // -- Modal --------------------------------------------------------
@@ -645,6 +650,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.lg,               // 14
     padding: SPACING.xl,                   // 24pt
     width: '100%',
+    maxWidth: 420,
     gap: SPACING.lg,                       // 16pt
   },
   modalTitle: {
@@ -679,7 +685,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalConfirm: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     borderRadius: RADIUS.xl,
     minHeight: 44,
     justifyContent: 'center',
@@ -687,7 +693,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalConfirmText: {
     fontSize: TYPOGRAPHY.size.sm,          // 13
     fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: '#fff',
+    color: C.onAccent,
   },
   templateSection: {
     gap: SPACING.xs,

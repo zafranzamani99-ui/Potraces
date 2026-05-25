@@ -12,12 +12,13 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 
 const StallProducts: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { products, addProduct, updateProduct, deleteProduct } = useStallStore();
@@ -98,6 +99,8 @@ const StallProducts: React.FC = () => {
               placeholderTextColor={C.neutral}
               autoFocus
               accessibilityLabel="Product name"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
             <View style={styles.priceRow}>
               <Text style={styles.priceCurrency}>{currency}</Text>
@@ -109,6 +112,8 @@ const StallProducts: React.FC = () => {
                 placeholderTextColor={C.neutral}
                 keyboardType="decimal-pad"
                 accessibilityLabel="Product price"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
             </View>
             <View style={styles.formActions}>
@@ -149,7 +154,7 @@ const StallProducts: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Add a new product"
           >
-            <Feather name="plus" size={18} color="#FFFFFF" />
+            <Feather name="plus" size={18} color={C.onAccent} />
             <Text style={styles.addButtonText}>{t.stall.addProduct}</Text>
           </TouchableOpacity>
         )}
@@ -236,11 +241,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['4xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   heading: {
     fontSize: TYPOGRAPHY.size['3xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
     marginBottom: SPACING.xs,
   },
   subheading: {
@@ -299,7 +308,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   cancelLink: {
     minHeight: 44,
@@ -327,7 +336,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   addButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
 
   // ─── Product list ──────────────────────────────────────────

@@ -9,20 +9,21 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import CalendarPicker from '../../../components/common/CalendarPicker';
 import { format } from 'date-fns';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CostCategory } from '../../../types';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, successNotification } from '../../../services/haptics';
 
 const AddCost: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const CATEGORIES: { type: CostCategory; emoji: string; label: string; placeholder: string }[] = [
     { type: 'petrol', emoji: '\u26FD', label: t.mixed.catPetrol, placeholder: t.mixed.costNotePetrol },
@@ -168,6 +169,8 @@ const AddCost: React.FC = () => {
                 placeholder={t.mixed.whatKindOfCost}
                 placeholderTextColor={C.textMuted}
                 returnKeyType="next"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
             )}
 
@@ -184,6 +187,8 @@ const AddCost: React.FC = () => {
                 keyboardType="decimal-pad"
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
             </View>
 
@@ -201,16 +206,15 @@ const AddCost: React.FC = () => {
             </TouchableOpacity>
 
             {showDatePicker && (
-              <DateTimePicker
-                value={date}
-                mode="date"
-                display="spinner"
-                onChange={(_, selectedDate) => {
-                  if (selectedDate) setDate(selectedDate);
-                  setShowDatePicker(false);
-                }}
-                maximumDate={new Date()}
-              />
+              <View style={styles.calendarWrapper}>
+                <CalendarPicker
+                  value={date}
+                  onChange={(selectedDate) => {
+                    setDate(selectedDate);
+                    setShowDatePicker(false);
+                  }}
+                />
+              </View>
             )}
 
             {/* Note */}
@@ -224,6 +228,8 @@ const AddCost: React.FC = () => {
                 placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
             </View>
 
@@ -264,6 +270,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['5xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   heading: {
@@ -375,6 +384,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
   },
 
+  calendarWrapper: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+
   noteRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -404,7 +422,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   saveButtonTextDisabled: {
     color: C.textMuted,

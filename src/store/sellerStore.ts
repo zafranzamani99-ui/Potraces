@@ -1,7 +1,19 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SellerState, OrderStatus, SellerOrder, SellerOrderItem, SellerPaymentMethod, RecurringFrequency, DepositEntry } from '../types';
+import { SellerState, OrderStatus, SellerOrder, SellerOrderItem, SellerPaymentMethod, RecurringFrequency, DepositEntry, SellerCostCategory } from '../types';
+import { DEFAULT_COST_CATEGORIES } from '../constants';
+import { newId } from '../utils/id';
+
+const UNCATEGORIZED_COST_CATEGORY: SellerCostCategory = {
+  id: 'costcat_uncategorized',
+  name: 'Uncategorized',
+  nameBm: 'Tiada kategori',
+  icon: 'help-circle',
+  color: '#6B7596',
+  isDefault: false,
+  sortOrder: 999,
+};
 
 // Generate a unique 5-char order code: 2 random uppercase letters + 3 random digits
 function generateOrderCode(existingOrders: SellerOrder[]): string {
@@ -37,15 +49,21 @@ export const useSellerStore = create<SellerState>()(
       customUnits: [],
       hiddenUnits: [],
       unitOrder: [],
+      productCategories: [],
       costTemplates: [],
       recurringCosts: [],
       productOrder: [],
+      stockAdjustments: [],
+      costCategories: DEFAULT_COST_CATEGORIES,
+      costCategoriesSeeded: true,
       seenOnlineOrderIds: [],
       skippedOnboardingSteps: [],
       _deletedProductIds: [],
       _deletedOrderIds: [],
       _deletedSeasonIds: [],
       _deletedCustomerIds: [],
+      _deletedCostIds: [],
+      _deletedCostCategoryIds: [],
 
       // ─── Products ───────────────────────────────────────
       addProduct: (product) =>
@@ -313,7 +331,7 @@ export const useSellerStore = create<SellerState>()(
           seasons: [
             {
               ...season,
-              id: Date.now().toString(),
+              id: newId(),
               createdAt: new Date(),
             },
             ...state.seasons,
@@ -441,6 +459,7 @@ export const useSellerStore = create<SellerState>()(
       deleteIngredientCost: (id) =>
         set((state) => ({
           ingredientCosts: state.ingredientCosts.filter((c) => c.id !== id),
+          _deletedCostIds: [...state._deletedCostIds, id],
         })),
 
       markCostSynced: (id, personalTransactionId) =>
@@ -451,6 +470,86 @@ export const useSellerStore = create<SellerState>()(
               : c
           ),
         })),
+
+      // ─── Cost Categories ───────────────────────────────
+      addCostCategory: (cat) =>
+        set((state) => {
+          const id = `costcat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+          const maxOrder = state.costCategories.reduce((m, c) => Math.max(m, c.sortOrder), -1);
+          return {
+            costCategories: [
+              ...state.costCategories,
+              { ...cat, id, isDefault: false, sortOrder: maxOrder + 1 },
+            ],
+          };
+        }),
+
+      updateCostCategory: (id, updates) =>
+        set((state) => ({
+          costCategories: state.costCategories.map((c) =>
+            c.id === id ? { ...c, ...updates, id: c.id } : c
+          ),
+        })),
+
+      deleteCostCategory: (id) =>
+        set((state) => {
+          const target = state.costCategories.find((c) => c.id === id);
+          if (!target || target.isProtected) return {};
+          const sink = 'costcat_other';
+          return {
+            costCategories: state.costCategories.filter((c) => c.id !== id),
+            _deletedCostCategoryIds: [...state._deletedCostCategoryIds, id],
+            // Reassign anything pointing at the deleted category to the protected "Other" sink
+            ingredientCosts: state.ingredientCosts.map((c) =>
+              c.category === id ? { ...c, category: sink } : c
+            ),
+            costTemplates: state.costTemplates.map((t) =>
+              t.category === id ? { ...t, category: sink } : t
+            ),
+            recurringCosts: state.recurringCosts.map((r) =>
+              r.category === id ? { ...r, category: sink } : r
+            ),
+          };
+        }),
+
+      reorderCostCategories: (ids) =>
+        set((state) => {
+          const byId = new Map(state.costCategories.map((c) => [c.id, c]));
+          const reordered = ids
+            .map((cid, i) => {
+              const c = byId.get(cid);
+              return c ? { ...c, sortOrder: i } : null;
+            })
+            .filter((c): c is SellerCostCategory => c !== null);
+          // Append any categories missing from `ids` (safety)
+          const seen = new Set(ids);
+          const leftover = state.costCategories.filter((c) => !seen.has(c.id));
+          return { costCategories: [...reordered, ...leftover] };
+        }),
+
+      getCostCategory: (id) => {
+        if (!id) return UNCATEGORIZED_COST_CATEGORY;
+        return get().costCategories.find((c) => c.id === id) ?? UNCATEGORIZED_COST_CATEGORY;
+      },
+
+      // ─── Stock Adjustments ─────────────────────────────────
+      addStockAdjustment: (adj) => {
+        const id = Date.now().toString();
+        set((state) => {
+          const product = state.products.find((p) => p.id === adj.productId);
+          const currentStock = product?.stockQuantity ?? 0;
+          const actualDelta = adj.delta < 0 ? Math.max(adj.delta, -currentStock) : adj.delta;
+          const newStock = currentStock + actualDelta;
+          return {
+            stockAdjustments: [{ ...adj, delta: actualDelta, id }, ...state.stockAdjustments],
+            products: state.products.map((p) =>
+              p.id === adj.productId
+                ? { ...p, stockQuantity: newStock, updatedAt: new Date() }
+                : p
+            ),
+          };
+        });
+      },
 
       // ─── Order Link Orders ───────────────────────────────
       addOrderLinkOrder: (row: Record<string, unknown>) =>
@@ -582,6 +681,27 @@ export const useSellerStore = create<SellerState>()(
 
       setUnitOrder: (order) => set({ unitOrder: order }),
 
+      // ─── Product Categories ─────────────────────────────
+      addProductCategory: (cat: string) =>
+        set((state) => {
+          const normalized = cat.trim().toLowerCase();
+          if (!normalized || state.productCategories.includes(normalized)) return state;
+          return { productCategories: [...state.productCategories, normalized] };
+        }),
+      deleteProductCategory: (cat: string) =>
+        set((state) => ({
+          productCategories: state.productCategories.filter((c: string) => c !== cat),
+        })),
+      renameProductCategory: (oldName: string, newName: string) =>
+        set((state) => {
+          const normalized = newName.trim().toLowerCase();
+          if (!normalized || normalized === oldName) return state;
+          return {
+            productCategories: state.productCategories.map((c: string) => (c === oldName ? normalized : c)),
+            products: state.products.map((p: any) => p.category === oldName ? { ...p, category: normalized, updatedAt: new Date() } : p),
+          };
+        }),
+
       // ─── Product Ordering ──────────────────────────────
       setProductOrder: (ids) => set({ productOrder: ids }),
 
@@ -652,6 +772,7 @@ export const useSellerStore = create<SellerState>()(
               date: new Date(),
               seasonId: seasonId ?? recurring.seasonId,
               syncedToPersonal: false,
+              category: recurring.category,
             },
             ...state.ingredientCosts,
           ],
@@ -737,6 +858,7 @@ export const useSellerStore = create<SellerState>()(
         customUnits: state.customUnits,
         hiddenUnits: state.hiddenUnits,
         unitOrder: state.unitOrder,
+        productCategories: state.productCategories,
         costTemplates: state.costTemplates,
         recurringCosts: state.recurringCosts.map((r) => ({
           ...r,
@@ -744,12 +866,20 @@ export const useSellerStore = create<SellerState>()(
           createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
         })),
         productOrder: state.productOrder,
+        stockAdjustments: (state.stockAdjustments || []).map((a) => ({
+          ...a,
+          date: a.date instanceof Date ? a.date.toISOString() : a.date,
+        })),
+        costCategories: state.costCategories,
+        costCategoriesSeeded: state.costCategoriesSeeded,
         seenOnlineOrderIds: state.seenOnlineOrderIds,
         skippedOnboardingSteps: state.skippedOnboardingSteps,
         _deletedProductIds: state._deletedProductIds,
         _deletedOrderIds: state._deletedOrderIds,
         _deletedSeasonIds: state._deletedSeasonIds,
         _deletedCustomerIds: state._deletedCustomerIds,
+        _deletedCostIds: state._deletedCostIds,
+        _deletedCostCategoryIds: state._deletedCostCategoryIds,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -807,6 +937,7 @@ export const useSellerStore = create<SellerState>()(
           state.customUnits = state.customUnits || [];
           state.hiddenUnits = state.hiddenUnits || [];
           state.unitOrder = state.unitOrder || [];
+          state.productCategories = state.productCategories || [];
           state.costTemplates = state.costTemplates || [];
           state.recurringCosts = (state.recurringCosts || []).map((r: any) => ({
             ...r,
@@ -814,12 +945,25 @@ export const useSellerStore = create<SellerState>()(
             createdAt: sd(r.createdAt),
           }));
           state.productOrder = state.productOrder || [];
+          state.stockAdjustments = (state.stockAdjustments || []).map((a: any) => ({
+            ...a,
+            date: sd(a.date),
+          }));
           state.seenOnlineOrderIds = state.seenOnlineOrderIds || [];
           state.skippedOnboardingSteps = state.skippedOnboardingSteps || [];
           state._deletedProductIds = state._deletedProductIds || [];
           state._deletedOrderIds = state._deletedOrderIds || [];
           state._deletedSeasonIds = state._deletedSeasonIds || [];
           state._deletedCustomerIds = state._deletedCustomerIds || [];
+          state._deletedCostIds = state._deletedCostIds || [];
+          state._deletedCostCategoryIds = state._deletedCostCategoryIds || [];
+          // Seed default cost categories once. The seeded flag prevents re-seeding
+          // a default the user later deleted (sync re-seed protection lives in sellerSync).
+          state.costCategories = state.costCategories || [];
+          if (!state.costCategoriesSeeded && state.costCategories.length === 0) {
+            state.costCategories = DEFAULT_COST_CATEGORIES;
+            state.costCategoriesSeeded = true;
+          }
           // Backfill paidAmount for existing orders
           state.orders = state.orders.map((o: any) => ({
             ...o,

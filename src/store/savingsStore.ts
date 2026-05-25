@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SavingsState, SavingsSortBy, SnapshotType } from '../types';
+import { newId } from '../utils/id';
 
 export const useSavingsStore = create<SavingsState>()(
   persist(
@@ -16,7 +17,7 @@ export const useSavingsStore = create<SavingsState>()(
 
       addAccount: (account) =>
         set((state) => {
-          const id = Date.now().toString();
+          const id = newId();
           return {
             accounts: [
               {
@@ -24,7 +25,7 @@ export const useSavingsStore = create<SavingsState>()(
                 id,
                 history: [
                   {
-                    id: `${Date.now()}-init`,
+                    id: newId(),
                     value: account.currentValue,
                     note: 'Initial value',
                     date: new Date(),
@@ -63,7 +64,7 @@ export const useSavingsStore = create<SavingsState>()(
                   history: [
                     ...a.history,
                     {
-                      id: Date.now().toString(),
+                      id: newId(),
                       value,
                       note,
                       date: new Date(),

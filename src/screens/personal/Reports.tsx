@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Dimensions, InteractionManager } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, Dimensions, InteractionManager, RefreshControl } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { PieChart, LineChart } from 'react-native-chart-kit';
 import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
@@ -49,7 +49,7 @@ const PersonalReports: React.FC = () => {
           amount,
           color: cat?.color || C.accent,           // keep chart data colors
           legendFontColor: C.textPrimary,
-          legendFontSize: 12,
+          legendFontSize: TYPOGRAPHY.size.xs,
         };
       })
       .sort((a, b) => b.amount - a.amount)
@@ -97,9 +97,9 @@ const PersonalReports: React.FC = () => {
           strokeWidth: 2,
         },
       ],
-      legend: ['Income', 'Expenses'],
+      legend: [t.reports.legendIn, t.reports.legendOut],
     };
-  }, [transactions, C]);
+  }, [transactions, C, t]);
 
   // Report narrative
   const reportNarratives = useAIInsightsStore((s) => s.reportNarratives);
@@ -172,9 +172,17 @@ const PersonalReports: React.FC = () => {
   }, [subscriptions]);
 
   const [ready, setReady] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => setReady(true));
     return () => task.cancel();
+  }, []);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    // Memoised computations re-run when transactions change; this gesture
+    // gives the user a tactile "I just refreshed" affordance.
+    InteractionManager.runAfterInteractions(() => setRefreshing(false));
   }, []);
 
   if (!ready) {
@@ -204,9 +212,17 @@ const PersonalReports: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={C.accent}
+            colors={[C.accent]}
+          />
+        }
       >
         {narrativeEntry?.text ? (
-          <Text style={[{ ...TYPE.narrative }, { color: C.textSecondary, marginBottom: SPACING.md }]}>
+          <Text style={styles.narrative}>
             {narrativeEntry.text}
           </Text>
         ) : null}
@@ -215,7 +231,7 @@ const PersonalReports: React.FC = () => {
           <Text style={styles.chartTitle}>{t.reports.inVsOut}</Text>
           <LineChart
             data={trendData}
-            width={screenWidth - 64}
+            width={screenWidth - SPACING['2xl'] * 2 - SPACING['2xl']}
             height={220}
             chartConfig={{
               backgroundColor: C.surface,
@@ -225,7 +241,7 @@ const PersonalReports: React.FC = () => {
               color: (opacity = 1) => withAlpha(C.accent, opacity),
               labelColor: (opacity = 1) => withAlpha(C.textSecondary, opacity),
               style: {
-                borderRadius: 16,
+                borderRadius: RADIUS.lg,
               },
               propsForDots: {
                 r: '4',
@@ -242,14 +258,14 @@ const PersonalReports: React.FC = () => {
             <Text style={styles.chartTitle}>{t.reports.whereItWent}</Text>
             <PieChart
               data={categoryData}
-              width={screenWidth - 64}
+              width={screenWidth - SPACING['2xl'] * 2 - SPACING['2xl']}
               height={220}
               chartConfig={{
-                color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                color: (opacity = 1) => withAlpha(C.textPrimary, opacity),
               }}
               accessor="amount"
               backgroundColor="transparent"
-              paddingLeft="15"
+              paddingLeft={String(SPACING.md)}
               absolute
               hasLegend={true}
             />
@@ -302,6 +318,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING['2xl'],
   },
 
+  // Narrative copy above the first chart
+  narrative: {
+    ...TYPE.narrative,
+    color: C.textSecondary,
+    marginBottom: SPACING.md,
+  },
+
   // Charts
   chartTitle: {
     fontSize: TYPOGRAPHY.size.lg,
@@ -325,15 +348,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   statDivider: {
     width: 1,
-    height: 40,
+    height: SPACING['4xl'],
     backgroundColor: C.border,
     marginHorizontal: SPACING.lg,
   },
   statValue: {
     fontSize: TYPOGRAPHY.size['3xl'],
-    fontWeight: '300',
+    fontWeight: TYPOGRAPHY.weight.light,
     color: C.textPrimary,
     marginBottom: SPACING.xs,
+    fontVariant: ['tabular-nums'],
   },
   statLabel: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -353,21 +377,25 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   categoryInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+    paddingRight: SPACING.md,
   },
   colorDot: {
     width: 12,
     height: 12,
-    borderRadius: RADIUS.sm,
+    borderRadius: RADIUS.full,
     marginRight: SPACING.md,
   },
   categoryName: {
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
+    flexShrink: 1,
   },
   categoryAmount: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
   },
 });
 

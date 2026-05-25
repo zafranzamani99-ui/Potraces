@@ -22,8 +22,8 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { lightTap } from '../../services/haptics';
 import { sendChatMessage } from '../../services/moneyChat';
 import type { AIMessage } from '../../types';
@@ -86,6 +86,7 @@ const EchoInlineChat: React.FC<Props> = ({
   autoPrompt,
 }) => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { height: SCREEN_H } = useWindowDimensions();
 
@@ -260,7 +261,7 @@ const EchoInlineChat: React.FC<Props> = ({
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <View style={styles.headerIcon}>
-                  <Feather name="zap" size={14} color="#fff" />
+                  <Feather name="zap" size={14} color={C.onAccent} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.eyebrow}>echo</Text>
@@ -346,6 +347,8 @@ const EchoInlineChat: React.FC<Props> = ({
                 multiline
                 maxLength={500}
                 editable={!sending}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
               <TouchableOpacity
                 style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
@@ -356,9 +359,9 @@ const EchoInlineChat: React.FC<Props> = ({
                 accessibilityLabel="Send message"
               >
                 {sending ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <ActivityIndicator size="small" color={C.onAccent} />
                 ) : (
-                  <Feather name="arrow-up" size={18} color="#fff" />
+                  <Feather name="arrow-up" size={18} color={C.onAccent} />
                 )}
               </TouchableOpacity>
             </View>
@@ -385,7 +388,7 @@ const makeStyles = (C: typeof CALM) =>
       borderTopRightRadius: RADIUS.xl,
       paddingHorizontal: SPACING.xl,
       overflow: 'hidden',
-      ...SHADOWS.lg,
+      ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
     },
     handleArea: {
       alignItems: 'center',
@@ -489,7 +492,7 @@ const makeStyles = (C: typeof CALM) =>
       lineHeight: 20,
     },
     bubbleTextUser: {
-      color: '#fff',
+      color: C.onAccent,
     },
     chipsWrap: {
       marginTop: SPACING.sm,

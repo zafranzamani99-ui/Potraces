@@ -1,19 +1,31 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBusinessStore } from '../../store/businessStore';
 import { useAppStore } from '../../store/appStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { IncomeType } from '../../types';
+import { lightTap } from '../../services/haptics';
+
+const TILE_ICONS: Record<IncomeType, keyof typeof Feather.glyphMap> = {
+  seller: 'shopping-bag',
+  stall: 'map-pin',
+  freelance: 'pen-tool',
+  parttime: 'clock',
+  rider: 'navigation',
+  mixed: 'layers',
+};
 
 const Setup: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const [selected, setSelected] = useState<IncomeType | null>(null);
+  const insets = useSafeAreaInsets();
 
   const TILES: { type: IncomeType; label: string; sublabel: string }[] = [
     { type: 'seller', label: t.business.setupSellerLabel, sublabel: t.business.setupSellerSub },
@@ -21,70 +33,86 @@ const Setup: React.FC = () => {
     { type: 'freelance', label: t.business.setupFreelanceLabel, sublabel: t.business.setupFreelanceSub },
     { type: 'parttime', label: t.business.setupParttimeLabel, sublabel: t.business.setupParttimeSub },
     { type: 'rider', label: t.business.setupRiderLabel, sublabel: t.business.setupRiderSub },
+    { type: 'mixed', label: t.business.setupMixedLabel, sublabel: t.business.setupMixedSub },
   ];
-  const insets = useSafeAreaInsets();
-  // Translations moved above to use `t`
 
   const handleConfirm = () => {
     if (!selected) return;
-    // Atomic update — AuthGatedBusiness will re-render and show BusinessNavigator
     useBusinessStore.setState({ incomeType: selected, businessSetupComplete: true });
   };
 
   const handleBackToPersonal = () => {
-    // Just switch mode — RootNavigator's conditional rendering handles the rest
-    // BusinessMain is replaced by PersonalMain, this screen unmounts automatically
     useAppStore.getState().setMode('personal');
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Back to personal */}
-      <TouchableOpacity
-        onPress={handleBackToPersonal}
-        style={styles.backBtn}
-        activeOpacity={0.7}
-      >
+      <Pressable onPress={handleBackToPersonal} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
         <Feather name="arrow-left" size={22} color={C.textPrimary} />
-      </TouchableOpacity>
+      </Pressable>
 
-      <View style={styles.content}>
-        <Text style={styles.heading}>{t.business.setupHeading}</Text>
-
-        <View style={styles.grid}>
-          {TILES.map((tile) => (
-            <TouchableOpacity
-              key={tile.type}
-              style={[styles.tile, selected === tile.type && styles.tileSelected]}
-              onPress={() => setSelected(tile.type)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.tileLabel}>{tile.label}</Text>
-              <Text style={styles.tileSublabel}>{tile.sublabel}</Text>
-            </TouchableOpacity>
-          ))}
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(SPACING.xl, insets.bottom + SPACING.md) }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <View style={styles.iconCircle}>
+            <Feather name="compass" size={26} color={C.accent} />
+          </View>
+          <Text style={styles.title}>
+            how does money{'\n'}
+            <Text style={styles.titleAccent}>come to you</Text>?
+          </Text>
+          <Text style={styles.subtitle}>pick what fits best — you can change later</Text>
         </View>
 
-        <TouchableOpacity
-          style={[styles.tile, styles.fullWidthTile, selected === 'mixed' && styles.tileSelected]}
-          onPress={() => setSelected('mixed')}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.tileLabel}>{t.business.setupMixedLabel}</Text>
-          <Text style={styles.tileSublabel}>{t.business.setupMixedSub}</Text>
-        </TouchableOpacity>
+        <View style={styles.tileList}>
+          {TILES.map((tile) => {
+            const isSelected = selected === tile.type;
+            const icon = TILE_ICONS[tile.type];
+            return (
+              <Pressable
+                key={tile.type}
+                style={[styles.tile, isSelected && styles.tileSelected]}
+                onPress={() => { lightTap(); setSelected(tile.type); }}
+              >
+                {({ pressed }) => (
+                  <View style={[styles.tileInner, pressed && { opacity: 0.75 }]}>
+                    <View style={[styles.tileIconCircle, isSelected && styles.tileIconCircleSelected]}>
+                      <Feather name={icon} size={18} color={isSelected ? C.accent : C.textSecondary} />
+                    </View>
+                    <View style={styles.tileTextCol}>
+                      <Text style={[styles.tileLabel, isSelected && { color: C.accent }]}>{tile.label}</Text>
+                      <Text style={styles.tileSublabel}>{tile.sublabel}</Text>
+                    </View>
+                    {isSelected && (
+                      <View style={styles.tileCheck}>
+                        <Feather name="check" size={16} color={C.accent} />
+                      </View>
+                    )}
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
 
-        <TouchableOpacity
-          style={[styles.confirmButton, !selected && styles.confirmButtonDisabled]}
+        <Pressable
+          style={[styles.confirmBtn, !selected && styles.confirmBtnDisabled]}
           onPress={handleConfirm}
           disabled={!selected}
-          activeOpacity={0.7}
         >
-          <Text style={[styles.confirmText, !selected && styles.confirmTextDisabled]}>
-            {t.business.setupConfirm}
-          </Text>
-        </TouchableOpacity>
-      </View>
+          {({ pressed }) => (
+            <View style={[styles.confirmBtnInner, pressed && selected && { opacity: 0.85 }]}>
+              <Feather name="arrow-right" size={16} color={selected ? C.onAccent : C.textMuted} />
+              <Text style={[styles.confirmText, !selected && { color: C.textMuted }]}>
+                {t.business.setupConfirm}
+              </Text>
+            </View>
+          )}
+        </Pressable>
+      </ScrollView>
     </View>
   );
 };
@@ -95,74 +123,132 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.background,
   },
   backBtn: {
-    marginTop: 12,
+    marginTop: SPACING.sm,
     marginLeft: SPACING.lg,
-    width: 40,
-    height: 40,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  content: {
-    flex: 1,
-    padding: SPACING['2xl'],
+  scroll: {
+    flexGrow: 1,
+    paddingHorizontal: SPACING.xl,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
+  },
+  header: {
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.xl,
+  },
+  iconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: withAlpha(C.accent, 0.08),
+    alignItems: 'center',
     justifyContent: 'center',
-  },
-  heading: {
-    ...TYPE.insight,
-    color: C.textSecondary,
-    textAlign: 'center',
-    marginBottom: SPACING['2xl'],
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.md,
     marginBottom: SPACING.md,
   },
+  title: {
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: -0.4,
+    textAlign: 'center',
+    lineHeight: 30,
+  },
+  titleAccent: {
+    fontStyle: 'italic',
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.accent,
+  },
+  subtitle: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    marginTop: SPACING.xs,
+    letterSpacing: 0.1,
+  },
+  tileList: {
+    gap: SPACING.sm,
+  },
   tile: {
-    width: '48%',
     backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: C.border,
-    padding: SPACING.lg,
+    borderColor: withAlpha(C.textPrimary, 0.08),
   },
   tileSelected: {
-    borderColor: C.bronze,
-    borderWidth: 2,
+    borderColor: withAlpha(C.accent, 0.4),
+    backgroundColor: withAlpha(C.accent, C === CALM_DARK ? 0.06 : 0.03),
   },
-  fullWidthTile: {
-    width: '100%',
-    marginBottom: SPACING.md,
+  tileInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md + 2,
+    paddingVertical: SPACING.md,
+    gap: SPACING.md,
+  },
+  tileIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.08 : 0.04),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileIconCircleSelected: {
+    backgroundColor: withAlpha(C.accent, 0.12),
+  },
+  tileTextCol: {
+    flex: 1,
   },
   tileLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
-    marginBottom: SPACING.xs,
+    marginBottom: 2,
   },
   tileSublabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.regular,
     lineHeight: 16,
   },
-  confirmButton: {
-    backgroundColor: C.bronze,
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.lg,
+  tileCheck: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: withAlpha(C.accent, 0.12),
     alignItems: 'center',
-    marginTop: SPACING.lg,
+    justifyContent: 'center',
   },
-  confirmButtonDisabled: {
-    backgroundColor: C.border,
+  confirmBtn: {
+    width: '100%',
+    paddingVertical: SPACING.md + 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+    marginTop: SPACING.xl,
+  },
+  confirmBtnDisabled: {
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.08 : 0.05),
+  },
+  confirmBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   confirmText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
-  },
-  confirmTextDisabled: {
-    color: C.textSecondary,
+    color: C.onAccent,
+    letterSpacing: 0.3,
   },
 });
 

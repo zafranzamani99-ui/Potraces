@@ -16,7 +16,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { syncAll, pullOrderLinkOrders } from '../../services/sellerSync';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { SellerOrder, SellerCustomer } from '../../types';
 
@@ -454,7 +454,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                 accessibilityRole="button"
                 accessibilityLabel="New order"
               >
-                <Feather name="plus-circle" size={16} color="#fff" />
+                <Feather name="plus-circle" size={16} color={C.onAccent} />
                 <Text style={styles.gridActionTextPrimary}>new order</Text>
               </TouchableOpacity>
 
@@ -1017,6 +1017,8 @@ const SellerCustomers: React.FC = () => {
             returnKeyType="search"
             accessibilityLabel="Search customers"
             accessibilityRole="search"
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
           {search.length > 0 && (
             <TouchableOpacity
@@ -1036,7 +1038,7 @@ const SellerCustomers: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel={`Sort by ${sortBy}`}
         >
-          <Feather name="sliders" size={18} color={sortBy !== 'recent' ? '#fff' : semantic(BIZ_SAFE.success, isDark)} />
+          <Feather name="sliders" size={18} color={sortBy !== 'recent' ? C.onAccent : semantic(BIZ_SAFE.success, isDark)} />
         </TouchableOpacity>
       </View>
 
@@ -1325,6 +1327,8 @@ const SellerCustomers: React.FC = () => {
                 placeholderTextColor={C.textMuted}
                 autoFocus={!editingCustomer?.name}
                 accessibilityLabel="Customer name"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
 
               <Text style={styles.modalLabel}>phone</Text>
@@ -1336,6 +1340,8 @@ const SellerCustomers: React.FC = () => {
                 placeholderTextColor={C.textMuted}
                 keyboardType="phone-pad"
                 accessibilityLabel="Phone number"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
 
               <Text style={styles.modalLabel}>address</Text>
@@ -1349,6 +1355,8 @@ const SellerCustomers: React.FC = () => {
                 numberOfLines={3}
                 textAlignVertical="top"
                 accessibilityLabel="Customer address"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
 
               <Text style={styles.modalLabel}>note</Text>
@@ -1359,6 +1367,8 @@ const SellerCustomers: React.FC = () => {
                 placeholder="allergies, delivery notes, preferences..."
                 placeholderTextColor={C.textMuted}
                 accessibilityLabel="Customer note"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
               />
 
               <TouchableOpacity
@@ -1369,7 +1379,7 @@ const SellerCustomers: React.FC = () => {
                 accessibilityLabel="Mark as VIP customer"
               >
                 <View style={[styles.vipCheckbox, editIsVip && styles.vipCheckboxActive]}>
-                  {editIsVip && <Feather name="star" size={12} color="#fff" />}
+                  {editIsVip && <Feather name="star" size={12} color={C.onAccent} />}
                 </View>
                 <Text style={[styles.vipLabel, editIsVip && styles.vipLabelActive]}>VIP customer</Text>
               </TouchableOpacity>
@@ -1381,7 +1391,7 @@ const SellerCustomers: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Save customer details"
               >
-                <Feather name="check" size={18} color="#fff" />
+                <Feather name="check" size={18} color={C.onAccent} />
                 <Text style={styles.saveButtonText}>save</Text>
               </TouchableOpacity>
             </KeyboardAwareScrollView>
@@ -1517,6 +1527,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingTop: SPACING.sm,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
 
   // ── Stats summary ──
@@ -1526,6 +1539,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
     gap: SPACING.sm,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   statChip: {
     flex: 1,
@@ -1757,6 +1773,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
     paddingBottom: SPACING['3xl'],
     maxHeight: '85%',
+    maxWidth: 420,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   detailHeader: {
     flexDirection: 'row',
@@ -2033,7 +2052,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm,
     minHeight: 44,
@@ -2052,7 +2071,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   gridActionTextPrimary: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
   gridActionText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -2226,6 +2245,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopRightRadius: RADIUS.xl,
     paddingHorizontal: SPACING['2xl'],
     maxHeight: '80%',
+    maxWidth: 420,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   modalHandle: {
     width: 36,
@@ -2277,18 +2299,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.md,
     marginTop: SPACING['2xl'],
     gap: SPACING.sm,
     minHeight: 52,
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // ── Modal contacts shortcut ──
@@ -2315,7 +2337,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '80%',
     paddingHorizontal: SPACING.xl,
-    ...SHADOWS.lg,
+    maxWidth: 420,
+    width: '100%',
+    alignSelf: 'center' as const,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   contactSearchBar: {
     flexDirection: 'row',

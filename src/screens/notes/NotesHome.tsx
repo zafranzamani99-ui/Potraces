@@ -13,7 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { useNotesStore } from '../../store/notesStore';
 import { useAppStore } from '../../store/appStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { NotePage } from '../../types';
@@ -120,7 +120,7 @@ const NotesHome: React.FC = () => {
         >
           {selectMode && (
             <View style={[styles.checkbox, isSelected && styles.checkboxActive]}>
-              {isSelected && <Feather name="check" size={12} color="#fff" />}
+              {isSelected && <Feather name="check" size={12} color={C.onAccent} />}
             </View>
           )}
           <View style={styles.pageContent}>
@@ -171,7 +171,7 @@ const NotesHome: React.FC = () => {
             activeOpacity={0.7}
             onPress={handleNewNote}
           >
-            <Feather name="plus" size={18} color="#fff" />
+            <Feather name="plus" size={18} color={C.onAccent} />
             <Text style={styles.emptyCTAText}>{t.notes.startWriting}</Text>
           </TouchableOpacity>
         </View>
@@ -222,7 +222,7 @@ const NotesHome: React.FC = () => {
           activeOpacity={0.8}
           onPress={handleNewNote}
         >
-          <Feather name="plus" size={22} color="#fff" />
+          <Feather name="plus" size={22} color={C.onAccent} />
         </TouchableOpacity>
       )}
       <ScreenGuide
@@ -307,7 +307,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.xl,
     borderWidth: 1,
     borderColor: C.border,
-    ...SHADOWS.md,
+    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
   selectBarCloseBtn: {
     width: 32,
@@ -361,7 +361,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
 
   // Empty / guided first write
@@ -402,11 +402,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING['2xl'],
     marginTop: SPACING.lg,
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   emptyCTAText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 });

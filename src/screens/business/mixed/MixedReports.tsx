@@ -12,7 +12,7 @@ import { format } from 'date-fns';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useMixedStore } from '../../../store/mixedStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha, COLORS } from '../../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha, COLORS } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
 import { useT } from '../../../i18n';
 import { askMixedQuestion } from '../../../services/aiService';
@@ -372,6 +372,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['5xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   sectionLabel: {

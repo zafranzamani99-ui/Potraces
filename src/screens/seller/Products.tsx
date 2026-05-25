@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Switch,
+
   Alert,
   Animated,
   Keyboard,
@@ -18,21 +18,24 @@ import {
   PanResponder,
   Dimensions,
   ActivityIndicator,
-  Image,
+  useWindowDimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
-import { SellerProduct, IngredientCost } from '../../types';
+import { useT } from '../../i18n';
+import { SellerProduct, IngredientCost, StockAdjustmentReason } from '../../types';
 import {
   lightTap,
   mediumTap,
@@ -43,6 +46,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { parseProductList, parseProductImage, ParsedProduct } from '../../services/aiService';
 import { uploadProductImage } from '../../services/sellerSync';
+import ImageSourcePills from '../../components/common/ImageSourcePills';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -88,8 +92,11 @@ const AnimatedProductCard: React.FC<{ index: number; children: React.ReactNode }
 const Products: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
+  const insets = useSafeAreaInsets();
+  const { width: screenW } = useWindowDimensions();
+  const isTablet = screenW >= 700;
   const bizSuccess = semantic(BIZ_SAFE.success, isDark);
-  const bizProfit = semantic(BIZ_SAFE.profit, isDark);
+  const bizKept = semantic(BIZ_SAFE.profit, isDark);
   const bizDestructive = semantic(BIZ_SAFE.destructive, isDark);
   const styles = useMemo(() => makeStyles(C), [C]);
   const products = useSellerStore((s) => s.products);
@@ -102,6 +109,8 @@ const Products: React.FC = () => {
   const updateIngredientCost = useSellerStore((s) => s.updateIngredientCost);
   const deleteIngredientCost = useSellerStore((s) => s.deleteIngredientCost);
   const markCostSynced = useSellerStore((s) => s.markCostSynced);
+  const addStockAdjustment = useSellerStore((s) => s.addStockAdjustment);
+  const stockAdjustments = useSellerStore((s) => s.stockAdjustments);
   const productOrder = useSellerStore((s) => s.productOrder);
   const setProductOrder = useSellerStore((s) => s.setProductOrder);
   const addTransaction = usePersonalStore((s) => s.addTransaction);
@@ -111,12 +120,17 @@ const Products: React.FC = () => {
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
   const { showToast } = useToast();
+  const t = useT();
+  const sl = t.seller;
 
   const unitOrder = useSellerStore((s) => s.unitOrder);
   const hiddenUnits = useSellerStore((s) => s.hiddenUnits);
+  const productCategories = useSellerStore((s) => s.productCategories);
+  const addProductCategory = useSellerStore((s) => s.addProductCategory);
 
-  // ─── Search state ──────────────────────────────────────────
+  // ─── Search & filter state ────────────────────────────────
   const [search, setSearch] = useState('');
+  const [filterCategory, setFilterCategory] = useState<string | null>(null);
 
   const allUnits = useMemo(() => {
     const combined = [...DEFAULT_UNITS, ...(customUnits || [])].filter(
@@ -143,14 +157,18 @@ const Products: React.FC = () => {
   }, [products, productOrder]);
 
   const filteredProducts = useMemo(() => {
-    if (!search.trim()) return sortedProducts;
+    let result = sortedProducts;
+    if (filterCategory) {
+      result = result.filter((p) => (p.category || '') === filterCategory);
+    }
+    if (!search.trim()) return result;
     const q = search.trim().toLowerCase();
-    return sortedProducts.filter((p) =>
+    return result.filter((p) =>
       p.name.toLowerCase().includes(q) ||
       p.unit.toLowerCase().includes(q) ||
       (p.description && p.description.toLowerCase().includes(q))
     );
-  }, [sortedProducts, search]);
+  }, [sortedProducts, search, filterCategory]);
 
   // ─── Popular this month ────────────────────────────────────
   const topProducts = useMemo(() => {
@@ -175,7 +193,8 @@ const Products: React.FC = () => {
   }, [orders]);
   const topMax = topProducts.length > 0 ? topProducts[0].qty : 1;
 
-  // ─── Modal state ───────────────────────────────────────────
+  // ─── Detail + Modal state ──────────────────────────────────
+  const [detailProduct, setDetailProduct] = useState<SellerProduct | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showCostModal, setShowCostModal] = useState(false);
   const [editingCostId, setEditingCostId] = useState<string | null>(null);
@@ -196,8 +215,11 @@ const Products: React.FC = () => {
   const [costDescription, setCostDescription] = useState('');
   const [costAmount, setCostAmount] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [showDescField, setShowDescField] = useState(false);
+  const [showCatInput, setShowCatInput] = useState(false);
   const [newTrackStock, setNewTrackStock] = useState(false);
   const [newStockQty, setNewStockQty] = useState('');
+  const [newCategory, setNewCategory] = useState('');
   const [newImageUrl, setNewImageUrl] = useState<string | undefined>(undefined);
   const [imageUploading, setImageUploading] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -213,6 +235,17 @@ const Products: React.FC = () => {
   const [bulkParsing, setBulkParsing] = useState(false);
   const [bulkResults, setBulkResults] = useState<ParsedProduct[] | null>(null);
   const [bulkSelected, setBulkSelected] = useState<Set<number>>(new Set());
+  const [bulkDetailIdx, setBulkDetailIdx] = useState<number | null>(null);
+  const [bdFocused, setBdFocused] = useState<string | null>(null);
+  const [bdDescFocused, setBdDescFocused] = useState(false);
+  const [bdKbVisible, setBdKbVisible] = useState(false);
+  const [bdKbHeight, setBdKbHeight] = useState(0);
+
+  // ─── Stock adjustment modal ────────────────────────────────
+  const [stockAdjProduct, setStockAdjProduct] = useState<SellerProduct | null>(null);
+  const [stockAdjDelta, setStockAdjDelta] = useState('');
+  const [stockAdjReason, setStockAdjReason] = useState<StockAdjustmentReason>('received');
+  const [stockAdjNote, setStockAdjNote] = useState('');
 
   // ─── Focus state ───────────────────────────────────────────
   const [focusedField, setFocusedField] = useState<string | null>(null);
@@ -312,6 +345,9 @@ const Products: React.FC = () => {
     setNewTrackStock(false);
     setNewStockQty('');
     setNewImageUrl(undefined);
+    setNewCategory('');
+    setShowDescField(false);
+    setShowCatInput(false);
   }, []);
 
   const openAddModal = useCallback(() => {
@@ -333,6 +369,9 @@ const Products: React.FC = () => {
     setNewTrackStock(product.trackStock || false);
     setNewStockQty(product.stockQuantity != null ? product.stockQuantity.toString() : '');
     setNewImageUrl(product.imageUrl);
+    setNewCategory(product.category || '');
+    setShowDescField(!!(product.description));
+    setShowCatInput(!!(product.category && !productCategories.includes(product.category)));
     setNameError(false);
     setPriceError(false);
     setJustAdded(false);
@@ -341,7 +380,7 @@ const Products: React.FC = () => {
     modalOpacity.setValue(1);
     setShowAdd(true);
     mediumTap();
-  }, []);
+  }, [productCategories]);
 
   const closeAddModal = useCallback(() => {
     setShowAdd(false);
@@ -351,45 +390,52 @@ const Products: React.FC = () => {
   }, [resetForm]);
 
   const handlePickProductImage = useCallback(async (productId?: string) => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('', 'Gallery permission is needed.'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      allowsEditing: true, aspect: [1, 1], quality: 0.7, mediaTypes: ['images'],
-    });
-    if (result.canceled || !result.assets?.[0]) return;
     const targetId = productId || `tmp-${Date.now()}`;
+
+    let { status } = await ImagePicker.getMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      ({ status } = await ImagePicker.requestMediaLibraryPermissionsAsync());
+      if (status !== 'granted') { Alert.alert('', sl.galleryPermissionNeeded); return; }
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] });
+    if (result.canceled || !result.assets?.[0]) return;
+
     setImageUploading(true);
     const url = await uploadProductImage(result.assets[0].uri, targetId);
     setImageUploading(false);
-    if (url) { setNewImageUrl(url); } else { Alert.alert('', 'Failed to upload image.'); }
+    if (url) setNewImageUrl(url);
+    else Alert.alert('', sl.failedToUpload);
   }, []);
 
   // ─── Bulk import handlers ─────────────────────────────────
+  const existingProductNames = useMemo(() => products.map((p) => p.name), [products]);
+
   const handleBulkParse = useCallback(async () => {
     if (!bulkText.trim()) return;
     Keyboard.dismiss();
     setBulkParsing(true);
     try {
-      const results = await parseProductList(bulkText.trim(), allUnits);
+      const results = await parseProductList(bulkText.trim(), allUnits, existingProductNames);
       if (results && results.length > 0) {
         setBulkResults(results);
-        setBulkSelected(new Set(results.map((_, i) => i)));
+        setBulkSelected(new Set(results.reduce<number[]>((acc, p, i) => { if (!p.isDuplicate) acc.push(i); return acc; }, [])));
       } else {
-        showToast('could not find any products in the text', 'error');
+        showToast(sl.noProductsInText, 'error');
       }
     } catch {
-      showToast('something went wrong', 'error');
+      showToast(sl.somethingWentWrong, 'error');
     } finally {
       setBulkParsing(false);
     }
-  }, [bulkText, allUnits, showToast]);
+  }, [bulkText, allUnits, existingProductNames, showToast]);
 
   const handleBulkImage = useCallback(async (source: 'camera' | 'gallery') => {
     const permission = source === 'camera'
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permission.status !== 'granted') {
-      showToast(`please grant ${source} permission`, 'error');
+      showToast(sl.grantPermission.replace('{source}', source), 'error');
       return;
     }
 
@@ -400,7 +446,6 @@ const Products: React.FC = () => {
     const result = await picker({
       mediaTypes: ['images'],
       quality: 0.8,
-      allowsEditing: true,
     });
 
     if (result.canceled || !result.assets[0]) return;
@@ -408,12 +453,12 @@ const Products: React.FC = () => {
     setBulkParsing(true);
     try {
       const uri = result.assets[0].uri;
-      const results = await parseProductImage(uri, allUnits);
+      const results = await parseProductImage(uri, allUnits, existingProductNames);
       if (results && results.length > 0) {
         setBulkResults(results);
-        setBulkSelected(new Set(results.map((_, i) => i)));
+        setBulkSelected(new Set(results.reduce<number[]>((acc, p, i) => { if (!p.isDuplicate) acc.push(i); return acc; }, [])));
       } else {
-        showToast('could not find any products in the image', 'error');
+        showToast(sl.noProductsInImage, 'error');
       }
     } catch (err: any) {
       if (__DEV__) console.warn('[bulkImage]', err?.message || err);
@@ -421,17 +466,24 @@ const Products: React.FC = () => {
     } finally {
       setBulkParsing(false);
     }
-  }, [allUnits, showToast]);
+  }, [allUnits, existingProductNames, showToast]);
 
   const handleBulkAdd = useCallback(() => {
     if (!bulkResults) return;
-    const toAdd = bulkResults.filter((_, i) => bulkSelected.has(i));
-    if (toAdd.length === 0) {
-      showToast('select at least one product', 'error');
+    const selected = bulkResults.filter((_, i) => bulkSelected.has(i));
+    if (selected.length === 0) {
+      showToast(sl.selectAtLeastOne, 'error');
+      return;
+    }
+    const valid = selected.filter((p) => p.pricePerUnit > 0);
+    const skipped = selected.length - valid.length;
+    if (valid.length === 0) {
+      warningNotification();
+      showToast(sl.allSelectedNoPrice, 'error');
       return;
     }
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    for (const p of toAdd) {
+    for (const p of valid) {
       addProduct({
         name: p.name,
         description: p.description,
@@ -439,21 +491,38 @@ const Products: React.FC = () => {
         costPerUnit: p.costPerUnit,
         unit: p.unit,
         isActive: true,
+        category: p.category || undefined,
+        trackStock: p.stock != null ? true : undefined,
+        stockQuantity: p.stock ?? undefined,
       });
+      if (p.category) addProductCategory(p.category);
     }
     successNotification();
-    showToast(`${toAdd.length} product${toAdd.length > 1 ? 's' : ''} added`, 'success');
+    const msg = skipped > 0
+      ? sl.bulkAddedSkipped.replace('{added}', String(valid.length)).replace('{skipped}', String(skipped))
+      : sl.bulkAdded.replace('{added}', String(valid.length)).replace('{plural}', valid.length > 1 ? 's' : '');
+    showToast(msg, 'success');
     setShowBulk(false);
     setBulkText('');
     setBulkResults(null);
     setBulkSelected(new Set());
-  }, [bulkResults, bulkSelected, addProduct, showToast]);
+  }, [bulkResults, bulkSelected, addProduct, addProductCategory, showToast]);
+
+  const updateBulkResult = useCallback((idx: number, updates: Partial<ParsedProduct>) => {
+    setBulkResults((prev) => {
+      if (!prev) return prev;
+      const next = [...prev];
+      next[idx] = { ...next[idx], ...updates };
+      return next;
+    });
+  }, []);
 
   const closeBulkModal = useCallback(() => {
     setShowBulk(false);
     setBulkText('');
     setBulkResults(null);
     setBulkSelected(new Set());
+    setBulkDetailIdx(null);
   }, []);
 
   // ─── Duplicate detection ───────────────────────────────────
@@ -468,7 +537,7 @@ const Products: React.FC = () => {
     return match ? match.name : null;
   }, [newName, products, editingProduct]);
 
-  // ─── Profit preview with margin % ─────────────────────────
+  // ─── Kept preview with margin % ───────────────────────────
   const keptPreview = useMemo(() => {
     const price = parseFloat(newPrice);
     const cost = parseFloat(newCostPerUnit);
@@ -494,7 +563,7 @@ const Products: React.FC = () => {
 
     if (hasNameErr || hasPriceErr) {
       warningNotification();
-      showToast('please fill in product name and price', 'error');
+      showToast(sl.fillNameAndPrice, 'error');
       return;
     }
 
@@ -502,11 +571,19 @@ const Products: React.FC = () => {
       setPriceError(true);
       shakeField(priceShakeAnim);
       warningNotification();
-      showToast('price must be greater than 0.', 'error');
+      showToast(sl.priceGreaterThanZero, 'error');
       return;
     }
 
+    const price = parseFloat(newPrice);
+    const cost = newCostPerUnit ? parseFloat(newCostPerUnit) : 0;
+    if (cost > 0 && cost >= price) {
+      warningNotification();
+      showToast(sl.costHigherThanPrice.replace('{currency}', currency).replace('{cost}', cost.toFixed(2)), 'error');
+    }
+
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (newCategory.trim()) addProductCategory(newCategory.trim());
     addProduct({
       name: newName.trim(),
       description: newDescription.trim() || undefined,
@@ -517,6 +594,7 @@ const Products: React.FC = () => {
       trackStock: newTrackStock || undefined,
       stockQuantity: newTrackStock && newStockQty ? parseFloat(newStockQty) : undefined,
       imageUrl: newImageUrl,
+      category: newCategory.trim() || undefined,
     });
     successNotification();
 
@@ -541,7 +619,7 @@ const Products: React.FC = () => {
     // Keep last used unit
     setNameError(false);
     setPriceError(false);
-  }, [newName, newDescription, newPrice, newCostPerUnit, newUnit, addProduct, showToast]);
+  }, [newName, newDescription, newPrice, newCostPerUnit, newUnit, newCategory, addProduct, addProductCategory, showToast]);
 
   const handleSaveEdit = useCallback(() => {
     if (!editingProduct) return;
@@ -556,7 +634,7 @@ const Products: React.FC = () => {
 
     if (hasNameErr || hasPriceErr) {
       warningNotification();
-      showToast('please fill in product name and price', 'error');
+      showToast(sl.fillNameAndPrice, 'error');
       return;
     }
 
@@ -564,11 +642,19 @@ const Products: React.FC = () => {
       setPriceError(true);
       shakeField(priceShakeAnim);
       warningNotification();
-      showToast('price must be greater than 0.', 'error');
+      showToast(sl.priceGreaterThanZero, 'error');
       return;
     }
 
+    const price = parseFloat(newPrice);
+    const cost = newCostPerUnit ? parseFloat(newCostPerUnit) : 0;
+    if (cost > 0 && cost >= price) {
+      warningNotification();
+      showToast(sl.costHigherThanPrice.replace('{currency}', currency).replace('{cost}', cost.toFixed(2)), 'error');
+    }
+
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (newCategory.trim()) addProductCategory(newCategory.trim());
     updateProduct(editingProduct.id, {
       name: newName.trim(),
       description: newDescription.trim() || undefined,
@@ -578,11 +664,12 @@ const Products: React.FC = () => {
       trackStock: newTrackStock || undefined,
       stockQuantity: newTrackStock && newStockQty ? parseFloat(newStockQty) : undefined,
       imageUrl: newImageUrl,
+      category: newCategory.trim() || undefined,
     });
     successNotification();
-    showToast('product updated', 'success');
+    showToast(sl.productUpdated, 'success');
     closeAddModal();
-  }, [editingProduct, newName, newDescription, newPrice, newCostPerUnit, newUnit, newTrackStock, newStockQty, newImageUrl, updateProduct, showToast, closeAddModal]);
+  }, [editingProduct, newName, newDescription, newPrice, newCostPerUnit, newUnit, newCategory, newTrackStock, newStockQty, newImageUrl, updateProduct, addProductCategory, showToast, closeAddModal]);
 
   const handleAddCost = useCallback(() => {
     const hasDescErr = !costDescription.trim();
@@ -596,7 +683,7 @@ const Products: React.FC = () => {
 
     if (hasDescErr || hasAmtErr) {
       warningNotification();
-      showToast('please fill in description and amount', 'error');
+      showToast(sl.fillDescAndAmount, 'error');
       return;
     }
 
@@ -616,7 +703,7 @@ const Products: React.FC = () => {
       }
 
       successNotification();
-      showToast('cost updated', 'success');
+      showToast(sl.costUpdatedProducts, 'success');
     } else {
       // Create personal expense first (if toggled) so we get the real ID
       let personalTxId: string | undefined;
@@ -644,7 +731,7 @@ const Products: React.FC = () => {
       }
 
       successNotification();
-      showToast(syncToPersonal ? 'cost logged + personal expense' : 'cost logged', 'success');
+      showToast(syncToPersonal ? sl.costLoggedPersonalProducts : sl.costLoggedProducts, 'success');
     }
     setCostDescription('');
     setCostAmount('');
@@ -669,12 +756,12 @@ const Products: React.FC = () => {
     if (selectedIds.size === 0) return;
     warningNotification();
     Alert.alert(
-      `Remove ${selectedIds.size} product${selectedIds.size > 1 ? 's' : ''}?`,
-      'Existing orders won\'t be affected.',
+      sl.removeCount.replace('{count}', String(selectedIds.size)).replace('{plural}', selectedIds.size > 1 ? 's' : ''),
+      sl.existingOrdersUnaffected,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Remove',
+          text: sl.removeBtn,
           style: 'destructive',
           onPress: () => {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -682,7 +769,7 @@ const Products: React.FC = () => {
               deleteProduct(id);
             }
             successNotification();
-            showToast(`${selectedIds.size} product${selectedIds.size > 1 ? 's' : ''} removed`, 'success');
+            showToast(sl.productsRemoved.replace('{count}', String(selectedIds.size)).replace('{plural}', selectedIds.size > 1 ? 's' : ''), 'success');
             setSelectedIds(new Set());
             setSelectMode(false);
           },
@@ -691,21 +778,86 @@ const Products: React.FC = () => {
     );
   }, [selectedIds, deleteProduct, showToast]);
 
+  const handleBulkSetActive = useCallback((active: boolean) => {
+    if (selectedIds.size === 0) return;
+    lightTap();
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    for (const id of selectedIds) {
+      updateProduct(id, { isActive: active });
+    }
+    successNotification();
+    const bulkMsg = active
+      ? sl.productsActivated.replace('{count}', String(selectedIds.size)).replace('{plural}', selectedIds.size > 1 ? 's' : '')
+      : sl.productsDeactivated.replace('{count}', String(selectedIds.size)).replace('{plural}', selectedIds.size > 1 ? 's' : '');
+    showToast(bulkMsg, 'success');
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  }, [selectedIds, updateProduct, showToast]);
+
   const handleToggleActive = useCallback((product: SellerProduct) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     lightTap();
     updateProduct(product.id, { isActive: !product.isActive });
   }, [updateProduct]);
 
+  const handleStockAdjust = useCallback(() => {
+    if (!stockAdjProduct) return;
+    const qty = parseFloat(stockAdjDelta);
+    if (!qty || qty === 0) {
+      warningNotification();
+      showToast(sl.enterQuantity, 'error');
+      return;
+    }
+    const isRemoval = ['spoilage', 'damage', 'returned'].includes(stockAdjReason);
+    const delta = isRemoval ? -Math.abs(qty) : Math.abs(qty);
+    addStockAdjustment({
+      productId: stockAdjProduct.id,
+      delta,
+      reason: stockAdjReason,
+      note: stockAdjNote.trim() || undefined,
+      date: new Date(),
+    });
+    successNotification();
+    const adjLabel = isRemoval ? `removed ${Math.abs(qty)}` : `added ${Math.abs(qty)}`;
+    showToast(sl.stockAdjusted.replace('{label}', adjLabel).replace('{unit}', stockAdjProduct.unit).replace('{reason}', (sl as any)[stockAdjReason] || stockAdjReason), 'success');
+    setStockAdjProduct(null);
+    setStockAdjDelta('');
+    setStockAdjNote('');
+    setStockAdjReason('received');
+  }, [stockAdjProduct, stockAdjDelta, stockAdjReason, stockAdjNote, addStockAdjustment, showToast]);
+
+  const handleClone = useCallback((product: SellerProduct) => {
+    lightTap();
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    addProduct({
+      name: `${product.name} (copy)`,
+      description: product.description,
+      pricePerUnit: product.pricePerUnit,
+      costPerUnit: product.costPerUnit,
+      unit: product.unit,
+      isActive: true,
+      trackStock: product.trackStock,
+      stockQuantity: product.trackStock ? 0 : undefined,
+      imageUrl: product.imageUrl,
+      category: product.category,
+    });
+    successNotification();
+    showToast(sl.productDuplicated.replace('{name}', product.name), 'success');
+  }, [addProduct, showToast]);
+
   const handleDelete = useCallback((product: SellerProduct) => {
     warningNotification();
+    const orderCount = orders.filter((o) => o.items.some((i) => i.productId === product.id)).length;
+    const msg = orderCount > 0
+      ? sl.orderReferencesWarning.replace('{count}', String(orderCount)).replace('{plural}', orderCount !== 1 ? 's' : '').replace('{verb}', orderCount !== 1 ? '' : 's')
+      : undefined;
     Alert.alert(
-      'Remove product?',
-      `Remove ${product.name}? Orders that already have this product won't be affected.`,
+      sl.removeProduct,
+      msg,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Remove',
+          text: sl.removeBtn,
           style: 'destructive',
           onPress: () => {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -714,7 +866,7 @@ const Products: React.FC = () => {
         },
       ]
     );
-  }, [deleteProduct]);
+  }, [deleteProduct, orders]);
 
   const handleOpenCostModal = useCallback((costToEdit?: IngredientCost) => {
     lightTap();
@@ -738,6 +890,18 @@ const Products: React.FC = () => {
   useEffect(() => { if (costDescription) setCostDescError(false); }, [costDescription]);
   useEffect(() => { if (costAmount) setCostAmtError(false); }, [costAmount]);
 
+  useEffect(() => {
+    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
+      setBdKbVisible(true);
+      setBdKbHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => {
+      setBdKbVisible(false);
+      setBdKbHeight(0);
+    });
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+
   // ─── Input border style helper ─────────────────────────────
   const getInputStyle = (field: string, hasError: boolean) => [
     styles.modalInput,
@@ -753,13 +917,12 @@ const Products: React.FC = () => {
         ? Math.round(((item.pricePerUnit - item.costPerUnit) / item.pricePerUnit) * 100)
         : null;
 
-      const sub: string[] = [];
-      if (item.description) sub.push(item.description);
-      if (item.totalSold > 0) sub.push(`${item.totalSold} sold`);
-      if (marginPct !== null) sub.push(`${marginPct}% margin`);
-      if (item.trackStock && item.stockQuantity != null) sub.push(`${item.stockQuantity} in stock`);
+      const stats: string[] = [];
+      if (item.totalSold > 0) stats.push(`${item.totalSold} sold`);
+      if (marginPct !== null) stats.push(`${marginPct}% margin`);
+      if (item.trackStock && item.stockQuantity != null) stats.push(`${item.stockQuantity} in stock`);
 
-      const isSelected = selectMode && selectedIdsRef.current.has(item.id);
+      const isSelected = selectMode && selectedIds.has(item.id);
 
       return (
         <ScaleDecorator>
@@ -777,26 +940,26 @@ const Products: React.FC = () => {
                   ? () => toggleSelectProduct(item.id)
                   : reorderMode
                   ? undefined
-                  : () => openEditModal(item)
+                  : () => { lightTap(); setDetailProduct(item); }
               }
               onLongPress={
                 selectMode
                   ? undefined
                   : reorderMode
                   ? drag
-                  : () => handleDelete(item)
+                  : undefined
               }
               delayLongPress={reorderMode ? 150 : 500}
               accessibilityRole="button"
-              accessibilityLabel={`${item.name}. Tap to edit, hold to delete.`}
+              accessibilityLabel={sl.productTapHint.replace('{name}', item.name)}
             >
               {selectMode ? (
                 <View style={[styles.selectCheckbox, isSelected && styles.selectCheckboxActive]}>
-                  {isSelected && <Feather name="check" size={14} color="#fff" />}
+                  {isSelected && <Feather name="check" size={14} color={C.onAccent} />}
                 </View>
               ) : item.imageUrl ? (
                 <TouchableOpacity onPress={() => setPreviewImageUrl(item.imageUrl!)} activeOpacity={0.8}>
-                  <Image source={{ uri: item.imageUrl }} style={[styles.rowAvatar, { borderRadius: 12 }, !item.isActive && { opacity: 0.4 }]} />
+                  <Image source={{ uri: item.imageUrl }} style={[styles.rowAvatar, !item.isActive && { opacity: 0.4 }]} />
                 </TouchableOpacity>
               ) : (
                 <View style={[styles.rowAvatar, !item.isActive && styles.rowAvatarInactive]}>
@@ -804,38 +967,34 @@ const Products: React.FC = () => {
                 </View>
               )}
               <View style={styles.rowContent}>
-                <View style={styles.rowTop}>
+                <View style={styles.rowNameRow}>
                   <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
-                  <Text style={styles.rowPrice}>
-                    {currency} {item.pricePerUnit.toFixed(2)}
-                    <Text style={styles.rowUnit}>/{item.unit}</Text>
-                  </Text>
+                  {!item.isActive && (
+                    <View style={styles.inactiveBadge}>
+                      <Text style={styles.inactiveBadgeText}>{sl.inactive}</Text>
+                    </View>
+                  )}
                 </View>
-                {sub.length > 0 && (
+                <Text style={styles.rowPrice}>
+                  {currency} {item.pricePerUnit.toFixed(2)}/{item.unit}
+                </Text>
+                {(stats.length > 0 || item.description || item.category) && (
                   <Text style={styles.rowSub} numberOfLines={1}>
-                    {sub.join('  \u00B7  ')}
+                    {[item.category, item.description, ...stats].filter(Boolean).join('  \u00B7  ')}
                   </Text>
                 )}
               </View>
               {reorderMode ? (
                 <Feather name="menu" size={18} color={isDragging ? C.accent : C.neutral} />
               ) : !selectMode ? (
-                <Switch
-                  value={item.isActive}
-                  onValueChange={() => handleToggleActive(item)}
-                  trackColor={{ false: C.border, true: C.bronze }}
-                  thumbColor="#fff"
-                  style={styles.rowSwitch}
-                  accessibilityRole="switch"
-                  accessibilityLabel={`Toggle ${item.name} active`}
-                />
+                <Feather name="chevron-right" size={18} color={C.textMuted} />
               ) : null}
             </TouchableOpacity>
           </AnimatedProductCard>
         </ScaleDecorator>
       );
     },
-    [currency, openEditModal, handleToggleActive, handleDelete, reorderMode, selectMode, toggleSelectProduct]
+    [currency, reorderMode, selectMode, selectedIds, toggleSelectProduct]
   );
 
   // ─── FlatList render helpers ────────────────────────────────
@@ -844,114 +1003,27 @@ const Products: React.FC = () => {
   // ─── List header ────────────────────────────────────────────
   const ListHeaderComponent = useMemo(() => (
     <View style={styles.listHeaderWrap}>
-      {/* Action row */}
-      <View style={styles.listHeader}>
-        <View style={{ flex: 1 }} />
-        <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-          {selectMode ? (
-            <>
-              <TouchableOpacity
-                style={styles.reorderButton}
-                activeOpacity={0.7}
-                onPress={() => {
-                  lightTap();
-                  if (selectedIds.size === filteredProducts.length) {
-                    setSelectedIds(new Set());
-                  } else {
-                    setSelectedIds(new Set(filteredProducts.map((p) => p.id)));
-                  }
-                }}
-              >
-                <Feather
-                  name={selectedIds.size === filteredProducts.length ? 'check-square' : 'square'}
-                  size={14}
-                  color={C.bronze}
-                />
-                <Text style={styles.reorderText}>
-                  {selectedIds.size === filteredProducts.length ? 'deselect all' : 'select all'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.reorderButton, styles.reorderButtonActive]}
-                activeOpacity={0.7}
-                onPress={() => {
-                  lightTap();
-                  setSelectMode(false);
-                  setSelectedIds(new Set());
-                }}
-              >
-                <Text style={styles.reorderTextActive}>done</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              {products.length > 1 && (
-                <>
-                  <TouchableOpacity
-                    style={styles.reorderButton}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      lightTap();
-                      setSelectMode(true);
-                      setSelectedIds(new Set());
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Select products to delete"
-                  >
-                    <Feather name="check-square" size={14} color={C.bronze} />
-                    <Text style={styles.reorderText}>select</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.reorderButton, reorderMode && styles.reorderButtonActive]}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      lightTap();
-                      setReorderMode((v) => !v);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={reorderMode ? 'Done reordering' : 'Reorder products'}
-                  >
-                    <Feather name="list" size={14} color={reorderMode ? '#fff' : C.bronze} />
-                    <Text style={[styles.reorderText, reorderMode && styles.reorderTextActive]}>
-                      {reorderMode ? 'done' : 'reorder'}
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
-              <TouchableOpacity
-                style={styles.logCostHeaderButton}
-                activeOpacity={0.7}
-                onPress={() => handleOpenCostModal()}
-                accessibilityRole="button"
-                accessibilityLabel="Log ingredient cost"
-              >
-                <Feather name="plus-circle" size={14} color={C.bronze} />
-                <Text style={styles.logCostHeaderText}>log cost</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </View>
-
       {/* Search bar */}
       <View style={styles.searchBar}>
         <Feather name="search" size={14} color={C.textMuted} />
         <TextInput
           style={styles.searchInput}
-          placeholder="search products..."
+          placeholder={sl.searchProducts}
           placeholderTextColor={C.textMuted}
           value={search}
           onChangeText={setSearch}
           returnKeyType="search"
-          accessibilityLabel="Search products"
+          accessibilityLabel={sl.searchProductsLabel}
           accessibilityRole="search"
+          keyboardAppearance={isDark ? 'dark' : 'light'}
+          selectionColor={C.bronze}
         />
         {search.length > 0 ? (
           <TouchableOpacity
             onPress={() => setSearch('')}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
-            accessibilityLabel="Clear search"
+            accessibilityLabel={sl.clearSearch}
           >
             <Feather name="x" size={14} color={C.textMuted} />
           </TouchableOpacity>
@@ -960,13 +1032,128 @@ const Products: React.FC = () => {
         )}
       </View>
       {search.trim().length > 0 && (
-        <Text style={styles.searchCount}>showing {filteredProducts.length} of {products.length}</Text>
+        <Text style={styles.searchCount}>{sl.showingOf.replace('{shown}', String(filteredProducts.length)).replace('{total}', String(products.length))}</Text>
       )}
+
+      {/* Category filter chips */}
+      {productCategories.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.categoryChipRow}
+        >
+          <Pressable
+            style={[styles.categoryChip, !filterCategory && styles.categoryChipActive]}
+            onPress={() => { lightTap(); setFilterCategory(null); }}
+          >
+            <Text style={[styles.categoryChipText, !filterCategory && styles.categoryChipTextActive]}>{sl.allCategory}</Text>
+          </Pressable>
+          {productCategories.map((cat) => (
+            <Pressable
+              key={cat}
+              style={[styles.categoryChip, filterCategory === cat && styles.categoryChipActive]}
+              onPress={() => { lightTap(); setFilterCategory(filterCategory === cat ? null : cat); }}
+            >
+              <Text style={[styles.categoryChipText, filterCategory === cat && styles.categoryChipTextActive]}>{cat}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
+      {/* Action row */}
+      <View style={styles.actionRow}>
+        {selectMode ? (
+          <>
+            <TouchableOpacity
+              style={styles.actionPill}
+              activeOpacity={0.7}
+              onPress={() => {
+                lightTap();
+                if (selectedIds.size === filteredProducts.length) {
+                  setSelectedIds(new Set());
+                } else {
+                  setSelectedIds(new Set(filteredProducts.map((p) => p.id)));
+                }
+              }}
+            >
+              <Feather
+                name={selectedIds.size === filteredProducts.length ? 'check-square' : 'square'}
+                size={15}
+                color={C.bronze}
+              />
+              <Text style={styles.actionPillText}>
+                {selectedIds.size === filteredProducts.length ? t.common.none : t.common.all}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionPill, styles.actionPillActive]}
+              activeOpacity={0.7}
+              onPress={() => {
+                lightTap();
+                setSelectMode(false);
+                setSelectedIds(new Set());
+              }}
+            >
+              <Text style={styles.actionPillTextActive}>{sl.doneSelecting}</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            {products.length > 1 && (
+              <>
+                <TouchableOpacity
+                  style={styles.actionPill}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    lightTap();
+                    setSelectMode(true);
+                    setSelectedIds(new Set());
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={sl.selectProducts}
+                >
+                  <Feather name="check-square" size={15} color={C.bronze} />
+                  <Text style={styles.actionPillText}>{sl.selectMode}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionPill, reorderMode && styles.actionPillActive]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    lightTap();
+                    setReorderMode((v) => !v);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={reorderMode ? sl.doneReordering : sl.reorderProducts}
+                >
+                  <Feather name="list" size={15} color={reorderMode ? C.onAccent : C.bronze} />
+                  <Text style={[styles.actionPillText, reorderMode && styles.actionPillTextActive]}>
+                    {reorderMode ? t.common.done.toLowerCase() : 'reorder'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+            <TouchableOpacity
+              style={styles.actionPill}
+              activeOpacity={0.7}
+              onPress={() => handleOpenCostModal()}
+              accessibilityRole="button"
+              accessibilityLabel={sl.logIngredientCost}
+            >
+              <Feather name="dollar-sign" size={15} color={C.bronze} />
+              <Text style={styles.actionPillText}>{sl.logCostBtn}</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
 
       {/* Popular this month */}
       {topProducts.length > 0 && (
         <View style={styles.popularSection}>
-          <Text style={styles.popularHeader}>POPULAR THIS MONTH</Text>
+          <View style={styles.popularSectionHeader}>
+            <Feather name="trending-up" size={14} color={C.bronze} />
+            <Text style={styles.popularSectionHeaderText}>{sl.popularThisMonth}</Text>
+          </View>
           {topProducts.map((p, index) => {
             const barWidth = topMax > 0 ? (p.qty / topMax) * 100 : 0;
             return (
@@ -987,7 +1174,7 @@ const Products: React.FC = () => {
         </View>
       )}
     </View>
-  ), [products.length, handleOpenCostModal, search, filteredProducts, topProducts, topMax, currency, selectMode, selectedIds, reorderMode]);
+  ), [products.length, handleOpenCostModal, search, filteredProducts, topProducts, topMax, currency, selectMode, selectedIds, reorderMode, productCategories, filterCategory]);
 
   // ─── Live preview values ───────────────────────────────────
   const previewName = newName.trim() || 'product name';
@@ -997,343 +1184,311 @@ const Products: React.FC = () => {
   // ─── Shared form JSX ──────────────────────────────────────
   const renderProductForm = () => (
     <>
-      {/* Drag handle */}
-      <View style={styles.dragHandleArea} {...panResponder.panHandlers}>
-        <View style={styles.dragHandle} />
-      </View>
-
       {/* Modal header */}
       <View style={styles.modalHeader}>
-        <Text style={styles.modalTitle}>
-          {editingProduct ? 'edit product' : 'new product'}
-        </Text>
-        <TouchableOpacity
+        <View style={{ flex: 1 }}>
+          <Text style={styles.modalTitle}>
+            {editingProduct ? sl.editProduct : sl.newProduct}
+          </Text>
+        </View>
+        <Pressable
           onPress={closeAddModal}
-          style={styles.modalCloseBtn}
+          style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityRole="button"
-          accessibilityLabel="Close"
+          accessibilityLabel={t.common.close}
         >
-          <Feather name="x" size={18} color={C.textMuted} />
-        </TouchableOpacity>
+          <Feather name="x" size={16} color={C.textMuted} />
+        </Pressable>
       </View>
+      <Text style={styles.modalSubtitle}>
+        {editingProduct ? sl.updateProductDetails : sl.addToCatalog}
+      </Text>
 
       {/* ── Success state after adding ─────────────────────── */}
       {justAdded && !editingProduct ? (
         <View style={styles.justAddedSection}>
-          <Animated.View
-            style={[
-              styles.justAddedIcon,
-              { transform: [{ scale: addCheckAnim }] },
-            ]}
-          >
-            <Feather name="check-circle" size={32} color={bizSuccess} />
-          </Animated.View>
-          <Text style={styles.justAddedTitle}>product added!</Text>
-          <Text style={styles.justAddedHint}>add another or tap done to close</Text>
+          <View style={styles.justAddedCard}>
+            {newImageUrl ? (
+              <Image source={{ uri: newImageUrl }} style={styles.justAddedThumb} />
+            ) : (
+              <View style={styles.justAddedThumbPlaceholder}>
+                <Text style={styles.justAddedThumbText}>{previewName.charAt(0).toUpperCase()}</Text>
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.justAddedName} numberOfLines={1}>{previewName}</Text>
+              <Text style={styles.justAddedPrice}>{currency} {previewPriceStr} / {newUnit}</Text>
+            </View>
+          </View>
+          <View style={styles.justAddedStatusRow}>
+            <Feather name="check" size={14} color={C.bronze} />
+            <Text style={styles.justAddedStatusText}>{sl.savedToCatalog}</Text>
+          </View>
         </View>
       ) : (
       <>
-      {/* ── Live preview card ─────────────────────────────── */}
-      <View style={styles.previewCard}>
-        <View style={styles.previewRow}>
-          <TouchableOpacity
-            style={styles.previewIcon}
-            onPress={newImageUrl && !imageUploading ? () => setPreviewImageUrl(newImageUrl) : () => handlePickProductImage(editingProduct?.id)}
+      {/* ── Photo + Name ──────────────────────────────────── */}
+      <View style={styles.namePhotoRow}>
+        <View style={styles.inlinePhotoWrap}>
+          <Pressable
+            style={({ pressed }) => [styles.inlinePhoto, pressed && { opacity: 0.8 }]}
+            onPress={() => handlePickProductImage(editingProduct?.id)}
             disabled={imageUploading}
-            activeOpacity={0.7}
           >
             {imageUploading ? (
               <ActivityIndicator size="small" color={C.bronze} />
             ) : newImageUrl ? (
-              <Image source={{ uri: newImageUrl }} style={styles.prodThumb} />
+              <Image source={{ uri: newImageUrl }} style={styles.inlinePhotoImg} />
             ) : (
-              <Feather name="camera" size={16} color={C.textMuted} />
+              <Feather name="camera" size={16} color={C.bronze} />
             )}
-          </TouchableOpacity>
-          <View style={styles.previewInfo}>
-            <Text
-              style={[
-                styles.previewName,
-                !newName.trim() && styles.previewNamePlaceholder,
-              ]}
-              numberOfLines={1}
+          </Pressable>
+          {newImageUrl && !imageUploading && (
+            <Pressable
+              style={({ pressed }) => [styles.inlinePhotoRemove, pressed && { opacity: 0.7 }]}
+              onPress={() => { lightTap(); setNewImageUrl(''); }}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
-              {previewName}
-            </Text>
-            <Text style={styles.previewPrice}>
-              {currency} {previewPriceStr} / {newUnit}
-            </Text>
-            {newDescription.trim() ? (
-              <Text style={styles.previewDesc} numberOfLines={1}>{newDescription.trim()}</Text>
-            ) : null}
-          </View>
-          {keptPreview && (
-            <View style={styles.previewBadge}>
-              <Text style={styles.previewBadgeText}>
-                +{keptPreview.margin}%
-              </Text>
+              <Feather name="x" size={9} color={C.onAccent} />
+            </Pressable>
+          )}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Animated.View style={{ transform: [{ translateX: nameShakeAnim }] }}>
+            <TextInput
+              style={getInputStyle('name', nameError)}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder={sl.productNamePlaceholder}
+              placeholderTextColor={C.textMuted}
+              autoFocus={!editingProduct}
+              onFocus={() => setFocusedField('name')}
+              onBlur={() => setFocusedField(null)}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.bronze}
+            />
+          </Animated.View>
+          {duplicateWarning && (
+            <View style={[styles.warningRow, { marginTop: 2 }]}>
+              <Feather name="alert-circle" size={12} color={C.bronze} />
+              <Text style={styles.warningText}>{sl.alreadyExists.replace('{name}', duplicateWarning!)}</Text>
             </View>
           )}
         </View>
-        {newImageUrl && (
-          <TouchableOpacity onPress={() => handlePickProductImage(editingProduct?.id)} activeOpacity={0.7} style={styles.changePhotoBtn}>
-            <Feather name="camera" size={11} color={C.textMuted} />
-            <Text style={styles.changePhotoText}>change photo</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
-      {/* ── Name ──────────────────────────────────────────── */}
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>name</Text>
-        <Animated.View style={{ transform: [{ translateX: nameShakeAnim }] }}>
-          <TextInput
-            style={getInputStyle('name', nameError)}
-            value={newName}
-            onChangeText={setNewName}
-            placeholder="e.g. semperit kuning"
-            placeholderTextColor={C.textMuted}
-            autoFocus={!editingProduct}
-            onFocus={() => setFocusedField('name')}
-            onBlur={() => setFocusedField(null)}
-          />
-        </Animated.View>
-        {duplicateWarning && (
-          <View style={styles.warningRow}>
-            <Feather name="alert-circle" size={12} color={C.bronze} />
-            <Text style={styles.warningText}>
-              "{duplicateWarning}" already exists
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* ── Description (optional) ────────────────────────── */}
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>description <Text style={styles.fieldLabelOptional}>(optional)</Text></Text>
-        <TextInput
-          style={[getInputStyle('desc', false), styles.descInput]}
-          value={newDescription}
-          onChangeText={setNewDescription}
-          placeholder="e.g. 40+ pieces per tin"
-          placeholderTextColor={C.textMuted}
-          multiline
-          numberOfLines={2}
-          textAlignVertical="top"
-          onFocus={() => setFocusedField('desc')}
-          onBlur={() => setFocusedField(null)}
-        />
-      </View>
-
-      {/* ── Pricing ───────────────────────────────────────── */}
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>pricing</Text>
-        <View style={styles.modalRow}>
-          <View style={{ flex: 1 }}>
-            <Animated.View style={{ transform: [{ translateX: priceShakeAnim }] }}>
-              <View
-                style={[
-                  styles.currencyInputRow,
-                  focusedField === 'price' && styles.currencyInputRowFocused,
-                  priceError && styles.currencyInputRowError,
-                ]}
-              >
-                <Text style={styles.currencyPrefix}>{currency}</Text>
-                <TextInput
-                  style={styles.currencyInput}
-                  value={newPrice}
-                  onChangeText={setNewPrice}
-                  placeholder="price"
-                  placeholderTextColor={C.textMuted}
-                  keyboardType="decimal-pad"
-                  onFocus={() => setFocusedField('price')}
-                  onBlur={() => setFocusedField(null)}
-                />
-              </View>
-            </Animated.View>
-          </View>
-          <View style={{ flex: 1 }}>
-            <View
-              style={[
-                styles.currencyInputRow,
-                focusedField === 'cost' && styles.currencyInputRowFocused,
-              ]}
-            >
+      {/* ── Price & Cost ──────────────────────────────────── */}
+      <View style={styles.modalRow}>
+        <View style={{ flex: 1 }}>
+          <Animated.View style={{ transform: [{ translateX: priceShakeAnim }] }}>
+            <View style={[styles.currencyInputRow, focusedField === 'price' && styles.currencyInputRowFocused, priceError && styles.currencyInputRowError]}>
               <Text style={styles.currencyPrefix}>{currency}</Text>
               <TextInput
                 style={styles.currencyInput}
-                value={newCostPerUnit}
-                onChangeText={setNewCostPerUnit}
-                placeholder="cost"
+                value={newPrice}
+                onChangeText={setNewPrice}
+                placeholder={sl.sellingPricePlaceholder}
                 placeholderTextColor={C.textMuted}
                 keyboardType="decimal-pad"
-                onFocus={() => setFocusedField('cost')}
+                onFocus={() => setFocusedField('price')}
                 onBlur={() => setFocusedField(null)}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.bronze}
               />
             </View>
+          </Animated.View>
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={[styles.currencyInputRow, focusedField === 'cost' && styles.currencyInputRowFocused]}>
+            <Text style={styles.currencyPrefix}>{currency}</Text>
+            <TextInput
+              style={styles.currencyInput}
+              value={newCostPerUnit}
+              onChangeText={setNewCostPerUnit}
+              placeholder={sl.yourCostPlaceholder}
+              placeholderTextColor={C.textMuted}
+              keyboardType="decimal-pad"
+              onFocus={() => setFocusedField('cost')}
+              onBlur={() => setFocusedField(null)}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.bronze}
+            />
           </View>
         </View>
-        {keptPreview && (
-          <View style={styles.profitRow}>
-            <Feather name="trending-up" size={12} color={bizProfit} />
-            <Text style={styles.profitText}>
-              kept {currency} {keptPreview.kept}/unit
-            </Text>
-            <View
-              style={[
-                styles.marginBadge,
-                keptPreview.margin >= 50 && styles.marginBadgeHigh,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.marginBadgeText,
-                  keptPreview.margin >= 50 && styles.marginBadgeTextHigh,
-                ]}
+      </View>
+      {keptPreview && (
+        <View style={[styles.keptRow, { marginTop: -SPACING.xs }]}>
+          <Feather name="trending-up" size={12} color={bizKept} />
+          <Text style={styles.keptText}>{sl.keptPerUnit.replace('{currency}', currency).replace('{kept}', keptPreview.kept)}</Text>
+          <View style={[styles.marginBadge, keptPreview.margin >= 50 && styles.marginBadgeHigh]}>
+            <Text style={[styles.marginBadgeText, keptPreview.margin >= 50 && styles.marginBadgeTextHigh]}>{keptPreview.margin}%</Text>
+          </View>
+        </View>
+      )}
+
+      {/* ── Unit + Stock ──────────────────────────────────── */}
+      <View style={styles.unitStockRow}>
+        <Pressable
+          style={({ pressed }) => [styles.unitSelector, pressed && { opacity: 0.7 }]}
+          onPress={() => { Keyboard.dismiss(); lightTap(); setShowUnitPicker(true); }}
+          accessibilityRole="button"
+          accessibilityLabel={sl.selectedUnitHint.replace('{unit}', newUnit)}
+        >
+          <Text style={styles.unitSelectorLabel}>{sl.unitLabel}</Text>
+          <View style={styles.unitSelectorValue}>
+            <Text style={styles.unitSelectorText}>{newUnit}</Text>
+            <Feather name="chevron-down" size={14} color={C.textMuted} />
+          </View>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.stockToggle, pressed && { opacity: 0.7 }]}
+          onPress={() => { lightTap(); setNewTrackStock((v) => !v); }}
+        >
+          <Text style={styles.stockToggleText}>{sl.trackStock}</Text>
+          <View style={[styles.toggleTrack, newTrackStock && styles.toggleTrackActive]}>
+            <View style={[styles.toggleThumb, newTrackStock && styles.toggleThumbActive]} />
+          </View>
+        </Pressable>
+      </View>
+      {newTrackStock && (
+        <View style={[styles.currencyInputRow, focusedField === 'stock' && styles.currencyInputRowFocused, { maxWidth: '50%' }]}>
+          <TextInput
+            style={[styles.currencyInput, { paddingLeft: 12 }]}
+            value={newStockQty}
+            onChangeText={setNewStockQty}
+            placeholder={sl.currentStockPlaceholder}
+            placeholderTextColor={C.textMuted}
+            keyboardType="decimal-pad"
+            onFocus={() => setFocusedField('stock')}
+            onBlur={() => setFocusedField(null)}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.bronze}
+          />
+          <Text style={styles.currencyPrefix}>{newUnit}</Text>
+        </View>
+      )}
+
+      {/* ── Optional details (collapsed) ──────────────────── */}
+      {showDescField || newDescription.trim() || newCategory ? (
+        <View style={styles.detailsSection}>
+          <TextInput
+            style={[getInputStyle('desc', false), styles.descInputCompact]}
+            value={newDescription}
+            onChangeText={setNewDescription}
+            placeholder={sl.descriptionPlaceholder}
+            placeholderTextColor={C.textMuted}
+            multiline
+            numberOfLines={2}
+            textAlignVertical="top"
+            onFocus={() => setFocusedField('desc')}
+            onBlur={() => setFocusedField(null)}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.bronze}
+          />
+          {productCategories.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.formCategoryChipRow}>
+              {productCategories.map((cat) => (
+                <Pressable
+                  key={cat}
+                  style={[styles.formCategoryChip, newCategory === cat && styles.formCategoryChipActive]}
+                  onPress={() => { lightTap(); setNewCategory(newCategory === cat ? '' : cat); setShowCatInput(false); }}
+                >
+                  <Text style={[styles.formCategoryChipText, newCategory === cat && styles.formCategoryChipTextActive]}>{cat}</Text>
+                </Pressable>
+              ))}
+              <Pressable
+                style={[styles.formCategoryChip, showCatInput && styles.formCategoryChipActive]}
+                onPress={() => { lightTap(); setNewCategory(''); setShowCatInput(true); }}
               >
-                {keptPreview.margin}%
-              </Text>
-            </View>
-          </View>
-        )}
-      </View>
-
-      {/* ── Unit & Stock (inline row) ─────────────────────── */}
-      <View style={styles.fieldGroup}>
-        <View style={styles.unitStockRow}>
-          <TouchableOpacity
-            style={styles.unitSelector}
-            activeOpacity={0.7}
-            onPress={() => {
-              Keyboard.dismiss();
-              lightTap();
-              setShowUnitPicker(true);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={`Selected unit: ${newUnit}. Tap to change.`}
-          >
-            <Text style={styles.unitSelectorLabel}>unit</Text>
-            <View style={styles.unitSelectorValue}>
-              <Text style={styles.unitSelectorText}>{newUnit}</Text>
-              <Feather name="chevron-down" size={14} color={C.textMuted} />
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.stockToggle}
-            activeOpacity={0.7}
-            onPress={() => {
-              lightTap();
-              setNewTrackStock((v) => !v);
-            }}
-          >
-            <View
-              style={[
-                styles.syncToggleBox,
-                newTrackStock && styles.syncToggleBoxActive,
-              ]}
-            >
-              {newTrackStock && <Feather name="check" size={11} color="#fff" />}
-            </View>
-            <Text style={styles.stockToggleText}>track stock</Text>
-          </TouchableOpacity>
+                <Text style={[styles.formCategoryChipText, showCatInput && styles.formCategoryChipTextActive]}>+</Text>
+              </Pressable>
+            </ScrollView>
+          )}
+          {(showCatInput || productCategories.length === 0) && (
+            <TextInput
+              style={getInputStyle('category', false)}
+              value={newCategory}
+              onChangeText={setNewCategory}
+              placeholder={productCategories.length > 0 ? sl.newCategoryPlaceholder : sl.categoryPlaceholder}
+              placeholderTextColor={C.textMuted}
+              onFocus={() => setFocusedField('category')}
+              onBlur={() => setFocusedField(null)}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.bronze}
+            />
+          )}
         </View>
-
-        {newTrackStock && (
-          <View style={styles.stockInputWrap}>
-            <View
-              style={[
-                styles.currencyInputRow,
-                focusedField === 'stock' && styles.currencyInputRowFocused,
-              ]}
-            >
-              <TextInput
-                style={[styles.currencyInput, { paddingLeft: 12 }]}
-                value={newStockQty}
-                onChangeText={setNewStockQty}
-                placeholder="current stock"
-                placeholderTextColor={C.textMuted}
-                keyboardType="decimal-pad"
-                onFocus={() => setFocusedField('stock')}
-                onBlur={() => setFocusedField(null)}
-              />
-              <Text style={styles.currencyPrefix}>{newUnit}</Text>
-            </View>
-          </View>
-        )}
-      </View>
-
+      ) : (
+        <Pressable
+          onPress={() => { setShowDescField(true); }}
+          style={({ pressed }) => [styles.addDescLink, pressed && { opacity: 0.6 }]}
+        >
+          <Feather name="plus" size={13} color={C.bronze} />
+          <Text style={styles.addDescLinkText}>{sl.addDetails}</Text>
+        </Pressable>
+      )}
       </>
       )}
 
       {/* ── Actions ───────────────────────────────────────── */}
       {editingProduct ? (
         <View style={styles.modalActions}>
-          <TouchableOpacity
+          <Pressable
             onPress={closeAddModal}
-            style={styles.modalCancel}
-            activeOpacity={0.7}
+            style={({ pressed }) => [styles.modalCancel, pressed && { opacity: 0.7 }]}
             accessibilityRole="button"
-            accessibilityLabel="Cancel"
+            accessibilityLabel={t.common.cancel}
           >
-            <Text style={styles.modalCancelText}>cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+            <Text style={styles.modalCancelText}>{sl.cancelBtn}</Text>
+          </Pressable>
+          <Pressable
             onPress={handleSaveEdit}
-            style={styles.modalConfirm}
-            activeOpacity={0.7}
+            style={({ pressed }) => [styles.modalConfirm, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
-            accessibilityLabel="Save product"
+            accessibilityLabel={sl.saveBtn}
           >
-            <Text style={styles.modalConfirmText}>save</Text>
-          </TouchableOpacity>
+            <Text style={styles.modalConfirmText}>{sl.saveBtn}</Text>
+          </Pressable>
         </View>
       ) : justAdded ? (
-        <View style={styles.quickAddActions}>
-          <TouchableOpacity
-            onPress={() => {
-              lightTap();
-              setJustAdded(false);
-            }}
-            style={styles.addAnotherBtn}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Add another product"
-          >
-            <Feather name="plus" size={14} color={C.bronze} />
-            <Text style={styles.addAnotherText}>add another</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+        <View style={styles.justAddedActions}>
+          <Pressable
             onPress={closeAddModal}
-            style={styles.modalConfirm}
-            activeOpacity={0.7}
+            style={({ pressed }) => [styles.justAddedBtn, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
-            accessibilityLabel="Done"
+            accessibilityLabel={t.common.done}
           >
-            <Text style={styles.modalConfirmText}>done</Text>
-          </TouchableOpacity>
+            <Text style={styles.modalConfirmText}>{t.common.done.toLowerCase()}</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => { lightTap(); setJustAdded(false); }}
+            style={({ pressed }) => [pressed && { opacity: 0.5 }]}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={sl.addAnother}
+          >
+            <Text style={styles.justAddedDoneText}>{sl.addAnother}</Text>
+          </Pressable>
         </View>
       ) : (
         <View style={styles.modalActions}>
-          <TouchableOpacity
+          <Pressable
             onPress={closeAddModal}
-            style={styles.modalCancel}
-            activeOpacity={0.7}
+            style={({ pressed }) => [styles.modalCancel, pressed && { opacity: 0.7 }]}
             accessibilityRole="button"
-            accessibilityLabel="Cancel"
+            accessibilityLabel={t.common.cancel}
           >
-            <Text style={styles.modalCancelText}>cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+            <Text style={styles.modalCancelText}>{sl.cancelBtn}</Text>
+          </Pressable>
+          <Pressable
             onPress={handleAddProduct}
-            style={styles.modalConfirm}
-            activeOpacity={0.7}
+            style={({ pressed }) => [styles.modalConfirm, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
-            accessibilityLabel="Add product"
+            accessibilityLabel={sl.addProduct}
           >
-            <Text style={styles.modalConfirmText}>add</Text>
-          </TouchableOpacity>
+            <Text style={styles.modalConfirmText}>{sl.addProduct}</Text>
+          </Pressable>
         </View>
       )}
     </>
@@ -1362,9 +1517,9 @@ const Products: React.FC = () => {
               <View style={styles.emptyIconCircle}>
                 <Feather name="package" size={28} color={C.textMuted} />
               </View>
-              <Text style={styles.emptyTitle}>no products yet</Text>
+              <Text style={styles.emptyTitle}>{sl.noProductsYet}</Text>
               <Text style={styles.emptyHint}>
-                add products you sell, set pricing, then start taking orders
+                {sl.addFirstProductHint}
               </Text>
 
               <TouchableOpacity
@@ -1372,31 +1527,31 @@ const Products: React.FC = () => {
                 activeOpacity={0.7}
                 onPress={openAddModal}
                 accessibilityRole="button"
-                accessibilityLabel="Add your first product"
+                accessibilityLabel={sl.addFirstProduct}
               >
-                <Feather name="plus" size={18} color="#fff" />
-                <Text style={styles.emptyCTAText}>add first product</Text>
+                <Feather name="plus" size={18} color={C.onAccent} />
+                <Text style={styles.emptyCTAText}>{sl.addFirstProduct}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.emptyBulkBtn}
                 activeOpacity={0.7}
                 onPress={() => { lightTap(); setShowBulk(true); }}
                 accessibilityRole="button"
-                accessibilityLabel="Bulk add with AI"
+                accessibilityLabel={sl.bulkAddWithAi}
               >
                 <Feather name="zap" size={16} color={C.bronze} />
-                <Text style={styles.emptyBulkText}>bulk add with AI</Text>
+                <Text style={styles.emptyBulkText}>{sl.bulkAddWithAi}</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.noResultsContainer}>
               <Feather name="search" size={20} color={C.textMuted} />
-              <Text style={styles.noResultsText}>no match</Text>
+              <Text style={styles.noResultsText}>{sl.noMatch}</Text>
               <TouchableOpacity
                 onPress={() => setSearch('')}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Text style={styles.noResultsClear}>clear</Text>
+                <Text style={styles.noResultsClear}>{t.common.clear.toLowerCase()}</Text>
               </TouchableOpacity>
             </View>
           )
@@ -1410,51 +1565,206 @@ const Products: React.FC = () => {
         initialNumToRender={10}
       />
 
-      {/* Bottom-anchored add buttons / select mode bar */}
+      {/* Bottom action bar */}
       {products.length > 0 && (
         selectMode ? (
-          <View style={styles.addButtonWrapper}>
+          <View style={[styles.bottomBar, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.xs) }]}>
+            {selectedIds.size > 0 && (
+              <View style={styles.bulkActionsRow}>
+                <TouchableOpacity
+                  style={styles.bulkActionBtn}
+                  activeOpacity={0.7}
+                  onPress={() => handleBulkSetActive(true)}
+                >
+                  <Feather name="eye" size={15} color={C.bronze} />
+                  <Text style={styles.bulkActionText}>{sl.activate}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.bulkActionBtn}
+                  activeOpacity={0.7}
+                  onPress={() => handleBulkSetActive(false)}
+                >
+                  <Feather name="eye-off" size={15} color={C.bronze} />
+                  <Text style={styles.bulkActionText}>{sl.deactivate}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
             <TouchableOpacity
               style={[
-                styles.addButton,
-                { flex: 1, backgroundColor: selectedIds.size > 0 ? bizDestructive : withAlpha(C.textMuted, 0.12) },
+                styles.primaryButton,
+                { backgroundColor: selectedIds.size > 0 ? bizDestructive : withAlpha(C.textMuted, 0.12) },
               ]}
               activeOpacity={0.7}
               onPress={handleBulkDelete}
               disabled={selectedIds.size === 0}
             >
-              <Feather name="trash-2" size={18} color={selectedIds.size > 0 ? '#fff' : C.textMuted} />
-              <Text style={[styles.addButtonText, selectedIds.size === 0 && { color: C.textMuted }]}>
+              <Feather name="trash-2" size={18} color={selectedIds.size > 0 ? C.onAccent : C.textMuted} />
+              <Text style={[styles.primaryButtonText, selectedIds.size === 0 && { color: C.textMuted }]}>
                 {selectedIds.size > 0
-                  ? `remove ${selectedIds.size} product${selectedIds.size > 1 ? 's' : ''}`
-                  : 'select products to remove'}
+                  ? sl.removeCount.replace('{count}', String(selectedIds.size)).replace('{plural}', selectedIds.size > 1 ? 's' : '').replace('?', '')
+                  : sl.selectProducts.toLowerCase()}
               </Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.addButtonWrapper}>
+          <View style={[styles.bottomBar, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.xs) }]}>
             <TouchableOpacity
-              style={styles.bulkAddButton}
+              style={styles.bulkImportLink}
               activeOpacity={0.7}
               onPress={() => { lightTap(); setShowBulk(true); }}
               accessibilityRole="button"
-              accessibilityLabel="Bulk add with AI"
+              accessibilityLabel={sl.bulkAddWithAi}
             >
-              <Feather name="zap" size={18} color={C.bronze} />
+              <Feather name="zap" size={14} color={C.bronze} />
+              <Text style={styles.bulkImportText}>{sl.bulkAddWithAi}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.addButton, { flex: 1 }]}
+              style={styles.primaryButton}
               activeOpacity={0.7}
               onPress={openAddModal}
               accessibilityRole="button"
-              accessibilityLabel="Add product"
+              accessibilityLabel={sl.addProduct}
             >
-              <Feather name="plus" size={20} color="#fff" />
-              <Text style={styles.addButtonText}>add product</Text>
+              <Feather name="plus" size={20} color={C.onAccent} />
+              <Text style={styles.primaryButtonText}>{sl.addProduct}</Text>
             </TouchableOpacity>
           </View>
         )
       )}
+
+      {/* ── Product detail modal ──────────────────────────── */}
+      <Modal visible={!!detailProduct} transparent statusBarTranslucent animationType="fade">
+        <Pressable style={styles.detailOverlay} onPress={() => setDetailProduct(null)}>
+          <View style={styles.detailSheet} onStartShouldSetResponder={() => true}>
+            <ScrollView bounces={false} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+
+              {detailProduct && (() => {
+                const p = detailProduct;
+                const initial = p.name.charAt(0).toUpperCase();
+                const marginPct = p.costPerUnit && p.pricePerUnit > 0
+                  ? Math.round(((p.pricePerUnit - p.costPerUnit) / p.pricePerUnit) * 100)
+                  : null;
+
+                return (
+                  <>
+                    {/* Header — photo + name + price + close */}
+                    <View style={styles.detailHeader}>
+                      <View style={styles.detailHeaderLeft}>
+                        {p.imageUrl ? (
+                          <Pressable onPress={() => { setPreviewImageUrl(p.imageUrl!); }}>
+                            <Image source={{ uri: p.imageUrl }} style={styles.detailProductImage} />
+                          </Pressable>
+                        ) : (
+                          <View style={styles.detailProductAvatar}>
+                            <Text style={styles.detailProductAvatarText}>{initial}</Text>
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.detailName} numberOfLines={2}>{p.name}</Text>
+                          <Text style={styles.detailPriceLine}>
+                            {currency} {p.pricePerUnit.toFixed(2)}/{p.unit}
+                          </Text>
+                        </View>
+                      </View>
+                      <Pressable onPress={() => setDetailProduct(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                        <View style={styles.detailCloseBtn}>
+                          <Feather name="x" size={18} color={C.textMuted} />
+                        </View>
+                      </Pressable>
+                    </View>
+
+                    {/* Stats — inline text */}
+                    <Text style={styles.detailStatsLine}>
+                      <Text style={styles.detailStatValue}>{p.totalSold}</Text>
+                      <Text style={styles.detailStatLabel}> {sl.sold}</Text>
+                      {marginPct !== null && (
+                        <>
+                          <Text style={styles.detailStatDot}>  ·  </Text>
+                          <Text style={styles.detailStatValue}>{marginPct}%</Text>
+                          <Text style={styles.detailStatLabel}> {sl.margin}</Text>
+                        </>
+                      )}
+                      {p.trackStock && (
+                        <>
+                          <Text style={styles.detailStatDot}>  ·  </Text>
+                          <Text style={styles.detailStatValue}>{p.stockQuantity ?? 0}</Text>
+                          <Text style={styles.detailStatLabel}> {sl.inStock}</Text>
+                        </>
+                      )}
+                      {p.costPerUnit != null && p.costPerUnit > 0 && (
+                        <>
+                          <Text style={styles.detailStatDot}>  ·  </Text>
+                          <Text style={styles.detailStatValue}>{currency} {p.costPerUnit.toFixed(2)}</Text>
+                          <Text style={styles.detailStatLabel}> {sl.cost}</Text>
+                        </>
+                      )}
+                    </Text>
+
+                    {/* Description */}
+                    {p.description ? (
+                      <Text style={styles.detailDescInline}>{p.description}</Text>
+                    ) : null}
+
+                    {/* Active toggle */}
+                    <Pressable
+                      style={({ pressed }) => [styles.detailToggleRow, pressed && { opacity: 0.7 }]}
+                      onPress={() => {
+                        lightTap();
+                        handleToggleActive(p);
+                        setDetailProduct({ ...p, isActive: !p.isActive });
+                      }}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: p.isActive }}
+                    >
+                      <View style={[styles.detailStatusDot, { backgroundColor: p.isActive ? C.olive : C.textMuted }]} />
+                      <Text style={styles.detailToggleLabel}>{p.isActive ? sl.activeStatus : sl.inactiveStatus}</Text>
+                      <View style={{ flex: 1 }} />
+                      <View style={[styles.toggleTrack, p.isActive && styles.toggleTrackActive]}>
+                        <View style={[styles.toggleThumb, p.isActive && styles.toggleThumbActive]} />
+                      </View>
+                    </Pressable>
+
+                    {/* Actions grid */}
+                    <View style={styles.detailActionsGrid}>
+                      <Pressable
+                        style={({ pressed }) => [styles.detailActionPill, pressed && { opacity: 0.7 }]}
+                        onPress={() => { setDetailProduct(null); openEditModal(p); }}
+                      >
+                        <Feather name="edit-2" size={15} color={C.bronze} />
+                        <Text style={styles.detailActionPillText}>{sl.editBtn}</Text>
+                      </Pressable>
+                      <Pressable
+                        style={({ pressed }) => [styles.detailActionPill, pressed && { opacity: 0.7 }]}
+                        onPress={() => { setDetailProduct(null); handleOpenCostModal(); }}
+                      >
+                        <Feather name="dollar-sign" size={15} color={C.bronze} />
+                        <Text style={styles.detailActionPillText}>{sl.logCostAction}</Text>
+                      </Pressable>
+                      {p.trackStock && (
+                        <Pressable
+                          style={({ pressed }) => [styles.detailActionPill, pressed && { opacity: 0.7 }]}
+                          onPress={() => { setDetailProduct(null); setStockAdjProduct(p); }}
+                        >
+                          <Feather name="package" size={15} color={C.bronze} />
+                          <Text style={styles.detailActionPillText}>{sl.stockBtn}</Text>
+                        </Pressable>
+                      )}
+                    </View>
+
+                    {/* Delete */}
+                    <Pressable
+                      style={({ pressed }) => [styles.detailDeleteBtn, pressed && { opacity: 0.5 }]}
+                      onPress={() => { setDetailProduct(null); handleDelete(p); }}
+                    >
+                      <Text style={styles.detailDeleteBtnText}>{sl.deleteProduct}</Text>
+                    </Pressable>
+                  </>
+                );
+              })()}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* ── Add / Edit product modal ────────────────────────── */}
       <Modal visible={showAdd} transparent statusBarTranslucent animationType="fade">
@@ -1474,7 +1784,7 @@ const Products: React.FC = () => {
                 },
               ]}
             >
-              <View style={styles.modalContent}>
+              <View style={[styles.modalContent, isTablet && { maxWidth: 600 }]}>
                 {renderProductForm()}
               </View>
             </Animated.View>
@@ -1492,7 +1802,7 @@ const Products: React.FC = () => {
                 onPress={(e) => e.stopPropagation()}
               >
                 <View style={styles.unitModalHeader}>
-                  <Text style={styles.unitModalTitle}>select unit</Text>
+                  <Text style={styles.unitModalTitle}>{sl.selectUnit}</Text>
                   <TouchableOpacity
                     onPress={() => { lightTap(); setShowUnitPicker(false); }}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -1534,7 +1844,7 @@ const Products: React.FC = () => {
                             <Feather
                               name="box"
                               size={16}
-                              color={isSelected ? '#fff' : C.bronze}
+                              color={isSelected ? C.onAccent : C.bronze}
                             />
                           </View>
                           <Text
@@ -1564,7 +1874,7 @@ const Products: React.FC = () => {
                       }}
                     >
                       <Feather name="settings" size={14} color={C.bronze} />
-                      <Text style={styles.unitModalManageText}>manage units in settings</Text>
+                      <Text style={styles.unitModalManageText}>{sl.manageUnitsInSettings}</Text>
                     </TouchableOpacity>
                   }
                 />
@@ -1573,18 +1883,24 @@ const Products: React.FC = () => {
           )}
         </View>
         {previewImageUrl && (
-          <TouchableOpacity style={styles.imgPreviewOverlay} activeOpacity={1} onPress={() => setPreviewImageUrl(null)}>
-            <Image source={{ uri: previewImageUrl }} style={styles.imgPreviewImage} resizeMode="contain" />
-          </TouchableOpacity>
+          <Pressable style={styles.imgPreviewOverlay} onPress={() => setPreviewImageUrl(null)}>
+            <Pressable style={styles.imgPreviewCloseBtn} onPress={() => setPreviewImageUrl(null)} hitSlop={12}>
+              <Feather name="x" size={20} color="#fff" />
+            </Pressable>
+            <Image source={{ uri: previewImageUrl }} style={styles.imgPreviewImage} contentFit="contain" />
+          </Pressable>
         )}
       </Modal>
 
       {/* ── Image preview (from product list) ─────────────── */}
       {previewImageUrl && !showAdd && (
-        <Modal visible transparent animationType="fade" onRequestClose={() => setPreviewImageUrl(null)}>
-          <TouchableOpacity style={styles.imgPreviewOverlay} activeOpacity={1} onPress={() => setPreviewImageUrl(null)}>
-            <Image source={{ uri: previewImageUrl }} style={styles.imgPreviewImage} resizeMode="contain" />
-          </TouchableOpacity>
+        <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setPreviewImageUrl(null)}>
+          <Pressable style={styles.imgPreviewOverlay} onPress={() => setPreviewImageUrl(null)}>
+            <Pressable style={styles.imgPreviewCloseBtn} onPress={() => setPreviewImageUrl(null)} hitSlop={12}>
+              <Feather name="x" size={20} color="#fff" />
+            </Pressable>
+            <Image source={{ uri: previewImageUrl }} style={styles.imgPreviewImage} contentFit="contain" />
+          </Pressable>
         </Modal>
       )}
 
@@ -1599,96 +1915,84 @@ const Products: React.FC = () => {
           >
             <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{editingCostId ? 'edit cost' : 'log cost'}</Text>
-                <TouchableOpacity
-                  onPress={() => { lightTap(); setEditingCostId(null); setShowCostModal(false); }}
-                  style={styles.modalCloseBtn}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Close"
-                >
-                  <Feather name="x" size={18} color={C.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.costDatePill}>
-                <Feather name="calendar" size={12} color={C.textSecondary} />
-                <Text style={styles.costDateText}>
-                  {editingCostId
-                    ? format(ingredientCosts.find(c => c.id === editingCostId)?.date ?? new Date(), 'dd MMM yyyy')
-                    : format(new Date(), 'dd MMM yyyy')}
-                </Text>
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>what did you buy?</Text>
-                <Animated.View style={{ transform: [{ translateX: costDescShakeAnim }] }}>
-                  <TextInput
-                    style={[styles.modalInput, costDescError && styles.modalInputError]}
-                    value={costDescription}
-                    onChangeText={setCostDescription}
-                    placeholder="e.g. tepung, gula, mentega"
-                    placeholderTextColor={C.textMuted}
-                    autoFocus
-                  />
-                </Animated.View>
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>amount</Text>
-                <Animated.View style={{ transform: [{ translateX: costAmtShakeAnim }] }}>
-                  <View
-                    style={[
-                      styles.currencyInputRow,
-                      costAmtError && styles.currencyInputRowError,
-                    ]}
-                  >
-                    <Text style={styles.currencyPrefix}>{currency}</Text>
-                    <TextInput
-                      style={styles.currencyInput}
-                      value={costAmount}
-                      onChangeText={setCostAmount}
-                      placeholder="0.00"
-                      placeholderTextColor={C.textMuted}
-                      keyboardType="decimal-pad"
-                    />
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm }}>
+                  <Text style={styles.modalTitle}>{editingCostId ? sl.prodEditCost : sl.prodLogCost}</Text>
+                  <View style={[styles.costDatePill, { top: 4 }]}>
+                    <Feather name="calendar" size={11} color={C.textSecondary} />
+                    <Text style={styles.costDateText}>
+                      {editingCostId
+                        ? format(ingredientCosts.find(c => c.id === editingCostId)?.date ?? new Date(), 'dd MMM')
+                        : format(new Date(), 'dd MMM')}
+                    </Text>
                   </View>
-                </Animated.View>
+                </View>
+                <Pressable
+                  onPress={() => { lightTap(); setEditingCostId(null); setShowCostModal(false); }}
+                  style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Feather name="x" size={16} color={C.textMuted} />
+                </Pressable>
               </View>
 
-              {/* Sync to personal toggle — only for new costs */}
+              <Animated.View style={{ transform: [{ translateX: costDescShakeAnim }] }}>
+                <TextInput
+                  style={[styles.modalInput, costDescError && styles.modalInputError]}
+                  value={costDescription}
+                  onChangeText={setCostDescription}
+                  placeholder={sl.whatDidYouBuyProducts}
+                  placeholderTextColor={C.textMuted}
+                  autoFocus
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.bronze}
+                />
+              </Animated.View>
+
+              <Animated.View style={{ transform: [{ translateX: costAmtShakeAnim }] }}>
+                <View style={[styles.currencyInputRow, costAmtError && styles.currencyInputRowError]}>
+                  <Text style={styles.currencyPrefix}>{currency}</Text>
+                  <TextInput
+                    style={styles.currencyInput}
+                    value={costAmount}
+                    onChangeText={setCostAmount}
+                    placeholder="0.00"
+                    placeholderTextColor={C.textMuted}
+                    keyboardType="decimal-pad"
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.bronze}
+                  />
+                </View>
+              </Animated.View>
+
               {!editingCostId && (
-                <TouchableOpacity
-                  style={styles.syncToggleRow}
-                  activeOpacity={0.7}
+                <Pressable
+                  style={({ pressed }) => [styles.syncTogglePill, pressed && { opacity: 0.7 }]}
                   onPress={() => { lightTap(); setSyncToPersonal((v) => !v); }}
                 >
-                  <View style={[styles.syncToggleBox, syncToPersonal && styles.syncToggleBoxActive]}>
-                    {syncToPersonal && <Feather name="check" size={12} color="#fff" />}
+                  <Text style={styles.syncToggleText}>{sl.alsoRecordPersonalExpense}</Text>
+                  <View style={[styles.toggleTrack, syncToPersonal && styles.toggleTrackActive]}>
+                    <View style={[styles.toggleThumb, syncToPersonal && styles.toggleThumbActive]} />
                   </View>
-                  <Text style={styles.syncToggleText}>also record as personal expense</Text>
-                </TouchableOpacity>
+                </Pressable>
               )}
 
               <View style={styles.modalActions}>
-                <TouchableOpacity
+                <Pressable
                   onPress={() => { lightTap(); setEditingCostId(null); setSyncToPersonal(false); setShowCostModal(false); }}
-                  style={styles.modalCancel}
-                  activeOpacity={0.7}
+                  style={({ pressed }) => [styles.modalCancel, pressed && { opacity: 0.7 }]}
                   accessibilityRole="button"
-                  accessibilityLabel="Cancel"
+                  accessibilityLabel={t.common.cancel}
                 >
-                  <Text style={styles.modalCancelText}>cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                  <Text style={styles.modalCancelText}>{sl.cancelBtn}</Text>
+                </Pressable>
+                <Pressable
                   onPress={handleAddCost}
-                  style={styles.modalConfirm}
-                  activeOpacity={0.7}
+                  style={({ pressed }) => [styles.modalConfirm, pressed && { opacity: 0.85 }]}
                   accessibilityRole="button"
-                  accessibilityLabel={editingCostId ? "Save cost" : "Log cost"}
+                  accessibilityLabel={editingCostId ? sl.saveBtn : sl.logCostBtn}
                 >
-                  <Text style={styles.modalConfirmText}>{editingCostId ? 'save' : 'log'}</Text>
-                </TouchableOpacity>
+                  <Text style={styles.modalConfirmText}>{editingCostId ? sl.saveBtn : sl.logCostBtn}</Text>
+                </Pressable>
               </View>
             </Pressable>
           </KeyboardAwareScrollView>
@@ -1706,128 +2010,119 @@ const Products: React.FC = () => {
           >
             <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>bulk add</Text>
-                <TouchableOpacity
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalTitle}>{sl.bulkAdd}</Text>
+                </View>
+                <Pressable
                   onPress={closeBulkModal}
-                  style={styles.modalCloseBtn}
+                  style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
-                  <Feather name="x" size={18} color={C.textMuted} />
-                </TouchableOpacity>
+                  <Feather name="x" size={16} color={C.textMuted} />
+                </Pressable>
               </View>
 
               {!bulkResults ? (
                 <>
-                  <Text style={styles.bulkHint}>
-                    paste text or snap a photo of your product list
-                  </Text>
-
-                  {/* Image source buttons */}
-                  <View style={styles.bulkImageRow}>
-                    <TouchableOpacity
-                      style={styles.bulkImageBtn}
-                      activeOpacity={0.7}
-                      onPress={() => handleBulkImage('camera')}
+                  <View style={styles.bulkSourceRow}>
+                    <ImageSourcePills
+                      onPick={handleBulkImage}
+                      cameraLabel={sl.snap}
+                      galleryLabel={sl.gallery}
                       disabled={bulkParsing}
-                    >
-                      <Feather name="camera" size={18} color={C.bronze} />
-                      <Text style={styles.bulkImageText}>take photo</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.bulkImageBtn}
-                      activeOpacity={0.7}
-                      onPress={() => handleBulkImage('gallery')}
-                      disabled={bulkParsing}
-                    >
-                      <Feather name="image" size={18} color={C.bronze} />
-                      <Text style={styles.bulkImageText}>from gallery</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.bulkDivider}>
-                    <View style={styles.bulkDividerLine} />
-                    <Text style={styles.bulkDividerText}>or type it</Text>
-                    <View style={styles.bulkDividerLine} />
+                    />
+                    <Text style={styles.bulkSourceHint}>{sl.orTypeBelow}</Text>
                   </View>
 
                   <TextInput
                     style={styles.bulkTextArea}
                     multiline
-                    placeholder={'e.g.\nKuih Lapis - RM 8/tin\nDodol - RM 12/pack\nRendang - RM 15/bekas'}
+                    placeholder={'kuih lapis rm8/tin\ndodol rm12/pack\nrendang rm15 bekas\nnasi lemak 5 ringgit'}
                     placeholderTextColor={C.textMuted}
                     value={bulkText}
                     onChangeText={setBulkText}
                     textAlignVertical="top"
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.bronze}
                   />
 
-                  {bulkParsing && (
+                  {bulkParsing ? (
                     <View style={styles.bulkLoadingRow}>
                       <ActivityIndicator size="small" color={C.bronze} />
-                      <Text style={styles.bulkLoadingText}>AI is reading your list...</Text>
+                      <Text style={styles.bulkLoadingText}>{sl.readingYourList}</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.modalActions}>
+                      <TouchableOpacity
+                        onPress={closeBulkModal}
+                        style={styles.modalCancel}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.modalCancelText}>{sl.cancelBtn}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={handleBulkParse}
+                        style={[styles.modalConfirm, !bulkText.trim() && { opacity: 0.5 }]}
+                        activeOpacity={0.7}
+                        disabled={!bulkText.trim()}
+                      >
+                        <Text style={styles.modalConfirmText}>{sl.parse}</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
-
-                  <View style={styles.modalActions}>
-                    <TouchableOpacity
-                      onPress={closeBulkModal}
-                      style={styles.modalCancel}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.modalCancelText}>cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={handleBulkParse}
-                      style={[styles.modalConfirm, (!bulkText.trim() || bulkParsing) && { opacity: 0.5 }]}
-                      activeOpacity={0.7}
-                      disabled={!bulkText.trim() || bulkParsing}
-                    >
-                      <Text style={styles.modalConfirmText}>parse text</Text>
-                    </TouchableOpacity>
-                  </View>
                 </>
               ) : (
                 <>
-                  <Text style={styles.bulkHint}>
-                    {bulkResults.length} product{bulkResults.length > 1 ? 's' : ''} found — tap to deselect
+                  <Text style={styles.bulkResultsCount}>
+                    {bulkResults.length} found · tap to edit
                   </Text>
-                  {bulkResults.map((p, i) => {
-                    const selected = bulkSelected.has(i);
-                    return (
-                      <TouchableOpacity
-                        key={i}
-                        style={[styles.bulkResultRow, !selected && styles.bulkResultDeselected]}
-                        activeOpacity={0.7}
-                        onPress={() => {
-                          selectionChanged();
-                          setBulkSelected((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(i)) next.delete(i);
-                            else next.add(i);
-                            return next;
-                          });
-                        }}
-                      >
-                        <View style={[styles.bulkCheckbox, selected && styles.bulkCheckboxSelected]}>
-                          {selected && <Feather name="check" size={12} color="#fff" />}
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.bulkResultName}>{p.name}</Text>
-                          <Text style={styles.bulkResultDetail}>
-                            {currency} {p.pricePerUnit.toFixed(2)}/{p.unit}
-                            {p.costPerUnit ? ` · cost ${currency} ${p.costPerUnit.toFixed(2)}` : ''}
-                            {p.description ? ` · ${p.description}` : ''}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
+
+                  <ScrollView
+                    style={styles.bulkResultsList}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator
+                  >
+                    {bulkResults.map((p, i) => {
+                      const selected = bulkSelected.has(i);
+                      return (
+                        <TouchableOpacity
+                          key={i}
+                          style={[styles.bulkResultRow, !selected && styles.bulkResultDeselected]}
+                          activeOpacity={0.7}
+                          onPress={() => setBulkDetailIdx(i)}
+                        >
+                          <View style={[styles.bulkCheckbox, selected && styles.bulkCheckboxSelected]}>
+                            {selected && <Feather name="check" size={12} color={C.onAccent} />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={styles.bulkResultNameRow}>
+                              <Text style={styles.bulkResultName}>{p.name}</Text>
+                              {p.isDuplicate && (
+                                <View style={styles.bulkDupBadge}>
+                                  <Text style={styles.bulkDupText}>{sl.exists}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.bulkResultDetail}>
+                              {currency} {p.pricePerUnit.toFixed(2)}/{p.unit}
+                              {p.costPerUnit ? ` · cost ${currency} ${p.costPerUnit.toFixed(2)}` : ''}
+                              {p.category ? ` · ${p.category}` : ''}
+                              {p.description ? ` · ${p.description}` : ''}
+                            </Text>
+                          </View>
+                          <Feather name="chevron-right" size={14} color={C.textMuted} />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
                   <View style={styles.modalActions}>
                     <TouchableOpacity
                       onPress={() => { setBulkResults(null); setBulkSelected(new Set()); }}
                       style={styles.modalCancel}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.modalCancelText}>back</Text>
+                      <Text style={styles.modalCancelText}>{t.common.back.toLowerCase()}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={handleBulkAdd}
@@ -1836,12 +2131,317 @@ const Products: React.FC = () => {
                       disabled={bulkSelected.size === 0}
                     >
                       <Text style={styles.modalConfirmText}>
-                        add {bulkSelected.size} product{bulkSelected.size !== 1 ? 's' : ''}
+                        {sl.addProduct} ({bulkSelected.size})
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </>
               )}
+            </Pressable>
+
+          </KeyboardAwareScrollView>
+        </Pressable>
+
+        {/* Detail overlay — outside scroll view, inside Modal */}
+        {bulkDetailIdx != null && bulkResults && bulkResults[bulkDetailIdx] && (() => {
+          const idx = bulkDetailIdx;
+          const p = bulkResults[idx];
+          const selected = bulkSelected.has(idx);
+          const bdKept = p.costPerUnit && p.pricePerUnit
+            ? { kept: (p.pricePerUnit - p.costPerUnit).toFixed(2), margin: Math.round(((p.pricePerUnit - p.costPerUnit) / p.pricePerUnit) * 100) }
+            : null;
+          return (
+            <>
+              <Pressable
+                style={styles.bulkDetailDim}
+                onPress={() => setBulkDetailIdx(null)}
+              />
+              <KeyboardAwareScrollView
+                style={styles.bulkDetailDimAbs}
+                contentContainerStyle={styles.bulkDetailCenter}
+                keyboardShouldPersistTaps="handled"
+                bounces={false}
+                showsVerticalScrollIndicator={false}
+              >
+                <Pressable style={styles.bulkDetailCard} onPress={() => Keyboard.dismiss()} onStartShouldSetResponder={() => true}>
+                  <View style={styles.modalHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modalTitle}>{sl.editItem}</Text>
+                    </View>
+                    <Pressable
+                      onPress={() => setBulkDetailIdx(null)}
+                      style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    >
+                      <Feather name="x" size={16} color={C.textMuted} />
+                    </Pressable>
+                  </View>
+
+                  {/* Name */}
+                  <View style={[styles.currencyInputRow, bdFocused === 'bd-name' && styles.currencyInputRowFocused]}>
+                    <TextInput
+                      style={[styles.currencyInput, { paddingLeft: SPACING.md }]}
+                      value={p.name}
+                      onChangeText={(v) => updateBulkResult(idx, { name: v })}
+                      placeholder={sl.productNamePlaceholder}
+                      placeholderTextColor={C.textMuted}
+                      selectionColor={C.bronze}
+                      onFocus={() => setBdFocused('bd-name')}
+                      onBlur={() => setBdFocused(null)}
+                    />
+                  </View>
+
+                  {/* Price & Cost */}
+                  <View style={styles.modalRow}>
+                    <View style={{ flex: 1 }}>
+                      <View style={[styles.currencyInputRow, bdFocused === 'bd-price' && styles.currencyInputRowFocused]}>
+                        <Text style={styles.currencyPrefix}>{currency}</Text>
+                        <TextInput
+                          style={styles.currencyInput}
+                          value={p.pricePerUnit ? String(p.pricePerUnit) : ''}
+                          onChangeText={(v) => updateBulkResult(idx, { pricePerUnit: parseFloat(v) || 0 })}
+                          placeholder={sl.sellingPricePlaceholder}
+                          placeholderTextColor={C.textMuted}
+                          keyboardType="decimal-pad"
+                          selectionColor={C.bronze}
+                          onFocus={() => setBdFocused('bd-price')}
+                          onBlur={() => setBdFocused(null)}
+                        />
+                      </View>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={[styles.currencyInputRow, bdFocused === 'bd-cost' && styles.currencyInputRowFocused]}>
+                        <Text style={styles.currencyPrefix}>{currency}</Text>
+                        <TextInput
+                          style={styles.currencyInput}
+                          value={p.costPerUnit ? String(p.costPerUnit) : ''}
+                          onChangeText={(v) => updateBulkResult(idx, { costPerUnit: parseFloat(v) || undefined })}
+                          placeholder={sl.yourCostPlaceholder}
+                          placeholderTextColor={C.textMuted}
+                          keyboardType="decimal-pad"
+                          selectionColor={C.bronze}
+                          onFocus={() => setBdFocused('bd-cost')}
+                          onBlur={() => setBdFocused(null)}
+                        />
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Kept preview */}
+                  {bdKept && (
+                    <View style={[styles.keptRow, { marginTop: -SPACING.xs }]}>
+                      <Feather name="trending-up" size={12} color={bizKept} />
+                      <Text style={styles.keptText}>{sl.keptPerUnit.replace('{currency}', currency).replace('{kept}', bdKept.kept)}</Text>
+                      <View style={[styles.marginBadge, bdKept.margin >= 50 && styles.marginBadgeHigh]}>
+                        <Text style={[styles.marginBadgeText, bdKept.margin >= 50 && styles.marginBadgeTextHigh]}>{bdKept.margin}%</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Unit & Category */}
+                  <View style={styles.unitStockRow}>
+                    <View style={[styles.unitSelector, bdFocused === 'bd-unit' && styles.currencyInputRowFocused]}>
+                      <Text style={styles.unitSelectorLabel}>{sl.unitLabel}</Text>
+                      <TextInput
+                        style={styles.bdFieldInput}
+                        value={p.unit}
+                        onChangeText={(v) => updateBulkResult(idx, { unit: v })}
+                        placeholder="pcs"
+                        placeholderTextColor={C.textMuted}
+                        selectionColor={C.bronze}
+                        onFocus={() => setBdFocused('bd-unit')}
+                        onBlur={() => setBdFocused(null)}
+                      />
+                    </View>
+                    <View style={[styles.unitSelector, bdFocused === 'bd-cat' && styles.currencyInputRowFocused]}>
+                      <Text style={styles.unitSelectorLabel}>{sl.categoryPlaceholder.replace(/\s*\(.*\)/, '')}</Text>
+                      <TextInput
+                        style={styles.bdFieldInput}
+                        value={p.category || ''}
+                        onChangeText={(v) => updateBulkResult(idx, { category: v || undefined })}
+                        placeholder={t.common.optional.toLowerCase()}
+                        placeholderTextColor={C.textMuted}
+                        selectionColor={C.bronze}
+                        onFocus={() => setBdFocused('bd-cat')}
+                        onBlur={() => setBdFocused(null)}
+                      />
+                    </View>
+                  </View>
+
+                  {/* Description */}
+                  <View style={[styles.currencyInputRow, bdFocused === 'bd-desc' && styles.currencyInputRowFocused]}>
+                    <TextInput
+                      style={[styles.currencyInput, { paddingLeft: SPACING.md, minHeight: 72, textAlignVertical: 'top' }]}
+                      value={p.description || ''}
+                      onChangeText={(v) => updateBulkResult(idx, { description: v || undefined })}
+                      placeholder={sl.descriptionPlaceholder}
+                      placeholderTextColor={C.textMuted}
+                      selectionColor={C.bronze}
+                      multiline
+                      returnKeyType="default"
+                      onFocus={() => { setBdFocused('bd-desc'); setBdDescFocused(true); }}
+                      onBlur={() => { setBdFocused(null); setBdDescFocused(false); }}
+                    />
+                  </View>
+
+                  {p.isDuplicate && (
+                    <View style={styles.warningRow}>
+                      <Feather name="alert-circle" size={12} color={C.bronze} />
+                      <Text style={styles.warningText}>{sl.similarExists}</Text>
+                    </View>
+                  )}
+
+                  {/* Include toggle */}
+                  <Pressable
+                    style={styles.stockToggle}
+                    onPress={() => {
+                      selectionChanged();
+                      setBulkSelected((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(idx)) next.delete(idx);
+                        else next.add(idx);
+                        return next;
+                      });
+                    }}
+                  >
+                    <Text style={styles.stockToggleText}>{sl.includeInImport}</Text>
+                    <View style={[styles.toggleTrack, selected && styles.toggleTrackActive]}>
+                      <View style={[styles.toggleThumb, selected && styles.toggleThumbActive]} />
+                    </View>
+                  </Pressable>
+
+                  {/* Save */}
+                  <TouchableOpacity
+                    style={styles.modalConfirm}
+                    activeOpacity={0.7}
+                    onPress={() => setBulkDetailIdx(null)}
+                  >
+                    <Text style={styles.modalConfirmText}>{sl.saveBtn}</Text>
+                  </TouchableOpacity>
+                </Pressable>
+              </KeyboardAwareScrollView>
+            </>
+          );
+        })()}
+
+        {/* Multiline done FAB — must be LAST child in Modal */}
+        {bdKbVisible && bdDescFocused && (
+          <TouchableOpacity
+            style={[styles.doneFab, { bottom: bdKbHeight + 16 }]}
+            onPress={() => Keyboard.dismiss()}
+            activeOpacity={0.8}
+          >
+            <Feather name="check" size={20} color="#fff" />
+          </TouchableOpacity>
+        )}
+      </Modal>
+
+      {/* ── Stock Adjustment Modal ──────────────────────────── */}
+      <Modal
+        visible={!!stockAdjProduct}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStockAdjProduct(null)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setStockAdjProduct(null)}>
+          <KeyboardAwareScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.modalOverlayCenter}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+          >
+            <Pressable style={styles.stockAdjCard} onPress={() => Keyboard.dismiss()} onStartShouldSetResponder={() => true}>
+              <View style={styles.modalHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalTitle}>{sl.adjustStock}</Text>
+                  {stockAdjProduct && (
+                    <Text style={styles.stockAdjSubtitle}>{sl.stockSubtitle.replace('{name}', stockAdjProduct.name).replace('{qty}', String(stockAdjProduct.stockQuantity ?? 0)).replace('{unit}', stockAdjProduct.unit)}</Text>
+                  )}
+                </View>
+                <Pressable
+                  onPress={() => setStockAdjProduct(null)}
+                  style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Feather name="x" size={16} color={C.textMuted} />
+                </Pressable>
+              </View>
+
+              {/* Reason pills */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stockAdjReasonRow} keyboardShouldPersistTaps="handled">
+                {(['received', 'spoilage', 'damage', 'correction', 'returned'] as StockAdjustmentReason[]).map((r) => (
+                  <Pressable
+                    key={r}
+                    style={[styles.stockAdjReasonPill, stockAdjReason === r && styles.stockAdjReasonPillActive]}
+                    onPress={() => { selectionChanged(); setStockAdjReason(r); }}
+                  >
+                    <Text style={[styles.stockAdjReasonText, stockAdjReason === r && styles.stockAdjReasonTextActive]}>{(sl as any)[r] || r}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+
+              {/* Quantity */}
+              <View style={[styles.currencyInputRow, focusedField === 'adj-qty' && styles.currencyInputRowFocused]}>
+                <Text style={styles.currencyPrefix}>
+                  {['spoilage', 'damage', 'returned'].includes(stockAdjReason) ? '−' : '+'}
+                </Text>
+                <TextInput
+                  style={styles.currencyInput}
+                  value={stockAdjDelta}
+                  onChangeText={setStockAdjDelta}
+                  placeholder={sl.quantityPlaceholder}
+                  placeholderTextColor={C.textMuted}
+                  keyboardType="decimal-pad"
+                  selectionColor={C.bronze}
+                  onFocus={() => setFocusedField('adj-qty')}
+                  onBlur={() => setFocusedField(null)}
+                />
+              </View>
+
+              {/* Note */}
+              <View style={[styles.currencyInputRow, focusedField === 'adj-note' && styles.currencyInputRowFocused]}>
+                <TextInput
+                  style={[styles.currencyInput, { paddingLeft: SPACING.md }]}
+                  value={stockAdjNote}
+                  onChangeText={setStockAdjNote}
+                  placeholder={sl.noteOptionalPlaceholder}
+                  placeholderTextColor={C.textMuted}
+                  selectionColor={C.bronze}
+                  onFocus={() => setFocusedField('adj-note')}
+                  onBlur={() => setFocusedField(null)}
+                />
+              </View>
+
+              {/* Recent adjustments for this product */}
+              {stockAdjProduct && (() => {
+                const history = stockAdjustments.filter((a) => a.productId === stockAdjProduct.id).slice(0, 5);
+                if (!history.length) return null;
+                return (
+                  <View style={styles.stockAdjHistory}>
+                    <Text style={styles.stockAdjHistoryTitle}>{sl.recent}</Text>
+                    {history.map((a) => (
+                      <View key={a.id} style={styles.stockAdjHistoryRow}>
+                        <Text style={[styles.stockAdjHistoryDelta, a.delta > 0 ? { color: C.positive } : { color: C.bronze }]}>
+                          {a.delta > 0 ? '+' : ''}{a.delta}
+                        </Text>
+                        <Text style={styles.stockAdjHistoryReason}>{(sl as any)[a.reason] || a.reason}</Text>
+                        {a.note && <Text style={styles.stockAdjHistoryNote}>{a.note}</Text>}
+                        <Text style={styles.stockAdjHistoryDate}>{format(a.date, 'dd MMM')}</Text>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })()}
+
+              {/* Save */}
+              <TouchableOpacity
+                style={[styles.modalConfirm, !stockAdjDelta.trim() && { opacity: 0.5 }]}
+                activeOpacity={0.7}
+                onPress={handleStockAdjust}
+                disabled={!stockAdjDelta.trim()}
+              >
+                <Text style={styles.modalConfirmText}>{sl.saveAdjustment}</Text>
+              </TouchableOpacity>
             </Pressable>
           </KeyboardAwareScrollView>
         </Pressable>
@@ -1860,7 +2460,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   listContent: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
-    paddingBottom: 80,
+    paddingBottom: 120,
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center' as const,
   },
   listContentEmpty: {
     minHeight: Dimensions.get('window').height * 0.6,
@@ -1902,17 +2505,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
-  // Compact product row
+  // Product row
   productRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
-    gap: SPACING.sm,
+    gap: SPACING.md,
     borderRadius: RADIUS.lg,
     backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: withAlpha(C.textPrimary, 0.08),
     marginBottom: SPACING.sm,
   },
   productRowInactive: {
@@ -1940,29 +2543,28 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderColor: BIZ.destructive,
   },
   rowAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.lg,
     backgroundColor: withAlpha(C.bronze, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },
   rowAvatarInactive: {
-    backgroundColor: withAlpha(C.textMuted, 0.08),
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
   },
   rowAvatarText: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.bronze,
   },
   rowContent: {
     flex: 1,
-    gap: 2,
+    gap: SPACING.xs,
   },
-  rowTop: {
+  rowNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: SPACING.sm,
   },
   rowName: {
@@ -1971,30 +2573,26 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
     flex: 1,
   },
+  inactiveBadge: {
+    backgroundColor: withAlpha(C.textMuted, 0.1),
+    borderRadius: 4,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
+  },
+  inactiveBadgeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
   rowPrice: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
+    color: C.textSecondary,
     fontVariant: ['tabular-nums'] as any,
-  },
-  rowUnit: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.regular,
-    color: C.textMuted,
   },
   rowSub: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
     fontVariant: ['tabular-nums'] as any,
-  },
-  rowSwitch: {
-    transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
-    marginLeft: SPACING.xs,
-  },
-  rowDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: C.border,
-    marginLeft: 52,
   },
 
   // No results
@@ -2038,52 +2636,103 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
   },
-
-  // List header
-  listHeader: {
+  syncTogglePill: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
+    paddingVertical: SPACING.sm,
   },
-  listHeaderLeft: {
+
+  // Action row
+  actionRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  listHeaderTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  listHeaderBadge: {
-    backgroundColor: withAlpha(C.bronze, 0.1),
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    minWidth: 28,
-    alignItems: 'center',
     justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.xs,
   },
-  listHeaderBadgeText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.bronze,
-    fontVariant: ['tabular-nums'],
-  },
-  logCostHeaderButton: {
+  actionPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    backgroundColor: withAlpha(C.bronze, 0.1),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
   },
-  logCostHeaderText: {
+  actionPillActive: {
+    backgroundColor: C.bronze,
+  },
+  actionPillText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
+  },
+  actionPillTextActive: {
+    color: C.onAccent,
+  },
+
+  // Category filter chips (list header)
+  categoryChipRow: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+  },
+  categoryChip: {
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
+  },
+  categoryChipActive: {
+    backgroundColor: C.bronze,
+  },
+  categoryChipText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+  },
+  categoryChipTextActive: {
+    color: C.onAccent,
+  },
+
+  // Category picker (form)
+  formCategoryChipRow: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    paddingBottom: SPACING.sm,
+  },
+  formCategoryChip: {
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  formCategoryChipActive: {
+    backgroundColor: withAlpha(C.bronze, 0.15),
+    borderColor: withAlpha(C.bronze, 0.4),
+  },
+  formCategoryChipText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.bronze,
+  },
+  formCategoryChipTextActive: {
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+
+  popularSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  popularSectionHeaderText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textMuted,
+    letterSpacing: 0.5,
   },
 
   // Empty state
@@ -2118,17 +2767,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: C.deepOlive,
+    backgroundColor: C.deepOliveBiz,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
     marginTop: SPACING.md,
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   emptyCTAText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
   emptyBulkBtn: {
     flexDirection: 'row',
@@ -2142,33 +2791,67 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
-  // Bottom add button
-  addButtonWrapper: {
+  // Bottom bar
+  bottomBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
     gap: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.lg,
     paddingTop: SPACING.sm,
     backgroundColor: C.background,
+    alignItems: 'center',
   },
-  addButton: {
+  primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: C.deepOlive,
-    borderRadius: RADIUS.xl,
-    paddingVertical: SPACING.lg,
-    ...SHADOWS.sm,
+    backgroundColor: C.deepOliveBiz,
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.md,
+    width: '100%',
+    minHeight: 52,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
-  addButtonText: {
+  primaryButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
+  },
+  bulkActionsRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    width: '100%',
+  },
+  bulkActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    backgroundColor: withAlpha(C.bronze, C === CALM_DARK ? 0.12 : 0.06),
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.sm,
+    minHeight: 44,
+  },
+  bulkActionText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.bronze,
+  },
+  bulkImportLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+  },
+  bulkImportText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.bronze,
   },
 
   // Unit & Stock row
@@ -2181,8 +2864,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    backgroundColor: C.background,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
   },
@@ -2203,14 +2888,61 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   stockToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
+    gap: SPACING.sm,
   },
   stockToggleText: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
   },
+  toggleTrack: {
+    width: 40,
+    height: 24,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(C.textMuted, 0.2),
+    justifyContent: 'center',
+    padding: 2,
+  },
+  toggleTrackActive: {
+    backgroundColor: C.bronze,
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: RADIUS.md,
+    backgroundColor: C.surface,
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end' as const,
+  },
   stockInputWrap: {
-    marginTop: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+
+  // Add description link
+  addDescLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: SPACING.xs,
+  },
+  addDescLinkText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
+  // Tablet 2-column layout
+  tabletFormRow: {
+    flexDirection: 'row',
+    gap: SPACING.xl,
+    alignItems: 'flex-start',
+  },
+  tabletFormLeft: {
+    width: 200,
+  },
+  tabletFormRight: {
+    flex: 1,
+    gap: SPACING.sm,
   },
 
   // Unit picker modal
@@ -2228,7 +2960,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   unitModalHeader: {
     flexDirection: 'row',
@@ -2298,7 +3030,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: withAlpha(C.dimBg, 0.4),
   },
   modalScrollContent: {
     flexGrow: 1,
@@ -2311,29 +3043,45 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalContent: {
     backgroundColor: C.surface,
-    borderRadius: 20,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C.border,
     paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.xs,
-    paddingBottom: SPACING.xl,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.lg,
     width: '100%',
-    gap: SPACING.lg,
+    maxWidth: 420,
+    gap: SPACING.md,
   },
   modalHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
   modalTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
-    letterSpacing: -0.3,
+    letterSpacing: C === CALM_DARK ? -0.2 : -0.4,
+  },
+  modalTitleAccent: {
+    fontStyle: 'italic',
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.bronze,
+  },
+  modalSubtitle: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    letterSpacing: 0.1,
+    marginTop: -SPACING.sm,
   },
   modalCloseBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: C.background,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.06),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2342,15 +3090,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   fieldLabel: {
     fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+    letterSpacing: 0.2,
   },
   fieldLabelOptional: {
     fontWeight: TYPOGRAPHY.weight.regular,
     color: C.textMuted,
-    textTransform: 'none',
     letterSpacing: 0,
   },
   modalLabel: {
@@ -2361,16 +3107,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     ...TYPE.insight,
     lineHeight: undefined,
     color: C.textPrimary,
-    backgroundColor: C.background,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
   },
   modalInputFocused: {
     borderColor: withAlpha(C.bronze, 0.4),
-    backgroundColor: C.surface,
   },
   modalInputError: {
     borderColor: BIZ.inputError,
@@ -2380,6 +3125,55 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     minHeight: 56,
     maxHeight: 100,
   },
+  descInputCompact: {
+    minHeight: 44,
+    maxHeight: 80,
+  },
+  detailsSection: {
+    gap: SPACING.xs,
+    backgroundColor: withAlpha(C.textMuted, 0.03),
+    borderRadius: RADIUS.lg,
+    padding: SPACING.sm,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.04),
+  },
+  namePhotoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  inlinePhotoWrap: {
+    position: 'relative',
+  },
+  inlinePhoto: {
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.lg,
+    backgroundColor: withAlpha(C.bronze, 0.06),
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  inlinePhotoImg: {
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.lg - 1,
+  },
+  inlinePhotoRemove: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(C.textPrimary, 0.5),
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: C.background,
+  },
   modalRow: {
     flexDirection: 'row',
     gap: SPACING.md,
@@ -2387,105 +3181,151 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalActions: {
     flexDirection: 'row',
     gap: SPACING.sm,
-    marginTop: SPACING.xs,
+    marginTop: SPACING.sm,
   },
   modalCancel: {
     flex: 1,
     paddingVertical: SPACING.md,
-    backgroundColor: C.background,
-    borderRadius: RADIUS.lg,
-    minHeight: 48,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: C.border,
+    minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalCancelText: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
   },
   modalConfirm: {
     flex: 2,
     paddingVertical: SPACING.md,
-    backgroundColor: C.deepOlive,
-    borderRadius: RADIUS.lg,
-    minHeight: 48,
+    backgroundColor: C.bronze,
+    borderRadius: RADIUS.full,
+    minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalConfirmText: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
-  // Drag handle
-  dragHandleArea: {
+  // Section headers
+  sectionHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.xs,
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
   },
-  dragHandle: {
-    width: 32,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: withAlpha(C.textMuted, 0.2),
+  sectionLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+    letterSpacing: 0.3,
   },
 
   // Live preview card
   previewCard: {
-    backgroundColor: C.background,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+    padding: SPACING.md,
   },
   previewRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: SPACING.md,
   },
-  previewIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: withAlpha(C.bronze, 0.08),
+  previewPhotoWrap: {
+    position: 'relative',
+  },
+  previewPhotoArea: {
+    width: 72,
+    height: 72,
+    borderRadius: RADIUS.lg,
+    backgroundColor: withAlpha(C.bronze, 0.06),
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: SPACING.md,
     overflow: 'hidden',
   },
-  prodThumb: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+  previewPhotoImage: {
+    width: 72,
+    height: 72,
+    borderRadius: RADIUS.lg - 1,
   },
-  changePhotoBtn: {
-    flexDirection: 'row',
+  previewPhotoEditBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 24,
+    height: 24,
+    borderRadius: RADIUS.md,
+    backgroundColor: C.bronze,
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 4,
-    paddingTop: 6,
-    paddingLeft: 2,
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: C.background,
   },
-  changePhotoText: {
-    fontSize: 11,
-    color: C.textMuted,
+  previewPhotoRemoveBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 24,
+    height: 24,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(C.textPrimary, 0.5),
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: C.background,
+  },
+  previewPhotoCameraCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.xl,
+    backgroundColor: withAlpha(C.bronze, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewPhotoHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
   imgPreviewOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.9)',
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.92)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 999,
+    padding: SPACING.xl,
+  },
+  imgPreviewCloseBtn: {
+    position: 'absolute',
+    top: 56,
+    right: SPACING.lg,
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.xl,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
   },
   imgPreviewImage: {
-    width: '80%',
-    aspectRatio: 1,
-    borderRadius: 16,
+    width: '90%',
+    height: '70%',
+    borderRadius: RADIUS.xl,
   },
   previewInfo: {
     flex: 1,
+    justifyContent: 'center',
   },
   previewName: {
     fontSize: TYPOGRAPHY.size.base,
@@ -2508,11 +3348,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: 2,
   },
   previewBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: SPACING.xs,
     backgroundColor: withAlpha(BIZ.profit, 0.1),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    marginLeft: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    marginTop: 4,
   },
   previewBadgeText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -2525,15 +3369,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   currencyInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.background,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingLeft: SPACING.md,
   },
   currencyInputRowFocused: {
     borderColor: withAlpha(C.bronze, 0.4),
-    backgroundColor: C.surface,
   },
   currencyInputRowError: {
     borderColor: BIZ.inputError,
@@ -2550,19 +3393,19 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     lineHeight: undefined,
     color: C.textPrimary,
     flex: 1,
-    paddingVertical: SPACING.md + 2,
+    paddingVertical: SPACING.md,
     paddingRight: SPACING.md,
     paddingLeft: 0,
   },
 
-  // Profit preview + margin badge
-  profitRow: {
+  // Kept preview + margin badge
+  keptRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
     paddingTop: SPACING.xs,
   },
-  profitText: {
+  keptText: {
     fontSize: TYPOGRAPHY.size.xs,
     color: BIZ.profit,
     fontWeight: TYPOGRAPHY.weight.medium,
@@ -2572,13 +3415,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: withAlpha(BIZ.profit, 0.1),
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.xs,
-    paddingVertical: 1,
+    paddingVertical: 2,
   },
   marginBadgeHigh: {
     backgroundColor: withAlpha(C.accent, 0.1),
   },
   marginBadgeText: {
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: BIZ.profit,
     fontVariant: ['tabular-nums'],
@@ -2605,54 +3448,76 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: SPACING.sm,
   },
   justAddedSection: {
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+  },
+  justAddedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.15),
+    padding: SPACING.md,
+  },
+  justAddedThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+  },
+  justAddedThumbPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING['3xl'],
-    gap: SPACING.md,
   },
-  justAddedIcon: {
-    marginBottom: SPACING.xs,
-  },
-  justAddedTitle: {
+  justAddedThumbText: {
     fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+  },
+  justAddedName: {
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
-  justAddedHint: {
-    ...TYPE.muted,
+  justAddedPrice: {
+    fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+    marginTop: 2,
   },
-  quickAddCheck: {
+  justAddedStatusRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.xs,
-    paddingVertical: SPACING.xs,
   },
-  quickAddCheckText: {
-    fontSize: TYPOGRAPHY.size.sm,
+  justAddedStatusText: {
+    fontSize: TYPOGRAPHY.size.xs,
     color: C.bronze,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontWeight: TYPOGRAPHY.weight.medium,
   },
-  quickAddActions: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-  },
-  addAnotherBtn: {
-    flex: 1,
-    flexDirection: 'row',
+  justAddedActions: {
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
+    gap: SPACING.md,
+  },
+  justAddedBtn: {
+    width: '100%',
     paddingVertical: SPACING.md,
-    backgroundColor: withAlpha(C.bronze, 0.08),
-    borderRadius: RADIUS.lg,
-    minHeight: 48,
+    backgroundColor: C.bronze,
+    borderRadius: RADIUS.full,
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  addAnotherText: {
+  justAddedDoneText: {
     fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
   },
 
   costDatePill: {
@@ -2660,8 +3525,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: SPACING.xs,
-    backgroundColor: C.background,
+    backgroundColor: C.surface,
     borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
   },
@@ -2670,44 +3537,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
-  reorderButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    backgroundColor: withAlpha(C.bronze, 0.1),
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.full,
-  },
-  reorderButtonActive: {
-    backgroundColor: C.bronze,
-  },
-  reorderText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.bronze,
-  },
-  reorderTextActive: {
-    color: '#fff',
-  },
-
   // ── Popular this month ──
   popularSection: {
     marginTop: SPACING.md,
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: withAlpha(C.textPrimary, 0.08),
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  popularHeader: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textMuted,
-    letterSpacing: 0.8,
     marginBottom: SPACING.sm,
   },
   popularRow: {
@@ -2718,19 +3557,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
     marginBottom: 4,
-  },
-  popularRankBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: withAlpha(C.accent, 0.12),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  popularRankText: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
   },
   popularName: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -2765,66 +3591,177 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: withAlpha(C.accent, 0.6),
   },
 
-  // Bulk import
-  bulkAddButton: {
-    width: 48,
-    height: 48,
+  // ── Product detail modal ──
+  detailOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+  },
+  detailSheet: {
+    backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
-    backgroundColor: withAlpha(C.bronze, 0.12),
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: SPACING['2xl'],
+    paddingTop: SPACING['2xl'],
+    paddingBottom: SPACING['2xl'],
+    maxHeight: '80%',
+    maxWidth: 420,
+    width: '88%',
+    gap: SPACING['2xl'],
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  detailHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: SPACING.md,
+    gap: SPACING.lg,
+  },
+  detailProductImage: {
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.lg,
+  },
+  detailProductAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.lg,
+    backgroundColor: withAlpha(C.bronze, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bulkHint: {
+  detailProductAvatarText: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+  },
+  detailName: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    marginBottom: 2,
+  },
+  detailPriceLine: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  detailCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailStatsLine: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    lineHeight: 20,
+    marginTop: SPACING.xs,
+  },
+  detailStatValue: {
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  detailStatLabel: {
+    color: C.textMuted,
+  },
+  detailStatDot: {
+    color: withAlpha(C.textMuted, 0.4),
+  },
+  detailDescInline: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
     lineHeight: 20,
+    paddingVertical: SPACING.xs,
   },
-  bulkImageRow: {
+  detailToggleRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.sm,
+    marginTop: SPACING.md,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    minHeight: 44,
   },
-  bulkImageBtn: {
-    flex: 1,
+  detailStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  detailActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  detailToggleLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  detailActionPill: {
+    flexBasis: '47%',
+    flexGrow: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.xs,
-    paddingVertical: SPACING.md,
-    backgroundColor: withAlpha(C.bronze, 0.08),
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: withAlpha(C.bronze, 0.15),
+    backgroundColor: withAlpha(C.bronze, C === CALM_DARK ? 0.12 : 0.06),
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    minHeight: 44,
   },
-  bulkImageText: {
+  detailActionPillText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
   },
-  bulkDivider: {
+  detailDeleteBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  detailDeleteBtnText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+  },
+
+  // Bulk import
+  bulkSourceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
   },
-  bulkDividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: C.border,
-  },
-  bulkDividerText: {
+  bulkSourceHint: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
+    marginLeft: SPACING.xs,
   },
   bulkLoadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.md,
   },
   bulkLoadingText: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.bronze,
-    fontStyle: 'italic',
   },
   bulkTextArea: {
     backgroundColor: C.background,
@@ -2834,8 +3771,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING.md,
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textPrimary,
-    minHeight: 100,
+    minHeight: 120,
     textAlignVertical: 'top',
+  },
+  bulkResultsCount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+  },
+  bulkResultsList: {
+    maxHeight: 380,
   },
   bulkResultRow: {
     flexDirection: 'row',
@@ -2861,15 +3805,158 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.bronze,
     borderColor: C.bronze,
   },
+  bulkResultNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
   bulkResultName: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
   },
+  bulkDupBadge: {
+    backgroundColor: withAlpha(C.bronze, 0.12),
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: RADIUS.xs,
+  },
+  bulkDupText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.bronze,
+  },
   bulkResultDetail: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
     marginTop: 2,
+  },
+  bulkDetailDim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: withAlpha(C.dimBg, 0.5),
+  },
+  bulkDetailDimAbs: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bulkDetailCenter: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING['2xl'],
+  },
+  bulkDetailCard: {
+    width: '88%',
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING['2xl'],
+    gap: SPACING.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    ...SHADOWS.lg,
+  },
+  bdFieldInput: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    minWidth: 40,
+    paddingVertical: 0,
+  },
+
+  doneFab: {
+    position: 'absolute',
+    right: SPACING.md,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: C.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 200,
+    ...SHADOWS.md,
+  },
+
+  // Stock adjustment modal
+  modalOverlayCenter: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING['2xl'],
+  },
+  stockAdjCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    gap: SPACING.md,
+    borderWidth: 1,
+    borderColor: C.border,
+    ...SHADOWS.lg,
+  },
+  stockAdjSubtitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    marginTop: SPACING.xs,
+  },
+  stockAdjReasonRow: {
+    flexDirection: 'row',
+    marginBottom: SPACING.xs,
+  },
+  stockAdjReasonPill: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
+    marginRight: SPACING.sm,
+  },
+  stockAdjReasonPillActive: {
+    backgroundColor: withAlpha(C.bronze, 0.15),
+  },
+  stockAdjReasonText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  stockAdjReasonTextActive: {
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+  stockAdjHistory: {
+    gap: SPACING.sm,
+    paddingTop: SPACING.sm,
+  },
+  stockAdjHistoryTitle: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  stockAdjHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  stockAdjHistoryDelta: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    minWidth: 36,
+    fontVariant: ['tabular-nums'],
+  },
+  stockAdjHistoryReason: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    flex: 1,
+  },
+  stockAdjHistoryNote: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    flex: 1,
+  },
+  stockAdjHistoryDate: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontVariant: ['tabular-nums'],
   },
 });
 

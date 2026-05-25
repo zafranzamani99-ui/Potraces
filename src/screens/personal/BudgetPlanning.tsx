@@ -17,9 +17,23 @@ import {
   Animated as RNAnimated,
   useWindowDimensions,
 } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
-import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
-import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutUp } from 'react-native-reanimated';
+import { ScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
+import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  runOnJS,
+  interpolate,
+  Extrapolation,
+  useAnimatedReaction,
+  SharedValue,
+  FadeIn,
+  FadeOut,
+  SlideInDown,
+  SlideOutUp,
+} from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import {
   startOfMonth, endOfMonth,
@@ -32,8 +46,8 @@ import {
 } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, SHADOWS, withAlpha } from '../../constants';
-import { useCalm } from '../../hooks/useCalm';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, SHADOWS, withAlpha } from '../../constants';
+import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import { FREE_TIER } from '../../constants/premium';
@@ -53,11 +67,79 @@ import { computePlaybookStats, isOverspent, getOverspentAmount, isPlaybookStale 
 import PlaybookNotebook from '../../components/playbook/PlaybookNotebook';
 import { format } from 'date-fns';
 
+const HARD_SWIPE = 120;
+const SWIPE_ACTION_MIN = 72;
+const SWIPE_ACTION_MAX = 140;
+
+type BudgetSwipeActionProps = {
+  variant: 'edit' | 'delete';
+  direction: 'right' | 'left';
+  drag: SharedValue<number>;
+  label: string;
+  styles: ReturnType<typeof makeStyles>;
+  onTap: () => void;
+  onHardSwipe: () => void;
+};
+
+function BudgetSwipeAction({
+  variant, direction, drag, label, styles, onTap, onHardSwipe,
+}: BudgetSwipeActionProps) {
+  const triggered = useSharedValue(false);
+
+  useAnimatedReaction(
+    () => drag.value,
+    (v) => {
+      'worklet';
+      const crossed = direction === 'right' ? v < -HARD_SWIPE : v > HARD_SWIPE;
+      if (crossed && !triggered.value) {
+        triggered.value = true;
+        runOnJS(onHardSwipe)();
+      }
+      if (Math.abs(v) < 10) {
+        triggered.value = false;
+      }
+    },
+  );
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const absDrag = Math.abs(drag.value);
+    const w = Math.min(SWIPE_ACTION_MAX, Math.max(SWIPE_ACTION_MIN, absDrag));
+    return { width: w };
+  });
+
+  return (
+    <Reanimated.View
+      style={[
+        styles.swipeFill,
+        variant === 'edit' ? styles.swipeEditColor : styles.swipeDeleteColor,
+        animatedStyle,
+      ]}
+    >
+      <TouchableOpacity
+        style={styles.swipeInner}
+        onPress={onTap}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+      >
+        <Feather
+          name={variant === 'edit' ? 'edit-2' : 'trash-2'}
+          size={22}
+          color="#fff"
+        />
+      </TouchableOpacity>
+    </Reanimated.View>
+  );
+}
+
 // ─── Pace helpers ──────────────────────────────────────────
-const getPaceColor = (paceRatio: number) => {
-  if (paceRatio <= 1.1) return CALM.accent; // olive — on track / ahead
-  if (paceRatio <= 1.3) return CALM.bronze; // bronze — moving a bit fast
-  return '#DEAB22'; // gold — needs attention
+// Pace color resolves against the active palette (light/dark) — pass `C` from
+// the component scope so dark mode renders the dark-variant tokens.
+// (UX-H5, DESIGN-H1)
+const getPaceColor = (paceRatio: number, C: typeof CALM) => {
+  if (paceRatio <= 1.1) return C.accent; // olive — on track / ahead
+  if (paceRatio <= 1.3) return C.bronze; // bronze — moving a bit fast
+  return C.gold; // gold — needs attention (icon/pill use, not body text)
 };
 
 const getPaceLabel = (paceRatio: number) => {
@@ -108,6 +190,7 @@ const getPeriodDates = (period: 'weekly' | 'monthly' | 'yearly', now: Date) => {
 // ─── Component ─────────────────────────────────────────────
 const BudgetPlanning: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
@@ -134,8 +217,70 @@ const BudgetPlanning: React.FC = () => {
   const [fabSide, setFabSide] = useState<'left' | 'right'>('right');
   const [chipRotation, setChipRotation] = useState(0);
 
-  // ── Draggable Echo FAB — free X+Y drag, snaps to edge on release ──
+  // ── Bottom-sheet animation for Add/Edit Budget ──
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
+  const bSheetY = useSharedValue(SCREEN_H);
+  const bDragStart = useSharedValue(0);
+
+  useEffect(() => {
+    if (modalVisible) {
+      bClosingRef.current = false;
+      bSheetY.value = SCREEN_H;
+      bSheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
+    }
+  }, [modalVisible, SCREEN_H, bSheetY]);
+
+  const bClosingRef = useRef(false);
+  const bFinishClose = useCallback(() => {
+    if (!bClosingRef.current) return;
+    bClosingRef.current = false;
+    setModalVisible(false);
+    setTimeout(() => resetForm(), 0);
+  }, []);
+
+  const bCloseSheet = useCallback(() => {
+    if (bClosingRef.current) return;
+    bClosingRef.current = true;
+    Keyboard.dismiss();
+    bSheetY.value = withTiming(SCREEN_H, { duration: 220 }, (finished) => {
+      if (finished) runOnJS(bFinishClose)();
+    });
+  }, [SCREEN_H, bSheetY, bFinishClose]);
+
+  const bSheetGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY([10, 9999])
+        .onStart(() => {
+          'worklet';
+          bDragStart.value = bSheetY.value;
+        })
+        .onUpdate((e) => {
+          'worklet';
+          let newY = bDragStart.value + e.translationY;
+          if (newY < 0) newY = newY / 3;
+          bSheetY.value = newY;
+        })
+        .onEnd((e) => {
+          'worklet';
+          const passedThreshold = e.translationY > 100 || e.velocityY > 800;
+          if (passedThreshold) {
+            runOnJS(bCloseSheet)();
+          } else {
+            bSheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
+          }
+        }),
+    [SCREEN_H, bCloseSheet]
+  );
+
+  const bSheetAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: bSheetY.value }],
+  }));
+  const bBackdropAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(bSheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP),
+  }));
+
+  // ── Draggable Echo FAB — free X+Y drag, snaps to edge on release ──
   const echoFabPan = useRef(new RNAnimated.ValueXY({ x: 0, y: 0 })).current;
   // When anchor (fabSide) switches, reset X to 0 atomically before the frame paints
   const prevFabSideRef = useRef<'left' | 'right'>('right');
@@ -230,11 +375,11 @@ const BudgetPlanning: React.FC = () => {
           accessibilityLabel="Show Echo assistant"
           style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
         >
-          <Feather name="zap" size={20} color={CALM.textPrimary} />
+          <Feather name="zap" size={20} color={C.textPrimary} />
         </TouchableOpacity>
       ),
     });
-  }, [echoHidden, navigation]);
+  }, [echoHidden, navigation, C]);
 
   const pendingNavRef = useRef<string | null>(null);
   const pendingNavParamsRef = useRef<Record<string, any> | undefined>(undefined);
@@ -443,9 +588,9 @@ const BudgetPlanning: React.FC = () => {
       totalOverBy,
       budgetLeft,
       totalBudgetSpent,
-      paceColor: getPaceColor(paceRatio),
+      paceColor: getPaceColor(paceRatio, C),
     };
-  }, [transactions, budgetsWithSpent, now, subscriptions, goals]);
+  }, [transactions, budgetsWithSpent, now, subscriptions, goals, C]);
 
   // ─── Handlers ────────────────────────────────────────────
   const handleAdd = useCallback(() => {
@@ -536,9 +681,8 @@ const BudgetPlanning: React.FC = () => {
   }, [expenseCategories]);
 
   const closeModal = useCallback(() => {
-    setModalVisible(false);
-    resetForm();
-  }, [resetForm]);
+    bCloseSheet();
+  }, [bCloseSheet]);
 
   const openAddModal = useCallback(() => {
     if (!canCreateBudget(budgets.length)) {
@@ -548,6 +692,13 @@ const BudgetPlanning: React.FC = () => {
     lightTap();
     setModalVisible(true);
   }, [canCreateBudget, budgets.length]);
+
+  // ── Swipeable refs per budget (for closing after action) ──
+  const budgetSwipeRefs = useRef<Record<string, React.RefObject<SwipeableMethods | null>>>({}).current;
+  const getBudgetSwipeRef = useCallback((id: string) => {
+    if (!budgetSwipeRefs[id]) budgetSwipeRefs[id] = React.createRef<SwipeableMethods | null>();
+    return budgetSwipeRefs[id];
+  }, [budgetSwipeRefs]);
 
   const toggleExpand = useCallback((id: string) => {
     lightTap();
@@ -579,13 +730,13 @@ const BudgetPlanning: React.FC = () => {
       percentSpent,
       percentElapsed,
       paceRatio,
-      paceColor: getPaceColor(paceRatio),
+      paceColor: getPaceColor(paceRatio, C),
       paceLabel: getPaceLabel(paceRatio),
       leftAmount,
       dailyBudget,
       cat,
     };
-  }, [now, expenseCategories]);
+  }, [now, expenseCategories, C]);
 
   // ─── Smart insight — observes patterns and narrates them ───
   const smartInsight = useMemo(() => {
@@ -1151,11 +1302,11 @@ const BudgetPlanning: React.FC = () => {
               {heroData.alreadyOver ? (
                 <>
                   you're over in{' '}
-                  <Text style={[styles.runwayHighlight, { color: '#DEAB22' }]}>
+                  <Text style={[styles.runwayHighlight, { color: C.bronze }]}>
                     {heroData.overBudgets.length} categor{heroData.overBudgets.length === 1 ? 'y' : 'ies'}
                   </Text>
                   {' by '}
-                  <Text style={[styles.runwayHighlight, { color: '#DEAB22' }]}>
+                  <Text style={[styles.runwayHighlight, { color: C.bronze }]}>
                     {currency} {heroData.totalOverBy.toFixed(0)}
                   </Text>
                 </>
@@ -1331,31 +1482,53 @@ const BudgetPlanning: React.FC = () => {
               : meta.remaining;
             const willStretch = perCategoryRunway >= meta.remaining;
 
+            const renderRightActions = (
+              _prog: SharedValue<number>,
+              drag: SharedValue<number>,
+              swipeable: SwipeableMethods,
+            ) => (
+              <BudgetSwipeAction
+                variant="edit"
+                direction="right"
+                drag={drag}
+                label="edit"
+                styles={styles}
+                onTap={() => { swipeable.close(); handleEdit(budget); }}
+                onHardSwipe={() => { swipeable.close(); handleEdit(budget); }}
+              />
+            );
+
+            const renderLeftActions = (
+              _prog: SharedValue<number>,
+              drag: SharedValue<number>,
+              swipeable: SwipeableMethods,
+            ) => (
+              <BudgetSwipeAction
+                variant="delete"
+                direction="left"
+                drag={drag}
+                label="delete"
+                styles={styles}
+                onTap={() => { handleDelete(budget); }}
+                onHardSwipe={() => { handleDelete(budget); }}
+              />
+            );
+
             return (
               <View key={budget.id}>
                 <ReanimatedSwipeable
-                  friction={2}
-                  rightThreshold={40}
-                  renderRightActions={() => (
-                    <View style={styles.swipeActionsV2}>
-                      <TouchableOpacity
-                        style={[styles.swipeActionV2, { backgroundColor: C.accent }]}
-                        onPress={() => handleEdit(budget)}
-                        activeOpacity={0.85}
-                      >
-                        <Feather name="edit-2" size={18} color="#fff" />
-                        <Text style={styles.swipeActionLabel}>edit</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.swipeActionV2, { backgroundColor: C.neutral }]}
-                        onPress={() => handleDelete(budget)}
-                        activeOpacity={0.85}
-                      >
-                        <Feather name="trash-2" size={18} color="#fff" />
-                        <Text style={styles.swipeActionLabel}>delete</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                  ref={getBudgetSwipeRef(budget.id)}
+                  renderRightActions={renderRightActions}
+                  renderLeftActions={renderLeftActions}
+                  friction={1.2}
+                  rightThreshold={48}
+                  leftThreshold={48}
+                  overshootRight
+                  overshootLeft
+                  overshootFriction={2}
+                  dragOffsetFromLeftEdge={15}
+                  dragOffsetFromRightEdge={15}
+                  animationOptions={{ mass: 0.5, damping: 24, stiffness: 420, overshootClamping: true }}
                 >
                   <Pressable
                     onLongPress={() => {
@@ -1450,7 +1623,7 @@ const BudgetPlanning: React.FC = () => {
 
           return (
             <View style={styles.budgetGroupsWrap}>
-              {renderSection(t.budget.needsAttention, 'alert-circle', '#DEAB22', urgent)}
+              {renderSection(t.budget.needsAttention, 'alert-circle', C.gold, urgent)}
               {renderSection(t.budget.onTrackSection, 'check-circle', C.accent, track)}
               {renderSection(t.budget.plentyOfRoom, 'circle', C.bronze, plenty)}
             </View>
@@ -1470,7 +1643,7 @@ const BudgetPlanning: React.FC = () => {
               onPress={openAddModal}
               activeOpacity={0.8}
             >
-              <Feather name="plus" size={18} color="#fff" />
+              <Feather name="plus" size={18} color={C.onAccent} />
               <Text style={styles.emptyButtonText}>{t.budget.addBudget.toLowerCase()}</Text>
             </TouchableOpacity>
           </View>
@@ -1739,71 +1912,87 @@ const BudgetPlanning: React.FC = () => {
           onPress={openAddModal}
           activeOpacity={0.85}
         >
-          <Feather name="plus" size={24} color="#fff" />
+          <Feather name="plus" size={24} color={C.onAccent} />
         </TouchableOpacity>
       )}
 
-      {/* ── Add / Edit Modal ── */}
-      <Modal
-        visible={modalVisible}
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={closeModal}
-      >
-        <View style={styles.modalOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeModal} />
+      {/* ── Add / Edit Budget — bottom-sheet (drag-to-dismiss, animated backdrop) ─── */}
+      {modalVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={bCloseSheet}>
+        <Reanimated.View style={[styles.modalBackdrop, bBackdropAnimatedStyle]}>
+          <Pressable style={{ flex: 1 }} onPress={bCloseSheet} />
+        </Reanimated.View>
+
+        <Reanimated.View style={[styles.modalSheetContainer, bSheetAnimatedStyle]}>
+          <GestureDetector gesture={bSheetGesture}>
+            <View collapsable={false}>
+              <View style={styles.modalHandleRow}>
+                <View style={styles.modalHandle} />
+              </View>
+              <View style={styles.modalTitleZone}>
+                <Text style={styles.modalTitle} numberOfLines={1}>
+                  {editingBudget ? 'edit ' : 'add '}
+                  <Text style={styles.modalTitleAccent}>
+                    {editingBudget
+                      ? (expenseCategories.find((c) => c.id === editingBudget.category)?.name?.toLowerCase() || 'budget')
+                      : 'budget'}
+                  </Text>
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  {editingBudget ? 'update your spending limit' : 'set a monthly spending limit'}
+                </Text>
+              </View>
+            </View>
+          </GestureDetector>
+
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.modalKAV}
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={10}
           >
-            <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-              {/* Header */}
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>
-                  {editingBudget ? t.budget.editBudget.toLowerCase() : t.budget.addBudget.toLowerCase()}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+              contentContainerStyle={styles.modalScrollContent}
+              keyboardDismissMode="on-drag"
+            >
+              <View style={styles.modalHeroCard}>
+                <Text style={styles.modalFieldLabel}>
+                  amount <Text style={styles.modalFieldRequired}>*</Text>
                 </Text>
-                <TouchableOpacity
-                  onPress={closeModal}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Feather name="x" size={22} color={C.textPrimary} />
-                </TouchableOpacity>
+                <View style={styles.modalHeroAmountRow}>
+                  <Text style={[styles.modalHeroCurrency, { color: C.accent }]}>{currency}</Text>
+                  <TextInput
+                    style={[styles.modalHeroAmountInput, { color: C.accent }]}
+                    value={amount}
+                    onChangeText={setAmount}
+                    placeholder="0.00"
+                    placeholderTextColor={withAlpha(C.textPrimary, 0.12)}
+                    keyboardType="decimal-pad"
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                    selectTextOnFocus
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
+                    accessibilityLabel="budget amount"
+                  />
+                </View>
               </View>
 
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                nestedScrollEnabled
-                contentContainerStyle={{ paddingBottom: SPACING.md }}
-              >
-                {/* Category */}
+              <View style={styles.modalDivider} />
+
+              <View style={styles.modalFieldCard}>
+                <Text style={styles.modalFieldLabel}>{t.budget.category.toLowerCase()}</Text>
                 <CategoryPicker
                   categories={expenseCategories}
                   selectedId={category}
                   onSelect={setCategory}
-                  label={t.budget.category.toLowerCase()}
                   layout="dropdown"
                 />
+              </View>
 
-                {/* Amount */}
-                <Text style={styles.label}>{t.budget.amount.toLowerCase()}</Text>
-                <View style={styles.amountRow}>
-                  <Text style={styles.currencyPrefix}>{currency}</Text>
-                  <TextInput
-                    style={styles.amountInput}
-                    value={amount}
-                    onChangeText={setAmount}
-                    placeholder="0.00"
-                    keyboardType="decimal-pad"
-                    placeholderTextColor={C.textMuted}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                </View>
-
-                {/* Period — inline picker */}
-                <Text style={styles.label}>{t.budget.period.toLowerCase()}</Text>
+              <View style={styles.modalFieldCard}>
+                <Text style={styles.modalFieldLabel}>{t.budget.period.toLowerCase()}</Text>
                 <View style={styles.periodRow}>
                   {BUDGET_PERIODS.map((p) => {
                     const isActive = period === p.value;
@@ -1813,6 +2002,9 @@ const BudgetPlanning: React.FC = () => {
                         style={[styles.periodChip, isActive && styles.periodChipActive]}
                         onPress={() => { lightTap(); setPeriod(p.value as typeof period); }}
                         activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isActive }}
+                        accessibilityLabel={p.label}
                       >
                         <Text style={[styles.periodChipText, isActive && styles.periodChipTextActive]}>
                           {p.label.toLowerCase()}
@@ -1821,38 +2013,79 @@ const BudgetPlanning: React.FC = () => {
                     );
                   })}
                 </View>
+              </View>
 
-                {/* Rollover toggle */}
-                <View style={styles.rolloverRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.rolloverLabel}>{t.budget.rollover}</Text>
-                    <Text style={styles.rolloverHint}>
-                      carry leftover to next period
-                    </Text>
-                  </View>
-                  <Switch
-                    value={rollover}
-                    onValueChange={setRollover}
-                    trackColor={{ false: C.border, true: withAlpha(C.accent, 0.3) }}
-                    thumbColor={rollover ? C.accent : C.textMuted}
-                  />
+              <View style={[styles.modalFieldCard, styles.rolloverRow]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalFieldLabelBase}>{t.budget.rollover}</Text>
+                  <Text style={styles.modalFieldHint}>
+                    carry leftover to next period
+                  </Text>
                 </View>
-              </ScrollView>
+                <Switch
+                  value={rollover}
+                  onValueChange={setRollover}
+                  trackColor={{ false: C.border, true: withAlpha(C.accent, 0.3) }}
+                  thumbColor={rollover ? C.accent : C.textMuted}
+                  accessibilityLabel="rollover leftover budget"
+                  accessibilityRole="switch"
+                />
+              </View>
 
-              {/* Confirm — pinned outside scroll so it's always visible */}
-              <TouchableOpacity
-                style={[styles.confirmButton, { marginTop: SPACING.md }]}
-                onPress={handleAdd}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.confirmButtonText}>
-                  {editingBudget ? t.common.save.toLowerCase() : t.budget.addBudget.toLowerCase()}
-                </Text>
-              </TouchableOpacity>
-            </View>
+              {editingBudget && (
+                <Pressable
+                  style={styles.modalDeleteLink}
+                  onPress={() => { bCloseSheet(); setTimeout(() => handleDelete(editingBudget), 200); }}
+                  hitSlop={{ top: 14, bottom: 14, left: 18, right: 18 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="delete budget"
+                >
+                  {({ pressed }) => (
+                    <View style={[styles.modalDeleteLinkInner, pressed && { opacity: 0.55 }]}>
+                      <Feather name="trash-2" size={13} color={C.textMuted} />
+                      <Text style={styles.modalDeleteLinkText}>delete budget</Text>
+                    </View>
+                  )}
+                </Pressable>
+              )}
+            </ScrollView>
           </KeyboardAvoidingView>
-        </View>
-      </Modal>
+
+          <View style={[styles.modalSaveZone, { paddingBottom: Math.max(insets.bottom, SPACING.lg) }]}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.modalSaveBtn,
+                pressed && { opacity: 0.88 },
+              ]}
+              onPress={handleAdd}
+              accessibilityRole="button"
+              accessibilityLabel={editingBudget ? 'save changes' : 'add budget'}
+            >
+              <View style={styles.modalSaveBtnInner}>
+                <Feather name="check" size={16} color={C.surface} />
+                <Text style={styles.modalSaveBtnText}>
+                  {editingBudget ? 'save changes' : 'add budget'}
+                </Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={styles.modalSecondaryLink}
+              onPress={bCloseSheet}
+              hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}
+              accessibilityRole="button"
+              accessibilityLabel="close"
+            >
+              {({ pressed }) => (
+                <View style={[styles.modalSecondaryLinkInner, pressed && { opacity: 0.55 }]}>
+                  <Feather name="x" size={12} color={C.textMuted} />
+                  <Text style={styles.modalSecondaryLinkText}>close</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
+        </Reanimated.View>
+      </Modal>)}
 
       <PaywallModal
         visible={paywallVisible}
@@ -1882,7 +2115,7 @@ const BudgetPlanning: React.FC = () => {
           }}
           activeOpacity={0.85}
         >
-          <Feather name="plus" size={24} color="#fff" />
+          <Feather name="plus" size={24} color={C.onAccent} />
         </TouchableOpacity>
       )}
 
@@ -1923,6 +2156,8 @@ const BudgetPlanning: React.FC = () => {
                     placeholder="e.g. March Salary"
                     placeholderTextColor={C.textMuted}
                     autoFocus={!editingPlaybook}
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
                   />
 
                   <Text style={styles.label}>amount ({currency})</Text>
@@ -1938,6 +2173,8 @@ const BudgetPlanning: React.FC = () => {
                       returnKeyType="done"
                       onSubmitEditing={Keyboard.dismiss}
                       editable={!editingPlaybook}
+                      keyboardAppearance={isDark ? 'dark' : 'light'}
+                      selectionColor={C.accent}
                     />
                   </View>
                   {editingPlaybook && (
@@ -2005,10 +2242,10 @@ const BudgetPlanning: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Open Echo assistant (hold to hide)"
           >
-            <Feather name="zap" size={22} color="#fff" />
+            <Feather name="zap" size={22} color={C.onAccent} />
             {tier !== 'premium' && (
               <View style={styles.echoFabLock}>
-                <Feather name="lock" size={9} color="#fff" />
+                <Feather name="lock" size={9} color={C.onAccent} />
               </View>
             )}
             <View style={styles.echoFabPulse} />
@@ -2071,7 +2308,7 @@ const BudgetPlanning: React.FC = () => {
         title={t.guide.spendingLimits}
         icon="sliders"
         description={t.guide.descBudget}
-        accent="#B2780A"
+        accent={C.bronze}
       />
     </View>
   );
@@ -2096,7 +2333,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     marginBottom: SPACING.lg,
-    ...SHADOWS.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   heroLabel: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -2165,7 +2402,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
-    ...SHADOWS.xs,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
   },
 
   // Budget row
@@ -2308,7 +2545,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   emptyButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
   // FAB
@@ -2321,7 +2558,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.md,
+    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
 
   // ── Echo FAB + greeting bubble + bottom sheet ──
@@ -2339,7 +2576,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.md,
+    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
   echoFabPulse: {
     position: 'absolute',
@@ -2348,7 +2585,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#DEAB22',
+    backgroundColor: C.gold,
     borderWidth: 1.5,
     borderColor: C.accent,
   },
@@ -2363,7 +2600,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#fff',
+    borderColor: C.surface,
   },
   echoGreetingBubble: {
     flexDirection: 'row',
@@ -2376,7 +2613,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.sm + 2,
     borderWidth: 1,
     borderColor: withAlpha(C.accent, 0.2),
-    ...SHADOWS.md,
+    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
   },
   echoGreetingDot: {
     width: 7,
@@ -2415,7 +2652,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderTopRightRadius: RADIUS.xl,
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.md,
-    ...SHADOWS.lg,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   echoSheetHandle: {
     alignSelf: 'center',
@@ -2501,76 +2738,145 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   echoSheetOpenBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
 
-  // Modal
-  modalOverlay: {
-    flex: 1,
+  // ─── Add / Edit Budget Modal — matches DebtTracking sheet pattern ───────────
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  modalKAV: {
-    width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalCard: {
+  modalSheetContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    width: '88%',
-    maxHeight: '85%',
-    overflow: 'hidden',
-    ...SHADOWS.lg,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    maxHeight: '92%',
   },
-  modalHeader: {
+  // Drag-handle visual at top of card (mirrors DebtTracking dDebtSheetTopRow)
+  modalHandleRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.lg,
+    justifyContent: 'center',
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.sm,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: withAlpha(C.textPrimary, 0.15),
+  },
+  // Centered title zone with italic serif accent (mirrors dDebtTitleZone)
+  modalTitleZone: {
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.lg,
   },
   modalTitle: {
     fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-  },
-  label: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-    marginBottom: SPACING.xs,
-    marginTop: SPACING.lg,
-  },
-  amountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: C.inputBorder,
-    paddingHorizontal: SPACING.md,
-  },
-  currencyPrefix: {
-    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-    marginRight: SPACING.sm,
-  },
-  amountInput: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.light,
     color: C.textPrimary,
-    paddingVertical: SPACING.md,
+    letterSpacing: -0.4,
+    textAlign: 'center',
+  },
+  modalTitleAccent: {
+    fontStyle: 'italic',
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.accent,
+  },
+  modalSubtitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    marginTop: SPACING.xs + 2,
+    letterSpacing: 0.1,
+    textAlign: 'center',
+  },
+  modalScrollContent: {
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.md,
+  },
+  // Hero amount card (mirrors dDebtFieldHeroCard)
+  modalHeroCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.lg,
+    marginBottom: SPACING.sm + 2,
+  },
+  modalHeroAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginTop: SPACING.xs,
+  },
+  modalHeroCurrency: {
+    fontSize: 22,
+    fontWeight: TYPOGRAPHY.weight.medium,
     fontVariant: ['tabular-nums'],
+    marginRight: 4,
+    letterSpacing: -0.2,
+  },
+  modalHeroAmountInput: {
+    flex: 1,
+    fontSize: 36,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: C === CALM_DARK ? -0.6 : -0.8,
+    paddingVertical: 0,
+  },
+  // Quiet hairline divider (mirrors dDebtSheetDivider)
+  modalDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.10 : 0.06),
+    marginVertical: SPACING.sm,
+  },
+  // Generic field card (mirrors dDebtFieldCard)
+  modalFieldCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+    paddingHorizontal: SPACING.md + 2,
+    paddingVertical: SPACING.sm + 4,
+    marginBottom: SPACING.sm + 2,
+  },
+  // Tiny muted uppercase field label (mirrors dDebtFieldCardLabel)
+  modalFieldLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  modalFieldRequired: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: '#C1694F',
+    fontWeight: TYPOGRAPHY.weight.bold,
+  },
+  // Normal-weight label used for rollover toggle row
+  modalFieldLabelBase: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  modalFieldHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    marginTop: 2,
   },
 
-  // Period chips (inline)
+  // Period chips — rendered inside modalFieldCard
   periodRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
+    marginTop: SPACING.xs,
   },
   periodChip: {
     flex: 1,
@@ -2594,25 +2900,137 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.accent,
   },
 
-  // Rollover
+  // Rollover row — extends modalFieldCard
   rolloverRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: SPACING.lg,
-    paddingVertical: SPACING.sm,
-  },
-  rolloverLabel: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-  },
-  rolloverHint: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    marginTop: 2,
   },
 
-  // Confirm button
+  // Anchored save zone (mirrors dDebtSaveZone)
+  modalSaveZone: {
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(C.textPrimary, 0.06),
+    backgroundColor: C.surface,
+  },
+  modalSaveBtn: {
+    width: '100%',
+    paddingVertical: SPACING.md + 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+  },
+  modalSaveBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modalSaveBtnText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.surface,
+    letterSpacing: 0.3,
+  },
+  // Secondary close text-link (mirrors dDebtSecondaryLink)
+  modalSecondaryLink: {
+    marginTop: SPACING.lg,
+    alignSelf: 'center',
+  },
+  modalSecondaryLinkInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+  },
+  modalSecondaryLinkText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.2,
+  },
+  // Delete link in edit mode (mirrors dDebtDeleteLink)
+  modalDeleteLink: {
+    marginTop: SPACING.lg,
+    alignSelf: 'center',
+  },
+  modalDeleteLinkInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+  },
+  modalDeleteLinkText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.2,
+  },
+
+  // ─── Playbook modal styles ────────
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalKAV: {
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS['2xl'],
+    width: '88%',
+    maxHeight: '85%',
+    overflow: 'hidden',
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
+    padding: SPACING.xl,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  label: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+    marginBottom: SPACING.xs,
+    marginTop: SPACING.lg,
+  },
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.background,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: SPACING.md,
+  },
+  currencyPrefix: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    marginRight: SPACING.sm,
+  },
+  amountInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.light,
+    color: C.textPrimary,
+    paddingVertical: SPACING.md,
+    fontVariant: ['tabular-nums'],
+  },
   confirmButton: {
     backgroundColor: C.accent,
     borderRadius: RADIUS.full,
@@ -2623,7 +3041,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   confirmButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.surface,
   },
 
   // ─── Segment Toggle ──────────────────────────────────────
@@ -2710,7 +3128,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   nudgeButtonText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#fff',
+    color: C.onAccent,
   },
   nudgeDismissText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -3198,7 +3616,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.full,
   },
   askEchoBtnText: {
-    color: '#fff',
+    color: C.onAccent,
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.bold,
     textTransform: 'lowercase',
@@ -3593,22 +4011,22 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 
   // Swipe actions (Edit / Delete) — shown when swiping row left
-  swipeActionsV2: {
-    flexDirection: 'row',
-    height: '100%',
-  },
-  swipeActionV2: {
+  swipeFill: {
     width: 72,
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
+    alignSelf: 'stretch' as const,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden' as const,
   },
-  swipeActionLabel: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    textTransform: 'lowercase',
+  swipeInner: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  swipeEditColor: {
+    backgroundColor: C.accent,
+  },
+  swipeDeleteColor: {
+    backgroundColor: C.neutral,
   },
 
   // ─── Depth Card — the budget row ───

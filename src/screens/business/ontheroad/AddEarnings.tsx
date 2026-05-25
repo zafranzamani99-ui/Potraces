@@ -9,13 +9,13 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import CalendarPicker from '../../../components/common/CalendarPicker';
 import { format } from 'date-fns';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
-import { useCalm } from '../../../hooks/useCalm';
+import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
+import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, successNotification } from '../../../services/haptics';
 
@@ -23,6 +23,7 @@ const PLATFORMS = ['Grab', 'Foodpanda', 'Lalamove', 'ShopeeFood', 'Other'];
 
 const AddEarnings: React.FC = () => {
   const C = useCalm();
+  const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation();
   const { showToast } = useToast();
@@ -115,6 +116,8 @@ const AddEarnings: React.FC = () => {
             keyboardType="decimal-pad"
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         </View>
 
@@ -132,16 +135,15 @@ const AddEarnings: React.FC = () => {
         </TouchableOpacity>
 
         {showDatePicker && (
-          <DateTimePicker
-            value={date}
-            mode="date"
-            display="spinner"
-            onChange={(_, selectedDate) => {
-              if (selectedDate) setDate(selectedDate);
-              setShowDatePicker(false);
-            }}
-            maximumDate={new Date()}
-          />
+          <View style={styles.calendarWrapper}>
+            <CalendarPicker
+              value={date}
+              onChange={(selectedDate) => {
+                setDate(selectedDate);
+                setShowDatePicker(false);
+              }}
+            />
+          </View>
         )}
 
         {/* Platform */}
@@ -179,6 +181,8 @@ const AddEarnings: React.FC = () => {
               returnKeyType="done"
               onSubmitEditing={Keyboard.dismiss}
               autoFocus
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
             />
           )}
         </View>
@@ -194,6 +198,8 @@ const AddEarnings: React.FC = () => {
             placeholderTextColor={C.textMuted}
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
           />
         </View>
 
@@ -232,6 +238,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   scrollContent: {
     padding: SPACING['2xl'],
     paddingBottom: SPACING['5xl'],
+    maxWidth: 680,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   amountRow: {
@@ -268,6 +277,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
   },
 
+  calendarWrapper: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+
   platformSection: {
     paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
@@ -292,7 +310,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   platformTextActive: {
-    color: '#FFFFFF',
+    color: C.onAccent,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   customPlatformInput: {
@@ -334,7 +352,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: '#FFFFFF',
+    color: C.onAccent,
   },
   saveButtonTextDisabled: {
     color: C.textMuted,

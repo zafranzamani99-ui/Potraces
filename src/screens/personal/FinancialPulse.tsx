@@ -400,8 +400,8 @@ const FinancialPulse: React.FC = () => {
           </View>
           <Text style={styles.heroHeadline}>
             {monthlyStats.net >= 0
-              ? `${t.pulse.youKept} ${currency} ${monthlyStats.net.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} in ${format(now, 'MMMM')}`
-              : `${currency} ${Math.abs(monthlyStats.net).toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} more out than in`}
+              ? `${t.pulse.youKept} ${currency} ${monthlyStats.net.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${t.pulse.inMonth} ${format(now, 'MMMM')}`
+              : `${currency} ${Math.abs(monthlyStats.net).toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${t.pulse.moreOutThanIn}`}
           </Text>
           <View style={styles.heroStats}>
             <View style={styles.heroStat}>
@@ -558,7 +558,7 @@ const FinancialPulse: React.FC = () => {
             <Feather name="activity" size={16} color={velocityColor} />
             <Text style={styles.velocityTitle}>
               {monthlyStats.lastMonthExpenses > 0
-                ? `You've used ${velocity.percent}% of last month's spending`
+                ? `${t.pulse.usedOfLastMonth} ${velocity.percent}% ${t.pulse.ofLastMonthSpending}`
                 : t.pulse.noComparison}
             </Text>
           </View>
@@ -578,7 +578,7 @@ const FinancialPulse: React.FC = () => {
               <Text style={[styles.velocityMessage, { color: velocityColor }]}>
                 {getVelocityMessage(velocity.proRated, t.pulse)}
                 {' \u2014 '}
-                {velocity.proRated}% pro-rated pace
+                {velocity.proRated}% {t.pulse.proRatedPace}
               </Text>
               {projectedMonthSpend > 0 && (
                 <Text style={styles.projectedText}>
@@ -714,8 +714,7 @@ const FinancialPulse: React.FC = () => {
           </View>
           {weeklyPattern.days[weeklyPattern.heaviestIndex].amount > 0 && (
             <Text style={styles.weeklyInsight}>
-              {weeklyPattern.days[weeklyPattern.heaviestIndex].label}s tend to be
-              your heaviest spending day
+              {weeklyPattern.days[weeklyPattern.heaviestIndex].label}s {t.pulse.heaviestDay}
             </Text>
           )}
         </Card>
@@ -762,8 +761,7 @@ const FinancialPulse: React.FC = () => {
               })}
               <View style={styles.billFooter}>
                 <Text style={styles.billFooterText}>
-                  {currency} {upcomingBills.total.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} due
-                  in the next 2 weeks
+                  {currency} {upcomingBills.total.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t.pulse.dueInNext2Weeks}
                 </Text>
               </View>
             </Card>
@@ -797,10 +795,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING['2xl'],
   },
 
-  // Section labels: TYPE.label style
+  // Section labels: TYPE.label style (color from palette for dark-mode parity)
   sectionLabel: {
     fontSize: TYPE.label.fontSize,
-    color: TYPE.label.color,
+    color: C.textMuted,
     textTransform: TYPE.label.textTransform,
     letterSpacing: TYPE.label.letterSpacing,
     marginTop: SPACING.xl,
@@ -1080,7 +1078,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     height: '100%',
   },
   weeklyAmount: {
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
     fontVariant: ['tabular-nums'],
     marginBottom: SPACING.xs,
@@ -1097,7 +1095,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     minWidth: 12,
   },
   weeklyLabel: {
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
     marginTop: SPACING.sm,
   },
@@ -1142,7 +1140,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   billDue: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
-    marginTop: 2,
+    marginTop: SPACING.xs,
   },
   billAmount: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1182,9 +1180,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
+    paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    gap: 3,
+    gap: SPACING.xs,
   },
   weekChangeText: {
     fontSize: TYPOGRAPHY.size.xs,

@@ -62,10 +62,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   heroAmount: {
-    fontSize: TYPE.amount.fontSize,
-    fontWeight: TYPE.amount.fontWeight,
+    ...TYPE.amount,
     color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
     marginBottom: SPACING.xs,
   },
   heroDate: {
@@ -708,6 +706,8 @@ const AccountOverview: React.FC = () => {
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => navigateRoot('WalletManagement')}
+          accessibilityRole="button"
+          accessibilityLabel={`${t.dashboard.wallets}, ${currency} ${data.totalWalletBalance.toFixed(2)} ${t.common.total}`}
         >
           <Card>
             <View style={styles.sectionHeader}>
@@ -756,6 +756,8 @@ const AccountOverview: React.FC = () => {
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => navigateRoot('TransactionsList')}
+          accessibilityRole="button"
+          accessibilityLabel={`${t.account.topSpending}, ${data.txCount} ${t.account.transactions}`}
         >
           <Card>
             <View style={styles.sectionHeader}>
@@ -803,6 +805,8 @@ const AccountOverview: React.FC = () => {
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => navigateTab('BudgetPlanning')}
+          accessibilityRole="button"
+          accessibilityLabel={`${t.account.budget}, ${budgets.length} ${t.account.budgets}`}
         >
           <Card>
             <View style={styles.sectionHeader}>
@@ -846,6 +850,8 @@ const AccountOverview: React.FC = () => {
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => navigateRoot('SubscriptionList')}
+          accessibilityRole="button"
+          accessibilityLabel={`${t.account.subscriptions}, ${data.activeSubs.length} ${t.account.running}`}
         >
           <Card>
             <View style={styles.sectionHeader}>
@@ -909,6 +915,8 @@ const AccountOverview: React.FC = () => {
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => navigateRoot('SavingsTracker')}
+          accessibilityRole="button"
+          accessibilityLabel={`${t.account.savings}, ${savingsAccounts.length} ${t.account.accounts}`}
         >
           <Card>
             <View style={styles.sectionHeader}>
@@ -948,6 +956,8 @@ const AccountOverview: React.FC = () => {
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => navigateRoot('DebtTracking')}
+          accessibilityRole="button"
+          accessibilityLabel={`${t.account.debts}, ${data.activeDebtCount} ${data.activeDebtCount !== 1 ? t.account.activeDebts : t.account.activeDebt}`}
         >
           <Card>
             <View style={styles.sectionHeader}>

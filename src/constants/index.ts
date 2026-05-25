@@ -1,4 +1,4 @@
-import { CategoryOption } from '../types';
+import { CategoryOption, SellerCostCategory } from '../types';
 
 // ─── DESIGN TOKENS ──────────────────────────────────────────
 // CALM design system — anxiety-reducing, no red, no green success.
@@ -304,6 +304,21 @@ export const BUSINESS_INCOME_CATEGORIES: CategoryOption[] = [
   { id: 'other', name: 'Other', icon: 'plus-circle', color: '#6B7596' },
 ];
 
+// Universal seller cost categories — work for any seller (food, retail, services).
+// Stable ids are critical: random ids would duplicate on every device during sync.
+export const DEFAULT_COST_CATEGORIES: SellerCostCategory[] = [
+  { id: 'costcat_materials', name: 'Materials', nameBm: 'Bahan', icon: 'box', color: '#8B7355', isDefault: true, sortOrder: 0 },
+  { id: 'costcat_packaging', name: 'Packaging', nameBm: 'Pembungkusan', icon: 'package', color: '#DEAB22', isDefault: true, sortOrder: 1 },
+  { id: 'costcat_equipment', name: 'Equipment', nameBm: 'Peralatan', icon: 'tool', color: '#5E72E4', isDefault: true, sortOrder: 2 },
+  { id: 'costcat_utilities', name: 'Utilities', nameBm: 'Utiliti', icon: 'zap', color: '#6BA3BE', isDefault: true, sortOrder: 3 },
+  { id: 'costcat_rent', name: 'Rent', nameBm: 'Sewa', icon: 'home', color: '#A06CD5', isDefault: true, sortOrder: 4 },
+  { id: 'costcat_transport', name: 'Transport', nameBm: 'Pengangkutan', icon: 'truck', color: '#2E7A9A', isDefault: true, sortOrder: 5 },
+  { id: 'costcat_marketing', name: 'Marketing', nameBm: 'Pemasaran', icon: 'speaker', color: '#C4956A', isDefault: true, sortOrder: 6 },
+  { id: 'costcat_fees', name: 'Fees', nameBm: 'Yuran', icon: 'credit-card', color: '#7C5CFC', isDefault: true, sortOrder: 7 },
+  { id: 'costcat_labor', name: 'Labor', nameBm: 'Upah', icon: 'users', color: '#4F5104', isDefault: true, sortOrder: 8 },
+  { id: 'costcat_other', name: 'Other', nameBm: 'Lain-lain', icon: 'more-horizontal', color: '#6B7596', isDefault: true, isProtected: true, sortOrder: 9 },
+];
+
 export const INVESTMENT_CATEGORIES: CategoryOption[] = [
   { id: 'tng_plus', name: 'TNG+', icon: 'smartphone', color: '#005ABD' },
   { id: 'robo_crypto', name: 'Robo Crypto', icon: 'cpu', color: '#B2780A' },
@@ -422,7 +437,11 @@ export const CALM = {
   gold: '#DEAB22',
   bronze: '#9A6400',
   deepOlive: '#332D03',
+  deepOliveBiz: '#332D03',  // business-mode primary fill (matches deepOlive in light)
   lavender: '#B8AFBC',
+  overdue: '#C1694F',
+  onAccent: '#FFFFFF',
+  dimBg: '#1A1A1A',
 };
 
 // ─── CALM DARK MODE ──────────────────────────────────────────
@@ -442,10 +461,14 @@ export const CALM_DARK = {
   bar: '#3A3A3A',
   barActive: '#A4A843',
   highlight: '#2A2518',
-  gold: '#E8BC3F',
+  gold: '#D9BD55',
   bronze: '#C9924A',
   deepOlive: '#9A9540',
+  deepOliveBiz: '#635F23',  // muted deep olive for business dark — bright #9A9540 was too glaring
   lavender: '#8E869A',
+  overdue: '#D4836B',
+  onAccent: '#FFFFFF',
+  dimBg: '#000000',
 };
 
 // ─── BUSINESS SEMANTIC COLORS ──────────────────────────────
