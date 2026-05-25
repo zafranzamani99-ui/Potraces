@@ -367,6 +367,8 @@ export async function pushOrders(
       order_date: toIso(o.date),
       delivery_date: toIso(o.deliveryDate),
       season_local_id: o.seasonId ?? null,
+      transferred_to_personal: o.transferredToPersonal ?? false,
+      transfer_id: o.transferId ?? null,
       deposits: o.deposits ?? [],
       source: 'app',
       seller_id: profileId,
@@ -400,6 +402,8 @@ export async function pushOrders(
         deposits: o.deposits ?? [],
         delivery_date: toIso(o.deliveryDate),
         order_number: o.orderNumber ?? null,
+        transferred_to_personal: o.transferredToPersonal ?? false,
+        transfer_id: o.transferId ?? null,
       })
       .eq('id', o.supabaseId!);
   }
@@ -925,6 +929,10 @@ export async function pullAll(): Promise<void> {
         note: ro.note ?? undefined,
         deliveryDate: ro.delivery_date ? sd(ro.delivery_date) : undefined,
         seasonId: ro.season_local_id ?? undefined,
+        // Restore the transfer-to-personal flags, otherwise a sync round-trip
+        // wipes them: the button reappears and delete/edit can't reconcile.
+        transferredToPersonal: ro.transferred_to_personal ?? false,
+        transferId: ro.transfer_id ?? undefined,
         deposits: Array.isArray(ro.deposits)
           ? ro.deposits.map((d: any) => ({
               ...d,
