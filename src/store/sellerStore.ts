@@ -4,6 +4,32 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SellerState, OrderStatus, SellerOrder, SellerOrderItem, SellerPaymentMethod, RecurringFrequency, DepositEntry, SellerCostCategory } from '../types';
 import { DEFAULT_COST_CATEGORIES } from '../constants';
 import { newId } from '../utils/id';
+import { usePersonalStore } from './personalStore';
+import { useBusinessStore } from './businessStore';
+
+/**
+ * Reconcile the personal-mode income created when paid orders were transferred
+ * to personal. That income is a single lump-sum transaction (id `transfer-<id>`)
+ * covering every order in the batch. When a transferred order is edited or
+ * removed, adjust the income by `delta` (negative shrinks it). If it nets to
+ * zero — the last order of the batch was removed — delete the income and the
+ * business-side transfer record. Wallet conservation holds: transfer income is
+ * wallet-less, and personalStore.update/deleteTransaction handle wallet deltas.
+ */
+function reconcileTransferIncome(transferId: string, delta: number, removeIfEmpty: boolean): void {
+  if (!transferId || delta === 0) return;
+  const personal = usePersonalStore.getState();
+  const txId = `transfer-${transferId}`;
+  const tx = personal.transactions.find((t) => t.id === txId);
+  if (!tx) return;
+  const newAmount = tx.amount + delta;
+  if (removeIfEmpty && newAmount <= 0.005) {
+    personal.deleteTransaction(txId);
+    useBusinessStore.getState().deleteTransfer(transferId);
+  } else {
+    personal.updateTransaction(txId, { amount: Math.max(0, newAmount) });
+  }
+}
 
 const UNCATEGORIZED_COST_CATEGORY: SellerCostCategory = {
   id: 'costcat_uncategorized',
@@ -201,9 +227,9 @@ export const useSellerStore = create<SellerState>()(
           ),
         })),
 
-      deleteOrder: (id) =>
+      deleteOrder: (id) => {
+        const order = get().orders.find((o) => o.id === id);
         set((state) => {
-          const order = state.orders.find((o) => o.id === id);
           const updatedProducts = order
             ? state.products.map((p) => {
                 const item = order.items.find((i) => i.productId === p.id);
@@ -222,11 +248,16 @@ export const useSellerStore = create<SellerState>()(
             products: updatedProducts,
             _deletedOrderIds: [...state._deletedOrderIds, id],
           };
-        }),
+        });
+        // Reverse this order's share of any transferred-to-personal income.
+        if (order?.transferredToPersonal && order.transferId) {
+          reconcileTransferIncome(order.transferId, -order.totalAmount, true);
+        }
+      },
 
-      deleteOrders: (ids) =>
+      deleteOrders: (ids) => {
+        const toDelete = get().orders.filter((o) => ids.includes(o.id));
         set((state) => {
-          const toDelete = state.orders.filter((o) => ids.includes(o.id));
           // Aggregate quantity adjustments per product
           const adjustments = new Map<string, number>();
           for (const order of toDelete) {
@@ -252,14 +283,24 @@ export const useSellerStore = create<SellerState>()(
             products: updatedProducts,
             _deletedOrderIds: [...state._deletedOrderIds, ...ids],
           };
-        }),
+        });
+        // Reverse transferred-to-personal income, summed per transfer batch.
+        const byTransfer = new Map<string, number>();
+        for (const o of toDelete) {
+          if (o.transferredToPersonal && o.transferId) {
+            byTransfer.set(o.transferId, (byTransfer.get(o.transferId) || 0) + o.totalAmount);
+          }
+        }
+        for (const [tid, amt] of byTransfer) reconcileTransferIncome(tid, -amt, true);
+      },
 
-      updateOrderItems: (id, newItems) =>
+      updateOrderItems: (id, newItems) => {
+        const order = get().orders.find((o) => o.id === id);
+        if (!order) return;
+        const oldTotal = order.totalAmount;
+        const newTotal = newItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
         set((state) => {
-          const order = state.orders.find((o) => o.id === id);
-          if (!order) return state;
           const oldItems = order.items;
-          const newTotal = newItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
           // Build per-product quantity diffs
           const diffs = new Map<string, number>();
           for (const item of oldItems) diffs.set(item.productId, -(item.quantity));
@@ -285,7 +326,12 @@ export const useSellerStore = create<SellerState>()(
             ),
             products: updatedProducts,
           };
-        }),
+        });
+        // Keep transferred-to-personal income in step with the new order total.
+        if (order.transferredToPersonal && order.transferId) {
+          reconcileTransferIncome(order.transferId, newTotal - oldTotal, false);
+        }
+      },
 
       recordPayment: (id, amount, paymentMethod, note) =>
         set((state) => ({
@@ -410,6 +456,11 @@ export const useSellerStore = create<SellerState>()(
             seasonId: newSeasonId,
             syncedToPersonal: false,
             personalTransactionId: undefined,
+            // Receipt images belong to the original cost's storage path
+            // ({userId}/{originalId}.jpg). A clone with a new id must not
+            // reference them, or deleting either cost orphans/misdeletes the file.
+            receiptUrl: undefined,
+            receiptLocalUri: undefined,
           }));
           set((st) => ({
             ingredientCosts: [...newCosts, ...st.ingredientCosts],

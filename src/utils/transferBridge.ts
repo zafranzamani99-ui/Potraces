@@ -1,4 +1,5 @@
 import { Transfer } from '../types';
+import { newId } from './id';
 
 export function createTransfer(
   amount: number,
@@ -8,7 +9,7 @@ export function createTransfer(
   linkedBusinessTxId?: string
 ): Transfer {
   return {
-    id: Date.now().toString(),
+    id: newId(),
     amount,
     fromMode,
     toMode,
