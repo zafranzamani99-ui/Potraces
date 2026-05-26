@@ -1192,8 +1192,15 @@ export async function syncAll(
     // Pull first — prevents empty local store from deleting remote data
     try {
       await pullAll();
-    } catch (pullErr) {
-      if (__DEV__) console.warn('[sellerSync] pull failed — skipping push to avoid tombstone wipe:', pullErr instanceof Error ? pullErr.message : pullErr);
+    } catch (pullErr: any) {
+      if (__DEV__) console.warn('[sellerSync] pull failed — skipping push to avoid tombstone wipe:', JSON.stringify({
+        message: pullErr?.message ?? null,
+        code: pullErr?.code ?? null,
+        details: pullErr?.details ?? null,
+        hint: pullErr?.hint ?? null,
+        name: pullErr?.name ?? null,
+        raw: String(pullErr),
+      }));
       return;
     }
 
