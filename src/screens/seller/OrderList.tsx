@@ -17,6 +17,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { format, isToday, isYesterday, isPast, startOfDay, isThisWeek, isThisMonth, isValid } from 'date-fns';
@@ -30,6 +31,9 @@ import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha,
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { SellerOrder, SellerOrderItem, OrderStatus, SellerPaymentMethod, SellerProduct, DepositEntry } from '../../types';
 import CalendarPicker from '../../components/common/CalendarPicker';
+import FloatingModal from '../../components/common/FloatingModal';
+import InModalToast, { InModalToastRef } from '../../components/common/InModalToast';
+import { useT } from '../../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { deleteOrderFromSupabase, syncAll, pullOrderLinkOrders } from '../../services/sellerSync';
 
@@ -266,24 +270,26 @@ const OrderLifecycleBar: React.FC<{
 const _animatedOrderIds = new Set<string>();
 
 // ─── ANIMATED ORDER CARD ────────────────────────────────────
+const AVATAR_COLORS = ['#8B7355', '#6BA3BE', '#A688B8', '#B2780A', '#4F5104', '#C1694F'];
+const getAvatarColor = (name: string) => AVATAR_COLORS[Math.abs(name.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
+
 const AnimatedOrderCard: React.FC<{
   item: SellerOrder;
   index: number;
   currency: string;
   selectMode: boolean;
   isSelected: boolean;
-  isExpanded: boolean;
   isUnseen: boolean;
-  onToggleExpand: (id: string) => void;
   onOpenDetail: (item: SellerOrder) => void;
   onLongPress: (item: SellerOrder) => void;
   onToggleSelect: (id: string) => void;
-  onAdvanceStatus: (item: SellerOrder) => void;
-  onMarkPaid: (item: SellerOrder) => void;
+  onSwipePay: (item: SellerOrder) => void;
   styles: ReturnType<typeof makeStyles>;
-}> = React.memo(({ item, index, currency, selectMode, isSelected, isExpanded, isUnseen, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid, styles }) => {
+}> = React.memo(({ item, index, currency, selectMode, isSelected, isUnseen, onOpenDetail, onLongPress, onToggleSelect, onSwipePay, styles }) => {
   const C = useCalm();
   const isDark = useIsDark();
+  const t = useT();
+  const swipeableRef = useRef<any>(null);
   const alreadySeen = _animatedOrderIds.has(item.id);
   const fadeAnim = useRef(new Animated.Value(alreadySeen ? 1 : 0)).current;
 
@@ -299,137 +305,139 @@ const AnimatedOrderCard: React.FC<{
     }
   }, []);
 
-  const color = statusColor(item.status);
-  const itemsText = item.items
-    .map((i) => `${i.productName} \u00D7${i.quantity}`)
-    .join(', ');
-
   const dateLabel = smartDateLabel(item.date);
   const deliveryInfo = getDeliveryDateInfo(item);
+  const customerInitial = (item.customerName || 'W')[0].toUpperCase();
+  const avatarBg = getAvatarColor(item.customerName || 'walk-in');
+  const itemsSummary = item.items.length === 1 ? t.seller.olOneItem : t.seller.olItems.replace('{n}', String(item.items.length));
+  const paidAmount = item.paidAmount || 0;
+  const isPartial = paidAmount > 0 && !item.isPaid;
 
-  return (
-    <Animated.View style={{ opacity: fadeAnim }}>
+  const renderLeftActions = useCallback(() => {
+    if (item.isPaid) {
+      return (
+        <View style={[styles.swipeAction, { backgroundColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.15) }]}>
+          <Feather name="check" size={18} color={semantic(BIZ_SAFE.success, isDark)} />
+          <Text style={[styles.swipeActionText, { color: semantic(BIZ_SAFE.success, isDark) }]}>{t.seller.olPaidBadge}</Text>
+        </View>
+      );
+    }
+    if (item.transferredToPersonal) {
+      return (
+        <View style={[styles.swipeAction, { backgroundColor: withAlpha(C.bronze, 0.15) }]}>
+          <Feather name="arrow-right" size={18} color={C.bronze} />
+          <Text style={[styles.swipeActionText, { color: C.bronze }]}>{t.seller.olTransferred}</Text>
+        </View>
+      );
+    }
+    return (
       <TouchableOpacity
-        activeOpacity={0.7}
-        style={[
-          styles.orderCard,
-          selectMode && isSelected && styles.orderCardSelected,
-          isUnseen && styles.orderCardUnseen,
-        ]}
+        activeOpacity={0.8}
+        style={[styles.swipeAction, { backgroundColor: withAlpha(C.accent, 0.15) }]}
         onPress={() => {
-          if (selectMode) {
-            selectionChanged();
-            onToggleSelect(item.id);
-          } else {
-            lightTap();
-            onToggleExpand(item.id);
-          }
+          swipeableRef.current?.close();
+          mediumTap();
+          onSwipePay(item);
         }}
-        onLongPress={() => { mediumTap(); onLongPress(item); }}
-        accessibilityRole="button"
-        accessibilityLabel={`Order from ${item.customerName || 'unknown customer'}, ${item.status}, ${currency} ${item.totalAmount.toFixed(2)}`}
       >
+        <Feather name="dollar-sign" size={18} color={C.accent} />
+        <Text style={[styles.swipeActionText, { color: C.accent }]}>{t.seller.olPay}</Text>
+      </TouchableOpacity>
+    );
+  }, [item.isPaid, item.transferredToPersonal, isDark, C, styles, onSwipePay, item]);
+
+  const cardContent = (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      style={[
+        styles.orderCard,
+        selectMode && isSelected && styles.orderCardSelected,
+        isUnseen && styles.orderCardUnseen,
+      ]}
+      onPress={() => {
+        if (selectMode) {
+          selectionChanged();
+          onToggleSelect(item.id);
+        } else {
+          lightTap();
+          onOpenDetail(item);
+        }
+      }}
+      onLongPress={() => { mediumTap(); onLongPress(item); }}
+      accessibilityRole="button"
+      accessibilityLabel={`Order from ${item.customerName || 'unknown customer'}, ${item.status}, ${currency} ${item.totalAmount.toFixed(2)}`}
+    >
+      <View style={styles.orderRow}>
         {selectMode ? (
-          <View style={styles.selectRow}>
-            <View style={[styles.selectCheckbox, isSelected && styles.selectCheckboxActive]}>
-              {isSelected && <Feather name="check" size={14} color={C.onAccent} />}
+          <View style={[styles.selectCheckbox, isSelected && styles.selectCheckboxActive]}>
+            {isSelected && <Feather name="check" size={14} color={C.onAccent} />}
+          </View>
+        ) : (
+          <View style={[styles.orderAvatar, { backgroundColor: withAlpha(avatarBg, 0.15) }]}>
+            <Text style={[styles.orderAvatarText, { color: avatarBg }]}>{customerInitial}</Text>
+          </View>
+        )}
+        <View style={styles.orderCardBody}>
+          <View style={styles.orderTopRow}>
+            <Text style={styles.customerName} numberOfLines={1}>{item.customerName || 'walk-in'}</Text>
+            <Text style={styles.orderTotal}>{currency} {item.totalAmount.toFixed(2)}</Text>
+          </View>
+          <View style={styles.orderBottomRow}>
+            <View style={styles.orderMetaLeft}>
+              <Text style={styles.orderMetaText} numberOfLines={1}>
+                {itemsSummary}
+                {deliveryInfo ? ` · ${deliveryInfo.label}` : ` · ${dateLabel}`}
+              </Text>
+              {item.source === 'order_link' && (
+                <Feather name="globe" size={10} color={semantic(BIZ_SAFE.success, isDark)} style={{ marginLeft: 4 }} />
+              )}
             </View>
-            <View style={{ flex: 1, gap: 3 }}>
-              <View style={styles.orderRow}>
-                <Text style={styles.customerName} numberOfLines={1}>{item.customerName || 'walk-in'}</Text>
-                <Text style={styles.orderTotal}>{currency} {item.totalAmount.toFixed(2)}</Text>
-              </View>
-              <View style={styles.orderMetaRow}>
-                <View style={styles.orderMetaLeft}>
-                  {deliveryInfo && (
-                    <>
-                      <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? semantic(BIZ_SAFE.overdue, isDark) : deliveryInfo.isTodayDelivery ? semantic(BIZ_SAFE.warning, isDark) : C.textMuted} />
-                      <Text style={[styles.orderMetaDelivery, deliveryInfo.isOverdue && styles.deliveryOverdue, deliveryInfo.isTodayDelivery && styles.deliveryToday]}>{deliveryInfo.label}</Text>
-                      <Text style={styles.orderMetaDot}>·</Text>
-                    </>
-                  )}
-                  <Feather name="calendar" size={11} color={C.textMuted} />
-                  <Text style={styles.orderMetaText} numberOfLines={1}>{dateLabel}{item.orderNumber ? `  ·  ${item.orderNumber}` : ''}</Text>
-                </View>
-                <View style={styles.orderTags}>
-                  <Text style={[styles.orderTag, { color }]}>{item.status}</Text>
-                </View>
+            <View style={styles.orderTags}>
+              <View style={[
+                styles.paymentBadge,
+                {
+                  backgroundColor: item.isPaid
+                    ? withAlpha(semantic(BIZ_SAFE.success, isDark), 0.1)
+                    : isPartial
+                      ? withAlpha(C.bronze, 0.1)
+                      : withAlpha(C.textMuted, 0.08),
+                },
+              ]}>
+                <Text style={[
+                  styles.paymentBadgeText,
+                  {
+                    color: item.isPaid
+                      ? semantic(BIZ_SAFE.success, isDark)
+                      : isPartial
+                        ? C.bronze
+                        : C.textMuted,
+                  },
+                ]}>
+                  {item.isPaid ? t.seller.olPaidBadge : isPartial ? t.seller.olPartialBadge : t.seller.olUnpaidBadge}
+                </Text>
               </View>
             </View>
           </View>
-        ) : (
-          <>
-            <View style={styles.orderRow}>
-              <Text style={styles.customerName} numberOfLines={1}>{item.customerName || 'walk-in'}</Text>
-              <Text style={styles.orderTotal}>{currency} {item.totalAmount.toFixed(2)}</Text>
-            </View>
-            <View style={styles.orderMetaRow}>
-              <View style={styles.orderMetaLeft}>
-                {deliveryInfo && (
-                  <>
-                    <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? semantic(BIZ_SAFE.overdue, isDark) : deliveryInfo.isTodayDelivery ? semantic(BIZ_SAFE.warning, isDark) : C.textMuted} />
-                    <Text style={[styles.orderMetaDelivery, deliveryInfo.isOverdue && styles.deliveryOverdue, deliveryInfo.isTodayDelivery && styles.deliveryToday]}>{deliveryInfo.label}</Text>
-                    <Text style={styles.orderMetaDot}>·</Text>
-                  </>
-                )}
-                <Feather name="calendar" size={11} color={C.textMuted} />
-                <Text style={styles.orderMetaText} numberOfLines={1}>{dateLabel}{item.orderNumber ? `  ·  ${item.orderNumber}` : ''}</Text>
-              </View>
-              <View style={styles.orderTags}>
-                <Text style={[styles.orderTag, { color }]}>{item.status}</Text>
-                <View style={[styles.paymentBadge, { backgroundColor: item.isPaid ? withAlpha(semantic(BIZ_SAFE.success, isDark), 0.1) : withAlpha(C.bronze, 0.1) }]}>
-                  <Text style={[styles.paymentBadgeText, { color: item.isPaid ? semantic(BIZ_SAFE.success, isDark) : C.bronze }]}>{item.isPaid ? 'paid' : 'unpaid'}</Text>
-                </View>
-                {item.source === 'order_link' && (
-                  <View style={styles.onlineBadge}>
-                    <Feather name="globe" size={9} color={semantic(BIZ_SAFE.success, isDark)} />
-                    <Text style={styles.onlineBadgeText}>online</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-            {isExpanded && (
-              <View style={styles.expandedSection}>
-                {item.items.map((it, idx) => (
-                  <View key={idx} style={styles.expandedItemRow}>
-                    <Text style={styles.expandedItemName} numberOfLines={1}>{it.productName}</Text>
-                    <Text style={styles.expandedItemQty}>×{it.quantity}</Text>
-                  </View>
-                ))}
-                <View style={styles.expandedActionsRow}>
-                  {NEXT_STATUS[item.status] ? (
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(statusColor(NEXT_STATUS[item.status]!), 0.1) }]}
-                      onPress={() => { mediumTap(); onAdvanceStatus(item); }}
-                    >
-                      <Feather name={advanceIcon(item.status)} size={13} color={statusColor(NEXT_STATUS[item.status]!)} />
-                      <Text style={[styles.expandedAdvanceBtnText, { color: statusColor(NEXT_STATUS[item.status]!) }]}>{NEXT_STATUS[item.status]}</Text>
-                    </TouchableOpacity>
-                  ) : !item.isPaid ? (
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.1) }]}
-                      onPress={() => { mediumTap(); onMarkPaid(item); }}
-                    >
-                      <Feather name="dollar-sign" size={13} color={semantic(BIZ_SAFE.success, isDark)} />
-                      <Text style={[styles.expandedAdvanceBtnText, { color: semantic(BIZ_SAFE.success, isDark) }]}>mark paid</Text>
-                    </TouchableOpacity>
-                  ) : <View style={{ flex: 0.85 }} />}
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    style={styles.expandedDetailBtn}
-                    onPress={() => { lightTap(); onOpenDetail(item); }}
-                    hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-                  >
-                    <Feather name="more-horizontal" size={16} color={C.textMuted} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          </>
-        )}
-      </TouchableOpacity>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  if (selectMode) {
+    return <Animated.View style={{ opacity: fadeAnim }}>{cardContent}</Animated.View>;
+  }
+
+  return (
+    <Animated.View style={{ opacity: fadeAnim }}>
+      <ReanimatedSwipeable
+        ref={swipeableRef}
+        renderLeftActions={renderLeftActions}
+        overshootLeft={false}
+        friction={1.5}
+        leftThreshold={60}
+      >
+        {cardContent}
+      </ReanimatedSwipeable>
     </Animated.View>
   );
 });
@@ -441,18 +449,16 @@ const GroupedCustomerCard: React.FC<{
   currency: string;
   selectMode: boolean;
   selectedIds: Set<string>;
-  expandedId: string | null;
   seenSet: Set<string>;
-  onToggleExpand: (id: string) => void;
   onOpenDetail: (item: SellerOrder) => void;
   onLongPress: (item: SellerOrder) => void;
   onToggleSelect: (id: string) => void;
-  onAdvanceStatus: (item: SellerOrder) => void;
-  onMarkPaid: (item: SellerOrder) => void;
+  onSwipePay: (item: SellerOrder) => void;
   styles: ReturnType<typeof makeStyles>;
-}> = React.memo(({ group, index, currency, selectMode, selectedIds, expandedId, seenSet, onToggleExpand, onOpenDetail, onLongPress, onToggleSelect, onAdvanceStatus, onMarkPaid, styles }) => {
+}> = React.memo(({ group, index, currency, selectMode, selectedIds, seenSet, onOpenDetail, onLongPress, onToggleSelect, onSwipePay, styles }) => {
   const C = useCalm();
   const isDark = useIsDark();
+  const t = useT();
   const alreadySeen = _animatedOrderIds.has(`group_${group.customerKey}`);
   const fadeAnim = useRef(new Animated.Value(alreadySeen ? 1 : 0)).current;
 
@@ -478,14 +484,11 @@ const GroupedCustomerCard: React.FC<{
         currency={currency}
         selectMode={selectMode}
         isSelected={selectedIds.has(group.orders[0].id)}
-        isExpanded={expandedId === group.orders[0].id}
         isUnseen={group.orders[0].source === 'order_link' && !seenSet.has(group.orders[0].id)}
-        onToggleExpand={onToggleExpand}
         onOpenDetail={onOpenDetail}
         onLongPress={onLongPress}
         onToggleSelect={onToggleSelect}
-        onAdvanceStatus={onAdvanceStatus}
-        onMarkPaid={onMarkPaid}
+        onSwipePay={onSwipePay}
         styles={styles}
       />
     );
@@ -496,7 +499,10 @@ const GroupedCustomerCard: React.FC<{
       <View style={styles.groupCard}>
         {/* Group header */}
         <View style={styles.groupHeader}>
-          <Text style={styles.customerName} numberOfLines={1}>
+          <View style={[styles.orderAvatar, { backgroundColor: withAlpha(getAvatarColor(group.customerName), 0.15) }]}>
+            <Text style={[styles.orderAvatarText, { color: getAvatarColor(group.customerName) }]}>{group.customerName[0]?.toUpperCase() || '?'}</Text>
+          </View>
+          <Text style={[styles.customerName, { flex: 1 }]} numberOfLines={1}>
             {group.customerName}
           </Text>
           <View style={styles.groupBadge}>
@@ -506,11 +512,11 @@ const GroupedCustomerCard: React.FC<{
 
         {/* Sub-order rows */}
         {group.orders.map((order, i) => {
-          const color = statusColor(order.status);
+          const isSelected = selectedIds.has(order.id);
           const dateLabel = smartDateLabel(order.date);
           const deliveryInfo = getDeliveryDateInfo(order);
-          const isSelected = selectedIds.has(order.id);
-          const isExpanded = expandedId === order.id;
+          const paidAmt = order.paidAmount || 0;
+          const isPartialPay = paidAmt > 0 && !order.isPaid;
 
           return (
             <TouchableOpacity
@@ -518,13 +524,13 @@ const GroupedCustomerCard: React.FC<{
               activeOpacity={0.7}
               style={[
                 styles.subOrderRow,
-                i < group.orders.length - 1 && !isExpanded && styles.subOrderRowBorder,
+                i < group.orders.length - 1 && styles.subOrderRowBorder,
                 selectMode && isSelected && styles.subOrderSelected,
                 order.source === 'order_link' && !seenSet.has(order.id) && styles.subOrderUnseen,
               ]}
               onPress={() => {
                 if (selectMode) { selectionChanged(); onToggleSelect(order.id); }
-                else { lightTap(); onToggleExpand(order.id); }
+                else { lightTap(); onOpenDetail(order); }
               }}
               onLongPress={() => { mediumTap(); onLongPress(order); }}
             >
@@ -534,82 +540,40 @@ const GroupedCustomerCard: React.FC<{
                 </View>
               )}
               <View style={styles.subOrderInfo}>
-                {/* Row 1: amount */}
                 <View style={styles.subOrderTopRow}>
+                  <Text style={styles.orderMetaText} numberOfLines={1}>
+                    {order.items.length === 1 ? t.seller.olOneItem : t.seller.olItems.replace('{n}', String(order.items.length))}
+                    {deliveryInfo ? ` · ${deliveryInfo.label}` : ` · ${dateLabel}`}
+                  </Text>
                   <Text style={styles.subOrderAmount}>{currency} {order.totalAmount.toFixed(2)}</Text>
                 </View>
-
-                {/* Row 2: delivery · date · order number | status tags */}
-                <View style={styles.orderMetaRow}>
-                  <View style={styles.orderMetaLeft}>
-                    {deliveryInfo && (
-                      <>
-                        <Feather name="truck" size={11} color={deliveryInfo.isOverdue ? semantic(BIZ_SAFE.overdue, isDark) : deliveryInfo.isTodayDelivery ? semantic(BIZ_SAFE.warning, isDark) : C.textMuted} />
-                        <Text style={[styles.orderMetaDelivery, deliveryInfo.isOverdue && styles.deliveryOverdue, deliveryInfo.isTodayDelivery && styles.deliveryToday]}>
-                          {deliveryInfo.label}
-                        </Text>
-                        <Text style={styles.orderMetaDot}>·</Text>
-                      </>
-                    )}
-                    <Feather name="calendar" size={11} color={C.textMuted} />
-                    <Text style={styles.orderMetaText} numberOfLines={1}>
-                      {dateLabel}{order.orderNumber ? `  ·  ${order.orderNumber}` : ''}
-                    </Text>
-                  </View>
+                <View style={styles.orderBottomRow}>
                   <View style={styles.orderTags}>
-                    <Text style={[styles.orderTag, { color }]}>{order.status}</Text>
-                    <View style={[styles.paymentBadge, { backgroundColor: order.isPaid ? withAlpha(semantic(BIZ_SAFE.success, isDark), 0.1) : withAlpha(C.bronze, 0.1) }]}>
-                      <Text style={[styles.paymentBadgeText, { color: order.isPaid ? semantic(BIZ_SAFE.success, isDark) : C.bronze }]}>
-                        {order.isPaid ? 'paid' : 'unpaid'}
+                    <View style={[
+                      styles.paymentBadge,
+                      {
+                        backgroundColor: order.isPaid
+                          ? withAlpha(semantic(BIZ_SAFE.success, isDark), 0.1)
+                          : isPartialPay
+                            ? withAlpha(C.bronze, 0.1)
+                            : withAlpha(C.textMuted, 0.08),
+                      },
+                    ]}>
+                      <Text style={[
+                        styles.paymentBadgeText,
+                        {
+                          color: order.isPaid
+                            ? semantic(BIZ_SAFE.success, isDark)
+                            : isPartialPay
+                              ? C.bronze
+                              : C.textMuted,
+                        },
+                      ]}>
+                        {order.isPaid ? t.seller.olPaidBadge : isPartialPay ? t.seller.olPartialBadge : t.seller.olUnpaidBadge}
                       </Text>
                     </View>
                   </View>
                 </View>
-
-                {/* Expanded */}
-                {isExpanded && (
-                  <View style={styles.expandedSection}>
-                    {order.items.map((it, idx) => (
-                      <View key={idx} style={styles.expandedItemRow}>
-                        <Text style={styles.expandedItemName} numberOfLines={1}>{it.productName}</Text>
-                        <Text style={styles.expandedItemQty}>×{it.quantity}</Text>
-                      </View>
-                    ))}
-
-                    {/* One primary action + details button */}
-                    <View style={styles.expandedActionsRow}>
-                      {NEXT_STATUS[order.status] ? (
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(statusColor(NEXT_STATUS[order.status]!), 0.1) }]}
-                          onPress={() => { mediumTap(); onAdvanceStatus(order); }}
-                        >
-                          <Feather name={advanceIcon(order.status)} size={13} color={statusColor(NEXT_STATUS[order.status]!)} />
-                          <Text style={[styles.expandedAdvanceBtnText, { color: statusColor(NEXT_STATUS[order.status]!) }]}>
-                            {NEXT_STATUS[order.status]}
-                          </Text>
-                        </TouchableOpacity>
-                      ) : !order.isPaid ? (
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          style={[styles.expandedAdvanceBtn, { backgroundColor: withAlpha(semantic(BIZ_SAFE.success, isDark), 0.1) }]}
-                          onPress={() => { mediumTap(); onMarkPaid(order); }}
-                        >
-                          <Feather name="dollar-sign" size={13} color={semantic(BIZ_SAFE.success, isDark)} />
-                          <Text style={[styles.expandedAdvanceBtnText, { color: semantic(BIZ_SAFE.success, isDark) }]}>mark paid</Text>
-                        </TouchableOpacity>
-                      ) : <View style={{ flex: 0.85 }} />}
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        style={styles.expandedDetailBtn}
-                        onPress={() => { lightTap(); onOpenDetail(order); }}
-                        hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-                      >
-                        <Feather name="more-horizontal" size={16} color={C.textMuted} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
               </View>
             </TouchableOpacity>
           );
@@ -620,7 +584,7 @@ const GroupedCustomerCard: React.FC<{
           <Text style={styles.groupTotalLabel}>combined</Text>
           <Text style={styles.groupTotal}>{currency} {group.totalAmount.toFixed(0)}</Text>
           {group.unpaidAmount > 0 && (
-            <Text style={styles.groupUnpaid}>{' \u00B7 '}{currency} {group.unpaidAmount.toFixed(0)} unpaid</Text>
+            <Text style={styles.groupUnpaid}>{' · '}{currency} {group.unpaidAmount.toFixed(0)} unpaid</Text>
           )}
         </View>
       </View>
@@ -632,6 +596,7 @@ const GroupedCustomerCard: React.FC<{
 const OrderList: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const orders = useSellerStore((s) => s.orders);
@@ -655,7 +620,15 @@ const OrderList: React.FC = () => {
   const currency = useSettingsStore((s) => s.currency);
   const userName = useSettingsStore((s) => s.userName);
   const paymentQrs = useSettingsStore((s) => s.businessPaymentQrs);
-  const { showToast } = useToast();
+  const { showToast: _showToast } = useToast();
+  const detailToastRef = useRef<InModalToastRef>(null);
+  const showToast = useCallback((msg: string, type?: 'success' | 'error' | 'info') => {
+    if (detailToastRef.current) {
+      detailToastRef.current.show(msg, type || 'info');
+    } else {
+      _showToast(msg, type || 'info');
+    }
+  }, [_showToast]);
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
 
@@ -780,8 +753,8 @@ const OrderList: React.FC = () => {
     return () => sub.remove();
   }, []);
 
-  // Expandable cards — only one at a time
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Swipe-to-pay quick payment modal
+  const [swipePayOrder, setSwipePayOrder] = useState<SellerOrder | null>(null);
   // Delivery date keyboard modal (inside edit mode)
   const [showDeliveryDateModal, setShowDeliveryDateModal] = useState(false);
   // Payment history editing
@@ -1067,6 +1040,7 @@ const OrderList: React.FC = () => {
       if (!next) return;
       mediumTap();
       updateOrderStatus(order.id, next);
+      setSelectedOrder({ ...order, status: next, updatedAt: new Date() });
       showToast(`marked as ${next}.`, 'info');
 
       // Auto-send WhatsApp confirmation when confirming an order
@@ -1453,7 +1427,6 @@ const OrderList: React.FC = () => {
   // Bulk select handlers
   const handleLongPress = useCallback((order: SellerOrder) => {
     if (selectedIds.size === 0) {
-      setExpandedId(null);
       setSelectedIds(new Set([order.id]));
     }
   }, [selectedIds.size]);
@@ -1534,30 +1507,25 @@ const OrderList: React.FC = () => {
     lightTap();
   }, []);
 
-  const handleToggleExpand = useCallback((id: string) => {
-    setExpandedId(prev => {
-      const isOpening = prev !== id;
-      if (isOpening) {
-        const order = orders.find((o) => o.id === id);
-        if (order?.source === 'order_link' && !seenSet.has(id)) {
-          markOrdersSeen([id]);
-        }
-      }
-      return prev === id ? null : id;
-    });
-  }, [orders, seenSet, markOrdersSeen]);
-
-  const handleMarkPaidFromCard = useCallback((order: SellerOrder) => {
-    setPendingPayOrder(order);
-    setSelectedPaymentMethod(null);
-    setPaymentNote('');
-  }, []);
+  const handleSwipePay = useCallback((order: SellerOrder) => {
+    if (order.source === 'order_link' && !seenSet.has(order.id)) {
+      markOrdersSeen([order.id]);
+    }
+    const remaining = order.totalAmount - (order.paidAmount || 0);
+    setDepositAmount(remaining > 0 ? remaining.toFixed(2) : '');
+    setDepositMethod(null);
+    setDepositNote('');
+    setSwipePayOrder(order);
+  }, [seenSet, markOrdersSeen]);
 
   // Read fresh order from store when opening detail (avoids stale data after edits)
   const handleOpenDetail = useCallback((order: SellerOrder) => {
     const fresh = useSellerStore.getState().orders.find(o => o.id === order.id);
+    if (fresh?.source === 'order_link' && !seenSet.has(fresh.id)) {
+      markOrdersSeen([fresh.id]);
+    }
     setSelectedOrder(fresh || order);
-  }, []);
+  }, [seenSet, markOrdersSeen]);
 
   const renderOrder = useCallback(
     ({ item, index }: { item: SellerOrder; index: number }) => (
@@ -1567,18 +1535,15 @@ const OrderList: React.FC = () => {
         currency={currency}
         selectMode={selectMode}
         isSelected={selectedIds.has(item.id)}
-        isExpanded={expandedId === item.id}
         isUnseen={item.source === 'order_link' && !seenSet.has(item.id)}
-        onToggleExpand={handleToggleExpand}
         onOpenDetail={handleOpenDetail}
         onLongPress={handleLongPress}
         onToggleSelect={handleToggleSelect}
-        onAdvanceStatus={handleAdvanceStatus}
-        onMarkPaid={handleMarkPaidFromCard}
+        onSwipePay={handleSwipePay}
         styles={styles}
       />
     ),
-    [currency, selectMode, selectedIds, expandedId, seenSet, handleToggleExpand, handleOpenDetail, handleLongPress, handleToggleSelect, handleAdvanceStatus, handleMarkPaidFromCard, styles]
+    [currency, selectMode, selectedIds, seenSet, handleOpenDetail, handleLongPress, handleToggleSelect, handleSwipePay, styles]
   );
 
   const renderGroup = useCallback(
@@ -1589,18 +1554,15 @@ const OrderList: React.FC = () => {
         currency={currency}
         selectMode={selectMode}
         selectedIds={selectedIds}
-        expandedId={expandedId}
         seenSet={seenSet}
-        onToggleExpand={handleToggleExpand}
         onOpenDetail={handleOpenDetail}
         onLongPress={handleLongPress}
         onToggleSelect={handleToggleSelect}
-        onAdvanceStatus={handleAdvanceStatus}
-        onMarkPaid={handleMarkPaidFromCard}
+        onSwipePay={handleSwipePay}
         styles={styles}
       />
     ),
-    [currency, selectMode, selectedIds, expandedId, seenSet, handleToggleExpand, handleOpenDetail, handleLongPress, handleToggleSelect, handleAdvanceStatus, handleMarkPaidFromCard, styles]
+    [currency, selectMode, selectedIds, seenSet, handleOpenDetail, handleLongPress, handleToggleSelect, handleSwipePay, styles]
   );
 
   // Stable keyExtractor — avoids creating new function reference every render
@@ -2151,27 +2113,15 @@ const OrderList: React.FC = () => {
         </KeyboardAvoidingView>
       </Modal>}
 
-      {/* ─── Order detail bottom sheet (lazy-mounted) ─── */}
-      {!!selectedOrder && <Modal
+      {/* ─── Order detail floating card (lazy-mounted) ─── */}
+      {!!selectedOrder && <FloatingModal
         visible
-        transparent
-        statusBarTranslucent
-        animationType="fade"
-        onRequestClose={handleCloseModal}
+        onClose={handleCloseModal}
+        maxWidth={520}
       >
-        <View style={{flex: 1}}>
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={handleCloseModal}
-        >
-          <View style={styles.modalSheet} onStartShouldSetResponder={() => true}>
-            {/* Fixed handle + header — does not scroll */}
+            {/* Fixed header */}
             {selectedOrder && (
               <>
-                <View style={styles.modalHandleRow}>
-                  <View style={styles.modalHandle} />
-                </View>
                 <View style={styles.modalHeader}>
                   <View style={styles.modalHeaderLeft}>
                     <View style={styles.modalTitleRow}>
@@ -2218,7 +2168,7 @@ const OrderList: React.FC = () => {
                 </View>
               </>
             )}
-            <ScrollView bounces={false} showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: Math.max(SPACING['3xl'], insets.bottom + SPACING.lg) }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            <ScrollView bounces={false} showsVerticalScrollIndicator={false} style={{ flexShrink: 1 }} contentContainerStyle={{ paddingBottom: Math.max(SPACING['3xl'], insets.bottom + SPACING.lg), paddingHorizontal: SPACING.lg }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
               {selectedOrder && (
                 <>
                   {/* ── Section: Contact ── */}
@@ -2597,11 +2547,28 @@ const OrderList: React.FC = () => {
                   {/* ── Actions ── */}
                   {!isEditing && (
                     <View style={styles.modalActions}>
+                      {/* Primary: Status advance — one primary CTA */}
+                      {NEXT_STATUS[selectedOrder.status] && (
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          style={[styles.advanceButton, { backgroundColor: statusColor(NEXT_STATUS[selectedOrder.status]!) }]}
+                          onPress={() => handleAdvanceStatus(selectedOrder)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Mark order as ${NEXT_STATUS[selectedOrder.status]}`}
+                        >
+                          <Feather name={advanceIcon(selectedOrder.status)} size={18} color={C.onAccent} />
+                          <Text style={styles.advanceButtonText}>
+                            mark as {NEXT_STATUS[selectedOrder.status]}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* Payment group — secondary outline */}
                       {!selectedOrder.isPaid && (
                         <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
                           <TouchableOpacity
                             activeOpacity={0.7}
-                            style={[styles.paidButton, { flex: 1, backgroundColor: withAlpha(C.bronze, 0.15) }]}
+                            style={[styles.outlineButton, { flex: 1 }]}
                             onPress={() => {
                               lightTap();
                               setDepositAmount('');
@@ -2613,11 +2580,11 @@ const OrderList: React.FC = () => {
                             accessibilityLabel="Record a deposit"
                           >
                             <Feather name="credit-card" size={16} color={C.bronze} />
-                            <Text style={[styles.paidButtonText, { color: C.bronze }]}>deposit</Text>
+                            <Text style={[styles.outlineButtonText, { color: C.bronze }]}>deposit</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             activeOpacity={0.7}
-                            style={[styles.paidButton, { flex: 1 }]}
+                            style={[styles.outlineButton, { flex: 1 }]}
                             onPress={() => {
                               lightTap();
                               setPendingPayOrder(selectedOrder);
@@ -2630,28 +2597,14 @@ const OrderList: React.FC = () => {
                             accessibilityRole="button"
                             accessibilityLabel="Mark order as paid"
                           >
-                            <Feather name="dollar-sign" size={18} color={C.onAccent} />
-                            <Text style={styles.paidButtonText}>mark as paid</Text>
+                            <Feather name="dollar-sign" size={16} color={C.accent} />
+                            <Text style={[styles.outlineButtonText, { color: C.accent }]}>mark as paid</Text>
                           </TouchableOpacity>
                         </View>
                       )}
 
-
-                      {/* Secondary actions — 2-column grid */}
+                      {/* Utility row — 2-column grid */}
                       <View style={styles.secondaryActionsGrid}>
-                        {!selectedOrder.isPaid && (
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            style={styles.gridAction}
-                            onPress={() => handleSendQR(selectedOrder)}
-                            accessibilityRole="button"
-                            accessibilityLabel="Send QR with total via WhatsApp"
-                          >
-                            <Feather name="maximize" size={16} color={C.accent} />
-                            <Text style={[styles.gridActionText, { color: C.accent }]}>send QR</Text>
-                          </TouchableOpacity>
-                        )}
-
                         {selectedOrder.status === 'completed' && (
                           <TouchableOpacity
                             activeOpacity={0.7}
@@ -2662,6 +2615,19 @@ const OrderList: React.FC = () => {
                           >
                             <Feather name="send" size={16} color={C.accent} />
                             <Text style={[styles.gridActionText, { color: C.accent }]}>send receipt</Text>
+                          </TouchableOpacity>
+                        )}
+
+                        {!selectedOrder.isPaid && (
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            style={styles.gridAction}
+                            onPress={() => handleSendQR(selectedOrder)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Send QR with total via WhatsApp"
+                          >
+                            <Feather name="maximize" size={16} color={C.accent} />
+                            <Text style={[styles.gridActionText, { color: C.accent }]}>send QR</Text>
                           </TouchableOpacity>
                         )}
 
@@ -2688,27 +2654,9 @@ const OrderList: React.FC = () => {
                           <Feather name="edit-2" size={16} color={C.bronze} />
                           <Text style={styles.gridActionText}>edit</Text>
                         </TouchableOpacity>
-
-
                       </View>
 
-                      {/* Mark as next status — at bottom */}
-                      {NEXT_STATUS[selectedOrder.status] && (
-                        <TouchableOpacity
-                          activeOpacity={0.7}
-                          style={[styles.advanceButton, { backgroundColor: statusColor(NEXT_STATUS[selectedOrder.status]!) }]}
-                          onPress={() => handleAdvanceStatus(selectedOrder)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Mark order as ${NEXT_STATUS[selectedOrder.status]}`}
-                        >
-                          <Feather name={advanceIcon(selectedOrder.status)} size={18} color={C.onAccent} />
-                          <Text style={styles.advanceButtonText}>
-                            mark as {NEXT_STATUS[selectedOrder.status]}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-
-                      {/* Delete — minimal, at bottom */}
+                      {/* Delete — separated, with icon */}
                       <TouchableOpacity
                         activeOpacity={0.7}
                         style={styles.deleteButton}
@@ -2716,6 +2664,7 @@ const OrderList: React.FC = () => {
                         accessibilityRole="button"
                         accessibilityLabel="Delete this order"
                       >
+                        <Feather name="trash-2" size={14} color={C.textMuted} />
                         <Text style={styles.deleteButtonText}>delete order</Text>
                       </TouchableOpacity>
                     </View>
@@ -2745,8 +2694,6 @@ const OrderList: React.FC = () => {
                 </View>
               </TouchableOpacity>
             )}
-          </View>
-        </TouchableOpacity>
 
         {/* ─── Deposit overlay (inside detail modal) ─── */}
 
@@ -3311,8 +3258,167 @@ const OrderList: React.FC = () => {
           </TouchableOpacity>
       )}
 
-</View>
-      </Modal>}
+        <InModalToast ref={detailToastRef} />
+      </FloatingModal>}
+
+      {/* ─── Swipe-to-pay compact payment modal ─── */}
+      {!!swipePayOrder && (
+        <FloatingModal visible onClose={() => setSwipePayOrder(null)} maxWidth={400}>
+          <View style={styles.swipePayContent}>
+            <Text style={styles.paymentSheetTitle}>{t.seller.olRecordPayment}</Text>
+
+            <View style={styles.paymentContext}>
+              <View style={styles.paymentContextRow}>
+                <Text style={styles.paymentContextName} numberOfLines={1}>
+                  {swipePayOrder.customerName || 'walk-in'}
+                </Text>
+                <Text style={styles.paymentContextAmount}>
+                  {currency} {swipePayOrder.totalAmount.toFixed(2)}
+                </Text>
+              </View>
+              {(swipePayOrder.paidAmount || 0) > 0 && (
+                <>
+                  <View style={styles.payContextDivider} />
+                  <View style={styles.payContextSubRow}>
+                    <Text style={styles.payContextSubLabel}>paid <Text style={styles.payContextPaid}>{currency} {(swipePayOrder.paidAmount || 0).toFixed(2)}</Text></Text>
+                    <Text style={styles.payContextSubLabel}>remaining <Text style={styles.payContextRemaining}>{currency} {(swipePayOrder.totalAmount - (swipePayOrder.paidAmount || 0)).toFixed(2)}</Text></Text>
+                  </View>
+                </>
+              )}
+            </View>
+
+            <View style={styles.payAmountRow}>
+              <Text style={styles.payAmountPrefix}>{currency}</Text>
+              <TextInput
+                style={styles.payAmountInput}
+                value={depositAmount}
+                onChangeText={setDepositAmount}
+                placeholder="amount"
+                placeholderTextColor={C.textMuted}
+                keyboardType="decimal-pad"
+                autoFocus
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
+              />
+            </View>
+
+            <View style={styles.quickFillRow}>
+              {(() => {
+                const paid = swipePayOrder.paidAmount || 0;
+                const remaining = swipePayOrder.totalAmount - paid;
+                const chips = paid > 0
+                  ? [
+                      { label: t.seller.olRemaining, value: remaining.toFixed(2) },
+                      { label: t.seller.olFull, value: swipePayOrder.totalAmount.toFixed(2) },
+                      { label: t.seller.olCustom, value: '' },
+                    ]
+                  : [
+                      { label: t.seller.olFull, value: swipePayOrder.totalAmount.toFixed(2) },
+                      { label: t.seller.olCustom, value: '' },
+                    ];
+                return chips.map(chip => (
+                  <TouchableOpacity
+                    key={chip.label}
+                    activeOpacity={0.7}
+                    style={[styles.quickFillChip, depositAmount === chip.value && chip.value !== '' && styles.quickFillChipActive]}
+                    onPress={() => { lightTap(); setDepositAmount(chip.value); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Fill ${chip.label} amount`}
+                  >
+                    <Text style={[styles.quickFillText, depositAmount === chip.value && chip.value !== '' && styles.quickFillTextActive]}>
+                      {chip.label}
+                    </Text>
+                  </TouchableOpacity>
+                ));
+              })()}
+            </View>
+
+            {(() => {
+              const remaining = swipePayOrder.totalAmount - (swipePayOrder.paidAmount || 0);
+              const entered = parseFloat(depositAmount) || 0;
+              if (entered > remaining && remaining > 0) {
+                return (
+                  <Text style={styles.tipHint}>
+                    {t.seller.olIncludesTip.replace('{currency}', currency).replace('{amount}', (entered - remaining).toFixed(2))}
+                  </Text>
+                );
+              }
+              return null;
+            })()}
+
+            <View style={styles.paymentPickerRow}>
+              {PAYMENT_METHODS.map((m) => {
+                const active = depositMethod === m.value;
+                return (
+                  <TouchableOpacity
+                    key={m.value}
+                    activeOpacity={0.7}
+                    style={[styles.paymentPill, active && styles.paymentPillActive]}
+                    onPress={() => { selectionChanged(); setDepositMethod(m.value); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Payment via ${m.label}`}
+                  >
+                    <Feather name={m.icon} size={14} color={active ? semantic(BIZ_SAFE.success, isDark) : C.textSecondary} />
+                    <Text style={[styles.paymentPillText, active && styles.paymentPillTextActive]}>{m.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {!!depositMethod && (
+              <TextInput
+                style={styles.paymentNoteInput}
+                value={depositNote}
+                onChangeText={setDepositNote}
+                placeholder="note (optional)"
+                placeholderTextColor={C.textMuted}
+                returnKeyType="done"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
+              />
+            )}
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={[styles.paymentConfirmBtn, !depositMethod && styles.paymentConfirmBtnDisabled]}
+              disabled={!depositMethod}
+              onPress={() => {
+                if (!depositMethod) return;
+                const amt = parseFloat(depositAmount);
+                if (!amt || amt <= 0) {
+                  warningNotification();
+                  showToast(t.seller.olEnterValidAmount, 'error');
+                  return;
+                }
+                const remaining = swipePayOrder.totalAmount - (swipePayOrder.paidAmount || 0);
+                let finalNote = depositNote.trim();
+                if (amt > remaining && remaining > 0) {
+                  const tip = amt - remaining;
+                  const tipText = `tip ${currency} ${tip.toFixed(2)}`;
+                  finalNote = finalNote ? `${finalNote} · ${tipText}` : tipText;
+                }
+                mediumTap();
+                recordPayment(swipePayOrder.id, amt, depositMethod, finalNote || undefined);
+                setSwipePayOrder(null);
+                const newPaid = (swipePayOrder.paidAmount || 0) + amt;
+                const fullyPaid = newPaid >= swipePayOrder.totalAmount;
+                const tipAmt = newPaid - swipePayOrder.totalAmount;
+                showToast(
+                  tipAmt > 0
+                    ? t.seller.olFullyPaidTip.replace('{currency}', currency).replace('{amount}', tipAmt.toFixed(2))
+                    : fullyPaid ? t.seller.olFullyPaid : t.seller.olAmountRecorded.replace('{currency}', currency).replace('{amount}', amt.toFixed(2)),
+                  'info'
+                );
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Save payment"
+            >
+              <Feather name="check" size={16} color={C.onAccent} />
+              <Text style={styles.paymentConfirmText}>{t.seller.olSavePayment}</Text>
+            </TouchableOpacity>
+          </View>
+        </FloatingModal>
+      )}
 
     </View>
   );
@@ -3558,6 +3664,44 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: BIZ.warning,
   },
+  swipeAction: {
+    width: 72,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: RADIUS.lg,
+    marginVertical: 1,
+    marginLeft: 2,
+    gap: 2,
+  },
+  swipeActionText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  orderAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  orderAvatarText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+  },
+  orderCardBody: {
+    flex: 1,
+    gap: 2,
+  },
+  orderTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  orderBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   selectRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3578,8 +3722,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   orderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: SPACING.sm + 2,
   },
   customerName: {
     flex: 1,
@@ -4118,6 +4262,34 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.md,
     minHeight: 40,
   },
+  swipePayContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.lg,
+  },
+  quickFillRow: {
+    flexDirection: 'row' as const,
+    gap: SPACING.xs,
+    marginBottom: SPACING.md,
+  },
+  quickFillChip: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textMuted, 0.1),
+  },
+  quickFillChipActive: {
+    backgroundColor: withAlpha(C.accent, 0.15),
+  },
+  quickFillText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+  },
+  quickFillTextActive: {
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+  },
   payAmountRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4410,6 +4582,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
   },
   modalHeaderLeft: {
     flex: 1,
@@ -4898,11 +5072,29 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
   },
-  deleteButton: {
+  outlineButton: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: SPACING.xs,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.md - 2,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: withAlpha(C.textMuted, 0.04),
+    minHeight: 44,
+  },
+  outlineButtonText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
     paddingVertical: SPACING.sm,
-    marginTop: SPACING.xs,
+    marginTop: SPACING.md,
     minHeight: 44,
   },
   deleteButtonText: {
