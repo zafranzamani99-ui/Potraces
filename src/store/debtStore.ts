@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DebtState, DebtStatus, DebtEdit } from '../types';
+import { useTombstoneStore } from './tombstoneStore';
 import { newId } from '../utils/id';
 import { roundMoney } from '../utils/money';
 import { useWalletStore } from './walletStore';
@@ -100,11 +101,13 @@ export const useDebtStore = create<DebtState>()(
           }),
         })),
 
-      deleteDebt: (id) =>
+      deleteDebt: (id) => {
         set((state) => ({
           debts: state.debts.filter((d) => d.id !== id),
           _deletedDebtIds: [...(state._deletedDebtIds ?? []), id],
-        })),
+        }));
+        useTombstoneStore.getState().addTombstones([id]);
+      },
 
       archiveDebt: (id) =>
         set((state) => ({
@@ -261,11 +264,13 @@ export const useDebtStore = create<DebtState>()(
           ),
         })),
 
-      deleteSplit: (id) =>
+      deleteSplit: (id) => {
         set((state) => ({
           splits: state.splits.filter((s) => s.id !== id),
           _deletedSplitIds: [...(state._deletedSplitIds ?? []), id],
-        })),
+        }));
+        useTombstoneStore.getState().addTombstones([id]);
+      },
 
       archiveSplit: (id) =>
         set((state) => ({
@@ -516,7 +521,8 @@ export const useDebtStore = create<DebtState>()(
           ],
         })),
 
-      deleteContact: (id) =>
+      deleteContact: (id) => {
+        useTombstoneStore.getState().addTombstones([id]);
         set((state) => ({
           contacts: state.contacts.filter((c) => c.id !== id),
           _deletedContactIds: [...(state._deletedContactIds ?? []), id],
@@ -529,7 +535,8 @@ export const useDebtStore = create<DebtState>()(
               p.contact.id === id ? { ...p, contact: { ...p.contact, name: '(deleted)' } } : p
             ),
           })),
-        })),
+        }));
+      },
     }),
     {
       name: 'debt-storage',

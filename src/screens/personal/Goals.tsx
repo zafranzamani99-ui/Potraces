@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,24 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
-  Animated,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import { ScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
+import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import Reanimated, {
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+  interpolate,
+  Extrapolation,
+  runOnJS,
+  SharedValue,
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle as SvgCircle } from 'react-native-svg';
 import { Feather } from '@expo/vector-icons';
 import {
   format,
@@ -25,6 +39,7 @@ import {
   endOfMonth,
   subMonths,
 } from 'date-fns';
+import { useNavigation } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useWalletStore } from '../../store/walletStore';
@@ -41,14 +56,16 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import Sparkline from '../../components/common/Sparkline';
 import CalendarPicker from '../../components/common/CalendarPicker';
+import EmptyState from '../../components/common/EmptyState';
+import FAB from '../../components/common/FAB';
+import ScreenGuide from '../../components/common/ScreenGuide';
+import CollapsibleSection from '../../components/common/CollapsibleSection';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, successNotification, selectionChanged } from '../../services/haptics';
 import { Goal, GoalContribution } from '../../types';
-
-const SCREEN_W = Dimensions.get('window').width;
-const CARD_PAD = SPACING['2xl'];
+import ModalToastHost from '../../components/common/ModalToastHost';
 
 // ── ICON & COLOR PRESETS ──────────────────────────────────────
 const GOAL_ICONS: (keyof typeof Feather.glyphMap)[] = [
@@ -89,6 +106,30 @@ type GoalSort = 'manual' | 'deadline' | 'progress';
 // ── ENCOURAGING MESSAGES ──────────────────────────────────────
 // Localized version defined inside component via useT()
 
+// ── CIRCULAR PROGRESS RING ───────────────────────────────────
+const CircularProgress = ({ size, strokeWidth, percentage, color, trackColor, children }: {
+  size: number; strokeWidth: number; percentage: number;
+  color: string; trackColor: string; children?: React.ReactNode;
+}) => {
+  const r = (size - strokeWidth) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - Math.min(percentage, 100) / 100);
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute' }}>
+        <SvgCircle cx={size / 2} cy={size / 2} r={r} stroke={trackColor} strokeWidth={strokeWidth} fill="none" />
+        <SvgCircle
+          cx={size / 2} cy={size / 2} r={r}
+          stroke={color} strokeWidth={strokeWidth} fill="none"
+          strokeDasharray={`${circ}`} strokeDashoffset={offset}
+          strokeLinecap="round" rotation={-90} origin={`${size / 2}, ${size / 2}`}
+        />
+      </Svg>
+      {children}
+    </View>
+  );
+};
+
 const MAX_GOALS = 10;
 
 // ── MAIN COMPONENT ────────────────────────────────────────────
@@ -97,6 +138,8 @@ const Goals: React.FC = () => {
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
+  const navigation = useNavigation<any>();
 
   // ── Observation helper (i18n) ──
   const getObservation = useCallback((percentage: number): string => {
@@ -136,7 +179,6 @@ const Goals: React.FC = () => {
   // ── Filter / Sort state ──
   const [filter, setFilter] = useState<GoalFilter>('all');
   const [sort, setSort] = useState<GoalSort>('manual');
-  const [showArchived, setShowArchived] = useState(false);
 
   // ── Add/Edit Goal Modal state ──
   const [goalModalVisible, setGoalModalVisible] = useState(false);
@@ -160,6 +202,17 @@ const Goals: React.FC = () => {
   // ── History Modal state ──
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   const [historyGoal, setHistoryGoal] = useState<Goal | null>(null);
+
+  // ── Form sheet animation shared values ──
+  const goalSheetY = useSharedValue(SCREEN_H);
+  const goalDragStart = useSharedValue(0);
+  const goalClosingRef = useRef(false);
+  const contribSheetY = useSharedValue(SCREEN_H);
+  const contribDragStart = useSharedValue(0);
+  const contribClosingRef = useRef(false);
+  const historySheetY = useSharedValue(SCREEN_H);
+  const historyDragStart = useSharedValue(0);
+  const historyClosingRef = useRef(false);
 
   // ── Derived data ──
   const goalsList: Goal[] = goals || [];
@@ -283,6 +336,55 @@ const Goals: React.FC = () => {
     setGoalColor(GOAL_COLORS[0]);
   }, []);
 
+  // ── Close modals (animated) ──
+  const goalFinishClose = useCallback(() => {
+    if (!goalClosingRef.current) return;
+    goalClosingRef.current = false;
+    setGoalModalVisible(false);
+    resetGoalForm();
+  }, [resetGoalForm]);
+
+  const closeGoalModal = useCallback(() => {
+    if (goalClosingRef.current) return;
+    goalClosingRef.current = true;
+    Keyboard.dismiss();
+    goalSheetY.value = withTiming(SCREEN_H, { duration: 220 }, (finished) => {
+      if (finished) runOnJS(goalFinishClose)();
+    });
+  }, [SCREEN_H, goalSheetY, goalFinishClose]);
+
+  const contribFinishClose = useCallback(() => {
+    if (!contribClosingRef.current) return;
+    contribClosingRef.current = false;
+    setContributeModalVisible(false);
+    setContributingGoal(null);
+    setIsWithdrawMode(false);
+  }, []);
+
+  const closeContributeModal = useCallback(() => {
+    if (contribClosingRef.current) return;
+    contribClosingRef.current = true;
+    Keyboard.dismiss();
+    contribSheetY.value = withTiming(SCREEN_H, { duration: 220 }, (finished) => {
+      if (finished) runOnJS(contribFinishClose)();
+    });
+  }, [SCREEN_H, contribSheetY, contribFinishClose]);
+
+  const historyFinishClose = useCallback(() => {
+    if (!historyClosingRef.current) return;
+    historyClosingRef.current = false;
+    setHistoryModalVisible(false);
+    setHistoryGoal(null);
+  }, []);
+
+  const closeHistoryModal = useCallback(() => {
+    if (historyClosingRef.current) return;
+    historyClosingRef.current = true;
+    historySheetY.value = withTiming(SCREEN_H, { duration: 220 }, (finished) => {
+      if (finished) runOnJS(historyFinishClose)();
+    });
+  }, [SCREEN_H, historySheetY, historyFinishClose]);
+
   // ── Open Add Modal ──
   const openAddGoal = useCallback(() => {
     if (goalsList.length >= MAX_GOALS) {
@@ -290,8 +392,10 @@ const Goals: React.FC = () => {
       return;
     }
     resetGoalForm();
+    goalClosingRef.current = false;
+    goalSheetY.value = SCREEN_H;
     setGoalModalVisible(true);
-  }, [goalsList.length, resetGoalForm, showToast]);
+  }, [goalsList.length, resetGoalForm, showToast, SCREEN_H, goalSheetY]);
 
   // ── Open Edit Modal ──
   const openEditGoal = useCallback((goal: Goal) => {
@@ -303,8 +407,10 @@ const Goals: React.FC = () => {
     setShowCalendar(!!goal.deadline);
     setGoalIcon(goal.icon as keyof typeof Feather.glyphMap);
     setGoalColor(goal.color);
+    goalClosingRef.current = false;
+    goalSheetY.value = SCREEN_H;
     setGoalModalVisible(true);
-  }, []);
+  }, [SCREEN_H, goalSheetY]);
 
   // ── Save Goal ──
   const handleSaveGoal = useCallback(() => {
@@ -339,8 +445,7 @@ const Goals: React.FC = () => {
       showToast(t.goals.goalCreated, 'success');
     }
 
-    setGoalModalVisible(false);
-    resetGoalForm();
+    closeGoalModal();
   }, [
     goalName,
     goalTarget,
@@ -350,7 +455,7 @@ const Goals: React.FC = () => {
     editingGoal,
     addGoal,
     updateGoal,
-    resetGoalForm,
+    closeGoalModal,
     showToast,
   ]);
 
@@ -385,8 +490,10 @@ const Goals: React.FC = () => {
     setContributeNote('');
     setContributeWalletId(withdraw ? undefined : (goal.walletId || undefined));
     setIsWithdrawMode(!!withdraw);
+    contribClosingRef.current = false;
+    contribSheetY.value = SCREEN_H;
     setContributeModalVisible(true);
-  }, []);
+  }, [SCREEN_H, contribSheetY]);
 
   // ── Handle Contribution ──
   const handleContribute = useCallback(() => {
@@ -450,9 +557,8 @@ const Goals: React.FC = () => {
       showToast(t.goals.contributionAdded, 'success');
     }
 
-    setContributeModalVisible(false);
-    setContributingGoal(null);
-  }, [contributingGoal, contributeAmount, contributeNote, contributeWalletId, contributeToGoal, showToast, currency, t]);
+    closeContributeModal();
+  }, [contributingGoal, contributeAmount, contributeNote, contributeWalletId, contributeToGoal, closeContributeModal, showToast, currency, t]);
 
   // ── Handle Withdraw ──
   const handleWithdraw = useCallback(() => {
@@ -476,9 +582,8 @@ const Goals: React.FC = () => {
 
     lightTap();
     showToast(`${currency} ${capped.toFixed(2)} ${t.goals.withdrawn}`, 'success');
-    setContributeModalVisible(false);
-    setContributingGoal(null);
-  }, [contributingGoal, contributeAmount, contributeNote, contributeWalletId, withdrawFromGoal, showToast, currency, t]);
+    closeContributeModal();
+  }, [contributingGoal, contributeAmount, contributeNote, contributeWalletId, withdrawFromGoal, closeContributeModal, showToast, currency, t]);
 
   // ── Handle undo contribution ──
   const handleUndoContribution = useCallback((goalId: string, contrib: GoalContribution) => {
@@ -541,9 +646,11 @@ const Goals: React.FC = () => {
   // ── Open History Modal ──
   const openHistory = useCallback((goal: Goal) => {
     lightTap();
+    historyClosingRef.current = false;
+    historySheetY.value = SCREEN_H;
     setHistoryGoal(goal);
     setHistoryModalVisible(true);
-  }, []);
+  }, [SCREEN_H, historySheetY]);
 
   // ── Render Milestone Dots ──
   const renderMilestoneDots = useCallback((goal: Goal) => {
@@ -588,18 +695,6 @@ const Goals: React.FC = () => {
     );
   }, []);
 
-  // ── Close modals ──
-  const closeGoalModal = useCallback(() => {
-    setGoalModalVisible(false);
-    resetGoalForm();
-  }, [resetGoalForm]);
-
-  const closeContributeModal = useCallback(() => {
-    setContributeModalVisible(false);
-    setContributingGoal(null);
-    setIsWithdrawMode(false);
-  }, []);
-
   // ── History modal grouped contributions ──
   const historyGroups = useMemo(() => {
     if (!historyGoal) return [];
@@ -626,10 +721,195 @@ const Goals: React.FC = () => {
     return { total, avg: count > 0 ? total / count : 0, count };
   }, [historyGoal]);
 
-  // ── Filter pills ──
-  // FAB animation
-  const fabScale = useRef(new Animated.Value(1)).current;
+  // ── Goal Detail Sheet state + animation ──
+  const [detailGoal, setDetailGoal] = useState<Goal | null>(null);
+  const detailSheetY = useSharedValue(SCREEN_H);
+  const detailDragStart = useSharedValue(0);
+  const detailClosingRef = useRef(false);
 
+  const detailFinishClose = useCallback(() => {
+    if (!detailClosingRef.current) return;
+    detailClosingRef.current = false;
+    setDetailGoal(null);
+  }, []);
+
+  const closeGoalDetail = useCallback(() => {
+    if (detailClosingRef.current) return;
+    detailClosingRef.current = true;
+    detailSheetY.value = withTiming(SCREEN_H, { duration: 220 }, (finished) => {
+      if (finished) runOnJS(detailFinishClose)();
+    });
+  }, [SCREEN_H, detailSheetY, detailFinishClose]);
+
+  const openGoalDetail = useCallback((goal: Goal) => {
+    lightTap();
+    detailClosingRef.current = false;
+    detailSheetY.value = SCREEN_H;
+    setDetailGoal(goal);
+  }, [SCREEN_H, detailSheetY]);
+
+  useEffect(() => {
+    if (detailGoal) {
+      detailSheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
+    }
+  }, [detailGoal, detailSheetY]);
+
+  const detailSheetGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY([10, 9999])
+        .onStart(() => {
+          'worklet';
+          detailDragStart.value = detailSheetY.value;
+        })
+        .onUpdate((e) => {
+          'worklet';
+          let newY = detailDragStart.value + e.translationY;
+          if (newY < 0) newY = newY / 3;
+          detailSheetY.value = newY;
+        })
+        .onEnd((e) => {
+          'worklet';
+          const passedThreshold = e.translationY > 100 || e.velocityY > 800;
+          if (passedThreshold) {
+            runOnJS(closeGoalDetail)();
+          } else {
+            detailSheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
+          }
+        }),
+    [SCREEN_H, closeGoalDetail, detailSheetY, detailDragStart]
+  );
+
+  const detailSheetAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: detailSheetY.value }],
+  }));
+  const detailBackdropAnimStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(detailSheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP),
+  }));
+
+  // ── Goal form sheet animation ──
+  useEffect(() => {
+    if (goalModalVisible) {
+      goalSheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
+    }
+  }, [goalModalVisible, goalSheetY]);
+
+  const goalSheetGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY([10, 9999])
+        .onStart(() => { 'worklet'; goalDragStart.value = goalSheetY.value; })
+        .onUpdate((e) => {
+          'worklet';
+          let newY = goalDragStart.value + e.translationY;
+          if (newY < 0) newY = newY / 3;
+          goalSheetY.value = newY;
+        })
+        .onEnd((e) => {
+          'worklet';
+          if (e.translationY > 100 || e.velocityY > 800) {
+            runOnJS(closeGoalModal)();
+          } else {
+            goalSheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
+          }
+        }),
+    [closeGoalModal, goalSheetY, goalDragStart]
+  );
+
+  const goalSheetAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: goalSheetY.value }],
+  }));
+  const goalBackdropAnimStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(goalSheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP),
+  }));
+
+  // ── Contribute sheet animation ──
+  useEffect(() => {
+    if (contributeModalVisible) {
+      contribSheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
+    }
+  }, [contributeModalVisible, contribSheetY]);
+
+  const contribSheetGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY([10, 9999])
+        .onStart(() => { 'worklet'; contribDragStart.value = contribSheetY.value; })
+        .onUpdate((e) => {
+          'worklet';
+          let newY = contribDragStart.value + e.translationY;
+          if (newY < 0) newY = newY / 3;
+          contribSheetY.value = newY;
+        })
+        .onEnd((e) => {
+          'worklet';
+          if (e.translationY > 100 || e.velocityY > 800) {
+            runOnJS(closeContributeModal)();
+          } else {
+            contribSheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
+          }
+        }),
+    [closeContributeModal, contribSheetY, contribDragStart]
+  );
+
+  const contribSheetAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: contribSheetY.value }],
+  }));
+  const contribBackdropAnimStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(contribSheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP),
+  }));
+
+  // ── History sheet animation ──
+  useEffect(() => {
+    if (historyModalVisible) {
+      historySheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
+    }
+  }, [historyModalVisible, historySheetY]);
+
+  const historySheetGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY([10, 9999])
+        .onStart(() => { 'worklet'; historyDragStart.value = historySheetY.value; })
+        .onUpdate((e) => {
+          'worklet';
+          let newY = historyDragStart.value + e.translationY;
+          if (newY < 0) newY = newY / 3;
+          historySheetY.value = newY;
+        })
+        .onEnd((e) => {
+          'worklet';
+          if (e.translationY > 100 || e.velocityY > 800) {
+            runOnJS(closeHistoryModal)();
+          } else {
+            historySheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
+          }
+        }),
+    [closeHistoryModal, historySheetY, historyDragStart]
+  );
+
+  const historySheetAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: historySheetY.value }],
+  }));
+  const historyBackdropAnimStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(historySheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP),
+  }));
+
+  // ── Swipeable refs ──
+  const swipeRefs = useRef<Map<string, React.RefObject<SwipeableMethods | null>>>(new Map());
+  const getSwipeRef = useCallback((id: string): React.RefObject<SwipeableMethods | null> => {
+    let ref = swipeRefs.current.get(id);
+    if (!ref) {
+      ref = React.createRef<SwipeableMethods | null>();
+      swipeRefs.current.set(id, ref);
+    }
+    return ref;
+  }, []);
+  const closeAllSwipeables = useCallback(() => {
+    swipeRefs.current.forEach((ref) => ref.current?.close());
+  }, []);
+
+  // ── Filter pills ──
   const filterOptions = useMemo<{ key: GoalFilter; label: string }[]>(() => [
     { key: 'all', label: t.goals.all },
     { key: 'active', label: t.goals.active },
@@ -651,19 +931,50 @@ const Goals: React.FC = () => {
     setGoalColor(template.color);
   }, [goalTemplates]);
 
+  // ── Swipe action renderers ──
+  const GoalSwipeEdit = useCallback(({ drag }: { drag: SharedValue<number> }) => {
+    const animStyle = useAnimatedStyle(() => {
+      const w = Math.min(Math.abs(drag.value), 80);
+      return { width: w, opacity: w > 20 ? 1 : 0 };
+    });
+    return (
+      <Reanimated.View style={[styles.swipeAction, styles.swipeEdit, animStyle]}>
+        <Feather name="edit-2" size={18} color={C.onAccent} />
+      </Reanimated.View>
+    );
+  }, [C, styles]);
+
+  const GoalSwipeDelete = useCallback(({ drag }: { drag: SharedValue<number> }) => {
+    const animStyle = useAnimatedStyle(() => {
+      const w = Math.min(Math.abs(drag.value), 80);
+      return { width: w, opacity: w > 20 ? 1 : 0 };
+    });
+    return (
+      <Reanimated.View style={[styles.swipeAction, styles.swipeDelete, animStyle]}>
+        <Feather name="trash-2" size={18} color="#fff" />
+      </Reanimated.View>
+    );
+  }, [styles]);
+
   return (
     <View style={styles.container}>
+      <ScreenGuide
+        id="goals-guide"
+        title={t.goals.screenGuideTitle ?? 'track your savings goals'}
+        description={t.goals.screenGuideDesc ?? 'set targets, contribute regularly, and watch your progress grow'}
+        icon="target"
+      />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        onScrollBeginDrag={Keyboard.dismiss}
+        onScrollBeginDrag={() => { Keyboard.dismiss(); closeAllSwipeables(); }}
       >
         {activeGoals.length > 0 ? (
           <>
             {/* ── Hero Card ── */}
-            <View style={styles.heroCard}>
+            <Reanimated.View entering={FadeIn.duration(300)} style={styles.heroCard}>
               <Text style={styles.heroLabel}>{t.dashboard.goals.toLowerCase()}</Text>
               <Text style={styles.heroAmount}>
                 {currency} {summary.totalSaved.toFixed(2)}
@@ -687,7 +998,7 @@ const Goals: React.FC = () => {
               <Text style={styles.heroStats}>
                 {t.goals.nActive.replace('{n}', String(summary.activeCount))}{summary.completedCount > 0 ? ` · ${t.goals.nDone.replace('{n}', String(summary.completedCount))}` : ''}
               </Text>
-            </View>
+            </Reanimated.View>
 
             {/* ── Filter & Sort Pills ── */}
             <View style={styles.filterRow}>
@@ -728,230 +1039,89 @@ const Goals: React.FC = () => {
 
             {/* ── Goal Cards (grouped) ── */}
             {enrichedGoals.length > 0 ? (
-              <View style={styles.groupCard}>
+              <Reanimated.View entering={FadeInDown.duration(300).delay(100)} style={styles.groupCard}>
                 {enrichedGoals.map((goal, index) => {
-                  const { percentage, isCompleted, daysUntilDeadline, paceDaily, paceMonthly, sparkData, lastContribDaysAgo } = goal;
+                  const { percentage, isCompleted } = goal;
 
                   return (
                     <React.Fragment key={goal.id}>
+                      <ReanimatedSwipeable
+                        ref={getSwipeRef(goal.id)}
+                        renderRightActions={(_prog: SharedValue<number>, drag: SharedValue<number>, swipeable: SwipeableMethods) => (
+                          <GoalSwipeEdit drag={drag} />
+                        )}
+                        renderLeftActions={(_prog: SharedValue<number>, drag: SharedValue<number>, swipeable: SwipeableMethods) => (
+                          <GoalSwipeDelete drag={drag} />
+                        )}
+                        onSwipeableWillOpen={(direction) => {
+                          if (direction === 'right') {
+                            openEditGoal(goal);
+                            swipeRefs.current.get(goal.id)?.current?.close();
+                          } else {
+                            handleDeleteGoal(goal);
+                            swipeRefs.current.get(goal.id)?.current?.close();
+                          }
+                        }}
+                        friction={1.5}
+                        rightThreshold={60}
+                        leftThreshold={60}
+                        overshootRight={false}
+                        overshootLeft={false}
+                      >
                       <Pressable
                         style={({ pressed }) => [
-                          styles.goalItem,
+                          styles.goalRow,
                           goal.isPaused ? { opacity: 0.5 } : undefined,
                           pressed ? { opacity: goal.isPaused ? 0.3 : 0.6 } : undefined,
                         ]}
-                        onPress={() => openEditGoal(goal)}
+                        onPress={() => openGoalDetail(goal)}
                       >
-                        {/* Header row */}
-                        <View style={styles.goalHeader}>
-                          <View style={[styles.goalIconWrap, { backgroundColor: withAlpha(goal.color, goal.isPaused ? 0.06 : 0.08) }]}>
-                            <Feather
-                              name={(goal.icon as keyof typeof Feather.glyphMap) || 'target'}
-                              size={18}
-                              color={goal.isPaused ? C.neutral : goal.color}
-                            />
-                          </View>
-
-                          <View style={styles.goalInfo}>
-                            <View style={styles.goalNameRow}>
-                              <Text style={[styles.goalName, goal.isPaused && { color: C.neutral }]} numberOfLines={1}>
-                                {goal.name}
-                              </Text>
-                              {goal.isPaused && (
-                                <View style={styles.pausedBadge}>
-                                  <Text style={styles.pausedBadgeText}>{t.goals.paused}</Text>
-                                </View>
-                              )}
-                            </View>
-                            <View style={styles.goalMeta}>
-                              <Text style={styles.goalMetaText}>
-                                {currency} {goal.currentAmount.toFixed(2)} / {currency} {goal.targetAmount.toFixed(2)}
-                              </Text>
-                              {goal.deadline && daysUntilDeadline !== null && !goal.isPaused && (
-                                <>
-                                  <Text style={styles.goalMetaDot}> {'\u00B7'} </Text>
-                                  <Text style={[styles.goalMetaText, daysUntilDeadline < 0 && { color: C.bronze, fontWeight: TYPOGRAPHY.weight.semibold }]}>
-                                    {daysUntilDeadline < 0
-                                      ? t.goals.dOverdue.replace('{n}', String(Math.abs(daysUntilDeadline)))
-                                      : daysUntilDeadline === 0 ? t.goals.dueToday : `${daysUntilDeadline}d`}
-                                  </Text>
-                                </>
-                              )}
-                            </View>
-                          </View>
-
-                          <Text style={[styles.goalPercentage, isCompleted && { color: C.positive }]}>
-                            {percentage.toFixed(0)}%
-                          </Text>
-                        </View>
-
-                        {/* Progress bar */}
-                        <View style={styles.goalProgressTrack}>
-                          <View
-                            style={[
-                              styles.goalProgressFill,
-                              {
-                                width: `${Math.min(percentage, 100)}%`,
-                                backgroundColor: goal.isPaused ? C.neutral : goal.color,
-                              },
-                            ]}
+                        <View style={[styles.goalIconWrap, { backgroundColor: withAlpha(goal.color, goal.isPaused ? 0.06 : 0.1) }]}>
+                          <Feather
+                            name={(goal.icon as keyof typeof Feather.glyphMap) || 'target'}
+                            size={18}
+                            color={goal.isPaused ? C.neutral : goal.color}
                           />
                         </View>
-
-                        {/* Milestone dots */}
-                        {renderMilestoneDots(goal)}
-
-                        {/* Calm observation */}
-                        {getObservation(percentage) !== '' && (
-                          <Text style={styles.observationText}>
-                            {isCompleted ? t.goals.goalReached : `${percentage.toFixed(0)}% — ${getObservation(percentage)}`}
-                          </Text>
-                        )}
-
-                        {/* Pace */}
-                        {paceDaily !== null && paceMonthly !== null && !goal.isPaused && (
-                          <Text style={styles.paceText}>
-                            ~{currency} {paceDaily < 10 ? paceDaily.toFixed(2) : Math.ceil(paceDaily).toString()}{t.goals.perDay} · ~{currency} {Math.ceil(paceMonthly)}{t.goals.perMonth}
-                          </Text>
-                        )}
-
-                        {/* Pace context */}
-                        {!goal.isPaused && !isCompleted && (() => {
-                          if (goal.deadline && paceMonthly !== null && paceMonthly > 0) {
-                            // Estimate current monthly rate from contributions
-                            const monthsSinceCreation = Math.max(1, Math.round(
-                              (Date.now() - new Date(goal.createdAt).getTime()) / (30 * 86400000)
-                            ));
-                            const currentMonthlyRate = goal.currentAmount / monthsSinceCreation;
-                            const onPace = currentMonthlyRate >= paceMonthly;
-                            return (
-                              <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: onPace ? C.accent : C.textMuted, marginTop: 2 }}>
-                                {onPace
-                                  ? (currentMonthlyRate >= paceMonthly * 1.2 ? t.goals.aheadOfSchedule : t.goals.onPace)
-                                  : t.goals.needAboutPerMonth.replace('{currency}', currency).replace('{amount}', String(Math.ceil(paceMonthly)))}
+                        <View style={styles.goalContent}>
+                          <View style={styles.goalTopRow}>
+                            <Text style={[styles.goalName, goal.isPaused && { color: C.neutral }]} numberOfLines={1}>
+                              {goal.name}
+                            </Text>
+                            {goal.isPaused ? (
+                              <View style={styles.pausedBadge}>
+                                <Text style={styles.pausedBadgeText}>{t.goals.paused}</Text>
+                              </View>
+                            ) : (
+                              <Text style={[styles.goalPct, isCompleted && { color: C.positive }]}>
+                                {percentage.toFixed(0)}%
                               </Text>
-                            );
-                          }
-                          // No deadline — simple percent message
-                          const pct = Math.round(percentage);
-                          return (
-                            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 2 }}>
-                              {pct >= 20 ? t.goals.percentThereNice.replace('{n}', String(pct)) : t.goals.percentThere.replace('{n}', String(pct))}
-                            </Text>
-                          );
-                        })()}
-
-                        {/* Sparkline */}
-                        {sparkData.length >= 2 && (
-                          <TouchableOpacity onPress={() => { openHistory(goal); }} activeOpacity={0.7}>
-                            <View style={styles.sparklineWrap}>
-                              <Sparkline
-                                data={sparkData}
-                                width={SCREEN_W - SPACING.xl * 2 - SPACING.md * 2}
-                                height={36}
-                                color={goal.isPaused ? C.neutral : goal.color}
-                                filled
-                              />
-                            </View>
-                            <Text style={styles.sparklineLabel}>
-                              {t.goals.contributions.replace('{n}', String(goal.contributions?.filter((c) => c.amount > 0).length || 0))}
-                              {lastContribDaysAgo !== null && ` · ${lastContribDaysAgo === 0 ? t.goals.lastToday : t.goals.lastDaysAgo.replace('{n}', String(lastContribDaysAgo))}`}
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-
-                        {/* Quick contribute */}
-                        {!isCompleted && !goal.isPaused && (
-                          <View style={styles.quickRow}>
-                            {QUICK_AMOUNTS.map((amt) => (
-                              <TouchableOpacity
-                                key={amt}
-                                style={[styles.quickBtn, { backgroundColor: withAlpha(goal.color, 0.08) }]}
-                                onPress={() => openContribute(goal, amt)}
-                                activeOpacity={0.7}
-                                hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-                                accessibilityRole="button"
-                                accessibilityLabel={`${t.goals.contribute} ${currency} ${amt}`}
-                              >
-                                <Text style={[styles.quickBtnText, { color: goal.color }]}>+{amt}</Text>
-                              </TouchableOpacity>
-                            ))}
-                            <TouchableOpacity
-                              style={[styles.quickBtn, { backgroundColor: withAlpha(C.textMuted, 0.06) }]}
-                              onPress={() => openContribute(goal)}
-                              activeOpacity={0.7}
-                              hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-                              accessibilityRole="button"
-                              accessibilityLabel={t.goals.custom}
-                            >
-                              <Text style={[styles.quickBtnText, { color: C.textSecondary }]}>{t.goals.custom}</Text>
-                            </TouchableOpacity>
+                            )}
                           </View>
-                        )}
-
-                        {/* Action row */}
-                        <View style={styles.actionRow}>
-                          {!isCompleted && !goal.isPaused && (
-                            <TouchableOpacity
-                              style={[styles.actionBtn, { backgroundColor: withAlpha(goal.color, 0.08) }]}
-                              onPress={() => openContribute(goal)}
-                              activeOpacity={0.7}
-                            >
-                              <Feather name="plus-circle" size={14} color={goal.color} />
-                              <Text style={[styles.actionBtnText, { color: goal.color }]}>{t.goals.contribute.toLowerCase()}</Text>
-                            </TouchableOpacity>
-                          )}
-                          {isCompleted && (
-                            <TouchableOpacity
-                              style={[styles.actionBtn, { backgroundColor: withAlpha(C.positive, 0.08) }]}
-                              onPress={() => handleArchive(goal)}
-                              activeOpacity={0.7}
-                            >
-                              <Feather name="archive" size={14} color={C.positive} />
-                              <Text style={[styles.actionBtnText, { color: C.positive }]}>{t.goals.archive}</Text>
-                            </TouchableOpacity>
-                          )}
-                          {goal.currentAmount > 0 && !goal.isPaused && (
-                            <TouchableOpacity
-                              style={styles.actionIconBtn}
-                              onPress={() => openContribute(goal, undefined, true)}
-                              activeOpacity={0.7}
-                              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                              accessibilityRole="button"
-                              accessibilityLabel={t.goals.withdraw}
-                            >
-                              <Feather name="minus-circle" size={15} color={C.textMuted} />
-                            </TouchableOpacity>
-                          )}
-                          {goal.contributions?.length > 0 && (
-                            <TouchableOpacity
-                              style={styles.actionIconBtn}
-                              onPress={() => openHistory(goal)}
-                              activeOpacity={0.7}
-                              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                              accessibilityRole="button"
-                              accessibilityLabel={t.goals.history}
-                            >
-                              <Feather name="clock" size={15} color={C.textMuted} />
-                            </TouchableOpacity>
-                          )}
-                          <TouchableOpacity
-                            style={styles.actionIconBtn}
-                            onPress={() => handleTogglePause(goal)}
-                            activeOpacity={0.7}
-                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                            accessibilityRole="button"
-                            accessibilityLabel={goal.isPaused ? t.goals.resume : t.goals.pause}
-                          >
-                            <Feather name={goal.isPaused ? 'play' : 'pause'} size={15} color={C.textMuted} />
-                          </TouchableOpacity>
+                          <Text style={styles.goalAmountText}>
+                            {currency} {goal.currentAmount.toFixed(2)}
+                            <Text style={styles.goalAmountTarget}> / {currency} {goal.targetAmount.toFixed(2)}</Text>
+                          </Text>
+                          <View style={styles.goalProgressTrack}>
+                            <View
+                              style={[
+                                styles.goalProgressFill,
+                                {
+                                  width: `${Math.min(percentage, 100)}%`,
+                                  backgroundColor: goal.isPaused ? C.neutral : goal.color,
+                                },
+                              ]}
+                            />
+                          </View>
                         </View>
+
                       </Pressable>
+                      </ReanimatedSwipeable>
                       {index < enrichedGoals.length - 1 && <View style={styles.cardDivider} />}
                     </React.Fragment>
                   );
                 })}
-              </View>
+              </Reanimated.View>
             ) : (
               <View style={styles.noResults}>
                 <Feather name="search" size={36} color={C.textMuted} />
@@ -962,31 +1132,21 @@ const Goals: React.FC = () => {
 
             {/* ── Archived ── */}
             {archivedGoals.length > 0 && (
-              <>
-                <Text style={[styles.sectionLabel, { marginTop: SPACING['2xl'] }]}>{t.goals.archived}</Text>
+              <CollapsibleSection
+                title={t.goals.archived}
+                subtitle={`${archivedGoals.length} ${archivedGoals.length > 1 ? t.goals.goals : t.goals.goal}`}
+              >
                 <View style={styles.groupCard}>
-                  <TouchableOpacity
-                    style={styles.archivedToggle}
-                    onPress={() => { lightTap(); setShowArchived((v) => !v); }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.archivedToggleLeft}>
-                      <Feather name="archive" size={16} color={C.textMuted} />
-                      <Text style={styles.archivedToggleText}>{archivedGoals.length > 1 ? t.goals.archivedGoalsPlural.replace('{n}', String(archivedGoals.length)) : t.goals.archivedGoals.replace('{n}', String(archivedGoals.length))}</Text>
-                    </View>
-                    <Feather name={showArchived ? 'chevron-up' : 'chevron-down'} size={18} color={C.textMuted} />
-                  </TouchableOpacity>
-
-                  {showArchived && archivedGoals.map((goal, index) => {
+                  {archivedGoals.map((goal, index) => {
                     const pct = goal.targetAmount > 0 ? Math.round((goal.currentAmount / goal.targetAmount) * 100) : 0;
                     return (
                       <React.Fragment key={goal.id}>
-                        <View style={styles.cardDivider} />
-                        <View style={[styles.archivedItem]}>
+                        {index > 0 && <View style={styles.cardDivider} />}
+                        <View style={styles.archivedItem}>
                           <View style={[styles.goalIconWrap, { backgroundColor: withAlpha(goal.color, 0.08) }]}>
                             <Feather name={goal.icon as keyof typeof Feather.glyphMap} size={16} color={goal.color} />
                           </View>
-                          <View style={styles.goalInfo}>
+                          <View style={styles.goalContent}>
                             <Text style={styles.archivedName} numberOfLines={1}>{goal.name}</Text>
                             <Text style={styles.archivedAmount}>
                               {currency} {goal.currentAmount.toLocaleString()} / {currency} {goal.targetAmount.toLocaleString()} · {pct}%
@@ -1007,206 +1167,186 @@ const Goals: React.FC = () => {
                     );
                   })}
                 </View>
-              </>
+              </CollapsibleSection>
             )}
           </>
         ) : (
           /* ── Empty State ── */
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconWrap}>
-              <Feather name="target" size={48} color={C.textMuted} />
-            </View>
-            <Text style={styles.emptyTitle}>{t.goals.whatSavingFor}</Text>
-            <Text style={styles.emptyText}>
-              {t.goals.setGoalWatch}
-            </Text>
-            <TouchableOpacity
-              style={styles.emptyButton}
-              onPress={() => { lightTap(); openAddGoal(); }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.emptyButtonText}>{t.goals.addGoal}</Text>
-            </TouchableOpacity>
-          </View>
+          <EmptyState
+            icon="target"
+            title={t.goals.whatSavingFor}
+            message={t.goals.setGoalWatch}
+            actionLabel={t.goals.addGoal}
+            onAction={() => { lightTap(); openAddGoal(); }}
+          />
         )}
       </ScrollView>
 
       {/* ── FAB ── */}
       {activeGoals.length > 0 && goalsList.length < MAX_GOALS && (
-        <Animated.View style={[styles.fab, { bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), transform: [{ scale: fabScale }] }]}>
-          <TouchableOpacity
-            style={styles.fabInner}
-            onPress={() => { mediumTap(); openAddGoal(); }}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={t.goals.addGoal}
-          >
-            <Feather name="plus" size={24} color={C.onAccent} />
-          </TouchableOpacity>
-        </Animated.View>
+        <FAB
+          onPress={openAddGoal}
+          style={{ bottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.md) }}
+        />
       )}
 
-      {/* ═══ ADD / EDIT GOAL MODAL ═══ */}
-      {goalModalVisible && <Modal
-        visible
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={closeGoalModal}
-      >
-        <View style={styles.overlayCenter}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeGoalModal} />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.kavWrapper}
-          >
-            <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{editingGoal ? t.goals.editGoalTitle : t.goals.createGoal}</Text>
-                <TouchableOpacity onPress={closeGoalModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} accessibilityRole="button" accessibilityLabel={t.goals.close}>
-                  <Feather name="x" size={22} color={C.textPrimary} />
-                </TouchableOpacity>
+      {/* ═══ ADD / EDIT GOAL SHEET ═══ */}
+      {goalModalVisible && <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={closeGoalModal}>
+        <View style={StyleSheet.absoluteFill}>
+          <Reanimated.View style={[styles.detailBackdrop, goalBackdropAnimStyle]}>
+            <Pressable style={{ flex: 1 }} onPress={closeGoalModal} />
+          </Reanimated.View>
+          <Reanimated.View style={[styles.detailSheetContainer, { paddingBottom: Math.max(insets.bottom, SPACING.xl) }, goalSheetAnimStyle]}>
+            <GestureDetector gesture={goalSheetGesture}>
+              <View collapsable={false}>
+                <View style={styles.detailTopRow}>
+                  <View style={styles.detailHandle} />
+                  <TouchableOpacity style={styles.detailCloseX} onPress={closeGoalModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                    <Feather name="x" size={18} color={C.textMuted} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.detailTitleZone}>
+                  <View style={[styles.detailIconWrap, { backgroundColor: withAlpha(goalColor, 0.12) }]}>
+                    <Feather name={goalIcon} size={24} color={goalColor} />
+                  </View>
+                  <Text style={styles.detailTitle}>
+                    {editingGoal ? t.goals.editGoalTitle : t.goals.createGoal}
+                  </Text>
+                  <Text style={styles.detailSubtitle}>{t.goals.setGoalWatch}</Text>
+                </View>
               </View>
+            </GestureDetector>
 
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                nestedScrollEnabled
-                contentContainerStyle={{ paddingBottom: SPACING.lg }}
-              >
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={styles.detailScrollContent}>
                 {/* Templates */}
                 {!editingGoal && (
-                  <>
-                    <Text style={styles.fieldLabel}>{t.goals.quickStart}</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: SPACING.xs }}>
-                      {goalTemplates.map((tmpl) => (
-                        <TouchableOpacity
-                          key={tmpl.name}
-                          style={[
-                            styles.templateChip,
-                            goalName === tmpl.name && { backgroundColor: withAlpha(tmpl.color, 0.12), borderColor: tmpl.color },
-                          ]}
-                          onPress={() => applyTemplate(tmpl)}
-                          activeOpacity={0.7}
-                          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-                          accessibilityRole="button"
-                          accessibilityLabel={tmpl.name}
-                          accessibilityState={{ selected: goalName === tmpl.name }}
-                        >
-                          <Feather name={tmpl.icon} size={14} color={goalName === tmpl.name ? tmpl.color : C.textSecondary} />
-                          <Text style={[styles.templateChipText, goalName === tmpl.name && { color: tmpl.color }]}>
-                            {tmpl.name}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </>
-                )}
-
-                <Text style={styles.fieldLabel}>{t.goals.name}</Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  value={goalName}
-                  onChangeText={setGoalName}
-                  placeholder={t.goals.namePlaceholder}
-                  placeholderTextColor={C.textMuted}
-                  returnKeyType="next"
-                  maxLength={50}
-                  keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
-                />
-
-                <Text style={styles.fieldLabel}>{t.goals.amount}</Text>
-                <View style={styles.amountRow}>
-                  <Text style={styles.amountPrefix}>{currency}</Text>
-                  <TextInput
-                    style={[styles.fieldInput, { flex: 1 }]}
-                    value={goalTarget}
-                    onChangeText={setGoalTarget}
-                    placeholder="0.00"
-                    keyboardType="decimal-pad"
-                    placeholderTextColor={C.textMuted}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                    keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
-                  />
-                </View>
-
-                {/* Deadline */}
-                <Text style={styles.fieldLabel}>{t.goals.deadlineOptional}</Text>
-                {!showCalendar ? (
-                  <TouchableOpacity
-                    style={styles.fieldTouchable}
-                    onPress={() => { lightTap(); setShowCalendar(true); if (!goalDeadline) setGoalDeadline(new Date()); }}
-                    activeOpacity={0.6}
-                  >
-                    <Text style={styles.fieldTouchableText}>
-                      {goalDeadline ? format(goalDeadline, 'dd MMM yyyy') : t.goals.setDeadline}
-                    </Text>
-                    <Feather name="calendar" size={16} color={C.textMuted} />
-                  </TouchableOpacity>
-                ) : (
-                  <View>
-                    <CalendarPicker
-                      value={goalDeadline || new Date()}
-                      minimumDate={new Date()}
-                      onChange={(date) => setGoalDeadline(date)}
-                    />
-                    <TouchableOpacity
-                      style={styles.clearDeadlineBtn}
-                      onPress={() => { setGoalDeadline(undefined); setShowCalendar(false); }}
-                      activeOpacity={0.7}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      accessibilityRole="button"
-                      accessibilityLabel={t.goals.clearDeadline}
-                    >
-                      <Text style={styles.clearDeadlineText}>{t.goals.clearDeadline}</Text>
-                    </TouchableOpacity>
+                  <View style={styles.detailFieldCard}>
+                    <Text style={styles.detailFieldLabel}>{t.goals.quickStart}</Text>
+                    <View style={[styles.hScrollFadeWrap, { marginRight: -SPACING.lg }]}>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: SPACING['2xl'] }}>
+                        {goalTemplates.map((tmpl) => (
+                          <TouchableOpacity
+                            key={tmpl.name}
+                            style={[styles.templateChip, goalName === tmpl.name && { backgroundColor: withAlpha(tmpl.color, 0.12), borderColor: tmpl.color }]}
+                            onPress={() => applyTemplate(tmpl)}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={tmpl.name}
+                            accessibilityState={{ selected: goalName === tmpl.name }}
+                          >
+                            <Feather name={tmpl.icon} size={14} color={goalName === tmpl.name ? tmpl.color : C.textSecondary} />
+                            <Text style={[styles.templateChipText, goalName === tmpl.name && { color: tmpl.color }]}>{tmpl.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                      <LinearGradient colors={['transparent', C.surface]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.hScrollFade} pointerEvents="none" />
+                    </View>
                   </View>
                 )}
 
-                {/* Icon Picker */}
-                <Text style={styles.fieldLabel}>{t.goals.icon.toLowerCase()}</Text>
-                <View style={styles.iconPickerGrid}>
-                  {GOAL_ICONS.map((icon) => {
-                    const isSelected = goalIcon === icon;
-                    return (
-                      <TouchableOpacity
-                        key={icon}
-                        style={[
-                          styles.iconPickerItem,
-                          isSelected && { backgroundColor: withAlpha(goalColor, 0.12), borderColor: goalColor },
-                        ]}
-                        onPress={() => { lightTap(); setGoalIcon(icon); }}
-                        activeOpacity={0.7}
-                        accessibilityLabel={`Icon: ${icon}`}
-                        accessibilityState={{ selected: isSelected }}
-                      >
-                        <Feather name={icon} size={22} color={isSelected ? goalColor : C.textSecondary} />
-                      </TouchableOpacity>
-                    );
-                  })}
+                {/* Name + Amount */}
+                <View style={styles.detailFieldCard}>
+                  <Text style={styles.detailFieldLabel}>{t.goals.name}</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={goalName}
+                    onChangeText={setGoalName}
+                    placeholder={t.goals.namePlaceholder}
+                    placeholderTextColor={C.textMuted}
+                    returnKeyType="next"
+                    maxLength={50}
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
+                  />
+                  <Text style={[styles.detailFieldLabel, { marginTop: SPACING.lg }]}>{t.goals.amount}</Text>
+                  <View style={styles.amountRow}>
+                    <Text style={styles.amountPrefix}>{currency}</Text>
+                    <TextInput
+                      style={[styles.fieldInput, { flex: 1 }]}
+                      value={goalTarget}
+                      onChangeText={setGoalTarget}
+                      placeholder="0.00"
+                      keyboardType="decimal-pad"
+                      placeholderTextColor={C.textMuted}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                      keyboardAppearance={isDark ? 'dark' : 'light'}
+                      selectionColor={C.accent}
+                    />
+                  </View>
                 </View>
 
-                {/* Color Picker */}
-                <Text style={styles.fieldLabel}>{t.goals.color.toLowerCase()}</Text>
-                <View style={styles.colorPickerRow}>
-                  {GOAL_COLORS.map((color) => {
-                    const isSelected = goalColor === color;
-                    return (
+                {/* Deadline */}
+                <View style={styles.detailFieldCard}>
+                  <Text style={styles.detailFieldLabel}>{t.goals.deadlineOptional}</Text>
+                  {!showCalendar ? (
+                    <TouchableOpacity
+                      style={styles.fieldTouchable}
+                      onPress={() => { lightTap(); setShowCalendar(true); if (!goalDeadline) setGoalDeadline(new Date()); }}
+                      activeOpacity={0.6}
+                    >
+                      <Text style={styles.fieldTouchableText}>
+                        {goalDeadline ? format(goalDeadline, 'dd MMM yyyy') : t.goals.setDeadline}
+                      </Text>
+                      <Feather name="calendar" size={16} color={C.textMuted} />
+                    </TouchableOpacity>
+                  ) : (
+                    <View>
+                      <CalendarPicker value={goalDeadline || new Date()} minimumDate={new Date()} onChange={(date) => setGoalDeadline(date)} />
                       <TouchableOpacity
-                        key={color}
-                        style={[styles.colorPickerItem, { backgroundColor: color }, isSelected && styles.colorPickerItemSelected]}
-                        onPress={() => { lightTap(); setGoalColor(color); }}
+                        style={styles.clearDeadlineBtn}
+                        onPress={() => { setGoalDeadline(undefined); setShowCalendar(false); }}
                         activeOpacity={0.7}
-                        accessibilityLabel={`Color ${color}`}
-                        accessibilityState={{ selected: isSelected }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.goals.clearDeadline}
                       >
-                        {isSelected && <Feather name="check" size={16} color={C.onAccent} />}
+                        <Text style={styles.clearDeadlineText}>{t.goals.clearDeadline}</Text>
                       </TouchableOpacity>
-                    );
-                  })}
+                    </View>
+                  )}
+                </View>
+
+                {/* Icon + Color */}
+                <View style={styles.detailFieldCard}>
+                  <Text style={styles.detailFieldLabel}>{t.goals.icon.toLowerCase()}</Text>
+                  <View style={styles.iconPickerGrid}>
+                    {GOAL_ICONS.map((icon) => {
+                      const isSelected = goalIcon === icon;
+                      return (
+                        <TouchableOpacity
+                          key={icon}
+                          style={[styles.iconPickerItem, isSelected && { backgroundColor: withAlpha(goalColor, 0.12), borderColor: goalColor }]}
+                          onPress={() => { lightTap(); setGoalIcon(icon); }}
+                          activeOpacity={0.7}
+                          accessibilityLabel={`Icon: ${icon}`}
+                          accessibilityState={{ selected: isSelected }}
+                        >
+                          <Feather name={icon} size={22} color={isSelected ? goalColor : C.textSecondary} />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <Text style={[styles.detailFieldLabel, { marginTop: SPACING.lg }]}>{t.goals.color.toLowerCase()}</Text>
+                  <View style={styles.colorPickerRow}>
+                    {GOAL_COLORS.map((color) => {
+                      const isSelected = goalColor === color;
+                      return (
+                        <TouchableOpacity
+                          key={color}
+                          style={[styles.colorPickerItem, { backgroundColor: color }, isSelected && styles.colorPickerItemSelected]}
+                          onPress={() => { lightTap(); setGoalColor(color); }}
+                          activeOpacity={0.7}
+                          accessibilityLabel={`Color ${color}`}
+                          accessibilityState={{ selected: isSelected }}
+                        >
+                          {isSelected && <Feather name="check" size={16} color={C.onAccent} />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 </View>
 
                 {/* Preview */}
@@ -1217,89 +1357,83 @@ const Goals: React.FC = () => {
                     </View>
                     <Text style={styles.goalPreviewName} numberOfLines={1}>{goalName.trim()}</Text>
                     {goalTarget && parseFloat(goalTarget) > 0 && (
-                      <Text style={styles.goalPreviewTarget}>
-                        {currency} {parseFloat(goalTarget).toFixed(2)}
-                      </Text>
+                      <Text style={styles.goalPreviewTarget}>{currency} {parseFloat(goalTarget).toFixed(2)}</Text>
                     )}
                   </View>
                 )}
-
-                {/* Confirm */}
-                <TouchableOpacity
-                  style={styles.confirmBtn}
-                  onPress={handleSaveGoal}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.confirmBtnText}>{editingGoal ? t.goals.saveChanges : t.goals.createGoal}</Text>
-                </TouchableOpacity>
-
-                {editingGoal && (
-                  <TouchableOpacity
-                    style={styles.deleteBtn}
-                    onPress={() => { setGoalModalVisible(false); resetGoalForm(); handleDeleteGoal(editingGoal); }}
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.goals.deleteThisGoal}
-                  >
-                    <Feather name="trash-2" size={14} color={C.neutral} />
-                    <Text style={styles.deleteBtnText}>{t.goals.deleteThisGoal}</Text>
-                  </TouchableOpacity>
-                )}
               </ScrollView>
+            </KeyboardAvoidingView>
+
+            {/* Save zone */}
+            <View style={styles.detailSaveZone}>
+              <Pressable style={[styles.detailSaveBtn, { backgroundColor: C.accent }]} onPress={handleSaveGoal}>
+                {({ pressed }: { pressed: boolean }) => (
+                  <View style={[styles.detailSaveBtnInner, pressed && { opacity: 0.7 }]}>
+                    <Feather name={editingGoal ? 'check' : 'plus-circle'} size={16} color={C.onAccent} />
+                    <Text style={styles.detailSaveBtnText}>{editingGoal ? t.goals.saveChanges : t.goals.createGoal}</Text>
+                  </View>
+                )}
+              </Pressable>
+              {editingGoal && (
+                <TouchableOpacity
+                  style={styles.deleteBtn}
+                  onPress={() => { closeGoalModal(); handleDeleteGoal(editingGoal); }}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.goals.deleteThisGoal}
+                >
+                  <Feather name="trash-2" size={14} color={C.neutral} />
+                  <Text style={styles.deleteBtnText}>{t.goals.deleteThisGoal}</Text>
+                </TouchableOpacity>
+              )}
+              <Pressable style={styles.detailCloseLink} onPress={closeGoalModal} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}>
+                {({ pressed }: { pressed: boolean }) => (
+                  <View style={[styles.detailCloseLinkInner, pressed && { opacity: 0.55 }]}>
+                    <Feather name="x" size={12} color={C.textMuted} />
+                    <Text style={styles.detailCloseLinkText}>{t.goals.close}</Text>
+                  </View>
+                )}
+              </Pressable>
             </View>
-          </KeyboardAvoidingView>
+          </Reanimated.View>
         </View>
+        <ModalToastHost />
       </Modal>}
 
-      {/* ═══ CONTRIBUTE MODAL ═══ */}
-      {contributeModalVisible && <Modal
-        visible
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={closeContributeModal}
-      >
-        <View style={styles.overlayCenter}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeContributeModal} />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.kavWrapper}
-          >
-            <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{isWithdrawMode ? t.goals.withdraw : t.goals.contribute.toLowerCase()}</Text>
-                <TouchableOpacity onPress={closeContributeModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} accessibilityRole="button" accessibilityLabel={t.goals.close}>
-                  <Feather name="x" size={22} color={C.textPrimary} />
-                </TouchableOpacity>
-              </View>
-
-              {contributingGoal && (
-                <View style={styles.contributeContext}>
-                  <View style={[styles.contributeContextIcon, { backgroundColor: withAlpha(contributingGoal.color, 0.12) }]}>
-                    <Feather
-                      name={(contributingGoal.icon as keyof typeof Feather.glyphMap) || 'target'}
-                      size={20}
-                      color={contributingGoal.color}
-                    />
-                  </View>
-                  <View style={styles.contributeContextInfo}>
-                    <Text style={styles.contributeContextName}>{contributingGoal.name}</Text>
-                    <Text style={styles.contributeContextProgress}>
-                      {currency} {contributingGoal.currentAmount.toFixed(2)} / {currency} {contributingGoal.targetAmount.toFixed(2)}
+      {/* ═══ CONTRIBUTE SHEET ═══ */}
+      {contributeModalVisible && <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={closeContributeModal}>
+        <View style={StyleSheet.absoluteFill}>
+          <Reanimated.View style={[styles.detailBackdrop, contribBackdropAnimStyle]}>
+            <Pressable style={{ flex: 1 }} onPress={closeContributeModal} />
+          </Reanimated.View>
+          <Reanimated.View style={[styles.detailSheetContainer, { paddingBottom: Math.max(insets.bottom, SPACING.xl) }, contribSheetAnimStyle]}>
+            <GestureDetector gesture={contribSheetGesture}>
+              <View collapsable={false}>
+                <View style={styles.detailTopRow}>
+                  <View style={styles.detailHandle} />
+                  <TouchableOpacity style={styles.detailCloseX} onPress={closeContributeModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                    <Feather name="x" size={18} color={C.textMuted} />
+                  </TouchableOpacity>
+                </View>
+                {contributingGoal && (
+                  <View style={styles.detailTitleZone}>
+                    <View style={[styles.detailIconWrap, { backgroundColor: withAlpha(contributingGoal.color, 0.12) }]}>
+                      <Feather name={(contributingGoal.icon as keyof typeof Feather.glyphMap) || 'target'} size={24} color={contributingGoal.color} />
+                    </View>
+                    <Text style={styles.detailTitle}>{contributingGoal.name}</Text>
+                    <Text style={styles.detailSubtitle}>
+                      {isWithdrawMode ? t.goals.withdraw : t.goals.contribute.toLowerCase()} · {currency} {contributingGoal.currentAmount.toFixed(2)} / {currency} {contributingGoal.targetAmount.toFixed(2)}
                     </Text>
                   </View>
-                </View>
-              )}
+                )}
+              </View>
+            </GestureDetector>
 
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                nestedScrollEnabled
-                contentContainerStyle={{ paddingBottom: SPACING.lg }}
-              >
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={styles.detailScrollContent}>
                 {contributingGoal && !isWithdrawMode && (
-                  <View style={styles.quickRow}>
+                  <View style={[styles.quickRow, { marginBottom: SPACING.sm }]}>
                     {QUICK_AMOUNTS.map((amt) => (
                       <TouchableOpacity
                         key={amt}
@@ -1321,21 +1455,23 @@ const Goals: React.FC = () => {
                   </View>
                 )}
 
-                <Text style={styles.fieldLabel}>{t.goals.amount}</Text>
-                <View style={styles.amountRow}>
-                  <Text style={styles.amountPrefix}>{currency}</Text>
-                  <TextInput
-                    style={[styles.fieldInput, { flex: 1 }]}
-                    value={contributeAmount}
-                    onChangeText={setContributeAmount}
-                    placeholder="0.00"
-                    keyboardType="decimal-pad"
-                    placeholderTextColor={C.textMuted}
-                    returnKeyType="next"
-                    autoFocus
-                    keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
-                  />
+                <View style={styles.detailFieldCard}>
+                  <Text style={styles.detailFieldLabel}>{t.goals.amount}</Text>
+                  <View style={styles.amountRow}>
+                    <Text style={styles.amountPrefix}>{currency}</Text>
+                    <TextInput
+                      style={[styles.fieldInput, { flex: 1 }]}
+                      value={contributeAmount}
+                      onChangeText={setContributeAmount}
+                      placeholder="0.00"
+                      keyboardType="decimal-pad"
+                      placeholderTextColor={C.textMuted}
+                      returnKeyType="next"
+                      autoFocus
+                      keyboardAppearance={isDark ? 'dark' : 'light'}
+                      selectionColor={C.accent}
+                    />
+                  </View>
                 </View>
 
                 {contributingGoal && contributeAmount && parseFloat(contributeAmount) > 0 && (
@@ -1366,9 +1502,7 @@ const Goals: React.FC = () => {
                             {t.goals.percentComplete.replace('{n}', newPct.toFixed(0))}
                           </Text>
                           {remaining > 0 && (
-                            <Text style={styles.contributePreviewRemaining}>
-                              {currency} {remaining.toFixed(2)} {t.goals.toGo}
-                            </Text>
+                            <Text style={styles.contributePreviewRemaining}>{currency} {remaining.toFixed(2)} {t.goals.toGo}</Text>
                           )}
                           {paceStr !== '' && <Text style={styles.contributePreviewRemaining}>{paceStr}</Text>}
                           {!isWithdrawMode && newPct >= 100 && <Text style={styles.contributePreviewCelebrate}>{t.goals.goalWillBeReached}</Text>}
@@ -1379,110 +1513,133 @@ const Goals: React.FC = () => {
                 )}
 
                 {wallets.length > 0 && (
-                  <>
-                    <Text style={styles.fieldLabel}>{isWithdrawMode ? t.goals.returnToWallet : t.goals.walletOptional}</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: SPACING.sm }}>
-                      <TouchableOpacity
-                        style={[styles.walletChip, !contributeWalletId && styles.walletChipActive]}
-                        onPress={() => setContributeWalletId(undefined)}
-                        activeOpacity={0.7}
-                        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-                        accessibilityRole="button"
-                        accessibilityLabel={t.goals.none}
-                        accessibilityState={{ selected: !contributeWalletId }}
-                      >
-                        <Text style={[styles.walletChipText, !contributeWalletId && styles.walletChipTextActive]}>{t.goals.none}</Text>
-                      </TouchableOpacity>
-                      {wallets.filter((w) => w.type !== 'credit').map((w) => (
+                  <View style={styles.detailFieldCard}>
+                    <Text style={styles.detailFieldLabel}>{isWithdrawMode ? t.goals.returnToWallet : t.goals.walletOptional}</Text>
+                    <View style={[styles.hScrollFadeWrap, { marginRight: -SPACING.lg }]}>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: SPACING['2xl'] }}>
                         <TouchableOpacity
-                          key={w.id}
-                          style={[styles.walletChip, contributeWalletId === w.id && styles.walletChipActive]}
-                          onPress={() => { lightTap(); setContributeWalletId(w.id); }}
+                          style={[styles.walletChip, !contributeWalletId && styles.walletChipActive]}
+                          onPress={() => setContributeWalletId(undefined)}
                           activeOpacity={0.7}
                           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                           accessibilityRole="button"
-                          accessibilityLabel={w.name}
-                          accessibilityState={{ selected: contributeWalletId === w.id }}
+                          accessibilityLabel={t.goals.none}
+                          accessibilityState={{ selected: !contributeWalletId }}
                         >
-                          <Text style={[styles.walletChipText, contributeWalletId === w.id && styles.walletChipTextActive]}>
-                            {w.name}
-                          </Text>
+                          <Text style={[styles.walletChipText, !contributeWalletId && styles.walletChipTextActive]}>{t.goals.none}</Text>
                         </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </>
+                        {wallets.filter((w) => w.type !== 'credit').map((w) => (
+                          <TouchableOpacity
+                            key={w.id}
+                            style={[styles.walletChip, contributeWalletId === w.id && styles.walletChipActive]}
+                            onPress={() => { lightTap(); setContributeWalletId(w.id); }}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={w.name}
+                            accessibilityState={{ selected: contributeWalletId === w.id }}
+                          >
+                            <Text style={[styles.walletChipText, contributeWalletId === w.id && styles.walletChipTextActive]}>{w.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                      <LinearGradient colors={['transparent', C.surface]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.hScrollFade} pointerEvents="none" />
+                    </View>
+                  </View>
                 )}
 
-                <Text style={styles.fieldLabel}>{t.goals.noteOptional}</Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  value={contributeNote}
-                  onChangeText={setContributeNote}
-                  placeholder={t.goals.notePlaceholder}
-                  placeholderTextColor={C.textMuted}
-                  returnKeyType="done"
-                  onSubmitEditing={Keyboard.dismiss}
-                  keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
-                />
-
-                <TouchableOpacity
-                  style={[styles.confirmBtn, isWithdrawMode && { backgroundColor: withAlpha(C.bronze, 0.12) }]}
-                  onPress={isWithdrawMode ? handleWithdraw : handleContribute}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.confirmBtnText, isWithdrawMode && { color: C.bronze }]}>
-                    {isWithdrawMode ? t.goals.withdraw : t.goals.contribute.toLowerCase()}
-                  </Text>
-                </TouchableOpacity>
+                <View style={styles.detailFieldCard}>
+                  <Text style={styles.detailFieldLabel}>{t.goals.noteOptional}</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={contributeNote}
+                    onChangeText={setContributeNote}
+                    placeholder={t.goals.notePlaceholder}
+                    placeholderTextColor={C.textMuted}
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
+                  />
+                </View>
               </ScrollView>
+            </KeyboardAvoidingView>
+
+            {/* Save zone */}
+            <View style={styles.detailSaveZone}>
+              <Pressable
+                style={[styles.detailSaveBtn, { backgroundColor: isWithdrawMode ? withAlpha(C.bronze, 0.15) : (contributingGoal?.color || C.accent) }]}
+                onPress={isWithdrawMode ? handleWithdraw : handleContribute}
+              >
+                {({ pressed }: { pressed: boolean }) => (
+                  <View style={[styles.detailSaveBtnInner, pressed && { opacity: 0.7 }]}>
+                    <Feather name={isWithdrawMode ? 'minus-circle' : 'plus-circle'} size={16} color={isWithdrawMode ? C.bronze : C.onAccent} />
+                    <Text style={[styles.detailSaveBtnText, isWithdrawMode && { color: C.bronze }]}>
+                      {isWithdrawMode ? t.goals.withdraw : t.goals.contribute.toLowerCase()}
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+              <Pressable style={styles.detailCloseLink} onPress={closeContributeModal} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}>
+                {({ pressed }: { pressed: boolean }) => (
+                  <View style={[styles.detailCloseLinkInner, pressed && { opacity: 0.55 }]}>
+                    <Feather name="x" size={12} color={C.textMuted} />
+                    <Text style={styles.detailCloseLinkText}>{t.goals.close}</Text>
+                  </View>
+                )}
+              </Pressable>
             </View>
-          </KeyboardAvoidingView>
+          </Reanimated.View>
         </View>
+        <ModalToastHost />
       </Modal>}
 
-      {/* ═══ CONTRIBUTION HISTORY MODAL ═══ */}
-      {historyModalVisible && <Modal
-        visible
-        animationType="fade"
-        transparent
-        statusBarTranslucent
-        onRequestClose={() => setHistoryModalVisible(false)}
-      >
-        <View style={styles.overlayCenter}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setHistoryModalVisible(false)} />
-          <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle} numberOfLines={1}>{historyGoal?.name || t.goals.history}</Text>
-              <TouchableOpacity onPress={() => setHistoryModalVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} accessibilityRole="button" accessibilityLabel={t.goals.close}>
-                <Feather name="x" size={22} color={C.textPrimary} />
-              </TouchableOpacity>
-            </View>
+      {/* ═══ CONTRIBUTION HISTORY SHEET ═══ */}
+      {historyModalVisible && <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={closeHistoryModal}>
+        <View style={StyleSheet.absoluteFill}>
+          <Reanimated.View style={[styles.detailBackdrop, historyBackdropAnimStyle]}>
+            <Pressable style={{ flex: 1 }} onPress={closeHistoryModal} />
+          </Reanimated.View>
+          <Reanimated.View style={[styles.detailSheetContainer, { paddingBottom: Math.max(insets.bottom, SPACING.xl) }, historySheetAnimStyle]}>
+            <GestureDetector gesture={historySheetGesture}>
+              <View collapsable={false}>
+                <View style={styles.detailTopRow}>
+                  <View style={styles.detailHandle} />
+                  <TouchableOpacity style={styles.detailCloseX} onPress={closeHistoryModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                    <Feather name="x" size={18} color={C.textMuted} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.detailTitleZone}>
+                  {historyGoal && (
+                    <View style={[styles.detailIconWrap, { backgroundColor: withAlpha(historyGoal.color, 0.12) }]}>
+                      <Feather name={(historyGoal.icon as keyof typeof Feather.glyphMap) || 'target'} size={24} color={historyGoal.color} />
+                    </View>
+                  )}
+                  <Text style={styles.detailTitle} numberOfLines={1}>{historyGoal?.name || t.goals.history}</Text>
+                  <Text style={styles.detailSubtitle}>{t.goals.history.toLowerCase()}</Text>
+                </View>
+              </View>
+            </GestureDetector>
 
-            <View style={styles.historyStatsRow}>
-              <View style={styles.historyStatItem}>
-                <Text style={styles.historyStatLabel}>{t.goals.total}</Text>
-                <Text style={styles.historyStatValue}>{currency} {historyStats.total.toFixed(2)}</Text>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={styles.detailScrollContent}>
+              {/* Stats card */}
+              <View style={styles.historyStatsRow}>
+                <View style={styles.historyStatItem}>
+                  <Text style={styles.historyStatLabel}>{t.goals.total}</Text>
+                  <Text style={styles.historyStatValue}>{currency} {historyStats.total.toFixed(2)}</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.historyStatItem}>
+                  <Text style={styles.historyStatLabel}>{t.goals.average}</Text>
+                  <Text style={styles.historyStatValue}>{currency} {historyStats.avg.toFixed(2)}</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.historyStatItem}>
+                  <Text style={styles.historyStatLabel}>{t.goals.count}</Text>
+                  <Text style={styles.historyStatValue}>{historyStats.count}</Text>
+                </View>
               </View>
-              <View style={styles.statDivider} />
-              <View style={styles.historyStatItem}>
-                <Text style={styles.historyStatLabel}>{t.goals.average}</Text>
-                <Text style={styles.historyStatValue}>{currency} {historyStats.avg.toFixed(2)}</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.historyStatItem}>
-                <Text style={styles.historyStatLabel}>{t.goals.count}</Text>
-                <Text style={styles.historyStatValue}>{historyStats.count}</Text>
-              </View>
-            </View>
 
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
-              style={{ maxHeight: 400 }}
-              contentContainerStyle={{ paddingBottom: SPACING.lg }}
-            >
               {historyGroups.map((group) => (
                 <View key={group.label}>
                   <Text style={styles.historyGroupLabel}>{group.label.toLowerCase()}</Text>
@@ -1518,9 +1675,261 @@ const Goals: React.FC = () => {
                 <Text style={styles.noResultsText}>{t.goals.noContributionsYet}</Text>
               )}
             </ScrollView>
-          </View>
+
+            {/* Close zone */}
+            <View style={styles.detailSaveZone}>
+              <Pressable style={styles.detailCloseLink} onPress={closeHistoryModal} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}>
+                {({ pressed }: { pressed: boolean }) => (
+                  <View style={[styles.detailCloseLinkInner, pressed && { opacity: 0.55 }]}>
+                    <Feather name="x" size={12} color={C.textMuted} />
+                    <Text style={styles.detailCloseLinkText}>{t.goals.close}</Text>
+                  </View>
+                )}
+              </Pressable>
+            </View>
+          </Reanimated.View>
         </View>
+        <ModalToastHost />
       </Modal>}
+
+      {/* ═══ GOAL DETAIL SHEET ═══ */}
+      {detailGoal && (() => {
+        const g = detailGoal;
+        const pct = g.targetAmount > 0 ? Math.min((g.currentAmount / g.targetAmount) * 100, 100) : 0;
+        const done = g.currentAmount >= g.targetAmount;
+        const daysLeft = g.deadline ? differenceInCalendarDays(new Date(g.deadline), new Date()) : null;
+        let paceD: number | null = null;
+        let paceM: number | null = null;
+        if (g.deadline && daysLeft !== null && daysLeft > 0 && !done) {
+          const rem = g.targetAmount - g.currentAmount;
+          paceD = rem / daysLeft;
+          paceM = rem / (daysLeft / 30);
+        }
+        const sData = (g.contributions || []).filter((c) => c.amount > 0).slice(-8).map((c) => c.amount);
+        const lastC = g.contributions?.length > 0 ? g.contributions[g.contributions.length - 1] : null;
+        const lastCAgo = lastC ? Math.floor((Date.now() - new Date(lastC.date).getTime()) / 86400000) : null;
+        const monthsSince = Math.max(1, Math.round((Date.now() - new Date(g.createdAt).getTime()) / (30 * 86400000)));
+        const monthlyRate = g.currentAmount / monthsSince;
+        const onPace = paceM !== null && paceM > 0 && monthlyRate >= paceM;
+
+        return (
+          <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={closeGoalDetail}>
+            <View style={StyleSheet.absoluteFill}>
+              <Reanimated.View style={[styles.detailBackdrop, detailBackdropAnimStyle]}>
+                <Pressable style={{ flex: 1 }} onPress={closeGoalDetail} />
+              </Reanimated.View>
+              <Reanimated.View style={[styles.detailSheetContainer, { paddingBottom: Math.max(insets.bottom, SPACING.xl) }, detailSheetAnimStyle]}>
+                {/* Drag zone: handle + close */}
+                <GestureDetector gesture={detailSheetGesture}>
+                  <View collapsable={false}>
+                    <View style={styles.detailTopRow}>
+                      <View style={styles.detailHandle} />
+                      <TouchableOpacity style={styles.detailCloseX} onPress={closeGoalDetail} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                        <Feather name="x" size={18} color={C.textMuted} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Title zone — goal identity */}
+                    <View style={styles.detailTitleZone}>
+                      <View style={[styles.detailIconWrap, { backgroundColor: withAlpha(g.color, 0.12) }]}>
+                        <Feather name={(g.icon as keyof typeof Feather.glyphMap) || 'target'} size={24} color={g.color} />
+                      </View>
+                      <Text style={styles.detailTitle} numberOfLines={1}>
+                        {g.name}
+                      </Text>
+                      {g.isPaused && (
+                        <View style={styles.pausedBadge}>
+                          <Text style={styles.pausedBadgeText}>{t.goals.paused}</Text>
+                        </View>
+                      )}
+                      <Text style={styles.detailSubtitle}>
+                        {done ? t.goals.goalReached : getObservation(pct) || `${pct.toFixed(0)}% ${t.goals.saved}`}
+                      </Text>
+                    </View>
+                  </View>
+                </GestureDetector>
+
+                {/* Scrollable content */}
+                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={styles.detailScrollContent}>
+                  {/* Progress card */}
+                  <View style={styles.detailFieldCard}>
+                    <Text style={styles.detailFieldLabel}>{t.goals.progress}</Text>
+                    <View style={styles.detailAmountRow}>
+                      <Text style={styles.detailAmountCurrent}>{currency} {g.currentAmount.toFixed(2)}</Text>
+                      <Text style={styles.detailAmountTarget}> / {currency} {g.targetAmount.toFixed(2)}</Text>
+                      <Text style={[styles.detailPct, done && { color: C.positive }]}>{pct.toFixed(0)}%</Text>
+                    </View>
+                    <View style={styles.detailProgressTrack}>
+                      <View style={[styles.detailProgressFill, { width: `${Math.min(pct, 100)}%`, backgroundColor: g.isPaused ? C.neutral : g.color }]} />
+                    </View>
+                    {renderMilestoneDots(g)}
+                  </View>
+
+                  {/* Deadline card */}
+                  {g.deadline && daysLeft !== null && (
+                    <View style={styles.detailFieldCard}>
+                      <Text style={styles.detailFieldLabel}>{t.goals.deadline.toLowerCase()}</Text>
+                      <View style={styles.detailFieldDateRow}>
+                        <Feather name="calendar" size={14} color={g.color} />
+                        <Text style={[styles.detailFieldValue, daysLeft < 0 && { color: C.bronze }]}>
+                          {format(new Date(g.deadline), 'dd MMM yyyy')}
+                          {' · '}
+                          {daysLeft < 0
+                            ? t.goals.dOverdue.replace('{n}', String(Math.abs(daysLeft)))
+                            : daysLeft === 0 ? t.goals.dueToday : `${daysLeft}d ${t.goals.remaining}`}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Pace card */}
+                  {paceD !== null && paceM !== null && !g.isPaused && (
+                    <View style={styles.detailFieldCard}>
+                      <Text style={styles.detailFieldLabel}>{t.goals.onTrack.toLowerCase()}</Text>
+                      <View style={styles.detailFieldDateRow}>
+                        <Feather name="trending-up" size={14} color={g.color} />
+                        <Text style={styles.detailFieldValue}>
+                          ~{currency} {paceD < 10 ? paceD.toFixed(2) : Math.ceil(paceD).toString()}{t.goals.perDay} {'·'} ~{currency} {Math.ceil(paceM)}{t.goals.perMonth}
+                        </Text>
+                      </View>
+                      {paceM > 0 && (
+                        <Text style={[styles.detailFieldHint, onPace && { color: C.accent }]}>
+                          {onPace
+                            ? (monthlyRate >= paceM * 1.2 ? t.goals.aheadOfSchedule : t.goals.onPace)
+                            : t.goals.needAboutPerMonth.replace('{currency}', currency).replace('{amount}', String(Math.ceil(paceM)))}
+                        </Text>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Sparkline card */}
+                  {sData.length >= 2 && (
+                    <TouchableOpacity style={styles.detailFieldCard} onPress={() => { closeGoalDetail(); setTimeout(() => openHistory(g), 100); }} activeOpacity={0.7}>
+                      <Text style={styles.detailFieldLabel}>
+                        {t.goals.contributions.replace('{n}', String(g.contributions?.filter((c) => c.amount > 0).length || 0))}
+                        {lastCAgo !== null && ` · ${lastCAgo === 0 ? t.goals.lastToday : t.goals.lastDaysAgo.replace('{n}', String(lastCAgo))}`}
+                      </Text>
+                      <View style={{ marginTop: SPACING.xs }}>
+                        <Sparkline
+                          data={sData}
+                          width={SCREEN_W - SPACING.xl * 4 - SPACING.lg}
+                          height={44}
+                          color={g.isPaused ? C.neutral : g.color}
+                          filled
+                        />
+                      </View>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Quick contribute chips */}
+                  {!done && !g.isPaused && (
+                    <View style={[styles.quickRow, { marginTop: SPACING.xs }]}>
+                      {QUICK_AMOUNTS.map((amt) => (
+                        <TouchableOpacity
+                          key={amt}
+                          style={[styles.quickBtn, { backgroundColor: withAlpha(g.color, 0.08) }]}
+                          onPress={() => { closeGoalDetail(); setTimeout(() => openContribute(g, amt), 100); }}
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                        >
+                          <Text style={[styles.quickBtnText, { color: g.color }]}>+{amt}</Text>
+                        </TouchableOpacity>
+                      ))}
+                      <TouchableOpacity
+                        style={[styles.quickBtn, { backgroundColor: withAlpha(C.textMuted, 0.06) }]}
+                        onPress={() => { closeGoalDetail(); setTimeout(() => openContribute(g), 100); }}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                      >
+                        <Text style={[styles.quickBtnText, { color: C.textSecondary }]}>{t.goals.custom}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Secondary row: history, edit, pause, delete */}
+                  <View style={styles.detailSecondary}>
+                    {g.contributions?.length > 0 && (
+                      <TouchableOpacity
+                        style={styles.detailSecondaryBtn}
+                        onPress={() => { closeGoalDetail(); setTimeout(() => openHistory(g), 100); }}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Feather name="clock" size={15} color={C.textMuted} />
+                        <Text style={styles.detailSecondaryText}>{t.goals.history}</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={styles.detailSecondaryBtn}
+                      onPress={() => { closeGoalDetail(); setTimeout(() => openEditGoal(g), 100); }}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Feather name="edit-2" size={15} color={C.textMuted} />
+                      <Text style={styles.detailSecondaryText}>{t.goals.edit}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.detailSecondaryBtn}
+                      onPress={() => { handleTogglePause(g); closeGoalDetail(); }}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Feather name={g.isPaused ? 'play' : 'pause'} size={15} color={C.textMuted} />
+                      <Text style={styles.detailSecondaryText}>{g.isPaused ? t.goals.resume : t.goals.pause}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.detailSecondaryBtn}
+                      onPress={() => { closeGoalDetail(); setTimeout(() => handleDeleteGoal(g), 100); }}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Feather name="trash-2" size={15} color={C.neutral} />
+                      <Text style={[styles.detailSecondaryText, { color: C.neutral }]}>{t.goals.delete}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+
+                {/* Anchored save zone */}
+                <View style={styles.detailSaveZone}>
+                  {!done && !g.isPaused ? (
+                    <Pressable
+                      style={[styles.detailSaveBtn, { backgroundColor: g.color }]}
+                      onPress={() => { closeGoalDetail(); setTimeout(() => openContribute(g), 100); }}
+                    >
+                      {({ pressed }: { pressed: boolean }) => (
+                        <View style={[styles.detailSaveBtnInner, pressed && { opacity: 0.7 }]}>
+                          <Feather name="plus-circle" size={16} color={C.onAccent} />
+                          <Text style={styles.detailSaveBtnText}>{t.goals.contribute.toLowerCase()}</Text>
+                        </View>
+                      )}
+                    </Pressable>
+                  ) : done ? (
+                    <Pressable
+                      style={[styles.detailSaveBtn, { backgroundColor: C.positive }]}
+                      onPress={() => { closeGoalDetail(); setTimeout(() => handleArchive(g), 100); }}
+                    >
+                      {({ pressed }: { pressed: boolean }) => (
+                        <View style={[styles.detailSaveBtnInner, pressed && { opacity: 0.7 }]}>
+                          <Feather name="archive" size={16} color={C.onAccent} />
+                          <Text style={styles.detailSaveBtnText}>{t.goals.archive}</Text>
+                        </View>
+                      )}
+                    </Pressable>
+                  ) : null}
+                  <Pressable style={styles.detailCloseLink} onPress={closeGoalDetail} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}>
+                    {({ pressed }: { pressed: boolean }) => (
+                      <View style={[styles.detailCloseLinkInner, pressed && { opacity: 0.55 }]}>
+                        <Feather name="x" size={12} color={C.textMuted} />
+                        <Text style={styles.detailCloseLinkText}>{t.goals.close}</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                </View>
+              </Reanimated.View>
+            </View>
+          </Modal>
+        );
+      })()}
     </View>
   );
 };
@@ -1537,6 +1946,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: SPACING.xl,
     marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   heroLabel: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1624,23 +2035,21 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: C.border,
     ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
   },
   cardDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: C.border,
-    marginLeft: 36 + SPACING.md + SPACING.md,
+    marginLeft: 36 + SPACING.md * 2,
   },
-  goalItem: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-  },
-
-  // ── Goal Header ──
-  goalHeader: {
+  goalRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    gap: SPACING.md,
   },
   goalIconWrap: {
     width: 36,
@@ -1648,12 +2057,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: SPACING.md,
   },
-  goalInfo: { flex: 1, marginRight: SPACING.sm },
-  goalNameRow: {
+  goalContent: {
+    flex: 1,
+    gap: 3,
+  },
+  goalTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: SPACING.sm,
   },
   goalName: {
@@ -1661,6 +2073,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     flexShrink: 1,
+  },
+  goalPct: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  goalAmountText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  goalAmountTarget: {
+    color: C.textMuted,
   },
   pausedBadge: {
     backgroundColor: withAlpha(C.bronze, 0.12),
@@ -1673,27 +2099,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
   },
-  goalMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  goalMetaText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textMuted,
-    fontVariant: ['tabular-nums'],
-  },
-  goalMetaDot: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textMuted,
-  },
-  goalPercentage: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-
   // ── Progress ──
   goalProgressTrack: {
     height: 3,
@@ -1711,27 +2116,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   milestoneDots: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: SPACING.sm, marginBottom: SPACING.sm },
   milestoneDotContainer: { alignItems: 'center', gap: 3 },
   milestoneDot: { width: 8, height: 8, borderRadius: RADIUS.full },
-  milestoneDotLabel: { fontSize: 10, color: C.neutral, fontWeight: TYPOGRAPHY.weight.medium, fontVariant: ['tabular-nums'] },
-
-  // ── Observation ──
-  observationText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    fontStyle: 'italic',
-    marginBottom: SPACING.sm,
-  },
-
-  // ── Pace ──
-  paceText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontVariant: ['tabular-nums'],
-    marginBottom: SPACING.sm,
-  },
-
-  // ── Sparkline ──
-  sparklineWrap: { marginBottom: 4 },
-  sparklineLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.neutral, marginBottom: SPACING.sm },
+  milestoneDotLabel: { fontSize: TYPOGRAPHY.size.xs, color: C.neutral, fontWeight: TYPOGRAPHY.weight.medium, fontVariant: ['tabular-nums'] },
 
   // ── Quick Contribute ──
   quickRow: { flexDirection: 'row', gap: SPACING.xs, marginBottom: SPACING.sm, flexWrap: 'wrap' },
@@ -1747,31 +2132,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   walletChipActive: { backgroundColor: C.accent, borderColor: C.accent },
   walletChipText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: C.textSecondary },
   walletChipTextActive: { color: C.onAccent },
-
-  // ── Action Row ──
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginTop: SPACING.xs,
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.md,
-  },
-  actionBtnText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  actionIconBtn: {
-    padding: SPACING.xs + 2,
-    borderRadius: RADIUS.md,
-  },
 
   // ── No Results ──
   noResults: {
@@ -1792,57 +2152,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ── Empty State ──
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING['5xl'],
-    paddingHorizontal: SPACING.xl,
-  },
-  emptyIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.xl,
-  },
-  emptyTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    marginBottom: SPACING.sm,
-  },
-  emptyText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textMuted,
-    textAlign: 'center',
-    lineHeight: TYPOGRAPHY.size.sm * 1.6,
-    marginBottom: SPACING.xl,
-  },
-  emptyButton: {
-    backgroundColor: C.accent,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
-  },
-  emptyButtonText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-  },
-
   // ── Archived ──
-  archivedToggle: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-  },
-  archivedToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  archivedToggleText: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: C.textMuted },
   archivedItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1857,62 +2167,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.md,
   },
 
-  // ── FAB ──
-  fab: {
-    position: 'absolute',
-    right: SPACING.xl,
-  },
-  fabInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...(C === CALM_DARK ? SHADOWS.xs : SHADOWS.md),
-  },
-
-  // ── Modal (centered floating card) ──
-  overlayCenter: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  kavWrapper: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalCard: {
-    width: '90%',
-    maxHeight: '85%',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-  },
-  modalTitle: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    letterSpacing: C === CALM_DARK ? 0.2 : 0,
-  },
-
   // ── Modal Fields ──
-  fieldLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-    marginBottom: SPACING.xs,
-    marginTop: SPACING.lg,
-  },
   fieldInput: {
     borderBottomWidth: 1,
     borderBottomColor: C.border,
@@ -1962,28 +2217,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   goalPreviewName: { flex: 1, fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary },
   goalPreviewTarget: { fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: C.accent, fontVariant: ['tabular-nums'] },
 
-  // ── Confirm / Delete ──
-  confirmBtn: {
-    backgroundColor: C.accent,
-    borderRadius: RADIUS.full,
-    paddingVertical: SPACING.md,
-    alignItems: 'center',
-    marginTop: SPACING.xl,
-  },
-  confirmBtnText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-  },
+  // ── Delete ──
   deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, marginTop: SPACING.lg, paddingVertical: SPACING.sm },
   deleteBtnText: { fontSize: TYPOGRAPHY.size.sm, color: C.neutral },
-
-  // ── Contribute Context ──
-  contributeContext: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.background, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm, gap: SPACING.md },
-  contributeContextIcon: { width: 40, height: 40, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
-  contributeContextInfo: { flex: 1 },
-  contributeContextName: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textPrimary, marginBottom: 2 },
-  contributeContextProgress: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, fontVariant: ['tabular-nums'] },
 
   // ── Contribute Preview ──
   contributePreview: { backgroundColor: C.background, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.lg, alignItems: 'center' },
@@ -2004,6 +2240,231 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   historyItemDate: { fontSize: TYPOGRAPHY.size.sm, color: C.textSecondary, minWidth: 50 },
   historyItemAmount: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, fontVariant: ['tabular-nums'] },
   historyItemNote: { fontSize: TYPOGRAPHY.size.xs, color: C.neutral, maxWidth: 120 },
+
+  // ── Swipe Actions ──
+  swipeAction: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swipeEdit: {
+    backgroundColor: C.accent,
+  },
+  swipeDelete: {
+    backgroundColor: C.neutral,
+  },
+
+  // ── Horizontal Scroll Fade ──
+  hScrollFadeWrap: {
+    position: 'relative',
+    marginRight: -SPACING.xl,
+    marginBottom: SPACING.xs,
+  },
+  hScrollFade: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: 40,
+  },
+
+  // ── Goal Detail Sheet (bottom sheet — mirrors DebtTracking) ──
+  detailBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  detailSheetContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: C.surface,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    maxHeight: '92%',
+  },
+  detailTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.sm,
+    position: 'relative',
+  },
+  detailHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: withAlpha(C.textPrimary, 0.15),
+  },
+  detailCloseX: {
+    position: 'absolute',
+    right: SPACING.md,
+    top: 4,
+    padding: 6,
+  },
+  detailTitleZone: {
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.lg,
+  },
+  detailIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.sm,
+  },
+  detailTitle: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? -0.2 : -0.4,
+    textAlign: 'center',
+  },
+  detailSubtitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    marginTop: SPACING.xs + 2,
+    letterSpacing: 0.1,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  detailScrollContent: {
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.sm,
+  },
+  detailFieldCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.lg,
+    marginBottom: SPACING.sm + 2,
+  },
+  detailFieldLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  detailFieldValue: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  detailFieldDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  detailFieldHint: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    marginTop: SPACING.xs,
+  },
+  detailAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: SPACING.sm,
+  },
+  detailAmountCurrent: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  detailAmountTarget: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  detailPct: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+    marginLeft: 'auto',
+  },
+  detailProgressTrack: {
+    height: 6,
+    backgroundColor: withAlpha(C.textMuted, 0.1),
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+    marginBottom: SPACING.md,
+  },
+  detailProgressFill: {
+    height: '100%',
+    borderRadius: RADIUS.full,
+  },
+  detailSecondary: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: SPACING.md,
+    marginTop: SPACING.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(C.textPrimary, 0.06),
+  },
+  detailSecondaryBtn: {
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+  },
+  detailSecondaryText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  detailSaveZone: {
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(C.textPrimary, 0.06),
+    backgroundColor: C.surface,
+  },
+  detailSaveBtn: {
+    width: '100%',
+    paddingVertical: SPACING.md + 2,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+  },
+  detailSaveBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailSaveBtnText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
+    letterSpacing: 0.3,
+  },
+  detailCloseLink: {
+    marginTop: SPACING.lg,
+    alignSelf: 'center',
+  },
+  detailCloseLinkInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+  },
+  detailCloseLinkText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.2,
+  },
 });
 
 export default Goals;

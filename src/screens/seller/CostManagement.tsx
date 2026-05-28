@@ -39,6 +39,7 @@ import CostCategoryPicker from '../../components/seller/CostCategoryPicker';
 import ReceiptViewer from '../../components/seller/ReceiptViewer';
 import PaywallModal from '../../components/common/PaywallModal';
 import ImageSourcePills from '../../components/common/ImageSourcePills';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import {
   lightTap,
   successNotification,
@@ -1032,6 +1033,7 @@ const CostManagement: React.FC = () => {
             </Pressable>
           </KeyboardAwareScrollView>
         </Pressable>
+        <ModalToastHost />
       </Modal>)}
 
       {/* ─── Cost Modal ─────────────────────────────────────── */}
@@ -1369,6 +1371,7 @@ const CostManagement: React.FC = () => {
         )}
 
         </View>
+        <ModalToastHost />
       </Modal>)}
 
       {/* ─── Budget Modal ───────────────────────────────────── */}
@@ -1452,6 +1455,7 @@ const CostManagement: React.FC = () => {
             </Pressable>
           </KeyboardAwareScrollView>
         </Pressable>
+        <ModalToastHost />
       </Modal>)}
 
       <ReceiptViewer uri={viewerUri} onClose={() => setViewerUri(null)} />

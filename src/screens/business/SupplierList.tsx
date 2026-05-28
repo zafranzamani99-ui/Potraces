@@ -22,6 +22,7 @@ import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 import { useToast } from '../../context/ToastContext';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import { useT } from '../../i18n';
 
 const SupplierList: React.FC = () => {
@@ -372,6 +373,7 @@ const SupplierList: React.FC = () => {
               </KeyboardAwareScrollView>
             </View>
           </View>
+          <ModalToastHost />
         </Modal>
       )}
     </View>

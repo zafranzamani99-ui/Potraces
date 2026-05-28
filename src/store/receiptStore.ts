@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ReceiptState, ReceiptDraft, TaxCategorySummary } from '../types';
+import { useTombstoneStore } from './tombstoneStore';
 import { MYTAX_CATEGORIES } from '../constants/taxCategories';
 
 export const useReceiptStore = create<ReceiptState>()(
@@ -36,11 +37,13 @@ export const useReceiptStore = create<ReceiptState>()(
           ),
         })),
 
-      deleteReceipt: (id) =>
+      deleteReceipt: (id) => {
         set((state) => ({
           receipts: state.receipts.filter((r) => r.id !== id),
           _deletedReceiptIds: [...(state._deletedReceiptIds ?? []), id],
-        })),
+        }));
+        useTombstoneStore.getState().addTombstones([id]);
+      },
 
       getReceiptsByYear: (year) =>
         get().receipts.filter((r) => r.year === year),

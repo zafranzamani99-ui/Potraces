@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
+import ModalToastHost from '../common/ModalToastHost';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Reanimated, {
   useSharedValue,
@@ -549,6 +550,7 @@ const EditTransactionSheet: React.FC<EditTransactionSheetProps> = ({
           <Feather name="check" size={20} color={C.onAccent} />
         </TouchableOpacity>
       )}
+      <ModalToastHost />
     </Modal>
   );
 };

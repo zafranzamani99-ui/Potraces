@@ -16,6 +16,7 @@ import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../consta
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { Client } from '../../types';
+import ModalToastHost from '../../components/common/ModalToastHost';
 
 const ClientList: React.FC = () => {
   const C = useCalm();
@@ -173,6 +174,7 @@ const ClientList: React.FC = () => {
             </View>
           </View>
         </View>
+        <ModalToastHost />
       </Modal>
 
       {/* Payment modal */}
@@ -209,6 +211,7 @@ const ClientList: React.FC = () => {
             </View>
           </View>
         </View>
+        <ModalToastHost />
       </Modal>
     </View>
   );

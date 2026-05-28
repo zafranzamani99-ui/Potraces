@@ -18,6 +18,7 @@ import {
   withAlpha,
 } from '../../constants';
 import { HITSLOP_10 } from '../../utils/hitSlop';
+import ModalToastHost from '../common/ModalToastHost';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import WalletLogo from '../common/WalletLogo';
@@ -256,6 +257,7 @@ export default function WalletActionSheet({
           </TouchableOpacity>
         </View>
       </Pressable>
+      <ModalToastHost />
     </Modal>
   );
 }

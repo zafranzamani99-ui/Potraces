@@ -18,6 +18,7 @@ import DraggableFlatList, {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import ModalToastHost from './ModalToastHost';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useSellerStore } from '../../store/sellerStore';
 import { lightTap } from '../../services/haptics';
@@ -309,7 +310,9 @@ const UnitManager: React.FC<UnitManagerProps> = ({ visible, onClose }) => {
             </View>
           </Pressable>
         </Pressable>
+        <ModalToastHost />
       </Modal>
+      <ModalToastHost />
     </Modal>
   );
 };

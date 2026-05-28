@@ -27,6 +27,7 @@ import { useIntentEngine } from '../../hooks/useIntentEngine';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { useCategories } from '../../hooks/useCategories';
 import { usePremiumStore } from '../../store/premiumStore';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import { AIExtraction, ExtractionIntent } from '../../types';
 import { useLearningStore } from '../../store/learningStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -920,6 +921,7 @@ const NoteEditor: React.FC = () => {
             </TouchableOpacity>
           )}
         </View>
+        <ModalToastHost />
       </Modal>
 
       <PaywallModal

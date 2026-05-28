@@ -1668,11 +1668,14 @@ const DebtTracking: React.FC = () => {
           ? (iOweRem >= theyOweRem ? 'i_owe' : 'they_owe')
           : firstDebt.type;
 
-        // Mixed groups: auto-settle the smaller side AND offset the larger side
         // Fresh-read helper — always reads current store state, never stale closure
         const freshDebt = (id: string) => useDebtStore.getState().debts.find(fd => fd.id === id);
         const nettedPaymentRefs: { debtId: string; paymentId: string }[] = [];
-        if (isMixed) {
+        const netAmount = Math.abs(iOweRem - theyOweRem);
+        const isFullPayment = !isMixed || amount >= netAmount;
+
+        // Netting ONLY happens when the full net is paid — keeps the group together
+        if (isMixed && isFullPayment) {
           const smallerType = netDir === 'i_owe' ? 'they_owe' : 'i_owe';
           for (const d of unsettled.filter(dd => dd.type === smallerType)) {
             const fresh = freshDebt(d.id);
@@ -1688,7 +1691,6 @@ const DebtTracking: React.FC = () => {
               }
             }
           }
-          // Apply offset payments to the larger side (no cash — accounting offset)
           const offsetTotal = netDir === 'i_owe' ? theyOweRem : iOweRem;
           let offsetLeft = offsetTotal;
           for (const d of unsettled.filter(dd => dd.type === netDir)) {
@@ -1716,6 +1718,9 @@ const DebtTracking: React.FC = () => {
           }
         }
 
+        // For partial mixed payments: only pay net-direction debts (no netting yet)
+        // For full mixed payments: pay net-direction debts (netting already applied above)
+        // For non-mixed: pay all debts
         const distributable = isMixed
           ? unsettled.filter(d => d.type === netDir)
           : unsettled;
@@ -1742,7 +1747,6 @@ const DebtTracking: React.FC = () => {
           else deductFromWallet(paymentWalletId, amount);
         }
 
-        // Link netted payments to the same transaction so undo removes everything
         if (linkedTxId) {
           for (const np of nettedPaymentRefs) {
             updatePayment(np.debtId, np.paymentId, { linkedTransactionId: linkedTxId });
@@ -1752,7 +1756,7 @@ const DebtTracking: React.FC = () => {
         let count = 0;
         let firstPaymentId: string | null = null;
 
-        // Distribute payment PROPORTIONALLY across net-direction debts so all show progress
+        // Distribute cash PROPORTIONALLY — every debt shows progress, none settle early
         const distribDebts = distributable.map(d => {
           const fresh = freshDebt(d.id);
           const rem = (fresh && fresh.status !== 'settled') ? Math.max(0, fresh.totalAmount - fresh.paidAmount) : 0;
@@ -1778,8 +1782,9 @@ const DebtTracking: React.FC = () => {
               if (!pId) continue;
               if (!firstPaymentId) firstPaymentId = pId;
               const after = freshDebt(d.id);
-              if (after?.status === 'settled' && d.splitId) {
-                markSplitParticipantPaid(d.splitId, d.contact.id);
+              if (after?.status === 'settled') {
+                if (d.splitId) markSplitParticipantPaid(d.splitId, d.contact.id);
+                if (d.sharedSubId && d.sharedSubMonth) markSharedSubPayment(d.sharedSubId, d.sharedSubMonth, d.contact.id);
               }
               lastPaidInfo = { debtId: d.id, paymentId: pId, amount: pay };
               distributed += pay;
@@ -5622,13 +5627,38 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               net · {netDirection === 'i_owe' ? 'i owe' : 'they owe'}
                             </Text>
                           ) : null}
-                          {group.debts.length > 1 && (
-                            <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 6, fontVariant: ['tabular-nums'] as any }}>
-                              {isMixed || groupWasMixed
-                                ? `they owe ${currency} ${allTheyOweTotal.toFixed(2)} − you owe ${currency} ${allIOweTotal.toFixed(2)}`
-                                : group.debts.map(d => (allSettled ? d.totalAmount : Math.max(0, d.totalAmount - d.paidAmount)).toFixed(2)).join(' + ')}
-                            </Text>
-                          )}
+                          {(() => {
+                            const groupNetTotal = isMixed || groupWasMixed
+                              ? Math.abs(allTheyOweTotal - allIOweTotal)
+                              : group.debts.reduce((s, d) => s + d.totalAmount, 0);
+                            const groupPaid = Math.max(0, groupNetTotal - heroAmount);
+                            if (!allSettled && groupPaid > 0) {
+                              const paidPctGroup = groupNetTotal > 0 ? Math.min(100, (groupPaid / groupNetTotal) * 100) : 0;
+                              return (
+                                <>
+                                  <Text style={{ fontSize: TYPOGRAPHY.size.sm, color: C.positive, marginTop: 6, fontWeight: TYPOGRAPHY.weight.semibold, fontVariant: ['tabular-nums'] as any }}>
+                                    {currency} {groupPaid.toFixed(2)} paid
+                                  </Text>
+                                  <View style={{ width: '60%', height: 5, borderRadius: 3, backgroundColor: withAlpha(C.textPrimary, 0.08), marginTop: 8, overflow: 'hidden' }}>
+                                    <View style={{ width: `${paidPctGroup}%`, height: '100%', borderRadius: 3, backgroundColor: C.positive }} />
+                                  </View>
+                                  <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 4, fontVariant: ['tabular-nums'] as any }}>
+                                    {Math.round(paidPctGroup)}% of {currency} {groupNetTotal.toFixed(2)}
+                                  </Text>
+                                </>
+                              );
+                            }
+                            if (group.debts.length > 1) {
+                              return (
+                                <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 6, fontVariant: ['tabular-nums'] as any }}>
+                                  {isMixed || groupWasMixed
+                                    ? `they owe ${currency} ${allTheyOweTotal.toFixed(2)} − you owe ${currency} ${allIOweTotal.toFixed(2)}`
+                                    : group.debts.map(d => (allSettled ? d.totalAmount : Math.max(0, d.totalAmount - d.paidAmount)).toFixed(2)).join(' + ')}
+                                </Text>
+                              );
+                            }
+                            return null;
+                          })()}
                         </>
                       );
                     })()}
@@ -6682,6 +6712,27 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                       <Text style={styles.payHistoryDate}>{(() => { const d = new Date(firstPay.date); return isValid(d) ? format(d, 'MMM dd, HH:mm') : '—'; })()}</Text>
                                     </View>
                                     <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>settled up · {batch.payments.length} debts netted</Text>
+                                  </View>
+                                </View>
+                              </View>
+                            );
+                          }
+
+                          // Consolidated payment (same direction, multiple debts) — show as one line
+                          if (isConsolidated && !bIsMixed && batch.txId !== '__netting__') {
+                            const firstPay = batch.payments[0];
+                            return (
+                              <View key={batch.txId || bIdx}>
+                                <View style={styles.payHistoryItem}>
+                                  <View style={styles.payHistoryIcon}>
+                                    <Feather name="check-circle" size={16} color={C.positive} />
+                                  </View>
+                                  <View style={{ flex: 1 }}>
+                                    <View style={styles.payHistoryTopRow}>
+                                      <Text style={styles.payHistoryAmount}>{currency} {batch.total.toFixed(2)}</Text>
+                                      <Text style={styles.payHistoryDate}>{(() => { const d = new Date(firstPay.date); return isValid(d) ? format(d, 'MMM dd, HH:mm') : '—'; })()}</Text>
+                                    </View>
+                                    <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted }}>consolidated · {batch.payments.length} debts</Text>
                                   </View>
                                 </View>
                               </View>

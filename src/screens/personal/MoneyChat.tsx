@@ -28,6 +28,7 @@ import { useLearningStore } from '../../store/learningStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import { AIMessage, AIMessageAction } from '../../types';
 import ScreenGuide from '../../components/common/ScreenGuide';
 import { useCategories } from '../../hooks/useCategories';
@@ -551,7 +552,9 @@ const ActionEditModal = ({
             })}
           </View>
         </TouchableOpacity>
+        <ModalToastHost />
       </Modal>
+      <ModalToastHost />
     </Modal>
   );
 };
@@ -1253,6 +1256,7 @@ const MoneyChat: React.FC = () => {
             )}
           </View>
         </TouchableOpacity>
+        <ModalToastHost />
       </Modal>
 
       {/* Select text modal — long-press opens this so user can select specific words */}
@@ -1295,6 +1299,7 @@ const MoneyChat: React.FC = () => {
             />
           </View>
         </TouchableOpacity>
+        <ModalToastHost />
       </Modal>
 
       <ScreenGuide

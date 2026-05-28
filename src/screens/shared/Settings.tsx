@@ -28,6 +28,7 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
 import { usePersonalStore } from '../../store/personalStore';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import { useBusinessStore } from '../../store/businessStore';
 import { useAppStore } from '../../store/appStore';
 import { usePremiumStore } from '../../store/premiumStore';
@@ -1860,6 +1861,7 @@ const Settings: React.FC = () => {
             </TouchableOpacity>
           </View>
         </Pressable>
+        <ModalToastHost />
       </Modal>
 
       {/* ─── QR Label Prompt Modal (cross-platform Alert.prompt replacement) ─── */}
@@ -1919,6 +1921,7 @@ const Settings: React.FC = () => {
           </Pressable>
         </Pressable>
         </KeyboardAvoidingView>
+        <ModalToastHost />
       </Modal>
 
       {/* ─── Currency Picker Modal ─── */}
@@ -1959,6 +1962,7 @@ const Settings: React.FC = () => {
             </ScrollView>
           </View>
         </Pressable>
+        <ModalToastHost />
       </Modal>
       )}
 
@@ -2007,6 +2011,7 @@ const Settings: React.FC = () => {
             </View>
           )}
         </View>
+        <ModalToastHost />
       </Modal>
     </View>
   );

@@ -650,6 +650,7 @@ export interface Subscription {
   outstandingBalance?: number;
   lastPaidAt?: Date;
   paymentHistory?: SubscriptionPayment[];
+  sharedSubId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -866,6 +867,8 @@ export interface Debt {
   mode: AppMode;
   dueDate?: Date;
   splitId?: string;
+  sharedSubId?: string;
+  sharedSubMonth?: string;
   createdAt: Date;
   updatedAt: Date;
   editLog?: DebtEdit[];
@@ -907,6 +910,57 @@ export interface SplitExpense {
   /** User-archived — hidden from default views unless "show archive" is on. */
   isArchived?: boolean;
   archivedAt?: Date;
+}
+
+// ─── SHARED SUBSCRIPTION TYPES ──────────────────────────────
+
+export interface SharedSubscription {
+  id: string;
+  name: string;
+  iconName?: string;
+  imageUri?: string;
+  totalAmount: number;
+  billingCycle: 'monthly' | 'quarterly' | 'yearly';
+  billingDay: number;
+  members: SharedSubMember[];
+  monthRecords: SharedSubMonthRecord[];
+  priceHistory: SharedSubPriceChange[];
+  subscriptionId?: string;
+  isActive: boolean;
+  note?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SharedSubMember {
+  contact: Contact;
+  tag: string;
+  shareAmount: number;
+  isActive: boolean;
+  joinedAt: Date;
+}
+
+export interface SharedSubMonthRecord {
+  month: string;
+  totalAmount: number;
+  payments: SharedSubPayment[];
+  debtsGenerated: boolean;
+}
+
+export interface SharedSubPayment {
+  contactId: string;
+  isPaid: boolean;
+  paidAt?: Date;
+  amount: number;
+}
+
+export interface SharedSubPriceChange {
+  id: string;
+  effectiveFrom: string;
+  totalAmount: number;
+  memberShares: { contactId: string; shareAmount: number }[];
+  note?: string;
+  createdAt: Date;
 }
 
 // Receipt Scanner Types
@@ -1133,9 +1187,11 @@ export interface DebtState {
   debts: Debt[];
   splits: SplitExpense[];
   contacts: Contact[];
+  sharedSubscriptions: SharedSubscription[];
   _deletedDebtIds?: string[];
   _deletedSplitIds?: string[];
   _deletedContactIds?: string[];
+  _deletedSharedSubIds?: string[];
   clearDebtTombstones?: () => void;
 
   addDebt: (debt: Omit<Debt, 'id' | 'paidAmount' | 'status' | 'payments' | 'createdAt' | 'updatedAt'>) => string;
@@ -1154,6 +1210,18 @@ export interface DebtState {
   unarchiveSplit: (id: string) => void;
   markSplitParticipantPaid: (splitId: string, contactId: string) => void;
   unmarkSplitParticipantPaid: (splitId: string, contactId: string) => void;
+
+  addSharedSubscription: (data: Omit<SharedSubscription, 'id' | 'monthRecords' | 'priceHistory' | 'createdAt' | 'updatedAt'>) => string;
+  updateSharedSubscription: (id: string, updates: Partial<Pick<SharedSubscription, 'name' | 'iconName' | 'imageUri' | 'billingDay' | 'billingCycle' | 'isActive' | 'note' | 'subscriptionId'>>) => void;
+  deleteSharedSubscription: (id: string) => void;
+  addSharedSubMember: (subId: string, member: SharedSubMember) => void;
+  updateSharedSubMember: (subId: string, contactId: string, updates: Partial<Pick<SharedSubMember, 'tag' | 'shareAmount'>>) => void;
+  removeSharedSubMember: (subId: string, contactId: string) => void;
+  ensureMonthRecord: (subId: string, month: string) => void;
+  markSharedSubPayment: (subId: string, month: string, contactId: string) => void;
+  unmarkSharedSubPayment: (subId: string, month: string, contactId: string) => void;
+  recordSharedSubPriceChange: (subId: string, change: Omit<SharedSubPriceChange, 'id' | 'createdAt'>) => void;
+  updateMonthAmounts: (subId: string, month: string, newTotal: number, memberShares: { contactId: string; shareAmount: number }[]) => void;
 
   addContact: (contact: Omit<Contact, 'id'>) => void;
   deleteContact: (id: string) => void;
@@ -1230,6 +1298,7 @@ export interface Wallet {
   name: string;
   type: WalletType;
   balance: number;
+  initialBalance?: number;
   icon: string;
   color: string;
   isDefault: boolean;

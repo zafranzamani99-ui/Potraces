@@ -38,6 +38,7 @@ import { SavingsAccount, SavingsSortBy, SnapshotType } from '../../types';
 import { CategoryOption } from '../../types';
 import { lightTap, selectionChanged } from '../../services/haptics';
 import { useT } from '../../i18n';
+import ModalToastHost from '../../components/common/ModalToastHost';
 
 const MAX_ACCOUNTS = 5;
 const SCREEN_W = Dimensions.get('window').width;
@@ -1134,6 +1135,7 @@ const SavingsTracker: React.FC = () => {
             </KeyboardAwareScrollView>
           </View>
         </Pressable>
+        <ModalToastHost />
       </Modal>}
 
       {/* ═══ UPDATE VALUE MODAL ═══ */}
@@ -1247,6 +1249,7 @@ const SavingsTracker: React.FC = () => {
             </KeyboardAwareScrollView>
           </View>
         </Pressable>
+        <ModalToastHost />
       </Modal>}
 
       {/* ═══ HISTORY MODAL ═══ */}
@@ -1361,6 +1364,7 @@ const SavingsTracker: React.FC = () => {
             </ScrollView>
           </View>
         </Pressable>
+        <ModalToastHost />
       </Modal>}
     </View>
   );

@@ -18,6 +18,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import ModalToastHost from './ModalToastHost';
 import { useCategoryStore } from '../../store/categoryStore';
 import { useCategories } from '../../hooks/useCategories';
 import { CategoryOption } from '../../types';
@@ -335,7 +336,9 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
             </View>
           </View>
         </TouchableOpacity>
+        <ModalToastHost />
       </Modal>
+      <ModalToastHost />
     </Modal>
   );
 };

@@ -27,6 +27,7 @@ const getDocumentScanner = (): typeof import('react-native-document-scanner-plug
 };
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import { format, getYear, parse, isValid } from 'date-fns';
 import { scanReceipt } from '../../services/receiptScanner';
 import { enqueueReceipt } from '../../services/receiptQueue';
@@ -1056,6 +1057,7 @@ const ReceiptScanner: React.FC = () => {
             />
           </View>
         </TouchableOpacity>
+        <ModalToastHost />
       </Modal>
 
       {/* ── Category Picker Modal ── */}
@@ -1111,6 +1113,7 @@ const ReceiptScanner: React.FC = () => {
             />
           </View>
         </TouchableOpacity>
+        <ModalToastHost />
       </Modal>
 
       {/* ── Calendar Picker Modal ── */}
@@ -1136,6 +1139,7 @@ const ReceiptScanner: React.FC = () => {
             </View>
           </View>
         </TouchableOpacity>
+        <ModalToastHost />
       </Modal>
 
       {/* Full-screen image overlay (inline, not Modal) */}

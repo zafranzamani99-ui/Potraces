@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PersonalState, Transfer } from '../types';
 import { useWalletStore } from './walletStore';
+import { useTombstoneStore } from './tombstoneStore';
 import { newId } from '../utils/id';
 import { roundMoney } from '../utils/money';
 
@@ -100,6 +101,7 @@ export const usePersonalStore = create<PersonalState>()(
           transactions: state.transactions.filter((t) => t.id !== id),
           _deletedTransactionIds: [...(state._deletedTransactionIds ?? []), id],
         }));
+        useTombstoneStore.getState().addTombstones([id]);
         if (!prev || !prev.walletId) return;
         const wallets = useWalletStore.getState();
         if (prev.type === 'expense') wallets.addToWallet(prev.walletId, prev.amount);
@@ -155,17 +157,21 @@ export const usePersonalStore = create<PersonalState>()(
           ),
         })),
 
-      deleteSubscription: (id) =>
+      deleteSubscription: (id) => {
         set((state) => ({
           subscriptions: state.subscriptions.filter((sub) => sub.id !== id),
           _deletedSubscriptionIds: [...(state._deletedSubscriptionIds ?? []), id],
-        })),
+        }));
+        useTombstoneStore.getState().addTombstones([id]);
+      },
 
-      deleteBudget: (id) =>
+      deleteBudget: (id) => {
         set((state) => ({
           budgets: state.budgets.filter((b) => b.id !== id),
           _deletedBudgetIds: [...(state._deletedBudgetIds ?? []), id],
-        })),
+        }));
+        useTombstoneStore.getState().addTombstones([id]);
+      },
 
       incrementInstallment: (id) =>
         set((state) => ({
@@ -338,11 +344,13 @@ export const usePersonalStore = create<PersonalState>()(
           ),
         })),
 
-      deleteGoal: (id) =>
+      deleteGoal: (id) => {
         set((state) => ({
           goals: state.goals.filter((g) => g.id !== id),
           _deletedGoalIds: [...(state._deletedGoalIds ?? []), id],
-        })),
+        }));
+        useTombstoneStore.getState().addTombstones([id]);
+      },
 
       contributeToGoal: (goalId, amount, note, walletId) =>
         set((state) => ({

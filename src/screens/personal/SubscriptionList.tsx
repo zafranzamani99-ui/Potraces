@@ -4,9 +4,11 @@ import React, {
 import {
   View, Text, StyleSheet, TextInput, Modal, TouchableOpacity,
   Pressable, Switch, Keyboard, KeyboardAvoidingView, Platform,
-  Animated, Dimensions, PanResponder, useWindowDimensions, Alert,
+  Animated, Dimensions, Alert,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+import { useEchoFabPan } from '../../hooks/useEchoFabPan';
+import EchoDragHideZone from '../../components/wallet/EchoDragHideZone';
 import { LinearGradient } from 'expo-linear-gradient';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Reanimated, {
@@ -48,6 +50,8 @@ import WalletLogo from '../../components/common/WalletLogo';
 import CommitmentForm from '../../components/commitments/CommitmentForm';
 import EmptyState from '../../components/common/EmptyState';
 import { useToast } from '../../context/ToastContext';
+import ModalToastHost from '../../components/common/ModalToastHost';
+import { useDebtStore } from '../../store/debtStore';
 import { useRoute, RouteProp, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { usePremiumStore } from '../../store/premiumStore';
 import EchoInlineChat from '../../components/common/EchoInlineChat';
@@ -352,6 +356,9 @@ const SubscriptionList: React.FC = () => {
   const deductFromWallet = useWalletStore(s => s.deductFromWallet);
   const currency = useSettingsStore(s => s.currency);
   const expenseCategories = useCategories('expense');
+  const markSharedSubPayment = useDebtStore((s) => s.markSharedSubPayment);
+  const unmarkSharedSubPayment = useDebtStore((s) => s.unmarkSharedSubPayment);
+  const ensureMonthRecord = useDebtStore((s) => s.ensureMonthRecord);
 
   // ── View state ──────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -413,7 +420,7 @@ const SubscriptionList: React.FC = () => {
   const [outstandingBalance, setOutstandingBalance] = useState('');
 
   // ── FAB animation ────────────────────────────────────────
-  const fabScale = useRef(new Animated.Value(1)).current;
+  const addFabScale = useRef(new Animated.Value(1)).current;
 
   // ── Swipeable refs ───────────────────────────────────────
   const swipeableRefs = useRef<Map<string, SwipeableMethods>>(new Map());
@@ -469,62 +476,14 @@ const SubscriptionList: React.FC = () => {
     });
   }, [echoHidden, tier, subscriptions.length, navigation, C, setEchoHidden]);
 
-  // ── Draggable Echo FAB pan ───────────────────────────────
-  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
-  const echoFabPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  const prevFabSideRef = useRef<'left' | 'right'>('right');
-  useLayoutEffect(() => {
-    if (prevFabSideRef.current !== fabSide) {
-      prevFabSideRef.current = fabSide;
-      echoFabPan.setValue({ x: 0, y: (echoFabPan.y as any)._value });
-    }
-  }, [fabSide, echoFabPan]);
-  const echoFabPanResponder = useMemo(
-    () => PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
-      onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
-      onPanResponderGrant: () => {
-        echoFabPan.setOffset({
-          x: (echoFabPan.x as any)._value,
-          y: (echoFabPan.y as any)._value,
-        });
-        echoFabPan.setValue({ x: 0, y: 0 });
-        setGreetingHiddenDuringDrag(true);
-      },
-      onPanResponderMove: Animated.event(
-        [null, { dx: echoFabPan.x, dy: echoFabPan.y }],
-        { useNativeDriver: false }
-      ),
-      onPanResponderRelease: () => {
-        echoFabPan.flattenOffset();
-        const curX = (echoFabPan.x as any)._value;
-        const curY = (echoFabPan.y as any)._value;
-        const safeTop = Math.max(insets.top, 20);
-        const defaultTop = safeTop + 80;
-        const fabCenterX = fabSide === 'right'
-          ? SCREEN_W - SPACING.xl - 28 + curX
-          : SPACING.xl + 28 + curX;
-        const newSide = fabCenterX < SCREEN_W / 2 ? 'left' : 'right';
-        const edgeSpan = SCREEN_W - 2 * SPACING.xl - 56;
-        const snapX = fabSide === newSide ? 0 : fabSide === 'right' ? -edgeSpan : edgeSpan;
-        const minY = -(defaultTop - 8);
-        const maxY = SCREEN_H - insets.top - 44 - insets.bottom - 80 - 56 - defaultTop;
-        const clampedY = Math.max(minY, Math.min(maxY, curY));
-        Animated.spring(echoFabPan, {
-          toValue: { x: snapX, y: clampedY },
-          useNativeDriver: false,
-          friction: 14,
-          tension: 100,
-        }).start(() => {
-          setFabSide(newSide);
-          setGreetingHiddenDuringDrag(false);
-        });
-      },
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [echoFabPan, fabSide, SCREEN_W, SCREEN_H, insets.top, insets.bottom]
-  );
+  // ── Draggable Echo FAB — free X+Y drag, snaps to edge, drag-to-hide ──
+  const { echoFabPan, echoFabPanResponder, hideZoneAnim, hideZoneHoverAnim, fabScale, hideZoneRef } = useEchoFabPan({
+    fabSide,
+    setFabSide,
+    setGreetingHiddenDuringDrag,
+    onHide: () => setEchoHidden(true),
+    insets,
+  });
 
 
   // ─── Computed ──────────────────────────────────────────
@@ -1053,9 +1012,13 @@ const SubscriptionList: React.FC = () => {
     const hid = route.params?.highlightId;
     if (hid && !highlightHandled.current) {
       highlightHandled.current = true;
-      setTimeout(() => handleEdit(hid), 300);
+      const target = subscriptions.find(s => s.id === hid);
+      if (target) {
+        setActiveTab(classifyKind(target));
+        setTimeout(() => setDetailSub(target), 300);
+      }
     }
-  }, [route.params?.highlightId, handleEdit]);
+  }, [route.params?.highlightId, subscriptions, classifyKind]);
 
   // Form save — receives the payload from CommitmentForm
   const handleFormSave = useCallback((payload: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -1173,6 +1136,12 @@ const SubscriptionList: React.FC = () => {
     markSubscriptionPaid(markPaidSub.id, txId, wId);
     mediumTap();
 
+    if (markPaidSub.sharedSubId) {
+      const month = format(new Date(), 'yyyy-MM');
+      ensureMonthRecord(markPaidSub.sharedSubId, month);
+      markSharedSubPayment(markPaidSub.sharedSubId, month, '__self__');
+    }
+
     // Check if installment just completed after this payment
     const freshSub = usePersonalStore.getState().subscriptions.find(s => s.id === markPaidSub.id);
     if (freshSub?.isInstallment && freshSub.totalInstallments &&
@@ -1191,7 +1160,7 @@ const SubscriptionList: React.FC = () => {
 
     setMarkPaidSub(null);
     showToast('cleared.', 'success');
-  }, [markPaidSub, markSubscriptionPaid, addTransaction, deductFromWallet, showToast]);
+  }, [markPaidSub, markSubscriptionPaid, addTransaction, deductFromWallet, showToast, markSharedSubPayment, ensureMonthRecord]);
 
   // ─── Render helpers ────────────────────────────────────
 
@@ -1297,6 +1266,13 @@ const SubscriptionList: React.FC = () => {
             )}
             {!statusBadge && !isCleared && (
               <Text style={styles.rowDueText}>{dueDateText}</Text>
+            )}
+            {sub.sharedSubId && (
+              <>
+                <Text style={styles.rowCycleText}>·</Text>
+                <Feather name="users" size={10} color={C.textMuted} />
+                <Text style={styles.rowCycleText}>shared</Text>
+              </>
             )}
           </View>
           {isInstallmentSub && (
@@ -2472,6 +2448,7 @@ const SubscriptionList: React.FC = () => {
           </View>
         </KeyboardAvoidingView>
       </TouchableOpacity>
+      <ModalToastHost />
     </Modal>
   );
 
@@ -2877,6 +2854,56 @@ const SubscriptionList: React.FC = () => {
                 </View>
               </View>
 
+              {sub.sharedSubId && (() => {
+                const linkedShared = useDebtStore.getState().sharedSubscriptions.find(s => s.id === sub.sharedSubId);
+                if (!linkedShared) return null;
+                const memberCount = linkedShared.members.filter(m => m.isActive).length;
+                return (
+                  <View style={{
+                    backgroundColor: withAlpha(C.accent, C === CALM_DARK ? 0.05 : 0.03),
+                    borderRadius: RADIUS.lg,
+                    borderWidth: 1,
+                    borderColor: withAlpha(C.accent, C === CALM_DARK ? 0.10 : 0.06),
+                    padding: SPACING.md,
+                    marginBottom: SPACING.md,
+                    flexDirection: 'row',
+                    gap: SPACING.sm,
+                    alignItems: 'flex-start',
+                  }}>
+                    <View style={{
+                      width: 28, height: 28, borderRadius: 8,
+                      backgroundColor: withAlpha(C.accent, 0.10),
+                      alignItems: 'center', justifyContent: 'center', marginTop: 1,
+                    }}>
+                      <Feather name="users" size={13} color={C.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{
+                        fontSize: TYPOGRAPHY.size.sm,
+                        fontWeight: TYPOGRAPHY.weight.semibold,
+                        color: C.accent,
+                        letterSpacing: -0.1,
+                        marginBottom: 3,
+                      }}>shared subscription</Text>
+                      <Text style={{
+                        fontSize: TYPOGRAPHY.size.xs,
+                        color: C.textMuted,
+                        lineHeight: 16,
+                      }}>
+                        your share of {linkedShared.name}
+                      </Text>
+                      <Text style={{
+                        fontSize: TYPOGRAPHY.size.xs,
+                        color: C.textMuted,
+                        lineHeight: 16,
+                      }}>
+                        {currency} {linkedShared.totalAmount.toFixed(2)} total · {memberCount} members
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })()}
+
               {sub.note ? (
                 <View style={styles.dtNoteWrap}>
                   <Text style={styles.dtNoteLabel}>note</Text>
@@ -2952,6 +2979,10 @@ const SubscriptionList: React.FC = () => {
                                     style: 'destructive',
                                     onPress: () => {
                                       undoSubscriptionPayment(sub.id, p.id);
+                                      if (sub.sharedSubId) {
+                                        const month = format(new Date(p.paidAt), 'yyyy-MM');
+                                        unmarkSharedSubPayment(sub.sharedSubId, month, '__self__');
+                                      }
                                       showToast('payment undone', 'success');
                                     },
                                   },
@@ -3072,6 +3103,7 @@ const SubscriptionList: React.FC = () => {
             </View>
           </View>
         </Pressable>
+        <ModalToastHost />
       </Modal>
     );
   };
@@ -3304,7 +3336,7 @@ const SubscriptionList: React.FC = () => {
 
       {/* FAB */}
       {subscriptions.length > 0 && (
-        <Animated.View style={[styles.fab, { bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), transform: [{ scale: fabScale }] }]}>
+        <Animated.View style={[styles.fab, { bottom: Math.max(SPACING.xl, insets.bottom + SPACING.md), transform: [{ scale: addFabScale }] }]}>
           <TouchableOpacity
             style={styles.fabInner}
             onPress={() => { mediumTap(); resetForm(); setModalVisible(true); }}
@@ -3317,6 +3349,7 @@ const SubscriptionList: React.FC = () => {
 
       {/* ── Echo FAB + greeting bubble (standardized, draggable) ── */}
       {subscriptions.length > 0 && !echoHidden && !modalVisible && !echoSheetVisible && !markPaidSub && !deleteConfirmSub && !payWarning && !celebrationSub ? (
+        <>
         <Animated.View
           style={[
             styles.commitmentEchoFabContainer,
@@ -3324,7 +3357,7 @@ const SubscriptionList: React.FC = () => {
               ? { right: SPACING.xl, flexDirection: 'row-reverse' }
               : { left: SPACING.xl, flexDirection: 'row' },
             { top: Math.max(insets.top, 20) + 80 },
-            { transform: echoFabPan.getTranslateTransform() },
+            { transform: [...echoFabPan.getTranslateTransform(), { scale: fabScale }] },
           ]}
           {...echoFabPanResponder.panHandlers}
         >
@@ -3337,17 +3370,9 @@ const SubscriptionList: React.FC = () => {
               setEchoSheetVisible(true);
               setGreetingDismissed(true);
             }}
-            onLongPress={() => {
-              lightTap();
-              Alert.alert('hide echo here?', "you can re-enable it from settings.", [
-                { text: t.common.cancel, style: 'cancel' },
-                { text: 'hide', onPress: () => setEchoHidden(true) },
-              ]);
-            }}
-            delayLongPress={500}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel="Open Echo assistant (hold to hide)"
+            accessibilityLabel="Open Echo assistant"
           >
             <Feather name="zap" size={22} color={C.onAccent} />
             {tier !== 'premium' && (
@@ -3395,6 +3420,8 @@ const SubscriptionList: React.FC = () => {
             </TouchableOpacity>
           )}
         </Animated.View>
+        <EchoDragHideZone hideZoneAnim={hideZoneAnim} hideZoneHoverAnim={hideZoneHoverAnim} measureRef={hideZoneRef} />
+        </>
       ) : null}
 
       <CommitmentForm
@@ -3403,6 +3430,16 @@ const SubscriptionList: React.FC = () => {
         onClose={handleFormClose}
         onSave={handleFormSave}
         onDelete={handleFormDelete}
+        onUnlinkShared={(sub) => {
+          const linkedShared = useDebtStore.getState().sharedSubscriptions.find(s => s.id === sub.sharedSubId);
+          updateSubscription(sub.id, { sharedSubId: undefined });
+          if (linkedShared) {
+            useDebtStore.getState().updateSharedSubscription(linkedShared.id, { subscriptionId: undefined });
+          }
+          setModalVisible(false);
+          setEditingId(null);
+          showToast('unlinked from shared subscription', 'info');
+        }}
         onError={handleFormError}
       />
       {renderDetailModal()}

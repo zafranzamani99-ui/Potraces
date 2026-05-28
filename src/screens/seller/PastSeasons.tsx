@@ -18,6 +18,7 @@ import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha,
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useToast } from '../../context/ToastContext';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import { warningNotification } from '../../services/haptics';
 import { Season } from '../../types';
 
@@ -418,6 +419,7 @@ const PastSeasons: React.FC = () => {
               </View>
             </View>
           </View>
+          <ModalToastHost />
         </Modal>
       )}
     </View>

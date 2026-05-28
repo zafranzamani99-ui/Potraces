@@ -16,6 +16,7 @@ import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, BIZ } from '../../c
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { IncomeStream } from '../../types';
+import ModalToastHost from '../../components/common/ModalToastHost';
 
 const PRESET_COLORS = [CALM.accent, CALM.bronze, CALM.gold, BIZ.success, BIZ.unpaid, CALM.neutral];
 
@@ -146,6 +147,7 @@ const IncomeStreamsScreen: React.FC = () => {
             </View>
           </View>
         </View>
+        <ModalToastHost />
       </Modal>
     </View>
   );

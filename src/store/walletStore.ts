@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WalletState } from '../types';
+import { useTombstoneStore } from './tombstoneStore';
 import { newId } from '../utils/id';
 import { roundMoney } from '../utils/money';
 
@@ -25,6 +26,7 @@ export const useWalletStore = create<WalletState>()(
           const next = {
             ...wallet,
             id: newId(),
+            initialBalance: wallet.balance,
             createdAt: new Date(),
             updatedAt: new Date(),
           };
@@ -57,6 +59,7 @@ export const useWalletStore = create<WalletState>()(
             state.selectedWalletId === id ? null : state.selectedWalletId,
           _deletedWalletIds: [...(state._deletedWalletIds ?? []), id],
         }));
+        useTombstoneStore.getState().addTombstones([id]);
         const { usePersonalStore } = require('./personalStore');
         const { useDebtStore } = require('./debtStore');
         const personal = usePersonalStore.getState();
@@ -189,7 +192,7 @@ export const useWalletStore = create<WalletState>()(
           ],
         })),
 
-      deleteTransfer: (transferId) =>
+      deleteTransfer: (transferId) => {
         set((state) => {
           const t = state.transfers.find((x) => x.id === transferId);
           if (!t) return state;
@@ -216,7 +219,9 @@ export const useWalletStore = create<WalletState>()(
             transfers: state.transfers.filter((x) => x.id !== transferId),
             _deletedTransferIds: [...(state._deletedTransferIds ?? []), transferId],
           };
-        }),
+        });
+        useTombstoneStore.getState().addTombstones([transferId]);
+      },
 
       useCredit: (id, amount) =>
         set((state) => ({
@@ -270,10 +275,11 @@ export const useWalletStore = create<WalletState>()(
       onRehydrateStorage: () => (state) => {
         if (state) {
           const sd = (v: any) => { if (!v) return new Date(); const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? new Date() : d; };
-          // Migrate wallets: add type field for old wallets
+          // Migrate wallets: add type field for old wallets, backfill initialBalance
           state.wallets = state.wallets.map((w: any) => ({
             ...w,
             type: w.type || 'bank',
+            initialBalance: w.initialBalance ?? w.balance,
             createdAt: sd(w.createdAt),
             updatedAt: sd(w.updatedAt),
           }));

@@ -25,6 +25,7 @@ import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import { useToast } from '../../context/ToastContext';
+import ModalToastHost from '../../components/common/ModalToastHost';
 
 const Inventory: React.FC = () => {
   const C = useCalm();
@@ -525,6 +526,7 @@ const Inventory: React.FC = () => {
               </KeyboardAwareScrollView>
             </View>
           </View>
+          <ModalToastHost />
         </Modal>
       )}
 
@@ -577,6 +579,7 @@ const Inventory: React.FC = () => {
               </View>
             </View>
           </View>
+          <ModalToastHost />
         </Modal>
       )}
     </View>

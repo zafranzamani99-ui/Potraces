@@ -24,13 +24,14 @@ import { Subscription } from '../../types';
 import CategoryPicker from '../common/CategoryPicker';
 import CalendarPicker from '../common/CalendarPicker';
 import WalletLogo from '../common/WalletLogo';
+import ModalToastHost from '../common/ModalToastHost';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type SubView = 'form' | 'calendar' | 'walletPicker';
 type SavePayload = Omit<Subscription, 'id' | 'createdAt' | 'updatedAt'>;
 
 // Icon format: "library/name" — f/ = Feather, m/ = MaterialCommunityIcons, i/ = Ionicons, fa/ = FontAwesome5
-function renderIcon(iconId: string, size: number, color: string) {
+export function renderIcon(iconId: string, size: number, color: string) {
   const [lib, name] = iconId.includes('/') ? iconId.split('/') : ['f', iconId];
   switch (lib) {
     case 'm': return <MaterialCommunityIcons name={name as any} size={size} color={color} />;
@@ -40,7 +41,7 @@ function renderIcon(iconId: string, size: number, color: string) {
   }
 }
 
-const COMMON_ICONS = [
+export const COMMON_ICONS = [
   // ── Entertainment ──
   'm/spotify', 'm/netflix', 'm/youtube-tv', 'm/apple', 'f/music',
   'f/tv', 'f/film', 'f/headphones', 'i/musical-notes', 'm/gamepad-variant',
@@ -65,7 +66,7 @@ const COMMON_ICONS = [
   'f/activity', 'f/gift', 'm/dog', 'm/cat', 'm/paw',
 ] as const;
 
-const ICON_KEYWORDS: Record<string, string[]> = {
+export const ICON_KEYWORDS: Record<string, string[]> = {
   // ── Streaming & Entertainment ──
   spotify: ['m/spotify', 'f/headphones', 'i/musical-notes'],
   music: ['f/music', 'i/musical-notes', 'f/headphones'],
@@ -201,7 +202,7 @@ const ICON_KEYWORDS: Record<string, string[]> = {
   temple: ['fa/pray', 'f/heart', 'fa/place-of-worship'],
 };
 
-function suggestIcons(name: string): string[] {
+export function suggestIcons(name: string): string[] {
   if (!name) return [];
   const lower = name.toLowerCase();
   const seen = new Set<string>();
@@ -222,6 +223,7 @@ interface Props {
   onClose: () => void;
   onSave: (payload: SavePayload) => void;
   onDelete?: (sub: Subscription) => void;
+  onUnlinkShared?: (sub: Subscription) => void;
   onError?: (message: string) => void;
 }
 
@@ -234,7 +236,7 @@ const CYCLE_OPTIONS: { value: Subscription['billingCycle']; label: string }[] = 
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
-const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSave, onDelete, onError }) => {
+const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSave, onDelete, onUnlinkShared, onError }) => {
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
@@ -750,6 +752,24 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
         </View>
       </View>
 
+      {/* Shared subscription link — edit mode only */}
+      {isEditMode && subscription?.sharedSubId && onUnlinkShared && (
+        <Pressable
+          style={styles.deleteLink}
+          onPress={() => onUnlinkShared(subscription)}
+          hitSlop={{ top: 14, bottom: 14, left: 18, right: 18 }}
+          accessibilityRole="button"
+          accessibilityLabel="unlink shared subscription"
+        >
+          {({ pressed }) => (
+            <View style={[styles.deleteLinkInner, pressed && { opacity: 0.55 }]}>
+              <Feather name="link" size={13} color={C.textMuted} />
+              <Text style={styles.deleteLinkText}>unlink shared subscription</Text>
+            </View>
+          )}
+        </Pressable>
+      )}
+
       {/* Delete — in scroll content, edit mode only (matches DebtTracking pattern) */}
       {isEditMode && onDelete && subscription && (
         <Pressable
@@ -1156,6 +1176,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
           <Feather name="check" size={20} color={C.onAccent} />
         </TouchableOpacity>
       )}
+      <ModalToastHost />
     </Modal>
   );
 };

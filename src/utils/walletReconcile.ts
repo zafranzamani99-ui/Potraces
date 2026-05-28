@@ -1,65 +1,125 @@
 /**
- * Wallet balance reconciliation helpers.
+ * Wallet balance reconciliation.
  *
- * After the LOGIC-C1/C2 fixes, wallet balances now reconcile on every transaction
- * mutation. But some users may already have drifted balances from before the fix
- * shipped — this utility lets them (or the app silently) recalculate balances
- * from transaction history.
+ * Addresses CF-02 (non-atomic cross-store mutations) and CF-10 (multi-device
+ * sync last-write-wins overwriting balances).
  *
- * The computed balance = sum(income) - sum(expense) for transactions that
- * target this wallet. We do NOT include a starting balance unless provided —
- * if a user enters a new wallet with balance RM100 and no transactions, the
- * stored balance is the source of truth.
+ * Computes what each wallet's balance SHOULD be by replaying every
+ * wallet-affecting operation from all stores:
+ *   - Transactions (income adds, expense deducts)
+ *   - Wallet transfers (subtract from source, add to destination)
+ *   - Debt payments with walletId (deduct)
+ *   - Goal contributions with walletId (deduct; negative = withdrawal = add)
+ *
+ * Savings snapshots have NO wallet linkage and are excluded.
  */
-import type { Transaction, Wallet } from '../types';
+import { roundMoney } from './money';
+import { usePersonalStore } from '../store/personalStore';
+import { useWalletStore } from '../store/walletStore';
+import { useDebtStore } from '../store/debtStore';
 
 export interface ReconcileResult {
   walletId: string;
-  storedBalance: number;
-  computedBalance: number;
-  diff: number;  // storedBalance - computedBalance
-  needsFix: boolean;
+  walletName: string;
+  stored: number;
+  computed: number;
+  drift: number;
 }
 
 /**
- * For a single wallet, compute what its balance should be based on all
- * transactions that target it. Returns mismatch info.
- *
- * @param startingBalance  The balance at wallet creation (default 0).
- *                         If you want to treat the current stored balance as the
- *                         baseline, pass it here — but then the function is
- *                         self-referential. Prefer 0 for a fresh computation.
+ * Reconcile all wallet balances against the source-of-truth operations.
+ * Returns only wallets where |drift| > 0.005 (half a sen).
  */
-export function reconcileWallet(
-  wallet: Wallet,
-  transactions: Transaction[],
-  startingBalance = 0,
-): ReconcileResult {
-  let computed = startingBalance;
-  for (const tx of transactions) {
-    if (tx.walletId !== wallet.id) continue;
-    if (tx.type === 'income') computed += tx.amount;
-    else if (tx.type === 'expense') computed -= tx.amount;
+export function reconcileWalletBalances(): ReconcileResult[] {
+  const wallets = useWalletStore.getState().wallets;
+  const transfers = useWalletStore.getState().transfers ?? [];
+  const transactions = usePersonalStore.getState().transactions;
+  const goals = usePersonalStore.getState().goals;
+  const debts = useDebtStore.getState().debts;
+
+  const results: ReconcileResult[] = [];
+
+  for (const wallet of wallets) {
+    // Start from wallet's initial balance (backfilled for legacy wallets)
+    let computed = roundMoney(wallet.initialBalance ?? 0);
+
+    // ── Transactions: income adds, expense deducts ──
+    for (const tx of transactions) {
+      if (tx.walletId !== wallet.id) continue;
+      if (tx.type === 'income') {
+        computed = roundMoney(computed + tx.amount);
+      } else if (tx.type === 'expense') {
+        computed = roundMoney(computed - tx.amount);
+      }
+    }
+
+    // ── Wallet transfers: subtract from source, add to destination ──
+    for (const t of transfers) {
+      if (t.fromWalletId === wallet.id) {
+        computed = roundMoney(computed - t.amount);
+      }
+      if (t.toWalletId === wallet.id) {
+        computed = roundMoney(computed + t.amount);
+      }
+    }
+
+    // ── Debt payments with walletId: deduct from wallet ──
+    for (const debt of debts) {
+      for (const payment of debt.payments) {
+        if (payment.walletId !== wallet.id) continue;
+        computed = roundMoney(computed - payment.amount);
+      }
+    }
+
+    // ── Goal contributions with walletId: deduct (negative = withdrawal = add) ──
+    for (const goal of goals) {
+      for (const contrib of goal.contributions) {
+        if (contrib.walletId !== wallet.id) continue;
+        // Positive contribution = money moved out of wallet (deduct)
+        // Negative contribution (withdrawal) = money returned to wallet (add)
+        computed = roundMoney(computed - contrib.amount);
+      }
+    }
+
+    const drift = roundMoney(wallet.balance - computed);
+    if (Math.abs(drift) > 0.005) {
+      results.push({
+        walletId: wallet.id,
+        walletName: wallet.name,
+        stored: wallet.balance,
+        computed,
+        drift,
+      });
+    }
   }
-  const diff = wallet.balance - computed;
-  return {
-    walletId: wallet.id,
-    storedBalance: wallet.balance,
-    computedBalance: computed,
-    diff,
-    needsFix: Math.abs(diff) > 0.01,
-  };
+
+  return results;
 }
 
 /**
- * Reconcile every wallet. Returns a list of mismatches.
- * An empty result means everything already agrees.
+ * Run reconciliation and auto-correct any drifted wallet balances.
+ * Returns the number of wallets corrected.
  */
-export function reconcileAll(
-  wallets: Wallet[],
-  transactions: Transaction[],
-): ReconcileResult[] {
-  return wallets
-    .map((w) => reconcileWallet(w, transactions))
-    .filter((r) => r.needsFix);
+export function autoReconcileWallets(): number {
+  const drifted = reconcileWalletBalances();
+  if (drifted.length === 0) return 0;
+
+  const { wallets } = useWalletStore.getState();
+  const corrected: typeof wallets = wallets.map((w) => {
+    const fix = drifted.find((d) => d.walletId === w.id);
+    if (!fix) return w;
+    return { ...w, balance: fix.computed, updatedAt: new Date() };
+  });
+
+  useWalletStore.setState({ wallets: corrected });
+
+  if (__DEV__) {
+    for (const d of drifted) {
+      console.log(
+        `[reconcile] ${d.walletName}: stored=${d.stored} computed=${d.computed} drift=${d.drift} → corrected`,
+      );
+    }
+  }
+
+  return drifted.length;
 }

@@ -14,6 +14,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { Gesture, GestureDetector, GestureHandlerRootView, ScrollView, ComposedGesture, GestureType } from 'react-native-gesture-handler';
+import ModalToastHost from '../common/ModalToastHost';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Reanimated, {
   useAnimatedStyle,
@@ -658,6 +659,7 @@ const AddEditWalletModal: React.FC<Props> = ({
           </Pressable>
         )}
       </GestureHandlerRootView>
+      <ModalToastHost />
     </Modal>
   );
 };

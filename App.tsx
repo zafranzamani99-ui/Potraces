@@ -33,6 +33,11 @@ import { runReceiptDrain } from './src/services/receiptQueueDrainer';
 import { withBackoff } from './src/services/syncBackoff';
 import NetInfo from '@react-native-community/netinfo';
 import { prefetchWalletLogos } from './src/utils/prefetchAssets';
+import { useWalletStore } from './src/store/walletStore';
+import { useDebtStore } from './src/store/debtStore';
+import { autoReconcileWallets } from './src/utils/walletReconcile';
+import { useTombstoneStore } from './src/store/tombstoneStore';
+import { maybeCheckStorage } from './src/utils/storageMonitor';
 
 // Debounced auto-sync — pushes to Supabase ~1.5s after any data mutation
 let _autoSyncTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -79,7 +84,20 @@ export default function App() {
         waitForStore(useSellerStore),
         waitForStore(useSettingsStore),
         waitForStore(useAuthStore),
+        waitForStore(usePersonalStore),
+        waitForStore(useWalletStore),
+        waitForStore(useDebtStore),
+        waitForStore(useTombstoneStore),
       ]);
+
+      // Reconcile wallet balances after all stores have hydrated.
+      // Catches drift from CF-02 (crash between cross-store mutations)
+      // and CF-10 (multi-device sync overwriting balances).
+      try {
+        autoReconcileWallets();
+      } catch {
+        // best-effort — don't block startup
+      }
 
       // Check existing auth session
       const session = await getAuthSession();
@@ -99,6 +117,12 @@ export default function App() {
       }
 
       if (!cancelled) setIsLoading(false);
+
+      // Async storage size check — once per day, after a short delay so it
+      // doesn't compete with startup rendering. Warns if approaching 6MB limit.
+      setTimeout(() => {
+        maybeCheckStorage((msg, type) => globalShowToast(msg, type)).catch(() => {});
+      }, 3000);
 
       // Record first-run timestamp for the review-prompt gate.
       recordFirstRun().catch(() => {});

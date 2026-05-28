@@ -15,6 +15,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import ModalToastHost from './ModalToastHost';
 import { useSettingsStore } from '../../store/settingsStore';
 import { DEFAULT_PAYMENT_METHODS } from '../../constants/taxCategories';
 import { CategoryOption } from '../../types';
@@ -269,7 +270,9 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
             </View>
           </View>
         </TouchableOpacity>
+        <ModalToastHost />
       </Modal>
+      <ModalToastHost />
     </Modal>
   );
 };

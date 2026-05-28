@@ -10,6 +10,7 @@ import { useSellerStore } from '../../store/sellerStore';
 import { useToast } from '../../context/ToastContext';
 import { SellerCostCategory } from '../../types';
 import { lightTap, successNotification } from '../../services/haptics';
+import ModalToastHost from '../common/ModalToastHost';
 
 const ICON_CHOICES = [
   'box', 'package', 'tool', 'zap', 'home', 'truck', 'speaker', 'credit-card',
@@ -176,6 +177,7 @@ const CostCategoryPicker: React.FC<Props> = ({ selected, onSelect }) => {
             </Pressable>
           </View>
         </Pressable>
+        <ModalToastHost />
       </Modal>
 
       {/* Manager modal */}
@@ -212,6 +214,7 @@ const CostCategoryPicker: React.FC<Props> = ({ selected, onSelect }) => {
             </Pressable>
           </View>
         </Pressable>
+        <ModalToastHost />
       </Modal>
 
       {/* Add/edit form modal */}
@@ -261,6 +264,7 @@ const CostCategoryPicker: React.FC<Props> = ({ selected, onSelect }) => {
             </Pressable>
           </View>
         </Pressable>
+        <ModalToastHost />
       </Modal>
     </View>
   );

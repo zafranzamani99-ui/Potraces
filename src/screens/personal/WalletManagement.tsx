@@ -46,7 +46,7 @@ import ScreenGuide from '../../components/common/ScreenGuide';
 import EchoInlineChat from '../../components/common/EchoInlineChat';
 import TypewriterText from '../../components/common/TypewriterText';
 import { useT } from '../../i18n';
-import { reconcileWallet } from '../../utils/walletReconcile';
+import { reconcileWalletBalances } from '../../utils/walletReconcile';
 import { HITSLOP_10 } from '../../utils/hitSlop';
 import AddEditWalletModal from '../../components/wallet/AddEditWalletModal';
 import TransferModal from '../../components/wallet/TransferModal';
@@ -1003,17 +1003,20 @@ const WalletManagement: React.FC = () => {
   const reconcileOne = useCallback((walletId: string) => {
     const wallet = wallets.find((w) => w.id === walletId);
     if (!wallet) return;
-    const txs = usePersonalStore.getState().transactions;
-    const result = reconcileWallet(wallet, txs, 0);
+    const allResults = reconcileWalletBalances();
+    const result = allResults.find((r) => r.walletId === walletId);
+    const stored = result?.stored ?? wallet.balance;
+    const computed = result?.computed ?? wallet.balance;
+    const drift = result?.drift ?? 0;
     const fmt = (n: number) => `${currency} ${n.toFixed(2)}`;
-    const diffText = result.diff >= 0 ? `+${fmt(result.diff)}` : `−${fmt(Math.abs(result.diff))}`;
+    const diffText = drift >= 0 ? `+${fmt(drift)}` : `−${fmt(Math.abs(drift))}`;
 
     Alert.alert(
       `Recalculate "${wallet.name}"?`,
-      `Stored balance: ${fmt(result.storedBalance)}\n` +
-      `From transactions: ${fmt(result.computedBalance)}\n` +
+      `Stored balance: ${fmt(stored)}\n` +
+      `From transactions: ${fmt(computed)}\n` +
       `Difference: ${diffText}\n\n` +
-      `This treats the wallet's starting point as 0 and re-sums every transaction. ` +
+      `This re-sums every transaction, transfer, debt payment, and goal contribution. ` +
       `If your wallet had an unlogged initial deposit, the recomputed balance will be off — skip this.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -1021,7 +1024,7 @@ const WalletManagement: React.FC = () => {
           text: 'Recalculate',
           style: 'destructive',
           onPress: () => {
-            setWalletBalance(walletId, result.computedBalance);
+            setWalletBalance(walletId, computed);
           },
         },
       ],

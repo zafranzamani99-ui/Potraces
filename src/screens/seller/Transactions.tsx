@@ -35,6 +35,7 @@ import { useFadeSlide } from '../../utils/fadeSlide';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import CalendarPicker from '../../components/common/CalendarPicker';
+import ModalToastHost from '../../components/common/ModalToastHost';
 
 // ─── Types ─────────────────────────────────────────────────
 interface PaymentEvent {
@@ -420,18 +421,8 @@ const SellerTransactions: React.FC = () => {
       { key: 'this_week', label: t.seller.periodThisWeek, onPress: () => handleQuickChipPress('this_week'), active: periodFilter === 'this_week' },
       { key: 'this_month', label: t.seller.periodThisMonth, onPress: () => handleQuickChipPress('this_month'), active: periodFilter === 'this_month' },
     ];
-    // Add payment method chips
-    for (const m of usedMethods) {
-      chips.push({
-        key: m,
-        label: METHOD_LABEL[m],
-        icon: METHOD_ICON[m],
-        onPress: () => { setFilterMethod((prev) => prev === m ? 'all' : m); lightTap(); },
-        active: filterMethod === m,
-      });
-    }
     return chips;
-  }, [usedMethods, filterMethod, periodFilter, hasActiveFilters, handleResetFilters, handleQuickChipPress, t, METHOD_LABEL]);
+  }, [periodFilter, hasActiveFilters, handleResetFilters, handleQuickChipPress, t]);
 
   return (
     <View style={styles.screen}>
@@ -518,6 +509,25 @@ const SellerTransactions: React.FC = () => {
           )}
         />
       </Animated.View>
+
+      {/* Active filter summary */}
+      {hasActiveFilters && (
+        <View style={styles.resultRow}>
+          <Text style={styles.resultText}>
+            {filtered.length} of {allPayments.length}
+          </Text>
+          <TouchableOpacity
+            onPress={handleResetFilters}
+            activeOpacity={0.7}
+            style={styles.clearFiltersBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Clear all filters"
+          >
+            <Feather name="x" size={14} color={C.bronze} />
+            <Text style={styles.clearFiltersBtnText}>clear</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* List */}
       <Animated.View style={[{ flex: 1 }, listAnim]}>
@@ -745,6 +755,7 @@ const SellerTransactions: React.FC = () => {
             )}
           </Pressable>
         </Pressable>
+        <ModalToastHost />
       </Modal>
       )}
 
@@ -759,12 +770,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.background,
   },
   header: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
     paddingBottom: SPACING.xs,
     maxWidth: 680,
-    width: '100%',
-    alignSelf: 'center' as const,
   },
   headerLabel: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -776,28 +785,26 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   headerSubtitle: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
-    marginTop: 2,
+    marginTop: SPACING.xs,
   },
   summaryCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: C.surface,
-    marginHorizontal: SPACING.lg,
+    marginHorizontal: SPACING.xl,
     marginTop: SPACING.md,
     marginBottom: SPACING.sm,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: withAlpha(C.textPrimary, 0.08),
     maxWidth: 680,
-    width: '100%',
-    alignSelf: 'center' as const,
   },
   summaryLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
-    marginBottom: 2,
+    marginBottom: SPACING.xs,
   },
   summaryAmount: {
     fontSize: TYPOGRAPHY.size.xl,
@@ -814,10 +821,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   exportBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -826,22 +833,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   searchRowOuter: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     marginBottom: SPACING.sm,
     gap: SPACING.sm,
     maxWidth: 680,
-    width: '100%',
-    alignSelf: 'center' as const,
   },
   searchRow: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
+    borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
-    borderWidth: 1,
-    borderColor: C.border,
     minHeight: 44,
     gap: SPACING.sm,
   },
@@ -849,20 +852,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textPrimary,
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.xs,
   },
   sortButton: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.lg,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     alignItems: 'center',
     justifyContent: 'center',
   },
   sortButtonActive: {
-    borderColor: C.bronze,
+    backgroundColor: withAlpha(C.bronze, 0.1),
   },
   sortActiveDot: {
     position: 'absolute',
@@ -878,28 +879,28 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Quick chips ──
   quickChipRow: {
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     paddingBottom: SPACING.sm,
-    gap: 6,
+    gap: SPACING.sm,
   },
   quickChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    paddingHorizontal: 10,
+    paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    minHeight: 32,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
   },
   quickChipActive: {
+    backgroundColor: withAlpha(C.bronze, 0.1),
+    borderWidth: 1,
     borderColor: C.bronze,
   },
   quickChipText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
+    color: C.textMuted,
   },
   quickChipTextActive: {
     color: C.bronze,
@@ -908,11 +909,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── List ──
   listContent: {
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     paddingBottom: SPACING['2xl'],
     maxWidth: 680,
-    width: '100%',
-    alignSelf: 'center' as const,
   },
   dateHeaderRow: {
     flexDirection: 'row',
@@ -938,11 +937,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: C.surface,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.xl,
     padding: SPACING.md,
     marginBottom: SPACING.xs,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: withAlpha(C.textPrimary, 0.08),
   },
   txIcon: {
     width: 36,
@@ -977,7 +976,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 2,
+    marginTop: SPACING.xs,
   },
   txMeta: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -991,13 +990,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   txNote: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
-    marginTop: 3,
+    marginTop: SPACING.xs,
     fontStyle: 'italic',
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 80,
+    paddingTop: SPACING['4xl'],
     gap: SPACING.md,
   },
   emptyText: {
@@ -1010,10 +1009,36 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
+  // ── Result row (visible when filters active) ──
+  resultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.xl,
+    marginBottom: SPACING.xs,
+  },
+  resultText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontVariant: ['tabular-nums'],
+  },
+  clearFiltersBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.xs,
+  },
+  clearFiltersBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
   // ── Filter modal ──
   sortOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: withAlpha(C.dimBg, 0.42),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1054,16 +1079,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: SPACING.xs,
     paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    minHeight: 30,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
   },
   filterPillActive: {
-    borderColor: C.bronze,
+    backgroundColor: withAlpha(C.bronze, 0.1),
   },
   filterPillText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1076,7 +1099,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   filterSortDone: {
     alignItems: 'center',
-    paddingVertical: SPACING.sm + 2,
+    paddingVertical: SPACING.sm,
     marginTop: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: C.border,
@@ -1096,7 +1119,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: withAlpha(C.accent, 0.05),
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     gap: SPACING.sm,

@@ -5,6 +5,8 @@ import { useDebtStore } from '../store/debtStore';
 import { useReceiptStore } from '../store/receiptStore';
 import { useSavingsStore } from '../store/savingsStore';
 import { useSettingsStore } from '../store/settingsStore';
+import { useTombstoneStore } from '../store/tombstoneStore';
+import { autoReconcileWallets } from '../utils/walletReconcile';
 import type {
   Transaction,
   Subscription,
@@ -89,6 +91,7 @@ function walletToRemote(userId: string, w: Wallet) {
     name: w.name,
     type: w.type ?? 'bank',
     balance: w.balance,
+    initial_balance: w.initialBalance ?? w.balance,
     is_default: !!w.isDefault,
     used_credit: w.usedCredit ?? null,
     credit_limit: w.creditLimit ?? null,
@@ -264,6 +267,7 @@ function walletFromRemote(r: any): Wallet {
     name: r.name,
     type: r.type,
     balance: Number(r.balance),
+    initialBalance: r.initial_balance != null ? Number(r.initial_balance) : Number(r.balance),
     icon: r.icon ?? '',
     color: r.color ?? '',
     isDefault: !!r.is_default,
@@ -496,17 +500,32 @@ async function pullAll(userId: string): Promise<boolean> {
     const r = useReceiptStore.getState();
     const s = useSavingsStore.getState();
 
-    const tsTx = new Set(p._deletedTransactionIds ?? []);
-    const tsSub = new Set(p._deletedSubscriptionIds ?? []);
-    const tsBud = new Set(p._deletedBudgetIds ?? []);
-    const tsGoal = new Set(p._deletedGoalIds ?? []);
-    const tsWallet = new Set(w._deletedWalletIds ?? []);
-    const tsTransfer = new Set(w._deletedTransferIds ?? []);
-    const tsDebt = new Set(d._deletedDebtIds ?? []);
-    const tsSplit = new Set(d._deletedSplitIds ?? []);
-    const tsContact = new Set(d._deletedContactIds ?? []);
-    const tsSavings = new Set(s._deletedSavingsIds ?? []);
-    const tsReceipt = new Set(r._deletedReceiptIds ?? []);
+    // Durable tombstones survive push/clear cycles — the single source of truth
+    // for "was this item deleted locally?". The ephemeral _deleted*Ids are still
+    // used for the push phase (remote DELETE), but for pull filtering we use the
+    // durable set which is a superset.
+    const durableTombstones = useTombstoneStore.getState().allTombstonedIds();
+
+    // Merge ephemeral + durable for each entity type (durable is a superset,
+    // but include ephemeral for completeness in case tombstoneStore hasn't
+    // persisted yet on a fresh delete).
+    const mergeTs = (ephemeral: string[] | undefined): Set<string> => {
+      const merged = new Set(durableTombstones);
+      if (ephemeral) for (const id of ephemeral) merged.add(id);
+      return merged;
+    };
+
+    const tsTx = mergeTs(p._deletedTransactionIds);
+    const tsSub = mergeTs(p._deletedSubscriptionIds);
+    const tsBud = mergeTs(p._deletedBudgetIds);
+    const tsGoal = mergeTs(p._deletedGoalIds);
+    const tsWallet = mergeTs(w._deletedWalletIds);
+    const tsTransfer = mergeTs(w._deletedTransferIds);
+    const tsDebt = mergeTs(d._deletedDebtIds);
+    const tsSplit = mergeTs(d._deletedSplitIds);
+    const tsContact = mergeTs(d._deletedContactIds);
+    const tsSavings = mergeTs(s._deletedSavingsIds);
+    const tsReceipt = mergeTs(r._deletedReceiptIds);
 
     const [
       transactions,
@@ -546,11 +565,9 @@ async function pullAll(userId: string): Promise<boolean> {
     const receiptState = useReceiptStore.getState();
     const savingsState = useSavingsStore.getState();
 
-    const allDeletedIds = new Set([
-      ...(tsTx), ...(tsSub), ...(tsBud), ...(tsGoal),
-      ...(tsWallet), ...(tsTransfer), ...(tsDebt), ...(tsSplit),
-      ...(tsContact), ...(tsSavings), ...(tsReceipt),
-    ]);
+    // All tombstoned IDs — durable + ephemeral combined. Used by mergeById
+    // to prevent resurrecting items that were deleted locally.
+    const allDeletedIds = durableTombstones;
 
     const mergeById = <T extends { id: string; updatedAt?: Date }>(local: T[], remote: T[]): T[] => {
       const map = new Map<string, T>();
@@ -737,6 +754,12 @@ export async function syncPersonal(): Promise<void> {
   }
 
   const run = async () => {
+    // Prune expired durable tombstones (>30 days) before sync
+    const pruned = useTombstoneStore.getState().pruneExpired();
+    if (pruned > 0 && __DEV__) {
+      console.log(`[personalSync] pruned ${pruned} expired tombstones`);
+    }
+
     const syncStart = new Date().toISOString();
     const snapshotIds = captureLocalIds();
     const pulled = await pullAll(session.user.id);
@@ -745,6 +768,14 @@ export async function syncPersonal(): Promise<void> {
     }
     await pushAll(session.user.id, syncStart, snapshotIds);
     useSettingsStore.getState().setLastPersonalSyncAt(new Date());
+
+    // Post-sync reconciliation: fix wallet balance drift caused by
+    // multi-device sync (CF-10) overwriting balances with stale values.
+    try {
+      autoReconcileWallets();
+    } catch {
+      // best-effort — sync succeeded, don't fail on reconciliation error
+    }
   };
 
   inflight = run().finally(() => {

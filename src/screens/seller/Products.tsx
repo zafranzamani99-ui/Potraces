@@ -1684,7 +1684,7 @@ const Products: React.FC = () => {
                       accessibilityRole="switch"
                       accessibilityState={{ checked: p.isActive }}
                     >
-                      <View style={[styles.detailStatusDot, { backgroundColor: p.isActive ? C.olive : C.textMuted }]} />
+                      <View style={[styles.detailStatusDot, { backgroundColor: p.isActive ? C.accent : C.textMuted }]} />
                       <Text style={styles.detailToggleLabel}>{p.isActive ? sl.activeStatus : sl.inactiveStatus}</Text>
                       <View style={{ flex: 1 }} />
                       <View style={[styles.toggleTrack, p.isActive && styles.toggleTrackActive]}>

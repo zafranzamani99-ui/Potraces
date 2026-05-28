@@ -49,6 +49,7 @@ import { useToast } from '../../context/ToastContext';
 import { lightTap, selectionChanged } from '../../services/haptics';
 import { formatAmount } from '../../utils/formatters';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
+import ModalToastHost from '../../components/common/ModalToastHost';
 
 type FilterType = 'all' | 'expense' | 'income';
 type DateRange = 'this_month' | 'last_month' | 'last_3_months' | 'this_year' | 'all_time';
@@ -1137,6 +1138,7 @@ const TransactionsList: React.FC = () => {
             </View>
           </View>
         </Pressable>
+        <ModalToastHost />
       </Modal>
       )}
 
@@ -1205,18 +1207,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withAlpha(C.textPrimary, 0.04),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     marginHorizontal: SPACING['2xl'],
     marginTop: SPACING.sm,
     paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.full, // pill, not rounded-rect
+    borderRadius: RADIUS.full,
     gap: SPACING.sm,
   },
   searchInput: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textPrimary,
-    paddingVertical: SPACING.sm + 2, // 10
+    paddingVertical: SPACING.sm,
   },
 
   // ── Filter pills — separate pills, dark active, light inactive (reference-matched) ──
@@ -1232,10 +1234,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.md + 2, // 18
-    paddingVertical: SPACING.sm + 2,   // 10
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textPrimary, 0.04),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
   },
   filterPillActive: {
     backgroundColor: C.textPrimary,
@@ -1260,14 +1262,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   activeFiltersRow: {
     paddingHorizontal: SPACING['2xl'],
     paddingTop: SPACING.sm,
-    gap: SPACING.xs + 2,
+    gap: SPACING.xs,
   },
   activeFilterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: SPACING.xs / 2 + 2,
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
     backgroundColor: withAlpha(C.accent, 0.06),
     borderWidth: 1,
@@ -1322,7 +1324,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     textAlign: 'center',
-    marginBottom: SPACING.xs + 2,
+    marginBottom: SPACING.xs,
     letterSpacing: -0.2,
   },
   emptySubline: {
@@ -1364,7 +1366,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textPrimary, 0.05),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
   },
   selectHeaderBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1445,8 +1447,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textMuted,
     marginTop: SPACING.lg,
-    marginBottom: SPACING.sm + 2,
-    letterSpacing: 0.6, // airy tracking for label-like all-lowercase labels
+    marginBottom: SPACING.sm,
+    letterSpacing: 0.6,
     textTransform: 'lowercase',
   },
   filterChipGrid: {
@@ -1459,11 +1461,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   filterOptionChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: SPACING.md + 2,
-    paddingVertical: SPACING.sm + 2,
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textPrimary, 0.04),
+    backgroundColor: withAlpha(C.textMuted, 0.06),
   },
   filterOptionChipActive: {
     backgroundColor: C.textPrimary,

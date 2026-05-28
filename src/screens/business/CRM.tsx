@@ -33,6 +33,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
 import ProgressBar from '../../components/common/ProgressBar';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import FAB from '../../components/common/FAB';
 import { useToast } from '../../context/ToastContext';
 import { Customer, CustomerOrder, OrderItem } from '../../types';
@@ -831,6 +832,7 @@ const CRM: React.FC = () => {
               </KeyboardAwareScrollView>
             </View>
         </View>
+        <ModalToastHost />
       </Modal>
       )}
 
@@ -1164,6 +1166,7 @@ const CRM: React.FC = () => {
             )}
           </View>
         </View>
+        <ModalToastHost />
       </Modal>
       )}
 
@@ -1414,6 +1417,7 @@ const CRM: React.FC = () => {
               </KeyboardAwareScrollView>
             </View>
         </View>
+        <ModalToastHost />
       </Modal>
       )}
 
@@ -1514,6 +1518,7 @@ const CRM: React.FC = () => {
               </KeyboardAwareScrollView>
             </View>
         </View>
+        <ModalToastHost />
       </Modal>
       )}
 

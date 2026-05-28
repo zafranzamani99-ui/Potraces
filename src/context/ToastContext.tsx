@@ -3,13 +3,28 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import RootSiblings from 'react-native-root-siblings';
 import Toast, { ToastAction } from '../components/common/Toast';
 
-type ToastType = 'success' | 'error' | 'info';
+export type ToastType = 'success' | 'error' | 'info';
 
 interface ToastContextValue {
   showToast: (message: string, type?: ToastType, action?: ToastAction) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | undefined>(undefined);
+
+// --- Modal toast host registry ---
+interface ModalHostEntry {
+  show: (message: string, type: ToastType, action?: ToastAction) => void;
+}
+
+const modalHostStack: ModalHostEntry[] = [];
+
+export function registerModalToastHost(entry: ModalHostEntry): () => void {
+  modalHostStack.push(entry);
+  return () => {
+    const idx = modalHostStack.indexOf(entry);
+    if (idx >= 0) modalHostStack.splice(idx, 1);
+  };
+}
 
 let _globalShowToast: ((message: string, type?: ToastType, action?: ToastAction) => void) | null = null;
 export function globalShowToast(message: string, type: ToastType = 'success', action?: ToastAction) {
@@ -37,6 +52,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const showToast = useCallback((msg: string, toastType: ToastType = 'success', toastAction?: ToastAction) => {
+    if (modalHostStack.length > 0) {
+      modalHostStack[modalHostStack.length - 1].show(msg, toastType, toastAction);
+      return;
+    }
     if (siblingRef.current) {
       siblingRef.current.destroy();
       siblingRef.current = null;

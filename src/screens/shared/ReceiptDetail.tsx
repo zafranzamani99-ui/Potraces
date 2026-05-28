@@ -27,6 +27,7 @@ import { shareCapturedReceipt } from '../../services/receiptImageExport';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useToast } from '../../context/ToastContext';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import type { RootStackParamList } from '../../types';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -441,6 +442,7 @@ const ReceiptDetail: React.FC = () => {
             />
           </View>
         </TouchableOpacity>
+        <ModalToastHost />
       </Modal>
 
     </View>

@@ -21,6 +21,7 @@ import Reanimated, {
 import { lightTap } from '../../services/haptics';
 import { useCalm } from '../../hooks/useCalm';
 import { SPACING, RADIUS, SHADOWS, withAlpha } from '../../constants';
+import ModalToastHost from './ModalToastHost';
 
 const SPRING_OPEN = { damping: 22, stiffness: 220, mass: 0.5 };
 const CLOSE_DURATION = 220;
@@ -160,6 +161,7 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
           </View>
         )}
       </Reanimated.View>
+      <ModalToastHost />
     </Modal>
   );
 };

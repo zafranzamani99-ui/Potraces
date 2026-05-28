@@ -27,6 +27,7 @@ import EmptyState from '../../components/common/EmptyState';
 import { SaleItem } from '../../types';
 import { useToast } from '../../context/ToastContext';
 import { successNotification } from '../../services/haptics';
+import ModalToastHost from '../../components/common/ModalToastHost';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CART_COLLAPSED_WIDTH = SCREEN_WIDTH * 0.33;
@@ -839,6 +840,7 @@ const POS: React.FC = () => {
             </View>
           </View>
         </BlurView>
+        <ModalToastHost />
       </Modal>
       )}
     </View>

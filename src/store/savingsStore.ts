@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SavingsState, SavingsSortBy, SnapshotType } from '../types';
+import { useTombstoneStore } from './tombstoneStore';
 import { newId } from '../utils/id';
 import { roundMoney } from '../utils/money';
 
@@ -48,12 +49,14 @@ export const useSavingsStore = create<SavingsState>()(
           ),
         })),
 
-      deleteAccount: (id) =>
+      deleteAccount: (id) => {
         set((state) => ({
           accounts: state.accounts.filter((a) => a.id !== id),
           accountOrder: state.accountOrder.filter((oid) => oid !== id),
           _deletedSavingsIds: [...(state._deletedSavingsIds ?? []), id],
-        })),
+        }));
+        useTombstoneStore.getState().addTombstones([id]);
+      },
 
       addSnapshot: (accountId, value, note, snapshotType) =>
         set((state) => ({

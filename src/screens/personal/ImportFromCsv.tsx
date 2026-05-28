@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import { lightTap } from '../../services/haptics';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
@@ -376,6 +377,7 @@ const ImportFromCsv: React.FC = () => {
             ))}
           </Pressable>
         </Pressable>
+        <ModalToastHost />
       </Modal>
     </View>
   );

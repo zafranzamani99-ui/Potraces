@@ -12,6 +12,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import ModalToastHost from '../common/ModalToastHost';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -219,6 +220,7 @@ const RepayModal: React.FC<RepayModalProps> = ({
           </View>
         </Reanimated.View>
       </GestureHandlerRootView>
+      <ModalToastHost />
     </Modal>
   );
 };

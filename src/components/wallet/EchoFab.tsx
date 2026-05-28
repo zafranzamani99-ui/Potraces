@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Animated, View, TouchableOpacity, Alert, StyleSheet, PanResponderInstance } from 'react-native';
+import React, { useMemo, RefObject } from 'react';
+import { Animated, View, TouchableOpacity, StyleSheet, PanResponderInstance } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { EdgeInsets } from 'react-native-safe-area-context';
 import { CALM, CALM_DARK, SPACING, RADIUS, SHADOWS, TYPOGRAPHY, withAlpha } from '../../constants';
@@ -7,6 +7,7 @@ import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
 import TypewriterText from '../common/TypewriterText';
+import EchoDragHideZone from './EchoDragHideZone';
 
 interface GreetingChip {
   label: string;
@@ -26,10 +27,14 @@ interface EchoFabProps {
   onSetGreetingHiddenDuringDrag: (hidden: boolean) => void;
   greetingChips: GreetingChip[];
   onOpenSheet: (autoPrompt?: string) => void;
-  onHideEcho: () => void;
+  onHideEcho?: () => void;
   tier: string;
   onShowPaywall: () => void;
   insets: EdgeInsets;
+  fabScale?: Animated.Value;
+  hideZoneAnim?: Animated.Value;
+  hideZoneHoverAnim?: Animated.Value;
+  hideZoneRef?: RefObject<View | null>;
 }
 
 const makeStyles = (C: typeof CALM) => StyleSheet.create({
@@ -125,10 +130,13 @@ const EchoFab: React.FC<EchoFabProps> = ({
   greetingHiddenDuringDrag,
   greetingChips,
   onOpenSheet,
-  onHideEcho,
   tier,
   onShowPaywall,
   insets,
+  fabScale,
+  hideZoneAnim,
+  hideZoneHoverAnim,
+  hideZoneRef,
 }) => {
   const C = useCalm();
   const t = useT();
@@ -136,7 +144,10 @@ const EchoFab: React.FC<EchoFabProps> = ({
 
   if (!visible) return null;
 
+  const scaleStyle = fabScale ? [{ scale: fabScale }] : [];
+
   return (
+    <>
     <Animated.View
       style={[
         styles.walletEchoFabContainer,
@@ -144,25 +155,16 @@ const EchoFab: React.FC<EchoFabProps> = ({
           ? { right: SPACING.xl, flexDirection: 'row-reverse' }
           : { left: SPACING.xl, flexDirection: 'row' },
         { top: Math.max(insets.top, 20) + 80 },
-        { transform: echoFabPan.getTranslateTransform() },
+        { transform: [...echoFabPan.getTranslateTransform(), ...scaleStyle] },
       ]}
       {...echoFabPanResponder.panHandlers}
     >
-      {/* FAB always first in JSX — flexDirection positions it left or right */}
       <TouchableOpacity
         style={styles.walletEchoFab}
         onPress={() => { lightTap(); if (tier !== 'premium') { onShowPaywall(); return; } onOpenSheet(undefined); onSetGreetingDismissed(true); }}
-        onLongPress={() => {
-          lightTap();
-          Alert.alert(t.wallets.hideEchoTitle, t.wallets.hideEchoMsg, [
-            { text: t.common.cancel, style: 'cancel' },
-            { text: t.wallets.hideEchoAction, onPress: () => onHideEcho() },
-          ]);
-        }}
-        delayLongPress={500}
         activeOpacity={0.85}
         accessibilityRole="button"
-        accessibilityLabel="Open Echo assistant (hold to hide)"
+        accessibilityLabel="Open Echo assistant"
       >
         <Feather name="zap" size={22} color={C.onAccent} />
         {tier !== 'premium' && (
@@ -206,6 +208,10 @@ const EchoFab: React.FC<EchoFabProps> = ({
         </TouchableOpacity>
       )}
     </Animated.View>
+    {hideZoneAnim && hideZoneHoverAnim && (
+      <EchoDragHideZone hideZoneAnim={hideZoneAnim} hideZoneHoverAnim={hideZoneHoverAnim} measureRef={hideZoneRef} />
+    )}
+    </>
   );
 };
 
