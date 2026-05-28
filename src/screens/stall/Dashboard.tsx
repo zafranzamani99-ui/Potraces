@@ -19,6 +19,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallHistory } from '../../utils/explainStallHistory';
 import ModeToggle from '../../components/common/ModeToggle';
 import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
+import OfflineBanner from '../../components/common/OfflineBanner';
 
 // ─── Animation helper ────────────────────────────────────────
 function useFadeSlide(delay: number) {
@@ -113,8 +114,8 @@ const StallDashboard: React.FC = () => {
     [sessions]
   );
   const historyInsight = useMemo(
-    () => (closedSessions.length >= 2 ? explainStallHistory(closedSessions) : null),
-    [closedSessions]
+    () => (closedSessions.length >= 2 ? explainStallHistory(closedSessions, currency) : null),
+    [closedSessions, currency]
   );
 
   // Recent sales (last 5 from active session)
@@ -142,6 +143,7 @@ const StallDashboard: React.FC = () => {
           }
         >
           <ModeToggle />
+          <OfflineBanner />
           {/* Selling now indicator */}
           <View style={styles.sellingNowRow}>
             <Animated.View
@@ -242,6 +244,7 @@ const StallDashboard: React.FC = () => {
         }
       >
         <ModeToggle />
+        <OfflineBanner />
         {/* Heading */}
         <Animated.View style={headingAnim}>
           <Text style={styles.heading}>stall</Text>

@@ -57,6 +57,11 @@ export async function pickCsv(): Promise<CsvParseResult | null> {
   });
   if (res.canceled || !res.assets?.length) return null;
   const asset = res.assets[0];
+  const info = await FileSystem.getInfoAsync(asset.uri, { size: true } as any);
+  const size = (info as any).size ?? 0;
+  if (size > 10 * 1024 * 1024) {
+    throw new Error('CSV file is too large (max 10 MB). Try splitting it into smaller files.');
+  }
   const text = await FileSystem.readAsStringAsync(asset.uri, {
     encoding: FileSystem.EncodingType.UTF8,
   });

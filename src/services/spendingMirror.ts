@@ -110,9 +110,15 @@ function buildDataSummary(): string {
     })
     .join('\n');
 
-  // Active subscriptions
+  // Active subscriptions (normalized to monthly)
   const activeSubs = subscriptions.filter((s) => s.isActive);
-  const subsTotal = activeSubs.reduce((s, sub) => s + sub.amount, 0);
+  const subsTotal = activeSubs.reduce((s, sub) => {
+    const cycle = (sub as any).billingCycle || 'monthly';
+    if (cycle === 'yearly') return s + sub.amount / 12;
+    if (cycle === 'weekly') return s + sub.amount * 4.33;
+    if (cycle === 'daily') return s + sub.amount * 30;
+    return s + sub.amount;
+  }, 0);
 
   return `Month: ${monthLabel}
 Day ${now.getDate()} (${daysLeft} days left)

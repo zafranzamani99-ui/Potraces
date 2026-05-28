@@ -10,8 +10,6 @@ import {
   Pressable,
   Animated,
   Easing,
-  PanResponder,
-  useWindowDimensions,
   Image,
   InteractionManager,
 } from 'react-native';
@@ -56,6 +54,7 @@ import RepayModal from '../../components/wallet/RepayModal';
 import WalletActionSheet from '../../components/wallet/WalletActionSheet';
 import BillsPreviewModal from '../../components/wallet/BillsPreviewModal';
 import EchoFab from '../../components/wallet/EchoFab';
+import { useEchoFabPan } from '../../hooks/useEchoFabPan';
 import RepayPickerModal from '../../components/wallet/RepayPickerModal';
 import DeleteConfirmModal from '../../components/wallet/DeleteConfirmModal';
 
@@ -220,71 +219,14 @@ const WalletManagement: React.FC = () => {
   const [fabSide, setFabSide] = useState<'left' | 'right'>('right');
   const [walletChipRotation, setWalletChipRotation] = useState(0);
 
-  // ── Draggable Echo FAB — free X+Y drag, snaps to edge on release ──
-  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
-  const echoFabPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  // When anchor (fabSide) switches, reset X to 0 atomically before the frame paints
-  const prevFabSideRef = useRef<'left' | 'right'>('right');
-  useLayoutEffect(() => {
-    if (prevFabSideRef.current !== fabSide) {
-      prevFabSideRef.current = fabSide;
-      echoFabPan.setValue({ x: 0, y: (echoFabPan.y as any)._value });
-    }
-  }, [fabSide, echoFabPan]);
-  const echoFabPanResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onStartShouldSetPanResponderCapture: () => false,
-        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
-        onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
-        onPanResponderGrant: () => {
-          echoFabPan.setOffset({
-            x: (echoFabPan.x as any)._value,
-            y: (echoFabPan.y as any)._value,
-          });
-          echoFabPan.setValue({ x: 0, y: 0 });
-          setGreetingHiddenDuringDrag(true);
-        },
-        onPanResponderMove: Animated.event(
-          [null, { dx: echoFabPan.x, dy: echoFabPan.y }],
-          { useNativeDriver: false }
-        ),
-        onPanResponderRelease: () => {
-          echoFabPan.flattenOffset();
-          const curX = (echoFabPan.x as any)._value;
-          const curY = (echoFabPan.y as any)._value;
-          const safeTop = Math.max(insets.top, 20);
-          const defaultTop = safeTop + 80;
-          // Determine target side from projected FAB center
-          const fabCenterX = fabSide === 'right'
-            ? SCREEN_W - SPACING.xl - 28 + curX
-            : SPACING.xl + 28 + curX;
-          const newSide = fabCenterX < SCREEN_W / 2 ? 'left' : 'right';
-          // Snap X in CURRENT anchor coords — don't switch anchor until spring is done
-          const edgeSpan = SCREEN_W - 2 * SPACING.xl - 56;
-          const snapX = fabSide === newSide ? 0
-            : fabSide === 'right' ? -edgeSpan : edgeSpan;
-          // Y clamp
-          const minY = -(defaultTop - 8);
-          const maxY = SCREEN_H - insets.top - 44 - insets.bottom - 80 - 56 - defaultTop;
-          const clampedY = Math.max(minY, Math.min(maxY, curY));
-          Animated.spring(echoFabPan, {
-            toValue: { x: snapX, y: clampedY },
-            useNativeDriver: false,
-            friction: 14,
-            tension: 100,
-          }).start(() => {
-            // useLayoutEffect resets X to 0 atomically when fabSide changes — no flicker
-            setFabSide(newSide);
-            setGreetingHiddenDuringDrag(false);
-          });
-        },
-      }),
-    // fabSide in deps — release uses it to compute FAB center X
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [echoFabPan, fabSide, SCREEN_W, SCREEN_H, insets.top, insets.bottom]
-  );
+  // ── Draggable Echo FAB — free X+Y drag, snaps to edge, drag-to-hide ──
+  const { echoFabPan, echoFabPanResponder, hideZoneAnim, hideZoneHoverAnim, fabScale, hideZoneRef } = useEchoFabPan({
+    fabSide,
+    setFabSide,
+    setGreetingHiddenDuringDrag,
+    onHide: () => setEchoHidden(true),
+    insets,
+  });
 
   // Swipeable refs per wallet (for closing after action)
   const swipeRefs = useRef<Record<string, React.RefObject<SwipeableMethods | null>>>({}).current;
@@ -478,7 +420,22 @@ const WalletManagement: React.FC = () => {
 
     // 4. Healthy — highlight the buffer
     if (totalBalance > 500) {
-      const months = totalBalance / Math.max(1500, 1); // rough baseline monthly expense
+      // Calculate actual avg monthly expenses from last 3 months
+      const now = new Date();
+      const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+      const recentExpenses = transactions.filter(
+        (t) => t.type === 'expense' && t.date >= threeMonthsAgo
+      );
+      const totalExpenses = recentExpenses.reduce((s, t) => s + (t.amount || 0), 0);
+      const avgMonthly = totalExpenses / 3;
+
+      if (avgMonthly <= 0) {
+        return {
+          title: `you're holding ${currency} ${totalBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+          subtitle: `not enough expense history to estimate runway yet. keep tracking and it'll appear.`,
+        };
+      }
+      const months = totalBalance / avgMonthly;
       return {
         title: `you're holding ${currency} ${totalBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
         subtitle: months >= 3
@@ -492,7 +449,7 @@ const WalletManagement: React.FC = () => {
       title: `cash reserve is thin`,
       subtitle: `a buffer worth one week of expenses turns panic into patience. start small.`,
     };
-  }, [wallets, bankWallets, ewalletWallets, creditWallets, totalBalance, currency]);
+  }, [wallets, bankWallets, ewalletWallets, creditWallets, totalBalance, currency, transactions]);
 
   // ─── Build wallet snapshot for Echo ───
   const buildWalletSnapshot = useCallback(() => {
@@ -1640,10 +1597,13 @@ const WalletManagement: React.FC = () => {
           setEchoSheetVisible(true);
           setGreetingDismissed(true);
         }}
-        onHideEcho={() => setEchoHidden(true)}
         tier={tier}
         onShowPaywall={() => setPaywallVisible(true)}
         insets={insets}
+        fabScale={fabScale}
+        hideZoneAnim={hideZoneAnim}
+        hideZoneHoverAnim={hideZoneHoverAnim}
+        hideZoneRef={hideZoneRef}
       />
 
       {/* ── Echo inline chat sheet ── */}

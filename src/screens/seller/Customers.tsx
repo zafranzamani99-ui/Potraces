@@ -1,14 +1,14 @@
-import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable,
   TextInput, Animated, Linking, Platform, Alert, Modal, RefreshControl, Keyboard,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { KeyboardAwareScrollView, KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView as KAView } from 'react-native-keyboard-controller';
 import { useNavigation } from '@react-navigation/native';
-import { isToday, isYesterday, format } from 'date-fns';
+import { isToday, isYesterday, format, isValid } from 'date-fns';
 import * as Clipboard from 'expo-clipboard';
 import * as Contacts from 'expo-contacts';
 import { useSellerStore } from '../../store/sellerStore';
@@ -19,10 +19,12 @@ import { lightTap, mediumTap, selectionChanged, warningNotification } from '../.
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { SellerOrder, SellerCustomer } from '../../types';
+import ModalToastHost from '../../components/common/ModalToastHost';
 
 // ─── Smart date label ─────────────────────────────────────────
 function smartDateLabel(date: Date | string): string {
   const d = date instanceof Date ? date : new Date(date);
+  if (!isValid(d)) return '---';
   if (isToday(d)) return 'today';
   if (isYesterday(d)) return 'yesterday';
   return format(d, 'dd MMM');
@@ -35,6 +37,7 @@ interface DerivedCustomer {
   totalSpent: number;
   unpaidAmount: number;
   lastOrderDate: Date;
+  firstOrderDate: Date;
   phone?: string;
   address?: string;
   note?: string;
@@ -44,10 +47,11 @@ interface DerivedCustomer {
 }
 
 type FilterTab = 'all' | 'owes' | 'repeat';
-type SortOption = 'recent' | 'name' | 'orders' | 'spent' | 'debt';
+type SortOption = 'recent' | 'name' | 'orders' | 'spent' | 'debt' | 'followup';
 
 const SORT_OPTIONS: { label: string; value: SortOption; icon: keyof typeof Feather.glyphMap }[] = [
   { label: 'most recent', value: 'recent', icon: 'clock' },
+  { label: 'needs follow-up', value: 'followup', icon: 'bell' },
   { label: 'name A–Z', value: 'name', icon: 'type' },
   { label: 'most orders', value: 'orders', icon: 'shopping-bag' },
   { label: 'most spent', value: 'spent', icon: 'dollar-sign' },
@@ -225,6 +229,7 @@ interface DetailModalProps {
   onViewOrders: () => void;
   onDeleteCustomer: () => void;
   onNewOrder: () => void;
+  onRemind: () => void;
   styles: ReturnType<typeof makeStyles>;
 }
 
@@ -241,6 +246,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
   onViewOrders,
   onDeleteCustomer,
   onNewOrder,
+  onRemind,
   styles,
 }) => {
   const C = useCalm();
@@ -291,11 +297,9 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.detailOverlay}>
-        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
-        <View style={[styles.detailSheet, { paddingBottom: Math.max(SPACING['3xl'], insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
+        <View style={styles.detailSheet} onStartShouldSetResponder={() => true}>
           <ScrollView bounces={false} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-            <View style={styles.modalHandle} />
-
             {/* Header — avatar + name + close */}
             <View style={styles.detailHeader}>
               <View style={styles.detailHeaderLeft}>
@@ -304,21 +308,22 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                     {customer.name.charAt(0).toUpperCase()}
                   </Text>
                 </View>
-                <View>
-                  <Text style={styles.detailName}>{customer.name}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.detailName} numberOfLines={1}>{customer.name}</Text>
                   <Text style={styles.detailSub}>
-                    {customer.totalOrders} order{customer.totalOrders !== 1 ? 's' : ''} · last {lastOrderLabel}
+                    {customer.totalOrders} order{customer.totalOrders !== 1 ? 's' : ''} · last {lastOrderLabel} · since {format(customer.firstOrderDate, 'MMM yyyy')}
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity
+              <Pressable
                 onPress={onClose}
+                style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"
                 accessibilityLabel="Close"
               >
-                <Feather name="x" size={22} color={C.textMuted} />
-              </TouchableOpacity>
+                <Feather name="x" size={16} color={C.textMuted} />
+              </Pressable>
             </View>
 
             {/* Insights row */}
@@ -381,6 +386,22 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
                 </Text>
               </TouchableOpacity>
             ) : null}
+
+            {/* WhatsApp reminder for unpaid */}
+            {customer.unpaidAmount > 0 && customer.phone && (
+              <TouchableOpacity
+                style={styles.remindButton}
+                activeOpacity={0.7}
+                onPress={() => { lightTap(); onRemind(); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remind ${customer.name} about outstanding balance via WhatsApp`}
+              >
+                <Feather name="message-circle" size={15} color={C.onAccent} />
+                <Text style={styles.remindButtonText}>
+                  remind · {currency} {customer.unpaidAmount.toFixed(2)} unpaid
+                </Text>
+              </TouchableOpacity>
+            )}
 
             {/* Note */}
             {customer.note ? (
@@ -507,6 +528,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
           </ScrollView>
         </View>
       </View>
+      <ModalToastHost />
     </Modal>
   );
 };
@@ -542,6 +564,7 @@ const SellerCustomers: React.FC = () => {
   const [editNote, setEditNote] = useState('');
   const [editName, setEditName] = useState('');
   const [editIsVip, setEditIsVip] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   // ─── Contact picker state ─────────────────────────────────
   const [showContactPicker, setShowContactPicker] = useState(false);
@@ -565,6 +588,7 @@ const SellerCustomers: React.FC = () => {
           totalSpent: 0,
           unpaidAmount: 0,
           lastOrderDate: new Date(order.date),
+          firstOrderDate: new Date(order.date),
           phone: order.customerPhone || undefined,
           orders: [],
         };
@@ -582,6 +606,9 @@ const SellerCustomers: React.FC = () => {
       const orderDate = order.date instanceof Date ? order.date : new Date(order.date);
       if (orderDate > entry.lastOrderDate) {
         entry.lastOrderDate = orderDate;
+      }
+      if (orderDate < entry.firstOrderDate) {
+        entry.firstOrderDate = orderDate;
       }
 
       if (!entry.phone && order.customerPhone) {
@@ -610,12 +637,14 @@ const SellerCustomers: React.FC = () => {
     for (const stored of sellerCustomers) {
       const key = stored.name.toLowerCase();
       if (!map[key]) {
+        const storedDate = stored.createdAt instanceof Date ? stored.createdAt : new Date(stored.createdAt);
         map[key] = {
           name: stored.name,
           totalOrders: 0,
           totalSpent: 0,
           unpaidAmount: 0,
-          lastOrderDate: stored.createdAt instanceof Date ? stored.createdAt : new Date(stored.createdAt),
+          lastOrderDate: storedDate,
+          firstOrderDate: storedDate,
           phone: stored.phone,
           address: stored.address,
           note: stored.note,
@@ -670,6 +699,16 @@ const SellerCustomers: React.FC = () => {
       case 'debt':
         list.sort((a, b) => b.unpaidAmount - a.unpaidAmount);
         break;
+      case 'followup': {
+        const now = Date.now();
+        const DAY = 86400000;
+        list.sort((a, b) => {
+          const sa = (a.unpaidAmount > 0 ? 1000 : 0) + (now - a.lastOrderDate.getTime()) / DAY;
+          const sb = (b.unpaidAmount > 0 ? 1000 : 0) + (now - b.lastOrderDate.getTime()) / DAY;
+          return sb - sa;
+        });
+        break;
+      }
     }
 
     // Filter tab
@@ -899,13 +938,43 @@ const SellerCustomers: React.FC = () => {
   // ─── Empty state helper ───────────────────────────────────
   const openAddCustomerModal = useCallback(() => {
     lightTap();
-    setEditingCustomer({ name: '', totalOrders: 0, totalSpent: 0, unpaidAmount: 0, lastOrderDate: new Date(), orders: [] });
+    const now = new Date();
+    setEditingCustomer({ name: '', totalOrders: 0, totalSpent: 0, unpaidAmount: 0, lastOrderDate: now, firstOrderDate: now, orders: [] });
     setEditName('');
     setEditPhone('');
     setEditAddress('');
     setEditNote('');
     setEditModalVisible(true);
   }, []);
+
+  // ─── WhatsApp reminder ────────────────────────────────────
+  const handleWhatsAppReminder = useCallback((customer: DerivedCustomer) => {
+    if (!customer.phone) return;
+    lightTap();
+    let digits = customer.phone.replace(/[^0-9]/g, '');
+    if (digits.startsWith('0')) digits = '60' + digits.slice(1);
+    const msg = `Hi ${customer.name}, just a friendly reminder about your outstanding balance of ${currency} ${customer.unpaidAmount.toFixed(2)}. Thank you!`;
+    Linking.openURL(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`);
+  }, [currency]);
+
+  // ─── Header add button ────────────────────────────────────
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRightContainerStyle: { paddingRight: SPACING.md },
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={openAddCustomerModal}
+          style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Add customer"
+        >
+          <Feather name="plus" size={20} color={C.textPrimary} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, openAddCustomerModal, C, isDark]);
 
   // ─── Import from contacts ─────────────────────────────────
   const handleImportFromContacts = useCallback(async () => {
@@ -952,7 +1021,7 @@ const SellerCustomers: React.FC = () => {
             return;
           }
 
-          setEditingCustomer({ name: '', totalOrders: 0, totalSpent: 0, unpaidAmount: 0, lastOrderDate: new Date(), orders: [] });
+          setEditingCustomer({ name: '', totalOrders: 0, totalSpent: 0, unpaidAmount: 0, lastOrderDate: new Date(), firstOrderDate: new Date(), orders: [] });
           setEditName(c.name!);
           setEditPhone(phone);
           setEditAddress(addr);
@@ -1038,7 +1107,7 @@ const SellerCustomers: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel={`Sort by ${sortBy}`}
         >
-          <Feather name="sliders" size={18} color={sortBy !== 'recent' ? C.onAccent : semantic(BIZ_SAFE.success, isDark)} />
+          <Feather name="sliders" size={18} color={sortBy !== 'recent' ? C.bronze : C.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -1090,31 +1159,8 @@ const SellerCustomers: React.FC = () => {
         </View>
       )}
 
-      {/* Add customer buttons */}
-      <View style={styles.addCustomerRow}>
-        <TouchableOpacity
-          style={styles.addCustomerButton}
-          activeOpacity={0.7}
-          onPress={openAddCustomerModal}
-          accessibilityRole="button"
-          accessibilityLabel="Add a new customer"
-        >
-          <Feather name="user-plus" size={16} color={semantic(BIZ_SAFE.success, isDark)} />
-          <Text style={styles.addCustomerButtonText}>add customer</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.fromContactsButton}
-          activeOpacity={0.7}
-          onPress={handleImportFromContacts}
-          accessibilityRole="button"
-          accessibilityLabel="Import from contacts"
-        >
-          <Feather name="book" size={16} color={C.bronze} />
-          <Text style={styles.fromContactsButtonText}>from contacts</Text>
-        </TouchableOpacity>
-      </View>
     </View>
-  ), [search, sortBy, filter, filterCounts, hasActiveFilters, filteredCustomers.length, derivedCustomers.length, handleClearFilters, openAddCustomerModal, handleImportFromContacts]);
+  ), [search, sortBy, filter, filterCounts, hasActiveFilters, filteredCustomers.length, derivedCustomers.length, handleClearFilters]);
 
   return (
     <View style={styles.container}>
@@ -1135,7 +1181,7 @@ const SellerCustomers: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Add a new customer"
             >
-              <Feather name="user-plus" size={16} color={semantic(BIZ_SAFE.success, isDark)} />
+              <Feather name="user-plus" size={16} color={C.onAccent} />
               <Text style={styles.emptyAddButtonText}>add customer</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -1145,7 +1191,7 @@ const SellerCustomers: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Import from contacts"
             >
-              <Feather name="book" size={16} color={C.bronze} />
+              <Feather name="book" size={16} color={C.textSecondary} />
               <Text style={styles.emptyContactsButtonText}>from contacts</Text>
             </TouchableOpacity>
           </View>
@@ -1211,6 +1257,7 @@ const SellerCustomers: React.FC = () => {
         onViewOrders={() => selectedCustomer && handleViewOrders(selectedCustomer.name)}
         onDeleteCustomer={() => selectedCustomer && handleDeleteCustomer(selectedCustomer)}
         onNewOrder={() => selectedCustomer && handleNewOrder(selectedCustomer)}
+        onRemind={() => selectedCustomer && handleWhatsAppReminder(selectedCustomer)}
         styles={styles}
       />
 
@@ -1256,6 +1303,7 @@ const SellerCustomers: React.FC = () => {
             })}
           </View>
         </TouchableOpacity>
+        <ModalToastHost />
       </Modal>
 
       {/* ─── Edit modal ─── */}
@@ -1269,37 +1317,44 @@ const SellerCustomers: React.FC = () => {
           setEditingCustomer(null);
         }}
       >
-        <View style={styles.modalOverlay}>
+        <KAView style={styles.modalOverlay} behavior="padding">
           <TouchableOpacity
-            style={{ flex: 1 }}
+            style={StyleSheet.absoluteFillObject}
             activeOpacity={1}
             onPress={() => {
               setEditModalVisible(false);
               setEditingCustomer(null);
             }}
           />
-          <View
+          <Pressable
             style={styles.modalContent}
-            onStartShouldSetResponder={() => true}
+            onPress={() => Keyboard.dismiss()}
           >
-            <KeyboardAwareScrollView bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Math.max(SPACING['3xl'], insets.bottom + SPACING.lg) }}>
-              <View style={styles.modalHandle} />
-
+            <ScrollView bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={{ paddingBottom: SPACING.xl }}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>
-                  {editingCustomer?.storedId ? 'edit details' : 'new customer'}
-                </Text>
-                <TouchableOpacity
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalTitle}>
+                    {editingCustomer?.storedId ? 'edit ' : 'new '}
+                    <Text style={styles.modalTitleAccent}>
+                      {editingCustomer?.storedId ? 'details' : 'customer'}
+                    </Text>
+                  </Text>
+                  <Text style={styles.modalSubtitle}>
+                    {editingCustomer?.storedId ? 'update customer details' : 'add a new customer to your list'}
+                  </Text>
+                </View>
+                <Pressable
                   onPress={() => {
                     setEditModalVisible(false);
                     setEditingCustomer(null);
                   }}
+                  style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   accessibilityRole="button"
                   accessibilityLabel="Close modal"
                 >
-                  <Feather name="x" size={22} color={C.textMuted} />
-                </TouchableOpacity>
+                  <Feather name="x" size={16} color={C.textMuted} />
+                </Pressable>
               </View>
 
               {/* From contacts shortcut — only for new customers */}
@@ -1320,12 +1375,14 @@ const SellerCustomers: React.FC = () => {
 
               <Text style={styles.modalLabel}>name</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, focusedField === 'name' && styles.modalInputFocused]}
                 value={editName}
                 onChangeText={setEditName}
                 placeholder="customer name"
                 placeholderTextColor={C.textMuted}
                 autoFocus={!editingCustomer?.name}
+                onFocus={() => setFocusedField('name')}
+                onBlur={() => setFocusedField(null)}
                 accessibilityLabel="Customer name"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={C.accent}
@@ -1333,12 +1390,14 @@ const SellerCustomers: React.FC = () => {
 
               <Text style={styles.modalLabel}>phone</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, focusedField === 'phone' && styles.modalInputFocused]}
                 value={editPhone}
                 onChangeText={setEditPhone}
                 placeholder="phone number"
                 placeholderTextColor={C.textMuted}
                 keyboardType="phone-pad"
+                onFocus={() => setFocusedField('phone')}
+                onBlur={() => setFocusedField(null)}
                 accessibilityLabel="Phone number"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={C.accent}
@@ -1346,7 +1405,7 @@ const SellerCustomers: React.FC = () => {
 
               <Text style={styles.modalLabel}>address</Text>
               <TextInput
-                style={[styles.modalInput, styles.modalInputMultiline]}
+                style={[styles.modalInput, styles.modalInputMultiline, focusedField === 'address' && styles.modalInputFocused]}
                 value={editAddress}
                 onChangeText={setEditAddress}
                 placeholder="delivery address"
@@ -1354,6 +1413,8 @@ const SellerCustomers: React.FC = () => {
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
+                onFocus={() => setFocusedField('address')}
+                onBlur={() => setFocusedField(null)}
                 accessibilityLabel="Customer address"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={C.accent}
@@ -1361,11 +1422,13 @@ const SellerCustomers: React.FC = () => {
 
               <Text style={styles.modalLabel}>note</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, focusedField === 'note' && styles.modalInputFocused]}
                 value={editNote}
                 onChangeText={setEditNote}
                 placeholder="allergies, delivery notes, preferences..."
                 placeholderTextColor={C.textMuted}
+                onFocus={() => setFocusedField('note')}
+                onBlur={() => setFocusedField(null)}
                 accessibilityLabel="Customer note"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={C.accent}
@@ -1384,19 +1447,33 @@ const SellerCustomers: React.FC = () => {
                 <Text style={[styles.vipLabel, editIsVip && styles.vipLabelActive]}>VIP customer</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={handleSave}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Save customer details"
-              >
-                <Feather name="check" size={18} color={C.onAccent} />
-                <Text style={styles.saveButtonText}>save</Text>
-              </TouchableOpacity>
-            </KeyboardAwareScrollView>
-          </View>
-        </View>
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => {
+                    setEditModalVisible(false);
+                    setEditingCustomer(null);
+                  }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                >
+                  <Text style={styles.cancelButtonText}>cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.saveButton}
+                  onPress={handleSave}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel="Save customer details"
+                >
+                  <Text style={styles.saveButtonText}>save</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </KAView>
+        <ModalToastHost />
       </Modal>
 
       {/* ─── Contact picker modal ─── */}
@@ -1409,16 +1486,18 @@ const SellerCustomers: React.FC = () => {
       >
         <KAView style={styles.modalOverlay} behavior="padding">
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setShowContactPicker(false)} />
-          <View style={styles.contactPickerSheet} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHandle} />
+          <Pressable style={styles.contactPickerSheet} onPress={() => Keyboard.dismiss()}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>pick contact</Text>
-              <TouchableOpacity
+              <Text style={styles.modalTitle}>
+                {'pick '}<Text style={styles.modalTitleAccent}>contact</Text>
+              </Text>
+              <Pressable
                 onPress={() => setShowContactPicker(false)}
+                style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Feather name="x" size={22} color={C.textMuted} />
-              </TouchableOpacity>
+                <Feather name="x" size={16} color={C.textMuted} />
+              </Pressable>
             </View>
 
             {/* Contact search */}
@@ -1477,7 +1556,7 @@ const SellerCustomers: React.FC = () => {
                             .join(', ')
                         : '';
                       setShowContactPicker(false);
-                      setEditingCustomer({ name: '', totalOrders: 0, totalSpent: 0, unpaidAmount: 0, lastOrderDate: new Date(), orders: [] });
+                      setEditingCustomer({ name: '', totalOrders: 0, totalSpent: 0, unpaidAmount: 0, lastOrderDate: new Date(), firstOrderDate: new Date(), orders: [] });
                       setEditName(contact.name || '');
                       setEditPhone(phone);
                       setEditAddress(addr);
@@ -1508,8 +1587,9 @@ const SellerCustomers: React.FC = () => {
                 </View>
               }
             />
-          </View>
+          </Pressable>
         </KAView>
+        <ModalToastHost />
       </Modal>
     </View>
   );
@@ -1535,7 +1615,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Stats summary ──
   statsRow: {
     flexDirection: 'row',
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
     gap: SPACING.sm,
@@ -1583,10 +1663,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
+    borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     minHeight: 44,
   },
@@ -1600,15 +1678,15 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.sm,
   },
   sortButton: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(BIZ.success, 0.08),
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     alignItems: 'center',
     justifyContent: 'center',
   },
   sortButtonActive: {
-    backgroundColor: BIZ.success,
+    backgroundColor: withAlpha(C.bronze, 0.15),
   },
 
   // ── Filter pills ──
@@ -1701,9 +1779,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Card (simplified) ──
   card: {
     backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: withAlpha(C.textPrimary, 0.08),
     marginBottom: SPACING.sm,
   },
   cardUnpaid: {
@@ -1763,19 +1841,22 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Detail modal ──
   detailOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'flex-end',
+    backgroundColor: withAlpha(C.dimBg, 0.42),
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   detailSheet: {
     backgroundColor: C.surface,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
-    paddingHorizontal: SPACING['2xl'],
-    paddingBottom: SPACING['3xl'],
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.xl,
     maxHeight: '85%',
-    maxWidth: 420,
-    width: '100%',
-    alignSelf: 'center' as const,
+    maxWidth: 520,
+    width: '90%',
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   detailHeader: {
     flexDirection: 'row',
@@ -1898,6 +1979,25 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.gold,
     lineHeight: 20,
+  },
+
+  // ── Remind ──
+  remindButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    backgroundColor: semantic(BIZ_SAFE.success, C === CALM_DARK),
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    minHeight: 44,
+    marginBottom: SPACING.md,
+  },
+  remindButtonText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
   },
 
   // ── VIP ──
@@ -2123,50 +2223,58 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   emptyAddButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: SPACING.sm,
     marginTop: SPACING.xl,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING['2xl'],
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(BIZ.success, 0.08),
-    minHeight: 44,
+    backgroundColor: C.deepOliveBiz,
+    minHeight: 48,
+    minWidth: 220,
   },
   emptyAddButtonText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: BIZ.success,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
   },
   emptyContactsButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: SPACING.sm,
     marginTop: SPACING.sm,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING['2xl'],
     borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.bronze, 0.08),
-    minHeight: 44,
+    borderWidth: 1,
+    borderColor: C.border,
+    minHeight: 48,
+    minWidth: 220,
   },
   emptyContactsButtonText: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.bronze,
+    color: C.textSecondary,
   },
 
   // ── Sort modal ──
   sortOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: withAlpha(C.dimBg, 0.42),
     justifyContent: 'center',
     alignItems: 'center',
   },
   sortSheet: {
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C.border,
     paddingVertical: SPACING.lg,
-    paddingHorizontal: SPACING['2xl'],
+    paddingHorizontal: SPACING.xl,
     width: '80%',
     maxWidth: 300,
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   sortSheetTitle: {
     ...TYPE.label,
@@ -2194,118 +2302,112 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
-  // ── Add customer ──
-  addCustomerRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  addCustomerButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-    backgroundColor: withAlpha(BIZ.success, 0.08),
-    borderRadius: RADIUS.lg,
-    minHeight: 48,
-  },
-  addCustomerButtonText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: BIZ.success,
-  },
-  fromContactsButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-    backgroundColor: withAlpha(C.bronze, 0.08),
-    borderRadius: RADIUS.lg,
-    minHeight: 48,
-  },
-  fromContactsButtonText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.bronze,
-  },
 
   // ── Edit modal ──
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'flex-end',
+    backgroundColor: withAlpha(C.dimBg, 0.42),
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContent: {
     backgroundColor: C.surface,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
-    paddingHorizontal: SPACING['2xl'],
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.lg,
     maxHeight: '80%',
-    maxWidth: 420,
-    width: '100%',
-    alignSelf: 'center' as const,
-  },
-  modalHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: C.border,
-    alignSelf: 'center',
-    marginTop: SPACING.md,
-    marginBottom: SPACING.lg,
+    maxWidth: 520,
+    width: '90%',
+    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
+    alignItems: 'flex-start',
   },
   modalTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
+    fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? -0.2 : -0.4,
   },
-  modalCustomerName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-    marginBottom: SPACING.lg,
+  modalTitleAccent: {
+    fontStyle: 'italic',
+    fontFamily: 'serif',
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.bronze,
+  },
+  modalSubtitle: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    letterSpacing: 0.1,
+    marginTop: SPACING.xs,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.12 : 0.06),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalLabel: {
-    ...TYPE.label,
-    marginBottom: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+    letterSpacing: 0.2,
+    marginBottom: SPACING.xs,
     marginTop: SPACING.md,
   },
   modalInput: {
-    backgroundColor: C.background,
-    borderRadius: RADIUS.md,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: withAlpha(C.textPrimary, 0.08),
     minHeight: 44,
+  },
+  modalInputFocused: {
+    borderColor: withAlpha(C.bronze, 0.4),
   },
   modalInputMultiline: {
     minHeight: 80,
     paddingTop: SPACING.md,
   },
-  saveButton: {
+  modalActions: {
     flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.lg,
+  },
+  cancelButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingVertical: SPACING.md,
+    minHeight: 52,
+  },
+  cancelButtonText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  saveButton: {
+    flex: 2,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: C.deepOliveBiz,
-    borderRadius: RADIUS.xl,
+    borderRadius: RADIUS.full,
     paddingVertical: SPACING.md,
-    marginTop: SPACING['2xl'],
-    gap: SPACING.sm,
     minHeight: 52,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   saveButtonText: {
     fontSize: TYPOGRAPHY.size.base,
@@ -2318,14 +2420,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.xs,
+    gap: SPACING.sm,
     paddingVertical: SPACING.sm,
-    backgroundColor: withAlpha(C.bronze, 0.06),
-    borderRadius: RADIUS.md,
-    marginBottom: SPACING.xs,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    alignSelf: 'flex-start',
+    marginTop: SPACING.sm,
   },
   modalContactsBtnText: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.xs,
     color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
@@ -2333,13 +2437,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Contact picker modal ──
   contactPickerSheet: {
     backgroundColor: C.surface,
-    borderTopLeftRadius: RADIUS['2xl'],
-    borderTopRightRadius: RADIUS['2xl'],
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C.border,
     maxHeight: '80%',
     paddingHorizontal: SPACING.xl,
-    maxWidth: 420,
-    width: '100%',
-    alignSelf: 'center' as const,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.lg,
+    maxWidth: 520,
+    width: '90%',
+    gap: SPACING.md,
     ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
   contactSearchBar: {
@@ -2364,7 +2471,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   contactItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.sm + 2,
+    paddingVertical: SPACING.sm,
     gap: SPACING.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: C.border,

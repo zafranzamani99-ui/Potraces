@@ -1,6 +1,7 @@
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { callGeminiAPI, isGeminiAvailable, getCooldownSecondsLeft } from './geminiClient';
+import { enqueueReceipt } from './receiptQueue';
 import { ExtractedReceipt, SellerReceiptResult } from '../types';
 
 /**
@@ -93,7 +94,34 @@ Payment method hints:
 - "DuitNow" → duitnow_qr
 - If not visible → null`;
 
+const VALID_PAYMENT_METHODS = new Set([
+  'cash', 'debit_card', 'credit_card', 'tng', 'grabpay', 'boost',
+  'shopee_pay', 'mae', 'bigpay', 'duitnow_qr', 'fpx', 'other',
+]);
+
+const VALID_EXPENSE_CATEGORIES = new Set([
+  'food', 'transport', 'shopping', 'entertainment', 'bills',
+  'health', 'education', 'family', 'subscription', 'other',
+]);
+
+const MAX_RECEIPT_AMOUNT = 1_000_000;
+
+let _scanningReceipt = false;
+let _scanningSellerReceipt = false;
+
 export async function scanReceipt(imageUri: string): Promise<ExtractedReceipt> {
+  if (_scanningReceipt) {
+    throw new Error('A receipt scan is already in progress.');
+  }
+  _scanningReceipt = true;
+  try {
+    return await _doScanReceipt(imageUri);
+  } finally {
+    _scanningReceipt = false;
+  }
+}
+
+async function _doScanReceipt(imageUri: string): Promise<ExtractedReceipt> {
   if (!isGeminiAvailable()) {
     const secs = getCooldownSecondsLeft();
     if (secs > 0) {
@@ -153,21 +181,32 @@ export async function scanReceipt(imageUri: string): Promise<ExtractedReceipt> {
   try {
     const parsed = JSON.parse(stripJsonFences(text));
 
+    let total = Number(parsed.total) || 0;
+    if (total > MAX_RECEIPT_AMOUNT) total = 0;
+
+    const paymentMethod = typeof parsed.paymentMethod === 'string' && VALID_PAYMENT_METHODS.has(parsed.paymentMethod)
+      ? parsed.paymentMethod
+      : undefined;
+
+    const suggestedExpenseCategory = typeof parsed.suggestedExpenseCategory === 'string' && VALID_EXPENSE_CATEGORIES.has(parsed.suggestedExpenseCategory)
+      ? parsed.suggestedExpenseCategory
+      : undefined;
+
     return {
       vendor: parsed.vendor || undefined,
       items: Array.isArray(parsed.items)
         ? parsed.items
-            .filter((i: any) => i.name && typeof i.amount === 'number' && i.amount > 0)
+            .filter((i: any) => i.name && typeof i.amount === 'number' && i.amount > 0 && i.amount <= MAX_RECEIPT_AMOUNT)
             .map((i: any) => ({ name: String(i.name), amount: Number(i.amount) }))
         : [],
       subtotal: typeof parsed.subtotal === 'number' ? parsed.subtotal : undefined,
       tax: typeof parsed.tax === 'number' ? parsed.tax : undefined,
-      total: Number(parsed.total) || 0,
+      total,
       date: parsed.date || undefined,
       rawText: text,
       location: parsed.location || undefined,
-      paymentMethod: parsed.paymentMethod || undefined,
-      suggestedExpenseCategory: parsed.suggestedExpenseCategory || undefined,
+      paymentMethod,
+      suggestedExpenseCategory,
       suggestedTaxCategory: parsed.suggestedTaxCategory || undefined,
     };
   } catch {
@@ -219,6 +258,26 @@ const VALID_COST_CATEGORY_IDS = new Set([
 ]);
 
 export async function scanSellerReceipt(imageUri: string): Promise<SellerReceiptResult> {
+  if (_scanningSellerReceipt) {
+    throw new Error('A receipt scan is already in progress.');
+  }
+  _scanningSellerReceipt = true;
+  try {
+    return await _doScanSellerReceipt(imageUri);
+  } catch (err: any) {
+    const msg = err?.message ?? '';
+    const isNetworkOrAI = msg.includes('Could not reach AI') || msg.includes('AI is busy') || msg.includes('AI is cooling down') || msg.includes('network');
+    if (isNetworkOrAI) {
+      await enqueueReceipt(imageUri);
+      throw new Error('Scan queued — will retry when online.');
+    }
+    throw err;
+  } finally {
+    _scanningSellerReceipt = false;
+  }
+}
+
+async function _doScanSellerReceipt(imageUri: string): Promise<SellerReceiptResult> {
   if (!isGeminiAvailable()) {
     const secs = getCooldownSecondsLeft();
     if (secs > 0) throw new Error(`AI is cooling down — try again in ${secs}s`);
@@ -268,14 +327,17 @@ export async function scanSellerReceipt(imageUri: string): Promise<SellerReceipt
       ? parsed.suggestedCategory
       : undefined;
 
+    let sellerTotal = Number(parsed.total) || 0;
+    if (sellerTotal > MAX_RECEIPT_AMOUNT) sellerTotal = 0;
+
     return {
       vendor: parsed.vendor || undefined,
       items: Array.isArray(parsed.items)
         ? parsed.items
-            .filter((i: any) => i.name && typeof i.amount === 'number' && i.amount > 0)
+            .filter((i: any) => i.name && typeof i.amount === 'number' && i.amount > 0 && i.amount <= MAX_RECEIPT_AMOUNT)
             .map((i: any) => ({ name: String(i.name), amount: Number(i.amount) }))
         : [],
-      total: Number(parsed.total) || 0,
+      total: sellerTotal,
       date: parsed.date || undefined,
       invoiceNumber: parsed.invoiceNumber || undefined,
       suggestedCategory: suggested,

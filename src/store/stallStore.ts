@@ -9,6 +9,8 @@ import {
   RegularCustomer,
   SessionCondition,
 } from '../types';
+import { newId } from '../utils/id';
+import { roundMoney } from '../utils/money';
 
 export const useStallStore = create<StallState>()(
   persist(
@@ -20,7 +22,17 @@ export const useStallStore = create<StallState>()(
 
       // ─── Session Actions ──────────────────────────────────
       startSession: (name?, productSetup?) => {
-        const id = Date.now().toString();
+        const id = newId();
+        const prevActiveId = get().activeSessionId;
+        if (prevActiveId) {
+          set((state) => ({
+            sessions: state.sessions.map((s) =>
+              s.id === prevActiveId
+                ? { ...s, isActive: false, closedAt: new Date() }
+                : s
+            ),
+          }));
+        }
         const products = get().products.filter((p) => p.isActive);
         const snapshot = productSetup
           ? productSetup.map((ps) => {
@@ -84,9 +96,16 @@ export const useStallStore = create<StallState>()(
         const activeId = get().activeSessionId;
         if (!activeId) return;
 
+        const product = get().products.find((p) => p.id === sale.productId);
+        if (!product) {
+          console.warn(`[stallStore] addSale: productId ${sale.productId} not found, skipping`);
+          return;
+        }
+
         const newSale: StallSale = {
           ...sale,
-          id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+          id: newId(),
+          productName: sale.productName || product.name,
           sessionId: activeId,
           timestamp: new Date(),
         };
@@ -104,9 +123,9 @@ export const useStallStore = create<StallState>()(
               ...s,
               sales: updatedSales,
               productsSnapshot: updatedSnapshot,
-              totalRevenue: s.totalRevenue + newSale.total,
-              totalCash: sale.paymentMethod === 'cash' ? s.totalCash + newSale.total : s.totalCash,
-              totalQR: sale.paymentMethod === 'qr' ? s.totalQR + newSale.total : s.totalQR,
+              totalRevenue: roundMoney(s.totalRevenue + newSale.total),
+              totalCash: sale.paymentMethod === 'cash' ? roundMoney(s.totalCash + newSale.total) : s.totalCash,
+              totalQR: sale.paymentMethod === 'qr' ? roundMoney(s.totalQR + newSale.total) : s.totalQR,
             };
           }),
           // Update product totalSold
@@ -147,9 +166,9 @@ export const useStallStore = create<StallState>()(
                 ...s,
                 sales: updatedSales,
                 productsSnapshot: updatedSnapshot,
-                totalRevenue: s.totalRevenue - sale.total,
-                totalCash: sale.paymentMethod === 'cash' ? s.totalCash - sale.total : s.totalCash,
-                totalQR: sale.paymentMethod === 'qr' ? s.totalQR - sale.total : s.totalQR,
+                totalRevenue: roundMoney(s.totalRevenue - sale.total),
+                totalCash: sale.paymentMethod === 'cash' ? roundMoney(s.totalCash - sale.total) : s.totalCash,
+                totalQR: sale.paymentMethod === 'qr' ? roundMoney(s.totalQR - sale.total) : s.totalQR,
               };
             }),
             products: state.products.map((p) =>
@@ -167,7 +186,7 @@ export const useStallStore = create<StallState>()(
           products: [
             {
               ...product,
-              id: Date.now().toString(),
+              id: newId(),
               totalSold: 0,
               createdAt: new Date(),
               updatedAt: new Date(),
@@ -194,7 +213,7 @@ export const useStallStore = create<StallState>()(
           regularCustomers: [
             {
               ...customer,
-              id: Date.now().toString(),
+              id: newId(),
               visitCount: 0,
               createdAt: new Date(),
             },
@@ -338,24 +357,25 @@ export const useStallStore = create<StallState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
+          const sd = (v: any) => { if (!v) return new Date(); const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? new Date() : d; };
           state.sessions = state.sessions.map((s: any) => ({
             ...s,
-            startedAt: new Date(s.startedAt),
-            closedAt: s.closedAt ? new Date(s.closedAt) : undefined,
+            startedAt: sd(s.startedAt),
+            closedAt: s.closedAt ? sd(s.closedAt) : undefined,
             sales: s.sales.map((sl: any) => ({
               ...sl,
-              timestamp: new Date(sl.timestamp),
+              timestamp: sd(sl.timestamp),
             })),
           }));
           state.products = state.products.map((p: any) => ({
             ...p,
-            createdAt: new Date(p.createdAt),
-            updatedAt: new Date(p.updatedAt),
+            createdAt: sd(p.createdAt),
+            updatedAt: sd(p.updatedAt),
           }));
           state.regularCustomers = state.regularCustomers.map((c: any) => ({
             ...c,
-            lastVisit: c.lastVisit ? new Date(c.lastVisit) : undefined,
-            createdAt: new Date(c.createdAt),
+            lastVisit: c.lastVisit ? sd(c.lastVisit) : undefined,
+            createdAt: sd(c.createdAt),
           }));
         }
       },

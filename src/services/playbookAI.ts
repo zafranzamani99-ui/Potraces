@@ -393,7 +393,17 @@ export async function askEchoPlan(playbook: Playbook): Promise<PlaybookAIResult>
     const truncated = candidate?.finishReason === 'MAX_TOKENS';
 
     premium.incrementAiCalls();
-    return parseEchoResponse(rawText, truncated);
+    const result = parseEchoResponse(rawText, truncated);
+    if (result.ok) {
+      const totalPlanned = result.plan.items.reduce((s, i) => s + i.amount, 0);
+      if (totalPlanned > playbook.sourceAmount) {
+        const scale = playbook.sourceAmount / totalPlanned;
+        for (const item of result.plan.items) {
+          item.amount = Math.round(item.amount * scale);
+        }
+      }
+    }
+    return result;
   } catch (err: any) {
     if (__DEV__) console.warn('[PlaybookAI] Error:', err);
     if (err?.name === 'AbortError') return { ok: false, error: 'request timed out' };
@@ -623,6 +633,10 @@ function parseEchoResponse(raw: string, truncated = false): PlaybookAIResult {
 
     if (items.length === 0) {
       return { ok: false, error: 'echo had no plan items — try again' };
+    }
+
+    for (const item of items) {
+      if (item.amount > 1_000_000) item.amount = 0;
     }
 
     const greeting = typeof parsed.greeting === 'string' ? parsed.greeting.trim() : '';

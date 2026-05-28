@@ -90,7 +90,7 @@ import CategoryPicker from '../../components/common/CategoryPicker';
 import CategoryManager from '../../components/common/CategoryManager';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import { useToast } from '../../context/ToastContext';
-import InModalToast, { InModalToastRef } from '../../components/common/InModalToast';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import { newId } from '../../utils/id';
 import {
   Contact,
@@ -103,11 +103,16 @@ import {
   SplitItem,
   TaxHandling,
   ExtractedReceipt,
+  SharedSubscription,
 } from '../../types';
 import { calculateSplit, CalculateSplitResult } from '../../utils/splitCalculator';
 import { useCategories } from '../../hooks/useCategories';
+import SharedSubscriptionTab from '../../components/debt/SharedSubscriptionTab';
+import SharedSubFormSheet from '../../components/debt/SharedSubFormSheet';
+import SharedSubDetailSheet from '../../components/debt/SharedSubDetailSheet';
+import PriceChangeSheet from '../../components/debt/PriceChangeSheet';
 
-type TabType = 'debts' | 'splits';
+type TabType = 'debts' | 'splits' | 'shared';
 
 type DebtTrackingParams = {
   DebtTracking: { receiptData?: { vendor: string; total: number; items: { name: string; amount: number }[] }; highlightId?: string } | undefined;
@@ -132,15 +137,7 @@ const DebtTracking: React.FC = () => {
   const insets = useSafeAreaInsets();
   const route = useRoute<RouteProp<DebtTrackingParams, 'DebtTracking'>>();
   const navigation = useNavigation();
-  const { showToast: _globalShowToast } = useToast();
-  const modalToastRef = useRef<InModalToastRef>(null);
-  const showToast = useCallback((msg: string, type?: 'success' | 'error' | 'info') => {
-    if (type !== 'success' && modalToastRef.current) {
-      modalToastRef.current.show(msg, type);
-    } else {
-      _globalShowToast(msg, type);
-    }
-  }, [_globalShowToast]);
+  const { showToast } = useToast();
   const mode = useAppStore((state) => state.mode);
   const currency = useSettingsStore((state) => state.currency);
   const userName = useSettingsStore((state) => state.userName);
@@ -176,7 +173,15 @@ const DebtTracking: React.FC = () => {
   const unarchiveSplit = useDebtStore((s) => s.unarchiveSplit);
   const markSplitParticipantPaid = useDebtStore((s) => s.markSplitParticipantPaid);
   const unmarkSplitParticipantPaid = useDebtStore((s) => s.unmarkSplitParticipantPaid);
+  const sharedSubscriptions = useDebtStore((s) => s.sharedSubscriptions);
+  const ensureMonthRecord = useDebtStore((s) => s.ensureMonthRecord);
+  const markSharedSubPayment = useDebtStore((s) => s.markSharedSubPayment);
+  const unmarkSharedSubPayment = useDebtStore((s) => s.unmarkSharedSubPayment);
+  const deleteSharedSubscription = useDebtStore((s) => s.deleteSharedSubscription);
 
+  const subscriptions = usePersonalStore((state) => state.subscriptions);
+  const updateSubscription = usePersonalStore((state) => state.updateSubscription);
+  const updateSharedSubscription = useDebtStore((s) => s.updateSharedSubscription);
   const addTransaction = usePersonalStore((state) => state.addTransaction);
   const updateTransaction = usePersonalStore((state) => state.updateTransaction);
   const deleteTransaction = usePersonalStore((state) => state.deleteTransaction);
@@ -375,6 +380,13 @@ const DebtTracking: React.FC = () => {
   // Request payment modal state
   const [splitChoiceVisible, setSplitChoiceVisible] = useState(false);
   const [fabChoiceVisible, setFabChoiceVisible] = useState(false);
+  const [sharedFormVisible, setSharedFormVisible] = useState(false);
+  const [sharedDetailVisible, setSharedDetailVisible] = useState(false);
+  const [sharedDetailSub, setSharedDetailSub] = useState<SharedSubscription | null>(null);
+  const [sharedEditSub, setSharedEditSub] = useState<SharedSubscription | null>(null);
+  const [priceChangeSub, setPriceChangeSub] = useState<SharedSubscription | null>(null);
+  const [priceChangeVisible, setPriceChangeVisible] = useState(false);
+  const [priceChangeMonth, setPriceChangeMonth] = useState<string | undefined>(undefined);
   const [requestPaymentVisible, setRequestPaymentVisible] = useState(false);
   const [requestPaymentDebt, setRequestPaymentDebt] = useState<Debt | null>(null);
   const [requestPaymentMessage, setRequestPaymentMessage] = useState('');
@@ -1596,6 +1608,9 @@ const DebtTracking: React.FC = () => {
     if (newPaidAmount >= currentDebt.totalAmount && currentDebt.splitId) {
       markSplitParticipantPaid(currentDebt.splitId, currentDebt.contact.id);
     }
+    if (newPaidAmount >= currentDebt.totalAmount && currentDebt.sharedSubId && currentDebt.sharedSubMonth) {
+      markSharedSubPayment(currentDebt.sharedSubId, currentDebt.sharedSubMonth, currentDebt.contact.id);
+    }
 
     setPaymentModalVisible(false);
     setPaymentAmount('');
@@ -1654,16 +1669,23 @@ const DebtTracking: React.FC = () => {
           : firstDebt.type;
 
         // Mixed groups: auto-settle the smaller side AND offset the larger side
-        const offsetApplied = new Map<string, number>();
+        // Fresh-read helper — always reads current store state, never stale closure
+        const freshDebt = (id: string) => useDebtStore.getState().debts.find(fd => fd.id === id);
         const nettedPaymentRefs: { debtId: string; paymentId: string }[] = [];
         if (isMixed) {
           const smallerType = netDir === 'i_owe' ? 'they_owe' : 'i_owe';
           for (const d of unsettled.filter(dd => dd.type === smallerType)) {
-            const rem = Math.max(0, d.totalAmount - d.paidAmount);
+            const fresh = freshDebt(d.id);
+            if (!fresh || fresh.status === 'settled') continue;
+            const rem = Math.max(0, fresh.totalAmount - fresh.paidAmount);
             if (rem > 0) {
               const nId = addPayment(d.id, { amount: rem, date: new Date(), note: 'netted' });
               if (nId) nettedPaymentRefs.push({ debtId: d.id, paymentId: nId });
-              if (d.splitId) markSplitParticipantPaid(d.splitId, d.contact.id);
+              const after = freshDebt(d.id);
+              if (after?.status === 'settled') {
+                if (d.splitId) markSplitParticipantPaid(d.splitId, d.contact.id);
+                if (d.sharedSubId && d.sharedSubMonth) markSharedSubPayment(d.sharedSubId, d.sharedSubMonth, d.contact.id);
+              }
             }
           }
           // Apply offset payments to the larger side (no cash — accounting offset)
@@ -1671,15 +1693,17 @@ const DebtTracking: React.FC = () => {
           let offsetLeft = offsetTotal;
           for (const d of unsettled.filter(dd => dd.type === netDir)) {
             if (offsetLeft <= 0) break;
-            const rem = Math.max(0, d.totalAmount - d.paidAmount);
+            const fresh = freshDebt(d.id);
+            if (!fresh || fresh.status === 'settled') continue;
+            const rem = Math.max(0, fresh.totalAmount - fresh.paidAmount);
             const pay = Math.min(rem, offsetLeft);
             if (pay > 0) {
               const nId = addPayment(d.id, { amount: pay, date: new Date(), note: 'netted' });
               if (nId) nettedPaymentRefs.push({ debtId: d.id, paymentId: nId });
-              if (d.paidAmount + pay >= d.totalAmount && d.splitId) {
+              const after = freshDebt(d.id);
+              if (after?.status === 'settled' && d.splitId) {
                 markSplitParticipantPaid(d.splitId, d.contact.id);
               }
-              offsetApplied.set(d.id, pay);
               offsetLeft -= pay;
             }
           }
@@ -1728,36 +1752,51 @@ const DebtTracking: React.FC = () => {
         let count = 0;
         let firstPaymentId: string | null = null;
 
-        // Distribute payment in FIFO order across net-direction debts
-        let leftover = amount;
+        // Distribute payment PROPORTIONALLY across net-direction debts so all show progress
+        const distribDebts = distributable.map(d => {
+          const fresh = freshDebt(d.id);
+          const rem = (fresh && fresh.status !== 'settled') ? Math.max(0, fresh.totalAmount - fresh.paidAmount) : 0;
+          return { d, rem };
+        }).filter(x => x.rem > 0);
+
+        const totalDistribRem = distribDebts.reduce((s, x) => s + x.rem, 0);
+        let distributed = 0;
         let lastPaidInfo: { debtId: string; paymentId: string; amount: number } | null = null;
-        for (const d of distributable) {
-          if (leftover <= 0) break;
-          const offset = offsetApplied.get(d.id) || 0;
-          const rem = Math.max(0, d.totalAmount - d.paidAmount - offset);
-          const pay = Math.min(rem, leftover);
-          if (pay > 0) {
-            const pId = addPayment(d.id, { amount: pay, date: new Date(), note: paymentNote.trim() || 'consolidated payment', linkedTransactionId: linkedTxId, walletId: paymentWalletId || undefined });
-            if (!pId) continue;
-            if (!firstPaymentId) firstPaymentId = pId;
-            const newPaid = d.paidAmount + offset + pay;
-            if (newPaid >= d.totalAmount && d.splitId) {
-              markSplitParticipantPaid(d.splitId, d.contact.id);
+
+        if (totalDistribRem > 0) {
+          const ratio = Math.min(1, amount / totalDistribRem);
+          for (let i = 0; i < distribDebts.length; i++) {
+            const { d, rem } = distribDebts[i];
+            let pay: number;
+            if (i === distribDebts.length - 1) {
+              pay = Math.round(Math.min(rem, amount - distributed) * 100) / 100;
+            } else {
+              pay = Math.round(Math.min(rem, rem * ratio) * 100) / 100;
             }
-            lastPaidInfo = { debtId: d.id, paymentId: pId, amount: pay };
-            leftover -= pay;
-            count++;
+            if (pay > 0) {
+              const pId = addPayment(d.id, { amount: pay, date: new Date(), note: paymentNote.trim() || 'consolidated payment', linkedTransactionId: linkedTxId, walletId: paymentWalletId || undefined });
+              if (!pId) continue;
+              if (!firstPaymentId) firstPaymentId = pId;
+              const after = freshDebt(d.id);
+              if (after?.status === 'settled' && d.splitId) {
+                markSplitParticipantPaid(d.splitId, d.contact.id);
+              }
+              lastPaidInfo = { debtId: d.id, paymentId: pId, amount: pay };
+              distributed += pay;
+              count++;
+            }
           }
         }
+
         // Tip: if overpayment remains, attach to last payment so sum matches wallet
+        const leftover = Math.round((amount - distributed) * 100) / 100;
         if (leftover > 0 && lastPaidInfo?.paymentId) {
-          const tipAmount = Math.round(leftover * 100) / 100;
           updatePayment(lastPaidInfo.debtId, lastPaidInfo.paymentId, {
-            amount: lastPaidInfo.amount + tipAmount,
-            tipAmount,
+            amount: lastPaidInfo.amount + leftover,
+            tipAmount: leftover,
           });
           if (linkedTxId) {
-            const tipNote = ` (incl. tip ${currency} ${tipAmount.toFixed(2)})`;
+            const tipNote = ` (incl. tip ${currency} ${leftover.toFixed(2)})`;
             if (mode === 'personal') updateTransaction(linkedTxId, { description: txDesc + tipNote });
             else updateBusinessTransaction(linkedTxId, { note: txDesc + tipNote });
           }
@@ -1769,7 +1808,7 @@ const DebtTracking: React.FC = () => {
           else updateBusinessTransaction(linkedTxId, { linkedPaymentId: firstPaymentId, linkedDebtId: firstDebt.id });
         }
 
-        const tipLeftover = Math.max(0, amount - distributable.reduce((s, d) => s + Math.max(0, d.totalAmount - d.paidAmount - (offsetApplied.get(d.id) || 0)), 0));
+        const tipLeftover = Math.max(0, leftover);
         const tipMsg = tipLeftover > 0 ? ` (incl. ${currency} ${tipLeftover.toFixed(2)} tip)` : '';
         showToast(`${currency} ${amount.toFixed(2)} applied across ${count} debts${tipMsg}`, 'success');
         setGroupPaymentId(null);
@@ -1854,6 +1893,14 @@ const DebtTracking: React.FC = () => {
                 .reduce((sum, px) => sum + px.amount, 0);
               if (remaining < p.debt.totalAmount) {
                 unmarkSplitParticipantPaid(p.debt.splitId, p.debt.contact.id);
+              }
+            }
+            if (p.debt.sharedSubId && p.debt.sharedSubMonth && p.debt.status === 'settled') {
+              const remaining = p.debt.payments
+                .filter((px) => px.id !== p.paymentId)
+                .reduce((sum, px) => sum + px.amount, 0);
+              if (remaining < p.debt.totalAmount) {
+                unmarkSharedSubPayment(p.debt.sharedSubId, p.debt.sharedSubMonth, p.debt.contact.id);
               }
             }
             deletePayment(p.debtId, p.paymentId);
@@ -1985,6 +2032,12 @@ const DebtTracking: React.FC = () => {
       const updatedDebt = useDebtStore.getState().debts.find(d => d.id === payDetailDebtId);
       if (updatedDebt && updatedDebt.status !== 'settled' && freshDebt.status === 'settled') {
         unmarkSplitParticipantPaid(freshDebt.splitId, freshDebt.contact.id);
+      }
+    }
+    if (amountChanged && freshDebt.sharedSubId && freshDebt.sharedSubMonth) {
+      const updatedDebt = useDebtStore.getState().debts.find(d => d.id === payDetailDebtId);
+      if (updatedDebt && updatedDebt.status !== 'settled' && freshDebt.status === 'settled') {
+        unmarkSharedSubPayment(freshDebt.sharedSubId, freshDebt.sharedSubMonth, freshDebt.contact.id);
       }
     }
 
@@ -2175,6 +2228,7 @@ const DebtTracking: React.FC = () => {
       showToast('Please add at least 2 participants', 'error');
       return;
     }
+    if (splitContacts.length === 0) return;
     if (!editingSplitId && splitPaidBy.length === 0) {
       showToast('Please select who paid', 'error');
       return;
@@ -2221,7 +2275,8 @@ const DebtTracking: React.FC = () => {
       const perPersonMap: Record<string, number> = {};
       splitContacts.forEach((c) => { perPersonMap[c.id] = 0; });
       splitItems.forEach((item) => {
-        const share = item.amount / (item.assignedTo.length || 1);
+        const itemAmount = parseFloat(String(item.amount)) || 0;
+        const share = itemAmount / (item.assignedTo.length || 1);
         item.assignedTo.forEach((c) => {
           perPersonMap[c.id] = (perPersonMap[c.id] || 0) + share;
         });
@@ -3352,6 +3407,105 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
     }
   };
 
+  // ── Shared Subscription Handlers ────────────────────────────
+  const activeSharedSubs = useMemo(() => sharedSubscriptions.filter((s) => s.isActive), [sharedSubscriptions]);
+
+  const handleOpenSharedDetail = useCallback((sub: SharedSubscription) => {
+    setSharedDetailSub(sub);
+    setSharedDetailVisible(true);
+  }, []);
+
+  const handleOpenSharedForm = useCallback((editSub?: SharedSubscription) => {
+    setSharedEditSub(editSub ?? null);
+    setSharedFormVisible(true);
+  }, []);
+
+  const handleGenerateSharedDebts = useCallback((subId: string, month: string) => {
+    const sub = sharedSubscriptions.find((s) => s.id === subId);
+    if (!sub) return;
+    ensureMonthRecord(subId, month);
+    const freshSub = useDebtStore.getState().sharedSubscriptions.find((s) => s.id === subId);
+    if (!freshSub) return;
+    const record = freshSub.monthRecords.find((r) => r.month === month);
+    if (!record || record.debtsGenerated) return;
+    const monthLabel = format(new Date(month + '-01'), 'MMM yyyy');
+    for (const payment of record.payments) {
+      if (payment.contactId === '__self__') continue;
+      const member = freshSub.members.find((m) => m.contact.id === payment.contactId);
+      if (!member) continue;
+      const existing = debts.find((d) => d.sharedSubId === subId && d.sharedSubMonth === month && d.contact.id === payment.contactId);
+      if (existing) continue;
+      addDebt({
+        type: 'they_owe',
+        contact: member.contact,
+        totalAmount: payment.amount,
+        description: `${freshSub.name} - ${monthLabel}`,
+        sharedSubId: subId,
+        sharedSubMonth: month,
+        mode: mode === 'business' ? 'business' : 'personal',
+      });
+    }
+    useDebtStore.setState((state) => ({
+      sharedSubscriptions: state.sharedSubscriptions.map((s) => {
+        if (s.id !== subId) return s;
+        return {
+          ...s,
+          monthRecords: s.monthRecords.map((r) =>
+            r.month === month ? { ...r, debtsGenerated: true } : r
+          ),
+        };
+      }),
+    }));
+  }, [sharedSubscriptions, debts, addDebt, mode, ensureMonthRecord]);
+
+  const handleRecordSharedPayment = useCallback((subId: string, month: string, contactId: string) => {
+    const linked = debts.find((d) => d.sharedSubId === subId && d.sharedSubMonth === month && d.contact.id === contactId);
+    if (linked) {
+      setSharedDetailVisible(false);
+      setTimeout(() => {
+        setPaymentDebtId(linked.id);
+        setPaymentAmount(String(Math.max(0, linked.totalAmount - linked.paidAmount)));
+        setPaymentNote('');
+        setPaymentViewOnly(false);
+        setPaymentModalVisible(true);
+      }, 100);
+    } else {
+      showToast('generate debts first', 'info');
+    }
+  }, [debts, showToast]);
+
+  const handleDeleteSharedSub = useCallback((subId: string) => {
+    deleteSharedSubscription(subId);
+    showToast(t.sharedSubs.subDeleted, 'success');
+  }, [deleteSharedSubscription, showToast, t]);
+
+  const [commitmentPickerSubId, setCommitmentPickerSubId] = useState<string | null>(null);
+
+  const handleLinkCommitment = useCallback((sub: SharedSubscription) => {
+    const activeSubs = subscriptions.filter((s) => s.isActive);
+    if (activeSubs.length === 0) {
+      showToast('no commitments found', 'info');
+      return;
+    }
+    setSharedDetailVisible(false);
+    setTimeout(() => { setCommitmentPickerSubId(sub.id); }, 150);
+  }, [subscriptions, showToast]);
+
+  const handlePickCommitment = useCallback((subscriptionId: string) => {
+    if (!commitmentPickerSubId) return;
+    updateSharedSubscription(commitmentPickerSubId, { subscriptionId });
+    updateSubscription(subscriptionId, { sharedSubId: commitmentPickerSubId });
+    setCommitmentPickerSubId(null);
+    showToast('linked to commitment', 'success');
+  }, [commitmentPickerSubId, updateSharedSubscription, updateSubscription, showToast]);
+
+  const handleViewCommitment = useCallback((subscriptionId: string) => {
+    setSharedDetailVisible(false);
+    setTimeout(() => {
+      (navigation as any).navigate('SubscriptionList', { highlightId: subscriptionId });
+    }, 150);
+  }, [navigation]);
+
   // ── FAB Action ─────────────────────────────────────────────
   const showSplitChoice = useCallback(() => {
     setSplitChoiceVisible(true);
@@ -3516,6 +3670,31 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             }}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: activeTab === 'splits' ? C.onAccent : C.textSecondary }}>
                 {modeSplits.length}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'shared' && styles.tabActive]}
+            onPress={() => {
+              if (selectionMode) exitSelectionMode();
+              if (activeTab !== 'shared') setActiveTab('shared');
+            }}
+            activeOpacity={0.7}
+          >
+            <Feather name="repeat" size={16} color={activeTab === 'shared' ? C.accent : C.textSecondary} />
+            <Text style={[styles.tabText, activeTab === 'shared' && styles.tabTextActive]}>
+              {t.sharedSubs.shared}
+            </Text>
+            <View style={{
+              backgroundColor: activeTab === 'shared' ? C.accent : withAlpha(C.textSecondary, 0.15),
+              paddingHorizontal: 7,
+              paddingVertical: 2,
+              borderRadius: RADIUS.full,
+              minWidth: 22,
+              alignItems: 'center',
+            }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: activeTab === 'shared' ? C.onAccent : C.textSecondary }}>
+                {activeSharedSubs.length}
               </Text>
             </View>
           </TouchableOpacity>
@@ -4117,6 +4296,14 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             )}
           </>
         )}
+
+        {/* Shared Tab */}
+        {activeTab === 'shared' && (
+          <SharedSubscriptionTab
+            onPressSub={handleOpenSharedDetail}
+            onAddSub={() => handleOpenSharedForm()}
+          />
+        )}
       </ScrollView>
 
       {selectionMode ? (
@@ -4545,7 +4732,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             <Feather name="check" size={20} color={C.onAccent} />
           </TouchableOpacity>
         )}
-        <InModalToast ref={modalToastRef} />
+        <ModalToastHost />
       </Modal>)}
 
       {/* ── Add/Edit Split Modal — full bottom-sheet (drag-to-dismiss, animated backdrop, anchored save) ─── */}
@@ -5028,7 +5215,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             <Feather name="check" size={20} color={C.onAccent} />
           </TouchableOpacity>
         )}
-        <InModalToast ref={modalToastRef} />
+        <ModalToastHost />
       </Modal>)}
 
       {/* ── Debt Detail Sheet ─── */}
@@ -5333,7 +5520,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             );
           })()}
         </Reanimated.View>
-        <InModalToast ref={modalToastRef} />
+        <ModalToastHost />
       </Modal>)}
 
       {/* ── Group Detail Sheet ─── */}
@@ -5796,7 +5983,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             );
           })()}
         </Reanimated.View>
-        <InModalToast ref={modalToastRef} />
+        <ModalToastHost />
       </Modal>)}
 
       {/* ── Record Payment Modal — bottom-sheet w/ live progress preview + quick-fill chips ─── */}
@@ -6025,6 +6212,10 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                               if (freshDebt.splitId && freshDebt.status === 'settled') {
                                 const newPaid = freshDebt.payments.filter((p) => p.id !== snapPaymentId).reduce((s, p) => s + p.amount, 0);
                                 if (newPaid < freshDebt.totalAmount) unmarkSplitParticipantPaid(freshDebt.splitId, freshDebt.contact.id);
+                              }
+                              if (freshDebt.sharedSubId && freshDebt.sharedSubMonth && freshDebt.status === 'settled') {
+                                const newPaid = freshDebt.payments.filter((p) => p.id !== snapPaymentId).reduce((s, p) => s + p.amount, 0);
+                                if (newPaid < freshDebt.totalAmount) unmarkSharedSubPayment(freshDebt.sharedSubId, freshDebt.sharedSubMonth, freshDebt.contact.id);
                               }
                               deletePayment(snapDebtId, snapPaymentId);
                               showToast(t.debts.paymentRemoved, 'success');
@@ -6754,7 +6945,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             </Reanimated.View>
           </>
         )}
-        <InModalToast ref={modalToastRef} />
+        <ModalToastHost />
       </Modal>)}
 
       {/* ── Split Detail Modal (Summary View — TransactionsList vibe) ─── */}
@@ -7001,7 +7192,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
               </Pressable>
             </View>
         </Reanimated.View>
-        <InModalToast ref={modalToastRef} />
+        <ModalToastHost />
       </Modal>)}
 
       {/* ── Receipt Split Wizard Modal ────────────────────────── */}
@@ -7797,7 +7988,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             <Feather name="check" size={20} color={C.onAccent} />
           </TouchableOpacity>
         )}
-        <InModalToast ref={modalToastRef} />
+        <ModalToastHost />
       </Modal>)}
 
       {/* ── Scanning Loading Overlay ──────────────────────────── */}
@@ -7813,6 +8004,63 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         </Modal>
       )}
 
+      {/* ── Shared Subscription Modals ─────────────────────────────────── */}
+      <SharedSubFormSheet
+        visible={sharedFormVisible}
+        onClose={() => { setSharedFormVisible(false); setSharedEditSub(null); }}
+        editingSub={sharedEditSub}
+      />
+      <SharedSubDetailSheet
+        visible={sharedDetailVisible}
+        onClose={() => { setSharedDetailVisible(false); setSharedDetailSub(null); }}
+        sub={sharedDetailSub}
+        onEdit={(sub) => { setSharedDetailVisible(false); setTimeout(() => handleOpenSharedForm(sub), 100); }}
+        onRecordPayment={handleRecordSharedPayment}
+        onGenerateDebts={handleGenerateSharedDebts}
+        onPriceChange={(sub) => { setSharedDetailVisible(false); setTimeout(() => { setPriceChangeSub(sub); setPriceChangeMonth(undefined); setPriceChangeVisible(true); }, 100); }}
+        onAdjustAmounts={(sub, month) => { setSharedDetailVisible(false); setTimeout(() => { setPriceChangeSub(sub); setPriceChangeMonth(month); setPriceChangeVisible(true); }, 100); }}
+        onDelete={handleDeleteSharedSub}
+        onLinkCommitment={handleLinkCommitment}
+        onViewCommitment={handleViewCommitment}
+      />
+      <PriceChangeSheet
+        visible={priceChangeVisible}
+        onClose={() => { setPriceChangeVisible(false); setPriceChangeSub(null); setPriceChangeMonth(undefined); }}
+        sub={priceChangeSub}
+        forMonth={priceChangeMonth}
+      />
+
+      {/* ── Commitment Picker Modal ──────────────────────────────────────── */}
+      {commitmentPickerSubId && (
+        <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setCommitmentPickerSubId(null)}>
+          <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setCommitmentPickerSubId(null)}>
+            <Pressable onPress={() => {}} style={[styles.choiceCard, { maxHeight: '60%' }]}>
+              <Text style={styles.choiceTitle}>link to commitment</Text>
+              <Text style={styles.choiceSubtitle}>pick an existing commitment</Text>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled style={{ marginTop: SPACING.md }}>
+                {subscriptions.filter((s) => s.isActive).map((sub, idx, arr) => (
+                  <TouchableOpacity
+                    key={sub.id}
+                    style={[{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, gap: SPACING.sm }, idx < arr.length - 1 && styles.choiceRowBorder]}
+                    onPress={() => handlePickCommitment(sub.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.choiceIcon}>
+                      <Feather name="repeat" size={18} color={C.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.choiceLabel}>{sub.name}</Text>
+                      <Text style={styles.choiceDesc}>{currency}{sub.amount.toFixed(2)}/{sub.billingCycle === 'monthly' ? 'mo' : sub.billingCycle === 'yearly' ? 'yr' : 'qtr'}</Text>
+                    </View>
+                    <Feather name="link" size={16} color={C.accent} />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
+
       {/* ── FAB Choice Modal ─────────────────────────────────────────────── */}
       {fabChoiceVisible && (<Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setFabChoiceVisible(false)}>
         <Pressable style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setFabChoiceVisible(false)}>
@@ -7822,6 +8070,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             {([
               { icon: 'users' as const, label: t.debts.addDebt, desc: t.debts.trackMoneyOwed, onPress: () => { setFabChoiceVisible(false); resetDebtForm(); setDebtModalVisible(true); } },
               { icon: 'scissors' as const, label: t.debts.splitExpense, desc: t.debts.divideBill, onPress: () => { setFabChoiceVisible(false); setSplitChoiceVisible(true); } },
+              { icon: 'repeat' as const, label: t.sharedSubs.addSharedSub, desc: t.sharedSubs.noSharedSubsHint, onPress: () => { setFabChoiceVisible(false); handleOpenSharedForm(); } },
             ] as const).map((opt, i, arr) => (
               <TouchableOpacity key={opt.label} onPress={opt.onPress} activeOpacity={0.7} style={[styles.choiceRow, i < arr.length - 1 && styles.choiceRowBorder]}>
                 <View style={styles.choiceIcon}><Feather name={opt.icon} size={18} color={C.accent} /></View>
@@ -7989,7 +8238,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             <Feather name="check" size={20} color={C.onAccent} />
           </TouchableOpacity>
         )}
-        <InModalToast ref={modalToastRef} />
+        <ModalToastHost />
       </Modal>)}
 
       {/* ── Request Payment Sheet ──────────────────────────────── */}
@@ -8152,7 +8401,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
             <Feather name="check" size={20} color={C.onAccent} />
           </TouchableOpacity>
         )}
-        <InModalToast ref={modalToastRef} />
+        <ModalToastHost />
       </Modal>)}
 
       {/* ── Sort Modal ─────────────────────────────────────────── */}

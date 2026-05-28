@@ -42,7 +42,7 @@ const BusinessReports: React.FC = () => {
       monthSales.forEach((sale) => {
         sale.items.forEach((item) => {
           const product = products.find((p) => p.id === item.productId);
-          if (product) {
+          if (product && product.cost > 0) {
             const profit = (item.unitPrice - product.cost) * item.quantity;
             totalProfit += profit;
           }
@@ -104,17 +104,19 @@ const BusinessReports: React.FC = () => {
     const totalRevenue = sales.reduce((sum, s) => sum + s.totalAmount, 0);
     let totalProfit = 0;
 
+    let hasAnyCost = false;
     sales.forEach((sale) => {
       sale.items.forEach((item) => {
         const product = products.find((p) => p.id === item.productId);
-        if (product) {
+        if (product && product.cost > 0) {
+          hasAnyCost = true;
           const profit = (item.unitPrice - product.cost) * item.quantity;
           totalProfit += profit;
         }
       });
     });
 
-    const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+    const profitMargin = totalRevenue > 0 && hasAnyCost ? (totalProfit / totalRevenue) * 100 : 0;
 
     return {
       revenue: totalRevenue,
@@ -140,7 +142,7 @@ const BusinessReports: React.FC = () => {
     monthSales.forEach((sale) => {
       sale.items.forEach((item) => {
         const product = products.find((p) => p.id === item.productId);
-        if (product) costs += product.cost * item.quantity;
+        if (product && product.cost > 0) costs += product.cost * item.quantity;
       });
     });
 
@@ -171,7 +173,7 @@ const BusinessReports: React.FC = () => {
     prevSales.forEach((sale) => {
       sale.items.forEach((item) => {
         const product = products.find((p) => p.id === item.productId);
-        if (product) prevCosts += product.cost * item.quantity;
+        if (product && product.cost > 0) prevCosts += product.cost * item.quantity;
       });
     });
 
@@ -307,7 +309,7 @@ const BusinessReports: React.FC = () => {
             <View style={styles.metricDivider} />
             <View style={styles.metricItem}>
               <Text style={[styles.metricValue, { color: C.positive }]}>
-                {totalStats.profitMargin.toFixed(1)}%
+                {totalStats.profitMargin > 0 ? `${totalStats.profitMargin.toFixed(1)}%` : '—'}
               </Text>
               <Text style={styles.metricLabel}>{t.business.reportsKeptPerSale}</Text>
             </View>

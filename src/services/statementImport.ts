@@ -54,10 +54,24 @@ export async function parseStatement(
     return { error: 'not_authenticated', message: 'Sign in to import statements.' };
   }
 
-  const { data, error } = await supabase.functions.invoke<StatementParseResult | StatementParseError>(
+  const invokePromise = supabase.functions.invoke<StatementParseResult | StatementParseError>(
     'parse-statement',
     { body: { pdfBase64, filename } },
   );
+
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Statement processing timed out (60s). Try a smaller PDF.')), 60_000),
+  );
+
+  let data: StatementParseResult | StatementParseError | null;
+  let error: any;
+  try {
+    const result = await Promise.race([invokePromise, timeoutPromise]);
+    data = (result as any).data ?? null;
+    error = (result as any).error ?? null;
+  } catch (e: any) {
+    return { error: 'timeout', message: e.message };
+  }
 
   if (error) {
     // Try to read the actual response body — supabase-js wraps non-2xx into
@@ -84,6 +98,14 @@ export async function parseStatement(
       }
     }
     return { error: 'network', message: error.message };
+  }
+  if (data && !isParseError(data as any) && Array.isArray((data as StatementParseResult).transactions)) {
+    const result = data as StatementParseResult;
+    result.transactions = result.transactions.filter((t) => {
+      if (!t.amount || !isFinite(t.amount) || t.amount <= 0 || t.amount > 1_000_000) return false;
+      if (t.date && isNaN(new Date(t.date).getTime())) return false;
+      return true;
+    });
   }
   return data as StatementParseResult | StatementParseError;
 }

@@ -5,7 +5,7 @@ import { StallSession } from '../types';
  * Looks across multiple sessions for trends.
  * Returns a calm, observational sentence — never advice or judgement.
  */
-export const explainStallHistory = (sessions: StallSession[]): string | null => {
+export const explainStallHistory = (sessions: StallSession[], currency = 'RM'): string | null => {
   const closed = sessions.filter((s) => !s.isActive && s.closedAt);
   if (closed.length < 2) return null;
 
@@ -103,5 +103,5 @@ export const explainStallHistory = (sessions: StallSession[]): string | null => 
     return '50 sessions. that\'s real consistency.';
   }
 
-  return `${sorted.length} sessions, RM${avgRevenue.toFixed(0)} average.`;
+  return `${sorted.length} sessions, ${currency}${avgRevenue.toFixed(0)} average.`;
 };

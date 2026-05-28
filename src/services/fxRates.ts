@@ -15,19 +15,19 @@ interface CachedRates {
   fetchedAt: number; // epoch ms
 }
 
-// Fallback rates (approximate, frozen Jan 2026). Used if fetch fails.
+// Fallback rates (approximate, updated May 2026). Used if fetch fails.
 const FALLBACK_RATES: Record<string, number> = {
   MYR: 1,
-  SGD: 0.30,
-  USD: 0.22,
-  THB: 7.7,
-  IDR: 3500,
-  VND: 5500,
-  PHP: 12.5,
-  JPY: 33,
-  EUR: 0.20,
-  GBP: 0.17,
-  AUD: 0.34,
+  SGD: 0.29,
+  USD: 0.23,
+  THB: 7.5,
+  IDR: 3600,
+  VND: 5600,
+  PHP: 12.8,
+  JPY: 32,
+  EUR: 0.21,
+  GBP: 0.18,
+  AUD: 0.33,
   CNY: 1.6,
 };
 

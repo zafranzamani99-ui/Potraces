@@ -85,86 +85,78 @@ export async function updateSellerProfile(
   return null;
 }
 
-/** Upload shop logo image. Returns public URL or null on error. */
-export async function uploadShopLogo(imageUri: string): Promise<string | null> {
+/** Upload shop logo image. Returns public URL or throws on error. */
+export async function uploadShopLogo(imageUri: string): Promise<string> {
   const session = await getSession();
-  if (!session) return null;
+  if (!session) throw new Error('Not authenticated. Please sign in.');
 
-  try {
-    const path = `${session.user.id}/logo.jpg`;
+  const path = `${session.user.id}/logo.jpg`;
 
-    const formData = new FormData();
-    formData.append('', {
-      uri: imageUri,
-      name: 'logo.jpg',
-      type: 'image/jpeg',
-    } as any); // RN FormData type limitation
+  const formData = new FormData();
+  formData.append('', {
+    uri: imageUri,
+    name: 'logo.jpg',
+    type: 'image/jpeg',
+  } as any); // RN FormData type limitation
 
-    const { error } = await supabase.storage
-      .from('shop-logos')
-      .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
+  const { error } = await supabase.storage
+    .from('shop-logos')
+    .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
 
-    if (error) {
-      return null;
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('shop-logos')
-      .getPublicUrl(path);
-
-    // Append timestamp to bust cache after re-upload
-    return urlData.publicUrl + '?t=' + Date.now();
-  } catch (e: any) {
-    return null;
+  if (error) {
+    throw new Error(`Logo upload failed: ${error.message}`);
   }
+
+  const { data: urlData } = supabase.storage
+    .from('shop-logos')
+    .getPublicUrl(path);
+
+  return urlData.publicUrl + '?t=' + Date.now();
 }
 
-/** Upload product image. Returns public URL or null on error. */
-export async function uploadProductImage(imageUri: string, productId: string): Promise<string | null> {
+/** Upload product image. Returns public URL or throws on error. */
+export async function uploadProductImage(imageUri: string, productId: string): Promise<string> {
   const session = await getSession();
-  if (!session) return null;
+  if (!session) throw new Error('Not authenticated. Please sign in.');
 
-  try {
-    const compressed = await manipulateAsync(
-      imageUri,
-      [{ resize: { width: 800 } }],
-      { compress: 0.7, format: SaveFormat.JPEG },
-    );
+  const compressed = await manipulateAsync(
+    imageUri,
+    [{ resize: { width: 800 } }],
+    { compress: 0.7, format: SaveFormat.JPEG },
+  );
 
-    const path = `${session.user.id}/${productId}.jpg`;
+  const path = `${session.user.id}/${productId}.jpg`;
 
-    const formData = new FormData();
-    formData.append('', {
-      uri: compressed.uri,
-      name: 'product.jpg',
-      type: 'image/jpeg',
-    } as any);
+  const formData = new FormData();
+  formData.append('', {
+    uri: compressed.uri,
+    name: 'product.jpg',
+    type: 'image/jpeg',
+  } as any);
 
-    const { error } = await supabase.storage
-      .from('product-images')
-      .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
+  const { error } = await supabase.storage
+    .from('product-images')
+    .upload(path, formData, { upsert: true, contentType: 'multipart/form-data' });
 
-    if (error) {
-      return null;
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('product-images')
-      .getPublicUrl(path);
-
-    return urlData.publicUrl + '?t=' + Date.now();
-  } catch (e: any) {
-    return null;
+  if (error) {
+    throw new Error(`Product image upload failed: ${error.message}`);
   }
+
+  const { data: urlData } = supabase.storage
+    .from('product-images')
+    .getPublicUrl(path);
+
+  return urlData.publicUrl + '?t=' + Date.now();
 }
 
-/** Upload a cost receipt image. Returns public URL or null on error. */
+/** Upload a cost receipt image. Returns public URL or null on error.
+ *  This function returns null instead of throwing because it's called during
+ *  sync where receipt upload is best-effort (retried next sync cycle). */
 export async function uploadReceiptImage(imageUri: string, costId: string): Promise<string | null> {
   const session = await getSession();
   if (!session) return null;
 
   try {
-    // Wider than product images (800px) so receipt text stays legible.
     const compressed = await manipulateAsync(
       imageUri,
       [{ resize: { width: 1200 } }],
@@ -958,6 +950,29 @@ export async function pullAll(): Promise<void> {
 
     if (ordersChanged) {
       useSellerStore.setState({ orders: updatedOrders });
+
+      const currentProducts = useSellerStore.getState().products;
+      const allOrders = useSellerStore.getState().orders;
+      const productSold = new Map<string, number>();
+      for (const order of allOrders) {
+        if ((order.status as string) === 'cancelled') continue;
+        for (const item of order.items) {
+          const pid = item.productId;
+          if (pid) productSold.set(pid, (productSold.get(pid) || 0) + (item.quantity || 0));
+        }
+      }
+      let stockChanged = false;
+      const recalcProducts = currentProducts.map((p) => {
+        const sold = productSold.get(p.id) || 0;
+        if (p.totalSold !== sold) {
+          stockChanged = true;
+          return { ...p, totalSold: sold };
+        }
+        return p;
+      });
+      if (stockChanged) {
+        useSellerStore.setState({ products: recalcProducts });
+      }
     }
   }
 
@@ -1172,6 +1187,29 @@ export async function pullAll(): Promise<void> {
   }
 }
 
+// ─── Sync status (CF-52) ─────────────────────────────────────────────────────
+
+export type SyncStatus = 'idle' | 'syncing' | 'error';
+
+/** Module-level sync status observable. Components subscribe via useSyncStatus(). */
+let _syncStatus: SyncStatus = 'idle';
+let _lastSyncAt: Date | null = null;
+const _syncListeners = new Set<() => void>();
+
+export function getSyncStatus(): SyncStatus { return _syncStatus; }
+export function getLastSyncAt(): Date | null { return _lastSyncAt; }
+
+function setSyncStatus(status: SyncStatus): void {
+  _syncStatus = status;
+  if (status === 'idle') _lastSyncAt = new Date();
+  _syncListeners.forEach((fn) => fn());
+}
+
+export function subscribeSyncStatus(listener: () => void): () => void {
+  _syncListeners.add(listener);
+  return () => { _syncListeners.delete(listener); };
+}
+
 // ─── Full sync ────────────────────────────────────────────────────────────────
 
 /**
@@ -1179,15 +1217,29 @@ export async function pullAll(): Promise<void> {
  * Call on startup and on app foreground.
  * Pulls remote data first to prevent tombstone deletion on new devices.
  */
+let _inflight: Promise<void> | null = null;
+
 export async function syncAll(
   products: SellerProduct[],
   orders: SellerOrder[],
   seasons: Season[],
   customers: SellerCustomer[],
 ): Promise<void> {
+  if (_inflight) return _inflight;
+  _inflight = _syncAllImpl(products, orders, seasons, customers).finally(() => { _inflight = null; });
+  return _inflight;
+}
+
+async function _syncAllImpl(
+  products: SellerProduct[],
+  orders: SellerOrder[],
+  seasons: Season[],
+  customers: SellerCustomer[],
+): Promise<void> {
+  setSyncStatus('syncing');
   try {
     const profileId = await ensureProfile();
-    if (!profileId) return;
+    if (!profileId) { setSyncStatus('idle'); return; }
 
     // Pull first — prevents empty local store from deleting remote data
     try {
@@ -1201,6 +1253,7 @@ export async function syncAll(
         name: pullErr?.name ?? null,
         raw: String(pullErr),
       }));
+      setSyncStatus('error');
       return;
     }
 
@@ -1259,7 +1312,10 @@ export async function syncAll(
     if (Object.keys(cleared).length > 0) {
       useSellerStore.setState(cleared as Partial<ReturnType<typeof useSellerStore.getState>>);
     }
+
+    setSyncStatus('idle');
   } catch (err) {
+    setSyncStatus('error');
     if (__DEV__) console.warn('[sellerSync] syncAll failed:', err instanceof Error ? err.message : err);
   }
 }
@@ -1317,6 +1373,9 @@ export async function pullOrderLinkOrders(): Promise<void> {
  * Subscribe to new orders placed by customers via the order link.
  * Returns an unsubscribe function.
  *
+ * When the WebSocket reconnects after a disconnect, triggers a data pull
+ * to catch up on any events missed while offline (CF-51).
+ *
  * @param profileId  The seller's Supabase profile UUID (from ensureProfile())
  * @param onNewOrder Called with the raw Supabase row for each new order_link order
  */
@@ -1324,6 +1383,8 @@ export function subscribeToOrderLinkOrders(
   profileId: string,
   onNewOrder: (row: Record<string, unknown>) => void,
 ): () => void {
+  let prevStatus: string = '';
+
   const channel = supabase
     .channel(`order_link_${profileId}`)
     .on(
@@ -1341,7 +1402,15 @@ export function subscribeToOrderLinkOrders(
         }
       },
     )
-    .subscribe();
+    .subscribe((status) => {
+      // CF-51: catch up after reconnect — Supabase Realtime doesn't replay
+      // missed events, so pull all data when the channel re-subscribes.
+      if (status === 'SUBSCRIBED' && prevStatus && prevStatus !== 'SUBSCRIBED') {
+        pullAll().catch(() => {});
+        pullOrderLinkOrders().catch(() => {});
+      }
+      prevStatus = status;
+    });
 
   return () => {
     supabase.removeChannel(channel);

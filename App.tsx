@@ -192,7 +192,7 @@ export default function App() {
               // Only show in-app toast if notifications are enabled
               if (useSettingsStore.getState().notificationsEnabled) {
                 const name = (row.customer_name as string | null) ?? 'Pelanggan';
-                const amt = row.total_amount != null ? ` · RM ${Number(row.total_amount).toFixed(2)}` : '';
+                const amt = row.total_amount != null ? ` · RM ${Number(row.total_amount).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
                 globalShowToast(`Pesanan baru dari ${name}${amt}`, 'info');
               }
             });

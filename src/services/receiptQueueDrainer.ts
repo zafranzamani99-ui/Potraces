@@ -42,7 +42,7 @@ export async function runReceiptDrain(): Promise<void> {
   if (inflight) return inflight;
   inflight = (async () => {
     try {
-      const { processed, remaining } = await drainQueue(processOne);
+      const { processed, remaining, dropped } = await drainQueue(processOne);
       if (processed > 0) {
         try {
           globalShowToast(
@@ -50,6 +50,16 @@ export async function runReceiptDrain(): Promise<void> {
               ? `${processed} receipt${processed === 1 ? '' : 's'} processed, ${remaining} still pending`
               : `${processed} queued receipt${processed === 1 ? '' : 's'} added`,
             'success',
+          );
+        } catch {
+          // toast context not mounted — silent
+        }
+      }
+      if (dropped.length > 0) {
+        try {
+          globalShowToast(
+            `${dropped.length} receipt${dropped.length === 1 ? '' : 's'} could not be processed and ${dropped.length === 1 ? 'was' : 'were'} removed`,
+            'error',
           );
         } catch {
           // toast context not mounted — silent

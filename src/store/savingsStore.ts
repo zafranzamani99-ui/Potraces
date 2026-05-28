@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SavingsState, SavingsSortBy, SnapshotType } from '../types';
 import { newId } from '../utils/id';
+import { roundMoney } from '../utils/money';
 
 export const useSavingsStore = create<SavingsState>()(
   persist(
@@ -91,7 +92,7 @@ export const useSavingsStore = create<SavingsState>()(
         })),
 
       recordOpen: () => {
-        const total = get().accounts.reduce((s, a) => s + a.currentValue, 0);
+        const total = roundMoney(get().accounts.reduce((s, a) => s + a.currentValue, 0));
         set({ lastOpenedValue: total });
       },
     }),

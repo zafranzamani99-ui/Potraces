@@ -32,7 +32,7 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { SellerOrder, SellerOrderItem, OrderStatus, SellerPaymentMethod, SellerProduct, DepositEntry } from '../../types';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import FloatingModal from '../../components/common/FloatingModal';
-import InModalToast, { InModalToastRef } from '../../components/common/InModalToast';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import { useT } from '../../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { deleteOrderFromSupabase, syncAll, pullOrderLinkOrders } from '../../services/sellerSync';
@@ -620,15 +620,7 @@ const OrderList: React.FC = () => {
   const currency = useSettingsStore((s) => s.currency);
   const userName = useSettingsStore((s) => s.userName);
   const paymentQrs = useSettingsStore((s) => s.businessPaymentQrs);
-  const { showToast: _showToast } = useToast();
-  const detailToastRef = useRef<InModalToastRef>(null);
-  const showToast = useCallback((msg: string, type?: 'success' | 'error' | 'info') => {
-    if (detailToastRef.current) {
-      detailToastRef.current.show(msg, type || 'info');
-    } else {
-      _showToast(msg, type || 'info');
-    }
-  }, [_showToast]);
+  const { showToast } = useToast();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
 
@@ -1342,7 +1334,7 @@ const OrderList: React.FC = () => {
 
     let newTotal = selectedOrder.totalAmount;
     if (itemsChanged) {
-      newTotal = editItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+      newTotal = editItems.reduce((s, i) => s + (i.unitPrice || 0) * (i.quantity || 0), 0);
       const paidSoFar = selectedOrder.paidAmount || 0;
 
       // Overpaid — new total is less than what was already paid
@@ -3258,7 +3250,7 @@ const OrderList: React.FC = () => {
           </TouchableOpacity>
       )}
 
-        <InModalToast ref={detailToastRef} />
+        <ModalToastHost />
       </FloatingModal>}
 
       {/* ─── Swipe-to-pay compact payment modal ─── */}
@@ -3435,22 +3427,19 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: SPACING.lg,
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.xs,
+    paddingHorizontal: SPACING.xl,
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
     gap: SPACING.sm,
     maxWidth: 680,
-    width: '100%',
     alignSelf: 'center' as const,
   },
   searchContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
+    borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     minHeight: 44,
     gap: SPACING.sm,
@@ -3459,20 +3448,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textPrimary,
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.xs,
   },
   sortButton: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.lg,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     alignItems: 'center',
     justifyContent: 'center',
   },
   sortButtonActive: {
-    borderColor: C.bronze,
+    backgroundColor: withAlpha(C.bronze, 0.1),
   },
   sortActiveDot: {
     position: 'absolute',
@@ -3505,43 +3492,43 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: withAlpha(C.background, 0.85),
   },
   quickFilterRow: {
-    paddingHorizontal: 8,
+    paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.xs,
-    gap: 6,
+    gap: SPACING.sm,
     alignItems: 'flex-start',
   },
   quickChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
-    paddingHorizontal: 10,
-    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    minHeight: 36,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     justifyContent: 'center',
   },
   quickChipActive: {
+    backgroundColor: withAlpha(C.bronze, 0.1),
+    borderWidth: 1,
     borderColor: C.bronze,
   },
   quickChipText: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
+    color: C.textMuted,
   },
   quickChipTextActive: {
     color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
   chipCountBadge: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: withAlpha(C.textMuted, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: SPACING.xs,
   },
   chipCountBadgeActive: {
     backgroundColor: withAlpha(C.bronze, 0.2),
@@ -3557,27 +3544,26 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
   },
   viewModeToggle: {
-    flexDirection: 'row',
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
+    justifyContent: 'center',
   },
 
   // ── Filter pills (shared — used inside filter modal) ──
   filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: SPACING.xs,
     paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    minHeight: 30,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
   },
   filterPillActive: {
-    borderColor: C.bronze,
+    backgroundColor: withAlpha(C.bronze, 0.1),
   },
   filterPillText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -3612,7 +3598,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     marginBottom: SPACING.xs,
   },
   resultText: {
@@ -3637,7 +3623,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
 
   // ── Order list ──
   listContent: {
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.sm,
     paddingBottom: SPACING['3xl'],
     maxWidth: 680,
@@ -3649,12 +3635,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Order card ──
   orderCard: {
     backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: C.border,
-    paddingVertical: SPACING.md - 2,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+    paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
-    gap: 3,
+    gap: SPACING.xs,
   },
   orderCardSelected: {
     borderColor: withAlpha(C.bronze, 0.4),
@@ -3668,10 +3654,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 72,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     marginVertical: 1,
-    marginLeft: 2,
-    gap: 2,
+    marginLeft: SPACING.xs,
+    gap: SPACING.xs,
   },
   swipeActionText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -3690,7 +3676,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   orderCardBody: {
     flex: 1,
-    gap: 2,
+    gap: SPACING.xs,
   },
   orderTopRow: {
     flexDirection: 'row',
@@ -3723,7 +3709,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   orderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm + 2,
+    gap: SPACING.sm,
   },
   customerName: {
     flex: 1,
@@ -3758,7 +3744,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   orderTags: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: SPACING.xs,
     flexShrink: 0,
   },
   orderTag: {
@@ -3766,8 +3752,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
   },
   paymentBadge: {
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: SPACING.xs + 1,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.xs,
     paddingVertical: 2,
   },
   paymentBadgeText: {
@@ -3777,8 +3763,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   onlineBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    borderRadius: RADIUS.sm,
+    gap: SPACING.xs,
+    borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.xs,
     paddingVertical: 2,
     backgroundColor: withAlpha(BIZ.success, 0.1),
@@ -3791,7 +3777,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   unseenHint: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: 4,
+    gap: SPACING.xs,
     marginLeft: SPACING.xs,
   },
   unseenHintBar: {
@@ -3824,14 +3810,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 3,
+    marginTop: SPACING.xs,
     gap: SPACING.xs,
   },
   orderMetaLeft: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: SPACING.xs,
     overflow: 'hidden',
   },
   orderMetaDelivery: {
@@ -3849,7 +3835,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(C.border, 0.5),
-    gap: SPACING.xs + 1,
+    gap: SPACING.xs,
   },
   expandedMeta: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -3899,13 +3885,13 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   expandedAdvanceBtn: {
     flex: 0.85,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
+    gap: SPACING.xs,
   },
   expandedAdvanceBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -3916,14 +3902,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.lg,
     backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
   },
 
   // ── Shared badges (detail modal, grouped) ──
   statusBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
     borderRadius: RADIUS.full,
   },
   statusText: {
@@ -4005,7 +3991,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.surface,
     borderTopWidth: 1,
     borderTopColor: C.border,
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.md,
     gap: SPACING.sm,
   },

@@ -47,7 +47,7 @@ const SessionHistory: React.FC = () => {
   );
 
   const lifetimeStats = useMemo(() => getLifetimeStats(), [sessions]);
-  const insight = useMemo(() => explainStallHistory(closedSessions), [closedSessions]);
+  const insight = useMemo(() => explainStallHistory(closedSessions, currency), [closedSessions, currency]);
 
   const formatDuration = (minutes: number): string => {
     if (minutes < 60) return `${minutes}m`;

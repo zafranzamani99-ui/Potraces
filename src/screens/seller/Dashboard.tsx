@@ -21,7 +21,7 @@ import {
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import { startOfMonth, endOfMonth, subMonths, subDays, isWithinInterval, isToday, isTomorrow, isPast, startOfDay, differenceInDays, format, isSameDay } from 'date-fns';
+import { startOfMonth, endOfMonth, subMonths, subDays, isWithinInterval, isToday, isTomorrow, isPast, startOfDay, differenceInDays, format, isSameDay, formatDistanceToNow, isValid } from 'date-fns';
 import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -31,14 +31,26 @@ import { explainSellerMonth } from '../../utils/explainSellerMonth';
 import { lightTap, mediumTap } from '../../services/haptics';
 import ModeToggle from '../../components/common/ModeToggle';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getSellerProfile, updateSellerProfile, uploadShopLogo } from '../../services/sellerSync';
+import { getSellerProfile, updateSellerProfile, uploadShopLogo, getSyncStatus, getLastSyncAt, subscribeSyncStatus, SyncStatus } from '../../services/sellerSync';
 import { useAuthStore } from '../../store/authStore';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 
+import { formatAmount } from '../../utils/formatters';
 import { useFadeSlide } from '../../utils/fadeSlide';
 import { useSeasonInsights } from '../../hooks/useSeasonInsights';
 import SeasonStartSheet from '../../components/seller/SeasonStartSheet';
+import ModalToastHost from '../../components/common/ModalToastHost';
+import OfflineBanner from '../../components/common/OfflineBanner';
+
+// ─── Sync status hook (CF-52) ────────────────────────────────
+function useSyncStatus(): { status: SyncStatus; lastSyncAt: Date | null } {
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    return subscribeSyncStatus(() => forceUpdate((n) => n + 1));
+  }, []);
+  return { status: getSyncStatus(), lastSyncAt: getLastSyncAt() };
+}
 
 // ─── Component ───────────────────────────────────────────────
 const SellerDashboard: React.FC = () => {
@@ -58,8 +70,11 @@ const SellerDashboard: React.FC = () => {
   const prevStart = startOfMonth(subMonths(now, 1));
   const prevEnd = endOfMonth(subMonths(now, 1));
 
-  const inRange = (d: Date, start: Date, end: Date) =>
-    isWithinInterval(d instanceof Date ? d : new Date(d), { start, end });
+  const inRange = (d: Date, start: Date, end: Date) => {
+    const parsed = d instanceof Date ? d : new Date(d);
+    if (!isValid(parsed)) return false;
+    return isWithinInterval(parsed, { start, end });
+  };
 
   const activeSeason = seasons.find((s) => s.isActive) || null;
   const seasonInsights = useSeasonInsights(activeSeason);
@@ -238,6 +253,9 @@ const SellerDashboard: React.FC = () => {
     });
   }, [deliverToday, sellerCustomers]);
 
+  // ── Sync status (CF-52) ──────────────────────────────────
+  const { status: syncStatus, lastSyncAt } = useSyncStatus();
+
   // ── Pull-to-refresh ───────────────────────────────────────
   const [refreshing, setRefreshing] = useState(false);
   const [showItemsModal, setShowItemsModal] = useState(false);
@@ -261,6 +279,16 @@ const SellerDashboard: React.FC = () => {
   // QR modal
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [qrViewIndex, setQrViewIndex] = useState(0);
+
+  // Guard: close all modals before opening a new one (prevents iOS stacking)
+  const closeAllModals = useCallback(() => {
+    setShowShopModal(false);
+    setShowSlugConfirm(false);
+    setShowItemsModal(false);
+    setQrModalVisible(false);
+    setShowStartSheet(false);
+    setPreviewLogoVisible(false);
+  }, []);
 
   useEffect(() => {
     getSellerProfile().then((profile) => {
@@ -442,7 +470,7 @@ const SellerDashboard: React.FC = () => {
     } else {
       momPopAnim.setValue(1);
     }
-  }, [momDelta !== null]);
+  }, [momDelta]);
 
   // ── Maps app picker (delivery route) ─────────────────────
   // Update after deploying to Vercel — replace with your actual Vercel URL
@@ -493,9 +521,9 @@ const SellerDashboard: React.FC = () => {
       return;
     }
     // iOS: must close parent modal before opening sub-modal
-    setShowShopModal(false);
+    closeAllModals();
     setTimeout(() => setShowSlugConfirm(true), 50);
-  }, [shopSlug, doSaveShopLink]);
+  }, [shopSlug, doSaveShopLink, closeAllModals]);
 
   const handleOpenMaps = useCallback((address: string) => {
     lightTap();
@@ -591,6 +619,15 @@ const SellerDashboard: React.FC = () => {
         }
       >
         <ModeToggle />
+        <OfflineBanner />
+        {/* ── Sync status (CF-52) ── */}
+        {syncStatus === 'syncing' ? (
+          <Text style={styles.syncStatusText}>syncing...</Text>
+        ) : syncStatus === 'error' ? (
+          <Text style={[styles.syncStatusText, { color: C.bronze }]}>sync failed</Text>
+        ) : lastSyncAt ? (
+          <Text style={styles.syncStatusText}>last synced {formatDistanceToNow(lastSyncAt, { addSuffix: true })}</Text>
+        ) : null}
         {/* ── Season context ─────────────────────────────── */}
         <Animated.View style={seasonAnim}>
           {activeSeason ? (
@@ -623,7 +660,7 @@ const SellerDashboard: React.FC = () => {
           ) : (
             <Pressable
               style={({ pressed }) => [styles.seasonStatusRow, pressed && { opacity: 0.7 }]}
-              onPress={() => { lightTap(); setShowStartSheet(true); }}
+              onPress={() => { lightTap(); closeAllModals(); setShowStartSheet(true); }}
               accessibilityRole="button"
               accessibilityLabel="Start a new season"
             >
@@ -675,6 +712,7 @@ const SellerDashboard: React.FC = () => {
               onPress={() => {
                 lightTap();
                 if (paymentQrs.length > 0) {
+                  closeAllModals();
                   setQrViewIndex(0);
                   setQrModalVisible(true);
                 } else {
@@ -702,6 +740,7 @@ const SellerDashboard: React.FC = () => {
                 setShopModalName(shopDisplayName || '');
                 setShopModalNotice(shopNotice || '');
                 setShopError(null);
+                closeAllModals();
                 setShowShopModal(true);
               }}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -720,15 +759,15 @@ const SellerDashboard: React.FC = () => {
               >
                 <Text
                   style={[styles.heroAmount, { color: C.textPrimary }]}
-                  accessibilityLabel={`Kept this season: ${currency} ${heroKept.toFixed(2)}`}
+                  accessibilityLabel={`Kept this season: ${formatAmount(heroKept, currency)}`}
                 >
-                  {currency} {displayKept !== null ? displayKept : heroKept.toFixed(0)}
+                  {displayKept !== null ? `${currency} ${displayKept.toLocaleString()}` : formatAmount(heroKept, currency, 0)}
                 </Text>
                 <Text style={styles.seasonKeptLabel}>kept so far</Text>
               </Pressable>
               {seasonInsights.costs > 0 && (
                 <Text style={[styles.heroCostsSubtitle, heroKept < 0 && { color: semantic(BIZ_SAFE.loss, isDark) }]}>
-                  after {currency} {seasonInsights.costs.toFixed(0)} in costs
+                  after {formatAmount(seasonInsights.costs, currency, 0)} in costs
                 </Text>
               )}
               {seasonInsights.targetPct !== null && (
@@ -753,7 +792,7 @@ const SellerDashboard: React.FC = () => {
               )}
               <Text style={styles.heroMargin}>
                 {seasonInsights.todaysOrderCount > 0
-                  ? `today ${currency} ${seasonInsights.todaysCameIn.toFixed(0)} · ${seasonInsights.todaysOrderCount} order${seasonInsights.todaysOrderCount === 1 ? '' : 's'}`
+                  ? `today ${formatAmount(seasonInsights.todaysCameIn, currency, 0)} · ${seasonInsights.todaysOrderCount} order${seasonInsights.todaysOrderCount === 1 ? '' : 's'}`
                   : seasonInsights.totalOrders > 0
                     ? `${seasonInsights.totalOrders} orders this season`
                     : 'your first order will appear here'}
@@ -801,13 +840,13 @@ const SellerDashboard: React.FC = () => {
             <>
               <Text
                 style={[styles.heroAmount, { color: C.textPrimary }]}
-                accessibilityLabel={`Kept this month: ${currency} ${kept.toFixed(2)}`}
+                accessibilityLabel={`Kept this month: ${formatAmount(kept, currency)}`}
               >
-                {currency} {displayKept !== null ? displayKept : kept.toFixed(0)}
+                {displayKept !== null ? `${currency} ${displayKept.toLocaleString()}` : formatAmount(kept, currency, 0)}
               </Text>
               {totalCosts > 0 && (
                 <Text style={[styles.heroCostsSubtitle, kept < 0 && { color: semantic(BIZ_SAFE.loss, isDark) }]}>
-                  after {currency} {totalCosts.toFixed(0)} in costs
+                  after {formatAmount(totalCosts, currency, 0)} in costs
                 </Text>
               )}
               {keptRate !== null && totalIncome > 0 && (
@@ -815,14 +854,14 @@ const SellerDashboard: React.FC = () => {
                   kept {keptRate.toFixed(0)}%
                   {todaysOrders.length > 0 && (
                     <Text style={styles.heroTodayInline}>
-                      {'  ·  '}today {currency} {todaysCameIn.toFixed(0)}
+                      {'  ·  '}today {formatAmount(todaysCameIn, currency, 0)}
                     </Text>
                   )}
                 </Text>
               )}
               {keptRate === null && todaysOrders.length > 0 && (
                 <Text style={styles.heroMargin}>
-                  today {currency} {todaysCameIn.toFixed(0)} · {todaysOrders.length} {todaysOrders.length === 1 ? 'order' : 'orders'}
+                  today {formatAmount(todaysCameIn, currency, 0)} · {todaysOrders.length} {todaysOrders.length === 1 ? 'order' : 'orders'}
                 </Text>
               )}
               {!isFirstTime && (
@@ -917,7 +956,7 @@ const SellerDashboard: React.FC = () => {
           <Animated.View style={urgencyAnim}>
             <Pressable
               style={({ pressed }) => [styles.itemStatsCard, pressed && { opacity: 0.8 }]}
-              onPress={() => { lightTap(); setShowItemsModal(true); }}
+              onPress={() => { lightTap(); closeAllModals(); setShowItemsModal(true); }}
             >
               {/* Header */}
               <View style={styles.productionHeader}>
@@ -977,8 +1016,8 @@ const SellerDashboard: React.FC = () => {
             />
             <Text style={[styles.breakEvenText, { color: C.bronze }]}>
               {kept >= 0
-                ? `costs covered · ${currency} ${kept.toFixed(0)} above break-even`
-                : `need ${currency} ${Math.abs(kept).toFixed(0)} more to cover costs`}
+                ? `costs covered · ${formatAmount(kept, currency, 0)} above break-even`
+                : `need ${formatAmount(Math.abs(kept), currency, 0)} more to cover costs`}
             </Text>
           </Animated.View>
         )}
@@ -1143,7 +1182,7 @@ const SellerDashboard: React.FC = () => {
                 ]}
                 onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'unpaid' }); }}
                 accessibilityRole="button"
-                accessibilityLabel={`${unpaidOrders.length} unpaid orders, ${currency} ${unpaidTotal.toFixed(2)} pending. Tap to view.`}
+                accessibilityLabel={`${unpaidOrders.length} unpaid orders, ${formatAmount(unpaidTotal, currency)} pending. Tap to view.`}
               >
                 <View style={styles.actionCardInner}>
                   <View style={styles.actionCardTop}>
@@ -1165,7 +1204,7 @@ const SellerDashboard: React.FC = () => {
                   <Text style={styles.actionCardLabel}>unpaid</Text>
                   {unpaidOrders.length > 0 && (
                     <Text style={styles.actionCardSubAmount}>
-                      {currency} {unpaidTotal.toFixed(0)}
+                      {formatAmount(unpaidTotal, currency, 0)}
                     </Text>
                   )}
                 </View>
@@ -1251,9 +1290,9 @@ const SellerDashboard: React.FC = () => {
                   <Text style={styles.cameInRowLabel}>came in</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.cameInRowAmount}>{currency} {totalIncome.toFixed(2)}</Text>
+                  <Text style={styles.cameInRowAmount}>{formatAmount(totalIncome, currency)}</Text>
                   {unpaidTotal > 0 && (
-                    <Text style={styles.cameInRowNote}>+ {currency} {unpaidTotal.toFixed(0)} unpaid</Text>
+                    <Text style={styles.cameInRowNote}>+ {formatAmount(unpaidTotal, currency, 0)} unpaid</Text>
                   )}
                 </View>
               </View>
@@ -1264,7 +1303,7 @@ const SellerDashboard: React.FC = () => {
                   <Feather name="shopping-bag" size={15} color={C.bronze} />
                   <Text style={styles.cameInRowLabel}>costs</Text>
                 </View>
-                <Text style={styles.cameInRowAmount}>{currency} {totalCosts.toFixed(2)}</Text>
+                <Text style={styles.cameInRowAmount}>{formatAmount(totalCosts, currency)}</Text>
               </View>
 
               {/* Divider */}
@@ -1277,7 +1316,7 @@ const SellerDashboard: React.FC = () => {
                   <Text style={[styles.cameInKeptLabel, { color: kept >= 0 ? C.bronze : semantic(BIZ_SAFE.loss, isDark) }]}>kept</Text>
                 </View>
                 <Text style={[styles.cameInKeptAmount, { color: kept >= 0 ? C.bronze : semantic(BIZ_SAFE.loss, isDark) }]}>
-                  {currency} {kept.toFixed(2)}
+                  {formatAmount(kept, currency)}
                 </Text>
               </View>
             </Animated.View>
@@ -1499,6 +1538,7 @@ const SellerDashboard: React.FC = () => {
           </Pressable>
         )}
         </KeyboardAvoidingView>
+        <ModalToastHost />
       </Modal>
       )}
 
@@ -1535,7 +1575,7 @@ const SellerDashboard: React.FC = () => {
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
               <Pressable
                 style={({ pressed }) => [styles.slmConfirmCancelBtn, pressed && { opacity: 0.7 }]}
-                onPress={() => { setShowSlugConfirm(false); setTimeout(() => setShowShopModal(true), 50); }}
+                onPress={() => { closeAllModals(); setTimeout(() => setShowShopModal(true), 50); }}
               >
                 <Text style={styles.slmConfirmCancelText}>go back</Text>
               </Pressable>
@@ -1549,6 +1589,7 @@ const SellerDashboard: React.FC = () => {
             </View>
           </View>
         </View>
+        <ModalToastHost />
       </Modal>
       )}
 
@@ -1607,6 +1648,7 @@ const SellerDashboard: React.FC = () => {
               </ScrollView>
             </View>
           </Pressable>
+          <ModalToastHost />
         </Modal>
       )}
 
@@ -1660,6 +1702,7 @@ const SellerDashboard: React.FC = () => {
             </View>
           )}
         </View>
+        <ModalToastHost />
       </Modal>
       )}
 
@@ -1689,6 +1732,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     maxWidth: 680,
     width: '100%',
     alignSelf: 'center' as const,
+  },
+
+  // ── Sync status (CF-52) ─────────────────────────────────────
+  syncStatusText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    textAlign: 'right' as const,
+    marginTop: SPACING.xs,
   },
 
   // ── Season context ────────────────────────────────────────

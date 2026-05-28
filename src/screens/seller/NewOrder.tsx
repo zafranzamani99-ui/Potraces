@@ -38,6 +38,7 @@ import { KeyboardAwareScrollView, KeyboardAvoidingView as KAView } from 'react-n
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTap, selectionChanged, successNotification, mediumTap, warningNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
+import ModalToastHost from '../../components/common/ModalToastHost';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -288,14 +289,23 @@ const NewOrder: React.FC = () => {
   const handleReorder = useCallback((order: SellerOrder) => {
     mediumTap();
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setItems(order.items.map((item) => {
+    const reorderItems = order.items.map((item) => {
       const currentProduct = products.find(p => p.id === item.productId);
       return {
         ...item,
         unitPrice: currentProduct ? currentProduct.pricePerUnit : item.unitPrice,
+        _deleted: !currentProduct,
       };
-    }));
-  }, [products]);
+    });
+    const unavailable = reorderItems.filter(i => i._deleted);
+    const available = reorderItems.filter(i => !i._deleted).map(({ _deleted, ...rest }) => rest);
+    if (unavailable.length > 0) {
+      showToast(`${unavailable.length} item${unavailable.length > 1 ? 's' : ''} no longer available`, 'error');
+    }
+    if (available.length > 0) {
+      setItems(available);
+    }
+  }, [products, showToast]);
 
   // Delivery
   const handleDeliveryToday = useCallback(() => {
@@ -1125,6 +1135,7 @@ const NewOrder: React.FC = () => {
             </View>
           </Pressable>
         </Pressable>
+        <ModalToastHost />
       </Modal>}
 
       {/* ── Bottom bar ────────────────────────────────────── */}
@@ -1265,6 +1276,7 @@ const NewOrder: React.FC = () => {
             </TouchableOpacity>
           </View>
         </View>
+        <ModalToastHost />
       </Modal>}
 
       {/* ── Product picker modal ─────────────────────────────── */}
@@ -1474,6 +1486,7 @@ const NewOrder: React.FC = () => {
             </View>
           </View>
         </KeyboardAvoidingView>
+        <ModalToastHost />
       </Modal>}
 
       {/* ── Contact picker modal ─────────────────────────────── */}
@@ -1560,6 +1573,7 @@ const NewOrder: React.FC = () => {
             />
           </View>
         </KAView>
+        <ModalToastHost />
       </Modal>}
 
       {/* ── Confirmation modal ───────────────────────────────── */}
@@ -1637,6 +1651,7 @@ const NewOrder: React.FC = () => {
             </View>
           </View>
         </View>
+        <ModalToastHost />
       </Modal>}
     </View>
   );

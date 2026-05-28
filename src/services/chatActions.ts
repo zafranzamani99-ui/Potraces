@@ -90,6 +90,25 @@ export interface ActionResult {
   action: ChatAction;
 }
 
+const DESTRUCTIVE_ACTIONS: Set<ChatActionType> = new Set([
+  'delete_transaction', 'delete_budget', 'delete_debt', 'delete_goal',
+  'forgive_debt', 'transfer', 'cancel_subscription',
+  'edit_transaction', 'edit_budget', 'edit_debt',
+  'repay_credit', 'withdraw_goal',
+]);
+
+export interface PendingAction {
+  action: ChatAction;
+  requiresConfirmation: boolean;
+}
+
+export function classifyActions(actions: ChatAction[]): PendingAction[] {
+  return actions.map((action) => ({
+    action,
+    requiresConfirmation: DESTRUCTIVE_ACTIONS.has(action.type),
+  }));
+}
+
 // ─── Parser ──────────────────────────────────────────────
 
 const ACTION_REGEX = /\[ACTION\]([\s\S]*?)\[\/ACTION\]/g;
@@ -639,10 +658,13 @@ export function executeAction(action: ChatAction): ActionResult {
       case 'delete_transaction': {
         const { transactions } = usePersonalStore.getState();
         const desc = (action.description || '').toLowerCase();
+        if (desc && desc.length < 3 && !(action.amount && action.amount > 0)) {
+          return { success: false, message: `Search term "${action.description}" is too short — use at least 3 characters or provide an amount.`, action };
+        }
         const matches = transactions.filter((t) => {
           if (action.matchType && t.type !== action.matchType) return false;
           if (action.amount && action.amount > 0 && Math.abs(t.amount - action.amount) > 0.01) return false;
-          if (desc && !t.description.toLowerCase().includes(desc) && !desc.includes(t.description.toLowerCase())) return false;
+          if (desc && !t.description.toLowerCase().includes(desc)) return false;
           if (action.date) {
             const target = resolveDate(action.date);
             const td = t.date instanceof Date ? t.date : new Date(t.date);
@@ -653,7 +675,8 @@ export function executeAction(action: ChatAction): ActionResult {
         if (matches.length === 0) {
           return { success: false, message: `No transaction found matching "${action.description || ''}" RM ${(action.amount || 0).toFixed(2)}.`, action };
         }
-        const toDelete = action.deleteAll ? matches : [matches[matches.length - 1]];
+        const MAX_DELETE_BATCH = 5;
+        const toDelete = action.deleteAll ? matches.slice(0, MAX_DELETE_BATCH) : [matches[matches.length - 1]];
         for (const tx of toDelete) {
           // Reverse wallet impact
           if (tx.walletId) {
@@ -683,7 +706,7 @@ export function executeAction(action: ChatAction): ActionResult {
         const matches = transactions.filter((t) => {
           if (action.matchType && t.type !== action.matchType) return false;
           if (action.amount && action.amount > 0 && Math.abs(t.amount - action.amount) > 0.01) return false;
-          if (desc && !t.description.toLowerCase().includes(desc) && !desc.includes(t.description.toLowerCase())) return false;
+          if (desc && !t.description.toLowerCase().includes(desc)) return false;
           if (action.date) {
             const target = resolveDate(action.date);
             const td = t.date instanceof Date ? t.date : new Date(t.date);

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CRMState } from '../types';
+import { newId } from '../utils/id';
+import { roundMoney } from '../utils/money';
 
 export const useCRMStore = create<CRMState>()(
   persist(
@@ -14,7 +16,7 @@ export const useCRMStore = create<CRMState>()(
           customers: [
             {
               ...customer,
-              id: Date.now().toString(),
+              id: newId(),
               createdAt: new Date(),
               updatedAt: new Date(),
             },
@@ -42,7 +44,7 @@ export const useCRMStore = create<CRMState>()(
           orders: [
             {
               ...order,
-              id: Date.now().toString(),
+              id: newId(),
               paidAmount: 0,
               paymentStatus: 'unpaid' as const,
               createdAt: new Date(),
@@ -71,7 +73,7 @@ export const useCRMStore = create<CRMState>()(
           orders: state.orders.map((order) => {
             if (order.id !== orderId) return order;
 
-            const newPaidAmount = order.paidAmount + amount;
+            const newPaidAmount = roundMoney(Math.min(order.totalAmount, order.paidAmount + amount));
             let newPaymentStatus: 'unpaid' | 'partial' | 'paid' = 'unpaid';
             if (newPaidAmount >= order.totalAmount) {
               newPaymentStatus = 'paid';
@@ -94,9 +96,9 @@ export const useCRMStore = create<CRMState>()(
         const completedOrders = customerOrders.filter((o) => o.status !== 'cancelled');
 
         return {
-          totalSpent: completedOrders.reduce((sum, o) => sum + o.paidAmount, 0),
+          totalSpent: roundMoney(completedOrders.reduce((sum, o) => sum + o.paidAmount, 0)),
           orderCount: customerOrders.length,
-          outstanding: completedOrders.reduce((sum, o) => sum + (o.totalAmount - o.paidAmount), 0),
+          outstanding: roundMoney(completedOrders.reduce((sum, o) => sum + (o.totalAmount - o.paidAmount), 0)),
         };
       },
     }),
@@ -118,16 +120,17 @@ export const useCRMStore = create<CRMState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
+          const sd = (v: any) => { if (!v) return new Date(); const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? new Date() : d; };
           state.customers = state.customers.map((c: any) => ({
             ...c,
-            createdAt: new Date(c.createdAt),
-            updatedAt: new Date(c.updatedAt),
+            createdAt: sd(c.createdAt),
+            updatedAt: sd(c.updatedAt),
           }));
           state.orders = state.orders.map((o: any) => ({
             ...o,
-            date: new Date(o.date),
-            createdAt: new Date(o.createdAt),
-            updatedAt: new Date(o.updatedAt),
+            date: sd(o.date),
+            createdAt: sd(o.createdAt),
+            updatedAt: sd(o.updatedAt),
           }));
         }
       },

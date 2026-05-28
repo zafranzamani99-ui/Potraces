@@ -28,6 +28,7 @@ import { useToast } from '../../context/ToastContext';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
+import ModalToastHost from '../../components/common/ModalToastHost';
 
 // -- Count-up animation hook ----------------------------------------
 const useCountUp = (target: number, duration: number = 300) => {
@@ -118,6 +119,12 @@ const SeasonSummary: React.FC = () => {
     ? seasons.find((s) => s.id === seasonId)
     : seasons.find((s) => s.isActive);
 
+  // Guard: season may have been deleted
+  if (!season) {
+    navigation.goBack();
+    return null;
+  }
+
   // Filtered lists for inline display
   const seasonOrders = useMemo(() => {
     if (!season) return [];
@@ -175,7 +182,7 @@ const SeasonSummary: React.FC = () => {
     );
 
     const maxQty = topProducts.length > 0
-      ? Math.max(...topProducts.map((p) => p.qty))
+      ? Math.max(...topProducts.map((p) => p.qty).filter(isFinite), 1)
       : 1;
 
     return {
@@ -1054,6 +1061,7 @@ const SeasonSummary: React.FC = () => {
             </View>
           </Pressable>
         </Pressable>
+        <ModalToastHost />
       </Modal>)}
 
       {/* ─── Orders Modal ─── */}
@@ -1109,6 +1117,7 @@ const SeasonSummary: React.FC = () => {
             </ScrollView>
           </Pressable>
         </Pressable>
+        <ModalToastHost />
       </Modal>)}
 
       {/* ─── Costs Modal ─── */}
@@ -1159,6 +1168,7 @@ const SeasonSummary: React.FC = () => {
             </ScrollView>
           </Pressable>
         </Pressable>
+        <ModalToastHost />
       </Modal>)}
 
       {/* ─── Rename Season Modal ─── */}
@@ -1202,6 +1212,7 @@ const SeasonSummary: React.FC = () => {
             </View>
           </Pressable>
         </Pressable>
+        <ModalToastHost />
       </Modal>)}
 
       {/* ─── Season Target Modal ─── */}
@@ -1245,6 +1256,7 @@ const SeasonSummary: React.FC = () => {
             </View>
           </Pressable>
         </Pressable>
+        <ModalToastHost />
       </Modal>)}
     </View>
   );

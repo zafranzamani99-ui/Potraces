@@ -75,6 +75,8 @@ export const ms: Translations = {
     copied: 'Disalin!',
     tapToView: 'tekan untuk lihat butiran',
     edited: 'diedit',
+    offline: 'Luar talian — data disimpan secara setempat',
+    fxApproximate: '≈ RM {amount} (anggaran)',
   },
 
   tabs: {
@@ -807,6 +809,19 @@ export const ms: Translations = {
     logIngredientCost: 'Log kos',
     logCostBtn: 'log kos',
     popularThisMonth: 'popular bulan ini',
+    reportTitle: 'laporan produk',
+    reportSold: '{n} terjual',
+    reportNoData: 'belum ada pesanan bulan ini',
+    reportTopEarners: 'paling laris',
+    reportBestMargins: 'margin terbaik',
+    reportKeeps: 'simpan {pct}%',
+    reportCustomerReach: 'jangkauan pelanggan',
+    reportBuyers: '{n} pembeli',
+    reportVsLastMonth: 'vs bulan lepas',
+    reportNew: 'baru',
+    reportNeverOrdered: 'belum ditempah',
+    reportLowStock: 'stok rendah',
+    reportDaysLeft: '~{n}h lagi',
     inactive: 'tidak aktif',
     productTapHint: '{name}. Ketik untuk butiran.',
 
@@ -1475,7 +1490,18 @@ export const ms: Translations = {
     noContributionsYet: 'belum ada sumbangan.',
     withdrawn: 'dikeluarkan',
 
-    // accessibility action labels
+    // screen guide
+    screenGuideTitle: 'jejak matlamat simpanan anda',
+    screenGuideDesc: 'tetapkan sasaran, menyumbang secara berkala, dan lihat kemajuan anda',
+
+    // collapsible
+    goals: 'matlamat',
+    goal: 'matlamat',
+
+    // detail + action labels
+    remaining: 'lagi',
+    edit: 'ubah',
+    delete: 'padam',
     pause: 'jeda',
     resume: 'sambung',
     undo: 'buat asal',

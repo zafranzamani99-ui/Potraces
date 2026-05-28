@@ -212,12 +212,14 @@ function parseGeminiResponse(raw: string): IntentResult | null {
 
     const extractions: AIExtraction[] = items.map((item) => {
       const normalized = normalizeExtractionType(item.intent || intent, item);
+      let parsedAmount = Number(item.amount) || 0;
+      if (parsedAmount > 1_000_000) parsedAmount = 0;
       return {
         id: makeId(),
         type: normalized.type,
         rawText: item.description || '',
         extractedData: {
-          amount: Number(item.amount) || 0,
+          amount: parsedAmount,
           description: item.description || '',
           category: normalized.category || item.category || null,
           transactionType: item.type || 'expense',

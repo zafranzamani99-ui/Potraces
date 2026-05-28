@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -47,6 +47,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { parseProductList, parseProductImage, ParsedProduct } from '../../services/aiService';
 import { uploadProductImage } from '../../services/sellerSync';
 import ImageSourcePills from '../../components/common/ImageSourcePills';
+import ModalToastHost from '../../components/common/ModalToastHost';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -170,29 +171,6 @@ const Products: React.FC = () => {
     );
   }, [sortedProducts, search, filterCategory]);
 
-  // ─── Popular this month ────────────────────────────────────
-  const topProducts = useMemo(() => {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    const monthOrders = orders.filter((o) => {
-      const d = o.date instanceof Date ? o.date : new Date(o.date);
-      return d >= monthStart && d <= monthEnd;
-    });
-    const counts: Record<string, { name: string; qty: number; unit: string; inflow: number }> = {};
-    for (const order of monthOrders) {
-      for (const item of order.items) {
-        if (!counts[item.productName]) {
-          counts[item.productName] = { name: item.productName, qty: 0, unit: item.unit, inflow: 0 };
-        }
-        counts[item.productName].qty += item.quantity;
-        counts[item.productName].inflow += item.quantity * item.unitPrice;
-      }
-    }
-    return Object.values(counts).sort((a, b) => b.qty - a.qty).slice(0, 5);
-  }, [orders]);
-  const topMax = topProducts.length > 0 ? topProducts[0].qty : 1;
-
   // ─── Detail + Modal state ──────────────────────────────────
   const [detailProduct, setDetailProduct] = useState<SellerProduct | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -240,6 +218,21 @@ const Products: React.FC = () => {
   const [bdDescFocused, setBdDescFocused] = useState(false);
   const [bdKbVisible, setBdKbVisible] = useState(false);
   const [bdKbHeight, setBdKbHeight] = useState(0);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          onPress={() => { lightTap(); navigation.navigate('SellerProductsReport'); }}
+          style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+          accessibilityLabel={sl.reportTitle}
+          accessibilityRole="button"
+        >
+          <Feather name="pie-chart" size={20} color={C.textPrimary} />
+        </Pressable>
+      ),
+    });
+  }, [navigation, sl.reportTitle, C.textPrimary]);
 
   // ─── Stock adjustment modal ────────────────────────────────
   const [stockAdjProduct, setStockAdjProduct] = useState<SellerProduct | null>(null);
@@ -1147,34 +1140,8 @@ const Products: React.FC = () => {
         )}
       </View>
 
-      {/* Popular this month */}
-      {topProducts.length > 0 && (
-        <View style={styles.popularSection}>
-          <View style={styles.popularSectionHeader}>
-            <Feather name="trending-up" size={14} color={C.bronze} />
-            <Text style={styles.popularSectionHeaderText}>{sl.popularThisMonth}</Text>
-          </View>
-          {topProducts.map((p, index) => {
-            const barWidth = topMax > 0 ? (p.qty / topMax) * 100 : 0;
-            return (
-              <View key={p.name} style={styles.popularRow}>
-                <View style={styles.popularContent}>
-                  <Text style={styles.popularRank}>{index + 1}</Text>
-                  <Text style={styles.popularName}>{p.name}</Text>
-                  <View style={{ flex: 1 }} />
-                  <Text style={styles.popularQty}>{p.qty} {p.unit}</Text>
-                  <Text style={styles.popularInflow}>  {currency} {p.inflow.toFixed(0)}</Text>
-                </View>
-                <View style={styles.popularBarTrack}>
-                  <View style={[styles.popularBarFill, { width: `${barWidth}%` as any }]} />
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      )}
     </View>
-  ), [products.length, handleOpenCostModal, search, filteredProducts, topProducts, topMax, currency, selectMode, selectedIds, reorderMode, productCategories, filterCategory]);
+  ), [products.length, handleOpenCostModal, search, filteredProducts, currency, selectMode, selectedIds, reorderMode, productCategories, filterCategory]);
 
   // ─── Live preview values ───────────────────────────────────
   const previewName = newName.trim() || 'product name';
@@ -1188,7 +1155,8 @@ const Products: React.FC = () => {
       <View style={styles.modalHeader}>
         <View style={{ flex: 1 }}>
           <Text style={styles.modalTitle}>
-            {editingProduct ? sl.editProduct : sl.newProduct}
+            {editingProduct ? 'edit ' : 'new '}
+            <Text style={styles.modalTitleAccent}>product</Text>
           </Text>
         </View>
         <Pressable
@@ -1764,6 +1732,7 @@ const Products: React.FC = () => {
             </ScrollView>
           </View>
         </Pressable>
+        <ModalToastHost />
       </Modal>
 
       {/* ── Add / Edit product modal ────────────────────────── */}
@@ -1890,6 +1859,7 @@ const Products: React.FC = () => {
             <Image source={{ uri: previewImageUrl }} style={styles.imgPreviewImage} contentFit="contain" />
           </Pressable>
         )}
+        <ModalToastHost />
       </Modal>
 
       {/* ── Image preview (from product list) ─────────────── */}
@@ -1901,6 +1871,7 @@ const Products: React.FC = () => {
             </Pressable>
             <Image source={{ uri: previewImageUrl }} style={styles.imgPreviewImage} contentFit="contain" />
           </Pressable>
+          <ModalToastHost />
         </Modal>
       )}
 
@@ -1916,7 +1887,7 @@ const Products: React.FC = () => {
             <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
               <View style={styles.modalHeader}>
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm }}>
-                  <Text style={styles.modalTitle}>{editingCostId ? sl.prodEditCost : sl.prodLogCost}</Text>
+                  <Text style={styles.modalTitle}>{editingCostId ? 'edit ' : 'log '}<Text style={styles.modalTitleAccent}>cost</Text></Text>
                   <View style={[styles.costDatePill, { top: 4 }]}>
                     <Feather name="calendar" size={11} color={C.textSecondary} />
                     <Text style={styles.costDateText}>
@@ -1997,6 +1968,7 @@ const Products: React.FC = () => {
             </Pressable>
           </KeyboardAwareScrollView>
         </Pressable>
+        <ModalToastHost />
       </Modal>
 
       {/* ── Bulk import modal ──────────────────────────────── */}
@@ -2011,7 +1983,7 @@ const Products: React.FC = () => {
             <Pressable style={styles.modalContent} onPress={() => Keyboard.dismiss()}>
               <View style={styles.modalHeader}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.modalTitle}>{sl.bulkAdd}</Text>
+                  <Text style={styles.modalTitle}>{'bulk '}<Text style={styles.modalTitleAccent}>add</Text></Text>
                 </View>
                 <Pressable
                   onPress={closeBulkModal}
@@ -2077,16 +2049,21 @@ const Products: React.FC = () => {
                     {bulkResults.length} found · tap to edit
                   </Text>
 
-                  <ScrollView
+                  <FlatList
+                    data={bulkResults}
+                    keyExtractor={(_, i) => String(i)}
                     style={styles.bulkResultsList}
                     nestedScrollEnabled
                     showsVerticalScrollIndicator
-                  >
-                    {bulkResults.map((p, i) => {
+                    removeClippedSubviews
+                    windowSize={5}
+                    maxToRenderPerBatch={10}
+                    initialNumToRender={10}
+                    keyboardShouldPersistTaps="handled"
+                    renderItem={({ item: p, index: i }) => {
                       const selected = bulkSelected.has(i);
                       return (
                         <TouchableOpacity
-                          key={i}
                           style={[styles.bulkResultRow, !selected && styles.bulkResultDeselected]}
                           activeOpacity={0.7}
                           onPress={() => setBulkDetailIdx(i)}
@@ -2113,8 +2090,8 @@ const Products: React.FC = () => {
                           <Feather name="chevron-right" size={14} color={C.textMuted} />
                         </TouchableOpacity>
                       );
-                    })}
-                  </ScrollView>
+                    }}
+                  />
 
                   <View style={styles.modalActions}>
                     <TouchableOpacity
@@ -2166,7 +2143,7 @@ const Products: React.FC = () => {
                 <Pressable style={styles.bulkDetailCard} onPress={() => Keyboard.dismiss()} onStartShouldSetResponder={() => true}>
                   <View style={styles.modalHeader}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.modalTitle}>{sl.editItem}</Text>
+                      <Text style={styles.modalTitle}>{'edit '}<Text style={styles.modalTitleAccent}>item</Text></Text>
                     </View>
                     <Pressable
                       onPress={() => setBulkDetailIdx(null)}
@@ -2334,6 +2311,7 @@ const Products: React.FC = () => {
             <Feather name="check" size={20} color="#fff" />
           </TouchableOpacity>
         )}
+        <ModalToastHost />
       </Modal>
 
       {/* ── Stock Adjustment Modal ──────────────────────────── */}
@@ -2353,7 +2331,7 @@ const Products: React.FC = () => {
             <Pressable style={styles.stockAdjCard} onPress={() => Keyboard.dismiss()} onStartShouldSetResponder={() => true}>
               <View style={styles.modalHeader}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.modalTitle}>{sl.adjustStock}</Text>
+                  <Text style={styles.modalTitle}>{'adjust '}<Text style={styles.modalTitleAccent}>stock</Text></Text>
                   {stockAdjProduct && (
                     <Text style={styles.stockAdjSubtitle}>{sl.stockSubtitle.replace('{name}', stockAdjProduct.name).replace('{qty}', String(stockAdjProduct.stockQuantity ?? 0)).replace('{unit}', stockAdjProduct.unit)}</Text>
                   )}
@@ -2445,6 +2423,7 @@ const Products: React.FC = () => {
             </Pressable>
           </KeyboardAwareScrollView>
         </Pressable>
+        <ModalToastHost />
       </Modal>
 
     </GestureHandlerRootView>
@@ -2720,19 +2699,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   formCategoryChipTextActive: {
     fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-
-  popularSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  popularSectionHeaderText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textMuted,
-    letterSpacing: 0.5,
   },
 
   // Empty state
@@ -3537,60 +3503,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
-  // ── Popular this month ──
-  popularSection: {
-    marginTop: SPACING.md,
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  popularRow: {
-    marginBottom: SPACING.sm,
-  },
-  popularContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: 4,
-  },
-  popularName: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-  },
-  popularQty: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  popularRank: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textMuted,
-    width: 18,
-  },
-  popularInflow: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  popularBarTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: withAlpha(C.accent, 0.1),
-    overflow: 'hidden',
-  },
-  popularBarFill: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: withAlpha(C.accent, 0.6),
-  },
-
   // ── Product detail modal ──
   detailOverlay: {
     flex: 1,
@@ -3958,6 +3870,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
+
 });
 
 export default Products;

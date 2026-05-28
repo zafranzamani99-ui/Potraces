@@ -4,7 +4,7 @@ import { StallSession } from '../types';
  * Rule-based insight generator for a single stall session.
  * Returns a calm, observational sentence — never advice or judgement.
  */
-export const explainStallSession = (session: StallSession): string | null => {
+export const explainStallSession = (session: StallSession, currency = 'RM'): string | null => {
   if (!session.closedAt) return null;
 
   const { sales, totalRevenue, totalCash, totalQR, condition, productsSnapshot } = session;
@@ -49,7 +49,7 @@ export const explainStallSession = (session: StallSession): string | null => {
   if (duration > 0) {
     const perHour = (totalRevenue / duration) * 60;
     if (perHour > 50) {
-      lines.push(`RM${perHour.toFixed(0)}/hour pace.`);
+      lines.push(`${currency}${perHour.toFixed(0)}/hour pace.`);
     }
   }
 
@@ -90,5 +90,5 @@ export const explainStallSession = (session: StallSession): string | null => {
   }
 
   // Return the most relevant insight (first one)
-  return lines.length > 0 ? lines[0] : `${saleCount} sales, RM${totalRevenue.toFixed(0)} total.`;
+  return lines.length > 0 ? lines[0] : `${saleCount} sales, ${currency}${totalRevenue.toFixed(0)} total.`;
 };

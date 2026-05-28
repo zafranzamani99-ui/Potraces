@@ -3,6 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DebtState, DebtStatus, DebtEdit } from '../types';
 import { newId } from '../utils/id';
+import { roundMoney } from '../utils/money';
+import { useWalletStore } from './walletStore';
 
 export const useDebtStore = create<DebtState>()(
   persist(
@@ -10,42 +12,48 @@ export const useDebtStore = create<DebtState>()(
       debts: [],
       splits: [],
       contacts: [],
+      sharedSubscriptions: [],
       _deletedDebtIds: [],
       _deletedSplitIds: [],
       _deletedContactIds: [],
+      _deletedSharedSubIds: [],
 
       clearDebtTombstones: () => set({
         _deletedDebtIds: [],
         _deletedSplitIds: [],
         _deletedContactIds: [],
+        _deletedSharedSubIds: [],
       }),
 
       addDebt: (debt) => {
+        if (debt.totalAmount <= 0) return '';
         const id = newId();
-        let groupId = (debt as any).groupId as string | undefined;
-        if (!groupId) {
-          const contactKey = debt.contact.id || debt.contact.name;
-          const existing = (useDebtStore.getState() as DebtState).debts.find(
-            (d) => d.status !== 'settled' && !d.isArchived &&
-              (d.contact.id || d.contact.name) === contactKey && d.groupId
-          );
-          groupId = existing?.groupId || newId();
-        }
-        set((state) => ({
-          debts: [
-            {
-              ...debt,
-              id,
-              groupId,
-              paidAmount: 0,
-              status: 'pending' as DebtStatus,
-              payments: [],
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            },
-            ...state.debts,
-          ],
-        }));
+        set((state) => {
+          let groupId = (debt as any).groupId as string | undefined;
+          if (!groupId) {
+            const contactKey = debt.contact.id || debt.contact.name;
+            const existing = state.debts.find(
+              (d) => d.status !== 'settled' && !d.isArchived &&
+                (d.contact.id || d.contact.name) === contactKey && d.groupId
+            );
+            groupId = existing?.groupId || newId();
+          }
+          return {
+            debts: [
+              {
+                ...debt,
+                id,
+                groupId,
+                paidAmount: 0,
+                status: 'pending' as DebtStatus,
+                payments: [],
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              },
+              ...state.debts,
+            ],
+          };
+        });
         return id;
       },
 
@@ -75,8 +83,8 @@ export const useDebtStore = create<DebtState>()(
             // Recalculate paidAmount + status from actual payments when totalAmount changes
             if (updates.totalAmount !== undefined) {
               const newTotal = updates.totalAmount;
-              const rawPaid = updated.payments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0);
-              const paidAmount = Math.min(newTotal, rawPaid);
+              const rawPaid = roundMoney(updated.payments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0));
+              const paidAmount = roundMoney(Math.min(newTotal, rawPaid));
               updated.paidAmount = paidAmount;
 
               if (paidAmount >= newTotal) {
@@ -118,9 +126,10 @@ export const useDebtStore = create<DebtState>()(
         if (!debt) return null;
         if (debt.status === 'settled') return null;
 
-        const remaining = Math.max(0, debt.totalAmount - debt.paidAmount);
+        const remaining = roundMoney(Math.max(0, debt.totalAmount - debt.paidAmount));
         if (remaining <= 0) return null;
 
+        const cappedAmount = roundMoney(Math.min(payment.amount, remaining));
         const paymentId = newId();
         set((state) => ({
           debts: state.debts.map((d) => {
@@ -128,12 +137,12 @@ export const useDebtStore = create<DebtState>()(
 
             const newPayment = {
               ...payment,
-              amount: payment.amount,
+              amount: cappedAmount,
               id: paymentId,
               createdAt: new Date(),
             };
 
-            const newPaidAmount = Math.min(d.totalAmount, d.paidAmount + payment.amount);
+            const newPaidAmount = roundMoney(Math.min(d.totalAmount, d.paidAmount + cappedAmount));
             let newStatus: DebtStatus = 'pending';
             if (newPaidAmount >= d.totalAmount) newStatus = 'settled';
             else if (newPaidAmount > 0) newStatus = 'partial';
@@ -150,7 +159,8 @@ export const useDebtStore = create<DebtState>()(
         return paymentId;
       },
 
-      deletePayment: (debtId, paymentId) =>
+      deletePayment: (debtId, paymentId) => {
+        let deletedPayment: { walletId?: string; amount: number } | null = null as { walletId?: string; amount: number } | null;
         set((state) => ({
           debts: state.debts.map((debt) => {
             if (debt.id !== debtId) return debt;
@@ -158,9 +168,11 @@ export const useDebtStore = create<DebtState>()(
             const payment = debt.payments.find((p) => p.id === paymentId);
             if (!payment) return debt;
 
+            deletedPayment = { walletId: payment.walletId, amount: payment.amount };
+
             const newPayments = debt.payments.filter((p) => p.id !== paymentId);
-            const rawPaidAmount = newPayments.reduce((sum, p) => sum + p.amount, 0);
-            const newPaidAmount = Math.min(debt.totalAmount, rawPaidAmount);
+            const rawPaidAmount = roundMoney(newPayments.reduce((sum, p) => sum + p.amount, 0));
+            const newPaidAmount = roundMoney(Math.min(debt.totalAmount, rawPaidAmount));
             let newStatus: DebtStatus = 'pending';
             if (newPaidAmount >= debt.totalAmount) {
               newStatus = 'settled';
@@ -176,7 +188,11 @@ export const useDebtStore = create<DebtState>()(
               updatedAt: new Date(),
             };
           }),
-        })),
+        }));
+        if (deletedPayment?.walletId) {
+          useWalletStore.getState().addToWallet(deletedPayment.walletId, deletedPayment.amount);
+        }
+      },
 
       updatePayment: (debtId, paymentId, updates) =>
         set((state) => ({
@@ -201,8 +217,8 @@ export const useDebtStore = create<DebtState>()(
                   : p.editLog,
               };
             });
-            const rawPaidAmount = newPayments.reduce((sum, p) => sum + p.amount, 0);
-            const newPaidAmount = Math.min(debt.totalAmount, rawPaidAmount);
+            const rawPaidAmount = roundMoney(newPayments.reduce((sum, p) => sum + p.amount, 0));
+            const newPaidAmount = roundMoney(Math.min(debt.totalAmount, rawPaidAmount));
             let newStatus: DebtStatus = 'pending';
             if (newPaidAmount >= debt.totalAmount) {
               newStatus = 'settled';
@@ -293,6 +309,202 @@ export const useDebtStore = create<DebtState>()(
           }),
         })),
 
+      addSharedSubscription: (data) => {
+        const id = newId();
+        set((state) => ({
+          sharedSubscriptions: [
+            {
+              ...data,
+              id,
+              monthRecords: [],
+              priceHistory: [{
+                id: newId(),
+                effectiveFrom: new Date().toISOString().slice(0, 7),
+                totalAmount: data.totalAmount,
+                memberShares: data.members.map((m) => ({ contactId: m.contact.id, shareAmount: m.shareAmount })),
+                createdAt: new Date(),
+              }],
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+            ...state.sharedSubscriptions,
+          ],
+        }));
+        return id;
+      },
+
+      updateSharedSubscription: (id, updates) =>
+        set((state) => ({
+          sharedSubscriptions: state.sharedSubscriptions.map((sub) =>
+            sub.id === id ? { ...sub, ...updates, updatedAt: new Date() } : sub
+          ),
+        })),
+
+      deleteSharedSubscription: (id) =>
+        set((state) => ({
+          sharedSubscriptions: state.sharedSubscriptions.filter((s) => s.id !== id),
+          _deletedSharedSubIds: [...(state._deletedSharedSubIds ?? []), id],
+          debts: state.debts.filter((d) => d.sharedSubId !== id),
+        })),
+
+      addSharedSubMember: (subId, member) =>
+        set((state) => ({
+          sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
+            if (sub.id !== subId) return sub;
+            return { ...sub, members: [...sub.members, member], updatedAt: new Date() };
+          }),
+        })),
+
+      updateSharedSubMember: (subId, contactId, updates) =>
+        set((state) => ({
+          sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
+            if (sub.id !== subId) return sub;
+            return {
+              ...sub,
+              members: sub.members.map((m) =>
+                m.contact.id === contactId ? { ...m, ...updates } : m
+              ),
+              updatedAt: new Date(),
+            };
+          }),
+        })),
+
+      removeSharedSubMember: (subId, contactId) =>
+        set((state) => ({
+          sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
+            if (sub.id !== subId) return sub;
+            return {
+              ...sub,
+              members: sub.members.map((m) =>
+                m.contact.id === contactId ? { ...m, isActive: false } : m
+              ),
+              updatedAt: new Date(),
+            };
+          }),
+        })),
+
+      ensureMonthRecord: (subId, month) =>
+        set((state) => ({
+          sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
+            if (sub.id !== subId) return sub;
+            if (sub.monthRecords.find((r) => r.month === month)) return sub;
+            const effectivePrice = [...sub.priceHistory]
+              .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))
+              .find((p) => p.effectiveFrom <= month);
+            const totalAmount = effectivePrice?.totalAmount ?? sub.totalAmount;
+            const activeMembers = sub.members.filter((m) => m.isActive);
+            return {
+              ...sub,
+              monthRecords: [
+                ...sub.monthRecords,
+                {
+                  month,
+                  totalAmount,
+                  payments: activeMembers.map((m) => ({
+                    contactId: m.contact.id,
+                    isPaid: false,
+                    amount: effectivePrice
+                      ? (effectivePrice.memberShares.find((s) => s.contactId === m.contact.id)?.shareAmount ?? m.shareAmount)
+                      : m.shareAmount,
+                  })),
+                  debtsGenerated: false,
+                },
+              ],
+              updatedAt: new Date(),
+            };
+          }),
+        })),
+
+      markSharedSubPayment: (subId, month, contactId) =>
+        set((state) => ({
+          sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
+            if (sub.id !== subId) return sub;
+            return {
+              ...sub,
+              monthRecords: sub.monthRecords.map((r) => {
+                if (r.month !== month) return r;
+                return {
+                  ...r,
+                  payments: r.payments.map((p) =>
+                    p.contactId === contactId ? { ...p, isPaid: true, paidAt: new Date() } : p
+                  ),
+                };
+              }),
+              updatedAt: new Date(),
+            };
+          }),
+        })),
+
+      unmarkSharedSubPayment: (subId, month, contactId) =>
+        set((state) => ({
+          sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
+            if (sub.id !== subId) return sub;
+            return {
+              ...sub,
+              monthRecords: sub.monthRecords.map((r) => {
+                if (r.month !== month) return r;
+                return {
+                  ...r,
+                  payments: r.payments.map((p) =>
+                    p.contactId === contactId ? { ...p, isPaid: false, paidAt: undefined } : p
+                  ),
+                };
+              }),
+              updatedAt: new Date(),
+            };
+          }),
+        })),
+
+      recordSharedSubPriceChange: (subId, change) =>
+        set((state) => ({
+          sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
+            if (sub.id !== subId) return sub;
+            return {
+              ...sub,
+              totalAmount: change.totalAmount,
+              members: sub.members.map((m) => {
+                const newShare = change.memberShares.find((s) => s.contactId === m.contact.id);
+                return newShare ? { ...m, shareAmount: newShare.shareAmount } : m;
+              }),
+              priceHistory: [...sub.priceHistory, { ...change, id: newId(), createdAt: new Date() }],
+              updatedAt: new Date(),
+            };
+          }),
+        })),
+
+      updateMonthAmounts: (subId, month, newTotal, memberShares) =>
+        set((state) => ({
+          sharedSubscriptions: state.sharedSubscriptions.map((sub) => {
+            if (sub.id !== subId) return sub;
+            return {
+              ...sub,
+              totalAmount: newTotal,
+              members: sub.members.map((m) => {
+                const share = memberShares.find((s) => s.contactId === m.contact.id);
+                return share ? { ...m, shareAmount: share.shareAmount } : m;
+              }),
+              monthRecords: sub.monthRecords.map((r) => {
+                if (r.month !== month) return r;
+                return {
+                  ...r,
+                  totalAmount: newTotal,
+                  payments: r.payments.map((p) => {
+                    const share = memberShares.find((s) => s.contactId === p.contactId);
+                    return share ? { ...p, amount: share.shareAmount } : p;
+                  }),
+                };
+              }),
+              updatedAt: new Date(),
+            };
+          }),
+          debts: state.debts.map((d) => {
+            if (d.sharedSubId !== subId || d.sharedSubMonth !== month) return d;
+            const share = memberShares.find((s) => s.contactId === d.contact.id);
+            if (!share) return d;
+            return { ...d, totalAmount: share.shareAmount, updatedAt: new Date() };
+          }),
+        })),
+
       addContact: (contact) =>
         set((state) => ({
           contacts: [
@@ -346,9 +558,30 @@ export const useDebtStore = create<DebtState>()(
           updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
         })),
         contacts: state.contacts,
+        sharedSubscriptions: state.sharedSubscriptions.map((sub) => ({
+          ...sub,
+          createdAt: sub.createdAt instanceof Date ? sub.createdAt.toISOString() : sub.createdAt,
+          updatedAt: sub.updatedAt instanceof Date ? sub.updatedAt.toISOString() : sub.updatedAt,
+          members: sub.members.map((m) => ({
+            ...m,
+            joinedAt: m.joinedAt instanceof Date ? m.joinedAt.toISOString() : m.joinedAt,
+          })),
+          monthRecords: sub.monthRecords.map((r) => ({
+            ...r,
+            payments: r.payments.map((p) => ({
+              ...p,
+              paidAt: p.paidAt instanceof Date ? p.paidAt.toISOString() : p.paidAt,
+            })),
+          })),
+          priceHistory: sub.priceHistory.map((ph) => ({
+            ...ph,
+            createdAt: ph.createdAt instanceof Date ? ph.createdAt.toISOString() : ph.createdAt,
+          })),
+        })),
         _deletedDebtIds: state._deletedDebtIds ?? [],
         _deletedSplitIds: state._deletedSplitIds ?? [],
         _deletedContactIds: state._deletedContactIds ?? [],
+        _deletedSharedSubIds: state._deletedSharedSubIds ?? [],
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
@@ -390,9 +623,30 @@ export const useDebtStore = create<DebtState>()(
             createdAt: sd(s.createdAt),
             updatedAt: sd(s.updatedAt),
           }));
+          state.sharedSubscriptions = (state.sharedSubscriptions ?? []).map((sub: any) => ({
+            ...sub,
+            createdAt: sd(sub.createdAt),
+            updatedAt: sd(sub.updatedAt),
+            members: (sub.members || []).map((m: any) => ({
+              ...m,
+              joinedAt: sd(m.joinedAt),
+            })),
+            monthRecords: (sub.monthRecords || []).map((r: any) => ({
+              ...r,
+              payments: (r.payments || []).map((p: any) => ({
+                ...p,
+                paidAt: p.paidAt ? sd(p.paidAt) : undefined,
+              })),
+            })),
+            priceHistory: (sub.priceHistory || []).map((ph: any) => ({
+              ...ph,
+              createdAt: sd(ph.createdAt),
+            })),
+          }));
           state._deletedDebtIds = state._deletedDebtIds ?? [];
           state._deletedSplitIds = state._deletedSplitIds ?? [];
           state._deletedContactIds = state._deletedContactIds ?? [];
+          state._deletedSharedSubIds = state._deletedSharedSubIds ?? [];
         }
       },
     }

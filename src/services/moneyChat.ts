@@ -776,7 +776,23 @@ export type ChatResult =
   | { ok: true; text: string }
   | { ok: false; error: string };
 
+let _chatSending = false;
+
 export async function sendChatMessage(
+  message: string,
+  history: AIMessage[],
+  imageBase64?: string,
+): Promise<ChatResult> {
+  if (_chatSending) return { ok: false, error: 'Already processing a message.' };
+  _chatSending = true;
+  try {
+    return await _doSendChatMessage(message, history, imageBase64);
+  } finally {
+    _chatSending = false;
+  }
+}
+
+async function _doSendChatMessage(
   message: string,
   history: AIMessage[],
   imageBase64?: string,

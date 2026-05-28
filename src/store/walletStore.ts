@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WalletState } from '../types';
 import { newId } from '../utils/id';
+import { roundMoney } from '../utils/money';
 
 export const useWalletStore = create<WalletState>()(
   persist(
@@ -49,13 +50,36 @@ export const useWalletStore = create<WalletState>()(
           };
         }),
 
-      deleteWallet: (id) =>
+      deleteWallet: (id) => {
         set((state) => ({
           wallets: state.wallets.filter((w) => w.id !== id),
           selectedWalletId:
             state.selectedWalletId === id ? null : state.selectedWalletId,
           _deletedWalletIds: [...(state._deletedWalletIds ?? []), id],
-        })),
+        }));
+        const { usePersonalStore } = require('./personalStore');
+        const { useDebtStore } = require('./debtStore');
+        const personal = usePersonalStore.getState();
+        personal.transactions.forEach((t: any) => {
+          if (t.walletId === id) {
+            personal.updateTransaction(t.id, { walletId: undefined });
+          }
+        });
+        const debtState = useDebtStore.getState();
+        debtState.debts.forEach((d: any) => {
+          const hasWalletPayment = d.payments.some((p: any) => p.walletId === id);
+          if (hasWalletPayment) {
+            const newPayments = d.payments.map((p: any) =>
+              p.walletId === id ? { ...p, walletId: undefined } : p
+            );
+            useDebtStore.setState((s: any) => ({
+              debts: s.debts.map((debt: any) =>
+                debt.id === d.id ? { ...debt, payments: newPayments, updatedAt: new Date() } : debt
+              ),
+            }));
+          }
+        });
+      },
 
       setSelectedWallet: (id) => set({ selectedWalletId: id }),
 
@@ -76,12 +100,15 @@ export const useWalletStore = create<WalletState>()(
             if (w.type === 'credit') {
               return {
                 ...w,
-                balance: w.balance - amount,
-                usedCredit: (w.usedCredit || 0) + amount,
+                balance: roundMoney(w.balance - amount),
+                usedCredit: roundMoney((w.usedCredit || 0) + amount),
                 updatedAt: new Date(),
               };
             }
-            return { ...w, balance: w.balance - amount, updatedAt: new Date() };
+            if (w.balance - amount < 0) {
+              console.warn(`[walletStore] deductFromWallet: ${w.name} would go negative (${w.balance} - ${amount})`);
+            }
+            return { ...w, balance: roundMoney(w.balance - amount), updatedAt: new Date() };
           }),
         }));
       },
@@ -94,12 +121,12 @@ export const useWalletStore = create<WalletState>()(
             if (w.type === 'credit') {
               return {
                 ...w,
-                balance: w.balance + amount,
-                usedCredit: Math.max(0, (w.usedCredit || 0) - amount),
+                balance: roundMoney(w.balance + amount),
+                usedCredit: roundMoney(Math.max(0, (w.usedCredit || 0) - amount)),
                 updatedAt: new Date(),
               };
             }
-            return { ...w, balance: w.balance + amount, updatedAt: new Date() };
+            return { ...w, balance: roundMoney(w.balance + amount), updatedAt: new Date() };
           }),
         }));
       },
@@ -126,19 +153,18 @@ export const useWalletStore = create<WalletState>()(
           return {
             wallets: state.wallets.map((w) => {
               if (w.id === fromId) {
-                // If credit wallet is source, increase usedCredit
                 if (w.type === 'credit') {
                   return {
                     ...w,
-                    balance: w.balance - amount,
-                    usedCredit: (w.usedCredit || 0) + amount,
+                    balance: roundMoney(w.balance - amount),
+                    usedCredit: roundMoney((w.usedCredit || 0) + amount),
                     updatedAt: new Date(),
                   };
                 }
-                return { ...w, balance: w.balance - amount, updatedAt: new Date() };
+                return { ...w, balance: roundMoney(w.balance - amount), updatedAt: new Date() };
               }
               if (w.id === toId) {
-                return { ...w, balance: w.balance + amount, updatedAt: new Date() };
+                return { ...w, balance: roundMoney(w.balance + amount), updatedAt: new Date() };
               }
               return w;
             }),
@@ -173,15 +199,15 @@ export const useWalletStore = create<WalletState>()(
               if (w.type === 'credit') {
                 return {
                   ...w,
-                  balance: w.balance + t.amount,
-                  usedCredit: Math.max(0, (w.usedCredit || 0) - t.amount),
+                  balance: roundMoney(w.balance + t.amount),
+                  usedCredit: roundMoney(Math.max(0, (w.usedCredit || 0) - t.amount)),
                   updatedAt: new Date(),
                 };
               }
-              return { ...w, balance: w.balance + t.amount, updatedAt: new Date() };
+              return { ...w, balance: roundMoney(w.balance + t.amount), updatedAt: new Date() };
             }
             if (w.id === t.toWalletId) {
-              return { ...w, balance: w.balance - t.amount, updatedAt: new Date() };
+              return { ...w, balance: roundMoney(w.balance - t.amount), updatedAt: new Date() };
             }
             return w;
           });
@@ -198,8 +224,8 @@ export const useWalletStore = create<WalletState>()(
             w.id === id && w.type === 'credit'
               ? {
                   ...w,
-                  balance: w.balance - amount,
-                  usedCredit: (w.usedCredit || 0) + amount,
+                  balance: roundMoney(w.balance - amount),
+                  usedCredit: roundMoney((w.usedCredit || 0) + amount),
                   updatedAt: new Date(),
                 }
               : w
@@ -212,8 +238,8 @@ export const useWalletStore = create<WalletState>()(
             w.id === id && w.type === 'credit'
               ? {
                   ...w,
-                  balance: w.balance + amount,
-                  usedCredit: Math.max(0, (w.usedCredit || 0) - amount),
+                  balance: roundMoney(w.balance + amount),
+                  usedCredit: roundMoney(Math.max(0, (w.usedCredit || 0) - amount)),
                   updatedAt: new Date(),
                 }
               : w

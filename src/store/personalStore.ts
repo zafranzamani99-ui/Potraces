@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PersonalState, Transfer } from '../types';
 import { useWalletStore } from './walletStore';
 import { newId } from '../utils/id';
+import { roundMoney } from '../utils/money';
 
 export const usePersonalStore = create<PersonalState>()(
   persist(
@@ -25,6 +26,7 @@ export const usePersonalStore = create<PersonalState>()(
       }),
 
       addTransaction: (transaction) => {
+        if (transaction.amount <= 0) return '';
         const id = newId();
         set((state) => ({
           transactions: [
@@ -104,7 +106,8 @@ export const usePersonalStore = create<PersonalState>()(
         else if (prev.type === 'income') wallets.deductFromWallet(prev.walletId, prev.amount);
       },
 
-      addSubscription: (subscription) =>
+      addSubscription: (subscription) => {
+        if (subscription.amount <= 0) return;
         set((state) => ({
           subscriptions: [
             {
@@ -115,9 +118,11 @@ export const usePersonalStore = create<PersonalState>()(
             },
             ...state.subscriptions,
           ],
-        })),
+        }));
+      },
 
-      addBudget: (budget) =>
+      addBudget: (budget) => {
+        if (budget.allocatedAmount <= 0) return;
         set((state) => ({
           budgets: [
             {
@@ -129,7 +134,8 @@ export const usePersonalStore = create<PersonalState>()(
             },
             ...state.budgets,
           ],
-        })),
+        }));
+      },
 
       updateBudget: (id, updates) =>
         set((state) => ({
@@ -201,7 +207,7 @@ export const usePersonalStore = create<PersonalState>()(
               ? Math.min((sub.completedInstallments || 0) + 1, sub.totalInstallments || 9999)
               : sub.completedInstallments;
             const newOutstanding = sub.outstandingBalance !== undefined
-              ? Math.max(sub.outstandingBalance - sub.amount, 0)
+              ? roundMoney(Math.max(sub.outstandingBalance - sub.amount, 0))
               : undefined;
             return {
               ...sub,
@@ -211,7 +217,7 @@ export const usePersonalStore = create<PersonalState>()(
               outstandingBalance: newOutstanding,
               paymentHistory: [
                 ...(sub.paymentHistory || []),
-                { id: `pay-${Date.now()}`, paidAt: new Date(), amount: sub.amount, transactionId, walletId },
+                { id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, paidAt: new Date(), amount: sub.amount, transactionId, walletId },
               ],
               updatedAt: new Date(),
             };
@@ -219,59 +225,62 @@ export const usePersonalStore = create<PersonalState>()(
         })),
 
       undoSubscriptionPayment: (subId, paymentId) => {
-        const state = usePersonalStore.getState() as PersonalState;
-        const sub = state.subscriptions.find((s) => s.id === subId);
-        if (!sub) return;
-        const payment = (sub.paymentHistory || []).find((p) => p.id === paymentId);
-        if (!payment || payment.undoneAt) return;
+        let walletRefund: { walletId: string; amount: number } | null = null as { walletId: string; amount: number } | null;
+        let transactionToDelete: string | undefined = undefined as string | undefined;
 
-        // Roll back billing date by one cycle
-        let prev = new Date(sub.nextBillingDate);
-        switch (sub.billingCycle) {
-          case 'weekly':    prev.setDate(prev.getDate() - 7);    break;
-          case 'quarterly': prev.setMonth(prev.getMonth() - 3);  break;
-          case 'yearly':    prev.setFullYear(prev.getFullYear() - 1); break;
-          default:          prev.setMonth(prev.getMonth() - 1);  break;
+        set((s) => {
+          const sub = s.subscriptions.find((item) => item.id === subId);
+          if (!sub) return s;
+          const payment = (sub.paymentHistory || []).find((p) => p.id === paymentId);
+          if (!payment || payment.undoneAt) return s;
+
+          let prev = new Date(sub.nextBillingDate);
+          switch (sub.billingCycle) {
+            case 'weekly':    prev.setDate(prev.getDate() - 7);    break;
+            case 'quarterly': prev.setMonth(prev.getMonth() - 3);  break;
+            case 'yearly':    prev.setFullYear(prev.getFullYear() - 1); break;
+            default:          prev.setMonth(prev.getMonth() - 1);  break;
+          }
+          const rolledCompleted = sub.isInstallment
+            ? Math.max((sub.completedInstallments || 0) - 1, 0)
+            : sub.completedInstallments;
+          const rolledOutstanding = sub.outstandingBalance !== undefined
+            ? roundMoney(sub.outstandingBalance + payment.amount)
+            : undefined;
+
+          if (payment.walletId) {
+            walletRefund = { walletId: payment.walletId, amount: payment.amount };
+          }
+          transactionToDelete = payment.transactionId;
+
+          const activePayments = (sub.paymentHistory || [])
+            .filter((p) => p.id !== paymentId && !p.undoneAt)
+            .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+
+          return {
+            subscriptions: s.subscriptions.map((item) => {
+              if (item.id !== subId) return item;
+              return {
+                ...item,
+                nextBillingDate: prev,
+                completedInstallments: rolledCompleted,
+                outstandingBalance: rolledOutstanding,
+                lastPaidAt: activePayments[0]?.paidAt ?? undefined,
+                paymentHistory: (item.paymentHistory || []).map((p) =>
+                  p.id === paymentId ? { ...p, undoneAt: new Date() } : p
+                ),
+                updatedAt: new Date(),
+              };
+            }),
+            transactions: transactionToDelete
+              ? s.transactions.filter((t) => t.id !== transactionToDelete)
+              : s.transactions,
+          };
+        });
+
+        if (walletRefund) {
+          useWalletStore.getState().addToWallet(walletRefund.walletId, walletRefund.amount);
         }
-        const rolledCompleted = sub.isInstallment
-          ? Math.max((sub.completedInstallments || 0) - 1, 0)
-          : sub.completedInstallments;
-        const rolledOutstanding = sub.outstandingBalance !== undefined
-          ? sub.outstandingBalance + payment.amount
-          : undefined;
-
-        // Reverse wallet deduction if payment had a linked wallet
-        if (payment.walletId) {
-          useWalletStore.getState().addToWallet(payment.walletId, payment.amount);
-        }
-        // Delete the linked transaction if one was created
-        if (payment.transactionId) {
-          set((s) => ({
-            transactions: s.transactions.filter((t) => t.id !== payment.transactionId),
-          }));
-        }
-
-        // Find most recent active payment to update lastPaidAt
-        const activePayments = (sub.paymentHistory || [])
-          .filter((p) => p.id !== paymentId && !p.undoneAt)
-          .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
-
-        set((s) => ({
-          subscriptions: s.subscriptions.map((item) => {
-            if (item.id !== subId) return item;
-            return {
-              ...item,
-              nextBillingDate: prev,
-              completedInstallments: rolledCompleted,
-              outstandingBalance: rolledOutstanding,
-              lastPaidAt: activePayments[0]?.paidAt ?? undefined,
-              paymentHistory: (item.paymentHistory || []).map((p) =>
-                p.id === paymentId ? { ...p, undoneAt: new Date() } : p
-              ),
-              updatedAt: new Date(),
-            };
-          }),
-        }));
       },
 
       addTransferIncome: (transfer) => {
@@ -339,16 +348,16 @@ export const usePersonalStore = create<PersonalState>()(
         set((state) => ({
           goals: state.goals.map((goal) => {
             if (goal.id !== goalId) return goal;
-            const remaining = goal.targetAmount - goal.currentAmount;
+            const remaining = roundMoney(goal.targetAmount - goal.currentAmount);
             const actualAmount = remaining > 0 ? Math.min(amount, remaining) : amount;
             const newContribution = {
               id: newId(),
-              amount: actualAmount,
+              amount: roundMoney(actualAmount),
               note,
               date: new Date(),
               walletId,
             };
-            const newCurrentAmount = Math.min(goal.currentAmount + actualAmount, goal.targetAmount);
+            const newCurrentAmount = roundMoney(Math.min(goal.currentAmount + actualAmount, goal.targetAmount));
             const updatedMilestones = goal.milestones.map((m) => {
               if (!m.reached && newCurrentAmount >= (m.percentage / 100) * goal.targetAmount) {
                 return { ...m, reached: true, reachedAt: new Date() };
@@ -369,7 +378,7 @@ export const usePersonalStore = create<PersonalState>()(
         set((state) => ({
           goals: state.goals.map((goal) => {
             if (goal.id !== goalId) return goal;
-            const newAmount = Math.max(goal.currentAmount - amount, 0);
+            const newAmount = roundMoney(Math.max(goal.currentAmount - amount, 0));
             const updatedMilestones = goal.milestones.map((m) => {
               if (m.reached && newAmount < (m.percentage / 100) * goal.targetAmount) {
                 return { ...m, reached: false, reachedAt: undefined };
@@ -394,13 +403,17 @@ export const usePersonalStore = create<PersonalState>()(
           }),
         })),
 
-      removeContribution: (goalId, contributionId) =>
+      removeContribution: (goalId, contributionId) => {
+        let walletRefund: { walletId: string; amount: number } | null = null as { walletId: string; amount: number } | null;
         set((state) => ({
           goals: state.goals.map((goal) => {
             if (goal.id !== goalId) return goal;
             const contrib = goal.contributions.find((c) => c.id === contributionId);
             if (!contrib) return goal;
-            const newAmount = Math.max(goal.currentAmount - contrib.amount, 0);
+            if (contrib.walletId && contrib.amount > 0) {
+              walletRefund = { walletId: contrib.walletId, amount: contrib.amount };
+            }
+            const newAmount = roundMoney(Math.max(goal.currentAmount - contrib.amount, 0));
             const updatedMilestones = goal.milestones.map((m) => {
               if (m.reached && newAmount < (m.percentage / 100) * goal.targetAmount) {
                 return { ...m, reached: false, reachedAt: undefined };
@@ -415,7 +428,11 @@ export const usePersonalStore = create<PersonalState>()(
               updatedAt: new Date(),
             };
           }),
-        })),
+        }));
+        if (walletRefund) {
+          useWalletStore.getState().addToWallet(walletRefund.walletId, walletRefund.amount);
+        }
+      },
 
       archiveGoal: (goalId) =>
         set((state) => ({

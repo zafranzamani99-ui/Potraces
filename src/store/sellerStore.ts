@@ -42,7 +42,8 @@ const UNCATEGORIZED_COST_CATEGORY: SellerCostCategory = {
   sortOrder: 999,
 };
 
-// Generate a unique 5-char order code: 2 random uppercase letters + 3 random digits
+// Generate a unique 7-char order code: 3 random uppercase letters + 4 random digits.
+// Extended from 5 chars (CF-72) to reduce cross-device collision risk (~133M combos).
 function generateOrderCode(existingOrders: SellerOrder[]): string {
   const existing = new Set(existingOrders.map((o) => o.orderNumber).filter(Boolean));
   const letters = 'ABCDEFGHJKMNPQRSTUVWXYZ'; // exclude I, L, O (ambiguous)
@@ -50,14 +51,16 @@ function generateOrderCode(existingOrders: SellerOrder[]): string {
   for (let attempt = 0; attempt < 100; attempt++) {
     const a = letters[Math.floor(Math.random() * letters.length)];
     const b = letters[Math.floor(Math.random() * letters.length)];
+    const c = letters[Math.floor(Math.random() * letters.length)];
     const d1 = digits[Math.floor(Math.random() * digits.length)];
     const d2 = digits[Math.floor(Math.random() * digits.length)];
     const d3 = digits[Math.floor(Math.random() * digits.length)];
-    const code = `${a}${b}${d1}${d2}${d3}`;
+    const d4 = digits[Math.floor(Math.random() * digits.length)];
+    const code = `${a}${b}${c}${d1}${d2}${d3}${d4}`;
     if (!existing.has(code)) return code;
   }
   // Fallback: timestamp-based (virtually impossible to reach)
-  return `ZZ${Date.now().toString().slice(-3)}`;
+  return `ZZZ${Date.now().toString().slice(-4)}`;
 }
 
 // Module-level caches for derived selectors (avoids new arrays every call).
@@ -133,14 +136,21 @@ export const useSellerStore = create<SellerState>()(
       deleteProduct: (id) =>
         set((state) => ({
           products: state.products.filter((p) => p.id !== id),
-          _deletedProductIds: [...state._deletedProductIds, id],
+          _deletedProductIds: [...state._deletedProductIds, id].slice(-500),
         })),
 
       // ─── Orders ─────────────────────────────────────────
       addOrder: (order) =>
         set((state) => {
+          const validItems = order.items.filter((i) => {
+            const exists = state.products.some((p) => p.id === i.productId);
+            if (!exists) console.warn(`[sellerStore] addOrder: productId ${i.productId} not found, dropping item`);
+            return exists;
+          });
+          const itemsToUse = validItems.length > 0 ? validItems : order.items;
+
           const updatedProducts = state.products.map((p) => {
-            const orderItem = order.items.find((i) => i.productId === p.id);
+            const orderItem = itemsToUse.find((i) => i.productId === p.id);
             if (orderItem) {
               const updates: any = {
                 ...p,
@@ -155,12 +165,14 @@ export const useSellerStore = create<SellerState>()(
             return p;
           });
 
+          const orderTotal = roundMoney(itemsToUse.reduce((s, i) => s + i.unitPrice * i.quantity, 0));
           return {
             orders: [
               {
                 ...order,
-                totalAmount: roundMoney(order.totalAmount),
-                id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                items: itemsToUse,
+                totalAmount: orderTotal,
+                id: newId(),
                 orderNumber: generateOrderCode(state.orders),
                 createdAt: new Date(),
                 updatedAt: new Date(),
@@ -195,7 +207,7 @@ export const useSellerStore = create<SellerState>()(
             if (o.id !== id) return o;
             const deposits = (o.deposits || []).map((d, i) => i === index ? { ...d, amount, method, note } : d);
             // C3: Cap paidAmount at totalAmount
-            const newPaidAmount = Math.min(deposits.reduce((s, d) => s + d.amount, 0), o.totalAmount);
+            const newPaidAmount = roundMoney(Math.min(deposits.reduce((s, d) => s + d.amount, 0), o.totalAmount));
             const fullyPaid = newPaidAmount >= o.totalAmount;
             return { ...o, deposits, paidAmount: newPaidAmount, isPaid: fullyPaid, paymentMethod: method, paidAt: fullyPaid ? (o.paidAt || new Date()) : undefined, updatedAt: new Date() };
           }),
@@ -206,7 +218,7 @@ export const useSellerStore = create<SellerState>()(
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
             const deposits = (o.deposits || []).filter((_, i) => i !== index);
-            const newPaidAmount = deposits.reduce((s, d) => s + d.amount, 0);
+            const newPaidAmount = roundMoney(deposits.reduce((s, d) => s + d.amount, 0));
             const fullyPaid = newPaidAmount >= o.totalAmount;
             return { ...o, deposits, paidAmount: newPaidAmount, isPaid: fullyPaid, paymentMethod: deposits.length > 0 ? deposits[deposits.length - 1].method : undefined, paidAt: fullyPaid ? o.paidAt : undefined, updatedAt: new Date() };
           }),
@@ -265,7 +277,7 @@ export const useSellerStore = create<SellerState>()(
           return {
             orders: state.orders.filter((o) => o.id !== id),
             products: updatedProducts,
-            _deletedOrderIds: [...state._deletedOrderIds, id],
+            _deletedOrderIds: [...state._deletedOrderIds, id].slice(-500),
           };
         });
         // Reverse this order's share of any transferred-to-personal income.
@@ -301,7 +313,7 @@ export const useSellerStore = create<SellerState>()(
           return {
             orders: state.orders.filter((o) => !ids.includes(o.id)),
             products: updatedProducts,
-            _deletedOrderIds: [...state._deletedOrderIds, ...ids],
+            _deletedOrderIds: [...state._deletedOrderIds, ...ids].slice(-500),
           };
         });
         // Reverse transferred-to-personal income, summed per transfer batch.
@@ -525,8 +537,8 @@ export const useSellerStore = create<SellerState>()(
             orders: state.orders.filter((o) => o.seasonId !== id),
             ingredientCosts: state.ingredientCosts.filter((c) => c.seasonId !== id),
             products: updatedProducts,
-            _deletedSeasonIds: [...state._deletedSeasonIds, id],
-            _deletedOrderIds: [...state._deletedOrderIds, ...deletedOrderIds],
+            _deletedSeasonIds: [...state._deletedSeasonIds, id].slice(-500),
+            _deletedOrderIds: [...state._deletedOrderIds, ...deletedOrderIds].slice(-500),
           };
         });
         // Reverse any transferred-to-personal income, summed per transfer batch,
@@ -648,7 +660,7 @@ export const useSellerStore = create<SellerState>()(
       deleteIngredientCost: (id) =>
         set((state) => ({
           ingredientCosts: state.ingredientCosts.filter((c) => c.id !== id),
-          _deletedCostIds: [...state._deletedCostIds, id],
+          _deletedCostIds: [...state._deletedCostIds, id].slice(-500),
         })),
 
       markCostSynced: (id, personalTransactionId) =>
@@ -687,7 +699,7 @@ export const useSellerStore = create<SellerState>()(
           const sink = 'costcat_other';
           return {
             costCategories: state.costCategories.filter((c) => c.id !== id),
-            _deletedCostCategoryIds: [...state._deletedCostCategoryIds, id],
+            _deletedCostCategoryIds: [...state._deletedCostCategoryIds, id].slice(-500),
             // Reassign anything pointing at the deleted category to the protected "Other" sink
             ingredientCosts: state.ingredientCosts.map((c) =>
               c.category === id ? { ...c, category: sink, updatedAt: new Date() } : c
@@ -723,7 +735,7 @@ export const useSellerStore = create<SellerState>()(
 
       // ─── Stock Adjustments ─────────────────────────────────
       addStockAdjustment: (adj) => {
-        const id = Date.now().toString();
+        const id = newId();
         set((state) => {
           const product = state.products.find((p) => p.id === adj.productId);
           const currentStock = product?.stockQuantity ?? 0;
@@ -838,7 +850,7 @@ export const useSellerStore = create<SellerState>()(
       addSellerCustomer: (customer) =>
         set((state) => ({
           sellerCustomers: [
-            { ...customer, id: Date.now().toString(), createdAt: new Date(), updatedAt: new Date() },
+            { ...customer, id: newId(), createdAt: new Date(), updatedAt: new Date() },
             ...state.sellerCustomers,
           ],
         })),
@@ -853,7 +865,7 @@ export const useSellerStore = create<SellerState>()(
       deleteSellerCustomer: (id) =>
         set((state) => ({
           sellerCustomers: state.sellerCustomers.filter((c) => c.id !== id),
-          _deletedCustomerIds: [...state._deletedCustomerIds, id],
+          _deletedCustomerIds: [...state._deletedCustomerIds, id].slice(-500),
         })),
 
       // ─── Custom Units ─────────────────────────────────
@@ -922,7 +934,7 @@ export const useSellerStore = create<SellerState>()(
       addCostTemplate: (template) =>
         set((state) => ({
           costTemplates: [
-            { ...template, id: Date.now().toString(), updatedAt: new Date() },
+            { ...template, id: newId(), updatedAt: new Date() },
             ...state.costTemplates,
           ],
         })),
@@ -943,7 +955,7 @@ export const useSellerStore = create<SellerState>()(
       addRecurringCost: (cost) =>
         set((state) => ({
           recurringCosts: [
-            { ...cost, id: Date.now().toString(), createdAt: new Date() },
+            { ...cost, id: newId(), createdAt: new Date() },
             ...state.recurringCosts,
           ],
         })),
@@ -975,7 +987,7 @@ export const useSellerStore = create<SellerState>()(
         }
 
         // Create ingredient cost
-        const costId = Date.now().toString();
+        const costId = newId();
         set((state) => ({
           ingredientCosts: [
             {
@@ -1019,17 +1031,17 @@ export const useSellerStore = create<SellerState>()(
         if (_seasonStatsCache.seasonId === seasonId && _seasonStatsCache.ordersRef === state.orders && _seasonStatsCache.costsRef === state.ingredientCosts) return _seasonStatsCache.val;
         const orders = state.orders.filter((o) => o.seasonId === seasonId);
         const costs = state.ingredientCosts.filter((c) => c.seasonId === seasonId);
-        const totalIncome = orders.filter((o) => o.isPaid).reduce((s, o) => s + o.totalAmount, 0);
-        const totalCosts = costs.reduce((s, c) => s + c.amount, 0);
+        const totalIncome = roundMoney(orders.filter((o) => o.isPaid).reduce((s, o) => s + o.totalAmount, 0));
+        const totalCosts = roundMoney(costs.reduce((s, c) => s + c.amount, 0));
         const unpaid = orders.filter((o) => !o.isPaid);
 
         const result = {
           totalOrders: orders.length,
           totalIncome,
           totalCosts,
-          kept: totalIncome - totalCosts,
+          kept: roundMoney(totalIncome - totalCosts),
           unpaidCount: unpaid.length,
-          unpaidAmount: unpaid.reduce((s, o) => s + o.totalAmount, 0),
+          unpaidAmount: roundMoney(unpaid.reduce((s, o) => s + o.totalAmount, 0)),
         };
         _seasonStatsCache = { seasonId, ordersRef: state.orders, costsRef: state.ingredientCosts, val: result };
         return result;

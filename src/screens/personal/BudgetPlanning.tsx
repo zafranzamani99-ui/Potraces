@@ -13,7 +13,6 @@ import {
   Switch,
   KeyboardAvoidingView,
   FlatList,
-  PanResponder,
   Animated as RNAnimated,
   useWindowDimensions,
 } from 'react-native';
@@ -49,6 +48,8 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, BUDGET_PERIODS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
+import { useEchoFabPan } from '../../hooks/useEchoFabPan';
+import EchoDragHideZone from '../../components/wallet/EchoDragHideZone';
 import { useCategories } from '../../hooks/useCategories';
 import { FREE_TIER } from '../../constants/premium';
 import CategoryPicker from '../../components/common/CategoryPicker';
@@ -57,6 +58,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
 import { Budget, CategoryOption, Playbook } from '../../types';
+import ModalToastHost from '../../components/common/ModalToastHost';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { lightTap, mediumTap } from '../../services/haptics';
 import ScreenGuide from '../../components/common/ScreenGuide';
@@ -280,73 +282,17 @@ const BudgetPlanning: React.FC = () => {
     opacity: interpolate(bSheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP),
   }));
 
-  // ── Draggable Echo FAB — free X+Y drag, snaps to edge on release ──
-  const echoFabPan = useRef(new RNAnimated.ValueXY({ x: 0, y: 0 })).current;
-  // When anchor (fabSide) switches, reset X to 0 atomically before the frame paints
-  const prevFabSideRef = useRef<'left' | 'right'>('right');
-  useLayoutEffect(() => {
-    if (prevFabSideRef.current !== fabSide) {
-      prevFabSideRef.current = fabSide;
-      echoFabPan.setValue({ x: 0, y: (echoFabPan.y as any)._value });
-    }
-  }, [fabSide, echoFabPan]);
-  const echoFabPanResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onStartShouldSetPanResponderCapture: () => false,
-        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
-        onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
-        onPanResponderGrant: () => {
-          echoFabPan.setOffset({
-            x: (echoFabPan.x as any)._value,
-            y: (echoFabPan.y as any)._value,
-          });
-          echoFabPan.setValue({ x: 0, y: 0 });
-          setGreetingHiddenDuringDrag(true);
-        },
-        onPanResponderMove: RNAnimated.event(
-          [null, { dx: echoFabPan.x, dy: echoFabPan.y }],
-          { useNativeDriver: false }
-        ),
-        onPanResponderRelease: () => {
-          echoFabPan.flattenOffset();
-          const curX = (echoFabPan.x as any)._value;
-          const curY = (echoFabPan.y as any)._value;
-          const safeTop = Math.max(insets.top, 20);
-          const defaultTop = safeTop + 80;
-          // Determine target side from projected FAB center
-          const fabCenterX = fabSide === 'right'
-            ? SCREEN_W - SPACING.xl - 28 + curX
-            : SPACING.xl + 28 + curX;
-          const newSide = fabCenterX < SCREEN_W / 2 ? 'left' : 'right';
-          // Snap X in CURRENT anchor coords — don't switch anchor until spring is done
-          const edgeSpan = SCREEN_W - 2 * SPACING.xl - 56;
-          const snapX = fabSide === newSide ? 0
-            : fabSide === 'right' ? -edgeSpan : edgeSpan;
-          // Y clamp
-          const minY = -(defaultTop - 8);
-          const maxY = SCREEN_H - insets.top - 44 - insets.bottom - 80 - 56 - defaultTop;
-          const clampedY = Math.max(minY, Math.min(maxY, curY));
-          RNAnimated.spring(echoFabPan, {
-            toValue: { x: snapX, y: clampedY },
-            useNativeDriver: false,
-            friction: 14,
-            tension: 100,
-          }).start(() => {
-            // useLayoutEffect resets X to 0 atomically when fabSide changes — no flicker
-            setFabSide(newSide);
-            setGreetingHiddenDuringDrag(false);
-          });
-        },
-      }),
-    // fabSide in deps — release uses it to compute FAB center X
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [echoFabPan, fabSide, SCREEN_W, SCREEN_H, insets.top, insets.bottom]
-  );
+  // ── Draggable Echo FAB — free X+Y drag, snaps to edge, drag-to-hide ──
+  const { echoFabPan, echoFabPanResponder, hideZoneAnim, hideZoneHoverAnim, fabScale, hideZoneRef } = useEchoFabPan({
+    fabSide,
+    setFabSide,
+    setGreetingHiddenDuringDrag,
+    onHide: () => setEchoHidden(true),
+    insets,
+  });
 
   // Form state
-  const [category, setCategory] = useState(expenseCategories[0]?.id || 'food');
+  const [category, setCategory] = useState(expenseCategories[0]?.id || '');
   const [amount, setAmount] = useState('');
   const [period, setPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
   const [rollover, setRollover] = useState(false);
@@ -596,6 +542,10 @@ const BudgetPlanning: React.FC = () => {
   const handleAdd = useCallback(() => {
     if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
       showToast('enter a valid amount', 'error');
+      return;
+    }
+    if (!category) {
+      showToast('please select a category', 'error');
       return;
     }
 
@@ -2085,6 +2035,7 @@ const BudgetPlanning: React.FC = () => {
             </Pressable>
           </View>
         </Reanimated.View>
+        <ModalToastHost />
       </Modal>)}
 
       <PaywallModal
@@ -2194,6 +2145,7 @@ const BudgetPlanning: React.FC = () => {
               </View>
             </KeyboardAvoidingView>
           </View>
+          <ModalToastHost />
         </Modal>
       )}
 
@@ -2209,6 +2161,7 @@ const BudgetPlanning: React.FC = () => {
       )}
       {/* ── Echo FAB + Greeting bubble (draggable, default top-right) ── */}
       {viewMode === 'budget' && hasBudgets && !echoHidden && !modalVisible && !echoSheetVisible && (
+        <>
         <RNAnimated.View
           style={[
             styles.echoFabContainer,
@@ -2216,7 +2169,7 @@ const BudgetPlanning: React.FC = () => {
               ? { right: SPACING.xl, flexDirection: 'row-reverse' }
               : { left: SPACING.xl, flexDirection: 'row' },
             { top: Math.max(insets.top, 20) + 80 },
-            { transform: echoFabPan.getTranslateTransform() },
+            { transform: [...echoFabPan.getTranslateTransform(), { scale: fabScale }] },
           ]}
           {...echoFabPanResponder.panHandlers}
         >
@@ -2230,17 +2183,9 @@ const BudgetPlanning: React.FC = () => {
               setEchoSheetVisible(true);
               setGreetingDismissed(true);
             }}
-            onLongPress={() => {
-              lightTap();
-              Alert.alert('hide echo here?', "you can re-enable it from settings.", [
-                { text: 'cancel', style: 'cancel' },
-                { text: 'hide', onPress: () => setEchoHidden(true) },
-              ]);
-            }}
-            delayLongPress={500}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel="Open Echo assistant (hold to hide)"
+            accessibilityLabel="Open Echo assistant"
           >
             <Feather name="zap" size={22} color={C.onAccent} />
             {tier !== 'premium' && (
@@ -2288,6 +2233,8 @@ const BudgetPlanning: React.FC = () => {
             </TouchableOpacity>
           )}
         </RNAnimated.View>
+        <EchoDragHideZone hideZoneAnim={hideZoneAnim} hideZoneHoverAnim={hideZoneHoverAnim} measureRef={hideZoneRef} />
+        </>
       )}
 
       {/* ── Echo inline chat sheet ── */}

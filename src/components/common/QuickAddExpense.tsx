@@ -27,6 +27,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { usePlaybookStore } from '../../store/playbookStore';
 import { CALM, CALM_DARK, SHADOWS, withAlpha, RADIUS, SPACING, TYPOGRAPHY } from '../../constants';
 import WalletLogo from './WalletLogo';
+import ModalToastHost from './ModalToastHost';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { lightTap, successNotification } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
@@ -119,6 +120,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
   const [selectedCurrency, setSelectedCurrency] = useState<string>(currency || 'MYR');
   const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
   const [fxRates, setFxRates] = useState<Record<string, number> | null>(null);
+  const [fxFetchedAt, setFxFetchedAt] = useState<number | null>(null);
   const [pbPrompt, setPbPrompt] = useState<{ txId: string; amount: number; name: string } | null>(null);
   const [pendingWalletId, setPendingWalletId] = useState<string | null>(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -136,7 +138,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
   useEffect(() => {
     if (selectedCurrency === 'MYR' || fxRates) return;
     let cancelled = false;
-    getRates().then((r) => { if (!cancelled) setFxRates(r.rates); }).catch(() => {});
+    getRates().then((r) => { if (!cancelled) { setFxRates(r.rates); setFxFetchedAt(r.fetchedAt); } }).catch(() => {});
     return () => { cancelled = true; };
   }, [selectedCurrency, fxRates]);
 
@@ -145,6 +147,11 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
     if (!parsed || selectedCurrency === 'MYR' || !fxRates) return null;
     return toMyr(parsed, selectedCurrency, fxRates);
   }, [amount, selectedCurrency, fxRates]);
+
+  const fxIsStale = useMemo(() => {
+    if (!fxFetchedAt) return true;
+    return Date.now() - fxFetchedAt > 24 * 60 * 60 * 1000;
+  }, [fxFetchedAt]);
 
   // ── Draggable FAB ──────────────────────────────────────────
   const fabPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -689,8 +696,10 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
                       </Text>
                     </TouchableOpacity>
                     {myrEquivalent != null && (
-                      <Text style={{ color: C.textMuted, fontSize: 12, marginTop: 2 }}>
-                        ≈ RM {myrEquivalent.toFixed(2)}
+                      <Text style={{ color: fxIsStale ? C.bronze : C.textMuted, fontSize: 12, marginTop: 2 }}>
+                        {fxIsStale
+                          ? t.common.fxApproximate.replace('{amount}', myrEquivalent.toFixed(2))
+                          : `≈ RM ${myrEquivalent.toFixed(2)}`}
                       </Text>
                     )}
                   </View>
@@ -888,6 +897,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
             );
           })()}
         </View>
+        <ModalToastHost />
       </Modal>
 
       {/* ── Currency picker ─────────────────────── */}
@@ -938,6 +948,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
               </Text>
             </Pressable>
           </Pressable>
+          <ModalToastHost />
         </Modal>
       )}
 
@@ -979,6 +990,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
               </View>
             </Animated.View>
           </View>
+          <ModalToastHost />
         </Modal>
       )}
     </>

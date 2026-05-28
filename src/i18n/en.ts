@@ -31,6 +31,8 @@ export const en = {
     copied: 'Copied!',
     tapToView: 'tap to view details',
     edited: 'edited',
+    offline: 'Offline — data saved locally',
+    fxApproximate: '≈ RM {amount} (approximate)',
   },
 
   // Accessibility labels — short, action-oriented strings used by
@@ -808,6 +810,19 @@ export const en = {
     logIngredientCost: 'Log cost',
     logCostBtn: 'log cost',
     popularThisMonth: 'popular this month',
+    reportTitle: 'products report',
+    reportSold: '{n} sold',
+    reportNoData: 'no orders this month yet',
+    reportTopEarners: 'top earners',
+    reportBestMargins: 'best margins',
+    reportKeeps: 'keeps {pct}%',
+    reportCustomerReach: 'customer reach',
+    reportBuyers: '{n} buyers',
+    reportVsLastMonth: 'vs last month',
+    reportNew: 'new',
+    reportNeverOrdered: 'never ordered',
+    reportLowStock: 'low stock',
+    reportDaysLeft: '~{n}d left',
     inactive: 'inactive',
     productTapHint: '{name}. Tap for details.',
 
@@ -1504,7 +1519,18 @@ export const en = {
     noContributionsYet: 'no contributions yet.',
     withdrawn: 'withdrawn',
 
-    // accessibility action labels
+    // screen guide
+    screenGuideTitle: 'track your savings goals',
+    screenGuideDesc: 'set targets, contribute regularly, and watch your progress grow',
+
+    // collapsible
+    goals: 'goals',
+    goal: 'goal',
+
+    // detail + action labels
+    remaining: 'left',
+    edit: 'edit',
+    delete: 'delete',
     pause: 'pause',
     resume: 'resume',
     undo: 'undo',

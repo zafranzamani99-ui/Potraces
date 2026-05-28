@@ -41,14 +41,25 @@ const isoOrNull = (d: any): string | null => {
 };
 
 // ─── Session helper ───────────────────────────────────────────────────────────
+let _sessionExpired = false;
+export function isPersonalSessionExpired(): boolean { return _sessionExpired; }
+export function clearPersonalSessionExpired(): void { _sessionExpired = false; }
+
 async function getSession() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
   const expiresAt = session.expires_at ?? 0;
   if (expiresAt * 1000 < Date.now() + 60000) {
-    const { data: { session: refreshed } } = await supabase.auth.refreshSession();
-    return refreshed ?? session;
+    const { data: { session: refreshed }, error } = await supabase.auth.refreshSession();
+    if (error || !refreshed) {
+      console.warn('[personalSync] session refresh failed — marking expired:', error?.message ?? 'no refreshed session');
+      _sessionExpired = true;
+      return null;
+    }
+    _sessionExpired = false;
+    return refreshed;
   }
+  _sessionExpired = false;
   return session;
 }
 
@@ -327,7 +338,7 @@ function goalFromRemote(r: any): Goal {
 function debtFromRemote(r: any): Debt {
   return {
     id: r.local_id,
-    contact: { id: 'synced', name: r.contact_name, phone: r.contact_phone ?? undefined } as any,
+    contact: { id: `synced-${r.contact_name}-${r.contact_phone || 'nophone'}`, name: r.contact_name, phone: r.contact_phone ?? undefined } as any,
     type: r.type,
     totalAmount: Number(r.total_amount),
     paidAmount: Number(r.paid_amount),
@@ -400,15 +411,28 @@ function receiptFromRemote(r: any): SavedReceipt {
 // ─── Generic pull / push / tombstone helpers ──────────────────────────────────
 type PullResult<TLocal> = { remote: TLocal[]; remoteLocalIds: Set<string> } | null;
 
+const PULL_PAGE = 1000;
+
 async function pullTable<TLocal>(
   table: string,
   userId: string,
   fromRemote: (r: any) => TLocal,
   tombstoneIds?: Set<string>,
 ): Promise<PullResult<TLocal>> {
-  const { data, error } = await supabase.from(table).select('*').eq('user_id', userId);
-  if (error) return null;
-  const filtered = (data ?? []).filter(
+  const allData: any[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .eq('user_id', userId)
+      .range(from, from + PULL_PAGE - 1);
+    if (error) return null;
+    if (data && data.length) allData.push(...data);
+    if (!data || data.length < PULL_PAGE) break;
+    from += PULL_PAGE;
+  }
+  const filtered = allData.filter(
     (r: any) => !r.local_id || !tombstoneIds?.has(r.local_id),
   );
   const remote = filtered.map(fromRemote);
@@ -428,7 +452,7 @@ async function deleteTombstones(
     .eq('user_id', userId)
     .in('local_id', ids);
   if (error) {
-    console.warn(`[personalSync] tombstone delete ${table} failed:`, error.message);
+    if (__DEV__) console.warn(`[personalSync] tombstone delete ${table} failed:`, error.message);
     return false;
   }
   return true;
@@ -437,7 +461,7 @@ async function deleteTombstones(
 async function upsertBatch(table: string, rows: any[]) {
   if (rows.length === 0) return;
   const { error } = await supabase.from(table).upsert(rows, { onConflict: 'user_id,local_id' });
-  if (error) console.warn(`[personalSync] upsert ${table} failed:`, error.message);
+  if (error && __DEV__) console.warn(`[personalSync] upsert ${table} failed:`, error.message);
 }
 
 async function deleteMissing(
@@ -460,7 +484,7 @@ async function deleteMissing(
     .delete()
     .eq('user_id', userId)
     .in('local_id', toDelete);
-  if (error) console.warn(`[personalSync] delete missing ${table} failed:`, error.message);
+  if (error && __DEV__) console.warn(`[personalSync] delete missing ${table} failed:`, error.message);
 }
 
 // ─── Pull all + merge into stores ─────────────────────────────────────────────
@@ -511,7 +535,7 @@ async function pullAll(userId: string): Promise<boolean> {
     ]);
 
     if (!transactions || !wallets || !transfers || !subscriptions || !budgets || !goals || !debts || !splits || !contacts || !savings || !receipts) {
-      console.warn('[personalSync] pullAll: one or more tables failed to fetch');
+      if (__DEV__) console.warn('[personalSync] pullAll: one or more tables failed to fetch');
       return false;
     }
 
@@ -522,10 +546,17 @@ async function pullAll(userId: string): Promise<boolean> {
     const receiptState = useReceiptStore.getState();
     const savingsState = useSavingsStore.getState();
 
+    const allDeletedIds = new Set([
+      ...(tsTx), ...(tsSub), ...(tsBud), ...(tsGoal),
+      ...(tsWallet), ...(tsTransfer), ...(tsDebt), ...(tsSplit),
+      ...(tsContact), ...(tsSavings), ...(tsReceipt),
+    ]);
+
     const mergeById = <T extends { id: string; updatedAt?: Date }>(local: T[], remote: T[]): T[] => {
       const map = new Map<string, T>();
       for (const l of local) map.set(l.id, l);
       for (const r of remote) {
+        if (allDeletedIds.has(r.id)) continue;
         const existing = map.get(r.id);
         if (!existing) map.set(r.id, r);
         else if ((r.updatedAt?.getTime() ?? 0) > (existing.updatedAt?.getTime() ?? 0)) {
@@ -563,13 +594,48 @@ async function pullAll(userId: string): Promise<boolean> {
 
     return true;
   } catch (e: any) {
-    console.warn('[personalSync] pullAll exception:', e?.message);
+    if (__DEV__) console.warn('[personalSync] pullAll exception:', e?.message);
     return false;
   }
 }
 
+interface LocalIdSnapshot {
+  transactions: Set<string>;
+  wallets: Set<string>;
+  transfers: Set<string>;
+  subscriptions: Set<string>;
+  budgets: Set<string>;
+  goals: Set<string>;
+  debts: Set<string>;
+  splits: Set<string>;
+  contacts: Set<string>;
+  savings: Set<string>;
+  receipts: Set<string>;
+}
+
+function captureLocalIds(): LocalIdSnapshot {
+  const p = usePersonalStore.getState();
+  const w = useWalletStore.getState();
+  const d = useDebtStore.getState();
+  const r = useReceiptStore.getState();
+  const s = useSavingsStore.getState();
+  return {
+    transactions: new Set(p.transactions.map((t) => t.id)),
+    wallets: new Set(w.wallets.map((x) => x.id)),
+    transfers: new Set((w.transfers ?? []).map((x) => x.id)),
+    subscriptions: new Set(p.subscriptions.map((x) => x.id)),
+    budgets: new Set(p.budgets.map((x) => x.id)),
+    goals: new Set(p.goals.map((x) => x.id)),
+    debts: new Set(d.debts.map((x) => x.id)),
+    splits: new Set(d.splits.map((x) => x.id)),
+    contacts: new Set(d.contacts.map((x) => x.id)),
+    savings: new Set(s.accounts.map((x) => x.id)),
+    receipts: new Set((r.receipts ?? []).map((x) => x.id)),
+  };
+}
+
 // ─── Push each table ──────────────────────────────────────────────────────────
-async function pushAll(userId: string, syncStart: string) {
+async function pushAll(userId: string, syncStart: string, snapshotIds?: LocalIdSnapshot) {
   const p = usePersonalStore.getState();
   const w = useWalletStore.getState();
   const d = useDebtStore.getState();
@@ -613,18 +679,31 @@ async function pushAll(userId: string, syncStart: string) {
   //    that pushed rows we never saw locally. Only after first sync.
   const lastSync = useSettingsStore.getState().lastPersonalSyncAt;
   if (lastSync) {
+    const ids = snapshotIds ?? {
+      transactions: new Set(p.transactions.map((t) => t.id)),
+      wallets: new Set(w.wallets.map((x) => x.id)),
+      transfers: new Set((w.transfers ?? []).map((x) => x.id)),
+      subscriptions: new Set(p.subscriptions.map((x) => x.id)),
+      budgets: new Set(p.budgets.map((x) => x.id)),
+      goals: new Set(p.goals.map((x) => x.id)),
+      debts: new Set(d.debts.map((x) => x.id)),
+      splits: new Set(d.splits.map((x) => x.id)),
+      contacts: new Set(d.contacts.map((x) => x.id)),
+      savings: new Set(s.accounts.map((x) => x.id)),
+      receipts: new Set((r.receipts ?? []).map((x) => x.id)),
+    };
     await Promise.allSettled([
-      deleteMissing('personal_transactions', userId, new Set(p.transactions.map((t) => t.id)), syncStart),
-      deleteMissing('personal_wallets', userId, new Set(w.wallets.map((x) => x.id)), syncStart),
-      deleteMissing('personal_wallet_transfers', userId, new Set((w.transfers ?? []).map((x) => x.id)), syncStart),
-      deleteMissing('personal_subscriptions', userId, new Set(p.subscriptions.map((x) => x.id)), syncStart),
-      deleteMissing('personal_budgets', userId, new Set(p.budgets.map((x) => x.id)), syncStart),
-      deleteMissing('personal_goals', userId, new Set(p.goals.map((x) => x.id)), syncStart),
-      deleteMissing('personal_debts', userId, new Set(d.debts.map((x) => x.id)), syncStart),
-      deleteMissing('personal_splits', userId, new Set(d.splits.map((x) => x.id)), syncStart),
-      deleteMissing('personal_contacts', userId, new Set(d.contacts.map((x) => x.id)), syncStart),
-      deleteMissing('personal_savings_accounts', userId, new Set(s.accounts.map((x) => x.id)), syncStart),
-      deleteMissing('personal_receipts', userId, new Set((r.receipts ?? []).map((x) => x.id)), syncStart),
+      deleteMissing('personal_transactions', userId, ids.transactions, syncStart),
+      deleteMissing('personal_wallets', userId, ids.wallets, syncStart),
+      deleteMissing('personal_wallet_transfers', userId, ids.transfers, syncStart),
+      deleteMissing('personal_subscriptions', userId, ids.subscriptions, syncStart),
+      deleteMissing('personal_budgets', userId, ids.budgets, syncStart),
+      deleteMissing('personal_goals', userId, ids.goals, syncStart),
+      deleteMissing('personal_debts', userId, ids.debts, syncStart),
+      deleteMissing('personal_splits', userId, ids.splits, syncStart),
+      deleteMissing('personal_contacts', userId, ids.contacts, syncStart),
+      deleteMissing('personal_savings_accounts', userId, ids.savings, syncStart),
+      deleteMissing('personal_receipts', userId, ids.receipts, syncStart),
     ]);
   }
 
@@ -649,17 +728,22 @@ export async function syncPersonal(): Promise<void> {
 
   const session = await getSession();
   if (!session) {
-    console.warn('[personalSync] no session — sync skipped');
+    if (_sessionExpired) {
+      console.warn('[personalSync] session expired — user must re-authenticate. Sync skipped.');
+    } else if (__DEV__) {
+      console.warn('[personalSync] no session — sync skipped');
+    }
     return;
   }
 
   const run = async () => {
     const syncStart = new Date().toISOString();
+    const snapshotIds = captureLocalIds();
     const pulled = await pullAll(session.user.id);
     if (!pulled) {
       throw new Error('pull failed — aborted push to prevent data loss');
     }
-    await pushAll(session.user.id, syncStart);
+    await pushAll(session.user.id, syncStart, snapshotIds);
     useSettingsStore.getState().setLastPersonalSyncAt(new Date());
   };
 

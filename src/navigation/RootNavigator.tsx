@@ -7,7 +7,7 @@ import { Feather } from '@expo/vector-icons';
 import { useAppStore } from '../store/appStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
-import { useCalm } from '../hooks/useCalm';
+import { useCalm, useIsDark } from '../hooks/useCalm';
 import AuthScreen from '../screens/auth/AuthScreen';
 import OtpVerificationScreen from '../screens/auth/OtpVerificationScreen';
 import { requestOtp, signOut, getAuthSession } from '../services/supabase';
@@ -42,6 +42,7 @@ import RiderCostsScreen from '../screens/business/RiderCosts';
 import IncomeStreamsScreen from '../screens/business/IncomeStreams';
 import SellerNewOrder from '../screens/seller/NewOrder';
 import SellerProducts from '../screens/seller/Products';
+import SellerProductsReport from '../screens/seller/ProductsReport';
 import SeasonSummary from '../screens/seller/SeasonSummary';
 import PastSeasons from '../screens/seller/PastSeasons';
 import SellerCosts from '../screens/seller/CostManagement';
@@ -218,6 +219,7 @@ const RootNavigator: React.FC = () => {
   const mode = useAppStore((state) => state.mode);
   const hasCompletedOnboarding = useSettingsStore((s) => s.hasCompletedOnboarding);
   const C = useCalm();
+  const isDark = useIsDark();
   useEffect(() => {
     const onBackPress = () => {
       if (navigationRef.current?.canGoBack()) return false;
@@ -232,9 +234,9 @@ const RootNavigator: React.FC = () => {
   }, []);
 
   const navTheme = {
-    ...(C.background === '#121212' ? DarkTheme : DefaultTheme),
+    ...(isDark ? DarkTheme : DefaultTheme),
     colors: {
-      ...(C.background === '#121212' ? DarkTheme : DefaultTheme).colors,
+      ...(isDark ? DarkTheme : DefaultTheme).colors,
       background: C.background,
       card: C.surface,
       text: C.textPrimary,
@@ -411,6 +413,11 @@ const RootNavigator: React.FC = () => {
           name="SellerProducts"
           component={SellerProducts}
           options={makeBackHeader(C, mode, 'Products')}
+        />
+        <Stack.Screen
+          name="SellerProductsReport"
+          component={SellerProductsReport}
+          options={makeBackHeader(C, mode, 'Products Report')}
         />
         <Stack.Screen
           name="SellerCosts"

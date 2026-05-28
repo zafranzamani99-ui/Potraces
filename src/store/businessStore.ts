@@ -3,6 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BusinessState } from '../types';
 import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { newId } from '../utils/id';
+import { roundMoney } from '../utils/money';
 
 export const useBusinessStore = create<BusinessState>()(
   persist(
@@ -24,7 +26,7 @@ export const useBusinessStore = create<BusinessState>()(
           products: [
             {
               ...product,
-              id: Date.now().toString(),
+              id: newId(),
               createdAt: new Date(),
               updatedAt: new Date(),
             },
@@ -48,7 +50,7 @@ export const useBusinessStore = create<BusinessState>()(
             if (saleItem) {
               return {
                 ...product,
-                stock: product.stock - saleItem.quantity,
+                stock: Math.max(0, product.stock - saleItem.quantity),
                 updatedAt: new Date(),
               };
             }
@@ -59,7 +61,7 @@ export const useBusinessStore = create<BusinessState>()(
             sales: [
               {
                 ...sale,
-                id: Date.now().toString(),
+                id: newId(),
                 isSynced: false,
                 createdAt: new Date(),
                 updatedAt: new Date(),
@@ -75,7 +77,7 @@ export const useBusinessStore = create<BusinessState>()(
           suppliers: [
             {
               ...supplier,
-              id: Date.now().toString(),
+              id: newId(),
               createdAt: new Date(),
               updatedAt: new Date(),
             },
@@ -113,7 +115,7 @@ export const useBusinessStore = create<BusinessState>()(
         set({ businessSetupComplete: false, incomeType: null }),
 
       addBusinessTransaction: (tx) => {
-        const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+        const id = newId();
         set((state) => ({
           businessTransactions: [
             { ...tx, id },
@@ -140,7 +142,7 @@ export const useBusinessStore = create<BusinessState>()(
           clients: [
             {
               ...client,
-              id: Date.now().toString(),
+              id: newId(),
               totalPaid: 0,
               paymentHistory: [],
             },
@@ -154,7 +156,7 @@ export const useBusinessStore = create<BusinessState>()(
             c.id === clientId
               ? {
                   ...c,
-                  totalPaid: c.totalPaid + amount,
+                  totalPaid: roundMoney(c.totalPaid + amount),
                   lastPaid: date,
                   paymentHistory: [
                     { date, amount },
@@ -168,7 +170,7 @@ export const useBusinessStore = create<BusinessState>()(
       addRiderCost: (cost) =>
         set((state) => ({
           riderCosts: [
-            { ...cost, id: Date.now().toString() },
+            { ...cost, id: newId() },
             ...state.riderCosts,
           ],
         })),
@@ -176,7 +178,7 @@ export const useBusinessStore = create<BusinessState>()(
       addIncomeStream: (stream) =>
         set((state) => ({
           incomeStreams: [
-            { ...stream, id: Date.now().toString() },
+            { ...stream, id: newId() },
             ...state.incomeStreams,
           ],
         })),
@@ -195,13 +197,13 @@ export const useBusinessStore = create<BusinessState>()(
         const state = get();
         const start = startOfMonth(month);
         const end = endOfMonth(month);
-        return state.transfers
+        return roundMoney(state.transfers
           .filter(
             (t) =>
               t.toMode === 'personal' &&
               isWithinInterval(t.date instanceof Date ? t.date : new Date(t.date), { start, end })
           )
-          .reduce((sum, t) => sum + t.amount, 0);
+          .reduce((sum, t) => sum + t.amount, 0));
       },
     }),
     {
@@ -251,42 +253,43 @@ export const useBusinessStore = create<BusinessState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
+          const sd = (v: any) => { if (!v) return new Date(); const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? new Date() : d; };
           state.products = state.products.map((p: any) => ({
             ...p,
-            createdAt: new Date(p.createdAt),
-            updatedAt: new Date(p.updatedAt),
+            createdAt: sd(p.createdAt),
+            updatedAt: sd(p.updatedAt),
           }));
           state.sales = state.sales.map((s: any) => ({
             ...s,
-            date: new Date(s.date),
-            createdAt: new Date(s.createdAt),
-            updatedAt: new Date(s.updatedAt),
+            date: sd(s.date),
+            createdAt: sd(s.createdAt),
+            updatedAt: sd(s.updatedAt),
           }));
           state.suppliers = state.suppliers.map((s: any) => ({
             ...s,
-            lastPurchaseDate: s.lastPurchaseDate ? new Date(s.lastPurchaseDate) : undefined,
-            createdAt: new Date(s.createdAt),
-            updatedAt: new Date(s.updatedAt),
+            lastPurchaseDate: s.lastPurchaseDate ? sd(s.lastPurchaseDate) : undefined,
+            createdAt: sd(s.createdAt),
+            updatedAt: sd(s.updatedAt),
           }));
           state.businessTransactions = (state.businessTransactions || []).map((t: any) => ({
             ...t,
-            date: new Date(t.date),
+            date: sd(t.date),
           }));
           state.clients = (state.clients || []).map((c: any) => ({
             ...c,
-            lastPaid: c.lastPaid ? new Date(c.lastPaid) : undefined,
+            lastPaid: c.lastPaid ? sd(c.lastPaid) : undefined,
             paymentHistory: (c.paymentHistory || []).map((p: any) => ({
               ...p,
-              date: new Date(p.date),
+              date: sd(p.date),
             })),
           }));
           state.riderCosts = (state.riderCosts || []).map((r: any) => ({
             ...r,
-            date: new Date(r.date),
+            date: sd(r.date),
           }));
           state.transfers = (state.transfers || []).map((t: any) => ({
             ...t,
-            date: new Date(t.date),
+            date: sd(t.date),
           }));
         }
       },

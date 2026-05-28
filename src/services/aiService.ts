@@ -53,6 +53,9 @@ const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-haiku-4-5-20251001';
 const CHAT_MODEL = 'claude-sonnet-4-6'; // conversational Echo — needs personality, not just speed
 
+let _lastAnthropicCall = 0;
+const ANTHROPIC_COOLDOWN_MS = 1000;
+
 const categoryNames = [
   ...EXPENSE_CATEGORIES.map((c) => c.name),
   ...INCOME_CATEGORIES.map((c) => c.name),
@@ -81,32 +84,46 @@ async function callAnthropic(
     ? [...messages, { role: 'assistant' as const, content: prefill }]
     : messages;
 
-  const response = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      system,
-      messages: msgsWithPrefill,
-    }),
-  });
+  const now = Date.now();
+  const elapsed = now - _lastAnthropicCall;
+  if (elapsed < ANTHROPIC_COOLDOWN_MS) {
+    await new Promise((r) => setTimeout(r, ANTHROPIC_COOLDOWN_MS - elapsed));
+  }
+  _lastAnthropicCall = Date.now();
 
-  if (!response.ok) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        system,
+        messages: msgsWithPrefill,
+      }),
+      signal: controller.signal,
+    });
 
-  const data: AnthropicResponse = await response.json();
-  const content = data?.content?.[0];
-  if (!content || content.type !== 'text') return null;
+    if (!response.ok) return null;
 
-  // Prepend the prefill since the API returns only the continuation
-  const text = content.text ?? null;
-  if (!text) return null;
-  return prefill ? prefill + text : text;
+    const data: AnthropicResponse = await response.json();
+    const content = data?.content?.[0];
+    if (!content || content.type !== 'text') return null;
+
+    // Prepend the prefill since the API returns only the continuation
+    const text = content.text ?? null;
+    if (!text) return null;
+    return prefill ? prefill + text : text;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /**
@@ -137,7 +154,9 @@ export async function parseTextInput(
     if (!result) return null;
 
     const json = JSON.parse(stripJsonFences(result));
-    const amount = Number(json.amount) || 0;
+    let amount = Number(json.amount) || 0;
+    if (amount <= 0) return null;
+    if (amount > 1_000_000) amount = 0;
     if (amount <= 0) return null;
     return {
       amount,
@@ -168,7 +187,9 @@ export async function parseReceiptText(
     if (!result) return null;
 
     const json = JSON.parse(stripJsonFences(result));
-    const amount = Number(json.amount) || 0;
+    let amount = Number(json.amount) || 0;
+    if (amount <= 0) return null;
+    if (amount > 1_000_000) amount = 0;
     if (amount <= 0) return null;
     return {
       amount,

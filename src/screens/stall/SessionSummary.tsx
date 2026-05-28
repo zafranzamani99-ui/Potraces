@@ -60,8 +60,8 @@ const SessionSummary: React.FC = () => {
 
   // AI insight
   const insight = useMemo(
-    () => (session ? explainStallSession(session) : null),
-    [session]
+    () => (session ? explainStallSession(session, currency) : null),
+    [session, currency]
   );
 
   // Comparison to average (needs 3+ past sessions)

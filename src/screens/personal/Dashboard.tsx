@@ -18,7 +18,7 @@ import {
 import { ScrollView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { format, addDays, isWithinInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear, startOfDay, subMonths, getDaysInMonth } from 'date-fns';
+import { format, addDays, isWithinInterval, startOfMonth, endOfMonth, startOfDay, subMonths, getDaysInMonth } from 'date-fns';
 
 import { useNavigation } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
@@ -57,6 +57,8 @@ import BreathingRoom from '../../components/common/BreathingRoom';
 import FreshStart from '../../components/common/FreshStart';
 import GettingStarted from '../../components/common/GettingStarted';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
+import ModalToastHost from '../../components/common/ModalToastHost';
+import OfflineBanner from '../../components/common/OfflineBanner';
 import RAnimated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 const getGreetingKey = (): 'goodMorning' | 'goodAfternoon' | 'goodEvening' => {
@@ -156,11 +158,13 @@ const PersonalDashboard: React.FC = () => {
       isWithinInterval(t.date, { start: monthStart, end: monthEnd })
     );
 
-    const income = monthlyTransactions
+    const nonTransferTxns = monthlyTransactions.filter((t) => !t.id.startsWith('transfer-'));
+
+    const income = nonTransferTxns
       .filter((t) => t.type === 'income')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const expenses = monthlyTransactions
+    const expenses = nonTransferTxns
       .filter((t) => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0);
 
@@ -170,35 +174,34 @@ const PersonalDashboard: React.FC = () => {
     const upcomingBills = subscriptions.filter(
       (sub) => sub.isActive && !sub.isPaused && isWithinInterval(sub.nextBillingDate, {
         start: today,
-        end: addDays(today, 8),
+        end: addDays(today, 7),
       })
     );
 
     const totalUpcoming = upcomingBills.reduce((sum, sub) => sum + sub.amount, 0);
 
-    const totalBudget = budgets.reduce((sum, b) => sum + b.allocatedAmount, 0);
-    const getDateRange = (budget: { period: string }) => {
-      if (budget.period === 'weekly') {
-        return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
-      } else if (budget.period === 'yearly') {
-        return { start: startOfYear(now), end: endOfYear(now) };
+    const normalizeToMonthly = (amount: number, period: string) => {
+      switch (period) {
+        case 'weekly': return amount * 4.33;
+        case 'daily': return amount * 30;
+        case 'yearly': return amount / 12;
+        default: return amount;
       }
-      return { start: monthStart, end: monthEnd };
     };
+    const totalBudget = budgets.reduce((sum, b) => sum + normalizeToMonthly(b.allocatedAmount, b.period), 0);
     const totalSpent = budgets.reduce((sum, b) => {
-      const range = getDateRange(b);
       const spent = transactions
-        .filter((t) => t.type === 'expense' && t.category === b.category && isWithinInterval(t.date, range))
+        .filter((t) => t.type === 'expense' && t.category === b.category && isWithinInterval(t.date, { start: monthStart, end: monthEnd }))
         .reduce((s, t) => s + t.amount, 0);
       return sum + spent;
     }, 0);
 
     const personalDebts = debts.filter((d) => d.mode === 'personal');
     const youOwe = personalDebts
-      .filter((d) => d.type === 'i_owe' && d.status !== 'settled')
+      .filter((d) => d.type === 'i_owe' && d.status !== 'settled' && !d.isArchived)
       .reduce((sum, d) => sum + (d.totalAmount - d.paidAmount), 0);
     const owedToYou = personalDebts
-      .filter((d) => d.type === 'they_owe' && d.status !== 'settled')
+      .filter((d) => d.type === 'they_owe' && d.status !== 'settled' && !d.isArchived)
       .reduce((sum, d) => sum + (d.totalAmount - d.paidAmount), 0);
 
     // Previous month transactions for explainMonth
@@ -607,6 +610,7 @@ const PersonalDashboard: React.FC = () => {
         }
       >
         <ModeToggle />
+        <OfflineBanner />
         {/* Zone 1 — Greeting (small) */}
         <View style={styles.greetingRow}>
           <Text style={styles.greeting}>{greeting}</Text>
@@ -1086,6 +1090,7 @@ const PersonalDashboard: React.FC = () => {
               </KeyboardAwareScrollView>
             </View>
         </Pressable>
+        <ModalToastHost />
       </Modal>
       )}
 
@@ -1145,6 +1150,7 @@ const PersonalDashboard: React.FC = () => {
             </View>
           )}
         </View>
+        <ModalToastHost />
       </Modal>
       )}
 

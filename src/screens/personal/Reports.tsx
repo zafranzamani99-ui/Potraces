@@ -33,7 +33,7 @@ const PersonalReports: React.FC = () => {
     const monthlyExpenses = transactions.filter(
       (t) =>
         t.type === 'expense' &&
-        isWithinInterval(t.date, { start: monthStart, end: monthEnd })
+        isWithinInterval(t.date instanceof Date ? t.date : new Date(t.date), { start: monthStart, end: monthEnd })
     );
 
     const categoryTotals: { [key: string]: number } = {};
@@ -67,7 +67,8 @@ const PersonalReports: React.FC = () => {
       const monthEnd = endOfMonth(date);
 
       const monthTransactions = transactions.filter((t) =>
-        isWithinInterval(t.date, { start: monthStart, end: monthEnd })
+        !t.id.startsWith('transfer-') &&
+        isWithinInterval(t.date instanceof Date ? t.date : new Date(t.date), { start: monthStart, end: monthEnd })
       );
 
       const income = monthTransactions
@@ -112,10 +113,11 @@ const PersonalReports: React.FC = () => {
     const monthStart = startOfMonth(now);
     const monthEnd = endOfMonth(now);
     const monthTxns = transactions.filter((t) =>
-      isWithinInterval(t.date, { start: monthStart, end: monthEnd })
+      isWithinInterval(t.date instanceof Date ? t.date : new Date(t.date), { start: monthStart, end: monthEnd })
     );
-    const income = monthTxns.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const expenses = monthTxns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const realTxns = monthTxns.filter((t) => !t.id.startsWith('transfer-'));
+    const income = realTxns.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expenses = realTxns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const totalExpenses = categoryData.reduce((s, c) => s + c.amount, 0);
     const topCategories = categoryData.slice(0, 5).map((c) => ({
       name: c.name,
@@ -127,10 +129,11 @@ const PersonalReports: React.FC = () => {
     const prevStart = startOfMonth(subMonths(now, 1));
     const prevEnd = endOfMonth(subMonths(now, 1));
     const prevTxns = transactions.filter((t) =>
-      isWithinInterval(t.date, { start: prevStart, end: prevEnd })
+      isWithinInterval(t.date instanceof Date ? t.date : new Date(t.date), { start: prevStart, end: prevEnd })
     );
-    const prevIncome = prevTxns.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const prevExpenses = prevTxns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const realPrevTxns = prevTxns.filter((t) => !t.id.startsWith('transfer-'));
+    const prevIncome = realPrevTxns.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const prevExpenses = realPrevTxns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
 
     return { income, expenses, topCategories, prevIncome, prevExpenses, count: monthTxns.length };
   }, [transactions, categoryData]);

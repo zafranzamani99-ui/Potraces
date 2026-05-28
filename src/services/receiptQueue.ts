@@ -66,27 +66,32 @@ export async function removePending(id: string): Promise<void> {
   await save(list.filter((p) => p.id !== id));
 }
 
-export async function recordAttemptFailure(id: string, error: string): Promise<void> {
+export async function recordAttemptFailure(id: string, error: string): Promise<PendingReceipt | null> {
   const list = await load();
   const next = list.map((p) =>
     p.id === id
       ? { ...p, attempts: p.attempts + 1, lastAttemptAt: Date.now(), lastError: error }
       : p,
   );
-  // Drop entries that have exceeded max attempts
+  const dropped = next.find((p) => p.id === id && p.attempts >= MAX_ATTEMPTS) ?? null;
+  if (dropped) {
+    console.warn(`[receiptQueue] Permanently dropping receipt ${dropped.id} after ${MAX_ATTEMPTS} failed attempts. Last error: ${dropped.lastError}`);
+  }
   await save(next.filter((p) => p.attempts < MAX_ATTEMPTS));
+  return dropped;
 }
 
 /** Drain the queue: calls `processor` for each pending entry, removes on success,
  *  records failure on throw. Stops early if offline. */
 export async function drainQueue(
   processor: (p: PendingReceipt) => Promise<void>,
-): Promise<{ processed: number; remaining: number }> {
+): Promise<{ processed: number; remaining: number; dropped: PendingReceipt[] }> {
   const net = await NetInfo.fetch();
   if (!net.isConnected || net.isInternetReachable === false) {
-    return { processed: 0, remaining: (await load()).length };
+    return { processed: 0, remaining: (await load()).length, dropped: [] };
   }
   let processed = 0;
+  const dropped: PendingReceipt[] = [];
   const list = await load();
   for (const entry of list) {
     try {
@@ -94,10 +99,11 @@ export async function drainQueue(
       await removePending(entry.id);
       processed++;
     } catch (e: any) {
-      await recordAttemptFailure(entry.id, e?.message ?? 'unknown');
+      const d = await recordAttemptFailure(entry.id, e?.message ?? 'unknown');
+      if (d) dropped.push(d);
     }
   }
-  return { processed, remaining: (await load()).length };
+  return { processed, remaining: (await load()).length, dropped };
 }
 
 export async function pendingCount(): Promise<number> {
