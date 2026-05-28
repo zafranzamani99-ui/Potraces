@@ -1076,13 +1076,19 @@ const Goals: React.FC = () => {
                         ]}
                         onPress={() => openGoalDetail(goal)}
                       >
-                        <View style={[styles.goalIconWrap, { backgroundColor: withAlpha(goal.color, goal.isPaused ? 0.06 : 0.1) }]}>
+                        <CircularProgress
+                          size={44}
+                          strokeWidth={3}
+                          percentage={goal.isPaused ? 0 : percentage}
+                          color={goal.isPaused ? C.neutral : goal.color}
+                          trackColor={withAlpha(C.textMuted, 0.1)}
+                        >
                           <Feather
                             name={(goal.icon as keyof typeof Feather.glyphMap) || 'target'}
-                            size={18}
+                            size={16}
                             color={goal.isPaused ? C.neutral : goal.color}
                           />
-                        </View>
+                        </CircularProgress>
                         <View style={styles.goalContent}>
                           <View style={styles.goalTopRow}>
                             <Text style={[styles.goalName, goal.isPaused && { color: C.neutral }]} numberOfLines={1}>
@@ -1102,17 +1108,6 @@ const Goals: React.FC = () => {
                             {currency} {goal.currentAmount.toFixed(2)}
                             <Text style={styles.goalAmountTarget}> / {currency} {goal.targetAmount.toFixed(2)}</Text>
                           </Text>
-                          <View style={styles.goalProgressTrack}>
-                            <View
-                              style={[
-                                styles.goalProgressFill,
-                                {
-                                  width: `${Math.min(percentage, 100)}%`,
-                                  backgroundColor: goal.isPaused ? C.neutral : goal.color,
-                                },
-                              ]}
-                            />
-                          </View>
                         </View>
 
                       </Pressable>
@@ -1729,14 +1724,26 @@ const Goals: React.FC = () => {
                       </TouchableOpacity>
                     </View>
 
-                    {/* Title zone — goal identity */}
-                    <View style={styles.detailTitleZone}>
-                      <View style={[styles.detailIconWrap, { backgroundColor: withAlpha(g.color, 0.12) }]}>
-                        <Feather name={(g.icon as keyof typeof Feather.glyphMap) || 'target'} size={24} color={g.color} />
+                    {/* Ring hero */}
+                    <View style={styles.detailRingZone}>
+                      <View style={{ position: 'relative' }}>
+                        <CircularProgress
+                          size={140}
+                          strokeWidth={8}
+                          percentage={done ? 100 : pct}
+                          color={g.isPaused ? C.neutral : g.color}
+                          trackColor={withAlpha(C.textMuted, 0.08)}
+                        >
+                          <Text style={styles.detailRingPct}>{pct.toFixed(0)}%</Text>
+                          <Text style={styles.detailRingLabel}>{t.goals.saved}</Text>
+                        </CircularProgress>
+                        <View style={styles.detailRingBadgeWrap}>
+                          <View style={[styles.detailRingBadge, { backgroundColor: withAlpha(g.color, 0.12) }]}>
+                            <Feather name={(g.icon as keyof typeof Feather.glyphMap) || 'target'} size={14} color={g.color} />
+                          </View>
+                        </View>
                       </View>
-                      <Text style={styles.detailTitle} numberOfLines={1}>
-                        {g.name}
-                      </Text>
+                      <Text style={styles.detailTitle} numberOfLines={1}>{g.name}</Text>
                       {g.isPaused && (
                         <View style={styles.pausedBadge}>
                           <Text style={styles.pausedBadgeText}>{t.goals.paused}</Text>
@@ -1751,34 +1758,93 @@ const Goals: React.FC = () => {
 
                 {/* Scrollable content */}
                 <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled contentContainerStyle={styles.detailScrollContent}>
-                  {/* Progress card */}
-                  <View style={styles.detailFieldCard}>
-                    <Text style={styles.detailFieldLabel}>{t.goals.progress}</Text>
-                    <View style={styles.detailAmountRow}>
-                      <Text style={styles.detailAmountCurrent}>{currency} {g.currentAmount.toFixed(2)}</Text>
-                      <Text style={styles.detailAmountTarget}> / {currency} {g.targetAmount.toFixed(2)}</Text>
-                      <Text style={[styles.detailPct, done && { color: C.positive }]}>{pct.toFixed(0)}%</Text>
-                    </View>
-                    <View style={styles.detailProgressTrack}>
-                      <View style={[styles.detailProgressFill, { width: `${Math.min(pct, 100)}%`, backgroundColor: g.isPaused ? C.neutral : g.color }]} />
-                    </View>
-                    {renderMilestoneDots(g)}
-                  </View>
-
-                  {/* Deadline card */}
-                  {g.deadline && daysLeft !== null && (
-                    <View style={styles.detailFieldCard}>
-                      <Text style={styles.detailFieldLabel}>{t.goals.deadline.toLowerCase()}</Text>
-                      <View style={styles.detailFieldDateRow}>
-                        <Feather name="calendar" size={14} color={g.color} />
-                        <Text style={[styles.detailFieldValue, daysLeft < 0 && { color: C.bronze }]}>
-                          {format(new Date(g.deadline), 'dd MMM yyyy')}
-                          {' · '}
+                  {/* Target amount card */}
+                  <View style={styles.detailTargetCard}>
+                    <Text style={styles.detailTargetLabel}>{t.goals.totalTarget ?? 'total target'}</Text>
+                    <Text style={styles.detailTargetAmount}>{currency} {g.targetAmount.toFixed(2)}</Text>
+                    {g.deadline && daysLeft !== null && (
+                      <View style={styles.detailTargetDeadline}>
+                        <Feather name="calendar" size={12} color={C.textMuted} />
+                        <Text style={[styles.detailTargetDeadlineText, daysLeft < 0 && { color: C.bronze }]}>
                           {daysLeft < 0
                             ? t.goals.dOverdue.replace('{n}', String(Math.abs(daysLeft)))
-                            : daysLeft === 0 ? t.goals.dueToday : `${daysLeft}d ${t.goals.remaining}`}
+                            : daysLeft === 0 ? t.goals.dueToday
+                            : `${daysLeft}d ${t.goals.remaining} · ${format(new Date(g.deadline), 'dd MMM yyyy')}`}
                         </Text>
                       </View>
+                    )}
+                  </View>
+
+                  {/* Stat pills */}
+                  <View style={styles.detailStatRow}>
+                    <View style={styles.detailStatPill}>
+                      <View style={styles.detailStatDot}>
+                        <View style={[styles.detailStatDotInner, { backgroundColor: g.color }]} />
+                      </View>
+                      <Text style={styles.detailStatLabel}>{t.goals.amountSaved ?? 'amount saved'}</Text>
+                      <Text style={styles.detailStatValue}>{currency} {g.currentAmount.toFixed(2)}</Text>
+                    </View>
+                    <View style={styles.detailStatPill}>
+                      <View style={styles.detailStatDot}>
+                        <View style={[styles.detailStatDotInner, { backgroundColor: done ? C.positive : C.bronze }]} />
+                      </View>
+                      <Text style={styles.detailStatLabel}>{done ? (t.goals.goalReached ?? 'completed') : (t.goals.remaining ?? 'remaining')}</Text>
+                      <Text style={styles.detailStatValue}>{done ? '—' : `${currency} ${(g.targetAmount - g.currentAmount).toFixed(2)}`}</Text>
+                    </View>
+                  </View>
+
+                  {/* Action buttons */}
+                  <View style={styles.detailActionRow}>
+                    {g.contributions?.length > 0 && (
+                      <TouchableOpacity
+                        style={styles.detailActionOutline}
+                        onPress={() => { closeGoalDetail(); setTimeout(() => openHistory(g), 100); }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.detailActionOutlineText}>{t.goals.viewHistory ?? 'view history'}</Text>
+                      </TouchableOpacity>
+                    )}
+                    {!done && !g.isPaused ? (
+                      <TouchableOpacity
+                        style={[styles.detailActionFilled, { backgroundColor: g.color }]}
+                        onPress={() => { closeGoalDetail(); setTimeout(() => openContribute(g), 100); }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.detailActionFilledText}>{t.goals.contribute.toLowerCase()}</Text>
+                      </TouchableOpacity>
+                    ) : done ? (
+                      <TouchableOpacity
+                        style={[styles.detailActionFilled, { backgroundColor: C.positive }]}
+                        onPress={() => { closeGoalDetail(); setTimeout(() => handleArchive(g), 100); }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.detailActionFilledText}>{t.goals.archive}</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+
+                  {/* Quick contribute chips */}
+                  {!done && !g.isPaused && (
+                    <View style={[styles.quickRow, { marginTop: SPACING.xs }]}>
+                      {QUICK_AMOUNTS.map((amt) => (
+                        <TouchableOpacity
+                          key={amt}
+                          style={[styles.quickBtn, { backgroundColor: withAlpha(g.color, 0.08) }]}
+                          onPress={() => { closeGoalDetail(); setTimeout(() => openContribute(g, amt), 100); }}
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                        >
+                          <Text style={[styles.quickBtnText, { color: g.color }]}>+{amt}</Text>
+                        </TouchableOpacity>
+                      ))}
+                      <TouchableOpacity
+                        style={[styles.quickBtn, { backgroundColor: withAlpha(C.textMuted, 0.06) }]}
+                        onPress={() => { closeGoalDetail(); setTimeout(() => openContribute(g), 100); }}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                      >
+                        <Text style={[styles.quickBtnText, { color: C.textSecondary }]}>{t.goals.custom}</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
 
@@ -1821,44 +1887,8 @@ const Goals: React.FC = () => {
                     </TouchableOpacity>
                   )}
 
-                  {/* Quick contribute chips */}
-                  {!done && !g.isPaused && (
-                    <View style={[styles.quickRow, { marginTop: SPACING.xs }]}>
-                      {QUICK_AMOUNTS.map((amt) => (
-                        <TouchableOpacity
-                          key={amt}
-                          style={[styles.quickBtn, { backgroundColor: withAlpha(g.color, 0.08) }]}
-                          onPress={() => { closeGoalDetail(); setTimeout(() => openContribute(g, amt), 100); }}
-                          activeOpacity={0.7}
-                          hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-                        >
-                          <Text style={[styles.quickBtnText, { color: g.color }]}>+{amt}</Text>
-                        </TouchableOpacity>
-                      ))}
-                      <TouchableOpacity
-                        style={[styles.quickBtn, { backgroundColor: withAlpha(C.textMuted, 0.06) }]}
-                        onPress={() => { closeGoalDetail(); setTimeout(() => openContribute(g), 100); }}
-                        activeOpacity={0.7}
-                        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-                      >
-                        <Text style={[styles.quickBtnText, { color: C.textSecondary }]}>{t.goals.custom}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {/* Secondary row: history, edit, pause, delete */}
+                  {/* Secondary: edit, pause, delete */}
                   <View style={styles.detailSecondary}>
-                    {g.contributions?.length > 0 && (
-                      <TouchableOpacity
-                        style={styles.detailSecondaryBtn}
-                        onPress={() => { closeGoalDetail(); setTimeout(() => openHistory(g), 100); }}
-                        activeOpacity={0.7}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Feather name="clock" size={15} color={C.textMuted} />
-                        <Text style={styles.detailSecondaryText}>{t.goals.history}</Text>
-                      </TouchableOpacity>
-                    )}
                     <TouchableOpacity
                       style={styles.detailSecondaryBtn}
                       onPress={() => { closeGoalDetail(); setTimeout(() => openEditGoal(g), 100); }}
@@ -1889,33 +1919,7 @@ const Goals: React.FC = () => {
                   </View>
                 </ScrollView>
 
-                {/* Anchored save zone */}
                 <View style={styles.detailSaveZone}>
-                  {!done && !g.isPaused ? (
-                    <Pressable
-                      style={[styles.detailSaveBtn, { backgroundColor: g.color }]}
-                      onPress={() => { closeGoalDetail(); setTimeout(() => openContribute(g), 100); }}
-                    >
-                      {({ pressed }: { pressed: boolean }) => (
-                        <View style={[styles.detailSaveBtnInner, pressed && { opacity: 0.7 }]}>
-                          <Feather name="plus-circle" size={16} color={C.onAccent} />
-                          <Text style={styles.detailSaveBtnText}>{t.goals.contribute.toLowerCase()}</Text>
-                        </View>
-                      )}
-                    </Pressable>
-                  ) : done ? (
-                    <Pressable
-                      style={[styles.detailSaveBtn, { backgroundColor: C.positive }]}
-                      onPress={() => { closeGoalDetail(); setTimeout(() => handleArchive(g), 100); }}
-                    >
-                      {({ pressed }: { pressed: boolean }) => (
-                        <View style={[styles.detailSaveBtnInner, pressed && { opacity: 0.7 }]}>
-                          <Feather name="archive" size={16} color={C.onAccent} />
-                          <Text style={styles.detailSaveBtnText}>{t.goals.archive}</Text>
-                        </View>
-                      )}
-                    </Pressable>
-                  ) : null}
                   <Pressable style={styles.detailCloseLink} onPress={closeGoalDetail} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }}>
                     {({ pressed }: { pressed: boolean }) => (
                       <View style={[styles.detailCloseLinkInner, pressed && { opacity: 0.55 }]}>
@@ -2042,7 +2046,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   cardDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: C.border,
-    marginLeft: 36 + SPACING.md * 2,
+    marginLeft: 44 + SPACING.md * 2,
   },
   goalRow: {
     flexDirection: 'row',
@@ -2464,6 +2468,151 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
     letterSpacing: 0.2,
+  },
+
+  // ── Detail Ring Hero ──
+  detailRingZone: {
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.md,
+    paddingTop: SPACING.xs,
+  },
+  detailRingPct: {
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+    lineHeight: TYPOGRAPHY.size['2xl'] * 1.15,
+  },
+  detailRingLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.3,
+    marginTop: 1,
+  },
+  detailRingBadgeWrap: {
+    position: 'absolute',
+    top: -6,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  } as any,
+  detailRingBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderWidth: 2.5,
+    borderColor: C.surface,
+  },
+
+  // ── Detail Target Card ──
+  detailTargetCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+    marginBottom: SPACING.md,
+    alignItems: 'center' as const,
+  },
+  detailTargetLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.2,
+    marginBottom: SPACING.xs,
+  },
+  detailTargetAmount: {
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.light,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  detailTargetDeadline: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    marginTop: SPACING.sm,
+  },
+  detailTargetDeadlineText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+
+  // ── Detail Stat Pills ──
+  detailStatRow: {
+    flexDirection: 'row' as const,
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  detailStatPill: {
+    flex: 1,
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.08),
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+  },
+  detailStatDot: {
+    marginBottom: SPACING.xs,
+  },
+  detailStatDotInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  detailStatLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    marginBottom: 4,
+  },
+  detailStatValue: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+
+  // ── Detail Action Buttons ──
+  detailActionRow: {
+    flexDirection: 'row' as const,
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  detailActionOutline: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: 48,
+  },
+  detailActionOutlineText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  detailActionFilled: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: 48,
+  },
+  detailActionFilledText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
   },
 });
 
