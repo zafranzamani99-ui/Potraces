@@ -16,6 +16,7 @@ import { useSettingsStore } from '../../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 import { explainMixedMonth } from '../../../utils/explainMixedMonth';
 import WeekBar from '../../../components/common/WeekBar';
 import ModeToggle from '../../../components/common/ModeToggle';
@@ -38,6 +39,7 @@ const CATEGORY_EMOJIS: Record<string, string> = {
 
 const MixedDashboard: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { businessTransactions } = useBusinessStore();
   const {
@@ -205,7 +207,7 @@ const MixedDashboard: React.FC = () => {
         {/* Zone 1 — Hero: Total Income */}
         <BusinessHeroNumber
           amount={mixedDetails.hasRoadCosts ? net : total}
-          label={mixedDetails.hasRoadCosts ? 'kept this month' : 'earned this month'}
+          label={mixedDetails.hasRoadCosts ? t.mixedDash.keptThisMonth : t.mixedDash.earnedThisMonth}
           prefix={currency}
         />
 
@@ -253,13 +255,13 @@ const MixedDashboard: React.FC = () => {
             </View>
             {mixedDetails.hasRoadCosts && showCostPercentage && total > 0 && (
               <Text style={styles.costPercentageText}>
-                costs were {Math.round((costs / total) * 100)}% of what came in
+                {t.mixedDash.costsWerePct.replace('{pct}', String(Math.round((costs / total) * 100)))}
               </Text>
             )}
           </TouchableOpacity>
         ) : (
           <View style={styles.breakdownSection}>
-            <Text style={styles.noDataText}>nothing logged yet</Text>
+            <Text style={styles.noDataText}>{t.mixedDash.nothingLogged}</Text>
           </View>
         )}
 
@@ -274,7 +276,7 @@ const MixedDashboard: React.FC = () => {
         {/* Zone 5 — Cost Summary (only if hasRoadCosts) */}
         {mixedDetails.hasRoadCosts && costsByCategory.length > 0 && (
           <View style={styles.costBreakdownSection}>
-            <Text style={styles.sectionLabel}>where costs went</Text>
+            <Text style={styles.sectionLabel}>{t.mixedDash.whereCostsWent}</Text>
             {costsByCategory.map(([category, amount]) => (
               <View key={category} style={styles.costRow}>
                 <Text style={styles.costCategoryText}>
@@ -299,7 +301,7 @@ const MixedDashboard: React.FC = () => {
         {/* Zone 6 — Recent Activity */}
         {recentActivity.length > 0 && (
           <View style={styles.recentSection}>
-            <Text style={styles.sectionLabel}>recent</Text>
+            <Text style={styles.sectionLabel}>{t.mixedDash.recent}</Text>
             {recentActivity.map((tx) => (
               <View key={tx.id} style={styles.recentRow}>
                 <Text
@@ -315,7 +317,7 @@ const MixedDashboard: React.FC = () => {
                   <Text style={styles.recentLabel}>
                     {tx.roadTransactionType === 'cost'
                       ? getCategoryLabel(tx)
-                      : tx.streamLabel || 'income'}
+                      : tx.streamLabel || t.mixedDash.income}
                   </Text>
                 </View>
                 <Text style={styles.recentDate}>
@@ -328,7 +330,7 @@ const MixedDashboard: React.FC = () => {
               onPress={() => navigation.getParent()?.navigate('MixedStreamHistory')}
               activeOpacity={0.7}
             >
-              <Text style={styles.seeAllText}>see all {'\u2192'}</Text>
+              <Text style={styles.seeAllText}>{t.mixedDash.seeAll} {'\u2192'}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -340,7 +342,7 @@ const MixedDashboard: React.FC = () => {
           activeOpacity={0.7}
         >
           <Feather name="bar-chart-2" size={16} color={C.textSecondary} />
-          <Text style={styles.reportsLinkText}>view reports</Text>
+          <Text style={styles.reportsLinkText}>{t.mixedDash.viewReports}</Text>
         </TouchableOpacity>
 
         {/* Bottom links */}
@@ -348,13 +350,13 @@ const MixedDashboard: React.FC = () => {
           onPress={() => useBusinessStore.getState().resetSetup()}
           style={styles.bottomLink}
         >
-          <Text style={styles.bottomLinkText}>not the right setup? change it.</Text>
+          <Text style={styles.bottomLinkText}>{t.mixedDash.changeSetup}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => navigation.getParent()?.navigate('MixedSetup')}
           style={styles.bottomLink}
         >
-          <Text style={styles.bottomLinkText}>edit streams</Text>
+          <Text style={styles.bottomLinkText}>{t.mixedDash.editStreams}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -366,7 +368,7 @@ const MixedDashboard: React.FC = () => {
             onPress={() => navigation.getParent()?.navigate('MixedAddCost')}
             activeOpacity={0.7}
           >
-            <Text style={styles.fabSecondaryText}>log cost</Text>
+            <Text style={styles.fabSecondaryText}>{t.mixedDash.logCost}</Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity
@@ -374,7 +376,7 @@ const MixedDashboard: React.FC = () => {
           onPress={() => navigation.getParent()?.navigate('MixedAddIncome')}
           activeOpacity={0.7}
         >
-          <Text style={styles.fabText}>log income</Text>
+          <Text style={styles.fabText}>{t.mixedDash.logIncome}</Text>
         </TouchableOpacity>
       </View>
     </View>

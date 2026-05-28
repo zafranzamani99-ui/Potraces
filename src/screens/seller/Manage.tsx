@@ -7,11 +7,13 @@ import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useFadeSlide } from '../../utils/fadeSlide';
 
 // ─── Component ───────────────────────────────────────────────
 const SellerManage: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const isDark = useIsDark();
   const bizSuccess = semantic(BIZ_SAFE.success, isDark);
   const styles = useMemo(() => makeStyles(C), [C]);
@@ -45,8 +47,8 @@ const SellerManage: React.FC = () => {
     >
       {/* ─── Page Header ──────────────────────────────────── */}
       <Animated.View style={[styles.header, headerAnim]}>
-        <Text style={styles.headerLabel}>MANAGE</Text>
-        <Text style={styles.headerSubtitle}>products, costs, seasons, and settings</Text>
+        <Text style={styles.headerLabel}>{t.sellerManage.heading}</Text>
+        <Text style={styles.headerSubtitle}>{t.sellerManage.subtitle}</Text>
       </Animated.View>
 
       {/* ─── Products Card ────────────────────────────────── */}
@@ -62,9 +64,9 @@ const SellerManage: React.FC = () => {
             <Feather name="package" size={24} color={C.accent} />
           </View>
           <View style={styles.cardContent}>
-            <Text style={styles.cardTitle}>Products</Text>
-            <Text style={styles.cardSubtitle}>catalog and pricing</Text>
-            <Text style={styles.cardBadge}>{products.length} products</Text>
+            <Text style={styles.cardTitle}>{t.sellerManage.productsTitle}</Text>
+            <Text style={styles.cardSubtitle}>{t.sellerManage.productsSub}</Text>
+            <Text style={styles.cardBadge}>{t.sellerManage.nProducts.replace('{n}', String(products.length))}</Text>
           </View>
           <Feather name="chevron-right" size={20} color={C.textMuted} />
         </TouchableOpacity>
@@ -83,9 +85,9 @@ const SellerManage: React.FC = () => {
             <Feather name="list" size={24} color={bizSuccess} />
           </View>
           <View style={styles.cardContent}>
-            <Text style={styles.cardTitle}>Transactions</Text>
-            <Text style={styles.cardSubtitle}>all payments received</Text>
-            <Text style={styles.cardBadge}>{paidOrders.length} paid orders</Text>
+            <Text style={styles.cardTitle}>{t.sellerManage.transactionsTitle}</Text>
+            <Text style={styles.cardSubtitle}>{t.sellerManage.transactionsSub}</Text>
+            <Text style={styles.cardBadge}>{t.sellerManage.nPaidOrders.replace('{n}', String(paidOrders.length))}</Text>
           </View>
           <Feather name="chevron-right" size={20} color={C.textMuted} />
         </TouchableOpacity>
@@ -104,12 +106,12 @@ const SellerManage: React.FC = () => {
             <Feather name="shopping-bag" size={24} color={C.bronze} />
           </View>
           <View style={styles.cardContent}>
-            <Text style={styles.cardTitle}>Costs</Text>
-            <Text style={styles.cardSubtitle}>budget, history, and transfers</Text>
+            <Text style={styles.cardTitle}>{t.sellerManage.costsTitle}</Text>
+            <Text style={styles.cardSubtitle}>{t.sellerManage.costsSub}</Text>
             <View style={styles.badgeRow}>
-              <Text style={styles.cardBadge}>{ingredientCosts.length} entries</Text>
+              <Text style={styles.cardBadge}>{t.sellerManage.nEntries.replace('{n}', String(ingredientCosts.length))}</Text>
               {totalCostsThisMonth > 0 && (
-                <Text style={styles.costBadge}>{currency} {totalCostsThisMonth.toFixed(0)} this month</Text>
+                <Text style={styles.costBadge}>{t.sellerManage.thisMonth.replace('{currency}', currency).replace('{amount}', totalCostsThisMonth.toFixed(0))}</Text>
               )}
             </View>
           </View>
@@ -130,12 +132,12 @@ const SellerManage: React.FC = () => {
             <Feather name="calendar" size={24} color={C.gold} />
           </View>
           <View style={styles.cardContent}>
-            <Text style={styles.cardTitle}>Seasons</Text>
-            <Text style={styles.cardSubtitle}>history and performance by season</Text>
+            <Text style={styles.cardTitle}>{t.sellerManage.seasonsTitle}</Text>
+            <Text style={styles.cardSubtitle}>{t.sellerManage.seasonsSub}</Text>
             <View style={styles.badgeRow}>
-              <Text style={styles.cardBadge}>{seasons.length} seasons</Text>
+              <Text style={styles.cardBadge}>{t.sellerManage.nSeasons.replace('{n}', String(seasons.length))}</Text>
               {activeSeason && (
-                <Text style={styles.activeBadge}>active: {activeSeason.name}</Text>
+                <Text style={styles.activeBadge}>{t.sellerManage.activeSeason.replace('{name}', activeSeason.name)}</Text>
               )}
             </View>
           </View>
@@ -156,8 +158,8 @@ const SellerManage: React.FC = () => {
             <Feather name="settings" size={24} color={C.lavender} />
           </View>
           <View style={styles.cardContent}>
-            <Text style={styles.cardTitle}>Settings</Text>
-            <Text style={styles.cardSubtitle}>currency, preferences, data</Text>
+            <Text style={styles.cardTitle}>{t.sellerManage.settingsTitle}</Text>
+            <Text style={styles.cardSubtitle}>{t.sellerManage.settingsSub}</Text>
           </View>
           <Feather name="chevron-right" size={20} color={C.textMuted} />
         </TouchableOpacity>

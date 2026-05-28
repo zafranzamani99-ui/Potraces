@@ -529,7 +529,7 @@ const SubscriptionList: React.FC = () => {
     const groups: Record<string, { amount: number; color: string }> = {};
     active.forEach(s => {
       const cat = expenseCategories.find(c => c.id === s.category);
-      if (!groups[s.category]) groups[s.category] = { amount: 0, color: cat?.color || CALM.accent };
+      if (!groups[s.category]) groups[s.category] = { amount: 0, color: cat?.color || C.accent };
       groups[s.category].amount += s.amount;
     });
     const total = Object.values(groups).reduce((sum, g) => sum + g.amount, 0);

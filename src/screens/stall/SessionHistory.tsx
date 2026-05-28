@@ -15,6 +15,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallHistory } from '../../utils/explainStallHistory';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { StallSession, SessionCondition } from '../../types';
 
 // ─── Condition badge colors ─────────────────────────────
@@ -28,6 +29,7 @@ const CONDITION_CONFIG: Record<SessionCondition, { label: string; bg: string; te
 
 const SessionHistory: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
   const { sessions, getLifetimeStats, getSessionSummary } = useStallStore();
@@ -123,15 +125,15 @@ const SessionHistory: React.FC = () => {
 
             <View style={styles.cardMeta}>
               <Text style={styles.cardMetaText}>
-                {summary.saleCount} sale{summary.saleCount !== 1 ? 's' : ''}
+                {summary.saleCount === 1 ? t.stallHistory.nSales.replace('{n}', '1') : t.stallHistory.nSalesPlural.replace('{n}', String(summary.saleCount))}
               </Text>
               <Text style={styles.cardMetaDot}>{'\u00B7'}</Text>
               <Text style={styles.cardMetaText}>
-                cash {currency} {item.totalCash.toFixed(0)}
+                {t.stallHistory.cash} {currency} {item.totalCash.toFixed(0)}
               </Text>
               <Text style={styles.cardMetaDot}>{'\u00B7'}</Text>
               <Text style={styles.cardMetaText}>
-                qr {currency} {item.totalQR.toFixed(0)}
+                {t.stallHistory.qr} {currency} {item.totalQR.toFixed(0)}
               </Text>
             </View>
           </View>
@@ -144,7 +146,7 @@ const SessionHistory: React.FC = () => {
   const renderHeader = useCallback(() => {
     return (
       <View style={styles.headerContainer}>
-        <Text style={styles.heading}>past sessions</Text>
+        <Text style={styles.heading}>{t.stallHistory.heading}</Text>
 
         {/* Lifetime stats -- only show if 3+ sessions */}
         {closedSessions.length >= 3 && (
@@ -154,7 +156,7 @@ const SessionHistory: React.FC = () => {
                 <Feather name="activity" size={14} color={C.accent} />
               </View>
               <Text style={styles.lifetimeNumber}>{lifetimeStats.totalSessions}</Text>
-              <Text style={styles.lifetimeLabel}>sessions</Text>
+              <Text style={styles.lifetimeLabel}>{t.stallHistory.sessions}</Text>
             </View>
             <View style={styles.lifetimeStat}>
               <View style={[styles.statIcon, { backgroundColor: withAlpha(C.bronze, 0.12) }]}>
@@ -163,7 +165,7 @@ const SessionHistory: React.FC = () => {
               <Text style={styles.lifetimeNumber}>
                 {currency} {lifetimeStats.totalRevenue.toFixed(0)}
               </Text>
-              <Text style={styles.lifetimeLabel}>lifetime came in</Text>
+              <Text style={styles.lifetimeLabel}>{t.stallHistory.lifetimeCameIn}</Text>
             </View>
             <View style={styles.lifetimeStat}>
               <View style={[styles.statIcon, { backgroundColor: withAlpha(C.gold, 0.12) }]}>
@@ -172,7 +174,7 @@ const SessionHistory: React.FC = () => {
               <Text style={styles.lifetimeNumber}>
                 {currency} {lifetimeStats.avgPerSession.toFixed(0)}
               </Text>
-              <Text style={styles.lifetimeLabel}>avg / session</Text>
+              <Text style={styles.lifetimeLabel}>{t.stallHistory.avgPerSession}</Text>
             </View>
           </View>
         )}
@@ -189,9 +191,9 @@ const SessionHistory: React.FC = () => {
     return (
       <View style={styles.emptyContainer}>
         <Feather name="clock" size={40} color={C.border} />
-        <Text style={styles.emptyTitle}>no sessions yet</Text>
+        <Text style={styles.emptyTitle}>{t.stallHistory.emptyTitle}</Text>
         <Text style={styles.emptyHint}>
-          start selling to see your history here.
+          {t.stallHistory.emptyHint}
         </Text>
       </View>
     );

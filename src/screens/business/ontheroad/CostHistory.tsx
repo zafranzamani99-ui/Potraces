@@ -14,6 +14,7 @@ import { useSettingsStore } from '../../../store/settingsStore';
 import { RootStackParamList, CostCategory } from '../../../types';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -31,23 +32,26 @@ const CATEGORY_EMOJIS: Record<string, string> = {
 
 type FilterTab = 'all' | CostCategory;
 
-const TABS: { label: string; value: FilterTab }[] = [
-  { label: 'All', value: 'all' },
-  { label: 'Petrol', value: 'petrol' },
-  { label: 'Maintenance', value: 'maintenance' },
-  { label: 'Data', value: 'data' },
-  { label: 'Toll', value: 'toll' },
-  { label: 'Parking', value: 'parking' },
-  { label: 'Insurance', value: 'insurance' },
-  { label: 'Other', value: 'other' },
-];
+// TABS moved inside component for i18n access
 
 const CostHistory: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<RouteProp<RootStackParamList, 'OnTheRoadCostHistory'>>();
   const currency = useSettingsStore((s) => s.currency);
   const { businessTransactions } = useBusinessStore();
+
+  const TABS: { label: string; value: FilterTab }[] = useMemo(() => [
+    { label: t.onTheRoad.tabAll, value: 'all' },
+    { label: t.onTheRoad.tabPetrol, value: 'petrol' },
+    { label: t.onTheRoad.tabMaintenance, value: 'maintenance' },
+    { label: t.onTheRoad.tabData, value: 'data' },
+    { label: t.onTheRoad.tabToll, value: 'toll' },
+    { label: t.onTheRoad.tabParking, value: 'parking' },
+    { label: t.onTheRoad.tabInsurance, value: 'insurance' },
+    { label: t.onTheRoad.tabOther, value: 'other' },
+  ], [t]);
   const initialFilter = (route.params?.filter as FilterTab) || 'all';
   const [filter, setFilter] = useState<FilterTab>(initialFilter === 'all' ? 'all' : initialFilter);
 
@@ -87,7 +91,7 @@ const CostHistory: React.FC = () => {
 
   const getCategoryDisplay = (tx: typeof businessTransactions[0]) => {
     if (tx.roadTransactionType === 'earning') {
-      return { emoji: '\u{1F4B0}', label: 'earned' + (tx.platform ? ` (${tx.platform})` : '') };
+      return { emoji: '\u{1F4B0}', label: t.onTheRoad.earned + (tx.platform ? ` (${tx.platform})` : '') };
     }
     const cat = tx.costCategory || 'other';
     const label = cat === 'other' && tx.costCategoryOther ? tx.costCategoryOther : cat;
@@ -95,8 +99,8 @@ const CostHistory: React.FC = () => {
   };
 
   const getEmptyText = () => {
-    if (filter === 'all') return 'no costs logged yet — that\'s fine, log them when they happen';
-    return `no ${filter} costs logged`;
+    if (filter === 'all') return t.onTheRoad.emptyAllCosts;
+    return `${t.onTheRoad.emptyCategoryPrefix} ${filter} ${t.onTheRoad.emptyCategorySuffix}`;
   };
 
   const renderItem = ({ item }: { item: typeof filteredEntries[0] }) => {
@@ -131,7 +135,7 @@ const CostHistory: React.FC = () => {
     <View style={styles.container}>
       {/* Summary */}
       <Text style={styles.summaryText}>
-        total costs this month: {currency} {Math.round(monthTotal).toLocaleString()}
+        {t.onTheRoad.totalCostsMonth}: {currency} {Math.round(monthTotal).toLocaleString()}
       </Text>
 
       {/* Filter tabs — horizontally scrollable */}

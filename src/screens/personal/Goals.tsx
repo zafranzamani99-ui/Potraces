@@ -114,15 +114,20 @@ const CircularProgress = ({ size, strokeWidth, percentage, color, trackColor, ch
   const r = (size - strokeWidth) / 2;
   const circ = 2 * Math.PI * r;
   const offset = circ * (1 - Math.min(percentage, 100) / 100);
+  const half = size / 2;
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
       <Svg width={size} height={size} style={{ position: 'absolute' }}>
-        <SvgCircle cx={size / 2} cy={size / 2} r={r} stroke={trackColor} strokeWidth={strokeWidth} fill="none" />
+        <SvgCircle cx={half} cy={half} r={r} stroke={trackColor} strokeWidth={strokeWidth} fill="none" />
         <SvgCircle
-          cx={size / 2} cy={size / 2} r={r}
+          cx={half} cy={half} r={r}
           stroke={color} strokeWidth={strokeWidth} fill="none"
-          strokeDasharray={`${circ}`} strokeDashoffset={offset}
-          strokeLinecap="round" rotation={-90} origin={`${size / 2}, ${size / 2}`}
+          strokeDasharray={`${circ} ${circ}`}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          rotation={-90}
+          originX={half}
+          originY={half}
         />
       </Svg>
       {children}
@@ -179,6 +184,7 @@ const Goals: React.FC = () => {
   // ── Filter / Sort state ──
   const [filter, setFilter] = useState<GoalFilter>('all');
   const [sort, setSort] = useState<GoalSort>('manual');
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   // ── Add/Edit Goal Modal state ──
   const [goalModalVisible, setGoalModalVisible] = useState(false);
@@ -973,33 +979,6 @@ const Goals: React.FC = () => {
       >
         {activeGoals.length > 0 ? (
           <>
-            {/* ── Hero Card ── */}
-            <Reanimated.View entering={FadeIn.duration(300)} style={styles.heroCard}>
-              <Text style={styles.heroLabel}>{t.dashboard.goals.toLowerCase()}</Text>
-              <Text style={styles.heroAmount}>
-                {currency} {summary.totalSaved.toFixed(2)}
-              </Text>
-              <Text style={styles.heroSubtext}>
-                {t.goals.ofTarget.replace('{currency}', currency).replace('{amount}', summary.totalTarget.toFixed(2))} · {summary.overallPercentage.toFixed(0)}%
-              </Text>
-
-              {/* Progress bar */}
-              <View style={styles.heroProgressTrack}>
-                <View style={[styles.heroProgressFill, { width: `${Math.min(summary.overallPercentage, 100)}%` }]} />
-              </View>
-
-              {monthlyContrib.thisMonth > 0 && (
-                <Text style={styles.heroMonthly}>
-                  +{currency} {monthlyContrib.thisMonth.toFixed(2)} {t.goals.thisMonth}
-                  {monthlyContrib.lastMonth > 0 && `  ·  ${t.goals.vsLastMonth.replace('{currency}', currency).replace('{amount}', monthlyContrib.lastMonth.toFixed(2))}`}
-                </Text>
-              )}
-
-              <Text style={styles.heroStats}>
-                {t.goals.nActive.replace('{n}', String(summary.activeCount))}{summary.completedCount > 0 ? ` · ${t.goals.nDone.replace('{n}', String(summary.completedCount))}` : ''}
-              </Text>
-            </Reanimated.View>
-
             {/* ── Filter & Sort Pills ── */}
             <View style={styles.filterRow}>
               {filterOptions.map((opt) => (
@@ -1018,102 +997,58 @@ const Goals: React.FC = () => {
                   </Text>
                 </TouchableOpacity>
               ))}
-              {sortOptions.filter((s) => s.key !== 'manual').map((opt) => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[styles.filterChip, sort === opt.key && styles.filterChipActive]}
-                  onPress={() => { selectionChanged(); setSort(sort === opt.key ? 'manual' : opt.key); }}
-                  activeOpacity={0.7}
-                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={opt.label}
-                  accessibilityState={{ selected: sort === opt.key }}
-                >
-                  <Feather name={opt.icon} size={12} color={sort === opt.key ? C.onAccent : C.textMuted} style={{ marginRight: 4 }} />
-                  <Text style={[styles.filterChipText, sort === opt.key && styles.filterChipTextActive]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              <TouchableOpacity
+                style={[styles.sortPill, sort !== 'manual' && styles.sortPillActive]}
+                onPress={() => setShowSortMenu(true)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+              >
+                <Feather name="sliders" size={13} color={sort !== 'manual' ? C.onAccent : C.textMuted} />
+                <Text style={[styles.sortPillText, sort !== 'manual' && styles.sortPillTextActive]}>
+                  {sort === 'manual' ? (t.goals.sortBy ?? 'sort by') : sort === 'deadline' ? t.goals.deadline : t.goals.progress}
+                </Text>
+              </TouchableOpacity>
             </View>
 
-            {/* ── Goal Cards (grouped) ── */}
+            {/* ── Goal Cards (grid) ── */}
             {enrichedGoals.length > 0 ? (
-              <Reanimated.View entering={FadeInDown.duration(300).delay(100)} style={styles.groupCard}>
-                {enrichedGoals.map((goal, index) => {
+              <Reanimated.View entering={FadeInDown.duration(300).delay(100)} style={styles.goalGrid}>
+                {enrichedGoals.map((goal) => {
                   const { percentage, isCompleted } = goal;
-
                   return (
-                    <React.Fragment key={goal.id}>
-                      <ReanimatedSwipeable
-                        ref={getSwipeRef(goal.id)}
-                        renderRightActions={(_prog: SharedValue<number>, drag: SharedValue<number>, swipeable: SwipeableMethods) => (
-                          <GoalSwipeEdit drag={drag} />
-                        )}
-                        renderLeftActions={(_prog: SharedValue<number>, drag: SharedValue<number>, swipeable: SwipeableMethods) => (
-                          <GoalSwipeDelete drag={drag} />
-                        )}
-                        onSwipeableWillOpen={(direction) => {
-                          if (direction === 'right') {
-                            openEditGoal(goal);
-                            swipeRefs.current.get(goal.id)?.current?.close();
-                          } else {
-                            handleDeleteGoal(goal);
-                            swipeRefs.current.get(goal.id)?.current?.close();
-                          }
-                        }}
-                        friction={1.5}
-                        rightThreshold={60}
-                        leftThreshold={60}
-                        overshootRight={false}
-                        overshootLeft={false}
+                    <Pressable
+                      key={goal.id}
+                      style={({ pressed }) => [
+                        styles.goalCard,
+                        { width: (SCREEN_W - SPACING.xl * 2 - SPACING.md) / 2 },
+                        goal.isPaused && { opacity: 0.5 },
+                        pressed && { opacity: goal.isPaused ? 0.3 : 0.7 },
+                      ]}
+                      onPress={() => openGoalDetail(goal)}
+                    >
+                      <CircularProgress
+                        size={48}
+                        strokeWidth={3.5}
+                        percentage={goal.isPaused ? 0 : percentage}
+                        color={goal.isPaused ? C.neutral : goal.color}
+                        trackColor={withAlpha(C.textPrimary, 0.1)}
                       >
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.goalRow,
-                          goal.isPaused ? { opacity: 0.5 } : undefined,
-                          pressed ? { opacity: goal.isPaused ? 0.3 : 0.6 } : undefined,
-                        ]}
-                        onPress={() => openGoalDetail(goal)}
-                      >
-                        <CircularProgress
-                          size={44}
-                          strokeWidth={3}
-                          percentage={goal.isPaused ? 0 : percentage}
+                        <Feather
+                          name={(goal.icon as keyof typeof Feather.glyphMap) || 'target'}
+                          size={18}
                           color={goal.isPaused ? C.neutral : goal.color}
-                          trackColor={withAlpha(C.textMuted, 0.1)}
-                        >
-                          <Feather
-                            name={(goal.icon as keyof typeof Feather.glyphMap) || 'target'}
-                            size={16}
-                            color={goal.isPaused ? C.neutral : goal.color}
-                          />
-                        </CircularProgress>
-                        <View style={styles.goalContent}>
-                          <View style={styles.goalTopRow}>
-                            <Text style={[styles.goalName, goal.isPaused && { color: C.neutral }]} numberOfLines={1}>
-                              {goal.name}
-                            </Text>
-                            {goal.isPaused ? (
-                              <View style={styles.pausedBadge}>
-                                <Text style={styles.pausedBadgeText}>{t.goals.paused}</Text>
-                              </View>
-                            ) : (
-                              <Text style={[styles.goalPct, isCompleted && { color: C.positive }]}>
-                                {percentage.toFixed(0)}%
-                              </Text>
-                            )}
-                          </View>
-                          <Text style={styles.goalAmountText}>
-                            {currency} {goal.currentAmount.toFixed(2)}
-                            <Text style={styles.goalAmountTarget}> / {currency} {goal.targetAmount.toFixed(2)}</Text>
-                          </Text>
-                        </View>
-
-                      </Pressable>
-                      </ReanimatedSwipeable>
-                      {index < enrichedGoals.length - 1 && <View style={styles.cardDivider} />}
-                    </React.Fragment>
+                        />
+                      </CircularProgress>
+                      <Text style={[styles.goalCardName, goal.isPaused && { color: C.neutral }]} numberOfLines={1}>
+                        {goal.name}
+                      </Text>
+                      <Text style={styles.goalCardAmount}>
+                        {currency} {goal.currentAmount.toFixed(2)}
+                      </Text>
+                      <Text style={styles.goalCardTarget}>
+                        {currency} {goal.targetAmount.toFixed(2)}
+                      </Text>
+                    </Pressable>
                   );
                 })}
               </Reanimated.View>
@@ -1687,6 +1622,31 @@ const Goals: React.FC = () => {
         <ModalToastHost />
       </Modal>}
 
+      {/* ═══ SORT MENU ═══ */}
+      {showSortMenu && (
+        <Modal visible animationType="fade" transparent statusBarTranslucent onRequestClose={() => setShowSortMenu(false)}>
+          <Pressable style={styles.sortMenuBackdrop} onPress={() => setShowSortMenu(false)}>
+            <View style={styles.sortMenuCard} onStartShouldSetResponder={() => true}>
+              <Text style={styles.sortMenuTitle}>{t.goals.sortBy ?? 'sort by'}</Text>
+              {sortOptions.map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={styles.sortMenuItem}
+                  onPress={() => { selectionChanged(); setSort(opt.key); setShowSortMenu(false); }}
+                  activeOpacity={0.7}
+                >
+                  <Feather name={opt.icon} size={15} color={sort === opt.key ? C.accent : C.textMuted} />
+                  <Text style={[styles.sortMenuItemText, sort === opt.key && { color: C.accent, fontWeight: TYPOGRAPHY.weight.semibold as any }]}>
+                    {opt.label}
+                  </Text>
+                  {sort === opt.key && <Feather name="check" size={15} color={C.accent} style={{ marginLeft: 'auto' as any }} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Pressable>
+        </Modal>
+      )}
+
       {/* ═══ GOAL DETAIL SHEET ═══ */}
       {detailGoal && (() => {
         const g = detailGoal;
@@ -1728,18 +1688,18 @@ const Goals: React.FC = () => {
                     <View style={styles.detailRingZone}>
                       <View style={{ position: 'relative' }}>
                         <CircularProgress
-                          size={140}
-                          strokeWidth={8}
+                          size={170}
+                          strokeWidth={16}
                           percentage={done ? 100 : pct}
                           color={g.isPaused ? C.neutral : g.color}
-                          trackColor={withAlpha(C.textMuted, 0.08)}
+                          trackColor={C.border}
                         >
                           <Text style={styles.detailRingPct}>{pct.toFixed(0)}%</Text>
                           <Text style={styles.detailRingLabel}>{t.goals.saved}</Text>
                         </CircularProgress>
                         <View style={styles.detailRingBadgeWrap}>
-                          <View style={[styles.detailRingBadge, { backgroundColor: withAlpha(g.color, 0.12) }]}>
-                            <Feather name={(g.icon as keyof typeof Feather.glyphMap) || 'target'} size={14} color={g.color} />
+                          <View style={[styles.detailRingBadge, { backgroundColor: g.color }]}>
+                            <Feather name={(g.icon as keyof typeof Feather.glyphMap) || 'target'} size={16} color={C.onAccent} />
                           </View>
                         </View>
                       </View>
@@ -2001,7 +1961,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── Filter Chips ──
   filterRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     gap: SPACING.sm,
     marginBottom: SPACING.lg,
   },
@@ -2021,6 +1981,64 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   filterChipTextActive: {
     color: C.onAccent,
+  },
+  sortPill: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textMuted, 0.08),
+    marginLeft: 'auto' as const,
+  },
+  sortPillActive: {
+    backgroundColor: C.deepOlive,
+  },
+  sortPillText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+    color: C.textMuted,
+  },
+  sortPillTextActive: {
+    color: C.onAccent,
+  },
+  sortMenuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  sortMenuCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    width: 240,
+    maxWidth: '80%' as any,
+    borderWidth: 1,
+    borderColor: C.border,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.lg),
+  },
+  sortMenuTitle: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold as any,
+    color: C.textSecondary,
+    textTransform: 'lowercase' as const,
+    letterSpacing: 0.3,
+    marginBottom: SPACING.md,
+  },
+  sortMenuItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(C.textPrimary, 0.06),
+  },
+  sortMenuItemText: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
   },
 
   // ── Section Label ──
@@ -2114,6 +2132,40 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   goalProgressFill: {
     height: '100%',
     borderRadius: RADIUS.full,
+  },
+
+  // ── Goal Grid ──
+  goalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  goalCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
+  },
+  goalCardName: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
+  },
+  goalCardAmount: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  goalCardTarget: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+    marginTop: 2,
   },
 
   // ── Milestones ──
@@ -2478,34 +2530,35 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingTop: SPACING.xs,
   },
   detailRingPct: {
-    fontSize: TYPOGRAPHY.size['2xl'],
+    fontSize: 32,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
-    lineHeight: TYPOGRAPHY.size['2xl'] * 1.15,
+    lineHeight: 36,
   },
   detailRingLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
+    fontSize: TYPOGRAPHY.size.sm,
     color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
     letterSpacing: 0.3,
-    marginTop: 1,
+    marginTop: 2,
   },
   detailRingBadgeWrap: {
     position: 'absolute',
-    top: -6,
+    top: -10,
     left: 0,
     right: 0,
     alignItems: 'center',
   } as any,
   detailRingBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    borderWidth: 2.5,
+    borderWidth: 3,
     borderColor: C.surface,
+    ...SHADOWS.sm,
   },
 
   // ── Detail Target Card ──

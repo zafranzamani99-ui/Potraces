@@ -1214,9 +1214,7 @@ const BudgetPlanning: React.FC = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Segment toggle only in playbook view — budget view uses quick-action pill instead */}
-        {viewMode === 'playbook' && (
-          <View style={styles.segmentRow}>
+        <View style={styles.segmentRow}>
             <TouchableOpacity
               style={[styles.segmentChip, viewMode === 'budget' && styles.segmentChipActive]}
               onPress={() => { lightTap(); setViewMode('budget'); }}
@@ -1236,7 +1234,6 @@ const BudgetPlanning: React.FC = () => {
               </Text>
             </TouchableOpacity>
           </View>
-        )}
 
         {/* ══════════════ BUDGET VIEW ══════════════ */}
         {viewMode === 'budget' && (<>

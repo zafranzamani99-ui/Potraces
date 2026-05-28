@@ -2457,12 +2457,19 @@ const OrderList: React.FC = () => {
                       {(selectedOrder.deposits && selectedOrder.deposits.length > 0)
                         ? selectedOrder.deposits.map((d, i) => {
                             const d2 = d.date instanceof Date ? d.date : new Date(d.date);
+                            const editedDate = d.editedAt ? (d.editedAt instanceof Date ? d.editedAt : new Date(d.editedAt)) : null;
                             return (
                               <View key={i} style={[styles.payHistoryRow, { flexWrap: 'wrap' }, i < selectedOrder.deposits!.length - 1 && styles.modalItemRowBorder]}>
                                 <Feather name={paymentMethodIcon(d.method)} size={13} color={semantic(BIZ_SAFE.success, isDark)} />
                                 <Text style={styles.payHistoryMethod}>{paymentMethodLabel(d.method)}</Text>
                                 <Text style={styles.payHistoryDate}>{format(d2, 'd MMM, h:mm a')}</Text>
                                 <Text style={styles.payHistoryAmount}>{currency} {d.amount.toFixed(2)}</Text>
+                                {editedDate && (
+                                  <View style={styles.editedBadge}>
+                                    <Feather name="edit-3" size={9} color={C.bronze} />
+                                    <Text style={styles.editedBadgeText}>edited {format(editedDate, 'MMM d, HH:mm')}</Text>
+                                  </View>
+                                )}
                                 {d.note ? (() => {
                                   const tipMatch = d.note.match(/(tip\s+\S+\s+[\d,.]+)/i);
                                   if (tipMatch) {
@@ -2945,13 +2952,22 @@ const OrderList: React.FC = () => {
 
             {selectedOrder.deposits.map((d, i) => {
               const d2 = d.date instanceof Date ? d.date : new Date(d.date);
+              const editedDate2 = d.editedAt ? (d.editedAt instanceof Date ? d.editedAt : new Date(d.editedAt)) : null;
               const isEditingThis = editPayIdx === i;
               return (
                 <View key={i} style={[{ paddingVertical: SPACING.sm }, i < selectedOrder.deposits!.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                     <Feather name={paymentMethodIcon(d.method)} size={14} color={semantic(BIZ_SAFE.success, isDark)} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: semantic(BIZ_SAFE.success, isDark) }}>{paymentMethodLabel(d.method)}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
+                        <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.medium, color: semantic(BIZ_SAFE.success, isDark) }}>{paymentMethodLabel(d.method)}</Text>
+                        {editedDate2 && (
+                          <View style={styles.editedBadge}>
+                            <Feather name="edit-3" size={9} color={C.bronze} />
+                            <Text style={styles.editedBadgeText}>edited</Text>
+                          </View>
+                        )}
+                      </View>
                       <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginTop: 1 }}>{format(d2, 'd MMM yyyy, h:mm a')}</Text>
                       {d.note ? (() => {
                         const tipMatch = d.note.match(/(tip\s+\S+\s+[\d,.]+)/i);
@@ -3044,7 +3060,7 @@ const OrderList: React.FC = () => {
                           mediumTap();
                           const noteVal = editPayNote.trim() || undefined;
                           updateDeposit(selectedOrder.id, i, amt, editPayMethod, noteVal);
-                          const deps = selectedOrder.deposits!.map((dep, idx) => idx === i ? { ...dep, amount: amt, method: editPayMethod, note: noteVal } : dep);
+                          const deps = selectedOrder.deposits!.map((dep, idx) => idx === i ? { ...dep, amount: amt, method: editPayMethod, note: noteVal, editedAt: new Date() } : dep);
                           const newPaid = deps.reduce((s, dep) => s + dep.amount, 0);
                           const fullyPaid = newPaid >= selectedOrder.totalAmount;
                           setSelectedOrder({ ...selectedOrder, deposits: deps, paidAmount: newPaid, isPaid: fullyPaid, paymentMethod: editPayMethod, paidAt: fullyPaid ? (selectedOrder.paidAt || new Date()) : undefined, updatedAt: new Date() });
@@ -4530,6 +4546,24 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
     fontVariant: ['tabular-nums'],
   },
+
+  // ── Edited badge (bronze, inline) ──
+  editedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: withAlpha(C.bronze, 0.1),
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 1,
+    borderRadius: RADIUS.sm,
+    alignSelf: 'flex-start',
+  },
+  editedBadgeText: {
+    fontSize: 10,
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
   // ── Modal ──
   modalOverlay: {
     flex: 1,

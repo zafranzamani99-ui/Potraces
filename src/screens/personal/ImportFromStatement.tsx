@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { lightTap } from '../../services/haptics';
@@ -39,6 +40,7 @@ type ReviewRow = ParsedTransaction & {
 
 const ImportFromStatement: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(C), [C]);
@@ -64,12 +66,12 @@ const ImportFromStatement: React.FC = () => {
       const res = await parseStatement(picked.base64, picked.filename);
       if (isParseError(res)) {
         setStep('start');
-        Alert.alert('Could not parse', res.message ?? res.error);
+        Alert.alert(t.importStatement.couldNotParse, res.message ?? res.error);
         return;
       }
       if (res.transactions.length === 0) {
         setStep('start');
-        Alert.alert('Nothing found', 'The AI could not extract any transactions from this PDF. Try a clearer statement or import via CSV.');
+        Alert.alert(t.importStatement.nothingFound, t.importStatement.nothingFoundMsg);
         return;
       }
       setRemaining(res.remaining);
@@ -84,7 +86,7 @@ const ImportFromStatement: React.FC = () => {
       setStep('review');
     } catch (e: any) {
       setStep('start');
-      Alert.alert('Error', e?.message ?? 'Could not read the PDF.');
+      Alert.alert(t.importStatement.errorTitle, e?.message ?? t.importStatement.couldNotRead);
     }
   }, []);
 
@@ -101,16 +103,16 @@ const ImportFromStatement: React.FC = () => {
   const handleImport = useCallback(() => {
     if (selectedCount === 0) return;
     if (!selectedWalletId) {
-      Alert.alert('Pick a wallet', 'Choose which wallet these transactions belong to.');
+      Alert.alert(t.importStatement.pickWallet, t.importStatement.pickWalletMsg);
       return;
     }
     Alert.alert(
-      'Import transactions',
-      `Add ${selectedCount} transactions to "${wallets.find((w) => w.id === selectedWalletId)?.name}"?`,
+      t.importStatement.importTransactions,
+      t.importStatement.importConfirmMsg.replace('{n}', String(selectedCount)).replace('{wallet}', wallets.find((w) => w.id === selectedWalletId)?.name ?? ''),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Import',
+          text: t.importStatement.importBtn,
           onPress: () => {
             setStep('importing');
             try {
@@ -132,7 +134,7 @@ const ImportFromStatement: React.FC = () => {
               navigation.goBack();
             } catch (e: any) {
               setStep('review');
-              Alert.alert('Import failed', e?.message ?? 'Some transactions did not import.');
+              Alert.alert(t.importStatement.importFailed, e?.message ?? t.importStatement.importFailedMsg);
             }
           },
         },
@@ -161,14 +163,14 @@ const ImportFromStatement: React.FC = () => {
 
         <View style={{ flex: 1 }}>
           <View style={styles.rowTop}>
-            <Text numberOfLines={1} style={styles.rowDesc}>{item.description || '(no description)'}</Text>
+            <Text numberOfLines={1} style={styles.rowDesc}>{item.description || t.importStatement.noDescription}</Text>
             <Text style={[styles.rowAmount, { color: item.type === 'income' ? C.positive : C.textPrimary }]}>
               {item.type === 'income' ? '+' : '−'}{currency} {item.amount.toFixed(2)}
             </Text>
           </View>
           <View style={styles.rowBottom}>
             <Text style={styles.rowMeta}>
-              {bad ? 'bad date' : new Date(item.date).toLocaleDateString()}
+              {bad ? t.importStatement.badDate : new Date(item.date).toLocaleDateString()}
             </Text>
             <TouchableOpacity
               onPress={() => setCategoryPicker({ rowId: item._id, type: item.type })}
@@ -177,7 +179,7 @@ const ImportFromStatement: React.FC = () => {
               accessibilityLabel={`change category, currently ${item._category ?? 'uncategorized'}`}
             >
               <Feather name="tag" size={12} color={C.textSecondary} />
-              <Text style={styles.categoryChipText}>{item._category ?? 'uncategorized'}</Text>
+              <Text style={styles.categoryChipText}>{item._category ?? t.importStatement.uncategorized}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -202,7 +204,7 @@ const ImportFromStatement: React.FC = () => {
       <View style={[styles.centered, { paddingTop: insets.top }]}>
         <ActivityIndicator color={C.accent} size="large" />
         <Text style={styles.loadingText}>
-          {step === 'parsing' ? 'reading your statement…' : 'importing transactions…'}
+          {step === 'parsing' ? t.importStatement.readingStatement : t.importStatement.importingTransactions}
         </Text>
       </View>
     );
@@ -220,21 +222,21 @@ const ImportFromStatement: React.FC = () => {
           >
             <Feather name="chevron-left" size={24} color={C.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.title}>import statement</Text>
+          <Text style={styles.title}>{t.importStatement.title}</Text>
           <View style={{ width: 24 }} />
         </View>
         <View style={styles.startBody}>
           <View style={styles.heroIcon}>
             <Feather name="file-text" size={40} color={C.accent} />
           </View>
-          <Text style={styles.heroTitle}>import from a bank statement</Text>
+          <Text style={styles.heroTitle}>{t.importStatement.heroTitle}</Text>
           <Text style={styles.heroDesc}>
-            pick a pdf statement — we'll extract transactions and let you review before adding. works with most Malaysian banks.
+            {t.importStatement.heroDesc}
           </Text>
           <View style={{ height: SPACING.lg }} />
-          <Button title="pick pdf statement" onPress={handlePick} icon="upload" />
+          <Button title={t.importStatement.pickPdf} onPress={handlePick} icon="upload" />
           <Text style={styles.fineprint}>
-            5 imports free per month · your file is processed server-side and not stored
+            {t.importStatement.freeImports}
           </Text>
         </View>
       </View>
@@ -253,7 +255,7 @@ const ImportFromStatement: React.FC = () => {
         >
           <Feather name="chevron-left" size={24} color={C.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.title}>review {rows.length} rows</Text>
+        <Text style={styles.title}>{t.importStatement.reviewTitle.replace('{n}', String(rows.length))}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -262,7 +264,7 @@ const ImportFromStatement: React.FC = () => {
           wallets={wallets}
           selectedId={selectedWalletId ?? null}
           onSelect={(id) => { lightTap(); setSelectedWalletId(id); }}
-          label="add to wallet"
+          label={t.importStatement.addToWallet}
         />
 
         <View style={styles.bulkActions}>
@@ -272,18 +274,18 @@ const ImportFromStatement: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="select all rows"
           >
-            <Text style={styles.bulkBtnText}>select all</Text>
+            <Text style={styles.bulkBtnText}>{t.importStatement.selectAll}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => selectAll(false)}
             style={styles.bulkBtn}
             accessibilityRole="button"
-            accessibilityLabel="clear all selections"
+            accessibilityLabel={t.importStatement.clear}
           >
-            <Text style={styles.bulkBtnText}>clear</Text>
+            <Text style={styles.bulkBtnText}>{t.importStatement.clear}</Text>
           </TouchableOpacity>
           {remaining !== null && (
-            <Text style={styles.remainingText}>{remaining} imports left this month</Text>
+            <Text style={styles.remainingText}>{t.importStatement.importsLeft.replace('{n}', String(remaining))}</Text>
           )}
         </View>
       </Card>
@@ -301,7 +303,7 @@ const ImportFromStatement: React.FC = () => {
 
       <View style={[styles.footer, { paddingBottom: SPACING.md + insets.bottom }]}>
         <Button
-          title={`import ${selectedCount} transaction${selectedCount === 1 ? '' : 's'}`}
+          title={selectedCount === 1 ? t.importStatement.importNTransactions.replace('{n}', '1') : t.importStatement.importNTransactionsPlural.replace('{n}', String(selectedCount))}
           onPress={handleImport}
           disabled={selectedCount === 0 || !selectedWalletId}
         />
@@ -311,7 +313,7 @@ const ImportFromStatement: React.FC = () => {
       <Modal visible={!!categoryPicker} transparent animationType="fade" onRequestClose={() => setCategoryPicker(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setCategoryPicker(null)}>
           <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.pickerTitle}>choose a category</Text>
+            <Text style={styles.pickerTitle}>{t.importStatement.chooseCategory}</Text>
             {categoriesForPicker.map((c: any) => (
               <TouchableOpacity
                 key={c.id}

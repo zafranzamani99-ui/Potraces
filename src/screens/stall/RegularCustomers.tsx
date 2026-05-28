@@ -16,10 +16,12 @@ import { format } from 'date-fns';
 import { useStallStore } from '../../store/stallStore';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { RegularCustomer } from '../../types';
 
 const RegularCustomers: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const {
@@ -96,12 +98,12 @@ const RegularCustomers: React.FC = () => {
   const handleDelete = useCallback(
     (customer: RegularCustomer) => {
       Alert.alert(
-        'remove regular?',
-        `Remove ${customer.name} from your regulars?`,
+        t.stallRegulars.removeTitle,
+        t.stallRegulars.removeMsg.replace('{name}', customer.name),
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: t.common.cancel, style: 'cancel' },
           {
-            text: 'Remove',
+            text: t.stallRegulars.removeBtn,
             style: 'destructive',
             onPress: () => {
               deleteRegularCustomer(customer.id);
@@ -128,7 +130,7 @@ const RegularCustomers: React.FC = () => {
   }, [showAddForm]);
 
   const formatLastVisit = (date?: Date): string => {
-    if (!date) return 'no visits yet';
+    if (!date) return t.stallRegulars.noVisitsYet;
     const d = date instanceof Date ? date : new Date(date);
     return format(d, 'd MMM yyyy');
   };
@@ -146,7 +148,7 @@ const RegularCustomers: React.FC = () => {
                 style={styles.editInput}
                 value={editName}
                 onChangeText={setEditName}
-                placeholder="name"
+                placeholder={t.stallRegulars.name}
                 placeholderTextColor={C.textSecondary}
                 autoFocus
                 accessibilityLabel="Customer name"
@@ -157,7 +159,7 @@ const RegularCustomers: React.FC = () => {
                 style={styles.editInput}
                 value={editUsualOrder}
                 onChangeText={setEditUsualOrder}
-                placeholder="usual order (optional)"
+                placeholder={t.stallRegulars.usualOrderOptional}
                 placeholderTextColor={C.textSecondary}
                 accessibilityLabel="Usual order"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -167,7 +169,7 @@ const RegularCustomers: React.FC = () => {
                 style={styles.editInput}
                 value={editNote}
                 onChangeText={setEditNote}
-                placeholder="note (optional)"
+                placeholder={t.stallRegulars.noteOptional}
                 placeholderTextColor={C.textSecondary}
                 accessibilityLabel="Note about this customer"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -181,7 +183,7 @@ const RegularCustomers: React.FC = () => {
                   accessibilityLabel={`Remove ${item.name}`}
                   accessibilityRole="button"
                 >
-                  <Text style={styles.deleteActionText}>remove</Text>
+                  <Text style={styles.deleteActionText}>{t.stallRegulars.remove}</Text>
                 </TouchableOpacity>
 
                 <View style={styles.editActionRight}>
@@ -191,7 +193,7 @@ const RegularCustomers: React.FC = () => {
                     accessibilityLabel="Cancel editing"
                     accessibilityRole="button"
                   >
-                    <Text style={styles.cancelActionText}>cancel</Text>
+                    <Text style={styles.cancelActionText}>{t.stallRegulars.cancel}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
@@ -203,7 +205,7 @@ const RegularCustomers: React.FC = () => {
                     accessibilityLabel="Save changes"
                     accessibilityRole="button"
                   >
-                    <Text style={styles.saveActionText}>save</Text>
+                    <Text style={styles.saveActionText}>{t.stallRegulars.save}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -229,13 +231,13 @@ const RegularCustomers: React.FC = () => {
 
             {item.usualOrder && (
               <Text style={styles.usualOrder} numberOfLines={2}>
-                usually: {item.usualOrder}
+                {t.stallRegulars.usually.replace('{order}', item.usualOrder!)}
               </Text>
             )}
 
             <View style={styles.customerMeta}>
               <Text style={styles.metaText}>
-                {item.visitCount} visit{item.visitCount !== 1 ? 's' : ''}
+                {item.visitCount === 1 ? t.stallRegulars.nVisits.replace('{n}', '1') : t.stallRegulars.nVisitsPlural.replace('{n}', String(item.visitCount))}
               </Text>
               <Text style={styles.metaDot}>{'\u00B7'}</Text>
               <Text style={styles.metaText}>
@@ -263,9 +265,9 @@ const RegularCustomers: React.FC = () => {
       <View style={styles.headerContainer}>
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.heading}>regulars</Text>
+            <Text style={styles.heading}>{t.stallRegulars.heading}</Text>
             <Text style={styles.subheading}>
-              the familiar faces{regularCustomers.length > 0 ? ` \u00B7 ${regularCustomers.length}` : ''}
+              {t.stallRegulars.subtitle}{regularCustomers.length > 0 ? ` \u00B7 ${regularCustomers.length}` : ''}
             </Text>
           </View>
           <TouchableOpacity
@@ -289,10 +291,10 @@ const RegularCustomers: React.FC = () => {
               style={styles.addInput}
               value={newName}
               onChangeText={setNewName}
-              placeholder="name"
+              placeholder={t.stallRegulars.name}
               placeholderTextColor={C.textSecondary}
               autoFocus
-              accessibilityLabel="New customer name"
+              accessibilityLabel={t.stallRegulars.name}
               keyboardAppearance={isDark ? 'dark' : 'light'}
               selectionColor={C.accent}
             />
@@ -300,7 +302,7 @@ const RegularCustomers: React.FC = () => {
               style={styles.addInput}
               value={newUsualOrder}
               onChangeText={setNewUsualOrder}
-              placeholder="e.g. 2 kuih seri muka + teh tarik"
+              placeholder={t.stallRegulars.usualOrderPlaceholder}
               placeholderTextColor={C.textSecondary}
               accessibilityLabel="Usual order, optional"
               keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -326,7 +328,7 @@ const RegularCustomers: React.FC = () => {
               accessibilityLabel="Save new regular customer"
               accessibilityRole="button"
             >
-              <Text style={styles.addSaveText}>save</Text>
+              <Text style={styles.addSaveText}>{t.stallRegulars.save}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -338,8 +340,8 @@ const RegularCustomers: React.FC = () => {
     return (
       <View style={styles.emptyContainer}>
         <Feather name="users" size={40} color={C.border} />
-        <Text style={styles.emptyTitle}>no regulars yet</Text>
-        <Text style={styles.emptyHint}>they'll show up.</Text>
+        <Text style={styles.emptyTitle}>{t.stallRegulars.emptyTitle}</Text>
+        <Text style={styles.emptyHint}>{t.stallRegulars.emptyHint}</Text>
       </View>
     );
   }, []);

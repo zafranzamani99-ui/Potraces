@@ -205,7 +205,7 @@ export const useSellerStore = create<SellerState>()(
         set((state) => ({
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
-            const deposits = (o.deposits || []).map((d, i) => i === index ? { ...d, amount, method, note } : d);
+            const deposits = (o.deposits || []).map((d, i) => i === index ? { ...d, amount, method, note, editedAt: new Date() } : d);
             // C3: Cap paidAmount at totalAmount
             const newPaidAmount = roundMoney(Math.min(deposits.reduce((s, d) => s + d.amount, 0), o.totalAmount));
             const fullyPaid = newPaidAmount >= o.totalAmount;
@@ -1139,6 +1139,7 @@ export const useSellerStore = create<SellerState>()(
                   ? o.deposits.map((d: any) => ({
                       ...d,
                       date: sd(d.date),
+                      editedAt: d.editedAt ? sd(d.editedAt) : undefined,
                     }))
                   : [],
               };

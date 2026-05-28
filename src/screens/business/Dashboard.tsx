@@ -9,6 +9,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import type { BusinessTransaction, RiderCost } from '../../types';
 import { explainBusinessMonth } from '../../utils/explainBusinessMonth';
 import WeekBar from '../../components/common/WeekBar';
@@ -18,6 +19,7 @@ import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
 
 const BusinessDashboard: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const {
     incomeType,
@@ -78,14 +80,14 @@ const BusinessDashboard: React.FC = () => {
     switch (incomeType) {
       case 'seller':
       case 'rider':
-        return 'KEPT THIS MONTH';
+        return t.businessDashboard.keptThisMonth;
       case 'freelance':
       case 'parttime':
-        return 'EARNED THIS MONTH';
+        return t.businessDashboard.earnedThisMonth;
       case 'mixed':
-        return 'TOTAL IN';
+        return t.businessDashboard.totalIn;
       default:
-        return 'THIS MONTH';
+        return t.businessDashboard.thisMonth;
     }
   })();
 
@@ -154,15 +156,15 @@ const BusinessDashboard: React.FC = () => {
           <View style={styles.variantSection}>
             <View style={styles.sideBySide}>
               <View style={styles.sideItem}>
-                <Text style={styles.sideLabel}>came in</Text>
+                <Text style={styles.sideLabel}>{t.businessDashboard.cameIn}</Text>
                 <Text style={styles.sideValue}>{currency} {totalIncome.toFixed(2)}</Text>
               </View>
               <View style={styles.sideItem}>
-                <Text style={styles.sideLabel}>costs</Text>
+                <Text style={styles.sideLabel}>{t.businessDashboard.costs}</Text>
                 <Text style={styles.sideValue}>{currency} {totalCosts.toFixed(2)}</Text>
               </View>
             </View>
-            <Text style={styles.keptLine}>you kept {currency} {net.toFixed(2)}.</Text>
+            <Text style={styles.keptLine}>{t.businessDashboard.keptLine.replace('{currency}', currency).replace('{amount}', net.toFixed(2))}</Text>
           </View>
         );
 
@@ -171,15 +173,18 @@ const BusinessDashboard: React.FC = () => {
         const lastPayment = activeClients
           .flatMap((c) => c.paymentHistory.map((p) => ({ ...p, clientName: c.name })))
           .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+        const clientLabel = activeClients.length !== 1
+          ? t.businessDashboard.nClientsPlural.replace('{n}', String(activeClients.length))
+          : t.businessDashboard.nClients.replace('{n}', String(activeClients.length));
         return (
           <View style={styles.variantSection}>
             <Text style={styles.insightLine}>
-              {activeClients.length} client{activeClients.length !== 1 ? 's' : ''} &middot;{' '}
-              {currency} {monthlyAverage.toFixed(0)} average monthly across last 6 months.
+              {clientLabel} &middot;{' '}
+              {t.businessDashboard.avgMonthly.replace('{currency}', currency).replace('{amount}', monthlyAverage.toFixed(0))}
             </Text>
             {lastPayment && (
               <Text style={styles.labelLine}>
-                Last: {lastPayment.clientName} &middot; {currency} {lastPayment.amount.toFixed(2)}
+                {t.businessDashboard.lastPayment.replace('{name}', lastPayment.clientName)} &middot; {currency} {lastPayment.amount.toFixed(2)}
               </Text>
             )}
           </View>
@@ -187,20 +192,20 @@ const BusinessDashboard: React.FC = () => {
       }
 
       case 'parttime': {
-        const mainIncome = currentIncome
-          .filter((t) => !t.streamId || t.streamId === 'main')
-          .reduce((s, t) => s + t.amount, 0);
-        const sideIncome = currentIncome
-          .filter((t) => t.streamId && t.streamId !== 'main')
-          .reduce((s, t) => s + t.amount, 0);
-        const sidePct = totalIncome > 0 ? ((sideIncome / totalIncome) * 100).toFixed(0) : '0';
+        const mainInc = currentIncome
+          .filter((tx) => !tx.streamId || tx.streamId === 'main')
+          .reduce((s, tx) => s + tx.amount, 0);
+        const sideInc = currentIncome
+          .filter((tx) => tx.streamId && tx.streamId !== 'main')
+          .reduce((s, tx) => s + tx.amount, 0);
+        const sidePct = totalIncome > 0 ? ((sideInc / totalIncome) * 100).toFixed(0) : '0';
         return (
           <View style={styles.variantSection}>
-            <Text style={styles.insightLine}>main job: {currency} {mainIncome.toFixed(2)}</Text>
-            <Text style={styles.insightLine}>side income: {currency} {sideIncome.toFixed(2)}</Text>
-            {sideIncome > 0 && (
+            <Text style={styles.insightLine}>{t.businessDashboard.mainJob} {currency} {mainInc.toFixed(2)}</Text>
+            <Text style={styles.insightLine}>{t.businessDashboard.sideIncome} {currency} {sideInc.toFixed(2)}</Text>
+            {sideInc > 0 && (
               <Text style={styles.labelLine}>
-                side income was {sidePct}% of your total this month.
+                {t.businessDashboard.sidePct.replace('{pct}', sidePct)}
               </Text>
             )}
           </View>
@@ -212,16 +217,16 @@ const BusinessDashboard: React.FC = () => {
           <View style={styles.variantSection}>
             <View style={styles.sideBySide}>
               <View style={styles.sideItem}>
-                <Text style={styles.sideLabel}>grossed</Text>
+                <Text style={styles.sideLabel}>{t.businessDashboard.grossed}</Text>
                 <Text style={styles.sideValue}>{currency} {totalIncome.toFixed(2)}</Text>
               </View>
               <View style={styles.sideItem}>
-                <Text style={styles.sideLabel}>costs</Text>
+                <Text style={styles.sideLabel}>{t.businessDashboard.costs}</Text>
                 <Text style={styles.sideValue}>{currency} {totalCosts.toFixed(2)}</Text>
               </View>
             </View>
             <Text style={styles.riderKept}>
-              after petrol and costs, you kept {currency} {net.toFixed(2)}.
+              {t.businessDashboard.riderKeptLine.replace('{currency}', currency).replace('{amount}', net.toFixed(2))}
             </Text>
           </View>
         );
@@ -242,7 +247,7 @@ const BusinessDashboard: React.FC = () => {
               );
             })}
             <View style={styles.streamTotalRow}>
-              <Text style={styles.streamTotalLabel}>total</Text>
+              <Text style={styles.streamTotalLabel}>{t.businessDashboard.total}</Text>
               <Text style={styles.streamTotalAmount}>{currency} {totalIncome.toFixed(2)}</Text>
             </View>
           </View>
@@ -297,7 +302,7 @@ const BusinessDashboard: React.FC = () => {
             onPress={() => navigation.getParent()?.navigate('LogIncome')}
           >
             <Feather name="plus" size={20} color={C.bronze} />
-            <Text style={styles.quickActionText}>Log Income</Text>
+            <Text style={styles.quickActionText}>{t.businessDashboard.logIncome}</Text>
           </TouchableOpacity>
 
           {incomeType === 'freelance' && (
@@ -306,7 +311,7 @@ const BusinessDashboard: React.FC = () => {
               onPress={() => navigation.getParent()?.navigate('ClientList')}
             >
               <Feather name="users" size={20} color={C.bronze} />
-              <Text style={styles.quickActionText}>Clients</Text>
+              <Text style={styles.quickActionText}>{t.businessDashboard.clients}</Text>
             </TouchableOpacity>
           )}
 
@@ -316,7 +321,7 @@ const BusinessDashboard: React.FC = () => {
               onPress={() => navigation.getParent()?.navigate('RiderCosts')}
             >
               <Feather name="tool" size={20} color={C.bronze} />
-              <Text style={styles.quickActionText}>Costs</Text>
+              <Text style={styles.quickActionText}>{t.businessDashboard.costsAction}</Text>
             </TouchableOpacity>
           )}
 
@@ -326,7 +331,7 @@ const BusinessDashboard: React.FC = () => {
               onPress={() => navigation.getParent()?.navigate('IncomeStreams')}
             >
               <Feather name="layers" size={20} color={C.bronze} />
-              <Text style={styles.quickActionText}>Streams</Text>
+              <Text style={styles.quickActionText}>{t.businessDashboard.streams}</Text>
             </TouchableOpacity>
           )}
 
@@ -335,14 +340,14 @@ const BusinessDashboard: React.FC = () => {
             onPress={() => navigation.getParent()?.navigate('MoneyChat')}
           >
             <Feather name="message-circle" size={20} color={C.bronze} />
-            <Text style={styles.quickActionText}>Echo</Text>
+            <Text style={styles.quickActionText}>{t.businessDashboard.echo}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Transfer line */}
         {transferredThisMonth > 0 && (
           <Text style={styles.transferLine}>
-            {currency} {transferredThisMonth.toFixed(2)} moved to personal this month
+            {t.businessDashboard.transferLine.replace('{currency}', currency).replace('{amount}', transferredThisMonth.toFixed(2))}
           </Text>
         )}
 
@@ -351,7 +356,7 @@ const BusinessDashboard: React.FC = () => {
           onPress={() => useBusinessStore.getState().resetSetup()}
           style={styles.changeSetup}
         >
-          <Text style={styles.changeSetupText}>not the right setup? change it.</Text>
+          <Text style={styles.changeSetupText}>{t.businessDashboard.changeSetup}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

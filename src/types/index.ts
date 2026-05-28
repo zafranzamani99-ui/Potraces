@@ -129,6 +129,7 @@ export interface DepositEntry {
   method: SellerPaymentMethod;
   date: Date;
   note?: string;
+  editedAt?: Date;
 }
 
 export interface SellerOrderItem {

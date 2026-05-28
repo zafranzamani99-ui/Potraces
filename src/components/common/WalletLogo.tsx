@@ -2,11 +2,12 @@ import React, { memo } from 'react';
 import { View, Text } from 'react-native';
 import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
-import { CALM } from '../../constants';
 import { BANK_LOGOS, BANK_LOGOS_SMALL, CARD_NETWORK_LOGOS } from '../../constants/premium';
 import { Wallet } from '../../types';
+import { useCalm } from '../../hooks/useCalm';
 
 function WalletLogo({ wallet, size = 40 }: { wallet: Wallet; size?: number }) {
+  const C = useCalm();
   if (wallet.presetId === 'credit_card' && wallet.creditBank && wallet.creditNetwork) {
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
@@ -17,7 +18,7 @@ function WalletLogo({ wallet, size = 40 }: { wallet: Wallet; size?: number }) {
           cachePolicy="memory-disk"
           transition={0}
         />
-        <Text style={{ color: CALM.border, fontSize: 12, marginHorizontal: -1 }}>|</Text>
+        <Text style={{ color: C.border, fontSize: 12, marginHorizontal: -1 }}>|</Text>
         <Image
           source={CARD_NETWORK_LOGOS[wallet.creditNetwork]}
           style={{ width: size * 0.55, height: size * 0.35 }}

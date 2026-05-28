@@ -16,6 +16,7 @@ import { useSettingsStore } from '../../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 import { explainOnTheRoadMonth } from '../../../utils/explainOnTheRoadMonth';
 import WeekBar from '../../../components/common/WeekBar';
 import ModeToggle from '../../../components/common/ModeToggle';
@@ -38,6 +39,7 @@ function toDate(d: Date | string): Date {
 
 const OnTheRoadDashboard: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { businessTransactions } = useBusinessStore();
   const {
@@ -186,7 +188,7 @@ const OnTheRoadDashboard: React.FC = () => {
         {/* Zone 1 — Hero: Net Earnings */}
         <BusinessHeroNumber
           amount={net}
-          label="kept this month"
+          label={t.onTheRoadDash.keptThisMonth}
           prefix={currency}
         />
 
@@ -197,15 +199,15 @@ const OnTheRoadDashboard: React.FC = () => {
           activeOpacity={0.8}
         >
           {earned === 0 && costs === 0 ? (
-            <Text style={styles.noDataText}>nothing logged yet</Text>
+            <Text style={styles.noDataText}>{t.onTheRoadDash.nothingLogged}</Text>
           ) : (
             <>
               <View style={styles.breakdownLines}>
                 <Text style={styles.breakdownText}>
-                  earned: {currency} {Math.round(earned).toLocaleString()}
+                  {t.onTheRoadDash.earned}: {currency} {Math.round(earned).toLocaleString()}
                 </Text>
                 <Text style={styles.breakdownTextMuted}>
-                  costs: {currency} {Math.round(costs).toLocaleString()}
+                  {t.onTheRoadDash.costs}: {currency} {Math.round(costs).toLocaleString()}
                 </Text>
               </View>
               <View style={styles.splitBar}>
@@ -224,7 +226,7 @@ const OnTheRoadDashboard: React.FC = () => {
               </View>
               {showCostPercentage && (
                 <Text style={styles.costPercentageText}>
-                  costs were {costPercentage}% of what came in
+                  {t.onTheRoadDash.costsWerePct.replace('{pct}', String(costPercentage))}
                 </Text>
               )}
             </>
@@ -242,7 +244,7 @@ const OnTheRoadDashboard: React.FC = () => {
         {/* Zone 5 — Cost Breakdown */}
         {sortedCosts.length > 0 && (
           <View style={styles.costBreakdownSection}>
-            <Text style={styles.sectionLabel}>where costs went</Text>
+            <Text style={styles.sectionLabel}>{t.onTheRoadDash.whereCostsWent}</Text>
             {sortedCosts.map(([category, amount]) => (
               <View key={category} style={styles.costRow}>
                 <Text style={styles.costCategoryText}>
@@ -266,7 +268,7 @@ const OnTheRoadDashboard: React.FC = () => {
               onPress={() => navigation.getParent()?.navigate('OnTheRoadCostHistory')}
               activeOpacity={0.7}
             >
-              <Text style={styles.seeAllText}>see all costs \u2192</Text>
+              <Text style={styles.seeAllText}>{t.onTheRoadDash.seeAllCosts} {'\u2192'}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -274,7 +276,7 @@ const OnTheRoadDashboard: React.FC = () => {
         {/* Zone 6 — Recent Activity */}
         {recentActivity.length > 0 && (
           <View style={styles.recentSection}>
-            <Text style={styles.sectionLabel}>recent</Text>
+            <Text style={styles.sectionLabel}>{t.onTheRoadDash.recent}</Text>
             {recentActivity.map((tx) => (
               <View key={tx.id} style={styles.recentRow}>
                 <Text
@@ -289,7 +291,7 @@ const OnTheRoadDashboard: React.FC = () => {
                 <View style={styles.recentMeta}>
                   <Text style={styles.recentLabel}>
                     {tx.roadTransactionType === 'earning'
-                      ? 'earned'
+                      ? t.onTheRoadDash.earned
                       : getCategoryLabel(tx)}
                   </Text>
                   {tx.platform && (
@@ -306,7 +308,7 @@ const OnTheRoadDashboard: React.FC = () => {
               onPress={() => navigation.getParent()?.navigate('OnTheRoadCostHistory', { filter: 'all' })}
               activeOpacity={0.7}
             >
-              <Text style={styles.seeAllText}>see all \u2192</Text>
+              <Text style={styles.seeAllText}>{t.onTheRoadDash.seeAll} {'\u2192'}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -318,7 +320,7 @@ const OnTheRoadDashboard: React.FC = () => {
           activeOpacity={0.7}
         >
           <Feather name="bar-chart-2" size={16} color={C.textSecondary} />
-          <Text style={styles.reportsLinkText}>view reports</Text>
+          <Text style={styles.reportsLinkText}>{t.onTheRoadDash.viewReports}</Text>
         </TouchableOpacity>
 
         {/* Bottom links */}
@@ -326,13 +328,13 @@ const OnTheRoadDashboard: React.FC = () => {
           onPress={() => useBusinessStore.getState().resetSetup()}
           style={styles.bottomLink}
         >
-          <Text style={styles.bottomLinkText}>not the right setup? change it.</Text>
+          <Text style={styles.bottomLinkText}>{t.onTheRoadDash.changeSetup}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => navigation.getParent()?.navigate('OnTheRoadSetup')}
           style={styles.bottomLink}
         >
-          <Text style={styles.bottomLinkText}>edit details</Text>
+          <Text style={styles.bottomLinkText}>{t.onTheRoadDash.editDetails}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -343,14 +345,14 @@ const OnTheRoadDashboard: React.FC = () => {
           onPress={() => navigation.getParent()?.navigate('OnTheRoadAddCost')}
           activeOpacity={0.7}
         >
-          <Text style={styles.fabSecondaryText}>log cost</Text>
+          <Text style={styles.fabSecondaryText}>{t.onTheRoadDash.logCost}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.fab}
           onPress={() => navigation.getParent()?.navigate('OnTheRoadAddEarnings')}
           activeOpacity={0.7}
         >
-          <Text style={styles.fabText}>log earnings</Text>
+          <Text style={styles.fabText}>{t.onTheRoadDash.logEarnings}</Text>
         </TouchableOpacity>
       </View>
     </View>

@@ -14,6 +14,7 @@ import { useOnTheRoadStore } from '../../../store/onTheRoadStore';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 import { askOnTheRoadQuestion } from '../../../services/aiService';
 import { generateReportNarrative, ReportMonthData } from '../../../services/reportNarrative';
 import { useAIInsightsStore } from '../../../store/aiInsightsStore';
@@ -22,11 +23,7 @@ const screenWidth = Dimensions.get('window').width;
 
 type PeriodOption = 'month' | '3months' | '6months';
 
-const PERIODS: { label: string; value: PeriodOption }[] = [
-  { label: 'this month', value: 'month' },
-  { label: '3 months', value: '3months' },
-  { label: '6 months', value: '6months' },
-];
+// PERIODS moved inside component for i18n access
 
 const CATEGORY_EMOJIS: Record<string, string> = {
   petrol: '\u26FD',
@@ -44,8 +41,15 @@ function toDate(d: Date | string): Date {
 
 const OnTheRoadReports: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
+
+  const PERIODS: { label: string; value: PeriodOption }[] = useMemo(() => [
+    { label: t.onTheRoad.periodMonth, value: 'month' },
+    { label: t.onTheRoad.period3Months, value: '3months' },
+    { label: t.onTheRoad.period6Months, value: '6months' },
+  ], [t]);
   const { businessTransactions } = useBusinessStore();
   const {
     roadDetails,
@@ -253,7 +257,7 @@ const OnTheRoadReports: React.FC = () => {
         ) : null}
 
         {/* Section 1 — Net Earnings Over Time */}
-        <Text style={styles.sectionLabel}>net earnings over time</Text>
+        <Text style={styles.sectionLabel}>{t.onTheRoad.netEarnings}</Text>
         {hasMonthlyData ? (
           <View style={styles.chartContainer}>
             <BarChart
@@ -268,11 +272,11 @@ const OnTheRoadReports: React.FC = () => {
             />
           </View>
         ) : (
-          <Text style={styles.noDataText}>no data yet</Text>
+          <Text style={styles.noDataText}>{t.onTheRoad.noDataYet}</Text>
         )}
 
         {/* Section 2 — Cost Ratio Over Time */}
-        <Text style={styles.sectionLabel}>how much costs took</Text>
+        <Text style={styles.sectionLabel}>{t.onTheRoad.howMuchCosts}</Text>
         {hasMonthlyData ? (
           <View style={styles.chartContainer}>
             <LineChart
@@ -287,11 +291,11 @@ const OnTheRoadReports: React.FC = () => {
             />
           </View>
         ) : (
-          <Text style={styles.noDataText}>not enough data yet</Text>
+          <Text style={styles.noDataText}>{t.onTheRoad.notEnoughData}</Text>
         )}
 
         {/* Section 3 — Cost Breakdown */}
-        <Text style={styles.sectionLabel}>cost breakdown</Text>
+        <Text style={styles.sectionLabel}>{t.onTheRoad.costBreakdown}</Text>
 
         {/* Period picker */}
         <View style={styles.periodPicker}>
@@ -347,11 +351,11 @@ const OnTheRoadReports: React.FC = () => {
             })}
           </View>
         ) : (
-          <Text style={styles.noDataText}>no costs logged in this period</Text>
+          <Text style={styles.noDataText}>{t.onTheRoad.noCostsPeriod}</Text>
         )}
 
         {/* Section 4 — Earnings by Platform */}
-        <Text style={styles.sectionLabel}>earnings by platform</Text>
+        <Text style={styles.sectionLabel}>{t.onTheRoad.earningsByPlatform}</Text>
         {hasPlatformData ? (
           platformBreakdown.length > 0 ? (
             <View style={styles.breakdownSection}>
@@ -383,11 +387,11 @@ const OnTheRoadReports: React.FC = () => {
               })}
             </View>
           ) : (
-            <Text style={styles.noDataText}>no platform-tagged earnings in this period</Text>
+            <Text style={styles.noDataText}>{t.onTheRoad.noPlatformTagged}</Text>
           )
         ) : (
           <Text style={styles.noDataText}>
-            tag your earnings with a platform to see a breakdown here
+            {t.onTheRoad.tagPlatformHint}
           </Text>
         )}
 
@@ -396,14 +400,14 @@ const OnTheRoadReports: React.FC = () => {
           {aiSummary ? (
             <Text style={styles.aiSummaryText}>{aiSummary}</Text>
           ) : aiLoading ? (
-            <Text style={styles.aiLoadingText}>thinking...</Text>
+            <Text style={styles.aiLoadingText}>{t.onTheRoad.thinking}</Text>
           ) : (
             <TouchableOpacity
               onPress={handleShowSummary}
               style={styles.showSummaryButton}
               activeOpacity={0.7}
             >
-              <Text style={styles.showSummaryText}>show summary</Text>
+              <Text style={styles.showSummaryText}>{t.onTheRoad.showSummary}</Text>
             </TouchableOpacity>
           )}
         </View>

@@ -10,6 +10,7 @@ import { useSettingsStore } from '../../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 import { explainFreelancerMonth } from '../../../utils/explainFreelancerMonth';
 import WeekBar from '../../../components/common/WeekBar';
 import ModeToggle from '../../../components/common/ModeToggle';
@@ -22,6 +23,7 @@ function toDate(d: Date | string): Date {
 
 const FreelancerDashboard: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const [refreshing, setRefreshing] = React.useState(false);
   const { businessTransactions } = useBusinessStore();
@@ -153,10 +155,10 @@ const FreelancerDashboard: React.FC = () => {
         {/* Zone 1 — Hero Number */}
         <BusinessHeroNumber
           amount={sixMonthAvg}
-          label="your monthly average"
+          label={t.freelancerDash.yourMonthlyAverage}
           sublabel={
             currentMonthPayments.length > 0
-              ? `this month so far: ${currency} ${Math.round(currentMonthTotal).toLocaleString()}`
+              ? t.freelancerDash.thisMonthSoFar.replace('{currency}', currency).replace('{amount}', Math.round(currentMonthTotal).toLocaleString())
               : undefined
           }
           prefix={currency}
@@ -173,7 +175,7 @@ const FreelancerDashboard: React.FC = () => {
         {/* Zone 4 — Client Snapshot */}
         {topClients.length > 0 && (
           <View style={styles.clientSection}>
-            <Text style={styles.sectionLabel}>clients</Text>
+            <Text style={styles.sectionLabel}>{t.freelancerDash.clients}</Text>
             {topClients.map(({ client, totalEarned, lastPayment }) => (
               <TouchableOpacity
                 key={client.id}
@@ -203,7 +205,7 @@ const FreelancerDashboard: React.FC = () => {
               onPress={() => navigation.getParent()?.navigate('FreelancerClientList')}
               activeOpacity={0.7}
             >
-              <Text style={styles.seeAllText}>see all clients →</Text>
+              <Text style={styles.seeAllText}>{t.freelancerDash.seeAllClients} {'→'}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -211,8 +213,7 @@ const FreelancerDashboard: React.FC = () => {
         {/* Zone 5 — Gap Alert */}
         {gapAlert && (
           <Text style={styles.gapAlertText}>
-            it's been a while since {gapAlert.name} — last payment was{' '}
-            {gapAlert.daysSince} days ago
+            {t.freelancerDash.gapAlert.replace('{name}', gapAlert.name).replace('{days}', String(gapAlert.daysSince))}
           </Text>
         )}
 
@@ -223,7 +224,7 @@ const FreelancerDashboard: React.FC = () => {
           activeOpacity={0.7}
         >
           <Feather name="bar-chart-2" size={16} color={C.textSecondary} />
-          <Text style={styles.reportsLinkText}>view reports</Text>
+          <Text style={styles.reportsLinkText}>{t.freelancerDash.viewReports}</Text>
         </TouchableOpacity>
 
         {/* Change setup */}
@@ -232,7 +233,7 @@ const FreelancerDashboard: React.FC = () => {
           style={styles.changeSetup}
         >
           <Text style={styles.changeSetupText}>
-            not the right setup? change it.
+            {t.businessDashboard.changeSetup}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -243,7 +244,7 @@ const FreelancerDashboard: React.FC = () => {
         onPress={() => navigation.getParent()?.navigate('FreelancerAddPayment')}
         activeOpacity={0.7}
       >
-        <Text style={styles.fabText}>log payment</Text>
+        <Text style={styles.fabText}>{t.freelancerDash.logPayment}</Text>
       </TouchableOpacity>
     </View>
   );

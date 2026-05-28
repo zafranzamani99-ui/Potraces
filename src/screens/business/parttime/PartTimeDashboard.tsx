@@ -16,6 +16,7 @@ import { useSettingsStore } from '../../../store/settingsStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../../constants';
 import { useCalm } from '../../../hooks/useCalm';
+import { useT } from '../../../i18n';
 import { explainPartTimeMonth } from '../../../utils/explainPartTimeMonth';
 import WeekBar from '../../../components/common/WeekBar';
 import ModeToggle from '../../../components/common/ModeToggle';
@@ -28,6 +29,7 @@ function toDate(d: Date | string): Date {
 
 const PartTimeDashboard: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const { businessTransactions } = useBusinessStore();
   const {
@@ -135,7 +137,7 @@ const PartTimeDashboard: React.FC = () => {
 
     if (!payDayPassed) {
       const daysUntil = effectivePayDay - now.getDate();
-      return { text: `pay day in ${daysUntil} days`, showLogLink: false };
+      return { text: t.partTimeDash.payDayIn.replace('{days}', String(daysUntil)), showLogLink: false };
     }
 
     if (payDayPassed && mainJobLogged) {
@@ -145,7 +147,7 @@ const PartTimeDashboard: React.FC = () => {
     if (payDayPassed && !mainJobLogged) {
       const daysSince = now.getDate() - effectivePayDay;
       return {
-        text: `pay day was ${daysSince} days ago — did it come in?`,
+        text: t.partTimeDash.payDayWas.replace('{days}', String(daysSince)),
         showLogLink: true,
       };
     }
@@ -183,7 +185,7 @@ const PartTimeDashboard: React.FC = () => {
         {/* Zone 1 — Hero Number */}
         <BusinessHeroNumber
           amount={totalIncome}
-          label="earned this month"
+          label={t.partTimeDash.earnedThisMonth}
           prefix={currency}
         />
 
@@ -211,21 +213,21 @@ const PartTimeDashboard: React.FC = () => {
               </View>
               {showPercentage ? (
                 <Text style={styles.splitPercentage}>
-                  {mainPercentage}% main / {sidePercentage}% side
+                  {t.partTimeDash.mainPctSidePct.replace('{mainPct}', String(mainPercentage)).replace('{sidePct}', String(sidePercentage))}
                 </Text>
               ) : (
                 <View style={styles.splitLabels}>
                   <Text style={styles.splitLabelMain}>
-                    main job: {currency} {Math.round(mainIncome).toLocaleString()}
+                    {t.partTimeDash.mainJob.replace('{currency}', currency).replace('{amount}', Math.round(mainIncome).toLocaleString())}
                   </Text>
                   <Text style={styles.splitLabelSide}>
-                    side income: {currency} {Math.round(sideIncome).toLocaleString()}
+                    {t.partTimeDash.sideIncomeLabel.replace('{currency}', currency).replace('{amount}', Math.round(sideIncome).toLocaleString())}
                   </Text>
                 </View>
               )}
             </>
           ) : (
-            <Text style={styles.noDataText}>no income logged yet</Text>
+            <Text style={styles.noDataText}>{t.partTimeDash.noIncomeLogged}</Text>
           )}
         </TouchableOpacity>
 
@@ -241,7 +243,7 @@ const PartTimeDashboard: React.FC = () => {
                     navigation.getParent()?.navigate('PartTimeAddIncome', { preSelectMain: true })
                   }
                 >
-                  {' '}log it
+                  {' '}{t.partTimeDash.logIt}
                 </Text>
               )}
             </Text>
@@ -259,14 +261,14 @@ const PartTimeDashboard: React.FC = () => {
         {/* Zone 6 — Recent Income */}
         {recentIncome.length > 0 && (
           <View style={styles.recentSection}>
-            <Text style={styles.sectionLabel}>recent</Text>
+            <Text style={styles.sectionLabel}>{t.partTimeDash.recent}</Text>
             {recentIncome.map((tx) => (
               <View key={tx.id} style={styles.recentRow}>
                 <Text style={styles.recentAmount}>
                   {currency} {tx.amount.toLocaleString()}
                 </Text>
                 <Text style={styles.recentStream}>
-                  {tx.incomeStream === 'main' ? 'main job' : 'side income'}
+                  {tx.incomeStream === 'main' ? t.partTimeDash.mainJobLabel : t.partTimeDash.sideIncomeTag}
                 </Text>
                 <Text style={styles.recentDate}>
                   {formatDistanceToNow(toDate(tx.date), { addSuffix: true })}
@@ -278,7 +280,7 @@ const PartTimeDashboard: React.FC = () => {
               onPress={() => navigation.getParent()?.navigate('PartTimeIncomeHistory')}
               activeOpacity={0.7}
             >
-              <Text style={styles.seeAllText}>see all →</Text>
+              <Text style={styles.seeAllText}>{t.partTimeDash.seeAll} {'→'}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -290,7 +292,7 @@ const PartTimeDashboard: React.FC = () => {
           activeOpacity={0.7}
         >
           <Feather name="bar-chart-2" size={16} color={C.textSecondary} />
-          <Text style={styles.reportsLinkText}>view reports</Text>
+          <Text style={styles.reportsLinkText}>{t.partTimeDash.viewReports}</Text>
         </TouchableOpacity>
 
         {/* Bottom links */}
@@ -298,13 +300,13 @@ const PartTimeDashboard: React.FC = () => {
           onPress={() => useBusinessStore.getState().resetSetup()}
           style={styles.bottomLink}
         >
-          <Text style={styles.bottomLinkText}>not the right setup? change it.</Text>
+          <Text style={styles.bottomLinkText}>{t.partTimeDash.changeSetup}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => navigation.getParent()?.navigate('PartTimeSetup')}
           style={styles.bottomLink}
         >
-          <Text style={styles.bottomLinkText}>edit job details</Text>
+          <Text style={styles.bottomLinkText}>{t.partTimeDash.editJobDetails}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -314,7 +316,7 @@ const PartTimeDashboard: React.FC = () => {
         onPress={() => navigation.getParent()?.navigate('PartTimeAddIncome')}
         activeOpacity={0.7}
       >
-        <Text style={styles.fabText}>log income</Text>
+        <Text style={styles.fabText}>{t.partTimeDash.logIncome}</Text>
       </TouchableOpacity>
     </View>
   );

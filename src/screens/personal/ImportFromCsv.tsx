@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import { lightTap } from '../../services/haptics';
@@ -32,16 +33,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 
 type ColumnRole = 'ignore' | 'date' | 'description' | 'amount' | 'debit' | 'credit' | 'type' | 'category';
 
-const ROLE_LABELS: Record<ColumnRole, string> = {
-  ignore: 'ignore',
-  date: 'date',
-  description: 'description',
-  amount: 'amount (signed)',
-  debit: 'amount (debit/expense)',
-  credit: 'amount (credit/income)',
-  type: 'type (income/expense)',
-  category: 'category',
-};
+// Role labels are now derived from translations inside the component via getRoleLabels().
 
 const ROLE_ORDER: ColumnRole[] = ['ignore', 'date', 'description', 'amount', 'debit', 'credit', 'type', 'category'];
 
@@ -60,10 +52,22 @@ function guessRole(header: string): ColumnRole {
 
 const ImportFromCsv: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
+
+  const ROLE_LABELS: Record<ColumnRole, string> = useMemo(() => ({
+    ignore: t.importCsv.roleIgnore,
+    date: t.importCsv.roleDate,
+    description: t.importCsv.roleDescription,
+    amount: t.importCsv.roleAmount,
+    debit: t.importCsv.roleDebit,
+    credit: t.importCsv.roleCredit,
+    type: t.importCsv.roleType,
+    category: t.importCsv.roleCategory,
+  }), [t]);
   const wallets = useWalletStore((s) => s.wallets);
   const defaultWallet = wallets.find((w) => w.isDefault) ?? wallets[0];
   const addTransaction = usePersonalStore((s) => s.addTransaction);
@@ -81,7 +85,7 @@ const ImportFromCsv: React.FC = () => {
       const result = await pickCsv();
       if (!result) return;
       if (result.rows.length === 0) {
-        Alert.alert('Empty CSV', 'No data rows found in that file.');
+        Alert.alert(t.importCsv.emptyCsv, t.importCsv.noDataRows);
         return;
       }
       setCsv(result);
@@ -89,7 +93,7 @@ const ImportFromCsv: React.FC = () => {
       setSkipRows(new Set());
       setStep('map');
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not read the CSV.');
+      Alert.alert(t.importCsv.errorTitle, e?.message ?? t.importCsv.couldNotRead);
     }
   }, []);
 
@@ -170,20 +174,20 @@ const ImportFromCsv: React.FC = () => {
 
   const handleImport = useCallback(() => {
     if (!selectedWalletId) {
-      Alert.alert('Pick a wallet', 'Choose which wallet these transactions belong to.');
+      Alert.alert(t.importCsv.pickWallet, t.importCsv.pickWalletMsg);
       return;
     }
     if (importableCount === 0) {
-      Alert.alert('Nothing to import', 'Map the columns first (date + amount at minimum).');
+      Alert.alert(t.importCsv.nothingToImport, t.importCsv.nothingToImportMsg);
       return;
     }
     Alert.alert(
-      'Import transactions',
-      `Add ${importableCount} transactions to "${wallets.find((w) => w.id === selectedWalletId)?.name}"?`,
+      t.importCsv.importTransactions,
+      t.importCsv.importConfirmMsg.replace('{n}', String(importableCount)).replace('{wallet}', wallets.find((w) => w.id === selectedWalletId)?.name ?? ''),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: 'Import',
+          text: t.importCsv.importBtn,
           onPress: () => {
             setStep('importing');
             try {
@@ -192,7 +196,7 @@ const ImportFromCsv: React.FC = () => {
                 addTransaction({
                   amount: p.amount!,
                   category: p.category || 'other',
-                  description: p.description || '(imported)',
+                  description: p.description || t.importCsv.imported,
                   date: p.date!,
                   type: p.type,
                   mode: 'personal',
@@ -203,7 +207,7 @@ const ImportFromCsv: React.FC = () => {
               navigation.goBack();
             } catch (e: any) {
               setStep('map');
-              Alert.alert('Import failed', e?.message ?? 'Some rows did not import.');
+              Alert.alert(t.importCsv.importFailed, e?.message ?? t.importCsv.importFailedMsg);
             }
           },
         },
@@ -228,7 +232,7 @@ const ImportFromCsv: React.FC = () => {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <View style={styles.rowTop}>
-            <Text numberOfLines={1} style={styles.rowDesc}>{item.description || '(no description)'}</Text>
+            <Text numberOfLines={1} style={styles.rowDesc}>{item.description || t.importCsv.noDescription}</Text>
             {item.amount != null && (
               <Text style={[styles.rowAmount, { color: item.type === 'income' ? C.positive : C.textPrimary }]}>
                 {item.type === 'income' ? '+' : '−'}{currency} {item.amount.toFixed(2)}
@@ -236,7 +240,7 @@ const ImportFromCsv: React.FC = () => {
             )}
           </View>
           <Text style={styles.rowMeta}>
-            {item.date ? item.date.toLocaleDateString() : '⚠ bad date'}
+            {item.date ? item.date.toLocaleDateString() : t.importCsv.badDate}
             {item.category ? ` · ${item.category}` : ''}
           </Text>
         </View>
@@ -249,7 +253,7 @@ const ImportFromCsv: React.FC = () => {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
         <ActivityIndicator color={C.accent} size="large" />
-        <Text style={styles.loadingText}>importing transactions…</Text>
+        <Text style={styles.loadingText}>{t.importCsv.importingTransactions}</Text>
       </View>
     );
   }
@@ -266,19 +270,19 @@ const ImportFromCsv: React.FC = () => {
           >
             <Feather name="chevron-left" size={24} color={C.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.title}>import csv</Text>
+          <Text style={styles.title}>{t.importCsv.title}</Text>
           <View style={{ width: 24 }} />
         </View>
         <View style={styles.startBody}>
           <View style={styles.heroIcon}>
             <Feather name="file-plus" size={40} color={C.accent} />
           </View>
-          <Text style={styles.heroTitle}>import transactions from csv</Text>
+          <Text style={styles.heroTitle}>{t.importCsv.heroTitle}</Text>
           <Text style={styles.heroDesc}>
-            pick a csv file — you'll map columns (date, amount, description) and review before adding. works with exports from maybank2u, cimb clicks, most banks.
+            {t.importCsv.heroDesc}
           </Text>
           <View style={{ height: SPACING.lg }} />
-          <Button title="pick csv file" onPress={handlePick} icon="upload" />
+          <Button title={t.importCsv.pickCsvFile} onPress={handlePick} icon="upload" />
         </View>
       </View>
     );
@@ -296,12 +300,12 @@ const ImportFromCsv: React.FC = () => {
         >
           <Feather name="chevron-left" size={24} color={C.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.title}>map columns · {csv?.rows.length ?? 0} rows</Text>
+        <Text style={styles.title}>{t.importCsv.mapColumnsTitle.replace('{n}', String(csv?.rows.length ?? 0))}</Text>
         <View style={{ width: 24 }} />
       </View>
 
       <Card style={styles.walletCard}>
-        <Text style={styles.walletLabel}>column mapping</Text>
+        <Text style={styles.walletLabel}>{t.importCsv.columnMapping}</Text>
         <FlatList
           horizontal
           data={csv?.headers ?? []}
@@ -325,11 +329,11 @@ const ImportFromCsv: React.FC = () => {
             wallets={wallets}
             selectedId={selectedWalletId ?? null}
             onSelect={setSelectedWalletId}
-            label="wallet"
+            label={t.importCsv.wallet}
           />
         </View>
         {badCount > 0 && (
-          <Text style={styles.warnText}>⚠ {badCount} rows can't be imported (missing date or amount)</Text>
+          <Text style={styles.warnText}>{t.importCsv.rowsCantImport.replace('{n}', String(badCount))}</Text>
         )}
       </Card>
 
@@ -346,7 +350,7 @@ const ImportFromCsv: React.FC = () => {
 
       <View style={[styles.footer, { paddingBottom: SPACING.md + insets.bottom }]}>
         <Button
-          title={`import ${importableCount} transaction${importableCount === 1 ? '' : 's'}`}
+          title={importableCount === 1 ? t.importCsv.importNTransactions.replace('{n}', '1') : t.importCsv.importNTransactionsPlural.replace('{n}', String(importableCount))}
           onPress={handleImport}
           disabled={importableCount === 0 || !selectedWalletId}
         />
@@ -356,7 +360,7 @@ const ImportFromCsv: React.FC = () => {
         <Pressable style={styles.modalBackdrop} onPress={() => setRolePicker(null)}>
           <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.pickerTitle}>
-              what is "{rolePicker !== null ? csv?.headers[rolePicker] : ''}"?
+              {t.importCsv.whatIsColumn.replace('{name}', rolePicker !== null ? csv?.headers[rolePicker] ?? '' : '')}
             </Text>
             {ROLE_ORDER.map((role) => (
               <TouchableOpacity

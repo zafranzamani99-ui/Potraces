@@ -146,7 +146,7 @@ The `.env` file is in `.gitignore` (line 50), but the anon key is **also hardcod
 
 ### SEC-3.2 Gemini API Key in .env (MEDIUM)
 
-**File**: `.env` line 1: `EXPO_PUBLIC_GEMINI_API_KEY=AIzaSyAT_lwhyiM5mSfN8npnt1Gi7FzKecttAOw`
+**File**: `.env` line 1: `EXPO_PUBLIC_GEMINI_API_KEY=[REDACTED — key was rotated]`
 
 The `EXPO_PUBLIC_` prefix means this key is bundled into the JavaScript bundle shipped to users' devices. Anyone who extracts the app bundle can read this key and make API calls on your Google Cloud account.
 

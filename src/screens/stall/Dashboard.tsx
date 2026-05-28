@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallHistory } from '../../utils/explainStallHistory';
@@ -50,6 +51,7 @@ function useFadeSlide(delay: number) {
 
 const StallDashboard: React.FC = () => {
   const C = useCalm();
+  const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const {
     sessions,
@@ -149,7 +151,7 @@ const StallDashboard: React.FC = () => {
             <Animated.View
               style={[styles.pulsingDot, { opacity: pulseAnim }]}
             />
-            <Text style={styles.sellingNowLabel}>selling now</Text>
+            <Text style={styles.sellingNowLabel}>{t.stallDashboard.sellingNow}</Text>
           </View>
 
           {/* Session name */}
@@ -161,7 +163,7 @@ const StallDashboard: React.FC = () => {
           <View style={styles.runningTotalCard}>
             <BusinessHeroNumber
               amount={activeSession.totalRevenue}
-              label="came in this session"
+              label={t.stallDashboard.cameInThisSession}
               prefix={currency}
               animated={false}
             />
@@ -171,13 +173,13 @@ const StallDashboard: React.FC = () => {
               <View style={styles.pill}>
                 <Feather name="dollar-sign" size={14} color={C.textSecondary} />
                 <Text style={styles.pillText}>
-                  cash {currency} {activeSession.totalCash.toFixed(0)}
+                  {t.stallDashboard.cash} {currency} {activeSession.totalCash.toFixed(0)}
                 </Text>
               </View>
               <View style={styles.pill}>
                 <Feather name="smartphone" size={14} color={C.textSecondary} />
                 <Text style={styles.pillText}>
-                  qr {currency} {activeSession.totalQR.toFixed(0)}
+                  {t.stallDashboard.qr} {currency} {activeSession.totalQR.toFixed(0)}
                 </Text>
               </View>
             </View>
@@ -186,7 +188,7 @@ const StallDashboard: React.FC = () => {
           {/* Recent sales */}
           {recentSales.length > 0 && (
             <View style={styles.recentSection}>
-              <Text style={styles.sectionLabel}>RECENT SALES</Text>
+              <Text style={styles.sectionLabel}>{t.stallDashboard.recentSales}</Text>
               {recentSales.map((sale) => (
                 <View key={sale.id} style={styles.saleRow}>
                   <View style={styles.saleInfo}>
@@ -208,7 +210,7 @@ const StallDashboard: React.FC = () => {
 
           {recentSales.length === 0 && (
             <View style={styles.emptySales}>
-              <Text style={styles.emptySalesText}>no sales yet this session</Text>
+              <Text style={styles.emptySalesText}>{t.stallDashboard.noSalesYet}</Text>
             </View>
           )}
 
@@ -221,7 +223,7 @@ const StallDashboard: React.FC = () => {
             activeOpacity={0.7}
           >
             <Feather name="square" size={16} color={C.textSecondary} />
-            <Text style={styles.closeSessionText}>close session</Text>
+            <Text style={styles.closeSessionText}>{t.stallDashboard.closeSession}</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -247,8 +249,8 @@ const StallDashboard: React.FC = () => {
         <OfflineBanner />
         {/* Heading */}
         <Animated.View style={headingAnim}>
-          <Text style={styles.heading}>stall</Text>
-          <Text style={styles.headingSubtitle}>pasar malam, roadside, walk-in</Text>
+          <Text style={styles.heading}>{t.stallDashboard.stall}</Text>
+          <Text style={styles.headingSubtitle}>{t.stallDashboard.subtitle}</Text>
         </Animated.View>
 
         {/* Start selling button */}
@@ -261,14 +263,14 @@ const StallDashboard: React.FC = () => {
             accessibilityLabel="Start a new selling session"
           >
             <Feather name="play" size={20} color={C.onAccent} />
-            <Text style={styles.startButtonText}>start selling</Text>
+            <Text style={styles.startButtonText}>{t.stallDashboard.startSelling}</Text>
           </TouchableOpacity>
         </Animated.View>
 
         {/* Lifetime stats */}
         {lifetimeStats.totalSessions > 0 && (
           <Animated.View style={[styles.lifetimeSection, statsAnim]}>
-            <Text style={styles.sectionLabel}>LIFETIME</Text>
+            <Text style={styles.sectionLabel}>{t.stallDashboard.lifetime}</Text>
             <View style={styles.lifetimeGrid}>
               <View style={styles.lifetimeStat}>
                 <View style={[styles.statIcon, { backgroundColor: withAlpha(C.accent, 0.12) }]}>
@@ -277,7 +279,7 @@ const StallDashboard: React.FC = () => {
                 <Text style={styles.lifetimeNumber}>
                   {lifetimeStats.totalSessions}
                 </Text>
-                <Text style={styles.lifetimeLabel}>sessions</Text>
+                <Text style={styles.lifetimeLabel}>{t.stallDashboard.sessions}</Text>
               </View>
               <View style={styles.lifetimeStat}>
                 <View style={[styles.statIcon, { backgroundColor: withAlpha(C.bronze, 0.12) }]}>
@@ -289,7 +291,7 @@ const StallDashboard: React.FC = () => {
                 >
                   {currency} {lifetimeStats.totalRevenue.toFixed(0)}
                 </Text>
-                <Text style={styles.lifetimeLabel}>lifetime came in</Text>
+                <Text style={styles.lifetimeLabel}>{t.stallDashboard.lifetimeCameIn}</Text>
               </View>
               <View style={styles.lifetimeStat}>
                 <View style={[styles.statIcon, { backgroundColor: withAlpha(C.gold, 0.12) }]}>
@@ -301,7 +303,7 @@ const StallDashboard: React.FC = () => {
                 >
                   {currency} {lifetimeStats.avgPerSession.toFixed(0)}
                 </Text>
-                <Text style={styles.lifetimeLabel}>avg / session</Text>
+                <Text style={styles.lifetimeLabel}>{t.stallDashboard.avgPerSession}</Text>
               </View>
             </View>
           </Animated.View>
@@ -322,7 +324,7 @@ const StallDashboard: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="View past selling sessions"
           >
-            <Text style={styles.historyLinkText}>session history</Text>
+            <Text style={styles.historyLinkText}>{t.stallDashboard.sessionHistory}</Text>
             <Feather name="chevron-right" size={16} color={C.textSecondary} />
           </TouchableOpacity>
         )}

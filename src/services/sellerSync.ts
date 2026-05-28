@@ -929,6 +929,7 @@ export async function pullAll(): Promise<void> {
           ? ro.deposits.map((d: any) => ({
               ...d,
               date: d.date ? sd(d.date) : new Date(),
+              editedAt: d.editedAt ? sd(d.editedAt) : undefined,
             }))
           : [],
         source: 'app',
