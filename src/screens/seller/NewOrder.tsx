@@ -182,8 +182,12 @@ const NewOrder: React.FC = () => {
       // Pre-fill items from reorder — only keep items whose products still exist and are active
       if (routeParams.prefillItems && routeParams.prefillItems.length > 0) {
         const activeProductIds = new Set(products.filter((p) => p.isActive).map((p) => p.id));
-        const validItems = routeParams.prefillItems.filter((i) => activeProductIds.has(i.productId));
+        const validItems = routeParams.prefillItems.filter((i) => i.productId.startsWith('custom_') || activeProductIds.has(i.productId));
         if (validItems.length > 0) setItems(validItems);
+        const droppedCount = routeParams.prefillItems.length - validItems.length;
+        if (droppedCount > 0) {
+          showToast(`${droppedCount} item${droppedCount > 1 ? 's' : ''} unavailable`, 'info');
+        }
       }
       // Clear params so they don't persist on tab re-visits
       navigation.setParams({ customerName: undefined, customerPhone: undefined, customerAddress: undefined, prefillItems: undefined });
@@ -358,15 +362,15 @@ const NewOrder: React.FC = () => {
           (p) => p.name.toLowerCase() === ai.productName.toLowerCase() && p.isActive
         );
         return {
-          productId: product?.id ?? '',
+          productId: product?.id ?? `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           productName: ai.productName,
           quantity: ai.quantity,
           unitPrice: product?.pricePerUnit ?? 0,
           unit: ai.unit || product?.unit || 'balang',
         };
       });
-      const validMapped = mapped.filter((i) => i.unitPrice > 0 || i.productId !== '');
-      const zeroPriceNames = mapped.filter((i) => i.unitPrice === 0 && i.productId === '').map((i) => i.productName);
+      const validMapped = mapped.filter((i) => i.unitPrice > 0 || !i.productId.startsWith('custom_'));
+      const zeroPriceNames = mapped.filter((i) => i.unitPrice === 0 && i.productId.startsWith('custom_')).map((i) => i.productName);
       setItems(validMapped);
       setUnmatched(zeroPriceNames.length > 0 ? zeroPriceNames : []);
     } else {
@@ -502,15 +506,14 @@ const NewOrder: React.FC = () => {
       return;
     }
 
-    // Filter out items with empty productId
-    const validItems = items.filter(i => i.productId && i.productId.trim() !== '');
+    // Filter out items with zero quantity (all items now have valid productIds,
+    // including custom/unmatched items which get unique temp IDs)
+    const validItems = items.filter(i => i.quantity > 0);
     if (validItems.length === 0) {
       warningNotification();
       showToast('no valid products in order', 'error');
       return;
     }
-    // Total must reflect the items actually saved, not the full (pre-filter)
-    // list — otherwise an excluded unmatched item inflates the order total.
     const validTotal = validItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
 
     // Validate customer phone before creating order
@@ -552,7 +555,7 @@ const NewOrder: React.FC = () => {
       speed: 8,
       bounciness: 12,
     }).start();
-  }, [items, customerName, customerPhone, customerAddress, total, note, whatsAppText, deliveryDate, activeSeason, addOrder, persistCustomer, checkScaleAnim]);
+  }, [items, customerName, customerPhone, customerAddress, note, whatsAppText, deliveryDate, activeSeason, addOrder, persistCustomer, checkScaleAnim, showToast]);
 
   // Release the double-submit guard once the confirmation modal is dismissed.
   useEffect(() => {
@@ -707,7 +710,7 @@ const NewOrder: React.FC = () => {
                 value={customerName}
                 onChangeText={setCustomerName}
                 placeholder="who's this for?"
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 accessibilityLabel="Customer name"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={C.accent}
@@ -886,7 +889,7 @@ const NewOrder: React.FC = () => {
                   value={whatsAppText}
                   onChangeText={setWhatsAppText}
                   placeholder="paste WhatsApp message..."
-                  placeholderTextColor={C.textMuted}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   multiline
                   numberOfLines={2}
                   accessibilityLabel="WhatsApp message"
@@ -1001,7 +1004,7 @@ const NewOrder: React.FC = () => {
                     item={item}
                     index={index}
                     currency={currency}
-                    qty={itemQtyMap[item.productId] || 0}
+                    qty={item.quantity}
                     isEditing={editingQtyProductId === item.productId}
                     editingValue={editingQtyValue}
                     onQtyChange={handleUpdateQuantity}
@@ -1512,7 +1515,7 @@ const NewOrder: React.FC = () => {
               <TextInput
                 style={styles.contactSearchInput}
                 placeholder="search contacts..."
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 value={contactSearch}
                 onChangeText={setContactSearch}
                 autoFocus
@@ -1763,7 +1766,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   customerFieldInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
@@ -2171,7 +2174,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'] as ('tabular-nums')[],
   },
   qtyInput: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     backgroundColor: C.surface,
@@ -2433,7 +2436,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   pickerSearchInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
@@ -2844,8 +2847,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   noteInput: {
     fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
-    paddingVertical: 2,
+    paddingVertical: SPACING.sm,
   },
 
   // ── Floating review button ───────────────────────────────

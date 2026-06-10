@@ -462,7 +462,7 @@ const SellerTransactions: React.FC = () => {
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder={t.seller.searchPlaceholder}
-            placeholderTextColor={C.textMuted}
+            placeholderTextColor={withAlpha(C.textMuted, 0.6)}
             returnKeyType="search"
           />
           {searchQuery.length > 0 && (
@@ -542,14 +542,21 @@ const SellerTransactions: React.FC = () => {
           maxToRenderPerBatch={8}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Feather name="inbox" size={32} color={C.textMuted} />
-              <Text style={styles.emptyText}>
+              <View style={styles.emptyIconCircle}>
+                <Feather name="inbox" size={28} color={C.textMuted} />
+              </View>
+              <Text style={styles.emptyTitle}>
                 {allPayments.length === 0
                   ? t.seller.noPaymentsRecorded
                   : t.seller.noMatchingTransactions}
               </Text>
+              <Text style={styles.emptySubtitle}>
+                {allPayments.length === 0
+                  ? 'payments will appear here as orders get paid.'
+                  : 'try adjusting your filters.'}
+              </Text>
               {hasActiveFilters && allPayments.length > 0 && (
-                <TouchableOpacity onPress={handleResetFilters} activeOpacity={0.7}>
+                <TouchableOpacity onPress={handleResetFilters} activeOpacity={0.7} style={styles.emptySecondary}>
                   <Text style={styles.clearFiltersText}>{t.seller.clearFilters}</Text>
                 </TouchableOpacity>
               )}
@@ -850,7 +857,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
@@ -996,12 +1004,35 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: SPACING['4xl'],
+    paddingVertical: SPACING['4xl'],
+    paddingHorizontal: SPACING['2xl'],
     gap: SPACING.md,
   },
-  emptyText: {
+  emptyIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.xs,
+  },
+  emptyTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  emptySubtitle: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptySecondary: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   clearFiltersText: {
     fontSize: TYPOGRAPHY.size.sm,

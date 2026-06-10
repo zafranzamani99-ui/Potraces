@@ -1002,7 +1002,7 @@ const Products: React.FC = () => {
         <TextInput
           style={styles.searchInput}
           placeholder={sl.searchProducts}
-          placeholderTextColor={C.textMuted}
+          placeholderTextColor={withAlpha(C.textMuted, 0.6)}
           value={search}
           onChangeText={setSearch}
           returnKeyType="search"
@@ -1229,7 +1229,7 @@ const Products: React.FC = () => {
               value={newName}
               onChangeText={setNewName}
               placeholder={sl.productNamePlaceholder}
-              placeholderTextColor={C.textMuted}
+              placeholderTextColor={withAlpha(C.textMuted, 0.6)}
               autoFocus={!editingProduct}
               onFocus={() => setFocusedField('name')}
               onBlur={() => setFocusedField(null)}
@@ -1257,7 +1257,7 @@ const Products: React.FC = () => {
                 value={newPrice}
                 onChangeText={setNewPrice}
                 placeholder={sl.sellingPricePlaceholder}
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 keyboardType="decimal-pad"
                 onFocus={() => setFocusedField('price')}
                 onBlur={() => setFocusedField(null)}
@@ -1275,7 +1275,7 @@ const Products: React.FC = () => {
               value={newCostPerUnit}
               onChangeText={setNewCostPerUnit}
               placeholder={sl.yourCostPlaceholder}
-              placeholderTextColor={C.textMuted}
+              placeholderTextColor={withAlpha(C.textMuted, 0.6)}
               keyboardType="decimal-pad"
               onFocus={() => setFocusedField('cost')}
               onBlur={() => setFocusedField(null)}
@@ -1326,7 +1326,7 @@ const Products: React.FC = () => {
             value={newStockQty}
             onChangeText={setNewStockQty}
             placeholder={sl.currentStockPlaceholder}
-            placeholderTextColor={C.textMuted}
+            placeholderTextColor={withAlpha(C.textMuted, 0.6)}
             keyboardType="decimal-pad"
             onFocus={() => setFocusedField('stock')}
             onBlur={() => setFocusedField(null)}
@@ -1345,7 +1345,7 @@ const Products: React.FC = () => {
             value={newDescription}
             onChangeText={setNewDescription}
             placeholder={sl.descriptionPlaceholder}
-            placeholderTextColor={C.textMuted}
+            placeholderTextColor={withAlpha(C.textMuted, 0.6)}
             multiline
             numberOfLines={2}
             textAlignVertical="top"
@@ -1379,7 +1379,7 @@ const Products: React.FC = () => {
               value={newCategory}
               onChangeText={setNewCategory}
               placeholder={productCategories.length > 0 ? sl.newCategoryPlaceholder : sl.categoryPlaceholder}
-              placeholderTextColor={C.textMuted}
+              placeholderTextColor={withAlpha(C.textMuted, 0.6)}
               onFocus={() => setFocusedField('category')}
               onBlur={() => setFocusedField(null)}
               keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -1912,7 +1912,7 @@ const Products: React.FC = () => {
                   value={costDescription}
                   onChangeText={setCostDescription}
                   placeholder={sl.whatDidYouBuyProducts}
-                  placeholderTextColor={C.textMuted}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   autoFocus
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                   selectionColor={C.bronze}
@@ -1927,7 +1927,7 @@ const Products: React.FC = () => {
                     value={costAmount}
                     onChangeText={setCostAmount}
                     placeholder="0.00"
-                    placeholderTextColor={C.textMuted}
+                    placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     keyboardType="decimal-pad"
                     keyboardAppearance={isDark ? 'dark' : 'light'}
                     selectionColor={C.bronze}
@@ -2009,8 +2009,8 @@ const Products: React.FC = () => {
                   <TextInput
                     style={styles.bulkTextArea}
                     multiline
-                    placeholder={'kuih lapis rm8/tin\ndodol rm12/pack\nrendang rm15 bekas\nnasi lemak 5 ringgit'}
-                    placeholderTextColor={C.textMuted}
+                    placeholder={'tshirt rm25/pcs\nsticker rm3/pack\nkuih lapis rm8/tin\nnasi lemak 5 ringgit'}
+                    placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     value={bulkText}
                     onChangeText={setBulkText}
                     textAlignVertical="top"
@@ -2049,21 +2049,12 @@ const Products: React.FC = () => {
                     {bulkResults.length} found · tap to edit
                   </Text>
 
-                  <FlatList
-                    data={bulkResults}
-                    keyExtractor={(_, i) => String(i)}
-                    style={styles.bulkResultsList}
-                    nestedScrollEnabled
-                    showsVerticalScrollIndicator
-                    removeClippedSubviews
-                    windowSize={5}
-                    maxToRenderPerBatch={10}
-                    initialNumToRender={10}
-                    keyboardShouldPersistTaps="handled"
-                    renderItem={({ item: p, index: i }) => {
+                  <ScrollView style={styles.bulkResultsList} nestedScrollEnabled showsVerticalScrollIndicator>
+                    {bulkResults.map((p, i) => {
                       const selected = bulkSelected.has(i);
                       return (
                         <TouchableOpacity
+                          key={i}
                           style={[styles.bulkResultRow, !selected && styles.bulkResultDeselected]}
                           activeOpacity={0.7}
                           onPress={() => setBulkDetailIdx(i)}
@@ -2090,8 +2081,8 @@ const Products: React.FC = () => {
                           <Feather name="chevron-right" size={14} color={C.textMuted} />
                         </TouchableOpacity>
                       );
-                    }}
-                  />
+                    })}
+                  </ScrollView>
 
                   <View style={styles.modalActions}>
                     <TouchableOpacity
@@ -2161,7 +2152,7 @@ const Products: React.FC = () => {
                       value={p.name}
                       onChangeText={(v) => updateBulkResult(idx, { name: v })}
                       placeholder={sl.productNamePlaceholder}
-                      placeholderTextColor={C.textMuted}
+                      placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                       selectionColor={C.bronze}
                       onFocus={() => setBdFocused('bd-name')}
                       onBlur={() => setBdFocused(null)}
@@ -2178,7 +2169,7 @@ const Products: React.FC = () => {
                           value={p.pricePerUnit ? String(p.pricePerUnit) : ''}
                           onChangeText={(v) => updateBulkResult(idx, { pricePerUnit: parseFloat(v) || 0 })}
                           placeholder={sl.sellingPricePlaceholder}
-                          placeholderTextColor={C.textMuted}
+                          placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                           keyboardType="decimal-pad"
                           selectionColor={C.bronze}
                           onFocus={() => setBdFocused('bd-price')}
@@ -2194,7 +2185,7 @@ const Products: React.FC = () => {
                           value={p.costPerUnit ? String(p.costPerUnit) : ''}
                           onChangeText={(v) => updateBulkResult(idx, { costPerUnit: parseFloat(v) || undefined })}
                           placeholder={sl.yourCostPlaceholder}
-                          placeholderTextColor={C.textMuted}
+                          placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                           keyboardType="decimal-pad"
                           selectionColor={C.bronze}
                           onFocus={() => setBdFocused('bd-cost')}
@@ -2224,7 +2215,7 @@ const Products: React.FC = () => {
                         value={p.unit}
                         onChangeText={(v) => updateBulkResult(idx, { unit: v })}
                         placeholder="pcs"
-                        placeholderTextColor={C.textMuted}
+                        placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                         selectionColor={C.bronze}
                         onFocus={() => setBdFocused('bd-unit')}
                         onBlur={() => setBdFocused(null)}
@@ -2237,7 +2228,7 @@ const Products: React.FC = () => {
                         value={p.category || ''}
                         onChangeText={(v) => updateBulkResult(idx, { category: v || undefined })}
                         placeholder={t.common.optional.toLowerCase()}
-                        placeholderTextColor={C.textMuted}
+                        placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                         selectionColor={C.bronze}
                         onFocus={() => setBdFocused('bd-cat')}
                         onBlur={() => setBdFocused(null)}
@@ -2252,7 +2243,7 @@ const Products: React.FC = () => {
                       value={p.description || ''}
                       onChangeText={(v) => updateBulkResult(idx, { description: v || undefined })}
                       placeholder={sl.descriptionPlaceholder}
-                      placeholderTextColor={C.textMuted}
+                      placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                       selectionColor={C.bronze}
                       multiline
                       returnKeyType="default"
@@ -2368,7 +2359,7 @@ const Products: React.FC = () => {
                   value={stockAdjDelta}
                   onChangeText={setStockAdjDelta}
                   placeholder={sl.quantityPlaceholder}
-                  placeholderTextColor={C.textMuted}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   keyboardType="decimal-pad"
                   selectionColor={C.bronze}
                   onFocus={() => setFocusedField('adj-qty')}
@@ -2383,7 +2374,7 @@ const Products: React.FC = () => {
                   value={stockAdjNote}
                   onChangeText={setStockAdjNote}
                   placeholder={sl.noteOptionalPlaceholder}
-                  placeholderTextColor={C.textMuted}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   selectionColor={C.bronze}
                   onFocus={() => setFocusedField('adj-note')}
                   onBlur={() => setFocusedField(null)}
@@ -2467,7 +2458,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
@@ -3072,6 +3064,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalInput: {
     ...TYPE.insight,
     lineHeight: undefined,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
@@ -3691,7 +3684,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textMuted,
   },
   bulkResultsList: {
-    maxHeight: 380,
+    maxHeight: 420,
   },
   bulkResultRow: {
     flexDirection: 'row',
@@ -3767,7 +3760,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     ...SHADOWS.lg,
   },
   bdFieldInput: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     minWidth: 40,

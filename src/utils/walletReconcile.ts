@@ -108,7 +108,10 @@ export function autoReconcileWallets(): number {
   const corrected: typeof wallets = wallets.map((w) => {
     const fix = drifted.find((d) => d.walletId === w.id);
     if (!fix) return w;
-    return { ...w, balance: fix.computed, updatedAt: new Date() };
+    // Do NOT bump updatedAt: a reconcile-derived balance must not automatically
+    // win the next last-write-wins against other devices (that would launder a
+    // local glitch — e.g. a duplicated/dropped op — into global corruption).
+    return { ...w, balance: fix.computed };
   });
 
   useWalletStore.setState({ wallets: corrected });

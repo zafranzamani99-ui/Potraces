@@ -12,7 +12,7 @@ import { useWalletStore } from '../store/walletStore';
 import { useSavingsStore } from '../store/savingsStore';
 import { useAppStore } from '../store/appStore';
 import { usePlaybookStore } from '../store/playbookStore';
-import { computePlaybookStats } from '../utils/playbookStats';
+import { syncLinkAmount } from '../utils/playbookAttribution';
 import { AppMode, Transaction, Subscription, Budget, Debt } from '../types';
 import { useLearningStore } from '../store/learningStore';
 
@@ -209,7 +209,7 @@ export function executeAction(action: ChatAction): ActionResult {
     switch (action.type) {
       case 'add_expense': {
         const walletId = findWalletId(action.wallet);
-        const txId = usePersonalStore.getState().addTransaction({
+        usePersonalStore.getState().addTransaction({
           amount: action.amount,
           description: action.description,
           category: action.category || 'other',
@@ -221,19 +221,12 @@ export function executeAction(action: ChatAction): ActionResult {
         if (walletId) useWalletStore.getState().deductFromWallet(walletId, action.amount);
         const impact = getBudgetImpact(action.category || 'other');
 
-        // Playbook auto-link
+        // NEVER auto-attribute to a playbook — attribution is explicit opt-in.
+        // Just nudge the user to link it themselves in Budget Planning.
         let pbNote = '';
         const activePbs = usePlaybookStore.getState().getActivePlaybooks();
-        if (activePbs.length === 1) {
-          const pb = activePbs[0];
-          usePlaybookStore.getState().linkExpense(pb.id, txId);
-          usePersonalStore.getState().updateTransaction(txId, {
-            playbookLinks: [{ playbookId: pb.id, amount: action.amount }],
-          });
-          const stats = computePlaybookStats(pb, usePersonalStore.getState().transactions);
-          pbNote = ` (${pb.name}: RM ${stats.remaining.toFixed(0)} left)`;
-        } else if (activePbs.length > 1) {
-          pbNote = ` (${activePbs.length} playbooks active — link it in Budget Planning)`;
+        if (activePbs.length >= 1) {
+          pbNote = ` (link it to a playbook in Budget Planning)`;
         }
 
         return {
@@ -741,6 +734,8 @@ export function executeAction(action: ChatAction): ActionResult {
           }
         }
         usePersonalStore.getState().updateTransaction(tx.id, updates);
+        // Keep the playbook drain amount in sync with an edited amount.
+        if (updates.amount !== undefined) syncLinkAmount(tx.id, updates.amount);
         const changes: string[] = [];
         if (updates.amount) changes.push(`amount → RM ${updates.amount.toFixed(2)}`);
         if (updates.description) changes.push(`description → "${updates.description}"`);

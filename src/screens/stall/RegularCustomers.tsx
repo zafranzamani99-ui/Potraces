@@ -29,11 +29,21 @@ const RegularCustomers: React.FC = () => {
     addRegularCustomer,
     updateRegularCustomer,
     deleteRegularCustomer,
+    loyalty,
+    setLoyalty,
   } = useStallStore();
 
   // ─── State ─────────────────────────────────────────────
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Loyalty config (optional)
+  const [loyaltyEvery, setLoyaltyEvery] = useState(loyalty.everyN ? String(loyalty.everyN) : '');
+  const [loyaltyReward, setLoyaltyReward] = useState(loyalty.reward);
+  const commitLoyalty = useCallback((everyStr: string, reward: string) => {
+    const n = parseInt(everyStr, 10);
+    setLoyalty({ everyN: isNaN(n) ? 0 : n, reward });
+  }, [setLoyalty]);
 
   // Add form state
   const [newName, setNewName] = useState('');
@@ -245,6 +255,18 @@ const RegularCustomers: React.FC = () => {
               </Text>
             </View>
 
+            {loyalty.everyN > 0 && !!loyalty.reward && (() => {
+              const mod = item.visitCount % loyalty.everyN;
+              const ready = item.visitCount > 0 && mod === 0;
+              return (
+                <Text style={[styles.loyaltyProgressText, ready && styles.loyaltyReadyText]}>
+                  {ready
+                    ? t.stall.loyaltyReady.replace('{reward}', loyalty.reward)
+                    : t.stall.loyaltyProgress.replace('{count}', String(mod)).replace('{n}', String(loyalty.everyN))}
+                </Text>
+              );
+            })()}
+
             {item.note && (
               <Text style={styles.customerNote} numberOfLines={2}>
                 {item.note}
@@ -256,7 +278,7 @@ const RegularCustomers: React.FC = () => {
         </TouchableOpacity>
       );
     },
-    [editingId, editName, editUsualOrder, editNote, handleStartEdit, handleSaveEdit, handleCancelEdit, handleDelete],
+    [editingId, editName, editUsualOrder, editNote, handleStartEdit, handleSaveEdit, handleCancelEdit, handleDelete, loyalty],
   );
 
   // ─── Header with add form ─────────────────────────────
@@ -332,9 +354,40 @@ const RegularCustomers: React.FC = () => {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Loyalty config (optional) */}
+        <View style={styles.loyaltyCard}>
+          <Text style={styles.loyaltyHeading}>{t.stall.loyaltyHeading}</Text>
+          <Text style={styles.loyaltyHint}>{t.stall.loyaltyHint}</Text>
+          <View style={styles.loyaltyRow}>
+            <Text style={styles.loyaltyWord}>{t.stall.loyaltyEvery}</Text>
+            <TextInput
+              style={styles.loyaltyEveryInput}
+              value={loyaltyEvery}
+              onChangeText={(v) => { const c = v.replace(/[^0-9]/g, ''); setLoyaltyEvery(c); commitLoyalty(c, loyaltyReward); }}
+              placeholder="10"
+              placeholderTextColor={C.neutral}
+              keyboardType="number-pad"
+              accessibilityLabel="Reward every how many visits"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
+            />
+            <Text style={styles.loyaltyWord}>{t.stall.loyaltyVisitsWord}</Text>
+          </View>
+          <TextInput
+            style={styles.loyaltyRewardInput}
+            value={loyaltyReward}
+            onChangeText={(v) => { setLoyaltyReward(v); commitLoyalty(loyaltyEvery, v); }}
+            placeholder={t.stall.loyaltyRewardPlaceholder}
+            placeholderTextColor={C.neutral}
+            accessibilityLabel="Loyalty reward"
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={C.accent}
+          />
+        </View>
       </View>
     );
-  }, [showAddForm, newName, newUsualOrder, newNote, handleToggleAdd, handleAdd]);
+  }, [showAddForm, newName, newUsualOrder, newNote, handleToggleAdd, handleAdd, loyaltyEvery, loyaltyReward, commitLoyalty, isDark, C]);
 
   const renderEmpty = useCallback(() => {
     return (
@@ -378,6 +431,67 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   keyboardView: {
     flex: 1,
+  },
+
+  // ─── Loyalty config + progress ─────────────────────────
+  loyaltyCard: {
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    marginTop: SPACING.md,
+    gap: SPACING.sm,
+  },
+  loyaltyHeading: {
+    ...TYPE.label,
+  },
+  loyaltyHint: {
+    ...TYPE.muted,
+  },
+  loyaltyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  loyaltyWord: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textSecondary,
+  },
+  loyaltyEveryInput: {
+    width: 60,
+    backgroundColor: C.background,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+    minHeight: 44,
+  },
+  loyaltyRewardInput: {
+    backgroundColor: C.background,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    minHeight: 44,
+  },
+  loyaltyProgressText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    marginTop: SPACING.xs,
+  },
+  loyaltyReadyText: {
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
   listContent: {
     padding: SPACING.lg,

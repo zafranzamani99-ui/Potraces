@@ -14,6 +14,7 @@ import { lightTap, mediumTap } from '../../services/haptics';
 import { useFadeSlide } from '../../utils/fadeSlide';
 import { useLearningStore } from '../../store/learningStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { parseCommitmentSchedule } from '../../utils/commitmentParse';
 
 interface ConfirmationCardProps {
   extraction: AIExtraction;
@@ -32,6 +33,7 @@ const INTENT_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   seller_cost: 'package',
   query: 'help-circle',
   savings_goal: 'target',
+  subscription: 'refresh-cw',
   playbook: 'book-open',
   plain: 'file-text',
 };
@@ -46,6 +48,7 @@ const INTENT_LABELS: Record<string, string> = {
   seller_cost: 'Cost',
   query: 'Question',
   savings_goal: 'Savings',
+  subscription: 'Commitment',
   playbook: 'Playbook',
   plain: 'Note',
 };
@@ -106,7 +109,23 @@ const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
     );
   }
 
-  const sub = [category, wallet, person].filter(Boolean).join(' · ');
+  // For a commitment, lead the subtitle with its schedule (cycle · due day, or
+  // installment count) so the user can trust the capture before saving.
+  let scheduleLabel = '';
+  if (type === 'subscription') {
+    const data = extractedData as any;
+    const sched = parseCommitmentSchedule(extraction.rawText || description || '');
+    const cycle = data.billingCycle || sched.billingCycle;
+    const dueDay = data.dueDay ?? sched.dueDay;
+    const inst = data.installments ?? sched.installments;
+    scheduleLabel = inst && inst > 1
+      ? `${inst}× installment`
+      : `${cycle}${dueDay ? ` · due ${dueDay}` : ''}`;
+  }
+  const sub = (type === 'subscription'
+    ? [scheduleLabel, category]
+    : [category, wallet, person]
+  ).filter(Boolean).join(' · ');
 
   return (
     <Animated.View style={[styles.card, { opacity: fadeSlide.opacity, transform: fadeSlide.transform }]}>

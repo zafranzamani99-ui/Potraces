@@ -1,35 +1,66 @@
 import { Playbook, PlaybookLineItem, PlaybookStats, Transaction } from '../types';
-import { differenceInCalendarDays } from 'date-fns';
+import { differenceInCalendarDays, startOfDay, endOfDay } from 'date-fns';
+import { roundMoney } from './money';
+
+/** Coerce a value to a Date, returning null if invalid/missing. */
+function toDate(v: Date | string | number | null | undefined): Date | null {
+  if (v == null) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Resolve the playbook's tracking window.
+ * start = playbook.startDate; end = playbook.endDate ?? playbook.suggestedEndDate.
+ * Returns null start/end if a bound can't be coerced to a valid Date.
+ */
+export function resolvePlaybookWindow(playbook: Playbook): { start: Date | null; end: Date | null } {
+  const start = toDate(playbook.startDate);
+  const end = toDate(playbook.endDate ?? playbook.suggestedEndDate);
+  // Normalize to whole-day bounds so same-day boundary spend isn't missed
+  // (start/end otherwise carry the salary's creation time-of-day).
+  return { start: start ? startOfDay(start) : null, end: end ? endOfDay(end) : null };
+}
+
+/**
+ * True if tx is an expense whose date falls within [start, end] inclusive.
+ * Window bounds and tx.date are coerced to Date; invalid → excluded.
+ */
+export function isInWindow(tx: Transaction, start: Date | null, end: Date | null): boolean {
+  if (tx.type !== 'expense') return false;
+  if (!start || !end) return false;
+  const d = toDate(tx.date);
+  if (!d) return false;
+  const t = d.getTime();
+  return t >= start.getTime() && t <= end.getTime();
+}
 
 export function computePlaybookStats(
   playbook: Playbook,
   allTransactions: Transaction[],
 ): PlaybookStats {
-  // O(1) lookup instead of O(n) Array.includes per transaction
-  const linkedSet = new Set(playbook.linkedExpenseIds);
-
-  const linkedTxns = allTransactions.filter(
-    (t) => linkedSet.has(t.id) && t.playbookLinks,
-  );
+  // Actual spend derives from ALL expense transactions in the playbook's window,
+  // grouped by tx.category. No explicit links are consulted.
+  const { start, end } = resolvePlaybookWindow(playbook);
+  const windowTxns = allTransactions.filter((t) => isInWindow(t, start, end));
 
   let totalSpent = 0;
   const catMap: Record<string, number> = {};
 
-  for (const tx of linkedTxns) {
-    const link = tx.playbookLinks?.find((l) => l.playbookId === playbook.id);
-    if (!link) continue;
-    totalSpent += link.amount;
-    catMap[tx.category] = (catMap[tx.category] || 0) + link.amount;
+  for (const tx of windowTxns) {
+    totalSpent += tx.amount;
+    catMap[tx.category] = (catMap[tx.category] || 0) + tx.amount;
   }
+  totalSpent = roundMoney(totalSpent);
 
   const remaining = playbook.sourceAmount - totalSpent;
   const percentSpent = playbook.sourceAmount > 0
     ? (totalSpent / playbook.sourceAmount) * 100
     : 0;
 
-  // Merged allocation map: line items with categories take precedence
+  // Planned/allocated per category comes from lineItems ONLY (authoritative).
+  // Allocations are legacy and ignored for stats — migration clears them.
   const catAllocMap: Record<string, number> = {};
-  for (const a of playbook.allocations) catAllocMap[a.category] = a.allocatedAmount;
   for (const li of (playbook.lineItems || [])) {
     if (li.category) catAllocMap[li.category] = (catAllocMap[li.category] || 0) + li.plannedAmount;
   }
@@ -38,8 +69,8 @@ export function computePlaybookStats(
     .sort((a, b) => b[1] - a[1])
     .map(([category, spent]) => ({
       category,
-      spent,
-      allocated: catAllocMap[category],
+      spent: roundMoney(spent),
+      allocated: catAllocMap[category] !== undefined ? roundMoney(catAllocMap[category]) : undefined,
       percentOfTotal: totalSpent > 0 ? (spent / totalSpent) * 100 : 0,
     }));
 
@@ -63,7 +94,7 @@ export function computePlaybookStats(
     remaining: Math.max(remaining, 0),
     percentSpent: Math.min(percentSpent, 100),
     categoryBreakdown,
-    linkedTransactionCount: linkedTxns.length,
+    linkedTransactionCount: windowTxns.length,
     daysActive,
     dailyBurnRate,
     daysUntilEmpty,
@@ -123,7 +154,6 @@ export interface LiveStatsData {
   daysElapsed: number;
   totalDays: number;
   paceRatio: number;       // >1 = spending faster than time passing
-  projectedRemaining: number;
 }
 
 export function computeLiveStats(playbook: Playbook, stats: PlaybookStats): LiveStatsData {
@@ -144,12 +174,10 @@ export function computeLiveStats(playbook: Playbook, stats: PlaybookStats): Live
   const spendRatio = stats.percentSpent / 100;
   const paceRatio = timeRatio > 0 ? spendRatio / timeRatio : 0;
 
-  const projectedRemaining = playbook.sourceAmount - (burnRate * totalDays);
-
-  return { remaining, burnRate, daysLeft, daysElapsed, totalDays, paceRatio, projectedRemaining };
+  return { remaining, burnRate, daysLeft, daysElapsed, totalDays, paceRatio };
 }
 
-// ─── Spending Reality (category breakdown from linked transactions) ──
+// ─── Spending Reality (category breakdown from window expenses) ──
 
 export interface SpendingCategoryItem {
   category: string;
@@ -164,34 +192,28 @@ export function computeSpendingReality(
   playbook: Playbook,
   allTransactions: Transaction[],
 ): SpendingCategoryItem[] {
-  const linkedSet = new Set(playbook.linkedExpenseIds);
-  const linkedTxns = allTransactions.filter((t) => linkedSet.has(t.id) && t.playbookLinks);
+  const { start, end } = resolvePlaybookWindow(playbook);
+  const windowTxns = allTransactions.filter((t) => isInWindow(t, start, end));
 
   const catMap: Record<string, { spent: number; count: number }> = {};
   let totalSpent = 0;
 
-  for (const tx of linkedTxns) {
-    const link = tx.playbookLinks?.find((l) => l.playbookId === playbook.id);
-    if (!link) continue;
-    totalSpent += link.amount;
+  for (const tx of windowTxns) {
+    totalSpent += tx.amount;
     if (!catMap[tx.category]) catMap[tx.category] = { spent: 0, count: 0 };
-    catMap[tx.category].spent += link.amount;
+    catMap[tx.category].spent += tx.amount;
     catMap[tx.category].count++;
   }
 
-  // Build set of "planned" categories from allocations + line items
+  // Build set of "planned" categories from line items only (allocations are legacy)
   const plannedCategories = new Set<string>();
-  for (const a of playbook.allocations) plannedCategories.add(a.category.toLowerCase());
   for (const li of (playbook.lineItems || [])) {
     plannedCategories.add(li.label.toLowerCase());
     if (li.category) plannedCategories.add(li.category.toLowerCase());
   }
 
-  // Category allocation map from line items (sum if multiple) + fallback to allocations
+  // Category allocation map from line items only (sum if multiple)
   const spendAllocMap: Record<string, number> = {};
-  for (const a of playbook.allocations) {
-    if (!spendAllocMap[a.category]) spendAllocMap[a.category] = a.allocatedAmount;
-  }
   for (const li of (playbook.lineItems || [])) {
     if (li.category) spendAllocMap[li.category] = (spendAllocMap[li.category] || 0) + li.plannedAmount;
   }
@@ -200,12 +222,56 @@ export function computeSpendingReality(
     .sort((a, b) => b[1].spent - a[1].spent)
     .map(([category, data]) => ({
       category,
-      spent: data.spent,
+      spent: roundMoney(data.spent),
       percentOfTotal: totalSpent > 0 ? (data.spent / totalSpent) * 100 : 0,
       isPlanned: plannedCategories.has(category.toLowerCase()),
       transactionCount: data.count,
-      allocatedAmount: spendAllocMap[category],
+      allocatedAmount: spendAllocMap[category] !== undefined ? roundMoney(spendAllocMap[category]) : undefined,
     }));
+}
+
+// ─── Plan vs Actual (close-out "where the money went") ───────
+
+export interface PlanVsActualRow {
+  category: string;
+  planned: number;   // sum of lineItems[cat].plannedAmount
+  actual: number;    // sum of window expense amounts for txns with that category
+  overBy: number;    // max(actual - planned, 0)
+}
+
+/**
+ * Derive per-category planned-vs-actual from window expenses.
+ * planned = sum of lineItems[category].plannedAmount (the dead actualAmount field is NOT used).
+ * actual  = sum of expense amounts within the playbook window, grouped by tx.category.
+ * Includes categories that were planned but never spent, and spent-but-unplanned categories.
+ * Sorted by actual desc. All sums rounded to 2dp.
+ */
+export function computePlanVsActual(
+  playbook: Playbook,
+  allTransactions: Transaction[],
+): PlanVsActualRow[] {
+  const { start, end } = resolvePlaybookWindow(playbook);
+  const windowTxns = allTransactions.filter((t) => isInWindow(t, start, end));
+
+  const actualMap: Record<string, number> = {};
+  for (const tx of windowTxns) {
+    actualMap[tx.category] = (actualMap[tx.category] || 0) + tx.amount;
+  }
+
+  const plannedMap: Record<string, number> = {};
+  for (const li of (playbook.lineItems || [])) {
+    if (li.category) plannedMap[li.category] = (plannedMap[li.category] || 0) + li.plannedAmount;
+  }
+
+  const categories = new Set<string>([...Object.keys(actualMap), ...Object.keys(plannedMap)]);
+
+  return Array.from(categories)
+    .map((category) => {
+      const planned = roundMoney(plannedMap[category] || 0);
+      const actual = roundMoney(actualMap[category] || 0);
+      return { category, planned, actual, overBy: roundMoney(Math.max(actual - planned, 0)) };
+    })
+    .sort((a, b) => b.actual - a.actual);
 }
 
 /** Remove playbookLinks entries that reference deleted playbooks. */

@@ -20,26 +20,50 @@ import { useSettingsStore } from '../store/settingsStore';
 import { usePremiumStore } from '../store/premiumStore';
 import { useLearningStore } from '../store/learningStore';
 import { Playbook } from '../types';
-import { computeNotebookStats, computePlaybookStats } from '../utils/playbookStats';
+import { computeNotebookStats, computePlaybookStats, computePlanVsActual } from '../utils/playbookStats';
 import { getPlaybookObligations } from '../utils/playbookObligations';
 
 // ─── Types ──────────────────────────────────────────────────
 
 export interface EchoPlanItem {
+  /** lowercase, casual label — "bills", "safety money", "living money", "transport" */
   label: string;
+  /** ringgit figure. 0 when needsInput is true (Echo isn't confident yet) */
   amount: number;
+  /** category id, if known */
   category?: string;
+  /** ONE short plain line tied to the user's own life. No %/burn/pace/jargon. */
   rationale: string;
+  /** true when Echo can't confidently pick a number (thin/irregular data). amount = 0, question set. */
+  needsInput?: boolean;
+  /** gentle ask shown when needsInput is true — "I don't know your transport yet — leave it blank or set something?" */
+  question?: string;
+  /** @deprecated no longer surfaced in UI; kept for parser/memory compatibility */
   alert?: string;
-  confidence: 'high' | 'medium' | 'low';
-  source: 'recurring' | 'historical' | 'debt' | 'goal' | 'subscription' | 'estimate';
+  /** @deprecated no longer surfaced */
+  confidence?: 'high' | 'medium' | 'low';
+  /** @deprecated no longer surfaced */
+  source?: 'recurring' | 'historical' | 'debt' | 'goal' | 'subscription' | 'estimate';
 }
 
 export interface EchoPlanResponse {
+  /** kept for backward compat (memory entries); Turn 1 hero is `reflection` */
   greeting: string;
+  /** Turn 1: ONE-line mirror of the user's intent + what Echo is looking at, ending in a soft confirm. NO numbers. */
+  reflection: string;
   items: EchoPlanItem[];
+  /** at most ONE, gentle, framed as a choice. The plan does NOT depend on showing this. */
   warnings: string[];
+  /** ONE warm closing sentence: what's handled + a tiny set-aside + the safe-to-spend daily. The hero deliverable. */
   summary: string;
+}
+
+/** What the user told Echo before planning (from intent chips + steadiness toggle). */
+export interface EchoPlanOpts {
+  /** stated intent: "just make it last" | "rent/bills scare me" | "save a bit" | "you decide" | free text */
+  intent?: string;
+  /** true = steady income; false = it changes month to month. undefined = unknown. */
+  incomeSteady?: boolean;
 }
 
 export type PlaybookAIResult =
@@ -51,17 +75,28 @@ let _lastPlanContext: string | null = null;
 
 // ─── Context Builder ────────────────────────────────────────
 
-function buildPlaybookContext(playbook: Playbook): string {
+function buildPlaybookContext(playbook: Playbook, opts: EchoPlanOpts = {}): string {
   const currency = useSettingsStore.getState().currency;
   const now = new Date();
+
+  // ── 0. What the user told Echo (intent + steadiness) ──
+  let ctx = `WHAT THE USER TOLD YOU (lead with this — reflect it back before any numbers):`;
+  ctx += `\n  their words / intent: ${opts.intent && opts.intent.trim() ? opts.intent.trim() : '(they tapped "you decide" — they want you to lead)'}`;
+  if (opts.incomeSteady === true) {
+    ctx += `\n  income: steady — same most months, you can plan normally`;
+  } else if (opts.incomeSteady === false) {
+    ctx += `\n  income: IT CHANGES month to month — be conservative, keep the plan flexible, and SAY you kept it flexible because it varies`;
+  } else {
+    ctx += `\n  income: unknown — if their history looks irregular, lean conservative`;
+  }
 
   // ── 1. Current playbook state ──
   const existingItems = playbook.lineItems || [];
   const nbStats = computeNotebookStats(existingItems);
 
-  let ctx = `CURRENT PLAYBOOK:
+  ctx += `\n\nCURRENT PLAYBOOK:
 name: ${playbook.name}
-source: ${currency} ${playbook.sourceAmount.toLocaleString('en-MY')}
+money coming in: ${currency} ${playbook.sourceAmount.toLocaleString('en-MY')}
 start: ${format(playbook.startDate instanceof Date ? playbook.startDate : new Date(playbook.startDate), 'dd MMM yyyy')}`;
 
   if (existingItems.length > 0) {
@@ -120,13 +155,23 @@ start: ${format(playbook.startDate instanceof Date ? playbook.startDate : new Da
     .filter((p) => p.avg > 0)
     .sort((a, b) => b.avg - a.avg);
 
+  // Count months that actually have expense data — tells Echo how much it can trust.
+  const monthsWithData = monthlyExpenses.filter((x) => x > 0).length;
+  const totalExpenseTxns = transactions.filter((t) => t.type === 'expense').length;
+  const thinHistory = monthsWithData < 2 || totalExpenseTxns < 8;
+
   if (spendPatterns.length > 0) {
     const totalAvg = spendPatterns.reduce((s, p) => s + p.avg, 0);
-    ctx += `\n\nSPENDING PATTERNS (3-month avg):`;
+    ctx += `\n\nWHAT THEY USUALLY SPEND (last few months, for grounding rationale — say "about what you spent last month", never quote %):`;
     for (const p of spendPatterns.slice(0, 8)) {
-      ctx += `\n  ${p.cat}: ${currency} ${Math.round(p.avg)}/mo (${p.pctOfIncome}% of income, ${p.trend})`;
+      ctx += `\n  ${p.cat}: about ${currency} ${Math.round(p.avg)}/mo`;
     }
-    ctx += `\n  total avg: ${currency} ${Math.round(totalAvg)}/mo, surplus: ${currency} ${Math.round(avgIncomeVal - totalAvg)}/mo`;
+    ctx += `\n  rough total they usually spend: ${currency} ${Math.round(totalAvg)}/mo`;
+  }
+
+  ctx += `\n\nHISTORY DEPTH: ${monthsWithData} month(s) with spending logged, ${totalExpenseTxns} expense entries total.`;
+  if (thinHistory) {
+    ctx += ` THIN — this is basically a first run. ADMIT it gently ("first time — rough start, we'll dial it in"), and for any category you can't ground in real spending, set needsInput=true with amount=0 and a soft question instead of guessing a number.`;
   }
 
   // ── 2b. Monthly trends (compact cross-month snapshot) ──
@@ -223,14 +268,20 @@ start: ${format(playbook.startDate instanceof Date ? playbook.startDate : new Da
     .slice(0, 3);
 
   if (pastPlaybooks.length > 0) {
-    ctx += `\n\nPAST PLAYBOOKS (planned vs actual):`;
+    ctx += `\n\nPAST PLAYBOOKS (planned vs ACTUAL — where the money really went, from linked spend):`;
     for (const pp of pastPlaybooks) {
-      ctx += `\n  "${pp.name}" (${currency} ${pp.sourceAmount}):`;
-      for (const li of (pp.lineItems || [])) {
-        const actual = li.actualAmount ?? li.plannedAmount;
-        const diff = actual - li.plannedAmount;
-        const diffLabel = diff > 0 ? ` (+${currency} ${diff})` : diff < 0 ? ` (-${currency} ${Math.abs(diff)})` : '';
-        ctx += `\n    ${li.isPaid ? '[x]' : '[ ]'} ${li.label}: planned ${currency} ${li.plannedAmount}, actual ${currency} ${actual}${diffLabel}`;
+      const ppStats = computePlaybookStats(pp, transactions);
+      const kept = Math.round((pp.sourceAmount - ppStats.totalSpent) * 100) / 100;
+      const keptLabel = kept >= 0 ? `kept ${currency} ${kept}` : `went ${currency} ${Math.abs(kept)} over`;
+      ctx += `\n  "${pp.name}" (${currency} ${pp.sourceAmount}, ${keptLabel}):`;
+      const rows = computePlanVsActual(pp, transactions);
+      if (rows.length === 0) {
+        ctx += `\n    (no linked spend recorded)`;
+      }
+      for (const row of rows) {
+        const diff = Math.round((row.actual - row.planned) * 100) / 100;
+        const diffLabel = diff > 0 ? ` (+${currency} ${diff} over)` : diff < 0 ? ` (-${currency} ${Math.abs(diff)} under)` : '';
+        ctx += `\n    ${row.category}: planned ${currency} ${row.planned}, actual ${currency} ${row.actual}${diffLabel}`;
       }
     }
   }
@@ -243,6 +294,25 @@ start: ${format(playbook.startDate instanceof Date ? playbook.startDate : new Da
       ctx += `\n  ${obl.label}: ${currency} ${obl.amount} (${obl.type}${obl.category ? `, category: ${obl.category}` : ''}, ${obl.isCovered ? 'covered' : 'not covered'})`;
     }
   }
+
+  // ── 9b. Already-handled vs money left (obligations are NOT plan items) ──
+  // Obligations (subscriptions + debts due this period) are already-committed money
+  // tracked in a separate checklist. The plan only works with what's LEFT after them.
+  const oblTotal = oblResult.items.reduce((s, o) => s + o.amount, 0);
+  const moneyLeft = Math.max(0, Math.round((playbook.sourceAmount - oblTotal) * 100) / 100);
+  ctx += `\n\nALREADY HANDLED (bills/obligations — covered for them, present as a calm "handled" line, NEVER a scary list, DO NOT make plan items for these): ${currency} ${oblTotal}`;
+  ctx += `\nMONEY LEFT TO WORK WITH (coming in − already handled): ${currency} ${moneyLeft}`;
+
+  // ── 9c. Days in this period + a rough daily figure (the hero number) ──
+  const periodStart = playbook.startDate instanceof Date ? playbook.startDate : new Date(playbook.startDate);
+  // assume a roughly month-long period if no clear end; clamp to a sane range
+  let daysInPeriod = 30;
+  if (!isNaN(periodStart.getTime())) {
+    const end = endOfMonth(periodStart);
+    const d = Math.ceil((end.getTime() - periodStart.getTime()) / 86400000) + 1;
+    if (d >= 7 && d <= 45) daysInPeriod = d;
+  }
+  ctx += `\nDAYS IN THIS PERIOD: ~${daysInPeriod} (use this to work out the safe-to-spend daily figure: living money ÷ days)`;
 
   // ── 10. Learned patterns ──
   const learned = useLearningStore.getState();
@@ -277,74 +347,171 @@ start: ${format(playbook.startDate instanceof Date ? playbook.startDate : new Da
   return ctx;
 }
 
+// ─── Plan Input Summary (synchronous — no API call) ─────────
+
+/**
+ * Plain-language summary of WHAT the plan is based on, so a stressed user can
+ * trust it. Reuses the same store data buildPlaybookContext reads — NO API call.
+ * Returns 4–6 short, warm bullet lines. No jargon (no burn/pace/%).
+ */
+export function getPlanInputSummary(playbook: Playbook): string[] {
+  const currency = useSettingsStore.getState().currency;
+  const now = new Date();
+  const money = (n: number) => `${currency} ${Math.round(n).toLocaleString('en-MY')}`;
+  const lines: string[] = [];
+
+  // ── salary / source ──
+  lines.push(`your salary: ${money(playbook.sourceAmount)}`);
+
+  // ── top spending categories (3-month per-category avg) ──
+  const { transactions } = usePersonalStore.getState();
+  const catMonthly: Record<string, number[]> = {};
+  for (let m = 1; m <= 3; m++) {
+    const ms = startOfMonth(subMonths(now, m));
+    const me = endOfMonth(subMonths(now, m));
+    const monthExpenses = transactions.filter((t) => {
+      if (t.type !== 'expense') return false;
+      const d = t.date instanceof Date ? t.date : new Date(t.date);
+      return isWithinInterval(d, { start: ms, end: me });
+    });
+    for (const t of monthExpenses) {
+      if (!catMonthly[t.category]) catMonthly[t.category] = [0, 0, 0];
+      catMonthly[t.category][m - 1] += t.amount;
+    }
+  }
+  const topCats = Object.entries(catMonthly)
+    .map(([cat, months]) => {
+      const nonZero = months.filter((x) => x > 0);
+      const avg = nonZero.length > 0 ? nonZero.reduce((a, b) => a + b, 0) / nonZero.length : 0;
+      return { cat, avg };
+    })
+    .filter((p) => p.avg > 0)
+    .sort((a, b) => b.avg - a.avg)
+    .slice(0, 3);
+  if (topCats.length > 0) {
+    const first = topCats[0];
+    const rest = topCats.slice(1);
+    let spendLine = `you usually spend about ${money(first.avg)}/mo on ${first.cat}`;
+    for (const p of rest) {
+      spendLine += `, ${money(p.avg)} on ${p.cat}`;
+    }
+    lines.push(spendLine);
+  }
+
+  // ── bills / obligations due this period ──
+  const oblResult = getPlaybookObligations(playbook, playbook.coveredObligationIds || []);
+  if (oblResult.items.length > 0) {
+    const n = oblResult.items.length;
+    lines.push(`${n} ${n === 1 ? 'bill' : 'bills'} due this month (${money(oblResult.totalAmount)})`);
+  }
+
+  // ── debts you owe ──
+  const { debts } = useDebtStore.getState();
+  const iOwe = debts.filter((d) => d.status !== 'settled' && d.type === 'i_owe');
+  if (iOwe.length > 0) {
+    lines.push(`${iOwe.length} ${iOwe.length === 1 ? 'debt' : 'debts'} you owe`);
+  }
+
+  // ── past months to learn from ──
+  const pastClosed = usePlaybookStore.getState().playbooks.filter(
+    (p) => p.isClosed && p.id !== playbook.id && (p.lineItems?.length ?? 0) > 0,
+  );
+  if (pastClosed.length > 0) {
+    lines.push(`${pastClosed.length} past ${pastClosed.length === 1 ? 'month' : 'months'} to learn from`);
+  }
+
+  return lines;
+}
+
 // ─── System Prompt ──────────────────────────────────────────
 
 function buildEchoPrompt(currency: string): string {
-  return `You are Echo, the AI brain inside Potraces — a Malaysian personal finance app. You know EVERYTHING about this user's financial life.
+  return `You are Echo, a calm money companion inside Potraces — a Malaysian app. The person reading this is likely a young, financially STRESSED person. They are not in trouble with you. Your whole job is to make the next few weeks feel survivable.
 
-YOUR TASK: Analyze the user's finances and create a complete, intelligent spending plan for their salary.
+VOICE (this matters more than the math):
+- Calm. Quiet. Plain. Like a steady older sibling who has been broke too.
+- NEVER scold, never imply they did anything wrong, never use alarm.
+- Short words. Real life. No finance-class language.
+- Safety first: protect what they can't skip BEFORE talking about anything fun or "saving".
+- When you are not sure about a number, you ASK — you do not guess and pretend.
 
-YOU ARE NOT a suggestion generator. You are a smart friend who actually understands their money. You:
-- Know what they NEED to spend (obligations, bills, food, transport)
-- Know what they WANT to spend (entertainment, shopping)
-- Know what's NORMAL for them (based on 3 months of history)
-- Spot when something is OFF (spending way more or less than usual)
-- Think about their GOALS (savings targets, debt payoff)
+HOW TO BUILD THE PLAN, IN THIS ORDER:
+1. PROTECT FIRST — the bills/obligations they can't skip are ALREADY HANDLED (see "ALREADY HANDLED" in the data). Make ONE calm item for this (label like "bills", needsInput false) that just confirms it's covered. NEVER list out each scary bill. NEVER make it feel like a pile of debt.
+2. SAFETY MONEY — a small buffer, roughly ${currency} 150–250, for the thing that always goes wrong (label "safety money"). This is safety, not savings.
+3. A TINY WIN — a small set-aside, roughly ${currency} 50 (label "set aside" or "saved"). KEEP IT TINY. A big savings target makes a broke person feel they can't save at all. Small and doable beats ambitious every time.
+4. LIVING MONEY + THE DAILY FIGURE (the hero) — whatever is left is living money. Work out the safe-to-spend-per-day = living money ÷ days in the period (in the data). The daily figure is the single most important thing you give them.
+- Cap the whole plan to about 3 to 5 items. Not 8. Fewer, calmer, clearer.
 
-HOW TO THINK:
-1. Start with NEEDS: obligations, debt payments, food, transport — non-negotiable
-2. Add RECURRING spending: use their ACTUAL 3-month average, not guesses
-3. Flag ALERTS: if a category is 30%+ above their average, warn them
-4. Include SAVINGS: if they have goals, calculate a reasonable monthly amount
-5. Leave 5-10% as breathing room — don't plan every ringgit
-6. If items already exist in the notebook, DON'T repeat them — plan what's MISSING
-7. Think about the total: do items + obligations exceed the salary? Warn if so
-8. If PAST ECHO ADVICE is available, learn from it — build on what worked, adjust what didn't, acknowledge their patterns across months
+REFLECT BEFORE YOU PRESCRIBE:
+- "reflection" is Turn 1. It is ONE line that mirrors back what THEY said they want + what you're looking at, ending in a soft confirm. NO numbers at all in reflection. Example: "okay — you just want this to last till month-end, and i'm looking at your bills and the usual stuff. sound right?"
 
-RESPONSE FORMAT (strict JSON, no markdown):
+ASK WHEN UNSURE:
+- For any item where the data is thin or irregular and you genuinely don't know a fair number, set needsInput=true, amount=0, and write a gentle question. Example question: "i don't know your transport yet — leave it blank or set something?" Do NOT invent a confident number to fill a gap.
+
+INCOME THAT CHANGES:
+- If the data says income changes month to month, be more conservative (smaller tiny-win, slightly bigger safety money) and say so in the summary, e.g. "since it varies, i kept it flexible".
+
+THIN / FIRST-TIME DATA:
+- If the data says history is thin, admit it warmly in the reflection or summary ("first time — rough start, we'll dial it in") and use needsInput instead of confident numbers for anything you can't ground.
+
+WARNINGS:
+- AT MOST ONE. Gentle. Always framed as a CHOICE, never a verdict. Example: "things are a little tight this month — want me to find room, or trim something small?"
+- The plan must make full sense WITHOUT the warning. Never put the warning first, never make the plan depend on it. Empty array is perfectly fine and usually better.
+
+RESPONSE FORMAT (strict JSON, no markdown, no code fences):
 {
-  "greeting": "short warm opening — acknowledge their salary, set the tone",
+  "reflection": "ONE line mirroring their intent + what you're looking at, soft confirm at the end. NO numbers.",
   "items": [
     {
-      "label": "item name (lowercase, casual — 'makan', 'grab', 'cc bill')",
-      "amount": 600,
-      "category": "food",
-      "rationale": "short reason — 'your 3-month avg' or 'covers netflix + spotify'",
-      "alert": "only if something notable — 'you spent RM 350 last month, this is tight' or null",
-      "confidence": "high|medium|low",
-      "source": "recurring|historical|debt|goal|subscription|estimate"
+      "label": "bills",
+      "amount": 0,
+      "category": "bills",
+      "rationale": "this is handled — already set aside",
+      "needsInput": false
+    },
+    {
+      "label": "safety money",
+      "amount": 200,
+      "category": "other",
+      "rationale": "for when something unexpected comes up",
+      "needsInput": false
+    },
+    {
+      "label": "transport",
+      "amount": 0,
+      "category": "transport",
+      "needsInput": true,
+      "question": "i don't know your transport yet — leave it blank or set something?"
     }
   ],
-  "warnings": [
-    "big-picture alerts — 'your subs total RM 260, that's 8% of your salary'",
-    "or 'no savings allocation — consider setting aside even RM 100'"
-  ],
-  "summary": "one warm closing paragraph about their overall financial picture — honest, never judgmental"
+  "warnings": [],
+  "summary": "ONE warm closing sentence: what's handled + the tiny set-aside + the safe daily figure. e.g. 'bills handled, ${currency} 50 set aside, about ${currency} 65 a day to live on — you're okay.'"
 }
 
-RULES:
-- Use ${currency} amounts (numbers only in amount field)
-- category is REQUIRED on every item — use exact IDs: food, transport, shopping, entertainment, bills, health, education, family, subscription, debt_payment, other
-- Labels: how a Malaysian would write them — "makan", "grab", "cc bill", not "Food & Dining", "Transportation"
-- rationale: ALWAYS explain WHY this amount — "avg last 3 months", "minimum payment", "covers spotify + netflix"
-- alert: ONLY when spending deviates 30%+ from their norm, or something genuinely notable. null otherwise
-- Maximum 8 items — quality over quantity
-- Amounts rounded to nearest 10 or 50
-- greeting and summary: warm, honest, like a friend. Never say "you should". PLAIN TEXT ONLY — no markdown, no ** or * formatting
-- warnings: max 3, only genuine concerns. Empty array if nothing notable. Plain text, no markdown
-- Total items should NOT exceed the salary amount — if they do, warn about it
+ITEM RULES:
+- Use ${currency} amounts (numbers only in the amount field).
+- category uses these exact ids when known: food, transport, shopping, entertainment, bills, health, education, family, subscription, debt_payment, other.
+- label: lowercase, casual, plain — "bills", "safety money", "set aside", "living money", "makan", "transport".
+- rationale: ONE short plain line tied to their own life — "about what you spent last month", "for when something comes up", "this is handled". NEVER use %, never "burn", "pace", "runway", "allocate", "discretionary". NEVER show source or confidence.
+- needsInput: true ONLY when you truly can't ground a number — then amount MUST be 0 and question MUST be set, and skip rationale numbers.
+- "bills"/handled item: amount may be 0 (it's tracked elsewhere) — it exists to reassure, not to spend.
+- Amounts rounded to nearest 10 or 50. Keep the tiny-win small (~${currency} 50). Keep safety money ~${currency} 150–250.
 
-DEDUPLICATION (CRITICAL — read carefully):
-- NEVER suggest an item that already exists in the notebook — check "existing items" in the data. Match by MEANING, not just exact text. "cc bill" = "credit card" = "credit card bill" = "kad kredit". "makan" = "food" = "groceries". "grab" = "transport" = "commute".
-- NEVER create two items in YOUR OWN response that overlap. If you have "bills" covering utilities + internet, don't also add a separate "wifi" or "internet" item.
-- Group related spending into ONE item. Multiple subscriptions → one "subs" item. Multiple debt payments → one "hutang" item (list what it covers in rationale).
-- If an obligation or subscription is already covered by an existing notebook item, skip it entirely.
-- Before finalizing, review your items list: would a human see any two items and think "isn't that the same thing?" If yes, merge them.`;
+BILLS/OBLIGATIONS ARE OFF-LIMITS AS SPEND ITEMS:
+- The "ALREADY HANDLED" amount is committed money tracked separately. Make ONE calm "bills" confirm item — never one item per bill, never a debt pile. The rest of your items only ever work with "MONEY LEFT TO WORK WITH".
+
+DON'T DOUBLE UP:
+- Don't repeat anything already in "existing items". Match by meaning. Group related things into one item. If two of your own items feel like the same thing to a normal person, merge them.
+
+BANNED WORDS — never appear anywhere in your output (any field): profit, loss, revenue, burn, pace, runway, discretionary, allocate, "you should", overspent, and the "%" symbol. No red/alarm framing. No judgement.`;
 }
 
 // ─── Main API Call ──────────────────────────────────────────
 
-export async function askEchoPlan(playbook: Playbook): Promise<PlaybookAIResult> {
+export async function askEchoPlan(
+  playbook: Playbook,
+  opts: EchoPlanOpts = {},
+): Promise<PlaybookAIResult> {
   if (!isGeminiAvailable()) {
     const secs = getCooldownSecondsLeft();
     if (secs > 0) return { ok: false, error: `echo is cooling down — ${secs}s` };
@@ -358,7 +525,7 @@ export async function askEchoPlan(playbook: Playbook): Promise<PlaybookAIResult>
 
   try {
     const currency = useSettingsStore.getState().currency;
-    const context = buildPlaybookContext(playbook);
+    const context = buildPlaybookContext(playbook, opts);
     _lastPlanContext = context; // cache for multi-turn chat reuse
     const systemPrompt = buildEchoPrompt(currency);
 
@@ -368,7 +535,7 @@ export async function askEchoPlan(playbook: Playbook): Promise<PlaybookAIResult>
         contents: [
           {
             role: 'user' as const,
-            parts: [{ text: `Here is the user's full financial data:\n\n${context}\n\nCreate a complete spending plan for this paycheck.` }],
+            parts: [{ text: `Here is the user's full financial data:\n\n${context}\n\nReflect back what they want, then give a calm, safety-first plan for this money.` }],
           },
         ],
         generationConfig: {
@@ -395,11 +562,15 @@ export async function askEchoPlan(playbook: Playbook): Promise<PlaybookAIResult>
     premium.incrementAiCalls();
     const result = parseEchoResponse(rawText, truncated);
     if (result.ok) {
-      const totalPlanned = result.plan.items.reduce((s, i) => s + i.amount, 0);
-      if (totalPlanned > playbook.sourceAmount) {
+      // Only items with a real amount count toward "money left". Items awaiting
+      // input (needsInput) and the reassurance "bills" line are 0 and excluded.
+      const totalPlanned = result.plan.items
+        .filter((i) => !i.needsInput)
+        .reduce((s, i) => s + i.amount, 0);
+      if (totalPlanned > playbook.sourceAmount && totalPlanned > 0) {
         const scale = playbook.sourceAmount / totalPlanned;
         for (const item of result.plan.items) {
-          item.amount = Math.round(item.amount * scale);
+          if (!item.needsInput) item.amount = Math.round(item.amount * scale);
         }
       }
     }
@@ -433,26 +604,23 @@ export async function chatWithEcho(
     const currency = useSettingsStore.getState().currency;
     const context = _lastPlanContext || buildPlaybookContext(playbook);
 
-    const systemPrompt = `You are Echo, the AI brain inside Potraces — a Malaysian personal finance app. You know EVERYTHING about this user's financial life.
+    const systemPrompt = `You are Echo, a calm money companion inside Potraces — a Malaysian app. The person reading this is likely young and financially stressed. You just gave them a gentle, safety-first plan for their money. Now they want to talk it through.
 
-You just gave the user a spending plan for their salary. Now they want to discuss it — ask questions, explore alternatives, get advice on managing their money better.
+VOICE (matters most):
+- Calm, quiet, plain. Like a steady older sibling who has been broke too. Never scold, never alarm, never imply they did anything wrong.
+- Safety first — protect what they can't skip before anything fun or "saving".
+- When you're not sure of a number, ask instead of guessing.
 
 HOW TO RESPOND:
-- PLAIN TEXT ONLY — never use markdown, never use ** or * or # or bullet points or any formatting. Just write normally like a text message.
-- Be warm but ANALYTICAL — you're a smart friend who actually does the math
-- ALWAYS show the numbers: "if you cut makan from ${currency} 600 to ${currency} 400, that frees up ${currency} 200 — enough to cover your savings goal"
-- Compare against their REAL data: "your 3-month avg for food is ${currency} 580, so ${currency} 400 would be tight"
-- Think about ripple effects: cutting one thing affects others
-- Give actual advice based on their debt, savings goals, spending patterns — not generic tips
-- Be honest about what's realistic vs wishful thinking
-- Reference specific numbers from their financial data
-- If they ask about saving more, calculate exactly how much and from where
-- If they ask about debt, show the impact of different payoff strategies
-- Malaysian context: "makan", "grab", casual language
-- Never say "you should" — suggest, don't command
-- Use ${currency} for all amounts
-- Always finish your thought — never cut off mid-sentence
-- If PAST ECHO ADVICE is in the data, you remember previous sessions — reference past advice when relevant ("last month we talked about cutting food to ${currency} 500, looks like that worked")`;
+- PLAIN TEXT ONLY — no markdown, no ** or * or # or bullet points. Write like a calm text message.
+- Use their own life as the reference — "about what you spent last month", not stats. Keep numbers light and only when they help.
+- If they want to free up money, show simply where it could come from, framed as a choice ("want me to find room, or trim something small?").
+- Honest but never harsh about what's realistic.
+- Malaysian context: "makan", "grab", casual language.
+- Use ${currency} for amounts. Always finish your thought — never cut off mid-sentence.
+- If PAST ECHO ADVICE is in the data, you remember past sessions — reference gently when relevant.
+
+BANNED WORDS — never use, anywhere: profit, loss, revenue, burn, pace, runway, discretionary, allocate, "you should", overspent, and the "%" symbol. No red/alarm framing, no judgement.`;
 
     // Build multi-turn conversation
     const contents: any[] = [
@@ -559,9 +727,9 @@ export function buildEchoMemoryEntry(
   chatMessages: { role: 'user' | 'echo'; text: string }[],
 ): Omit<EchoMemoryEntry, 'date'> {
   const keyAdvice = plan.items
-    .filter((i) => i.confidence === 'high' || i.alert)
+    .filter((i) => !i.needsInput && i.amount > 0)
     .slice(0, 3)
-    .map((i) => i.alert || `${i.label}: ${i.rationale}`);
+    .map((i) => `${i.label}: ${i.rationale || `${i.amount}`}`);
 
   if (plan.warnings.length > 0) {
     keyAdvice.push(...plan.warnings.slice(0, 2));
@@ -614,19 +782,29 @@ function parseEchoResponse(raw: string, truncated = false): PlaybookAIResult {
     if (Array.isArray(parsed.items)) {
       for (const s of parsed.items) {
         if (!s.label || typeof s.label !== 'string') continue;
-        const amount = typeof s.amount === 'number' ? s.amount : parseFloat(s.amount);
-        if (isNaN(amount) || amount <= 0) continue;
+
+        const needsInput = s.needsInput === true;
+        const rawAmount = typeof s.amount === 'number' ? s.amount : parseFloat(s.amount);
+        const amount = isNaN(rawAmount) || rawAmount < 0 ? 0 : Math.round(rawAmount);
+        const question = typeof s.question === 'string' && s.question.trim() ? s.question.trim() : undefined;
+
+        // Keep an item if it has a real amount, OR it's an explicit ask, OR it's a
+        // zero-amount reassurance line (e.g. "bills" handled). Drop empty noise.
+        if (amount <= 0 && !needsInput && !question) continue;
 
         items.push({
           label: s.label.trim().toLowerCase(),
-          amount: Math.round(amount),
+          amount: needsInput ? 0 : amount,
           category: typeof s.category === 'string' ? s.category.trim() : undefined,
           rationale: typeof s.rationale === 'string' ? s.rationale.trim() : '',
+          ...(needsInput ? { needsInput: true } : {}),
+          ...(question ? { question } : {}),
+          // legacy fields kept for memory/compat, not surfaced in UI
           alert: typeof s.alert === 'string' && s.alert.trim() ? s.alert.trim() : undefined,
-          confidence: ['high', 'medium', 'low'].includes(s.confidence) ? s.confidence : 'medium',
+          confidence: ['high', 'medium', 'low'].includes(s.confidence) ? s.confidence : undefined,
           source: ['recurring', 'historical', 'debt', 'goal', 'subscription', 'estimate'].includes(s.source)
             ? s.source
-            : 'estimate',
+            : undefined,
         });
       }
     }
@@ -639,13 +817,18 @@ function parseEchoResponse(raw: string, truncated = false): PlaybookAIResult {
       if (item.amount > 1_000_000) item.amount = 0;
     }
 
-    const greeting = typeof parsed.greeting === 'string' ? parsed.greeting.trim() : '';
+    const reflection = typeof parsed.reflection === 'string' ? parsed.reflection.trim() : '';
+    // greeting kept for backward compat (memory entries); fall back to reflection.
+    const greeting = typeof parsed.greeting === 'string' && parsed.greeting.trim()
+      ? parsed.greeting.trim()
+      : reflection;
     const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+    // At most ONE gentle warning is surfaced.
     const warnings = Array.isArray(parsed.warnings)
-      ? parsed.warnings.filter((w: any) => typeof w === 'string' && w.trim()).map((w: any) => w.trim())
+      ? parsed.warnings.filter((w: any) => typeof w === 'string' && w.trim()).map((w: any) => w.trim()).slice(0, 1)
       : [];
 
-    return { ok: true, plan: { greeting, items, warnings, summary } };
+    return { ok: true, plan: { greeting, reflection, items, warnings, summary } };
   } catch {
     if (__DEV__) console.warn('[PlaybookAI] Parse error, raw:', raw.slice(0, 200));
     return { ok: false, error: 'echo response was garbled — try again' };

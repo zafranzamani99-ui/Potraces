@@ -232,7 +232,7 @@ const CostCategoryPicker: React.FC<Props> = ({ selected, onSelect }) => {
               value={formName}
               onChangeText={setFormName}
               placeholder={sl.categoryNamePlaceholder}
-              placeholderTextColor={C.textMuted}
+              placeholderTextColor={withAlpha(C.textMuted, 0.6)}
               keyboardAppearance={isDark ? 'dark' : 'light'}
               selectionColor={C.bronze}
               autoFocus
@@ -390,6 +390,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
     backgroundColor: C.background,
   },
   iconGrid: { maxHeight: 120 },

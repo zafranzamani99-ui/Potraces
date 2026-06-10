@@ -17,6 +17,7 @@ import {
   Image,
   StatusBar,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
@@ -37,6 +38,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 
 import { formatAmount } from '../../utils/formatters';
+import { useT } from '../../i18n';
 import { useFadeSlide } from '../../utils/fadeSlide';
 import { useSeasonInsights } from '../../hooks/useSeasonInsights';
 import SeasonStartSheet from '../../components/seller/SeasonStartSheet';
@@ -59,10 +61,12 @@ const SellerDashboard: React.FC = () => {
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const { orders, products, ingredientCosts, seasons, sellerCustomers, skippedOnboardingSteps, skipOnboardingStep } = useSellerStore();
+  const isSyncing = useSellerStore((s) => s.isSyncing);
   const { businessSetupComplete, incomeType } = useBusinessStore();
   const currency = useSettingsStore((s) => s.currency);
   const paymentQrs = useSettingsStore((s) => s.businessPaymentQrs) || [];
   const navigation = useNavigation<any>();
+  const t = useT();
 
   const now = new Date();
   const monthStart = startOfMonth(now);
@@ -143,7 +147,6 @@ const SellerDashboard: React.FC = () => {
     };
   }, [currentOrders, currentCosts]);
 
-  const heroKept = activeSeason && seasonInsights ? seasonInsights.kept : kept;
   const heroCosts = activeSeason && seasonInsights ? seasonInsights.costs : totalCosts;
 
   const { seasonWeekly, seasonSparkMax } = useMemo(() => {
@@ -343,6 +346,8 @@ const SellerDashboard: React.FC = () => {
     return { keptRate: _keptRate, totalOrderValue: _totalOrderValue, collectionRate: _collectionRate };
   }, [totalIncome, kept, currentOrders]);
 
+  const heroDisplayValue = activeSeason && seasonInsights ? seasonInsights.kept : totalOrderValue;
+
   // ── 7-day activity sparkline ────────────────────────────
   const { weeklyActivity, sparklineMax } = useMemo(() => {
     const days: { date: Date; count: number; label: string }[] = [];
@@ -438,13 +443,13 @@ const SellerDashboard: React.FC = () => {
       setDisplayKept(null);
       return;
     }
-    if (heroKept === 0) return;
+    if (heroDisplayValue === 0) return;
     hasCountedUp.current = true;
     const listener = heroCountRef.addListener(({ value }) => {
       setDisplayKept(Math.round(value));
     });
     Animated.timing(heroCountRef, {
-      toValue: heroKept,
+      toValue: heroDisplayValue,
       duration: 400,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
@@ -453,7 +458,7 @@ const SellerDashboard: React.FC = () => {
       setDisplayKept(null);
     });
     return () => heroCountRef.removeListener(listener);
-  }, [heroKept]);
+  }, [heroDisplayValue]);
 
   // MoM badge pop — only when positive (celebrate wins, quiet on losses)
   const momPopAnim = useRef(new Animated.Value(0)).current;
@@ -586,6 +591,7 @@ const SellerDashboard: React.FC = () => {
     navigation.getParent()?.navigate('SellerCosts');
   }, [navigation]);
 
+
   const goToNewOrder = useCallback(() => {
     lightTap();
     navigation.navigate('SellerNewOrder');
@@ -606,6 +612,18 @@ const SellerDashboard: React.FC = () => {
     );
   }
 
+  // Show loading indicator when initial sync is in progress and store is empty
+  if (isSyncing && orders.length === 0 && products.length === 0) {
+    return (
+      <View style={{ flex: 1, backgroundColor: C.background, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={C.bronze} />
+        <Text style={{ marginTop: SPACING.lg, fontSize: TYPOGRAPHY.size.base, color: C.textSecondary }}>
+          loading your data...
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -618,7 +636,9 @@ const SellerDashboard: React.FC = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.bronze} colors={[C.bronze]} />
         }
       >
-        <ModeToggle />
+        <View style={styles.topRow}>
+          <ModeToggle />
+        </View>
         <OfflineBanner />
         {/* ── Sync status (CF-52) ── */}
         {syncStatus === 'syncing' ? (
@@ -691,19 +711,14 @@ const SellerDashboard: React.FC = () => {
               </>
             ) : (
               <>
-                <Text style={styles.heroLabel}>KEPT THIS MONTH</Text>
+                <Text style={styles.heroLabel}>{t.seller.sdThisMonth.toUpperCase()}</Text>
                 <View style={{ flex: 1 }} />
-                {momDelta !== null && (
-                  <Animated.View style={[styles.heroMomBadge, { transform: [{ scale: momPopAnim }] }]}>
-                    <Feather
-                      name={momDelta >= 0 ? 'trending-up' : 'trending-down'}
-                      size={12}
-                      color={momDelta >= 0 ? C.bronze : semantic(BIZ_SAFE.loss, isDark)}
-                    />
-                    <Text style={[styles.heroMomText, { color: momDelta >= 0 ? C.bronze : semantic(BIZ_SAFE.loss, isDark) }]}>
-                      {momDelta >= 0 ? '+' : ''}{momDelta.toFixed(0)}%
+                {currentOrders.length > 0 && (
+                  <View style={styles.seasonDayBadge}>
+                    <Text style={styles.seasonDayBadgeText}>
+                      {currentOrders.length} {currentOrders.length === 1 ? 'order' : t.seller.orders}
                     </Text>
-                  </Animated.View>
+                  </View>
                 )}
               </>
             )}
@@ -759,14 +774,14 @@ const SellerDashboard: React.FC = () => {
               >
                 <Text
                   style={[styles.heroAmount, { color: C.textPrimary }]}
-                  accessibilityLabel={`Kept this season: ${formatAmount(heroKept, currency)}`}
+                  accessibilityLabel={`Kept this season: ${formatAmount(heroDisplayValue, currency)}`}
                 >
-                  {displayKept !== null ? `${currency} ${displayKept.toLocaleString()}` : formatAmount(heroKept, currency, 0)}
+                  {displayKept !== null ? `${currency} ${displayKept.toLocaleString()}` : formatAmount(heroDisplayValue, currency, 0)}
                 </Text>
                 <Text style={styles.seasonKeptLabel}>kept so far</Text>
               </Pressable>
               {seasonInsights.costs > 0 && (
-                <Text style={[styles.heroCostsSubtitle, heroKept < 0 && { color: semantic(BIZ_SAFE.loss, isDark) }]}>
+                <Text style={[styles.heroCostsSubtitle, heroDisplayValue < 0 && { color: semantic(BIZ_SAFE.loss, isDark) }]}>
                   after {formatAmount(seasonInsights.costs, currency, 0)} in costs
                 </Text>
               )}
@@ -840,80 +855,141 @@ const SellerDashboard: React.FC = () => {
             <>
               <Text
                 style={[styles.heroAmount, { color: C.textPrimary }]}
-                accessibilityLabel={`Kept this month: ${formatAmount(kept, currency)}`}
+                accessibilityLabel={`Orders this month: ${formatAmount(totalOrderValue, currency)}`}
               >
-                {displayKept !== null ? `${currency} ${displayKept.toLocaleString()}` : formatAmount(kept, currency, 0)}
+                {displayKept !== null ? `${currency} ${displayKept.toLocaleString()}` : formatAmount(totalOrderValue, currency, 0)}
               </Text>
-              {totalCosts > 0 && (
-                <Text style={[styles.heroCostsSubtitle, kept < 0 && { color: semantic(BIZ_SAFE.loss, isDark) }]}>
-                  after {formatAmount(totalCosts, currency, 0)} in costs
-                </Text>
-              )}
-              {keptRate !== null && totalIncome > 0 && (
-                <Text style={styles.heroMargin}>
-                  kept {keptRate.toFixed(0)}%
-                  {todaysOrders.length > 0 && (
-                    <Text style={styles.heroTodayInline}>
-                      {'  ·  '}today {formatAmount(todaysCameIn, currency, 0)}
-                    </Text>
-                  )}
-                </Text>
-              )}
-              {keptRate === null && todaysOrders.length > 0 && (
-                <Text style={styles.heroMargin}>
-                  today {formatAmount(todaysCameIn, currency, 0)} · {todaysOrders.length} {todaysOrders.length === 1 ? 'order' : 'orders'}
-                </Text>
-              )}
-              {!isFirstTime && (
-                <Pressable
-                  style={({ pressed }) => [styles.heroSparkline, pressed && { opacity: 0.7 }]}
-                  onPress={goToOrders}
-                  accessibilityRole="button"
-                  accessibilityLabel="7-day order activity"
-                >
-                  <View style={styles.heroSparklineBars}>
-                    {weeklyActivity.map((day, i) => {
-                      const heightPct = sparklineMax > 0 ? (day.count / sparklineMax) * 100 : 0;
-                      const isActive = isToday(day.date);
-                      return (
-                        <View key={i} style={styles.heroSparklineCol}>
-                          <View style={styles.heroSparklineTrack}>
-                            <View
-                              style={[
-                                styles.heroSparklineBar,
-                                {
-                                  height: `${Math.max(heightPct, 6)}%`,
-                                  backgroundColor: isActive
-                                    ? withAlpha(C.bronze, 0.85)
-                                    : withAlpha(C.bronze, 0.15),
-                                },
-                              ]}
-                            />
-                          </View>
-                          <Text style={[styles.heroSparklineLabel, isActive && styles.heroSparklineLabelActive]}>
-                            {day.label}
-                          </Text>
-                        </View>
-                      );
-                    })}
+              {currentOrders.length > 0 && totalIncome > 0 && (
+                <View style={styles.heroCollectionWrap}>
+                  <View style={styles.heroCollectionTrack}>
+                    <View style={[styles.heroCollectionFill, { width: `${Math.min(collectionRate, 100)}%` }]} />
                   </View>
-                  <Text style={styles.heroSparklineHint}>
-                    {weeklyActivity.reduce((s, d) => s + d.count, 0)} orders this week
+                  <Text style={styles.heroCollectionText}>
+                    {formatAmount(totalIncome, currency, 0)} {t.seller.sdCollected}
                   </Text>
-                </Pressable>
+                </View>
+              )}
+              {todaysOrders.length > 0 && (
+                <Text style={styles.heroMargin}>
+                  today {formatAmount(todaysCameIn, currency, 0)} · {todaysOrders.length} {todaysOrders.length === 1 ? 'order' : t.seller.orders}
+                </Text>
               )}
             </>
           )}
         </Animated.View>
 
-        {/* ── AI insight (unpaid summary / observations) ── */}
-        {insight && (
-          <Animated.View style={[styles.insightContainer, insightAnim]}>
-            <Text style={styles.insightText}>{insight}</Text>
+        {/* ── Production checklist (preview) ──────────────── */}
+        {productionList.length > 0 && !isFirstTime && (
+          <Animated.View style={urgencyAnim}>
+            <Pressable
+              style={({ pressed }) => [styles.itemStatsCard, pressed && { opacity: 0.8 }]}
+              onPress={() => { lightTap(); closeAllModals(); setShowItemsModal(true); }}
+            >
+              <View style={styles.productionHeader}>
+                <View style={styles.productionHeaderLeft}>
+                  <Feather name="list" size={16} color={C.bronze} />
+                  <Text style={styles.productionHeaderText}>TO MAKE</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
+                  <Text style={styles.productionCount}>{checkedCount}/{productionList.length} done</Text>
+                  <Feather name="chevron-right" size={14} color={C.textMuted} />
+                </View>
+              </View>
+              <View style={styles.productionProgressTrack}>
+                <View style={[styles.productionProgressFill, { width: `${(checkedCount / productionList.length) * 100}%` }]} />
+              </View>
+              {productionList.slice(0, 4).map((item, index) => {
+                const done = !!checkedItems[item.name];
+                return (
+                  <Pressable
+                    key={item.name}
+                    style={({ pressed }) => [styles.productionRow, index === Math.min(productionList.length, 4) - 1 && styles.productionRowLast, pressed && { opacity: 0.7 }]}
+                    unstable_pressDelay={50}
+                    onPress={() => { toggleChecked(item.name); }}
+                  >
+                    <View style={styles.productionItemLeft}>
+                      <View style={[styles.productionCheckbox, done && styles.productionCheckboxDone]}>
+                        {done && <Feather name="check" size={12} color={C.surface} />}
+                      </View>
+                      <Text style={[styles.productionItemName, done && styles.productionItemNameDone]} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                    </View>
+                    <Text style={[styles.productionItemQty, done && styles.productionItemQtyDone]}>
+                      {item.qty} {item.unit}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              {productionList.length > 4 && (
+                <View style={styles.itemStatsMore}>
+                  <Text style={styles.itemStatsMoreText}>+{productionList.length - 4} more items</Text>
+                </View>
+              )}
+            </Pressable>
           </Animated.View>
         )}
 
-        {/* ── Quick actions — secondary shortcuts only ── */}
+        {/* ── To collect card ─────────────────────────── */}
+        {unpaidAging && !isFirstTime && (() => {
+          const bucketCount = (unpaidAging.older.length > 0 ? 1 : 0) + (unpaidAging.twoWeeks.length > 0 ? 1 : 0) + (unpaidAging.week.length > 0 ? 1 : 0);
+          return (
+          <Animated.View style={pipelineAnim}>
+            <Pressable
+              style={({ pressed }) => [styles.toCollectCard, pressed && { opacity: 0.7 }]}
+              onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'unpaid' }); }}
+              accessibilityRole="button"
+              accessibilityLabel={`${unpaidAging.total} unpaid orders, ${formatAmount(unpaidTotal, currency, 0)}`}
+            >
+              <View style={styles.toCollectHeader}>
+                <View style={styles.productionHeaderLeft}>
+                  <Feather name="dollar-sign" size={16} color={C.bronze} />
+                  <Text style={[styles.productionHeaderText]}>{t.seller.sdToCollect.toUpperCase()}</Text>
+                </View>
+                <Text style={styles.toCollectAmount}>{formatAmount(unpaidTotal, currency, 0)}</Text>
+              </View>
+              {bucketCount > 1 ? (
+                <>
+                  {unpaidAging.older.length > 0 && (
+                    <View style={styles.toCollectRow}>
+                      <View style={styles.toCollectRowLeft}>
+                        <View style={[styles.toCollectDot, styles.toCollectDotOverdue]} />
+                        <Text style={styles.toCollectRowText}>{unpaidAging.older.length} {t.seller.sdOverdue} · {'>'} 14 days</Text>
+                      </View>
+                      <Feather name="chevron-right" size={14} color={C.textMuted} />
+                    </View>
+                  )}
+                  {unpaidAging.twoWeeks.length > 0 && (
+                    <View style={styles.toCollectRow}>
+                      <View style={styles.toCollectRowLeft}>
+                        <View style={styles.toCollectDot} />
+                        <Text style={styles.toCollectRowText}>{unpaidAging.twoWeeks.length} · 1–2 weeks</Text>
+                      </View>
+                      <Feather name="chevron-right" size={14} color={C.textMuted} />
+                    </View>
+                  )}
+                  {unpaidAging.week.length > 0 && (
+                    <View style={styles.toCollectRow}>
+                      <View style={styles.toCollectRowLeft}>
+                        <View style={styles.toCollectDot} />
+                        <Text style={styles.toCollectRowText}>{unpaidAging.week.length} {t.seller.sdRecent}</Text>
+                      </View>
+                      <Feather name="chevron-right" size={14} color={C.textMuted} />
+                    </View>
+                  )}
+                </>
+              ) : (
+                <View style={styles.toCollectRow}>
+                  <Text style={styles.toCollectRowText}>{unpaidAging.total} {t.seller.sdViewUnpaid}</Text>
+                  <Feather name="chevron-right" size={14} color={C.textMuted} />
+                </View>
+              )}
+            </Pressable>
+          </Animated.View>
+          );
+        })()}
+
+        {/* ── Quick actions — secondary shortcuts ────── */}
         <Animated.View style={quickActionsAnim}>
           <View style={styles.quickActionsRow}>
             <Pressable
@@ -950,77 +1026,6 @@ const SellerDashboard: React.FC = () => {
             </Pressable>
           </View>
         </Animated.View>
-
-        {/* ── Production checklist (preview) ──────────────── */}
-        {productionList.length > 0 && !isFirstTime && (
-          <Animated.View style={urgencyAnim}>
-            <Pressable
-              style={({ pressed }) => [styles.itemStatsCard, pressed && { opacity: 0.8 }]}
-              onPress={() => { lightTap(); closeAllModals(); setShowItemsModal(true); }}
-            >
-              {/* Header */}
-              <View style={styles.productionHeader}>
-                <View style={styles.productionHeaderLeft}>
-                  <Feather name="list" size={16} color={C.bronze} />
-                  <Text style={styles.productionHeaderText}>TO MAKE</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
-                  <Text style={styles.productionCount}>{checkedCount}/{productionList.length} done</Text>
-                  <Feather name="chevron-right" size={14} color={C.textMuted} />
-                </View>
-              </View>
-              {/* Progress bar */}
-              <View style={styles.productionProgressTrack}>
-                <View style={[styles.productionProgressFill, { width: `${(checkedCount / productionList.length) * 100}%` }]} />
-              </View>
-              {/* First 4 rows */}
-              {productionList.slice(0, 4).map((item, index) => {
-                const done = !!checkedItems[item.name];
-                return (
-                  <Pressable
-                    key={item.name}
-                    style={({ pressed }) => [styles.productionRow, index === Math.min(productionList.length, 4) - 1 && styles.productionRowLast, pressed && { opacity: 0.7 }]}
-                    unstable_pressDelay={50}
-                    onPress={() => { toggleChecked(item.name); }}
-                  >
-                    <View style={styles.productionItemLeft}>
-                      <View style={[styles.productionCheckbox, done && styles.productionCheckboxDone]}>
-                        {done && <Feather name="check" size={12} color={C.surface} />}
-                      </View>
-                      <Text style={[styles.productionItemName, done && styles.productionItemNameDone]} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                    </View>
-                    <Text style={[styles.productionItemQty, done && styles.productionItemQtyDone]}>
-                      {item.qty} {item.unit}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-              {productionList.length > 4 && (
-                <View style={styles.itemStatsMore}>
-                  <Text style={styles.itemStatsMoreText}>+{productionList.length - 4} more items</Text>
-                </View>
-              )}
-            </Pressable>
-          </Animated.View>
-        )}
-
-        {/* ── Break-even indicator ─────────────────────── */}
-        {totalCosts > 0 && (
-          <Animated.View style={[styles.breakEvenCard, kept >= 0 ? styles.breakEvenCardCovered : styles.breakEvenCardShort, breakEvenAnim]}>
-            <Feather
-              name={kept >= 0 ? 'check-circle' : 'target'}
-              size={14}
-              color={C.bronze}
-            />
-            <Text style={[styles.breakEvenText, { color: C.bronze }]}>
-              {kept >= 0
-                ? `costs covered · ${formatAmount(kept, currency, 0)} above break-even`
-                : `need ${formatAmount(Math.abs(kept), currency, 0)} more to cover costs`}
-            </Text>
-          </Animated.View>
-        )}
 
         {/* ── First-time getting started ─────────────── */}
         {isFirstTime ? (
@@ -1137,81 +1142,6 @@ const SellerDashboard: React.FC = () => {
               </Animated.View>
             )}
 
-            {/* ── Action cards (pipeline) ──────────────── */}
-            <Animated.View style={[styles.actionCardsRow, pipelineAnim]}>
-              {/* Orders card */}
-              <Pressable
-                style={({ pressed }) => [styles.actionCard, pendingOrders.length > 0 && { borderLeftWidth: 3, borderLeftColor: semantic(BIZ_SAFE.pending, isDark), backgroundColor: withAlpha(semantic(BIZ_SAFE.pending, isDark), 0.04) }, pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] }]}
-                onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'pending' }); }}
-                accessibilityRole="button"
-                accessibilityLabel={`${pendingOrders.length} pending orders. Tap to view.`}
-              >
-                <View style={styles.actionCardInner}>
-                  <View style={styles.actionCardTop}>
-                    <Feather name="clipboard" size={18} color={pendingOrders.length > 0 ? semantic(BIZ_SAFE.pending, isDark) : C.textSecondary} />
-                    <Feather name="chevron-right" size={14} color={C.textMuted} />
-                  </View>
-                  <Text style={[styles.actionCardNumber, pendingOrders.length > 0 && { color: semantic(BIZ_SAFE.pending, isDark) }]}>{pendingOrders.length}</Text>
-                  <Text style={styles.actionCardLabel}>pending</Text>
-                </View>
-              </Pressable>
-
-              {/* To make card */}
-              <Pressable
-                style={({ pressed }) => [styles.actionCard, confirmedOrders.length > 0 && { borderLeftWidth: 3, borderLeftColor: C.bronze, backgroundColor: withAlpha(C.bronze, 0.04) }, pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] }]}
-                onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'confirmed' }); }}
-                accessibilityRole="button"
-                accessibilityLabel={`${confirmedOrders.length} orders to make. Tap to view confirmed orders.`}
-              >
-                <View style={styles.actionCardInner}>
-                  <View style={styles.actionCardTop}>
-                    <Feather name="clock" size={18} color={confirmedOrders.length > 0 ? C.bronze : C.textSecondary} />
-                    <Feather name="chevron-right" size={14} color={C.textMuted} />
-                  </View>
-                  <Text style={[styles.actionCardNumber, confirmedOrders.length > 0 && { color: C.bronze }]}>{confirmedOrders.length}</Text>
-                  <Text style={styles.actionCardLabel}>to make</Text>
-                </View>
-              </Pressable>
-
-              {/* Unpaid card */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.actionCard,
-                  unpaidOrders.length > 0 && styles.actionCardUnpaid,
-                  pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] },
-                ]}
-                onPress={() => { lightTap(); navigation.navigate('SellerOrders', { initialFilter: 'unpaid' }); }}
-                accessibilityRole="button"
-                accessibilityLabel={`${unpaidOrders.length} unpaid orders, ${formatAmount(unpaidTotal, currency)} pending. Tap to view.`}
-              >
-                <View style={styles.actionCardInner}>
-                  <View style={styles.actionCardTop}>
-                    <Feather
-                      name="alert-circle"
-                      size={18}
-                      color={unpaidOrders.length > 0 ? semantic(BIZ_SAFE.unpaid, isDark) : C.textSecondary}
-                    />
-                    <Feather name="chevron-right" size={14} color={C.textMuted} />
-                  </View>
-                  <Text
-                    style={[
-                      styles.actionCardNumber,
-                      unpaidOrders.length > 0 && styles.actionCardNumberHighlight,
-                    ]}
-                  >
-                    {unpaidOrders.length}
-                  </Text>
-                  <Text style={styles.actionCardLabel}>unpaid</Text>
-                  {unpaidOrders.length > 0 && (
-                    <Text style={styles.actionCardSubAmount}>
-                      {formatAmount(unpaidTotal, currency, 0)}
-                    </Text>
-                  )}
-                </View>
-              </Pressable>
-            </Animated.View>
-
-
             {/* ── Delivery route ──────────────────────────── */}
             {todaysDeliveries.length > 0 && (
               <Animated.View style={[styles.deliveryRouteCard, deliveryRouteAnim]}>
@@ -1282,6 +1212,7 @@ const SellerDashboard: React.FC = () => {
             )}
 
             {/* ── Came in breakdown ──────────────────── */}
+            {(totalIncome > 0 || totalCosts > 0) && (
             <Animated.View style={[styles.cameInCard, inflowAnim]}>
               {/* Came in row */}
               <View style={styles.cameInRow}>
@@ -1289,12 +1220,7 @@ const SellerDashboard: React.FC = () => {
                   <Feather name="arrow-down-circle" size={15} color={semantic(BIZ_SAFE.success, isDark)} />
                   <Text style={styles.cameInRowLabel}>came in</Text>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.cameInRowAmount}>{formatAmount(totalIncome, currency)}</Text>
-                  {unpaidTotal > 0 && (
-                    <Text style={styles.cameInRowNote}>+ {formatAmount(unpaidTotal, currency, 0)} unpaid</Text>
-                  )}
-                </View>
+                <Text style={styles.cameInRowAmount}>{formatAmount(totalIncome, currency)}</Text>
               </View>
 
               {/* Costs row */}
@@ -1320,20 +1246,11 @@ const SellerDashboard: React.FC = () => {
                 </Text>
               </View>
             </Animated.View>
+            )}
           </>
         )}
 
-        {/* ── Change setup link ────────────────────────── */}
-        <Pressable
-          onPress={() => { lightTap(); useBusinessStore.getState().resetSetup(); }}
-          style={({ pressed }) => [styles.changeSetup, pressed && { opacity: 0.7 }]}
-          accessibilityRole="button"
-          accessibilityLabel="Change business setup"
-        >
-          <Text style={styles.changeSetupText}>
-            change business type
-          </Text>
-        </Pressable>
+        <View style={{ height: SPACING.xl }} />
       </ScrollView>
 
       {/* ── Shop link modal ──────────────────────────────── */}
@@ -1440,8 +1357,8 @@ const SellerDashboard: React.FC = () => {
                 style={styles.slmFieldInput}
                 value={shopModalName}
                 onChangeText={setShopModalName}
-                placeholder="e.g. Kuih Raya Mak Cik Ton"
-                placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+                placeholder="e.g. Kedai Mak Ton"
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 autoCapitalize="words"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={semantic(BIZ_SAFE.success, isDark)}
@@ -1458,8 +1375,8 @@ const SellerDashboard: React.FC = () => {
                 style={[styles.slmFieldInput, !!shopSlug && { color: C.textMuted }]}
                 value={shopModalSlug}
                 onChangeText={(t) => setShopModalSlug(t.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                placeholder="e.g. kuih-raya-ton"
-                placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+                placeholder="e.g. kedai-mak-ton"
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!shopSlug}
@@ -1498,7 +1415,7 @@ const SellerDashboard: React.FC = () => {
                 value={shopModalNotice}
                 onChangeText={setShopModalNotice}
                 placeholder="e.g. COD Ipoh only. Luar kawasan sila WhatsApp kami"
-                placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 multiline
                 maxLength={200}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -1722,6 +1639,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.background,
+  },
+  topRow: {
+    alignItems: 'center',
   },
   scrollView: {
     flex: 1,
@@ -2772,13 +2692,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.bronze,
   },
 
-  // ── Change setup ──────────────────────────────────────────
-  changeSetup: {
-    alignItems: 'center',
-    paddingVertical: SPACING['3xl'], // 32pt
-    minHeight: 44,
-    justifyContent: 'center',
-  },
 
   // ── Shop link card ──
   shopLinkBtn: {
@@ -2970,7 +2883,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     fontWeight: TYPOGRAPHY.weight.medium,
-    paddingVertical: 2,
+    paddingVertical: SPACING.sm,
     minHeight: 22,
   },
   slmFieldValue: {
@@ -3094,11 +3007,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: BIZ.success,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.sm + 2,
-  },
-  changeSetupText: {
-    ...TYPE.muted, // fontSize 12, color #A0A0A0
-    color: C.textSecondary, // #6B6B6B
-    textDecorationLine: 'underline' as const,
   },
 
   // ── Item stats card ──
@@ -3231,6 +3139,81 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   qrTabText: { fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.semibold, color: 'rgba(255,255,255,0.5)' },
   qrTabTextActive: { color: '#fff' },
   qrWatermark: { marginTop: SPACING.lg, fontSize: 16, fontWeight: TYPOGRAPHY.weight.medium, color: 'rgba(255, 255, 255, 0.5)', letterSpacing: 8, textTransform: 'lowercase' },
+
+  // ── Hero collection progress bar ────────────────────────
+  heroCollectionWrap: {
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
+  heroCollectionTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: withAlpha(C.bronze, 0.12),
+    overflow: 'hidden' as const,
+    marginBottom: SPACING.xs,
+  },
+  heroCollectionFill: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.bronze,
+  },
+  heroCollectionText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
+
+  // ── To collect card ─────────────────────────────────────
+  toCollectCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    overflow: 'hidden' as const,
+  },
+  toCollectHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.md,
+  },
+  toCollectAmount: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+    fontVariant: ['tabular-nums'] as ('tabular-nums')[],
+  },
+  toCollectRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingVertical: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    minHeight: 40,
+  },
+  toCollectRowLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.sm,
+  },
+  toCollectDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: withAlpha(C.bronze, 0.3),
+  },
+  toCollectDotOverdue: {
+    backgroundColor: C.bronze,
+  },
+  toCollectRowText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium as any,
+    color: C.textSecondary,
+  },
 });
 
 export default SellerDashboard;

@@ -198,10 +198,17 @@ export const usePersonalStore = create<PersonalState>()(
           ),
         })),
 
-      markSubscriptionPaid: (id, transactionId?, walletId?) =>
+      markSubscriptionPaid: (id, transactionId?, walletId?, paidAt?) =>
         set((state) => ({
           subscriptions: state.subscriptions.map((sub) => {
             if (sub.id !== id) return sub;
+            // When the user actually paid (they can pick a past date); defaults to now.
+            const paidOn = paidAt ?? new Date();
+            // The cycle this payment settles is the current oldest-unpaid due date,
+            // captured BEFORE we advance the pointer. This is what every period view
+            // buckets by — so a late payment (paid Jun 2 for the May 25 bill) is filed
+            // under May, not June.
+            const periodDate = new Date(sub.nextBillingDate);
             let next = new Date(sub.nextBillingDate);
             switch (sub.billingCycle) {
               case 'weekly':    next.setDate(next.getDate() + 7);    break;
@@ -217,13 +224,13 @@ export const usePersonalStore = create<PersonalState>()(
               : undefined;
             return {
               ...sub,
-              lastPaidAt: new Date(),
+              lastPaidAt: paidOn,
               nextBillingDate: next,
               completedInstallments: newCompleted,
               outstandingBalance: newOutstanding,
               paymentHistory: [
                 ...(sub.paymentHistory || []),
-                { id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, paidAt: new Date(), amount: sub.amount, transactionId, walletId },
+                { id: `pay-${newId()}`, paidAt: paidOn, periodDate, amount: sub.amount, transactionId, walletId },
               ],
               updatedAt: new Date(),
             };
@@ -352,7 +359,7 @@ export const usePersonalStore = create<PersonalState>()(
         useTombstoneStore.getState().addTombstones([id]);
       },
 
-      contributeToGoal: (goalId, amount, note, walletId) =>
+      contributeToGoal: (goalId, amount, note, walletId, transactionId) =>
         set((state) => ({
           goals: state.goals.map((goal) => {
             if (goal.id !== goalId) return goal;
@@ -364,6 +371,7 @@ export const usePersonalStore = create<PersonalState>()(
               note,
               date: new Date(),
               walletId,
+              transactionId,
             };
             const newCurrentAmount = roundMoney(Math.min(goal.currentAmount + actualAmount, goal.targetAmount));
             const updatedMilestones = goal.milestones.map((m) => {
@@ -382,7 +390,7 @@ export const usePersonalStore = create<PersonalState>()(
           }),
         })),
 
-      withdrawFromGoal: (goalId, amount, note) =>
+      withdrawFromGoal: (goalId, amount, note, walletId, transactionId) =>
         set((state) => ({
           goals: state.goals.map((goal) => {
             if (goal.id !== goalId) return goal;
@@ -403,6 +411,8 @@ export const usePersonalStore = create<PersonalState>()(
                   amount: -amount,
                   note: note || 'withdrawal',
                   date: new Date(),
+                  walletId,
+                  transactionId,
                 },
               ],
               milestones: updatedMilestones,
@@ -412,15 +422,11 @@ export const usePersonalStore = create<PersonalState>()(
         })),
 
       removeContribution: (goalId, contributionId) => {
-        let walletRefund: { walletId: string; amount: number } | null = null as { walletId: string; amount: number } | null;
         set((state) => ({
           goals: state.goals.map((goal) => {
             if (goal.id !== goalId) return goal;
             const contrib = goal.contributions.find((c) => c.id === contributionId);
             if (!contrib) return goal;
-            if (contrib.walletId && contrib.amount > 0) {
-              walletRefund = { walletId: contrib.walletId, amount: contrib.amount };
-            }
             const newAmount = roundMoney(Math.max(goal.currentAmount - contrib.amount, 0));
             const updatedMilestones = goal.milestones.map((m) => {
               if (m.reached && newAmount < (m.percentage / 100) * goal.targetAmount) {
@@ -437,9 +443,6 @@ export const usePersonalStore = create<PersonalState>()(
             };
           }),
         }));
-        if (walletRefund) {
-          useWalletStore.getState().addToWallet(walletRefund.walletId, walletRefund.amount);
-        }
       },
 
       archiveGoal: (goalId) =>
@@ -493,6 +496,7 @@ export const usePersonalStore = create<PersonalState>()(
           paymentHistory: (s.paymentHistory || []).map((p: any) => ({
             ...p,
             paidAt: p.paidAt instanceof Date ? p.paidAt.toISOString() : p.paidAt,
+            periodDate: p.periodDate instanceof Date ? p.periodDate.toISOString() : p.periodDate,
           })),
           createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
           updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
@@ -545,6 +549,9 @@ export const usePersonalStore = create<PersonalState>()(
             paymentHistory: (s.paymentHistory || []).map((p: any) => ({
               ...p,
               paidAt: sd(p.paidAt),
+              // Older payments predate periodDate — fall back to paidAt so they still
+              // load (we can't reconstruct the true cycle for historical data).
+              periodDate: p.periodDate ? sd(p.periodDate) : sd(p.paidAt),
             })),
             createdAt: sd(s.createdAt),
             updatedAt: sd(s.updatedAt),

@@ -97,7 +97,7 @@ const SeasonStartSheet: React.FC<Props> = ({ visible, onClose, onStarted, onView
                   value={name}
                   onChangeText={setName}
                   placeholder="e.g. Hari Raya, Bazaar Ramadan"
-                  placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   autoFocus
                   returnKeyType="next"
                   keyboardAppearance={C === CALM_DARK ? 'dark' : 'light'}
@@ -114,7 +114,7 @@ const SeasonStartSheet: React.FC<Props> = ({ visible, onClose, onStarted, onView
                   value={target}
                   onChangeText={setTarget}
                   placeholder="e.g. 5000"
-                  placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   keyboardType="numeric"
                   returnKeyType="done"
                   keyboardAppearance={C === CALM_DARK ? 'dark' : 'light'}
@@ -266,7 +266,7 @@ const makeStyles = (C: typeof CALM) =>
       fontSize: TYPOGRAPHY.size.base,
       color: C.textPrimary,
       fontWeight: TYPOGRAPHY.weight.medium as any,
-      paddingVertical: 2,
+      paddingVertical: SPACING.sm,
       minHeight: 22,
     },
     fieldHintInline: {

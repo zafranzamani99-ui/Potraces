@@ -78,6 +78,7 @@ INTENT TYPES:
 - debt: someone owes money or user owes someone
 - debt_update: update on existing debt (paid back, settled)
 - bnpl: buy now pay later / installment / credit card purchase
+- subscription: a RECURRING commitment or bill paid each cycle — rent (sewa/rumah sewa), monthly services (netflix, spotify, icloud, gym), internet/phone bills paid every month (unifi, digi), insurance (insurans/takaful), tuition fees (yuran). Signal words: monthly/bulanan/tiap bulan/every month, langganan, recurring, auto debit, sewa, weekly/yearly, or a due day (25hb, due 25th). A one-off mention with NO recurring signal stays an expense.
 - seller_order: business order from customer
 - seller_cost: business cost/ingredient purchase
 - query: user asking a question about their finances
@@ -90,13 +91,16 @@ For each financial item found, return a JSON object:
   "intent": "<dominant_intent_type>",
   "items": [
     {
-      "intent": "<intent for THIS item: expense|income|debt|debt_update|bnpl|seller_order|seller_cost|savings_goal>",
+      "intent": "<intent for THIS item: expense|income|debt|debt_update|bnpl|subscription|seller_order|seller_cost|savings_goal>",
       "amount": <number>,
       "description": "<what it's for>",
       "category": "<category_id from list above>",
       "type": "expense" | "income",
       "wallet": "<wallet name if mentioned, null otherwise>",
       "person": "<person name if debt/split, null otherwise>",
+      "billingCycle": "<weekly|monthly|quarterly|yearly — subscription only, else null>",
+      "dueDay": "<day of month 1-31 if a due day is stated (e.g. 25hb, due 25th), else null>",
+      "installments": "<number of installments if an installment plan (e.g. 3x), else null>",
       "confidence": "high" | "low"
     }
   ]
@@ -136,7 +140,13 @@ Users often write quick structured notes. Understand these patterns:
 5. DONE/SETTLED markers: "digi bill is done", "settled", "lunas", "dah bayar" → intent: debt_update (the item is paid/completed)
    Also: ✅ checkmark after an item = already confirmed/done. SKIP items with ✅ — do not extract them.
 
-6. SERVICES: digi, celcom, maxis, unifi, astro, netflix, spotify etc. are subscriptions/bills, NOT debts. "240-digi bill" = expense RM240 for digi bill, category: bills or subscription.
+6. SERVICES: digi, celcom, maxis, unifi, astro, netflix, spotify etc. are subscriptions/bills, NOT debts. A one-off mention ("240-digi bill") = expense, category bills. A RECURRING one (has a cycle/due-day/langganan/sewa signal) = subscription, with billingCycle/dueDay/installments filled:
+   "rumah sewa 850 sebulan" → subscription, amount 850, billingCycle monthly, description "rumah sewa", category bills
+   "netflix 55 monthly" → subscription, amount 55, billingCycle monthly, category subscription
+   "unifi 129 due 15hb" → subscription, amount 129, billingCycle monthly, dueDay 15, category bills
+   "atome kasut 3x49.90" → subscription, amount 49.90 (PER installment, never the total), installments 3, description "kasut", category shopping
+   "netflix 55" → subscription, billingCycle monthly (known always-recurring services like netflix/spotify/icloud/unifi/astro/gym default to a monthly commitment)
+   "groceries 55" / "lunch 12" (a generic one-off, not a recurring service) → expense
 
 7. MATH/BALANCE LINES: Lines that are pure arithmetic like "110+20-3-7.5 = 76.7" are the user's own calculations. SKIP these — do not extract them as items.
 
@@ -226,6 +236,11 @@ function parseGeminiResponse(raw: string): IntentResult | null {
           wallet: item.wallet || null,
           person: item.person || null,
           allocations: item.allocations || null,
+          // Commitment schedule (subscription intent) — coerce Gemini's strings/nulls.
+          billingCycle: ['weekly', 'monthly', 'quarterly', 'yearly'].includes(item.billingCycle)
+            ? item.billingCycle : null,
+          dueDay: Number(item.dueDay) >= 1 && Number(item.dueDay) <= 31 ? Number(item.dueDay) : null,
+          installments: Number(item.installments) > 1 ? Number(item.installments) : null,
         },
         status: 'pending' as const,
         confirmedAt: undefined,

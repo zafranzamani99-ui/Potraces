@@ -43,8 +43,10 @@ export async function signInWithPhone(phone: string, password: string) {
   return data;
 }
 
-/** Sign out. */
+/** Sign out (also clears Google SDK session if present). */
 export async function signOut() {
+  const { signOutGoogle } = require('./googleAuth');
+  signOutGoogle();
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
 }

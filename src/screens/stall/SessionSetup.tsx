@@ -17,6 +17,7 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { lightTap } from '../../services/haptics';
 
 interface ProductSetupItem {
   productId: string;
@@ -31,11 +32,12 @@ const SessionSetup: React.FC = () => {
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
-  const { products, startSession } = useStallStore();
+  const { products, startSession, getLastSetup, setStartingFloat, getPreOrderStock, preOrders } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
 
   const [sessionName, setSessionName] = useState('');
+  const [floatInput, setFloatInput] = useState('');
 
   // Build editable product list from active products
   const activeProducts = useMemo(
@@ -49,9 +51,45 @@ const SessionSetup: React.FC = () => {
       name: p.name,
       price: p.price,
       included: true,
-      startQty: '',
+      // Prefill with the product's default starting stock if set
+      startQty: p.defaultStartQty ? String(p.defaultStartQty) : '',
     }))
   );
+
+  // Pre-order demand → stock planner
+  const preOrderStock = useMemo(() => getPreOrderStock(), [getPreOrderStock, preOrders]);
+  const preOrderDemand = useMemo(
+    () => activeProducts.filter((p) => (preOrderStock[p.id] || 0) > 0).map((p) => ({ id: p.id, name: p.name, qty: preOrderStock[p.id] })),
+    [activeProducts, preOrderStock],
+  );
+  const preOrderSummary = preOrderDemand.map((d) => `${d.qty} ${d.name}`).join(', ');
+  const coverPreOrders = () => {
+    lightTap();
+    setProductSetup((prev) =>
+      prev.map((item) => {
+        const demand = preOrderStock[item.productId] || 0;
+        if (demand <= 0) return item;
+        const current = parseInt(item.startQty, 10) || 0;
+        return { ...item, included: true, startQty: String(Math.max(current, demand)) };
+      }),
+    );
+  };
+
+  // One-tap "repeat last session" — restores the same products + starting stock
+  const lastSetup = useMemo(() => getLastSetup(), [getLastSetup, products]);
+  const applyLastSetup = () => {
+    if (!lastSetup) return;
+    const qtyMap = new Map(lastSetup.map((s) => [s.productId, s.startQty]));
+    setProductSetup((prev) =>
+      prev.map((item) => {
+        const q = qtyMap.get(item.productId);
+        return q != null
+          ? { ...item, included: true, startQty: String(q) }
+          : { ...item, included: false };
+      })
+    );
+    lightTap();
+  };
 
   const toggleProduct = (productId: string) => {
     setProductSetup((prev) =>
@@ -73,6 +111,11 @@ const SessionSetup: React.FC = () => {
     );
   };
 
+  const applyFloat = () => {
+    const f = parseFloat(floatInput);
+    if (!isNaN(f) && f > 0) setStartingFloat(f);
+  };
+
   const handleStartSelling = () => {
     const included = productSetup.filter((p) => p.included);
     const setup = included.map((p) => ({
@@ -82,12 +125,14 @@ const SessionSetup: React.FC = () => {
 
     const name = sessionName.trim() || undefined;
     startSession(name, setup.length > 0 ? setup : undefined);
+    applyFloat();
     navigation.goBack();
   };
 
   const handleSkipSetup = () => {
     const name = sessionName.trim() || undefined;
     startSession(name);
+    applyFloat();
     navigation.goBack();
   };
 
@@ -117,6 +162,23 @@ const SessionSetup: React.FC = () => {
 
         <Text style={styles.heading}>{t.stall.newSession}</Text>
 
+        {/* Repeat last session — one tap restores products + starting stock */}
+        {lastSetup && (
+          <TouchableOpacity
+            style={styles.repeatButton}
+            onPress={applyLastSetup}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`${t.stall.repeatLastSession}. ${t.stall.repeatLastHint}`}
+          >
+            <Feather name="rotate-ccw" size={18} color={C.bronze} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.repeatTitle}>{t.stall.repeatLastSession}</Text>
+              <Text style={styles.repeatHint}>{t.stall.repeatLastHint}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* Session name input */}
         <View style={styles.inputSection}>
           <Text style={styles.inputLabel}>{t.stall.sessionNameLabel}</Text>
@@ -133,6 +195,40 @@ const SessionSetup: React.FC = () => {
             selectionColor={C.accent}
           />
         </View>
+
+        {/* Starting cash float (optional) */}
+        <View style={styles.inputSection}>
+          <Text style={styles.inputLabel}>{t.stall.floatLabel}</Text>
+          <View style={styles.floatRow}>
+            <Text style={styles.floatCurrency}>{currency}</Text>
+            <TextInput
+              style={styles.floatInput}
+              value={floatInput}
+              onChangeText={(v) => setFloatInput(v.replace(/[^0-9.]/g, ''))}
+              placeholder={t.stall.floatPlaceholder}
+              placeholderTextColor={C.neutral}
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+              accessibilityLabel="Starting cash float, optional"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
+            />
+          </View>
+          <Text style={styles.floatHint}>{t.stall.floatHint}</Text>
+        </View>
+
+        {/* Pre-order stock planner */}
+        {preOrderDemand.length > 0 && (
+          <View style={styles.preOrderBanner}>
+            <Feather name="clipboard" size={16} color={C.bronze} />
+            <Text style={styles.preOrderBannerText}>
+              {t.stall.preOrderNeedStock.replace('{summary}', preOrderSummary)}
+            </Text>
+            <TouchableOpacity style={styles.coverBtn} onPress={coverPreOrders} accessibilityRole="button" accessibilityLabel={t.stall.preOrderCoverStock}>
+              <Text style={styles.coverBtnText}>{t.stall.preOrderCoverStock}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Product list */}
         {activeProducts.length > 0 && (
@@ -269,6 +365,30 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING['3xl'],
   },
 
+  // ─── Repeat last session ─────────────────────────────────────
+  repeatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: withAlpha(C.bronze, 0.06),
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.3),
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING['2xl'],
+    minHeight: 56,
+  },
+  repeatTitle: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+  },
+  repeatHint: {
+    ...TYPE.muted,
+    marginTop: 2,
+  },
+
   // ─── Session name input ──────────────────────────────────────
   inputSection: {
     marginBottom: SPACING['3xl'],
@@ -287,6 +407,64 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     minHeight: 48,
+  },
+  floatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    minHeight: 48,
+  },
+  floatCurrency: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  floatInput: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  floatHint: {
+    ...TYPE.muted,
+    marginTop: SPACING.sm,
+  },
+
+  // ─── Pre-order stock planner ─────────────────────────────────
+  preOrderBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: withAlpha(C.bronze, 0.06),
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.3),
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    marginBottom: SPACING['2xl'],
+  },
+  preOrderBannerText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textPrimary,
+  },
+  coverBtn: {
+    backgroundColor: C.bronze,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  coverBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
   },
 
   // ─── Product list ────────────────────────────────────────────
@@ -368,7 +546,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.sm,
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     textAlign: 'center',
     minHeight: 36,

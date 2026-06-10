@@ -21,7 +21,7 @@ import { BlurView } from 'expo-blur';
 import Reanimated, {
   FadeInDown,
 } from 'react-native-reanimated';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { format, isValid, startOfMonth, endOfMonth, subMonths, isWithinInterval, startOfYear, getDay, getDaysInMonth } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -83,6 +83,11 @@ const TransactionsList: React.FC = () => {
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  // Optional initial category filter passed from another screen (e.g. budget
+  // detail sheet "see all transactions"). Seeded once into the filter state so
+  // the list lands pre-filtered to that category instead of the full dump.
+  const initialFilterCategory: string | undefined = route.params?.filterCategory;
 
   const TYPE_FILTERS = useMemo(() => [
     { key: 'all' as FilterType, label: t.transactionList.all.toLowerCase() },
@@ -127,7 +132,9 @@ const TransactionsList: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<FilterType>('all');
   const [dateRange, setDateRange] = useState<DateRange>('all_time');
-  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
+    () => (initialFilterCategory ? new Set([initialFilterCategory]) : new Set())
+  );
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -423,15 +430,15 @@ const TransactionsList: React.FC = () => {
     if (selectedIds.size === 0) return;
 
     const deletableIds = new Set<string>();
-    let debtLinkedCount = 0;
+    let linkedCount = 0;
     for (const id of selectedIds) {
       const txn = transactions.find((t) => t.id === id);
       if (!txn) continue;
-      if (txn.linkedDebtId) { debtLinkedCount++; continue; }
+      if (txn.linkedDebtId || txn.linkedGoalId) { linkedCount++; continue; }
       deletableIds.add(id);
     }
 
-    if (debtLinkedCount > 0) {
+    if (linkedCount > 0) {
       showToast(t.transactionList.debtLinkedCannotDelete, 'info');
     }
 
@@ -496,7 +503,7 @@ const TransactionsList: React.FC = () => {
     const txn = transactions.find((t) => t.id === id);
     if (!txn) return;
 
-    if (txn.linkedDebtId) {
+    if (txn.linkedDebtId || txn.linkedGoalId) {
       showToast(t.transactionList.debtLinkedCannotDelete, 'info');
       return;
     }
@@ -1216,7 +1223,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     paddingVertical: SPACING.sm,
   },

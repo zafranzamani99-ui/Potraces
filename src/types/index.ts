@@ -314,12 +314,16 @@ export interface SellerState {
   addOrderLinkOrder: (row: Record<string, unknown>) => void;
 
   seenOnlineOrderIds: string[];
+  readOrderIds: string[];
   markOrdersSeen: (ids: string[]) => void;
   markAllOnlineSeen: () => void;
   markOrderUnseen: (id: string) => void;
 
   skippedOnboardingSteps: string[];
   skipOnboardingStep: (step: string) => void;
+
+  isSyncing: boolean;
+  setSyncing: (syncing: boolean) => void;
 
   addSellerCustomer: (customer: Omit<SellerCustomer, 'id' | 'createdAt'>) => void;
   updateSellerCustomer: (id: string, updates: Partial<SellerCustomer>) => void;
@@ -361,14 +365,35 @@ export interface SellerState {
 export type SessionCondition = 'good' | 'slow' | 'rainy' | 'hot' | 'normal';
 export type StallPaymentMethod = 'cash' | 'qr';
 
+/** Optional quick variant on a product (e.g. "ais" +0.50, "kurang manis" +0). */
+export interface StallModifier {
+  id: string;
+  label: string;
+  priceDelta: number;
+}
+
 export interface StallProduct {
   id: string;
   name: string;
   price: number;
   isActive: boolean;
   totalSold: number;
+  /** Optional per-product default starting stock, prefilled in session setup. */
+  defaultStartQty?: number;
+  /** Optional cost per unit — feeds the optional "kept" (net) calculation. */
+  unitCost?: number;
+  /** Optional quick modifiers shown as a second tap when selling. */
+  modifiers?: StallModifier[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** A session overhead — rental, gas, helper, supplies. Optional, money-out. */
+export interface StallExpense {
+  id: string;
+  label: string;
+  amount: number;
+  timestamp: Date;
 }
 
 export interface StallSale {
@@ -381,6 +406,12 @@ export interface StallSale {
   total: number;
   paymentMethod: StallPaymentMethod;
   regularCustomerId?: string;
+  /** True for off-menu custom-amount sales (no product, no stock decrement). */
+  isCustom?: boolean;
+  /** Optional free-text label for a custom sale (e.g. "air"). */
+  label?: string;
+  /** Cost of goods per unit, stamped from the product at sale time (for net "kept"). */
+  costPerUnit?: number;
   timestamp: Date;
 }
 
@@ -396,6 +427,22 @@ export interface StallSession {
   totalRevenue: number;
   totalCash: number;
   totalQR: number;
+  /** Default payment method for one-tap quick-sell during this session. */
+  defaultPayment?: StallPaymentMethod;
+  /** Whether the session is paused (e.g. rain break). */
+  paused?: boolean;
+  /** Accumulated paused milliseconds, subtracted from session duration. */
+  pausedAccumMs?: number;
+  /** Timestamp the current pause began (cleared on resume). */
+  lastPausedAt?: Date;
+  /** End-of-night clearance: percent off all sales (0–100). 0/undefined = off. */
+  clearancePercent?: number;
+  /** Optional cash float the seller started the drawer with. */
+  startingFloat?: number;
+  /** Optional drawer count entered at close, for cash reconciliation. */
+  countedCash?: number;
+  /** Optional money-out entries (rental, gas, helper, supplies). */
+  expenses?: StallExpense[];
   note?: string;
   transferredToPersonal?: boolean;
   transferAmount?: number;
@@ -411,20 +458,77 @@ export interface RegularCustomer {
   createdAt: Date;
 }
 
+/** Optional loyalty stamp config. everyN === 0 (or empty reward) means disabled. */
+export interface StallLoyalty {
+  everyN: number;
+  reward: string;
+}
+
+// ─── Pre-orders ──────────────────────────────────────────
+export type PreOrderStatus = 'pending' | 'collected' | 'cancelled';
+
+export interface PreOrderItem {
+  /** Linked product id, when the item is a catalog product (enables stock planning). */
+  productId?: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface StallPreOrder {
+  id: string;
+  customerName: string;
+  customerPhone?: string;
+  regularCustomerId?: string;
+  items: PreOrderItem[];
+  note?: string;
+  /** Free-text pickup time, e.g. "6pm" or "Sat 6pm". */
+  collectAt?: string;
+  isPaid: boolean;
+  paymentMethod?: StallPaymentMethod;
+  status: PreOrderStatus;
+  createdAt: Date;
+  collectedAt?: Date;
+  collectedSessionId?: string;
+}
+
 export interface StallState {
   sessions: StallSession[];
   activeSessionId: string | null;
   products: StallProduct[];
   regularCustomers: RegularCustomer[];
+  loyalty: StallLoyalty;
+  preOrders: StallPreOrder[];
+  /** Round cash sale totals to the nearest 5 sen (Malaysian cash rounding). */
+  roundCashTo5: boolean;
 
   // Session actions
   startSession: (name?: string, productSetup?: { productId: string; startQty: number }[]) => string;
   closeSession: (condition?: SessionCondition, note?: string) => void;
   getActiveSession: () => StallSession | null;
+  setSessionDefaultPayment: (method: StallPaymentMethod) => void;
+  pauseSession: () => void;
+  resumeSession: () => void;
+  setClearance: (percent: number) => void;
+  /** Previous closed session's stock setup, for one-tap "repeat last session". Null if none. */
+  getLastSetup: () => { productId: string; startQty: number }[] | null;
+  // Optional cashbox layer (Phase 2) — all skippable
+  setStartingFloat: (amount: number | undefined) => void;
+  setCountedCash: (amount: number | undefined) => void;
+  addExpense: (expense: { label: string; amount: number }) => void;
+  removeExpense: (expenseId: string) => void;
 
   // Sale actions
-  addSale: (sale: Omit<StallSale, 'id' | 'sessionId' | 'timestamp'>) => void;
+  addSale: (sale: Omit<StallSale, 'id' | 'sessionId' | 'timestamp'>) => string | undefined;
   removeSale: (saleId: string) => void;
+  /** One-tap sale: 1 unit at the session's default payment method. Returns the new sale id. */
+  quickSale: (productId: string, regularCustomerId?: string) => string | undefined;
+  /** Edit an existing sale in the active session (quantity and/or payment method). */
+  updateSale: (saleId: string, updates: { quantity?: number; paymentMethod?: StallPaymentMethod }) => void;
+  /** Off-menu sale with a typed amount and no product. Returns the new sale id. */
+  addCustomSale: (sale: { amount: number; paymentMethod: StallPaymentMethod; label?: string; regularCustomerId?: string }) => string | undefined;
+  /** Add stock back to a product mid-session (clears "sold out"). */
+  restockProduct: (productId: string, addQty: number) => void;
 
   // Product actions
   addProduct: (product: Omit<StallProduct, 'id' | 'totalSold' | 'createdAt' | 'updatedAt'>) => void;
@@ -436,6 +540,19 @@ export interface StallState {
   updateRegularCustomer: (id: string, updates: Partial<RegularCustomer>) => void;
   deleteRegularCustomer: (id: string) => void;
   recordVisit: (customerId: string) => void;
+  setLoyalty: (loyalty: StallLoyalty) => void;
+
+  // Pre-orders
+  addPreOrder: (preOrder: Omit<StallPreOrder, 'id' | 'status' | 'createdAt' | 'collectedAt' | 'collectedSessionId'>) => void;
+  updatePreOrder: (id: string, updates: Partial<StallPreOrder>) => void;
+  deletePreOrder: (id: string) => void;
+  /** Convert a pending pre-order into sales in the active session. Returns false if no active session. */
+  collectPreOrder: (id: string) => boolean;
+  /** Quantity of each product still owed across pending pre-orders (for stock planning). */
+  getPreOrderStock: () => Record<string, number>;
+
+  // Stall settings / polish
+  setRoundCashTo5: (on: boolean) => void;
 
   // Derived data
   getSessionSummary: (sessionId: string) => {
@@ -458,6 +575,20 @@ export interface StallState {
     totalRevenue: number;
     avgPerSession: number;
     bestSession: StallSession | null;
+  };
+  /** Optional cost + cash reconciliation for a session. All-zero / null when nothing was entered. */
+  getSessionEconomics: (sessionId: string) => {
+    revenue: number;
+    cogs: number;
+    expensesTotal: number;
+    spent: number;
+    kept: number;
+    hasCosts: boolean;
+    startingFloat: number;
+    expectedCash: number;
+    countedCash: number | null;
+    cashDifference: number | null;
+    hasCounted: boolean;
   };
 
   // Transfer bridge
@@ -586,6 +717,8 @@ export interface Transaction {
   updatedAt: Date;
   linkedPaymentId?: string;
   linkedDebtId?: string;
+  linkedGoalId?: string;
+  linkedGoalContributionId?: string;
   editLog?: TransactionEdit[];
   playbookLinks?: PlaybookExpenseLink[];
   // Multi-currency: if set, `amount` is the MYR-equivalent.
@@ -622,7 +755,8 @@ export interface ChatConversation {
 
 export interface SubscriptionPayment {
   id: string;
-  paidAt: Date;
+  paidAt: Date;          // when the user actually paid (wall-clock)
+  periodDate: Date;      // which billing cycle this payment settles (the due date it cleared)
   amount: number;
   transactionId?: string;
   walletId?: string;
@@ -737,6 +871,7 @@ export interface GoalContribution {
   note?: string;
   date: Date;
   walletId?: string;
+  transactionId?: string;
 }
 
 export interface GoalMilestone {
@@ -754,6 +889,7 @@ export interface Goal {
   deadline?: Date;
   category: string;
   icon: string;
+  imageUri?: string;
   color: string;
   contributions: GoalContribution[];
   milestones: GoalMilestone[];
@@ -1136,14 +1272,14 @@ export interface PersonalState {
   deleteBudget: (id: string) => void;
   incrementInstallment: (id: string) => void;
   toggleSubscriptionPause: (id: string) => void;
-  markSubscriptionPaid: (id: string, transactionId?: string, walletId?: string) => void;
+  markSubscriptionPaid: (id: string, transactionId?: string, walletId?: string, paidAt?: Date) => void;
   undoSubscriptionPayment: (subId: string, paymentId: string) => void;
   addTransferIncome: (transfer: Transfer) => void;
   addGoal: (goal: Omit<Goal, 'id' | 'currentAmount' | 'contributions' | 'milestones' | 'createdAt' | 'updatedAt'>) => void;
   updateGoal: (id: string, updates: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
-  contributeToGoal: (goalId: string, amount: number, note?: string, walletId?: string) => void;
-  withdrawFromGoal: (goalId: string, amount: number, note?: string) => void;
+  contributeToGoal: (goalId: string, amount: number, note?: string, walletId?: string, transactionId?: string) => void;
+  withdrawFromGoal: (goalId: string, amount: number, note?: string, walletId?: string, transactionId?: string) => void;
   removeContribution: (goalId: string, contributionId: string) => void;
   archiveGoal: (goalId: string) => void;
   unarchiveGoal: (goalId: string) => void;

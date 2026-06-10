@@ -10,6 +10,9 @@ interface DeleteConfirmModalProps {
   onCancel: () => void;
   onConfirm: () => void;
   walletName: string;
+  /** Number of transactions/transfers still linked to this wallet. When > 0,
+   *  deletion is blocked and an explanatory message is shown instead. */
+  linkedCount?: number;
 }
 
 const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
@@ -18,10 +21,13 @@ const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   onCancel,
   onConfirm,
   walletName,
+  linkedCount = 0,
 }) => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
+
+  const blocked = linkedCount > 0;
 
   return (
     <Modal
@@ -33,29 +39,53 @@ const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
     >
       <Pressable style={styles.deleteConfirmOverlay} onPress={onCancel}>
         <View style={styles.deleteConfirmCard} onStartShouldSetResponder={() => true}>
-          <Text style={styles.deleteConfirmTitle}>Delete wallet?</Text>
-          <Text style={styles.deleteConfirmName} numberOfLines={1}>
-            {walletName}
-          </Text>
-          <Text style={styles.deleteConfirmSub}>This cannot be undone.</Text>
-          <View style={styles.deleteConfirmBtns}>
-            <TouchableOpacity
-              style={[styles.deleteConfirmBtn, styles.deleteConfirmCancelBtn]}
-              onPress={onCancel}
-              accessibilityRole="button"
-              accessibilityLabel={t.common.cancel.toLowerCase()}
-            >
-              <Text style={styles.deleteConfirmCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.deleteConfirmBtn, styles.deleteConfirmDeleteBtn]}
-              onPress={onConfirm}
-              accessibilityRole="button"
-              accessibilityLabel={t.common.delete.toLowerCase()}
-            >
-              <Text style={styles.deleteConfirmDeleteText}>Delete</Text>
-            </TouchableOpacity>
-          </View>
+          {blocked ? (
+            <>
+              <Text style={styles.deleteConfirmTitle}>Can't delete this wallet</Text>
+              <Text style={styles.deleteConfirmName} numberOfLines={1}>
+                {walletName}
+              </Text>
+              <Text style={styles.deleteConfirmSub}>
+                It still has {linkedCount} linked {linkedCount === 1 ? 'transaction' : 'transactions'}. Move or delete {linkedCount === 1 ? 'it' : 'them'} first, then you can remove this wallet.
+              </Text>
+              <View style={styles.deleteConfirmBtns}>
+                <TouchableOpacity
+                  style={[styles.deleteConfirmBtn, styles.deleteConfirmDeleteBtn]}
+                  onPress={onCancel}
+                  accessibilityRole="button"
+                  accessibilityLabel="got it"
+                >
+                  <Text style={styles.deleteConfirmDeleteText}>Got it</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={styles.deleteConfirmTitle}>Delete wallet?</Text>
+              <Text style={styles.deleteConfirmName} numberOfLines={1}>
+                {walletName}
+              </Text>
+              <Text style={styles.deleteConfirmSub}>This cannot be undone.</Text>
+              <View style={styles.deleteConfirmBtns}>
+                <TouchableOpacity
+                  style={[styles.deleteConfirmBtn, styles.deleteConfirmCancelBtn]}
+                  onPress={onCancel}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.common.cancel.toLowerCase()}
+                >
+                  <Text style={styles.deleteConfirmCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.deleteConfirmBtn, styles.deleteConfirmDeleteBtn]}
+                  onPress={onConfirm}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.common.delete.toLowerCase()}
+                >
+                  <Text style={styles.deleteConfirmDeleteText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
         </View>
       </Pressable>
     </Modal>
@@ -75,6 +105,8 @@ const makeStyles = (C: typeof CALM) =>
       borderRadius: RADIUS.xl,
       padding: SPACING.xl,
       width: '82%',
+      maxWidth: 380,
+      alignSelf: 'center',
       borderWidth: 1,
       borderColor: C.border,
     },

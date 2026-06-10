@@ -1,14 +1,19 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import React, { useMemo, useCallback, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Alert, Modal, Pressable } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { useSellerStore } from '../../store/sellerStore';
-import { useSettingsStore } from '../../store/settingsStore';
+import { useBusinessStore } from '../../store/businessStore';
+import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
+import { useAuthStore } from '../../store/authStore';
+import { signOut } from '../../services/supabase';
+import { syncAll, clearProfileCache } from '../../services/sellerSync';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useFadeSlide } from '../../utils/fadeSlide';
+import { lightTap } from '../../services/haptics';
 
 // ─── Component ───────────────────────────────────────────────
 const SellerManage: React.FC = () => {
@@ -21,6 +26,9 @@ const SellerManage: React.FC = () => {
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
 
+  const incomeType = useBusinessStore((s) => s.incomeType);
+  const [setupModalVisible, setSetupModalVisible] = useState(false);
+
   const activeSeason = seasons.find((s) => s.isActive) || null;
   const paidOrders = useMemo(() => orders.filter((o) => o.isPaid), [orders]);
   const totalCostsThisMonth = useMemo(() => ingredientCosts
@@ -31,6 +39,43 @@ const SellerManage: React.FC = () => {
     })
     .reduce((sum, c) => sum + c.amount, 0), [ingredientCosts]);
 
+  const handleSignOut = useCallback(() => {
+    Alert.alert(
+      t.settings.signOutTitle,
+      t.settings.signOutMsg,
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.settings.signOut,
+          onPress: () => {
+            const { isAuthenticated, isVerified } = useAuthStore.getState();
+            let syncData: any = null;
+            if (isAuthenticated && isVerified) {
+              const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
+              syncData = { products, orders, seasons, sellerCustomers };
+            }
+            useAuthStore.getState().reset();
+            clearProfileCache();
+            if (navigation.canGoBack()) navigation.goBack();
+            if (syncData) syncAll(syncData.products, syncData.orders, syncData.seasons, syncData.sellerCustomers).catch(() => {});
+            clearBusinessLocalData().catch(() => {});
+            signOut().catch(() => {});
+          },
+        },
+      ],
+    );
+  }, [t, navigation]);
+
+  const handleOpenSetup = useCallback(() => {
+    lightTap();
+    setSetupModalVisible(true);
+  }, []);
+
+  const handleConfirmSetup = useCallback(() => {
+    setSetupModalVisible(false);
+    useBusinessStore.getState().resetSetup();
+  }, []);
+
   // Staggered animations
   const headerAnim = useFadeSlide(0);
   const productsAnim = useFadeSlide(60);
@@ -38,8 +83,11 @@ const SellerManage: React.FC = () => {
   const costsAnim = useFadeSlide(120);
   const seasonsAnim = useFadeSlide(180);
   const settingsAnim = useFadeSlide(240);
+  const setupLinkAnim = useFadeSlide(290);
+  const signOutAnim = useFadeSlide(320);
 
   return (
+    <>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
@@ -164,7 +212,75 @@ const SellerManage: React.FC = () => {
           <Feather name="chevron-right" size={20} color={C.textMuted} />
         </TouchableOpacity>
       </Animated.View>
+
+      {/* ─── Change Business Setup ────────────────────────── */}
+      <Animated.View style={setupLinkAnim}>
+        <TouchableOpacity
+          style={styles.setupLink}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t.sellerManage.changeSetupLink}
+          onPress={handleOpenSetup}
+        >
+          <Feather name="briefcase" size={18} color={C.textMuted} />
+          <Text style={styles.setupLinkText}>{t.sellerManage.changeSetupLink}</Text>
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* ─── Sign Out ─────────────────────────────────────── */}
+      <Animated.View style={signOutAnim}>
+        <TouchableOpacity
+          style={styles.signOutCard}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t.settings.signOut}
+          onPress={handleSignOut}
+        >
+          <Feather name="log-out" size={18} color={C.textMuted} />
+          <Text style={styles.signOutText}>{t.settings.signOut}</Text>
+        </TouchableOpacity>
+      </Animated.View>
     </ScrollView>
+
+    {/* ─── Change Business Setup Confirm Modal ────────────── */}
+    <Modal
+      visible={setupModalVisible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={() => setSetupModalVisible(false)}
+    >
+      <Pressable style={styles.confirmOverlay} onPress={() => setSetupModalVisible(false)}>
+        <View style={styles.confirmCard} onStartShouldSetResponder={() => true}>
+          <Text style={styles.confirmTitle}>{t.sellerManage.changeSetupConfirmTitle}</Text>
+          {!!incomeType && (
+            <Text style={styles.confirmCurrent} numberOfLines={1}>{incomeType}</Text>
+          )}
+          <Text style={styles.confirmSub}>{t.sellerManage.changeSetupConfirmMsg}</Text>
+          <View style={styles.confirmBtns}>
+            <TouchableOpacity
+              style={[styles.confirmBtn, styles.confirmCancelBtn]}
+              onPress={() => setSetupModalVisible(false)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t.common.cancel}
+            >
+              <Text style={styles.confirmCancelText}>{t.common.cancel}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.confirmBtn, styles.confirmPrimaryBtn]}
+              onPress={handleConfirmSetup}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t.sellerManage.changeSetupConfirmBtn}
+            >
+              <Text style={styles.confirmPrimaryText}>{t.sellerManage.changeSetupConfirmBtn}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Pressable>
+    </Modal>
+    </>
   );
 };
 
@@ -259,6 +375,105 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   cardHighlighted: {
     borderColor: withAlpha(C.gold, 0.3),
     backgroundColor: withAlpha(C.gold, 0.03),
+  },
+
+  // Change business setup
+  setupLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    minHeight: 44,
+    marginTop: SPACING.xl,
+    paddingVertical: SPACING.md,
+  },
+  setupLinkText: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
+  // Sign out
+  signOutCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+    paddingVertical: SPACING.md,
+  },
+  signOutText: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+
+  // Confirm modal
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  confirmCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    width: '100%',
+    maxWidth: 380,
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
+    ...SHADOWS.lg,
+  },
+  confirmTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    marginBottom: SPACING.xs,
+  },
+  confirmCurrent: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textSecondary,
+    marginBottom: SPACING.xs,
+    textTransform: 'capitalize',
+  },
+  confirmSub: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    lineHeight: TYPOGRAPHY.size.sm * 1.5,
+    marginBottom: SPACING.xl,
+  },
+  confirmBtns: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  confirmBtn: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  confirmCancelBtn: {
+    backgroundColor: C.background,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  confirmPrimaryBtn: {
+    backgroundColor: C.deepOliveBiz,
+  },
+  confirmCancelText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+  },
+  confirmPrimaryText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
   },
 });
 

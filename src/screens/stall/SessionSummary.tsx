@@ -33,7 +33,7 @@ const SessionSummary: React.FC = () => {
   const route = useRoute<SessionSummaryRoute>();
   const { sessionId } = route.params;
 
-  const { sessions, getSessionSummary, getLifetimeStats, markSessionTransferred } = useStallStore();
+  const { sessions, getSessionSummary, getLifetimeStats, getSessionEconomics, markSessionTransferred } = useStallStore();
   const addTransfer = useBusinessStore((s) => s.addTransfer);
   const addTransferIncome = usePersonalStore((s) => s.addTransferIncome);
   const currency = useSettingsStore((s) => s.currency);
@@ -57,6 +57,9 @@ const SessionSummary: React.FC = () => {
   );
 
   const lifetimeStats = useMemo(() => getLifetimeStats(), [sessions]);
+
+  // Optional economics (kept + cash reconciliation)
+  const econ = useMemo(() => getSessionEconomics(sessionId), [sessionId, sessions]);
 
   // AI insight
   const insight = useMemo(
@@ -247,6 +250,58 @@ const SessionSummary: React.FC = () => {
             </Text>
           </View>
         </View>
+
+        {/* What you kept — only when costs were entered */}
+        {econ.hasCosts && (
+          <View style={styles.keptCard}>
+            <Text style={styles.sectionLabel}>{t.stall.keptHeading}</Text>
+            <View style={styles.keptRow}>
+              <Text style={styles.keptRowLabel}>{t.stall.cameInRow}</Text>
+              <Text style={styles.keptRowValue}>{currency} {econ.revenue.toFixed(2)}</Text>
+            </View>
+            {econ.cogs > 0 && (
+              <View style={styles.keptRow}>
+                <Text style={styles.keptRowLabelMuted}>{t.stall.goodsCostRow}</Text>
+                <Text style={styles.keptRowValueMuted}>−{currency} {econ.cogs.toFixed(2)}</Text>
+              </View>
+            )}
+            {econ.expensesTotal > 0 && (
+              <View style={styles.keptRow}>
+                <Text style={styles.keptRowLabelMuted}>{t.stall.moneyOutRow}</Text>
+                <Text style={styles.keptRowValueMuted}>−{currency} {econ.expensesTotal.toFixed(2)}</Text>
+              </View>
+            )}
+            <View style={[styles.keptRow, styles.keptRowFinal]}>
+              <Text style={styles.keptFinalLabel}>{t.stall.keptRow}</Text>
+              <Text style={styles.keptFinalValue}>{currency} {econ.kept.toFixed(2)}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Cash box reconciliation — only when the box was counted */}
+        {econ.hasCounted && (
+          <View style={styles.reconcileCard}>
+            <Text style={styles.sectionLabel}>{t.stall.cashBoxHeading}</Text>
+            <View style={styles.reconcileRow}>
+              <Text style={styles.reconcileLabel}>{t.stall.expectedLabel}</Text>
+              <Text style={styles.reconcileValue}>{currency} {econ.expectedCash.toFixed(2)}</Text>
+            </View>
+            <View style={styles.reconcileRow}>
+              <Text style={styles.reconcileLabel}>{t.stall.countedLabel}</Text>
+              <Text style={styles.reconcileValue}>{currency} {(econ.countedCash ?? 0).toFixed(2)}</Text>
+            </View>
+            <View style={[styles.reconcileRow, styles.reconcileRowFinal]}>
+              <Text style={styles.reconcileDiffLabel}>{t.stall.differenceLabel}</Text>
+              <Text style={styles.reconcileDiffValue}>
+                {(econ.cashDifference ?? 0) === 0
+                  ? t.stall.cashMatches
+                  : (econ.cashDifference ?? 0) > 0
+                  ? t.stall.overBy.replace('{currency}', currency).replace('{amount}', Math.abs(econ.cashDifference ?? 0).toFixed(2))
+                  : t.stall.shortBy.replace('{currency}', currency).replace('{amount}', Math.abs(econ.cashDifference ?? 0).toFixed(2))}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Product breakdown */}
         {summary.productBreakdown.length > 0 && (
@@ -474,6 +529,100 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   sectionLabel: {
     ...TYPE.label,
     marginBottom: SPACING.md,
+  },
+
+  // ─── Kept (net) card ─────────────────────────────────────────
+  keptCard: {
+    backgroundColor: withAlpha(C.bronze, 0.04),
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.15),
+    borderRadius: RADIUS.lg,
+    padding: SPACING.xl,
+    marginBottom: SPACING['2xl'],
+  },
+  keptRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
+  keptRowLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textSecondary,
+  },
+  keptRowValue: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  keptRowLabelMuted: {
+    ...TYPE.muted,
+  },
+  keptRowValueMuted: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  keptRowFinal: {
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: withAlpha(C.bronze, 0.2),
+  },
+  keptFinalLabel: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
+  },
+  keptFinalValue: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // ─── Cash reconciliation card ────────────────────────────────
+  reconcileCard: {
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.xl,
+    marginBottom: SPACING['2xl'],
+  },
+  reconcileRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
+  reconcileLabel: {
+    ...TYPE.muted,
+  },
+  reconcileValue: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  reconcileRowFinal: {
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  reconcileDiffLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  reconcileDiffValue: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+    fontVariant: ['tabular-nums'],
   },
   productRow: {
     flexDirection: 'row',

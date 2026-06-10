@@ -940,7 +940,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     borderRadius: RADIUS.sm,
     paddingHorizontal: SPACING.sm,
     paddingVertical: Platform.OS === 'ios' ? 6 : 4,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     fontWeight: TYPOGRAPHY.weight.medium,
   },

@@ -20,6 +20,9 @@ interface WalletPickerProps {
   wallets: Wallet[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onClear?: () => void;
+  allowNone?: boolean;
+  noneLabel?: string;
   label?: string;
   typeFilter?: WalletType;
 }
@@ -30,6 +33,9 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
   wallets,
   selectedId,
   onSelect,
+  onClear,
+  allowNone,
+  noneLabel = 'None',
   label,
   typeFilter,
 }) => {
@@ -180,7 +186,12 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
               </View>
             </>
           ) : (
-            <Text style={styles.placeholder}>Select wallet</Text>
+            <>
+              <View style={[styles.iconCircle, { backgroundColor: withAlpha(C.textMuted, 0.08) }]}>
+                <Feather name={allowNone ? 'slash' : 'credit-card'} size={18} color={C.textMuted} />
+              </View>
+              <Text style={styles.placeholder}>{allowNone ? noneLabel : 'Select wallet'}</Text>
+            </>
           )}
         </View>
         <Feather name="chevron-down" size={20} color={C.textSecondary} />
@@ -213,6 +224,22 @@ const WalletPicker: React.FC<WalletPickerProps> = ({
               windowSize={5}
               maxToRenderPerBatch={8}
               renderItem={renderGroupItem}
+              ListHeaderComponent={allowNone ? (
+                <TouchableOpacity
+                  style={[styles.item, !selectedId && { backgroundColor: withAlpha(C.accent, 0.07) }]}
+                  onPress={() => { lightTap(); onClear?.(); setDropdownOpen(false); }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.itemIcon, { backgroundColor: withAlpha(C.textMuted, 0.08) }]}>
+                    <Feather name="slash" size={18} color={C.textMuted} />
+                  </View>
+                  <View style={styles.itemTextGroup}>
+                    <Text style={styles.itemName}>{noneLabel}</Text>
+                    <Text style={styles.itemBalance}>no wallet linked</Text>
+                  </View>
+                  {!selectedId && <Feather name="check" size={18} color={C.accent} />}
+                </TouchableOpacity>
+              ) : undefined}
             />
           </View>
         </TouchableOpacity>

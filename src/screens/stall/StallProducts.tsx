@@ -15,25 +15,42 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
+import { newId } from '../../utils/id';
 
 const StallProducts: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
-  const { products, addProduct, updateProduct, deleteProduct } = useStallStore();
+  const { products, addProduct, updateProduct, deleteProduct, roundCashTo5, setRoundCashTo5 } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
+  const [defaultQty, setDefaultQty] = useState('');
+  const [cost, setCost] = useState('');
+  const [modifiers, setModifiers] = useState<{ key: string; label: string; delta: string }[]>([]);
+  const modKeyRef = React.useRef(0);
+  const addModifierRow = useCallback(() => {
+    setModifiers((prev) => [...prev, { key: `m${modKeyRef.current++}`, label: '', delta: '' }]);
+  }, []);
+  const updateModifierRow = useCallback((key: string, patch: Partial<{ label: string; delta: string }>) => {
+    setModifiers((prev) => prev.map((m) => (m.key === key ? { ...m, ...patch } : m)));
+  }, []);
+  const removeModifierRow = useCallback((key: string) => {
+    setModifiers((prev) => prev.filter((m) => m.key !== key));
+  }, []);
 
   const activeCount = useMemo(() => products.filter((p) => p.isActive).length, [products]);
 
   const resetForm = useCallback(() => {
     setName('');
     setPrice('');
+    setDefaultQty('');
+    setCost('');
+    setModifiers([]);
     setEditingId(null);
     setShowForm(false);
   }, []);
@@ -43,16 +60,22 @@ const StallProducts: React.FC = () => {
     const parsedPrice = parseFloat(price);
     if (!trimmedName || isNaN(parsedPrice) || parsedPrice <= 0) return;
 
+    const parsedDefault = parseInt(defaultQty, 10);
+    const defaultStartQty = !isNaN(parsedDefault) && parsedDefault > 0 ? parsedDefault : undefined;
+    const parsedCost = parseFloat(cost);
+    const unitCost = !isNaN(parsedCost) && parsedCost > 0 ? parsedCost : undefined;
+    const cleanMods = modifiers
+      .filter((m) => m.label.trim())
+      .map((m) => ({ id: newId(), label: m.label.trim(), priceDelta: parseFloat(m.delta) || 0 }));
+    const modsPayload = cleanMods.length ? cleanMods : undefined;
+
     if (editingId) {
-      updateProduct(editingId, { name: trimmedName, price: parsedPrice });
+      updateProduct(editingId, { name: trimmedName, price: parsedPrice, defaultStartQty, unitCost, modifiers: modsPayload });
     } else {
-      addProduct({ name: trimmedName, price: parsedPrice, isActive: true });
+      addProduct({ name: trimmedName, price: parsedPrice, isActive: true, defaultStartQty, unitCost, modifiers: modsPayload });
     }
-    setName('');
-    setPrice('');
-    setEditingId(null);
-    setShowForm(false);
-  }, [name, price, editingId, updateProduct, addProduct]);
+    resetForm();
+  }, [name, price, defaultQty, cost, modifiers, editingId, updateProduct, addProduct, resetForm]);
 
   const handleEdit = useCallback((id: string) => {
     const product = products.find((p) => p.id === id);
@@ -60,6 +83,9 @@ const StallProducts: React.FC = () => {
     setEditingId(id);
     setName(product.name);
     setPrice(product.price.toString());
+    setDefaultQty(product.defaultStartQty ? String(product.defaultStartQty) : '');
+    setCost(product.unitCost ? String(product.unitCost) : '');
+    setModifiers((product.modifiers || []).map((m) => ({ key: `m${modKeyRef.current++}`, label: m.label, delta: m.priceDelta ? String(m.priceDelta) : '' })));
     setShowForm(true);
   }, [products]);
 
@@ -116,6 +142,77 @@ const StallProducts: React.FC = () => {
                 selectionColor={C.accent}
               />
             </View>
+
+            {/* Optional default starting stock */}
+            <Text style={styles.fieldLabel}>{t.stall.defaultStockLabel}</Text>
+            <View style={styles.priceRow}>
+              <Feather name="package" size={18} color={C.textSecondary} />
+              <TextInput
+                style={[styles.input, styles.priceInput]}
+                value={defaultQty}
+                onChangeText={(v) => setDefaultQty(v.replace(/[^0-9]/g, ''))}
+                placeholder={t.stall.defaultStockPlaceholder}
+                placeholderTextColor={C.neutral}
+                keyboardType="number-pad"
+                accessibilityLabel="Default starting stock, optional"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
+              />
+            </View>
+
+            {/* Optional unit cost — feeds the optional "kept" number */}
+            <Text style={styles.fieldLabel}>{t.stall.costEachLabel}</Text>
+            <View style={styles.priceRow}>
+              <Text style={styles.priceCurrency}>{currency}</Text>
+              <TextInput
+                style={[styles.input, styles.priceInput]}
+                value={cost}
+                onChangeText={setCost}
+                placeholder={t.stall.costEachPlaceholder}
+                placeholderTextColor={C.neutral}
+                keyboardType="decimal-pad"
+                accessibilityLabel="Cost per unit, optional"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
+              />
+            </View>
+
+            {/* Optional quick options (modifiers) */}
+            <Text style={styles.fieldLabel}>{t.stall.modifiersLabel}</Text>
+            <Text style={styles.modHint}>{t.stall.modifiersHint}</Text>
+            {modifiers.map((m) => (
+              <View key={m.key} style={styles.modRow}>
+                <TextInput
+                  style={styles.modName}
+                  value={m.label}
+                  onChangeText={(v) => updateModifierRow(m.key, { label: v })}
+                  placeholder={t.stall.modifierNamePlaceholder}
+                  placeholderTextColor={C.neutral}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
+                />
+                <View style={styles.modDeltaWrap}>
+                  <Text style={styles.priceCurrency}>{currency}</Text>
+                  <TextInput
+                    style={styles.modDelta}
+                    value={m.delta}
+                    onChangeText={(v) => updateModifierRow(m.key, { delta: v.replace(/[^0-9.-]/g, '') })}
+                    placeholder={t.stall.modifierDeltaPlaceholder}
+                    placeholderTextColor={C.neutral}
+                    keyboardType="numbers-and-punctuation"
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                    selectionColor={C.accent}
+                  />
+                </View>
+                <TouchableOpacity onPress={() => removeModifierRow(m.key)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Remove option">
+                  <Feather name="x" size={16} color={C.neutral} />
+                </TouchableOpacity>
+              </View>
+            ))}
+            <TouchableOpacity style={styles.addModLink} onPress={addModifierRow} accessibilityRole="button" accessibilityLabel={t.stall.addModifierBtn}>
+              <Text style={styles.addModLinkText}>{t.stall.addModifierBtn}</Text>
+            </TouchableOpacity>
+
             <View style={styles.formActions}>
               <TouchableOpacity
                 style={styles.saveButton}
@@ -148,6 +245,9 @@ const StallProducts: React.FC = () => {
               setEditingId(null);
               setName('');
               setPrice('');
+              setDefaultQty('');
+              setCost('');
+              setModifiers([]);
               setShowForm(true);
             }}
             activeOpacity={0.7}
@@ -189,6 +289,8 @@ const StallProducts: React.FC = () => {
                   </Text>
                   <Text style={styles.productPrice}>
                     {currency} {product.price.toFixed(2)}
+                    {product.unitCost ? ` · ${t.stall.costEach.replace('{currency}', currency).replace('{amount}', product.unitCost.toFixed(2))}` : ''}
+                    {product.defaultStartQty ? ` · ${t.stall.bringsStock.replace('{n}', String(product.defaultStartQty))}` : ''}
                     {product.totalSold > 0 ? ` · ${t.stall.soldSuffix.replace('{n}', String(product.totalSold))}` : ''}
                   </Text>
                 </View>
@@ -225,6 +327,22 @@ const StallProducts: React.FC = () => {
             </Text>
           </View>
         )}
+
+        {/* Stall setting: 5-sen cash rounding */}
+        <TouchableOpacity
+          style={styles.settingRow}
+          onPress={() => setRoundCashTo5(!roundCashTo5)}
+          activeOpacity={0.7}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: roundCashTo5 }}
+          accessibilityLabel={t.stall.roundCashLabel}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.settingLabel}>{t.stall.roundCashLabel}</Text>
+            <Text style={styles.settingHint}>{t.stall.roundCashHint}</Text>
+          </View>
+          <Feather name={roundCashTo5 ? 'check-square' : 'square'} size={22} color={roundCashTo5 ? C.bronze : C.textSecondary} />
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -277,6 +395,82 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     marginBottom: SPACING.md,
+  },
+  fieldLabel: {
+    ...TYPE.muted,
+    color: C.textSecondary,
+    marginBottom: SPACING.sm,
+  },
+  modHint: {
+    ...TYPE.muted,
+    marginTop: -SPACING.xs,
+    marginBottom: SPACING.sm,
+  },
+  modRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  modName: {
+    flex: 1,
+    backgroundColor: C.background,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textPrimary,
+    minHeight: 40,
+  },
+  modDeltaWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: C.background,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    width: 92,
+    minHeight: 40,
+  },
+  modDelta: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  addModLink: {
+    paddingVertical: SPACING.xs,
+  },
+  addModLinkText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    marginTop: SPACING['2xl'],
+    minHeight: 56,
+  },
+  settingLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  settingHint: {
+    ...TYPE.muted,
+    marginTop: 2,
   },
   priceRow: {
     flexDirection: 'row',

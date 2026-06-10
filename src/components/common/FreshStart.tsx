@@ -339,7 +339,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textMuted,
   },
   amountInput: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
     minWidth: 60,

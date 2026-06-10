@@ -168,7 +168,7 @@ const CustomerCard: React.FC<CustomerCardProps> = React.memo(({
   const lastOrderLabel = smartDateLabel(customer.lastOrderDate);
 
   return (
-    <Animated.View style={[styles.card, customer.unpaidAmount > 0 && styles.cardUnpaid, { opacity: fadeAnim }]}>
+    <Animated.View style={[styles.card, customer.unpaidAmount > 0 && styles.cardUnread, { opacity: fadeAnim }]}>
       <TouchableOpacity
         style={styles.cardBody}
         onPress={handlePress}
@@ -186,7 +186,7 @@ const CustomerCard: React.FC<CustomerCardProps> = React.memo(({
         {/* Content */}
         <View style={styles.cardContent}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={styles.customerName} numberOfLines={1}>
+            <Text style={[styles.customerName, customer.unpaidAmount <= 0 && styles.customerNameRead]} numberOfLines={2}>
               {customer.name}
             </Text>
             {customer.isVip && (
@@ -196,20 +196,19 @@ const CustomerCard: React.FC<CustomerCardProps> = React.memo(({
               </View>
             )}
           </View>
-          <Text style={styles.customerStats}>
-            {customer.totalOrders} order{customer.totalOrders !== 1 ? 's' : ''} · {currency} {customer.totalSpent.toFixed(0)} · last {lastOrderLabel}
+          <Text style={[styles.customerStats, customer.unpaidAmount > 0 && styles.customerStatsUnread]}>
+            {customer.totalOrders} order{customer.totalOrders !== 1 ? 's' : ''}{customer.unpaidAmount <= 0 ? ` · ${currency} ${customer.totalSpent.toFixed(0)}` : ''} · {lastOrderLabel}
           </Text>
-          {customer.unpaidAmount > 0 && (
-            <View style={styles.unpaidBadge}>
-              <Text style={styles.unpaidBadgeText}>
-                {currency} {customer.unpaidAmount.toFixed(0)} unpaid
-              </Text>
-            </View>
-          )}
         </View>
 
-        {/* Arrow */}
-        <Feather name="chevron-right" size={18} color={C.textMuted} />
+        {/* Right side: unpaid amount or chevron */}
+        {customer.unpaidAmount > 0 ? (
+          <Text style={styles.unpaidAmount}>
+            {currency} {customer.unpaidAmount.toFixed(0)}
+          </Text>
+        ) : (
+          <Feather name="chevron-right" size={18} color={C.textMuted} />
+        )}
       </TouchableOpacity>
     </Animated.View>
   );
@@ -291,7 +290,7 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
   return (
     <Modal
       visible={visible}
-      animationType="fade"
+      animationType="none"
       transparent
       statusBarTranslucent
       onRequestClose={onClose}
@@ -300,21 +299,8 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <View style={styles.detailSheet} onStartShouldSetResponder={() => true}>
           <ScrollView bounces={false} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-            {/* Header — avatar + name + close */}
-            <View style={styles.detailHeader}>
-              <View style={styles.detailHeaderLeft}>
-                <View style={styles.detailAvatar}>
-                  <Text style={styles.detailAvatarText}>
-                    {customer.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.detailName} numberOfLines={1}>{customer.name}</Text>
-                  <Text style={styles.detailSub}>
-                    {customer.totalOrders} order{customer.totalOrders !== 1 ? 's' : ''} · last {lastOrderLabel} · since {format(customer.firstOrderDate, 'MMM yyyy')}
-                  </Text>
-                </View>
-              </View>
+            {/* Close */}
+            <View style={styles.detailCloseRow}>
               <Pressable
                 onPress={onClose}
                 style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
@@ -326,82 +312,94 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
               </Pressable>
             </View>
 
-            {/* Insights row */}
-            <View style={styles.insightsRow}>
-              <View style={styles.insightChip}>
-                <Text style={styles.insightLabel}>avg order</Text>
-                <Text style={styles.insightValue}>{currency} {avgOrder.toFixed(2)}</Text>
+            {/* Identity — centered */}
+            <View style={styles.dtIdentity}>
+              <View style={styles.dtAvatarLarge}>
+                <Text style={styles.dtAvatarLargeText}>
+                  {customer.name.charAt(0).toUpperCase()}
+                </Text>
               </View>
-              <View style={styles.insightChip}>
-                <Text style={styles.insightLabel}>lifetime</Text>
-                <Text style={styles.insightValue}>{currency} {customer.totalSpent.toFixed(2)}</Text>
-              </View>
-              {customer.unpaidAmount > 0 && (
-                <View style={[styles.insightChip, styles.insightChipDebt]}>
-                  <Text style={styles.insightLabel}>owes</Text>
-                  <Text style={[styles.insightValue, styles.insightValueDebt]}>
-                    {currency} {customer.unpaidAmount.toFixed(2)}
-                  </Text>
-                </View>
-              )}
+              <Text style={styles.dtName} numberOfLines={2}>{customer.name}</Text>
+              <Text style={styles.dtMeta}>
+                {customer.totalOrders} order{customer.totalOrders !== 1 ? 's' : ''} · {lastOrderLabel}
+                {customer.totalOrders > 1 && isValid(customer.firstOrderDate) ? ` · since ${format(customer.firstOrderDate, 'MMM yyyy')}` : ''}
+              </Text>
             </View>
 
-            {/* Contact section */}
-            {customer.phone ? (
-              <View style={styles.contactRow}>
-                <TouchableOpacity
-                  style={styles.contactButton}
-                  onPress={() => { lightTap(); onCallPhone(customer.phone!); }}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Call ${customer.phone}`}
-                >
-                  <Feather name="phone" size={15} color={semantic(BIZ_SAFE.success, isDark)} />
-                  <Text style={styles.contactButtonText} numberOfLines={1}>
-                    {customer.phone}
+            {/* Contact strip — icon circles */}
+            {(customer.phone || customer.address) && (
+              <View style={styles.dtContactStrip}>
+                {customer.phone && (
+                  <TouchableOpacity
+                    style={styles.dtContactCircle}
+                    activeOpacity={0.7}
+                    onPress={() => { lightTap(); onCallPhone(customer.phone!); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Call ${customer.phone}`}
+                  >
+                    <Feather name="phone" size={18} color={C.bronze} />
+                    <Text style={styles.dtContactLabel}>call</Text>
+                  </TouchableOpacity>
+                )}
+                {customer.phone && (
+                  <TouchableOpacity
+                    style={styles.dtContactCircle}
+                    activeOpacity={0.7}
+                    onPress={() => { lightTap(); onWhatsApp(customer.phone!); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="WhatsApp customer"
+                  >
+                    <Feather name="message-circle" size={18} color={C.bronze} />
+                    <Text style={styles.dtContactLabel}>WhatsApp</Text>
+                  </TouchableOpacity>
+                )}
+                {customer.address && (
+                  <TouchableOpacity
+                    style={styles.dtContactCircle}
+                    activeOpacity={0.7}
+                    onPress={() => { lightTap(); onOpenMaps(customer.address!); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Navigate to ${customer.address}`}
+                  >
+                    <Feather name="map-pin" size={18} color={C.bronze} />
+                    <Text style={styles.dtContactLabel}>map</Text>
+                  </TouchableOpacity>
+                )}
+                {customer.unpaidAmount > 0 && customer.phone && (
+                  <TouchableOpacity
+                    style={styles.dtContactCircle}
+                    activeOpacity={0.7}
+                    onPress={() => { lightTap(); onRemind(); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remind ${customer.name} about outstanding balance`}
+                  >
+                    <Feather name="bell" size={18} color={C.bronze} />
+                    <Text style={styles.dtContactLabel}>remind</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {/* Hero numbers */}
+            {customer.unpaidAmount > 0 ? (
+              <View style={styles.dtHeroCard}>
+                <Text style={styles.dtHeroLabel}>outstanding</Text>
+                <Text style={styles.dtHeroAmount}>{currency} {customer.unpaidAmount.toFixed(0)}</Text>
+                {customer.totalOrders > 1 && (
+                  <Text style={styles.dtHeroSub}>
+                    {currency} {customer.totalSpent.toFixed(0)} lifetime · {currency} {avgOrder.toFixed(0)} avg
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.contactButtonSmall}
-                  onPress={() => { lightTap(); onWhatsApp(customer.phone!); }}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel="WhatsApp customer"
-                >
-                  <Feather name="message-circle" size={15} color={semantic(BIZ_SAFE.success, isDark)} />
-                </TouchableOpacity>
+                )}
+              </View>
+            ) : customer.totalOrders > 1 ? (
+              <View style={styles.dtHeroCard}>
+                <Text style={styles.dtHeroLabel}>lifetime</Text>
+                <Text style={[styles.dtHeroAmount, { color: C.textPrimary }]}>{currency} {customer.totalSpent.toFixed(0)}</Text>
+                <Text style={styles.dtHeroSub}>
+                  {currency} {avgOrder.toFixed(0)} avg per order
+                </Text>
               </View>
             ) : null}
-            {customer.address ? (
-              <TouchableOpacity
-                style={styles.addressButton}
-                onPress={() => { lightTap(); onOpenMaps(customer.address!); }}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={`Navigate to ${customer.address}`}
-              >
-                <Feather name="map-pin" size={15} color={C.gold} />
-                <Text style={styles.addressButtonText} numberOfLines={2}>
-                  {customer.address}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-
-            {/* WhatsApp reminder for unpaid */}
-            {customer.unpaidAmount > 0 && customer.phone && (
-              <TouchableOpacity
-                style={styles.remindButton}
-                activeOpacity={0.7}
-                onPress={() => { lightTap(); onRemind(); }}
-                accessibilityRole="button"
-                accessibilityLabel={`Remind ${customer.name} about outstanding balance via WhatsApp`}
-              >
-                <Feather name="message-circle" size={15} color={C.onAccent} />
-                <Text style={styles.remindButtonText}>
-                  remind · {currency} {customer.unpaidAmount.toFixed(2)} unpaid
-                </Text>
-              </TouchableOpacity>
-            )}
 
             {/* Note */}
             {customer.note ? (
@@ -411,120 +409,96 @@ const CustomerDetailModal: React.FC<DetailModalProps> = ({
               </View>
             ) : null}
 
-            {/* Order history */}
-            <View style={styles.orderHistorySection}>
-              <View style={styles.orderHistoryHeader}>
-                <Text style={styles.orderHistoryTitle}>recent orders</Text>
-                {customer.totalOrders > 3 && (
-                  <TouchableOpacity
-                    onPress={() => { lightTap(); onViewOrders(); }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel="View all orders"
-                  >
-                    <Text style={styles.viewAllText}>view all {customer.totalOrders}</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              {recentOrders.map((order) => {
-                const status = getStatusLabel(order);
-                const orderDate = order.date instanceof Date ? order.date : new Date(order.date);
-                return (
-                  <View key={order.id} style={styles.orderHistoryItem}>
-                    <View style={styles.orderHistoryLeft}>
-                      <Text style={styles.orderHistoryDate}>
-                        {order.orderNumber ? `${order.orderNumber}  ` : ''}{smartDateLabel(orderDate)}
-                      </Text>
-                      <Text style={styles.orderHistorySummary} numberOfLines={1}>
-                        {getItemsSummary(order)}
-                      </Text>
-                    </View>
-                    <View style={styles.orderHistoryRight}>
-                      <Text style={styles.orderHistoryAmount}>
-                        {currency} {order.totalAmount.toFixed(2)}
-                      </Text>
-                      <View
-                        style={[
-                          styles.statusPill,
-                          order.isPaid && styles.statusPillPaid,
-                          status === 'pending' && styles.statusPillPending,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusPillText,
-                            order.isPaid && styles.statusPillTextPaid,
-                            status === 'pending' && styles.statusPillTextPending,
-                          ]}
-                        >
+            {/* Orders */}
+            {recentOrders.length > 0 && (
+              <View style={styles.dtOrdersSection}>
+                <View style={styles.dtOrdersHeader}>
+                  <Text style={styles.dtOrdersTitle}>orders</Text>
+                  {customer.totalOrders > 3 && (
+                    <TouchableOpacity
+                      onPress={() => { lightTap(); onViewOrders(); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="View all orders"
+                    >
+                      <Text style={styles.dtOrdersViewAll}>all {customer.totalOrders}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {recentOrders.map((order) => {
+                  const status = getStatusLabel(order);
+                  const orderDate = order.date instanceof Date ? order.date : new Date(order.date);
+                  return (
+                    <View key={order.id} style={styles.dtOrderRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.dtOrderMeta}>
+                          {smartDateLabel(orderDate)}{order.orderNumber ? ` · ${order.orderNumber}` : ''}
+                        </Text>
+                        <Text style={styles.dtOrderItems} numberOfLines={1}>
+                          {getItemsSummary(order)}
+                        </Text>
+                      </View>
+                      <View style={styles.dtOrderRight}>
+                        <Text style={styles.dtOrderAmount}>{currency} {order.totalAmount.toFixed(0)}</Text>
+                        <Text style={[
+                          styles.dtOrderStatus,
+                          order.isPaid && { color: semantic(BIZ_SAFE.success, isDark) },
+                          status === 'pending' && { color: C.gold },
+                        ]}>
                           {status}
                         </Text>
                       </View>
                     </View>
-                  </View>
-                );
-              })}
-            </View>
+                  );
+                })}
+              </View>
+            )}
 
-            {/* Action grid — 2 columns */}
-            <View style={styles.actionsGrid}>
+            {/* Actions */}
+            <View style={styles.dtActions}>
               <TouchableOpacity
-                style={styles.gridAction}
+                style={styles.dtActionPrimary}
                 activeOpacity={0.7}
                 onPress={() => { lightTap(); onNewOrder(); }}
                 accessibilityRole="button"
                 accessibilityLabel="New order"
               >
-                <Feather name="plus-circle" size={16} color={C.onAccent} />
-                <Text style={styles.gridActionTextPrimary}>new order</Text>
+                <Feather name="plus" size={16} color={C.onAccent} />
+                <Text style={styles.dtActionPrimaryText}>new order</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.gridActionSecondary}
+                style={styles.dtActionSecondary}
                 activeOpacity={0.7}
                 onPress={() => { lightTap(); onViewOrders(); }}
                 accessibilityRole="button"
-                accessibilityLabel="View orders"
+                accessibilityLabel="View all orders"
               >
-                <Feather name="list" size={16} color={C.bronze} />
-                <Text style={styles.gridActionText}>orders</Text>
+                <Text style={styles.dtActionSecondaryText}>all orders</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.gridActionSecondary}
-                activeOpacity={0.7}
-                onPress={() => { lightTap(); onCopyInfo(); }}
-                accessibilityRole="button"
-                accessibilityLabel="Copy info"
-              >
-                <Feather name="copy" size={16} color={C.bronze} />
-                <Text style={styles.gridActionText}>copy info</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.gridActionSecondary}
+                style={styles.dtActionSecondary}
                 activeOpacity={0.7}
                 onPress={() => { lightTap(); onEditDetails(); }}
                 accessibilityRole="button"
                 accessibilityLabel="Edit details"
               >
-                <Feather name="edit-2" size={16} color={C.bronze} />
-                <Text style={styles.gridActionText}>edit</Text>
+                <Text style={styles.dtActionSecondaryText}>edit</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.dtActionSecondary}
+                activeOpacity={0.7}
+                onPress={() => { lightTap(); onCopyInfo(); }}
+                accessibilityRole="button"
+                accessibilityLabel="Copy customer info"
+              >
+                <Text style={styles.dtActionSecondaryText}>copy</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Delete — minimal */}
-            <TouchableOpacity
-              style={styles.deleteButton}
-              activeOpacity={0.7}
-              onPress={onDeleteCustomer}
-              accessibilityRole="button"
-              accessibilityLabel="Delete customer and all orders"
-            >
-              <Text style={styles.deleteButtonText}>delete customer</Text>
-            </TouchableOpacity>
-
-            <View style={{ height: SPACING['2xl'] }} />
+            <View style={{ height: SPACING.xl }} />
           </ScrollView>
         </View>
       </View>
@@ -596,11 +570,9 @@ const SellerCustomers: React.FC = () => {
 
       const entry = map[key];
       entry.totalOrders += 1;
-      if (order.isPaid) {
-        entry.totalSpent += order.totalAmount;
-      }
+      entry.totalSpent += order.totalAmount;
       if (!order.isPaid) {
-        entry.unpaidAmount += order.totalAmount;
+        entry.unpaidAmount += order.totalAmount - (order.paidAmount ?? 0);
       }
 
       const orderDate = order.date instanceof Date ? order.date : new Date(order.date);
@@ -685,7 +657,12 @@ const SellerCustomers: React.FC = () => {
     // Sort
     switch (sortBy) {
       case 'recent':
-        list.sort((a, b) => b.lastOrderDate.getTime() - a.lastOrderDate.getTime());
+        list.sort((a, b) => {
+          const aUnpaid = a.unpaidAmount > 0 ? 1 : 0;
+          const bUnpaid = b.unpaidAmount > 0 ? 1 : 0;
+          if (aUnpaid !== bUnpaid) return bUnpaid - aUnpaid;
+          return b.lastOrderDate.getTime() - a.lastOrderDate.getTime();
+        });
         break;
       case 'name':
         list.sort((a, b) => a.name.localeCompare(b.name));
@@ -791,7 +768,9 @@ const SellerCustomers: React.FC = () => {
 
   const handleViewOrders = useCallback((customerName: string) => {
     setSelectedCustomer(null);
-    navigation.navigate('SellerOrders', { searchQuery: customerName, initialFilter: 'all' });
+    setTimeout(() => {
+      navigation.navigate('SellerOrders', { searchQuery: customerName, initialFilter: 'all' });
+    }, 50);
   }, [navigation]);
 
   const handleCopyInfo = useCallback((customer: DerivedCustomer) => {
@@ -836,15 +815,17 @@ const SellerCustomers: React.FC = () => {
         },
       ]
     );
-  }, [deleteSellerCustomer, deleteOrder, showToast]);
+  }, [deleteSellerCustomer, deleteOrders, showToast]);
 
   const handleNewOrder = useCallback((customer: DerivedCustomer) => {
     setSelectedCustomer(null);
-    navigation.navigate('SellerNewOrder', {
-      customerName: customer.name,
-      customerPhone: customer.phone,
-      customerAddress: customer.address,
-    });
+    setTimeout(() => {
+      navigation.navigate('SellerNewOrder', {
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        customerAddress: customer.address,
+      });
+    }, 50);
   }, [navigation]);
 
   const openEditModal = useCallback((customer: DerivedCustomer) => {
@@ -915,12 +896,14 @@ const SellerCustomers: React.FC = () => {
       addSellerCustomer(updates);
     }
 
-    // If name changed, update all associated orders so the customer doesn't split into two entries
+    // Propagate name, phone, and address changes to all associated orders
     const oldName = editingCustomer.name;
-    if (oldName && customerName !== oldName) {
-      for (const order of editingCustomer.orders) {
-        updateOrder(order.id, { customerName: customerName });
-      }
+    for (const order of editingCustomer.orders) {
+      const orderUpdates: Record<string, any> = {};
+      if (oldName && customerName !== oldName) orderUpdates.customerName = customerName;
+      if (customerPhone) orderUpdates.customerPhone = customerPhone;
+      if (editAddress.trim()) orderUpdates.customerAddress = editAddress.trim();
+      if (Object.keys(orderUpdates).length > 0) updateOrder(order.id, orderUpdates);
     }
 
     mediumTap();
@@ -944,6 +927,7 @@ const SellerCustomers: React.FC = () => {
     setEditPhone('');
     setEditAddress('');
     setEditNote('');
+    setEditIsVip(false);
     setEditModalVisible(true);
   }, []);
 
@@ -1080,7 +1064,7 @@ const SellerCustomers: React.FC = () => {
           <TextInput
             style={styles.searchInput}
             placeholder="search name, phone, address"
-            placeholderTextColor={C.textMuted}
+            placeholderTextColor={withAlpha(C.textMuted, 0.6)}
             value={search}
             onChangeText={setSearch}
             returnKeyType="search"
@@ -1160,7 +1144,7 @@ const SellerCustomers: React.FC = () => {
       )}
 
     </View>
-  ), [search, sortBy, filter, filterCounts, hasActiveFilters, filteredCustomers.length, derivedCustomers.length, handleClearFilters]);
+  ), [search, sortBy, filter, filterCounts, hasActiveFilters, filteredCustomers.length, derivedCustomers.length, handleClearFilters, C, isDark]);
 
   return (
     <View style={styles.container}>
@@ -1214,21 +1198,41 @@ const SellerCustomers: React.FC = () => {
         keyExtractor={customerKeyExtractor}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={
-          <View style={styles.noResultsContainer}>
-            <View style={styles.noResultsIconCircle}>
-              <Feather name="search" size={24} color={C.textMuted} />
-            </View>
-            <Text style={styles.noResultsText}>no matching customers.</Text>
-            {hasActiveFilters && (
+          derivedCustomers.length === 0 ? (
+            <View style={styles.noResultsContainer}>
+              <View style={styles.noResultsIconCircle}>
+                <Feather name="users" size={28} color={C.textMuted} />
+              </View>
+              <Text style={styles.noResultsTitle}>no customers yet</Text>
+              <Text style={styles.noResultsSubtitle}>customers appear here as you add orders.</Text>
               <TouchableOpacity
-                style={styles.noResultsClearButton}
+                style={styles.noResultsCta}
                 activeOpacity={0.7}
-                onPress={handleClearFilters}
+                onPress={() => navigation.navigate('SellerNewOrder')}
+                accessibilityRole="button"
               >
-                <Text style={styles.noResultsClearText}>clear filters</Text>
+                <Feather name="plus" size={18} color={C.onAccent} />
+                <Text style={styles.noResultsCtaText}>new order</Text>
               </TouchableOpacity>
-            )}
-          </View>
+            </View>
+          ) : (
+            <View style={styles.noResultsContainer}>
+              <View style={styles.noResultsIconCircle}>
+                <Feather name="search" size={28} color={C.textMuted} />
+              </View>
+              <Text style={styles.noResultsTitle}>no matching customers</Text>
+              <Text style={styles.noResultsSubtitle}>try adjusting your search or filters.</Text>
+              {hasActiveFilters && (
+                <TouchableOpacity
+                  style={styles.noResultsClearButton}
+                  activeOpacity={0.7}
+                  onPress={handleClearFilters}
+                >
+                  <Text style={styles.noResultsClearText}>clear filters</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )
         }
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -1334,13 +1338,13 @@ const SellerCustomers: React.FC = () => {
               <View style={styles.modalHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.modalTitle}>
-                    {editingCustomer?.storedId ? 'edit ' : 'new '}
+                    {editingCustomer?.name ? 'edit ' : 'new '}
                     <Text style={styles.modalTitleAccent}>
-                      {editingCustomer?.storedId ? 'details' : 'customer'}
+                      {editingCustomer?.name ? 'details' : 'customer'}
                     </Text>
                   </Text>
                   <Text style={styles.modalSubtitle}>
-                    {editingCustomer?.storedId ? 'update customer details' : 'add a new customer to your list'}
+                    {editingCustomer?.name ? 'update customer details' : 'add a new customer to your list'}
                   </Text>
                 </View>
                 <Pressable
@@ -1358,7 +1362,7 @@ const SellerCustomers: React.FC = () => {
               </View>
 
               {/* From contacts shortcut — only for new customers */}
-              {!editingCustomer?.storedId && !editingCustomer?.name && (
+              {!editingCustomer?.name && (
                 <TouchableOpacity
                   style={styles.modalContactsBtn}
                   activeOpacity={0.7}
@@ -1379,7 +1383,7 @@ const SellerCustomers: React.FC = () => {
                 value={editName}
                 onChangeText={setEditName}
                 placeholder="customer name"
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 autoFocus={!editingCustomer?.name}
                 onFocus={() => setFocusedField('name')}
                 onBlur={() => setFocusedField(null)}
@@ -1394,7 +1398,7 @@ const SellerCustomers: React.FC = () => {
                 value={editPhone}
                 onChangeText={setEditPhone}
                 placeholder="phone number"
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 keyboardType="phone-pad"
                 onFocus={() => setFocusedField('phone')}
                 onBlur={() => setFocusedField(null)}
@@ -1409,7 +1413,7 @@ const SellerCustomers: React.FC = () => {
                 value={editAddress}
                 onChangeText={setEditAddress}
                 placeholder="delivery address"
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
@@ -1426,7 +1430,7 @@ const SellerCustomers: React.FC = () => {
                 value={editNote}
                 onChangeText={setEditNote}
                 placeholder="allergies, delivery notes, preferences..."
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 onFocus={() => setFocusedField('note')}
                 onBlur={() => setFocusedField(null)}
                 accessibilityLabel="Customer note"
@@ -1470,6 +1474,24 @@ const SellerCustomers: React.FC = () => {
                   <Text style={styles.saveButtonText}>save</Text>
                 </TouchableOpacity>
               </View>
+
+              {editingCustomer?.storedId || (editingCustomer?.orders && editingCustomer.orders.length > 0) ? (
+                <TouchableOpacity
+                  style={styles.editDeleteLink}
+                  onPress={() => {
+                    if (!editingCustomer) return;
+                    setEditModalVisible(false);
+                    setEditingCustomer(null);
+                    handleDeleteCustomer(editingCustomer);
+                  }}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete customer and all orders"
+                >
+                  <Text style={styles.editDeleteLinkText}>delete customer</Text>
+                </TouchableOpacity>
+              ) : null}
             </ScrollView>
           </Pressable>
         </KAView>
@@ -1506,7 +1528,7 @@ const SellerCustomers: React.FC = () => {
               <TextInput
                 style={styles.contactSearchInput}
                 placeholder="search contacts..."
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 value={contactSearch}
                 onChangeText={setContactSearch}
                 autoFocus
@@ -1534,6 +1556,7 @@ const SellerCustomers: React.FC = () => {
               keyboardDismissMode="on-drag"
               removeClippedSubviews
               windowSize={5}
+              initialNumToRender={10}
               maxToRenderPerBatch={8}
               renderItem={({ item: contact }) => {
                 const phone = contact.phoneNumbers?.[0]?.number || '';
@@ -1556,12 +1579,15 @@ const SellerCustomers: React.FC = () => {
                             .join(', ')
                         : '';
                       setShowContactPicker(false);
-                      setEditingCustomer({ name: '', totalOrders: 0, totalSpent: 0, unpaidAmount: 0, lastOrderDate: new Date(), firstOrderDate: new Date(), orders: [] });
-                      setEditName(contact.name || '');
-                      setEditPhone(phone);
-                      setEditAddress(addr);
-                      setEditNote('');
-                      setEditModalVisible(true);
+                      setTimeout(() => {
+                        setEditingCustomer({ name: '', totalOrders: 0, totalSpent: 0, unpaidAmount: 0, lastOrderDate: new Date(), firstOrderDate: new Date(), orders: [] });
+                        setEditName(contact.name || '');
+                        setEditPhone(phone);
+                        setEditAddress(addr);
+                        setEditNote('');
+                        setEditIsVip(false);
+                        setEditModalVisible(true);
+                      }, 50);
                     }}
                   >
                     <View style={styles.contactAvatar}>
@@ -1673,7 +1699,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     paddingVertical: SPACING.sm,
   },
@@ -1748,31 +1775,57 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // ── No results ──
   noResultsContainer: {
     paddingVertical: SPACING['4xl'],
+    paddingHorizontal: SPACING['2xl'],
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: SPACING.md,
   },
   noResultsIconCircle: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.xs,
   },
-  noResultsText: {
-    fontSize: TYPOGRAPHY.size.base,
+  noResultsTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  noResultsSubtitle: {
+    fontSize: TYPOGRAPHY.size.sm,
     color: C.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  noResultsCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    backgroundColor: C.deepOliveBiz,
+    borderRadius: RADIUS.xl,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    alignSelf: 'stretch',
+    marginTop: SPACING.md,
+    minHeight: 48,
+  },
+  noResultsCtaText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
   },
   noResultsClearButton: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    minHeight: 36,
+    minHeight: 44,
     justifyContent: 'center',
   },
   noResultsClearText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: BIZ.success,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 
@@ -1782,11 +1835,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.xl,
     borderWidth: 1,
     borderColor: withAlpha(C.textPrimary, 0.08),
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.xs,
   },
-  cardUnpaid: {
-    borderLeftWidth: 3,
-    borderLeftColor: BIZ.unpaid,
+  cardUnread: {
+    backgroundColor: withAlpha(C.bronze, 0.06),
+    borderColor: withAlpha(C.bronze, 0.12),
   },
   cardBody: {
     flexDirection: 'row',
@@ -1814,28 +1867,28 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   customerName: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     marginBottom: 2,
+  },
+  customerNameRead: {
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.textSecondary,
   },
   customerStats: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
     fontVariant: ['tabular-nums'],
   },
-  unpaidBadge: {
-    backgroundColor: withAlpha(BIZ.unpaid, 0.12),
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
-    alignSelf: 'flex-start',
-    marginTop: SPACING.xs,
+  customerStatsUnread: {
+    color: C.textSecondary,
   },
-  unpaidBadgeText: {
-    fontSize: TYPOGRAPHY.size.xs,
+  unpaidAmount: {
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: BIZ.unpaid,
-    fontVariant: ['tabular-nums'],
+    color: C.bronze,
+    fontVariant: ['tabular-nums'] as any,
+    marginLeft: SPACING.sm,
   },
 
   // ── Detail modal ──
@@ -1858,146 +1911,180 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: '90%',
     ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
   },
-  detailHeader: {
+  detailCloseRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
+    marginBottom: SPACING.xs,
+  },
+
+  // ── Detail: identity ──
+  dtIdentity: {
     alignItems: 'center',
     marginBottom: SPACING.lg,
   },
-  detailHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: SPACING.md,
-  },
-  detailAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.full,
+  dtAvatarLarge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: withAlpha(BIZ.success, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: SPACING.md,
+    marginBottom: SPACING.md,
   },
-  detailAvatarText: {
-    fontSize: TYPOGRAPHY.size.lg,
+  dtAvatarLargeText: {
+    fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: BIZ.success,
   },
-  detailName: {
-    fontSize: TYPOGRAPHY.size.lg,
+  dtName: {
+    fontSize: TYPOGRAPHY.size.xl,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
-    marginBottom: 2,
+    textAlign: 'center',
+    marginBottom: SPACING.xs,
   },
-  detailSub: {
+  dtMeta: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
+    textAlign: 'center',
     fontVariant: ['tabular-nums'],
   },
 
-  // ── Insights ──
-  insightsRow: {
+  // ── Detail: contact strip ──
+  dtContactStrip: {
     flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
+    justifyContent: 'center',
+    gap: SPACING.xl,
+    marginBottom: SPACING.lg,
   },
-  insightChip: {
-    flex: 1,
-    backgroundColor: withAlpha(C.textMuted, 0.04),
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.sm,
+  dtContactCircle: {
     alignItems: 'center',
+    gap: SPACING.xs,
+    minWidth: 48,
   },
-  insightChipDebt: {
-    backgroundColor: withAlpha(BIZ.unpaid, 0.06),
+  dtContactLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
   },
-  insightLabel: {
+
+  // ── Detail: hero card ──
+  dtHeroCard: {
+    backgroundColor: withAlpha(C.bronze, 0.06),
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  dtHeroLabel: {
     fontSize: 10,
     color: C.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
+    marginBottom: SPACING.xs,
+  },
+  dtHeroAmount: {
+    fontSize: TYPOGRAPHY.size['3xl'],
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+    fontVariant: ['tabular-nums'],
+  },
+  dtHeroSub: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    marginTop: SPACING.xs,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // ── Detail: orders ──
+  dtOrdersSection: {
+    marginBottom: SPACING.md,
+  },
+  dtOrdersHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  dtOrdersTitle: {
+    ...TYPE.label,
+  },
+  dtOrdersViewAll: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.bronze,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  dtOrderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    minHeight: 44,
+  },
+  dtOrderMeta: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
     marginBottom: 2,
   },
-  insightValue: {
-    fontSize: TYPOGRAPHY.size.xs,
+  dtOrderItems: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textPrimary,
+  },
+  dtOrderRight: {
+    alignItems: 'flex-end',
+    marginLeft: SPACING.sm,
+  },
+  dtOrderAmount: {
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
-  insightValueDebt: {
-    color: BIZ.unpaid,
+  dtOrderStatus: {
+    fontSize: 10,
+    color: C.textMuted,
+    marginTop: 2,
   },
 
-  // ── Contact ──
-  contactRow: {
+  // ── Detail: actions ──
+  dtActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: SPACING.sm,
-    marginBottom: SPACING.md,
+    marginTop: SPACING.sm,
   },
-  contactButton: {
-    flex: 1,
+  dtActionPrimary: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: withAlpha(BIZ.success, 0.06),
+    backgroundColor: C.deepOliveBiz,
     borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    minHeight: 44,
+    paddingVertical: SPACING.md,
+    minHeight: 48,
+    width: '100%',
   },
-  contactButtonSmall: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.lg,
-    backgroundColor: withAlpha(BIZ.success, 0.06),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  contactButtonText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: BIZ.success,
-  },
-
-  // ── Address ──
-  addressButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    backgroundColor: withAlpha(C.gold, 0.06),
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    minHeight: 44,
-  },
-  addressButtonText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.gold,
-    lineHeight: 20,
-  },
-
-  // ── Remind ──
-  remindButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    backgroundColor: semantic(BIZ_SAFE.success, C === CALM_DARK),
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    minHeight: 44,
-    marginBottom: SPACING.md,
-  },
-  remindButtonText: {
-    fontSize: TYPOGRAPHY.size.sm,
+  dtActionPrimaryText: {
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.onAccent,
+  },
+  dtActionSecondary: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(C.bronze, 0.06),
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    minHeight: 40,
+  },
+  dtActionSecondaryText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.bronze,
   },
 
   // ── VIP ──
@@ -2061,135 +2148,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontStyle: 'italic',
     flex: 1,
     lineHeight: 20,
-  },
-
-  // ── Order history ──
-  orderHistorySection: {
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  orderHistoryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  orderHistoryTitle: {
-    ...TYPE.label,
-  },
-  viewAllText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: BIZ.success,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  orderHistoryItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-    minHeight: 44,
-  },
-  orderHistoryLeft: {
-    flex: 1,
-    marginRight: SPACING.sm,
-  },
-  orderHistoryDate: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-    marginBottom: 2,
-  },
-  orderHistorySummary: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textPrimary,
-  },
-  orderHistoryRight: {
-    alignItems: 'flex-end',
-    gap: SPACING.xs,
-  },
-  orderHistoryAmount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  statusPill: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.lavender, 0.15),
-  },
-  statusPillPaid: {
-    backgroundColor: withAlpha(BIZ.success, 0.1),
-  },
-  statusPillPending: {
-    backgroundColor: withAlpha(BIZ.pending, 0.15),
-  },
-  statusPillText: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.lavender,
-  },
-  statusPillTextPaid: {
-    color: BIZ.success,
-  },
-  statusPillTextPending: {
-    color: BIZ.pending,
-  },
-
-  // ── Actions grid ──
-  actionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  gridAction: {
-    width: '47%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    backgroundColor: C.deepOliveBiz,
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.sm,
-    minHeight: 44,
-  },
-  gridActionSecondary: {
-    width: '30%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    backgroundColor: withAlpha(C.bronze, 0.06),
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.sm,
-    minHeight: 44,
-  },
-  gridActionTextPrimary: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-  },
-  gridActionText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.bronze,
-  },
-
-  // ── Delete ──
-  deleteButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.sm,
-    minHeight: 44,
-  },
-  deleteButtonText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.regular,
-    color: C.textMuted,
   },
 
   // ── Empty state ──
@@ -2368,6 +2326,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     borderWidth: 1,
     borderColor: withAlpha(C.textPrimary, 0.08),
@@ -2413,6 +2372,19 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.onAccent,
+  },
+
+  editDeleteLink: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.sm,
+    minHeight: 44,
+  },
+  editDeleteLinkText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.textMuted,
   },
 
   // ── Modal contacts shortcut ──
@@ -2461,7 +2433,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   contactSearchInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },

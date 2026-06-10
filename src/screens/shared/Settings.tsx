@@ -47,6 +47,8 @@ import PaymentMethodManager from '../../components/common/PaymentMethodManager';
 import UnitManager from '../../components/common/UnitManager';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
+import * as Clipboard from 'expo-clipboard';
+import { openQuickAdd } from '../../components/common/QuickAddExpense';
 import { signOut } from '../../services/supabase';
 import { clearProfileCache, syncAll } from '../../services/sellerSync';
 import { useAuthStore } from '../../store/authStore';
@@ -466,6 +468,8 @@ const Settings: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<{ Settings: { scrollTo?: string } }, 'Settings'>>();
   const { showToast } = useToast();
+  const [shortcutModalVisible, setShortcutModalVisible] = useState(false);
+  const QUICK_ADD_LINK = 'potraces://add';
   const mode = useAppStore((state) => state.mode);
   const setMode = useAppStore((state) => state.setMode);
   const incomeType = useBusinessStore((s) => s.incomeType);
@@ -813,26 +817,24 @@ const Settings: React.FC = () => {
         { text: t.common.cancel, style: 'cancel' },
         {
           text: t.settings.signOut,
-          onPress: async () => {
-            // Best-effort flush so unsynced changes reach the server first, then
-            // clear local business data REGARDLESS of flush success — on a shared
-            // device the next user must never see the previous seller's data.
-            // (Synced data re-pulls on next sign-in; only never-synced offline
-            // changes are lost, which is the accepted trade-off for not leaking.)
+          onPress: () => {
+            // Snapshot data for fire-and-forget sync before clearing stores.
             const { isAuthenticated, isVerified } = useAuthStore.getState();
+            let syncData: { products: any; orders: any; seasons: any; sellerCustomers: any } | null = null;
             if (isAuthenticated && isVerified) {
-              try {
-                const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
-                await syncAll(products, orders, seasons, sellerCustomers);
-              } catch { /* offline / sync failed — clear anyway */ }
+              const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
+              syncData = { products, orders, seasons, sellerCustomers };
             }
-            await clearBusinessLocalData();
-            // Reset auth while Settings still covers the screen
+
+            // Reset auth + navigate IMMEDIATELY so sign-out feels instant.
             useAuthStore.getState().reset();
             clearProfileCache();
-            try { await signOut(); } catch {}
-            // Reveal AuthScreen underneath
             if (navigation.canGoBack()) navigation.goBack();
+
+            // Background cleanup — user already sees AuthScreen.
+            if (syncData) syncAll(syncData.products, syncData.orders, syncData.seasons, syncData.sellerCustomers).catch(() => {});
+            clearBusinessLocalData().catch(() => {});
+            signOut().catch(() => {});
           },
         },
       ]
@@ -1378,9 +1380,30 @@ const Settings: React.FC = () => {
           </View>
         </Card>
 
+        {/* Quick add shortcut (Back Tap / Siri / Shortcuts) */}
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.quickAddShortcut}</Text>
+        <Card style={styles.card}>
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => { lightTap(); setShortcutModalVisible(true); }}
+            activeOpacity={0.6}
+            accessibilityRole="button"
+            accessibilityLabel={t.settings.quickAddTitle}
+          >
+            <View style={[styles.settingLabelRow, { flex: 1 }]}>
+              <Feather name="smartphone" size={18} color={C.textSecondary} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.quickAddTitle}</Text>
+                <Text style={[styles.settingDescription, { color: C.textSecondary, marginLeft: 0 }]}>{t.settings.quickAddSubtitle}</Text>
+              </View>
+            </View>
+            <Feather name="chevron-right" size={20} color={C.textMuted} />
+          </TouchableOpacity>
+        </Card>
+
         {ready && <>
-        {/* Business Income Type */}
-        {businessModeEnabled && mode === 'business' && (
+        {/* Business Income Type — seller mode has this on the Manage screen instead */}
+        {businessModeEnabled && mode === 'business' && incomeType !== 'seller' && (
           <>
             <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.businessSetup}</Text>
             <Card style={styles.card}>
@@ -1806,6 +1829,74 @@ const Settings: React.FC = () => {
         <View style={{ height: SPACING['3xl'] }} />
         </>}
       </ScrollView>
+
+      {/* Quick add shortcut setup */}
+      <Modal
+        visible={shortcutModalVisible}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setShortcutModalVisible(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: withAlpha('#000000', isDark ? 0.6 : 0.4), justifyContent: 'center', alignItems: 'center', padding: SPACING.lg }}
+          onPress={() => setShortcutModalVisible(false)}
+        >
+          <View
+            onStartShouldSetResponder={() => true}
+            style={{ width: '100%', maxWidth: 460, maxHeight: '86%', backgroundColor: C.surface, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: C.border, overflow: 'hidden' }}
+          >
+            <ScrollView contentContainerStyle={{ padding: SPACING.xl }} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.sm }}>
+                <View style={{ width: 40, height: 40, borderRadius: RADIUS.lg, backgroundColor: withAlpha(C.accent, 0.12), alignItems: 'center', justifyContent: 'center' }}>
+                  <Feather name="smartphone" size={20} color={C.accent} />
+                </View>
+                <Text style={{ flex: 1, fontSize: TYPOGRAPHY.size.lg, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary }}>{t.settings.quickAddModalTitle}</Text>
+                <TouchableOpacity onPress={() => setShortcutModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={t.settings.quickAddDone}>
+                  <Feather name="x" size={22} color={C.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ fontSize: TYPOGRAPHY.size.sm, lineHeight: 21, color: C.textSecondary, marginBottom: SPACING.lg }}>{t.settings.quickAddModalIntro}</Text>
+
+              <Text style={{ fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.semibold, color: C.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.xs }}>{t.settings.quickAddLinkLabel}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.lg }}>
+                <View style={{ flex: 1, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: withAlpha(C.accent, isDark ? 0.1 : 0.06), borderWidth: 1, borderColor: C.border }}>
+                  <Text style={{ fontSize: TYPOGRAPHY.size.base, color: C.textPrimary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>{QUICK_ADD_LINK}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={async () => { lightTap(); await Clipboard.setStringAsync(QUICK_ADD_LINK); showToast(t.settings.quickAddCopied, 'success'); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, backgroundColor: withAlpha(C.accent, 0.12) }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.settings.quickAddCopy}
+                >
+                  <Feather name="copy" size={15} color={C.accent} />
+                  <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.accent }}>{t.settings.quickAddCopy}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.bold, color: C.textPrimary, marginBottom: SPACING.sm }}>{t.settings.quickAddStepsTitle}</Text>
+              {[t.settings.quickAddStep1, t.settings.quickAddStep2, t.settings.quickAddStep3].map((step, i) => (
+                <Text key={i} style={{ fontSize: TYPOGRAPHY.size.sm, lineHeight: 21, color: C.textSecondary, marginBottom: SPACING.sm }}>{step}</Text>
+              ))}
+
+              <View style={{ flexDirection: 'row', gap: SPACING.sm, padding: SPACING.md, borderRadius: RADIUS.md, backgroundColor: withAlpha(C.bronze, isDark ? 0.14 : 0.08), marginTop: SPACING.xs, marginBottom: SPACING.md }}>
+                <Feather name="info" size={15} color={C.bronze} style={{ marginTop: 2 }} />
+                <Text style={{ flex: 1, fontSize: TYPOGRAPHY.size.xs, lineHeight: 18, color: C.textSecondary }}>{t.settings.quickAddAndroid}</Text>
+              </View>
+
+              <Text style={{ fontSize: TYPOGRAPHY.size.xs, color: C.textMuted, marginBottom: SPACING.lg }}>{t.settings.quickAddTip}</Text>
+
+              <Button
+                title={t.settings.quickAddTest}
+                icon="zap"
+                onPress={() => { lightTap(); setShortcutModalVisible(false); setTimeout(() => openQuickAdd('expense'), 350); }}
+              />
+            </ScrollView>
+            <ModalToastHost />
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* QR Action Sheet — animationType="none" so dismiss is instant before image picker */}
       <Modal

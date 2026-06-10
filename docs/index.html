@@ -320,9 +320,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
           <input id="cname" type="text" placeholder="Your full name" autocomplete="name" maxlength="100" oninput="updBtn();updSteps()">
         </div>
         <div class="field">
-          <div class="field-label">WhatsApp No. <span class="opt">(optional)</span></div>
-          <input id="cphone" type="tel" placeholder="01X-XXXXXXX" autocomplete="tel" maxlength="20">
-          <div class="field-hint">To receive order confirmation</div>
+          <div class="field-label">WhatsApp No. <span class="req">*</span></div>
+          <input id="cphone" type="tel" inputmode="tel" placeholder="01X-XXXXXXX" autocomplete="tel" maxlength="20" oninput="updBtn();updSteps()">
+          <div class="field-hint">Required — so the seller can confirm your order</div>
         </div>
         <button class="opt-toggle" id="opt-toggle" onclick="toggleOptFields()">
           <span>Add address & notes</span>
@@ -573,9 +573,12 @@ function renderCart(){
   '<div class="cart-total"><div class="total-label">Total</div><div class="total-amt">'+fmt(t)+'</div></div>'
 }
 
+function validPhone(p){var d=(p||'').replace(/[^0-9]/g,'');return d.length>=8&&d.length<=15}
+
 function updBtn(){
   var name=document.getElementById('cname').value.trim();
-  document.getElementById('sbtn').disabled=!(cartItems().length>0&&name.length>0)
+  var phone=document.getElementById('cphone').value.trim();
+  document.getElementById('sbtn').disabled=!(cartItems().length>0&&name.length>0&&validPhone(phone))
 }
 
 function updBadge(){
@@ -601,6 +604,8 @@ function updBarInfo(){
 function updSteps(){
   var hasItems=cartCount()>0;
   var hasName=document.getElementById('cname').value.trim().length>0;
+  var hasPhone=validPhone(document.getElementById('cphone').value.trim());
+  var hasDetails=hasName&&hasPhone;
   var s1=document.getElementById('step-1');
   var s2=document.getElementById('step-2');
   var s3=document.getElementById('step-3');
@@ -608,10 +613,10 @@ function updSteps(){
   var l2=document.getElementById('line-2');
   if(hasItems){s1.className='step done';l1.className='step-line done'}
   else{s1.className='step active';l1.className='step-line'}
-  if(hasItems&&hasName){s2.className='step done';l2.className='step-line done'}
+  if(hasItems&&hasDetails){s2.className='step done';l2.className='step-line done'}
   else if(hasItems){s2.className='step active';l2.className='step-line'}
   else{s2.className='step';l2.className='step-line'}
-  if(hasItems&&hasName){s3.className='step active'}
+  if(hasItems&&hasDetails){s3.className='step active'}
   else{s3.className='step'}
 }
 
@@ -733,6 +738,7 @@ function showConfirm(){
   var items=cartItems(),t=total();
   var name=document.getElementById('cname').value.trim();
   if(!name||!items.length)return;
+  if(!validPhone(document.getElementById('cphone').value.trim())){showErr('Please enter a valid WhatsApp number so the seller can confirm your order.');document.getElementById('cphone').focus();return}
   if(document.getElementById('hp-email').value)return;
   var now=Date.now();
   if(now-_lastSubmitTime<COOLDOWN_MS){showErr('Please wait a moment before submitting again.');return}
@@ -773,6 +779,7 @@ async function confirmSubmit(){
   var note=document.getElementById('cnote').value.trim().slice(0,500);
   var items=cartItems(),t=total();
   if(!name||!items.length)return;
+  if(!validPhone(phone))return;
 
   _submitting=true;
   var goBtn=document.getElementById('confirm-go');

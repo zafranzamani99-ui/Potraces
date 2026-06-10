@@ -855,13 +855,29 @@ const WalletManagement: React.FC = () => {
     setDeleteConfirmId(walletId);
   }, []);
 
+  // A wallet is blocked from deletion while it still has linked money records —
+  // transactions or transfers — so deleting it can't orphan or corrupt history.
+  const deleteLinkedCount = useMemo(() => {
+    if (!deleteConfirmId) return 0;
+    const txCount = transactions.filter((t) => t.walletId === deleteConfirmId).length;
+    const transferCount = transfers.filter(
+      (tr) => tr.fromWalletId === deleteConfirmId || tr.toWalletId === deleteConfirmId
+    ).length;
+    return txCount + transferCount;
+  }, [deleteConfirmId, transactions, transfers]);
+
   const handleConfirmDelete = useCallback(() => {
     if (!deleteConfirmId) return;
     const walletId = deleteConfirmId;
+    // Guard: never delete a wallet that still has linked transactions/transfers.
+    const hasTx = usePersonalStore.getState().transactions.some((t) => t.walletId === walletId);
+    const hasTransfer = useWalletStore.getState().transfers.some(
+      (tr) => tr.fromWalletId === walletId || tr.toWalletId === walletId
+    );
+    if (hasTx || hasTransfer) return;
     setDeleteConfirmId(null);
     const ps = usePersonalStore.getState();
     usePersonalStore.setState({
-      transactions: ps.transactions.map((t) => t.walletId === walletId ? { ...t, walletId: undefined } : t),
       goals: ps.goals.map((g) => ({
         ...g,
         contributions: g.contributions.map((c) => c.walletId === walletId ? { ...c, walletId: undefined } : c),
@@ -1635,6 +1651,7 @@ const WalletManagement: React.FC = () => {
       <DeleteConfirmModal
         visible={!!deleteConfirmId}
         walletId={deleteConfirmId}
+        linkedCount={deleteLinkedCount}
         onCancel={() => {
           const id = deleteConfirmId;
           setDeleteConfirmId(null);

@@ -1961,7 +1961,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   productDropdownSearchInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     paddingVertical: 2,
   },

@@ -711,15 +711,27 @@ const DebtTracking: React.FC = () => {
     }
   }, []);
 
+  // Reopen the originating sheet (group detail or single-debt detail) after save/close.
+  // Idempotent: maybeReturn* read & clear their refs, so calling twice is a no-op.
+  const doDebtReopen = useCallback(() => {
+    const willReturnToDetail = !!returnToDetailRef.current;
+    maybeReturnToDetail();
+    if (!willReturnToDetail) maybeReturnToGroup();
+  }, [maybeReturnToDetail, maybeReturnToGroup]);
+
   const dDebtFinishClose = useCallback(() => {
     if (!dDebtClosingRef.current) return;
     dDebtClosingRef.current = false;
     setDebtModalVisible(false);
     setTimeout(() => resetDebtForm(), 0);
-    const willReturnToDetail = !!returnToDetailRef.current;
-    maybeReturnToDetail();
-    if (!willReturnToDetail) maybeReturnToGroup();
-  }, [maybeReturnToDetail, maybeReturnToGroup]);
+    // Do NOT reopen the originating sheet here. Presenting a modal while this one is
+    // still being dismissed leaves the new modal mounted but non-interactive on iOS
+    // (the whole screen eats taps). Instead the debt Modal's onDismiss fires the
+    // reopen once dismissal truly completes (iOS). The fallback timer below covers
+    // Android (no onDismiss) and any case onDismiss doesn't fire; doDebtReopen is
+    // idempotent so whichever path wins runs exactly once.
+    setTimeout(doDebtReopen, 350);
+  }, [doDebtReopen]);
 
   // Imperative close — kicks off the slide-down, fires cleanup once it lands.
   const dDebtCloseSheet = useCallback(() => {
@@ -4358,7 +4370,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
       )}
 
       {/* ── Add/Edit Debt Modal — full bottom-sheet (drag-to-dismiss, animated backdrop, anchored save) ─── */}
-      {debtModalVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={dDebtCloseSheet}>
+      {debtModalVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={dDebtCloseSheet} onDismiss={doDebtReopen}>
         {/* Animated backdrop — opacity tied to sheet position */}
         <Reanimated.View style={[styles.dDebtBackdrop, dDebtBackdropAnimatedStyle]}>
           <Pressable style={{ flex: 1 }} onPress={dDebtCloseSheet} />
@@ -8822,7 +8834,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
   },
   searchInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     padding: 0,
   },
@@ -11160,7 +11172,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     padding: SPACING.lg,
     borderWidth: 1,
     borderColor: C.border,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     lineHeight: 20,
     minHeight: 240,

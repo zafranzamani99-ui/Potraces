@@ -31,7 +31,10 @@ const CloseSession: React.FC = () => {
     { value: 'hot', label: t.stall.conditionHot, icon: 'thermometer' },
     { value: 'normal', label: t.stall.conditionNormal, icon: 'minus' },
   ];
-  const { getActiveSession, closeSession, getSessionSummary } = useStallStore();
+  const {
+    getActiveSession, closeSession, getSessionSummary, getSessionEconomics,
+    setStartingFloat, setCountedCash, addExpense, removeExpense,
+  } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
 
@@ -41,11 +44,22 @@ const CloseSession: React.FC = () => {
     undefined
   );
   const [note, setNote] = useState('');
+  // Optional cashbox layer (all skippable)
+  const [floatStr, setFloatStr] = useState(activeSession?.startingFloat ? String(activeSession.startingFloat) : '');
+  const [countedStr, setCountedStr] = useState(activeSession?.countedCash != null ? String(activeSession.countedCash) : '');
+  const [expenseName, setExpenseName] = useState('');
+  const [expenseAmount, setExpenseAmount] = useState('');
 
   // Session summary
   const summary = useMemo(() => {
     if (!activeSession) return null;
     return getSessionSummary(activeSession.id);
+  }, [activeSession]);
+
+  // Optional economics (cogs + expenses → kept). Recomputes as expenses change.
+  const econ = useMemo(() => {
+    if (!activeSession) return null;
+    return getSessionEconomics(activeSession.id);
   }, [activeSession]);
 
   // Format duration
@@ -56,9 +70,22 @@ const CloseSession: React.FC = () => {
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
+  const handleAddExpense = () => {
+    const amt = parseFloat(expenseAmount);
+    if (isNaN(amt) || amt <= 0) return;
+    addExpense({ label: expenseName.trim(), amount: amt });
+    setExpenseName('');
+    setExpenseAmount('');
+  };
+
   const handleClose = () => {
     if (!activeSession) return;
     const sessionId = activeSession.id;
+    // Commit optional cashbox values onto the (still-active) session before closing
+    const f = parseFloat(floatStr);
+    setStartingFloat(!isNaN(f) && f > 0 ? f : undefined);
+    const c = parseFloat(countedStr);
+    setCountedCash(!isNaN(c) && c >= 0 ? c : undefined);
     closeSession(selectedCondition, note.trim() || undefined);
     navigation.getParent()?.navigate('StallSessionSummary', { sessionId });
   };
@@ -81,6 +108,14 @@ const CloseSession: React.FC = () => {
       </View>
     );
   }
+
+  // Live cash-box reconciliation (from local inputs — no nag if left blank)
+  const floatNum = parseFloat(floatStr) || 0;
+  const expectedCash = floatNum + summary.totalCash;
+  const countedNum = parseFloat(countedStr);
+  const hasCounted = !isNaN(countedNum);
+  const cashDiff = hasCounted ? countedNum - expectedCash : 0;
+  const expenses = activeSession.expenses || [];
 
   return (
     <KeyboardAvoidingView
@@ -152,6 +187,154 @@ const CloseSession: React.FC = () => {
             </View>
           </View>
         </View>
+
+        {/* Cash box — optional reconciliation */}
+        <View style={styles.section}>
+          <Text style={styles.inputLabel}>{t.stall.cashBoxHeading}</Text>
+          <Text style={styles.sectionHint}>{t.stall.cashBoxHint}</Text>
+
+          <View style={styles.amountFieldRow}>
+            <Text style={styles.amountFieldLabel}>{t.stall.floatLabel}</Text>
+            <View style={styles.amountInputWrap}>
+              <Text style={styles.amountCurrency}>{currency}</Text>
+              <TextInput
+                style={styles.amountInput}
+                value={floatStr}
+                onChangeText={(v) => setFloatStr(v.replace(/[^0-9.]/g, ''))}
+                placeholder={t.stall.floatPlaceholder}
+                placeholderTextColor={C.neutral}
+                keyboardType="decimal-pad"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
+                accessibilityLabel="Starting cash float, optional"
+              />
+            </View>
+          </View>
+
+          <View style={styles.cashLineRow}>
+            <Text style={styles.cashLineLabel}>{t.stall.expectedInBox}</Text>
+            <Text style={styles.cashLineValue}>{currency} {expectedCash.toFixed(2)}</Text>
+          </View>
+
+          <View style={styles.amountFieldRow}>
+            <Text style={styles.amountFieldLabel}>{t.stall.countedLabel}</Text>
+            <View style={styles.amountInputWrap}>
+              <Text style={styles.amountCurrency}>{currency}</Text>
+              <TextInput
+                style={styles.amountInput}
+                value={countedStr}
+                onChangeText={(v) => setCountedStr(v.replace(/[^0-9.]/g, ''))}
+                placeholder={t.stall.countCashPlaceholder}
+                placeholderTextColor={C.neutral}
+                keyboardType="decimal-pad"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
+                accessibilityLabel="Counted cash, optional"
+              />
+            </View>
+          </View>
+
+          {hasCounted && (
+            <View style={styles.diffPill}>
+              <Feather
+                name={cashDiff === 0 ? 'check' : cashDiff > 0 ? 'arrow-up' : 'arrow-down'}
+                size={14}
+                color={C.bronze}
+              />
+              <Text style={styles.diffText}>
+                {cashDiff === 0
+                  ? t.stall.cashMatches
+                  : cashDiff > 0
+                  ? t.stall.overBy.replace('{currency}', currency).replace('{amount}', Math.abs(cashDiff).toFixed(2))
+                  : t.stall.shortBy.replace('{currency}', currency).replace('{amount}', Math.abs(cashDiff).toFixed(2))}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Money out — optional expenses */}
+        <View style={styles.section}>
+          <Text style={styles.inputLabel}>{t.stall.moneyOutHeading}</Text>
+          <Text style={styles.sectionHint}>{t.stall.moneyOutHint}</Text>
+
+          {expenses.map((e) => (
+            <View key={e.id} style={styles.expenseRow}>
+              <Text style={styles.expenseLabel} numberOfLines={1}>{e.label}</Text>
+              <Text style={styles.expenseAmount}>{currency} {e.amount.toFixed(2)}</Text>
+              <TouchableOpacity
+                onPress={() => removeExpense(e.id)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${e.label}`}
+              >
+                <Feather name="x" size={16} color={C.neutral} />
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          <View style={styles.expenseAddRow}>
+            <TextInput
+              style={styles.expenseNameInput}
+              value={expenseName}
+              onChangeText={setExpenseName}
+              placeholder={t.stall.expenseNamePlaceholder}
+              placeholderTextColor={C.neutral}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={C.accent}
+              accessibilityLabel="What the cost was for"
+            />
+            <View style={styles.expenseAmountWrap}>
+              <Text style={styles.amountCurrency}>{currency}</Text>
+              <TextInput
+                style={styles.expenseAmountInput}
+                value={expenseAmount}
+                onChangeText={(v) => setExpenseAmount(v.replace(/[^0-9.]/g, ''))}
+                placeholder={t.stall.expenseAmountPlaceholder}
+                placeholderTextColor={C.neutral}
+                keyboardType="decimal-pad"
+                returnKeyType="done"
+                onSubmitEditing={handleAddExpense}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
+                accessibilityLabel="Cost amount"
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.expenseAddBtn}
+              onPress={handleAddExpense}
+              accessibilityRole="button"
+              accessibilityLabel={t.stall.addExpenseBtn}
+            >
+              <Feather name="plus" size={18} color={C.onAccent} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* What you kept — only when costs exist */}
+        {econ && econ.hasCosts && (
+          <View style={styles.netCard}>
+            <View style={styles.netRow}>
+              <Text style={styles.netLabel}>{t.stall.cameInRow}</Text>
+              <Text style={styles.netValue}>{currency} {econ.revenue.toFixed(2)}</Text>
+            </View>
+            {econ.cogs > 0 && (
+              <View style={styles.netRow}>
+                <Text style={styles.netLabelMuted}>{t.stall.goodsCostRow}</Text>
+                <Text style={styles.netValueMuted}>−{currency} {econ.cogs.toFixed(2)}</Text>
+              </View>
+            )}
+            {econ.expensesTotal > 0 && (
+              <View style={styles.netRow}>
+                <Text style={styles.netLabelMuted}>{t.stall.moneyOutRow}</Text>
+                <Text style={styles.netValueMuted}>−{currency} {econ.expensesTotal.toFixed(2)}</Text>
+              </View>
+            )}
+            <View style={[styles.netRow, styles.netRowFinal]}>
+              <Text style={styles.netKeptLabel}>{t.stall.keptRow}</Text>
+              <Text style={styles.netKeptValue}>{currency} {econ.kept.toFixed(2)}</Text>
+            </View>
+          </View>
+        )}
 
         {/* Condition picker */}
         <View style={styles.conditionSection}>
@@ -314,6 +497,200 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // ─── Optional cashbox sections ───────────────────────────────
+  section: {
+    marginBottom: SPACING['3xl'],
+  },
+  sectionHint: {
+    ...TYPE.muted,
+    marginTop: -SPACING.xs,
+    marginBottom: SPACING.md,
+  },
+  amountFieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  amountFieldLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textSecondary,
+    flex: 1,
+  },
+  amountInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    minWidth: 140,
+    minHeight: 48,
+  },
+  amountCurrency: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+  amountInput: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+    textAlign: 'right',
+  },
+  cashLineRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  cashLineLabel: {
+    ...TYPE.muted,
+  },
+  cashLineValue: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  diffPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: SPACING.xs,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    marginTop: SPACING.xs,
+  },
+  diffText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+    fontVariant: ['tabular-nums'],
+  },
+  expenseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  expenseLabel: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+  },
+  expenseAmount: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  expenseAddRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  expenseNameInput: {
+    flex: 1,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    minHeight: 48,
+  },
+  expenseAmountWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    width: 96,
+    minHeight: 48,
+  },
+  expenseAmountInput: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  expenseAddBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.md,
+    backgroundColor: C.bronze,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  netCard: {
+    backgroundColor: withAlpha(C.bronze, 0.04),
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.15),
+    borderRadius: RADIUS.lg,
+    padding: SPACING.xl,
+    marginBottom: SPACING['3xl'],
+    gap: SPACING.sm,
+  },
+  netRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  netRowFinal: {
+    marginTop: SPACING.xs,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: withAlpha(C.bronze, 0.2),
+  },
+  netLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textSecondary,
+  },
+  netValue: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  netLabelMuted: {
+    ...TYPE.muted,
+  },
+  netValueMuted: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  netKeptLabel: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
+  },
+  netKeptValue: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
     fontVariant: ['tabular-nums'],
   },
 

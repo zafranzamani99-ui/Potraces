@@ -312,7 +312,9 @@ const PastSeasons: React.FC = () => {
         ]}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Feather name="calendar" size={40} color={C.border} />
+            <View style={styles.emptyIconCircle}>
+              <Feather name="calendar" size={28} color={C.textMuted} />
+            </View>
             <Text style={styles.emptyTitle}>{t.seller.noSeasonsYet}</Text>
             <Text style={styles.emptyHint}>
               {t.seller.seasonsEmptyHint}
@@ -361,7 +363,7 @@ const PastSeasons: React.FC = () => {
                 value={newName}
                 onChangeText={setNewName}
                 placeholder={t.seller.newSeasonPlaceholder}
-                placeholderTextColor={C.textSecondary}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 autoFocus
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={C.accent}
@@ -586,19 +588,29 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   // -- Empty state --------------------------------------------------
   emptyState: {
     alignItems: 'center',
-    paddingVertical: SPACING['4xl'],       // 40pt generous vertical padding
-    paddingHorizontal: SPACING['2xl'],     // 24pt
-    gap: SPACING.md,                       // 16pt
+    paddingVertical: SPACING['4xl'],
+    paddingHorizontal: SPACING['2xl'],
+    gap: SPACING.md,
+  },
+  emptyIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.xs,
   },
   emptyTitle: {
-    fontSize: TYPOGRAPHY.size.lg,          // 17
-    fontWeight: TYPOGRAPHY.weight.semibold, // 600
-    color: C.textPrimary,               // #1A1A1A
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
   },
   emptyHint: {
-    ...TYPE.insight,                       // fontSize 14, lineHeight 22
-    color: C.textSecondary,             // #6B6B6B
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
     textAlign: 'center',
+    lineHeight: 20,
   },
   emptyCTA: {
     flexDirection: 'row',
@@ -607,14 +619,16 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.sm,
     backgroundColor: C.deepOliveBiz,
     borderRadius: RADIUS.xl,
-    paddingVertical: SPACING.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
     alignSelf: 'stretch',
-    marginTop: SPACING.sm,
+    marginTop: SPACING.md,
+    minHeight: 48,
     ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
   emptyCTAText: {
-    fontSize: TYPOGRAPHY.size.base,        // 15
-    fontWeight: TYPOGRAPHY.weight.semibold, // 600
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.onAccent,
   },
 
@@ -663,6 +677,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalInput: {
     ...TYPE.insight,                       // fontSize 14, lineHeight 22
     color: C.textPrimary,               // #1A1A1A
+    fontWeight: TYPOGRAPHY.weight.medium,
     backgroundColor: C.background,      // #F9F9F7
     borderRadius: RADIUS.md,               // 10
     padding: SPACING.md,                   // 16pt

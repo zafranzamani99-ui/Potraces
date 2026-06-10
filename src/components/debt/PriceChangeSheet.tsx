@@ -532,7 +532,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => StyleSheet.create({
     flex: 1,
     paddingHorizontal: SPACING.xs,
     paddingVertical: Platform.OS === 'ios' ? 6 : 4,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     fontWeight: TYPOGRAPHY.weight.medium,
     textAlign: 'right',

@@ -38,11 +38,19 @@ export const useReceiptStore = create<ReceiptState>()(
         })),
 
       deleteReceipt: (id) => {
+        const receipt = get().receipts.find((r) => r.id === id);
         set((state) => ({
           receipts: state.receipts.filter((r) => r.id !== id),
           _deletedReceiptIds: [...(state._deletedReceiptIds ?? []), id],
         }));
         useTombstoneStore.getState().addTombstones([id]);
+        // Also remove the transaction this receipt created, so deleting a saved
+        // receipt doesn't leave an orphan expense behind. deleteTransaction
+        // reverses the wallet balance, so the money trail stays consistent.
+        if (receipt?.transactionId) {
+          const { usePersonalStore } = require('./personalStore');
+          usePersonalStore.getState().deleteTransaction(receipt.transactionId);
+        }
       },
 
       getReceiptsByYear: (year) =>

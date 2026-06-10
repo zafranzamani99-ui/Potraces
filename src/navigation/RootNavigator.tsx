@@ -52,6 +52,7 @@ import StallSessionSetup from '../screens/stall/SessionSetup';
 import StallCloseSession from '../screens/stall/CloseSession';
 import StallSessionSummary from '../screens/stall/SessionSummary';
 import StallProducts from '../screens/stall/StallProducts';
+import StallPreOrders from '../screens/stall/PreOrders';
 import FreelancerClientDetail from '../screens/business/freelancer/ClientDetail';
 import FreelancerAddPayment from '../screens/business/freelancer/AddPayment';
 import FreelancerReports from '../screens/business/freelancer/FreelancerReports';
@@ -118,6 +119,7 @@ function makeBackHeader(
 const AuthGatedBusiness: React.FC = () => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isVerified = useAuthStore((s) => s.isVerified);
+  const provider = useAuthStore((s) => s.provider);
   const businessSetupComplete = useBusinessStore((s) => s.businessSetupComplete);
   const incomeType = useBusinessStore((s) => s.incomeType);
   const [otpCode, setOtpCode] = useState<string | null>(null);
@@ -126,18 +128,21 @@ const AuthGatedBusiness: React.FC = () => {
   const lastOtpAtRef = useRef(0);
 
   // Validate session on state change — reset stale auth state if no real Supabase session
+  // Only relevant for phone auth — social providers are pre-verified
   useEffect(() => {
-    if (isAuthenticated && !isVerified) {
+    if (isAuthenticated && !isVerified && provider === 'phone') {
       getAuthSession().then((session) => {
         if (!session) {
           useAuthStore.getState().reset();
         }
       });
     }
-  }, [isAuthenticated, isVerified]);
+  }, [isAuthenticated, isVerified, provider]);
 
   // Auto-request OTP if authenticated but not verified and no code yet (with cooldown)
+  // Only for phone auth — Google/Apple users skip OTP entirely
   useEffect(() => {
+    if (provider !== 'phone') return;
     if (isAuthenticated && !isVerified && !otpCode) {
       const now = Date.now();
       if (now - lastOtpAtRef.current < 30_000) return;
@@ -159,7 +164,7 @@ const AuthGatedBusiness: React.FC = () => {
         });
       }
     }
-  }, [isAuthenticated, isVerified, otpCode]);
+  }, [isAuthenticated, isVerified, otpCode, provider]);
 
   const handleVerificationNeeded = useCallback((code: string, phone: string) => {
     setOtpCode(code);
@@ -463,6 +468,11 @@ const RootNavigator: React.FC = () => {
           name="StallProducts"
           component={StallProducts}
           options={makeBackHeader(C, mode, 'Products')}
+        />
+        <Stack.Screen
+          name="StallPreOrders"
+          component={StallPreOrders}
+          options={makeBackHeader(C, mode, 'Pre-orders')}
         />
         <Stack.Screen
           name="FreelancerClientList"

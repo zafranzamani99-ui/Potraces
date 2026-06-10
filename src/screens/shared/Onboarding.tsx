@@ -95,12 +95,12 @@ const SlideMockup: React.FC<{ slideId: string; accent: string; C: typeof CALM }>
         <View style={card}>
           <View style={{ backgroundColor: accent + '10', borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.xs }}>
             <Text style={{ fontSize: 11, fontWeight: '600', color: accent }}>Order #001</Text>
-            <Text style={{ fontSize: 10, color: C.textSecondary, marginTop: 2 }}>Kuih lapis x3, Nasi lemak x5</Text>
+            <Text style={{ fontSize: 10, color: C.textSecondary, marginTop: 2 }}>Tshirt (L) x3, Sticker pack x5</Text>
             <Text style={{ fontSize: 10, fontWeight: '600', color: accent, marginTop: 4 }}>RM 85.00</Text>
           </View>
           <View style={{ backgroundColor: accent + '10', borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.xs }}>
             <Text style={{ fontSize: 11, fontWeight: '600', color: accent }}>Order #002</Text>
-            <Text style={{ fontSize: 10, color: C.textSecondary, marginTop: 2 }}>Kek batik x2, Kuih seri muka x4</Text>
+            <Text style={{ fontSize: 10, color: C.textSecondary, marginTop: 2 }}>Nasi lemak x2, Kuih lapis x4</Text>
             <Text style={{ fontSize: 10, fontWeight: '600', color: accent, marginTop: 4 }}>RM 52.00</Text>
           </View>
           <View style={{ marginTop: 4, alignSelf: 'center' }}>

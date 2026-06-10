@@ -21,6 +21,7 @@ import { useAppStore } from './src/store/appStore';
 import { useSettingsStore, clearBusinessLocalData } from './src/store/settingsStore';
 import { navigationRef } from './src/navigation/navigationRef';
 import { openQuickAdd } from './src/components/common/QuickAddExpense';
+import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
 import BiometricGate from './src/components/common/BiometricGate';
 import PersonalSyncManager from './src/components/common/PersonalSyncManager';
 import { checkStorageIntegrity, clearCorruptedStores } from './src/services/storageIntegrity';
@@ -38,6 +39,7 @@ import { useDebtStore } from './src/store/debtStore';
 import { autoReconcileWallets } from './src/utils/walletReconcile';
 import { useTombstoneStore } from './src/store/tombstoneStore';
 import { maybeCheckStorage } from './src/utils/storageMonitor';
+import { configureGoogleSignIn } from './src/services/googleAuth';
 
 // Debounced auto-sync — pushes to Supabase ~1.5s after any data mutation
 let _autoSyncTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -62,6 +64,9 @@ export default function App() {
       });
 
     const init = async () => {
+      // Configure Google Sign-In SDK (synchronous, no credentials needed at this point)
+      configureGoogleSignIn();
+
       // Kick off logo pre-decode in parallel — does not block startup
       prefetchWalletLogos();
 
@@ -180,8 +185,13 @@ export default function App() {
       // Sync + push for any authenticated session (anonymous or verified)
       if (session) {
         try {
-          const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
-          await syncAll(products, orders, seasons, sellerCustomers);
+          useSellerStore.getState().setSyncing(true);
+          try {
+            const { products, orders, seasons, sellerCustomers } = useSellerStore.getState();
+            await syncAll(products, orders, seasons, sellerCustomers);
+          } finally {
+            useSellerStore.getState().setSyncing(false);
+          }
 
           // Pull any order_link orders placed while app was closed
           await pullOrderLinkOrders();
@@ -244,6 +254,14 @@ export default function App() {
       if (event === 'SIGNED_IN' && session) {
         auth.setAuthenticated(true);
         auth.setUserId(session.user.id);
+        // Trigger sync so data loads immediately after re-login.
+        const store = useSellerStore.getState();
+        store.setSyncing(true);
+        const { products, orders, seasons, sellerCustomers } = store;
+        syncAll(products, orders, seasons, sellerCustomers)
+          .then(() => pullOrderLinkOrders())
+          .catch(() => {})
+          .finally(() => useSellerStore.getState().setSyncing(false));
       } else if (event === 'SIGNED_OUT') {
         auth.reset();
         clearProfileCache();
@@ -289,6 +307,10 @@ export default function App() {
   React.useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
+        // Keep the Supabase session refresh timer alive while foregrounded so the
+        // rotating refresh token can't lapse on an idle device (which would make
+        // sync silently stop). Supabase RN requires start/stop tied to AppState.
+        supabase.auth.startAutoRefresh();
         // Spending alerts — daily cadence, no-op if disabled or recent.
         maybeRunSpendingAlertCheck().catch(() => {});
         // Retry any queued receipt scans.
@@ -303,17 +325,91 @@ export default function App() {
         withBackoff('sellerSync', () =>
           syncAll(products, orders, seasons, sellerCustomers),
         ).catch(() => {});
+      } else {
+        // Backgrounded / inactive: stop the refresh timer (Supabase RN guidance).
+        supabase.auth.stopAutoRefresh();
       }
     });
     return () => sub.remove();
   }, []);
 
-  // Deep link: potraces://quick-add → open quick expense modal
+  // Deep link / Back Tap / Apple Shortcut: log or open Quick Add from outside.
+  //   potraces://add                                  → open Quick Add (expense)
+  //   potraces://income                               → open Quick Add (income)
+  //   potraces://add?amount=35.50&category=entertainment&date=2026-04-07
+  //                                                   → log it directly (with Undo)
+  //   potraces://add?amount=20&type=income&note=gig   → log income directly
+  //   potraces://quick-add                            → legacy alias (open, expense)
+  // A Shortcut collects amount/category/date with native prompts, then hands the
+  // values here. With an amount we log straight away (the Shortcut already
+  // confirmed the details) and show an Undo toast; without one we just open the
+  // sheet. Switches to personal mode first so it works from business / cold start.
   React.useEffect(() => {
     const handleUrl = ({ url }: { url: string }) => {
-      if (url?.includes('quick-add')) openQuickAdd();
+      if (!url) return;
+      const rest = url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+      const [pathRaw, queryRaw = ''] = rest.split('?');
+      const head = pathRaw.split('/').filter(Boolean)[0]?.toLowerCase() || '';
+      const isAdd = ['add', 'quick-add', 'quickadd', 'add-income', 'add-expense', 'income', 'log'].includes(head);
+      if (!isAdd) return;
+
+      const params: Record<string, string> = {};
+      queryRaw.split('&').forEach((pair) => {
+        if (!pair) return;
+        const eq = pair.indexOf('=');
+        const k = (eq >= 0 ? pair.slice(0, eq) : pair).toLowerCase();
+        const v = eq >= 0 ? pair.slice(eq + 1) : '';
+        try {
+          params[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, ' '));
+        } catch {
+          params[k] = v;
+        }
+      });
+
+      const wantsIncome =
+        head === 'income' || head === 'add-income' ||
+        (params.type || '').toLowerCase() === 'income' || 'income' in params;
+
+      if (useAppStore.getState().mode !== 'personal') {
+        useAppStore.getState().setMode('personal');
+      }
+
+      const amountStr = params.amount ?? params.amt ?? '';
+      const amount = parseFloat(amountStr.replace(/[^0-9.]/g, ''));
+
+      if (amountStr && !Number.isNaN(amount) && amount > 0) {
+        // Shortcut already collected the details → log directly, offer Undo.
+        let date: Date | undefined;
+        const rawDate = params.date || params.day;
+        if (rawDate) {
+          const d = new Date(rawDate);
+          if (!Number.isNaN(d.getTime())) date = d;
+        }
+        setTimeout(() => {
+          const result = logQuickExpense({
+            amount,
+            type: wantsIncome ? 'income' : 'expense',
+            category: params.category || params.cat,
+            wallet: params.wallet || params.account || params.method || params.from,
+            date,
+            note: params.note || params.description || params.desc,
+          });
+          if (result) {
+            const dir = result.type === 'income' ? 'came in' : 'went out';
+            const via = result.walletName ? ` · ${result.walletName}` : '';
+            globalShowToast(
+              `RM ${result.amount.toFixed(2)} ${dir}${via}`,
+              'success',
+              { label: 'Undo', onPress: () => undoQuickExpense(result) },
+            );
+          }
+        }, 350);
+      } else {
+        // No amount → open the Quick Add sheet for manual entry.
+        setTimeout(() => openQuickAdd(wantsIncome ? 'income' : 'expense'), 300);
+      }
     };
-    // Handle app opened via deep link
+    // Handle app opened via deep link (cold start)
     Linking.getInitialURL().then((url) => {
       if (url) handleUrl({ url });
     });

@@ -684,7 +684,7 @@ c:\Project\Potraces\
 │   ├── BUILDING_CHECKLIST.md        # Recurring perf/keyboard/nav/styling issues
 │   ├── DEPLOYMENT_CHECKLIST.md      # Pre-deployment verification steps
 │   ├── QUICKSTART.md                # Quick start guide
-│   ├── SELLER_MODE_AUDIT.md         # Seller mode readiness audit (87.78%)
+│   ├── archive/                     # Superseded audits & blueprints (SELLER_MODE_AUDIT, OUTCOME_UI_*, etc.)
 │   ├── Potraces_Integration_Plan.pdf # Integration planning document
 │   └── ai-drafts/                   # AI-generated draft files
 │
@@ -996,9 +996,9 @@ expo-asset            — asset preloading
 | `docs/BUILDING_CHECKLIST.md` | Recurring perf, keyboard, nav, styling, and data integrity issues |
 | `docs/DEPLOYMENT_CHECKLIST.md` | Pre-deployment verification steps |
 | `docs/QUICKSTART.md` | Getting started guide |
-| `docs/SELLER_MODE_AUDIT.md` | Seller mode readiness audit (87.78% score) |
+| `docs/archive/SELLER_MODE_AUDIT.md` | Seller mode readiness audit (87.78% score) — archived |
 | `docs/AI_SCENARIOS.md` | AI integration scenarios and edge cases |
-| `docs/OUTCOME_UI_ARCHITECTURE.md` | Outcome-driven UI design system |
+| `docs/archive/OUTCOME_UI_ARCHITECTURE.md` | Outcome-driven UI design system — archived |
 | `docs/Potraces_Integration_Plan.pdf` | Integration planning document |
 
 ---

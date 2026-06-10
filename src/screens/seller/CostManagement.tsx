@@ -775,7 +775,7 @@ const CostManagement: React.FC = () => {
               <TextInput
                 style={styles.historySearchInput}
                 placeholder={t.seller.searchCosts}
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 value={costSearch}
                 onChangeText={setCostSearch}
                 returnKeyType="search"
@@ -837,13 +837,19 @@ const CostManagement: React.FC = () => {
 
           {seasonCostEntries.length === 0 ? (
             <View style={styles.historyEmptyWrap}>
-              <Feather name="inbox" size={24} color={C.textMuted} />
-              <Text style={styles.historyEmpty}>{t.seller.noCostsLoggedYet}</Text>
+              <View style={styles.emptyIconCircle}>
+                <Feather name="inbox" size={28} color={C.textMuted} />
+              </View>
+              <Text style={styles.emptyTitle}>{t.seller.noCostsLoggedYet}</Text>
+              <Text style={styles.emptySubtitle}>start logging costs to track your spending.</Text>
             </View>
           ) : filteredCostEntries.length === 0 ? (
             <View style={styles.historyEmptyWrap}>
-              <Feather name="search" size={18} color={C.textMuted} />
-              <Text style={styles.historyEmpty}>{t.seller.noMatch}</Text>
+              <View style={styles.emptyIconCircle}>
+                <Feather name="search" size={28} color={C.textMuted} />
+              </View>
+              <Text style={styles.emptyTitle}>{t.seller.noMatch}</Text>
+              <Text style={styles.emptySubtitle}>try adjusting your search or filters.</Text>
             </View>
           ) : (
             groupedCostEntries.map((group, gi) => (
@@ -959,7 +965,7 @@ const CostManagement: React.FC = () => {
                   value={recurringDesc}
                   onChangeText={setRecurringDesc}
                   placeholder={t.seller.recurringDescPlaceholder}
-                  placeholderTextColor={C.textMuted}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   autoFocus
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                   selectionColor={C.bronze}
@@ -975,7 +981,7 @@ const CostManagement: React.FC = () => {
                     value={recurringAmount}
                     onChangeText={setRecurringAmount}
                     placeholder={t.seller.amountPlaceholder}
-                    placeholderTextColor={C.textMuted}
+                    placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     keyboardType="numeric"
                     keyboardAppearance={isDark ? 'dark' : 'light'}
                     selectionColor={C.bronze}
@@ -1165,7 +1171,7 @@ const CostManagement: React.FC = () => {
                     value={costDescription}
                     onChangeText={setCostDescription}
                     placeholder={t.seller.costDescPlaceholder}
-                    placeholderTextColor={C.textMuted}
+                    placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     autoFocus
                     keyboardAppearance={isDark ? 'dark' : 'light'}
                     selectionColor={C.bronze}
@@ -1188,7 +1194,7 @@ const CostManagement: React.FC = () => {
                       value={costAmount}
                       onChangeText={setCostAmount}
                       placeholder="0.00"
-                      placeholderTextColor={C.textMuted}
+                      placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                       keyboardType="decimal-pad"
                       keyboardAppearance={isDark ? 'dark' : 'light'}
                       selectionColor={C.bronze}
@@ -1209,7 +1215,7 @@ const CostManagement: React.FC = () => {
                   value={costVendor}
                   onChangeText={setCostVendor}
                   placeholder={t.seller.vendorPlaceholder}
-                  placeholderTextColor={C.textMuted}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                   selectionColor={C.bronze}
                 />
@@ -1316,7 +1322,7 @@ const CostManagement: React.FC = () => {
                   value={templateDesc}
                   onChangeText={setTemplateDesc}
                   placeholder={t.seller.templateDescPlaceholder}
-                  placeholderTextColor={C.textMuted}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   autoFocus
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                   selectionColor={C.bronze}
@@ -1329,7 +1335,7 @@ const CostManagement: React.FC = () => {
                     value={templateAmt}
                     onChangeText={setTemplateAmt}
                     placeholder="0.00"
-                    placeholderTextColor={C.textMuted}
+                    placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     keyboardType="decimal-pad"
                     keyboardAppearance={isDark ? 'dark' : 'light'}
                     selectionColor={C.bronze}
@@ -1408,7 +1414,7 @@ const CostManagement: React.FC = () => {
                   value={budgetInput}
                   onChangeText={setBudgetInput}
                   placeholder="0.00"
-                  placeholderTextColor={C.textMuted}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   keyboardType="decimal-pad"
                   autoFocus
                   keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -1684,7 +1690,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   transferInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     padding: 0,
@@ -1758,7 +1764,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   historySearchInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
@@ -1785,12 +1791,29 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   historyEmptyWrap: {
     alignItems: 'center',
-    paddingVertical: SPACING.xl,
-    gap: SPACING.sm,
+    paddingVertical: SPACING['4xl'],
+    paddingHorizontal: SPACING['2xl'],
+    gap: SPACING.md,
   },
-  historyEmpty: {
+  emptyIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.xs,
+  },
+  emptyTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  emptySubtitle: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   historyItemDivider: {
     height: StyleSheet.hairlineWidth,
@@ -1947,6 +1970,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modalInput: {
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
     backgroundColor: C.surface,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,

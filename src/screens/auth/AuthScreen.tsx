@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Keyboard,
+  Platform,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +16,8 @@ import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../c
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { signUpWithPhone, signInWithPhone, requestOtp } from '../../services/supabase';
 import { ensureProfile } from '../../services/sellerSync';
+import { signInWithGoogle, statusCodes } from '../../services/googleAuth';
+import { signInWithApple } from '../../services/appleAuth';
 import { useAuthStore } from '../../store/authStore';
 import { useAppStore } from '../../store/appStore';
 import { useT } from '../../i18n';
@@ -36,10 +39,12 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
   const [error, setError] = useState('');
 
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
+  const anyLoading = loading || !!socialLoading;
 
   const cleanPhone = useCallback((raw: string) => {
     const digits = raw.replace(/\D/g, '');
@@ -69,9 +74,11 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
       if (isLogin) {
         const data = await signInWithPhone(cleaned, password);
         if (data.session) {
-          useAuthStore.getState().setAuthenticated(true);
-          useAuthStore.getState().setUserId(data.session.user.id);
-          useAuthStore.getState().setPhone(cleaned);
+          const auth = useAuthStore.getState();
+          auth.setAuthenticated(true);
+          auth.setUserId(data.session.user.id);
+          auth.setPhone(cleaned);
+          auth.setProvider('phone');
 
           await ensureProfile();
           const { data: profile } = await (await import('../../services/supabase')).supabase
@@ -91,9 +98,11 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
       } else {
         const data = await signUpWithPhone(cleaned, password);
         if (data.session) {
-          useAuthStore.getState().setAuthenticated(true);
-          useAuthStore.getState().setUserId(data.session.user.id);
-          useAuthStore.getState().setPhone(cleaned);
+          const auth = useAuthStore.getState();
+          auth.setAuthenticated(true);
+          auth.setUserId(data.session.user.id);
+          auth.setPhone(cleaned);
+          auth.setProvider('phone');
 
           await ensureProfile();
           const otp = await requestOtp(cleaned);
@@ -110,6 +119,52 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
       setLoading(false);
     }
   }, [phone, password, confirmPassword, isLogin, cleanPhone, onVerificationNeeded, onAuthenticated, tr]);
+
+  const handleGoogleSignIn = useCallback(async () => {
+    if (anyLoading) return;
+    setError('');
+    setSocialLoading('google');
+    try {
+      const result = await signInWithGoogle();
+      const auth = useAuthStore.getState();
+      auth.setAuthenticated(true);
+      auth.setVerified(true);
+      auth.setUserId(result.userId);
+      auth.setProvider('google');
+      await ensureProfile();
+      onAuthenticated();
+    } catch (e: any) {
+      if (e?.code === statusCodes.SIGN_IN_CANCELLED) return;
+      if (e?.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        setError(tr.auth.playServicesRequired);
+      } else {
+        setError(tr.auth.socialSignInFailed);
+      }
+    } finally {
+      setSocialLoading(null);
+    }
+  }, [anyLoading, onAuthenticated, tr]);
+
+  const handleAppleSignIn = useCallback(async () => {
+    if (anyLoading) return;
+    setError('');
+    setSocialLoading('apple');
+    try {
+      const result = await signInWithApple();
+      const auth = useAuthStore.getState();
+      auth.setAuthenticated(true);
+      auth.setVerified(true);
+      auth.setUserId(result.userId);
+      auth.setProvider('apple');
+      await ensureProfile();
+      onAuthenticated();
+    } catch (e: any) {
+      if (e?.code === 'ERR_CANCELED' || e?.code === '1001') return;
+      setError(tr.auth.socialSignInFailed);
+    } finally {
+      setSocialLoading(null);
+    }
+  }, [anyLoading, onAuthenticated, tr]);
 
   const handleBack = useCallback(() => {
     useAppStore.getState().setMode('personal');
@@ -251,9 +306,9 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
 
         {/* Submit */}
         <Pressable
-          style={[styles.submitBtn, loading && { opacity: 0.6 }]}
+          style={[styles.submitBtn, anyLoading && { opacity: 0.6 }]}
           onPress={handleSubmit}
-          disabled={loading}
+          disabled={anyLoading}
         >
           {({ pressed }) => (
             <View style={[styles.submitBtnInner, pressed && { opacity: 0.85 }]}>
@@ -279,6 +334,55 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
             {isLogin ? tr.auth.noAccountYet || "don't have an account?" : tr.auth.alreadyHaveAccount || 'already have an account?'}
           </Text>
         </Pressable>
+
+        {/* ─── Social sign-in ──────────────────────────────────── */}
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>{tr.auth.orContinueWith}</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        {/* Google */}
+        <Pressable
+          style={[styles.socialBtn, socialLoading === 'google' && { opacity: 0.6 }]}
+          onPress={handleGoogleSignIn}
+          disabled={anyLoading}
+        >
+          {({ pressed }) => (
+            <View style={[styles.socialBtnInner, pressed && { opacity: 0.85 }]}>
+              {socialLoading === 'google' ? (
+                <ActivityIndicator color={C.textPrimary} size="small" />
+              ) : (
+                <>
+                  <Text style={styles.googleG}>G</Text>
+                  <Text style={styles.socialBtnText}>{tr.auth.continueWithGoogle}</Text>
+                </>
+              )}
+            </View>
+          )}
+        </Pressable>
+
+        {/* Apple (iOS only) */}
+        {Platform.OS === 'ios' && (
+          <Pressable
+            style={[styles.socialBtn, styles.appleSocialBtn, socialLoading === 'apple' && { opacity: 0.6 }]}
+            onPress={handleAppleSignIn}
+            disabled={anyLoading}
+          >
+            {({ pressed }) => (
+              <View style={[styles.socialBtnInner, pressed && { opacity: 0.85 }]}>
+                {socialLoading === 'apple' ? (
+                  <ActivityIndicator color={isDark ? C.background : C.textPrimary} size="small" />
+                ) : (
+                  <>
+                    <Feather name="command" size={18} color={isDark ? C.background : C.textPrimary} />
+                    <Text style={[styles.socialBtnText, styles.appleBtnText]}>{tr.auth.continueWithApple}</Text>
+                  </>
+                )}
+              </View>
+            )}
+          </Pressable>
+        )}
       </KeyboardAwareScrollView>
     </View>
   );
@@ -466,6 +570,61 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
     letterSpacing: 0.2,
+  },
+
+  // ─── Social sign-in ──────────────────────────────────────
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.lg,
+    gap: SPACING.md,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: withAlpha(C.textPrimary, 0.10),
+  },
+  dividerText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.3,
+  },
+  socialBtn: {
+    width: '100%',
+    paddingVertical: SPACING.md + 2,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+    marginBottom: SPACING.sm + 2,
+  },
+  appleSocialBtn: {
+    backgroundColor: C === CALM_DARK ? '#FFFFFF' : '#000000',
+    borderColor: C === CALM_DARK ? '#FFFFFF' : '#000000',
+  },
+  socialBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm + 2,
+  },
+  googleG: {
+    fontSize: 20,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: '#4285F4',
+  },
+  socialBtnText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    letterSpacing: 0.2,
+  },
+  appleBtnText: {
+    color: C === CALM_DARK ? '#000000' : '#FFFFFF',
   },
 });
 

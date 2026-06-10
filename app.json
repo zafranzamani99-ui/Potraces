@@ -20,6 +20,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.potraces.app",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -65,7 +66,14 @@
       "expo-font",
       "expo-asset",
       "react-native-document-scanner-plugin",
-      "expo-tracking-transparency"
+      "expo-tracking-transparency",
+      "expo-apple-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.REPLACE_WITH_IOS_CLIENT_ID"
+        }
+      ]
     ],
     "owner": "zafranzamani",
     "runtimeVersion": {

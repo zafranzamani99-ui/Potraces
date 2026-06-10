@@ -751,10 +751,34 @@ export async function pullAll(): Promise<void> {
   const deletedCustomerIds = new Set(store._deletedCustomerIds);
   const deletedCostIds = new Set(store._deletedCostIds || []);
 
-  // Pull products
-  const remoteProducts = await pullPaged((from, to) =>
-    supabase.from('seller_products').select('*').eq('user_id', userId).range(from, to));
+  // ── Fetch ALL entity types in parallel (one network round-trip) ───────────
+  const [
+    remoteProducts,
+    remoteSeasons,
+    remoteCustomers,
+    remoteOrders,
+    remoteIngredientCosts,
+    remoteRecurringCosts,
+    remoteCostTemplates,
+    remoteAdj,
+    remoteDeletedCatsResult,
+    remoteCats,
+  ] = await Promise.all([
+    pullPaged((from, to) => supabase.from('seller_products').select('*').eq('user_id', userId).range(from, to)),
+    pullPaged((from, to) => supabase.from('seller_seasons').select('*').eq('user_id', userId).range(from, to)),
+    pullPaged((from, to) => supabase.from('seller_customers').select('*').eq('user_id', userId).range(from, to)),
+    pullPaged((from, to) => supabase.from('seller_orders').select('*').eq('user_id', userId).eq('source', 'app').range(from, to)),
+    pullPaged((from, to) => supabase.from('seller_ingredient_costs').select('*').eq('user_id', userId).range(from, to)),
+    pullPaged((from, to) => supabase.from('seller_recurring_costs').select('*').eq('user_id', userId).range(from, to)),
+    pullPaged((from, to) => supabase.from('seller_cost_templates').select('*').eq('user_id', userId).range(from, to)),
+    pullPaged((from, to) => supabase.from('seller_stock_adjustments').select('*').eq('user_id', userId).range(from, to)),
+    supabase.from('seller_deleted_cost_categories').select('local_id').eq('user_id', userId),
+    pullPaged((from, to) => supabase.from('seller_cost_categories').select('*').eq('user_id', userId).range(from, to)),
+  ]);
 
+  // ── Process results (local-only, fast) ────────────────────────────────────
+
+  // Products
   if (remoteProducts && remoteProducts.length > 0) {
     const localProductMap = new Map(store.products.map((p) => [p.id, p]));
     let productsChanged = false;
@@ -762,7 +786,7 @@ export async function pullAll(): Promise<void> {
 
     for (const rp of remoteProducts) {
       if (!rp.local_id) continue;
-      if (deletedProductIds.has(rp.local_id)) continue; // Skip locally deleted
+      if (deletedProductIds.has(rp.local_id)) continue;
       const local = localProductMap.get(rp.local_id);
 
       const remoteItem: SellerProduct = {
@@ -798,10 +822,7 @@ export async function pullAll(): Promise<void> {
     }
   }
 
-  // Pull seasons
-  const remoteSeasons = await pullPaged((from, to) =>
-    supabase.from('seller_seasons').select('*').eq('user_id', userId).range(from, to));
-
+  // Seasons
   if (remoteSeasons && remoteSeasons.length > 0) {
     const localSeasonMap = new Map(store.seasons.map((s) => [s.id, s]));
     let seasonsChanged = false;
@@ -809,7 +830,7 @@ export async function pullAll(): Promise<void> {
 
     for (const rs of remoteSeasons) {
       if (!rs.local_id) continue;
-      if (deletedSeasonIds.has(rs.local_id)) continue; // Skip locally deleted
+      if (deletedSeasonIds.has(rs.local_id)) continue;
       const local = localSeasonMap.get(rs.local_id);
 
       const remoteItem: Season = {
@@ -829,10 +850,6 @@ export async function pullAll(): Promise<void> {
         updatedSeasons.push(remoteItem);
         seasonsChanged = true;
       } else if (rs.updated_at && sd(rs.updated_at).getTime() > sd(local.updatedAt ?? local.createdAt).getTime()) {
-        // Accept remote only if newer than our last local edit (updatedAt),
-        // falling back to createdAt for rows that predate the updatedAt field.
-        // Previously compared against createdAt, so remote ALWAYS won and silently
-        // clobbered local edits to name/budget/target.
         updatedSeasons = updatedSeasons.map((s) =>
           s.id === rs.local_id ? remoteItem : s
         );
@@ -845,10 +862,7 @@ export async function pullAll(): Promise<void> {
     }
   }
 
-  // Pull customers
-  const remoteCustomers = await pullPaged((from, to) =>
-    supabase.from('seller_customers').select('*').eq('user_id', userId).range(from, to));
-
+  // Customers
   if (remoteCustomers && remoteCustomers.length > 0) {
     const localCustomerMap = new Map(store.sellerCustomers.map((c) => [c.id, c]));
     let customersChanged = false;
@@ -856,7 +870,7 @@ export async function pullAll(): Promise<void> {
 
     for (const rc of remoteCustomers) {
       if (!rc.local_id) continue;
-      if (deletedCustomerIds.has(rc.local_id)) continue; // Skip locally deleted
+      if (deletedCustomerIds.has(rc.local_id)) continue;
       const local = localCustomerMap.get(rc.local_id);
 
       const remoteItem: SellerCustomer = {
@@ -874,8 +888,6 @@ export async function pullAll(): Promise<void> {
         updatedCustomers.push(remoteItem);
         customersChanged = true;
       } else if (rc.updated_at && sd(rc.updated_at).getTime() > sd(local.updatedAt ?? local.createdAt).getTime()) {
-        // Accept remote only if newer than our last local edit (updatedAt),
-        // falling back to createdAt for rows predating updatedAt.
         updatedCustomers = updatedCustomers.map((c) =>
           c.id === rc.local_id ? remoteItem : c
         );
@@ -888,10 +900,7 @@ export async function pullAll(): Promise<void> {
     }
   }
 
-  // Pull app orders
-  const remoteOrders = await pullPaged((from, to) =>
-    supabase.from('seller_orders').select('*').eq('user_id', userId).eq('source', 'app').range(from, to));
-
+  // Orders
   if (remoteOrders && remoteOrders.length > 0) {
     const localOrderMap = new Map(store.orders.map((o) => [o.id, o]));
     let ordersChanged = false;
@@ -899,7 +908,7 @@ export async function pullAll(): Promise<void> {
 
     for (const ro of remoteOrders) {
       if (!ro.local_id) continue;
-      if (deletedOrderIds.has(ro.local_id)) continue; // Skip locally deleted
+      if (deletedOrderIds.has(ro.local_id)) continue;
       const local = localOrderMap.get(ro.local_id);
 
       const remoteItem: SellerOrder = {
@@ -910,8 +919,6 @@ export async function pullAll(): Promise<void> {
         customerPhone: ro.customer_phone ?? undefined,
         customerAddress: ro.customer_address ?? undefined,
         totalAmount: ro.total_amount,
-        // Prefer the real order date; fall back to created_at for rows that
-        // predate the order_date column or for order-link orders (placed live).
         date: sd(ro.order_date ?? ro.created_at),
         status: ro.status as OrderStatus,
         isPaid: ro.is_paid,
@@ -921,8 +928,6 @@ export async function pullAll(): Promise<void> {
         note: ro.note ?? undefined,
         deliveryDate: ro.delivery_date ? sd(ro.delivery_date) : undefined,
         seasonId: ro.season_local_id ?? undefined,
-        // Restore the transfer-to-personal flags, otherwise a sync round-trip
-        // wipes them: the button reappears and delete/edit can't reconcile.
         transferredToPersonal: ro.transferred_to_personal ?? false,
         transferId: ro.transfer_id ?? undefined,
         deposits: Array.isArray(ro.deposits)
@@ -977,10 +982,7 @@ export async function pullAll(): Promise<void> {
     }
   }
 
-  // Pull ingredient costs
-  const remoteIngredientCosts = await pullPaged((from, to) =>
-    supabase.from('seller_ingredient_costs').select('*').eq('user_id', userId).range(from, to));
-
+  // Ingredient costs
   if (remoteIngredientCosts && remoteIngredientCosts.length > 0) {
     const localCostMap = new Map(store.ingredientCosts.map((c) => [c.id, c]));
     let costsChanged = false;
@@ -1010,8 +1012,6 @@ export async function pullAll(): Promise<void> {
         updatedCosts.push(remoteItem);
         costsChanged = true;
       } else if (rc.updated_at && sd(rc.updated_at).getTime() > sd(local.updatedAt ?? local.date).getTime()) {
-        // Accept remote only if newer than our last local edit (updatedAt),
-        // falling back to the cost date for rows predating updatedAt.
         updatedCosts = updatedCosts.map((c) =>
           c.id === rc.local_id ? remoteItem : c
         );
@@ -1024,10 +1024,7 @@ export async function pullAll(): Promise<void> {
     }
   }
 
-  // Pull recurring costs
-  const remoteRecurringCosts = await pullPaged((from, to) =>
-    supabase.from('seller_recurring_costs').select('*').eq('user_id', userId).range(from, to));
-
+  // Recurring costs
   if (remoteRecurringCosts && remoteRecurringCosts.length > 0) {
     const localRcMap = new Map(store.recurringCosts.map((r) => [r.id, r]));
     let rcsChanged = false;
@@ -1065,10 +1062,7 @@ export async function pullAll(): Promise<void> {
     }
   }
 
-  // Pull cost templates
-  const remoteCostTemplates = await pullPaged((from, to) =>
-    supabase.from('seller_cost_templates').select('*').eq('user_id', userId).range(from, to));
-
+  // Cost templates
   if (remoteCostTemplates && remoteCostTemplates.length > 0) {
     const localTplMap = new Map(store.costTemplates.map((t) => [t.id, t]));
     let tplsChanged = false;
@@ -1093,9 +1087,6 @@ export async function pullAll(): Promise<void> {
         rt.updated_at &&
         sd(rt.updated_at).getTime() > (local.updatedAt ? new Date(local.updatedAt).getTime() : 0)
       ) {
-        // Was add-only, so template edits on another device never propagated.
-        // Accept remote when newer than our last local edit; fall back to 0 when
-        // local has no updatedAt so the first remote edit wins.
         updatedTpls = updatedTpls.map((t) => (t.id === rt.local_id ? remoteItem : t));
         tplsChanged = true;
       }
@@ -1106,10 +1097,7 @@ export async function pullAll(): Promise<void> {
     }
   }
 
-  // Pull stock adjustments
-  const remoteAdj = await pullPaged((from, to) =>
-    supabase.from('seller_stock_adjustments').select('*').eq('user_id', userId).range(from, to));
-
+  // Stock adjustments
   if (remoteAdj && remoteAdj.length > 0) {
     const localAdjMap = new Map(store.stockAdjustments.map((a) => [a.id, a]));
     let adjChanged = false;
@@ -1138,19 +1126,11 @@ export async function pullAll(): Promise<void> {
     }
   }
 
-  // Pull cost categories (tombstone-aware so deletions propagate across devices)
-  const { data: remoteDeletedCats } = await supabase
-    .from('seller_deleted_cost_categories')
-    .select('local_id')
-    .eq('user_id', userId);
-  const remoteDeletedCatIds = new Set((remoteDeletedCats ?? []).map((r) => r.local_id as string));
-
-  const remoteCats = await pullPaged((from, to) =>
-    supabase.from('seller_cost_categories').select('*').eq('user_id', userId).range(from, to));
+  // Cost categories (tombstone-aware so deletions propagate across devices)
+  const remoteDeletedCatIds = new Set((remoteDeletedCatsResult.data ?? []).map((r) => r.local_id as string));
 
   {
     const localCatMap = new Map(store.costCategories.map((c) => [c.id, c]));
-    // Drop locally-held categories that another device has tombstoned.
     let merged = store.costCategories.filter((c) => !remoteDeletedCatIds.has(c.id));
     let catsChanged = merged.length !== store.costCategories.length;
 
@@ -1175,7 +1155,6 @@ export async function pullAll(): Promise<void> {
         local.icon !== remoteItem.icon || local.color !== remoteItem.color ||
         local.sortOrder !== remoteItem.sortOrder
       ) {
-        // Propagate renames/reorders from other devices (remote wins).
         merged = merged.map((c) => (c.id === rc.local_id ? remoteItem : c));
         catsChanged = true;
       }

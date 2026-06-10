@@ -4,6 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { addDays } from 'date-fns';
 import { Playbook, PlaybookAllocation, PlaybookLineItem, Transaction } from '../types';
 import { usePremiumStore } from './premiumStore';
+import { usePersonalStore } from './personalStore';
+import { cleanupOrphanedLinks } from '../utils/playbookStats';
 import { FREE_TIER } from '../constants/premium';
 
 export interface EchoMemoryEntry {
@@ -37,15 +39,11 @@ interface PlaybookStoreState {
   closePlaybook: (id: string) => boolean;
   reopenPlaybook: (id: string) => boolean;
 
-  // Allocations
-  setAllocations: (playbookId: string, allocations: PlaybookAllocation[]) => void;
-  addAllocation: (playbookId: string, category: string, amount: number) => void;
-  removeAllocation: (playbookId: string, category: string) => void;
-  updateAllocation: (playbookId: string, category: string, amount: number) => void;
-
   // Expense linking
   linkExpense: (playbookId: string, transactionId: string) => void;
-  unlinkExpense: (playbookId: string, transactionId: string) => void;
+  // Atomic, single-owner attribution: adds txId to target playbook's membership
+  // (guard: target must be active && !closed) and strips it from ALL other playbooks.
+  setExpenseLink: (playbookId: string, transactionId: string, amount: number) => void;
   unlinkAllFromTransaction: (transactionId: string) => void;
 
   // Notebook (line items)
@@ -53,7 +51,6 @@ interface PlaybookStoreState {
   updateLineItem: (playbookId: string, itemId: string, updates: Partial<PlaybookLineItem>) => void;
   removeLineItem: (playbookId: string, itemId: string) => void;
   toggleLineItemPaid: (playbookId: string, itemId: string) => void;
-  reorderLineItems: (playbookId: string, itemIds: string[]) => void;
   updateNotebookNote: (playbookId: string, note: string) => void;
 
   // Obligations
@@ -61,11 +58,7 @@ interface PlaybookStoreState {
 
   // Queries
   getActivePlaybooks: () => Playbook[];
-  getClosedPlaybooks: () => Playbook[];
-  getPlaybookById: (id: string) => Playbook | undefined;
-  getPlaybooksForTransaction: (transactionId: string) => Playbook[];
   canCreatePlaybook: () => boolean;
-  canClosePlaybook: () => boolean;
 }
 
 export const usePlaybookStore = create<PlaybookStoreState>()(
@@ -117,10 +110,21 @@ export const usePlaybookStore = create<PlaybookStoreState>()(
           ),
         })),
 
-      deletePlaybook: (id) =>
+      deletePlaybook: (id) => {
         set((state) => ({
           playbooks: state.playbooks.filter((p) => p.id !== id),
-        })),
+        }));
+        // After removal, strip orphaned playbookLinks entries from transactions.
+        // Money-safe: only mutates playbookLinks, never amount/type/wallet, so
+        // updateTransaction performs no wallet reconciliation.
+        const remaining = get().playbooks;
+        const existingPlaybookIds = new Set(remaining.map((p) => p.id));
+        const { transactions, updateTransaction } = usePersonalStore.getState();
+        const updates = cleanupOrphanedLinks(transactions, existingPlaybookIds);
+        for (const u of updates) {
+          updateTransaction(u.id, { playbookLinks: u.playbookLinks });
+        }
+      },
 
       closePlaybook: (id) => {
         const { playbooks } = get();
@@ -153,50 +157,6 @@ export const usePlaybookStore = create<PlaybookStoreState>()(
         return true;
       },
 
-      setAllocations: (playbookId, allocations) =>
-        set((state) => ({
-          playbooks: state.playbooks.map((p) =>
-            p.id === playbookId ? { ...p, allocations, updatedAt: new Date() } : p
-          ),
-        })),
-
-      addAllocation: (playbookId, category, amount) =>
-        set((state) => ({
-          playbooks: state.playbooks.map((p) => {
-            if (p.id !== playbookId) return p;
-            if (p.allocations.some((a) => a.category === category)) return p;
-            return {
-              ...p,
-              allocations: [...p.allocations, { category, allocatedAmount: amount }],
-              updatedAt: new Date(),
-            };
-          }),
-        })),
-
-      removeAllocation: (playbookId, category) =>
-        set((state) => ({
-          playbooks: state.playbooks.map((p) =>
-            p.id === playbookId
-              ? { ...p, allocations: p.allocations.filter((a) => a.category !== category), updatedAt: new Date() }
-              : p
-          ),
-        })),
-
-      updateAllocation: (playbookId, category, amount) =>
-        set((state) => ({
-          playbooks: state.playbooks.map((p) =>
-            p.id === playbookId
-              ? {
-                  ...p,
-                  allocations: p.allocations.map((a) =>
-                    a.category === category ? { ...a, allocatedAmount: amount } : a
-                  ),
-                  updatedAt: new Date(),
-                }
-              : p
-          ),
-        })),
-
       linkExpense: (playbookId, transactionId) =>
         set((state) => ({
           playbooks: state.playbooks.map((p) => {
@@ -210,18 +170,32 @@ export const usePlaybookStore = create<PlaybookStoreState>()(
           }),
         })),
 
-      unlinkExpense: (playbookId, transactionId) =>
+      setExpenseLink: (playbookId, transactionId) => {
+        // Guard: target must exist, be active and not closed.
+        const target = get().playbooks.find((p) => p.id === playbookId);
+        if (!target || !target.isActive || target.isClosed) return;
         set((state) => ({
-          playbooks: state.playbooks.map((p) =>
-            p.id === playbookId
-              ? {
-                  ...p,
-                  linkedExpenseIds: p.linkedExpenseIds.filter((id) => id !== transactionId),
-                  updatedAt: new Date(),
-                }
-              : p
-          ),
-        })),
+          playbooks: state.playbooks.map((p) => {
+            if (p.id === playbookId) {
+              if (p.linkedExpenseIds.includes(transactionId)) return p;
+              return {
+                ...p,
+                linkedExpenseIds: [...p.linkedExpenseIds, transactionId],
+                updatedAt: new Date(),
+              };
+            }
+            // Single-owner: strip txId from every OTHER playbook.
+            if (p.linkedExpenseIds.includes(transactionId)) {
+              return {
+                ...p,
+                linkedExpenseIds: p.linkedExpenseIds.filter((id) => id !== transactionId),
+                updatedAt: new Date(),
+              };
+            }
+            return p;
+          }),
+        }));
+      },
 
       unlinkAllFromTransaction: (transactionId) =>
         set((state) => ({
@@ -290,21 +264,6 @@ export const usePlaybookStore = create<PlaybookStoreState>()(
           }),
         })),
 
-      reorderLineItems: (playbookId, itemIds) =>
-        set((state) => ({
-          playbooks: state.playbooks.map((p) => {
-            if (p.id !== playbookId) return p;
-            const items = p.lineItems || [];
-            const ordered = itemIds
-              .map((id, idx) => {
-                const item = items.find((li) => li.id === id);
-                return item ? { ...item, sortOrder: idx } : null;
-              })
-              .filter(Boolean) as PlaybookLineItem[];
-            return { ...p, lineItems: ordered, updatedAt: new Date() };
-          }),
-        })),
-
       updateNotebookNote: (playbookId, note) =>
         set((state) => ({
           playbooks: state.playbooks.map((p) =>
@@ -325,16 +284,7 @@ export const usePlaybookStore = create<PlaybookStoreState>()(
         })),
 
       getActivePlaybooks: () => get().playbooks.filter((p) => p.isActive && !p.isClosed),
-      getClosedPlaybooks: () => get().playbooks.filter((p) => p.isClosed),
-      getPlaybookById: (id) => get().playbooks.find((p) => p.id === id),
-      getPlaybooksForTransaction: (transactionId) =>
-        get().playbooks.filter((p) => p.linkedExpenseIds.includes(transactionId)),
       canCreatePlaybook: () => get().playbooks.filter((p) => p.isActive && !p.isClosed).length < FREE_TIER.maxActivePlaybooks,
-      canClosePlaybook: () => {
-        const tier = usePremiumStore.getState().tier;
-        if (tier === 'premium') return true;
-        return get().playbooks.filter((p) => p.isClosed).length < FREE_TIER.maxSavedPlaybooks;
-      },
     }),
     {
       name: 'playbook-storage',
@@ -394,7 +344,9 @@ export const usePlaybookStore = create<PlaybookStoreState>()(
                 sortOrder: existing.length + idx,
                 category: a.category,
               }));
-              return { ...p, lineItems: [...existing, ...migrated] };
+              // Clear allocations on this playbook to kill the double-count source —
+              // stats now read lineItems only.
+              return { ...p, allocations: [], lineItems: [...existing, ...migrated] };
             }
             return p;
           });

@@ -265,6 +265,7 @@ export const EXPENSE_CATEGORIES: CategoryOption[] = [
   { id: 'subscription', name: 'Subscriptions', icon: 'repeat', color: '#7C5CFC' },
   { id: 'business cost', name: 'Business Cost', icon: 'briefcase', color: '#B2780A' },
   { id: 'debt_payment', name: 'Debt Payment', icon: 'corner-up-left', color: '#7C8DA4' },
+  { id: 'savings', name: 'Savings Goal', icon: 'target', color: '#4F5104' },
   { id: 'other', name: 'Other', icon: 'more-horizontal', color: '#6B7596' },
 ];
 
@@ -276,6 +277,7 @@ export const INCOME_CATEGORIES: CategoryOption[] = [
   { id: 'gift', name: 'Gift', icon: 'gift', color: '#C4956A' },
   { id: 'from business', name: 'From Business', icon: 'refresh-cw', color: '#6BA3BE' },
   { id: 'debt_paid', name: 'Debt Paid', icon: 'corner-down-left', color: '#6BA3BE' },
+  { id: 'savings_return', name: 'Goal Withdrawal', icon: 'target', color: '#4F5104' },
   { id: 'other', name: 'Other', icon: 'plus-circle', color: '#6B7596' },
 ];
 

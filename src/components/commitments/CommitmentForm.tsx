@@ -21,6 +21,8 @@ import { useWalletStore } from '../../store/walletStore';
 import { useT } from '../../i18n';
 import { lightTap, mediumTap } from '../../services/haptics';
 import { Subscription } from '../../types';
+import { parseCommitmentDraft } from '../../services/manglishParser';
+import { computeNextBillingDate } from '../../utils/commitmentParse';
 import CategoryPicker from '../common/CategoryPicker';
 import CalendarPicker from '../common/CalendarPicker';
 import WalletLogo from '../common/WalletLogo';
@@ -274,6 +276,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
   const [multilineFocused, setMultilineFocused] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [quickText, setQuickText] = useState(''); // one-line natural-language capture (add mode)
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -345,13 +348,13 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
   useEffect(() => {
     if (!visible) return;
     if (subscription) {
-      setName(subscription.name);
-      setAmount(subscription.amount.toString());
+      setName(subscription.name || '');
+      setAmount(subscription.amount != null ? subscription.amount.toString() : '');
       setNote(subscription.note || '');
-      setCategory(subscription.category);
-      setBillingCycle(subscription.billingCycle);
-      setReminderDays(subscription.reminderDays.toString());
-      setStartDate(isValid(subscription.startDate) ? subscription.startDate : new Date());
+      setCategory(subscription.category || expenseCategories[0]?.id || 'food');
+      setBillingCycle(subscription.billingCycle || 'monthly');
+      setReminderDays(subscription.reminderDays != null ? subscription.reminderDays.toString() : '3');
+      setStartDate(subscription.startDate && isValid(subscription.startDate) ? subscription.startDate : new Date());
       setIsInstallment(subscription.isInstallment || false);
       const ti = subscription.totalInstallments || 0;
       if (ti >= 12 && ti % 12 === 0) {
@@ -376,6 +379,7 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
       setWalletId(undefined); setOutstandingBalance('');
       setImageUri(undefined); setIconName(undefined);
     }
+    setQuickText('');
     setSubView('form');
   }, [visible, subscription, expenseCategories]);
 
@@ -424,6 +428,31 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
   }, []);
 
   const suggested = useMemo(() => suggestIcons(name), [name]);
+
+  // Quick capture: parse one natural-language line and prefill the form.
+  const handleQuickFill = useCallback(() => {
+    const text = quickText.trim();
+    if (!text) return;
+    const d = parseCommitmentDraft(text);
+    if (d.amount > 0) setAmount(String(d.amount));
+    if (d.name) setName(d.name);
+    setBillingCycle(d.billingCycle);
+    if (d.category) setCategory(d.category);
+    // A stated due day sets the first billing date (the form uses startDate as the
+    // next billing date for new commitments).
+    if (d.dueDay) setStartDate(computeNextBillingDate(new Date(), d.billingCycle, d.dueDay));
+    if (d.installments && d.installments > 1) {
+      setIsInstallment(true);
+      setTotalInstallments(String(d.installments));
+      setDurationValue(String(d.installments));
+      setDurationUnit('months');
+      setCompletedStr('0');
+      if (d.amount > 0) setOutstandingBalance(String(Math.round(d.amount * d.installments * 100) / 100));
+    }
+    mediumTap();
+    Keyboard.dismiss();
+    setQuickText('');
+  }, [quickText]);
 
   const handleSave = useCallback(() => {
     if (!name.trim()) { onError?.(t.subscriptions.enterName); return; }
@@ -478,6 +507,36 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
       contentContainerStyle={{ paddingHorizontal: SPACING.lg, paddingBottom: SPACING['3xl'] + insets.bottom }}
       bottomOffset={20}
     >
+      {/* ── Quick capture (add mode) — type it naturally, we fill the form ── */}
+      {!isEditMode && (
+        <View style={styles.quickCard}>
+          <View style={styles.quickRow}>
+            <Feather name="zap" size={18} color={C.gold} />
+            <View style={styles.quickFieldCol}>
+              <Text style={styles.quickLabel}>let echo fill it in</Text>
+              <TextInput
+                style={styles.quickInput}
+                value={quickText}
+                onChangeText={setQuickText}
+                placeholder="rumah sewa 850 sebulan due 25hb"
+                placeholderTextColor={C.textMuted}
+                multiline
+                textAlignVertical="top"
+                onFocus={() => setMultilineFocused(true)}
+                onBlur={() => setMultilineFocused(false)}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={C.accent}
+              />
+            </View>
+            {quickText.trim().length > 0 && (
+              <TouchableOpacity style={styles.quickFillBtn} onPress={handleQuickFill} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="let echo fill the form">
+                <Text style={styles.quickFillText}>fill</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* ── Hero amount ── */}
       <Pressable style={[styles.heroArea, isComplete && { opacity: 0.45 }]} onPress={() => { if (!isComplete) amountRef.current?.focus(); }}>
         <View style={styles.heroAmountRow}>
@@ -526,20 +585,31 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
       {/* ── Name + Category (grouped) ── */}
       <View style={styles.card}>
         <View style={styles.cardRow}>
-          <TouchableOpacity onPress={openIconPicker} activeOpacity={0.7} style={styles.nameIconBtn}>
-            {imageUri ? (
-              <Image source={{ uri: imageUri }} style={styles.nameIconImage} />
-            ) : iconName ? (
-              <View style={[styles.nameIconFallback, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
-                {renderIcon(iconName, 20, C.accent)}
-              </View>
-            ) : (
-              <View style={[styles.nameIconFallback, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
-                <Text style={{ fontSize: 18, fontWeight: '700', color: C.accent }}>
-                  {name ? name.charAt(0).toUpperCase() : '?'}
-                </Text>
-              </View>
-            )}
+          <TouchableOpacity
+            onPress={openIconPicker}
+            activeOpacity={0.7}
+            style={styles.nameIconWrap}
+            accessibilityRole="button"
+            accessibilityLabel={imageUri || iconName ? 'change icon or picture' : 'add an icon or picture'}
+          >
+            <View style={styles.nameIconBtn}>
+              {imageUri ? (
+                <Image source={{ uri: imageUri }} style={styles.nameIconImage} />
+              ) : iconName ? (
+                <View style={[styles.nameIconFallback, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                  {renderIcon(iconName, 20, C.accent)}
+                </View>
+              ) : (
+                <View style={[styles.nameIconFallback, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+                  <Text style={{ fontSize: 18, fontWeight: '700', color: C.accent }}>
+                    {name ? name.charAt(0).toUpperCase() : '?'}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.nameIconPlus} pointerEvents="none">
+              <Feather name={imageUri || iconName ? 'edit-2' : 'plus'} size={9} color={C.onAccent} />
+            </View>
           </TouchableOpacity>
           <View style={styles.fieldFlex}>
             <Text style={styles.fieldLabel}>name</Text>
@@ -1248,6 +1318,55 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: C.background,
   },
 
+  // ── Quick capture (Echo) ─────────────────────────────
+  quickCard: {
+    marginHorizontal: SPACING.sm,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.md,
+    backgroundColor: withAlpha(C.accent, C === CALM_DARK ? 0.09 : 0.055),
+    borderRadius: RADIUS.lg + 2,
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, C === CALM_DARK ? 0.18 : 0.12),
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+  },
+  quickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm + 2,
+  },
+  quickFieldCol: {
+    flex: 1,
+    gap: 1,
+  },
+  quickLabel: {
+    fontSize: 11,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.accent,
+    letterSpacing: 0.2,
+  },
+  quickInput: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: -0.1,
+    paddingVertical: 2,
+    lineHeight: 20,
+    maxHeight: 88,
+  },
+  quickFillBtn: {
+    backgroundColor: C.accent,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
+  },
+  quickFillText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
+  },
+
   // ── Hero amount ──────────────────────────────────────
   heroArea: {
     alignItems: 'center',
@@ -1331,12 +1450,30 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
+  nameIconWrap: {
+    width: 42,
+    height: 42,
+    flexShrink: 0,
+  },
   nameIconBtn: {
     width: 42,
     height: 42,
     borderRadius: 12,
     flexShrink: 0,
     overflow: 'hidden',
+  },
+  nameIconPlus: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: C.surface,
   },
   nameIconImage: {
     width: 42,

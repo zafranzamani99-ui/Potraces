@@ -122,8 +122,10 @@ interface SettingsState {
   setCommitmentEchoHidden: (value: boolean) => void;
   personalSyncEnabled: boolean;
   lastPersonalSyncAt: Date | null;
+  lastSyncedUserId: string | null;
   setPersonalSyncEnabled: (value: boolean) => void;
   setLastPersonalSyncAt: (value: Date | null) => void;
+  setLastSyncedUserId: (value: string | null) => void;
   spendingAlertsEnabled: boolean;
   setSpendingAlertsEnabled: (value: boolean) => void;
   quickAddConfirm: boolean;
@@ -186,11 +188,13 @@ export const useSettingsStore = create<SettingsState>()(
       setCommitmentEchoHidden: (commitmentEchoHidden) => set({ commitmentEchoHidden }),
       personalSyncEnabled: false,
       lastPersonalSyncAt: null,
+      lastSyncedUserId: null,
       spendingAlertsEnabled: true,
       quickAddConfirm: false,
 
       setPersonalSyncEnabled: (personalSyncEnabled) => set({ personalSyncEnabled }),
       setLastPersonalSyncAt: (lastPersonalSyncAt) => set({ lastPersonalSyncAt }),
+      setLastSyncedUserId: (lastSyncedUserId) => set({ lastSyncedUserId }),
       setSpendingAlertsEnabled: (spendingAlertsEnabled) => set({ spendingAlertsEnabled }),
       setQuickAddConfirm: (quickAddConfirm) => set({ quickAddConfirm }),
 

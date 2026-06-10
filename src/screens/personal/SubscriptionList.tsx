@@ -184,6 +184,10 @@ function getPrevBillingDate(nextBillingDate: Date, cycle: string): Date {
 
 function isClearedThisCycle(sub: Subscription): boolean {
   if (!sub.lastPaidAt) return false;
+  // The oldest unpaid cycle is sub.nextBillingDate. If it's still in the past the
+  // commitment is behind — never report it as cleared, or a freshly-paid older
+  // cycle would mask the next overdue one and the user would lose track of it.
+  if (startOfDay(sub.nextBillingDate) < startOfDay(new Date())) return false;
   const prevBilling = getPrevBillingDate(sub.nextBillingDate, sub.billingCycle);
   if (sub.lastPaidAt >= prevBilling) return true;
   // Paid early (before due date) — nextBillingDate already advanced, check two cycles back
@@ -259,6 +263,26 @@ function getNextBillingDate(start: Date, cycle: string): Date {
     }
   }
   return next;
+}
+
+// Every billing date that has fallen due but isn't paid yet — the oldest
+// (sub.nextBillingDate) first, then each following cycle up to today. Lets us show
+// one row per missed cycle instead of silently collapsing arrears into a single bill.
+function getOverdueOccurrences(sub: Subscription, today: Date): Date[] {
+  const dates: Date[] = [];
+  let d = new Date(sub.nextBillingDate);
+  let i = 0;
+  while (startOfDay(d) < today && i < 36) {
+    dates.push(new Date(d));
+    switch (sub.billingCycle) {
+      case 'weekly':    d = addWeeks(d, 1);    break;
+      case 'quarterly': d = addQuarters(d, 1); break;
+      case 'yearly':    d = addYears(d, 1);    break;
+      default:          d = addMonths(d, 1);   break;
+    }
+    i++;
+  }
+  return dates;
 }
 
 // ─── Floating celebration dot ─────────────────────────────
@@ -393,7 +417,9 @@ const SubscriptionList: React.FC = () => {
 
   // ── Mark as paid sheet ───────────────────────────────────
   const [markPaidSub, setMarkPaidSub] = useState<Subscription | null>(null);
-  const [payWarning, setPayWarning] = useState<{ sub: Subscription; reason: 'double' | 'early'; detail: string } | null>(null);
+  const [markPaidDate, setMarkPaidDate] = useState<Date | null>(null); // when the user paid (null = today)
+  const [mpCalendarOpen, setMpCalendarOpen] = useState(false);
+  const [payWarning, setPayWarning] = useState<{ sub: Subscription; reason: 'double' | 'early' | 'notStarted'; detail: string } | null>(null);
   const [celebrationSub, setCelebrationSub] = useState<{ id: string; name: string; amount: number; cycle: string; totalPaid: number; installments?: number } | null>(null);
 
   // ── Delete confirm ───────────────────────────────────────
@@ -401,6 +427,7 @@ const SubscriptionList: React.FC = () => {
 
   // ── Detail view ─────────────────────────────────────────
   const [detailSub, setDetailSub] = useState<Subscription | null>(null);
+  const [showAllHistory, setShowAllHistory] = useState(false);
 
   // ── How it works ────────────────────────────────────────
   const [howItWorksVisible, setHowItWorksVisible] = useState(false);
@@ -712,19 +739,13 @@ const SubscriptionList: React.FC = () => {
     }
   }, [commitmentGreetingPool, subscriptions, totalAnnual, currency]));
 
-  // ── Auto-advance overdue nextBillingDate on focus ───────
-  useFocusEffect(useCallback(() => {
-    const today = startOfDay(new Date());
-    subscriptions.forEach(sub => {
-      if (!sub.isActive || sub.isPaused) return;
-      if (new Date(sub.nextBillingDate) < today) {
-        const advanced = getNextBillingDate(new Date(sub.startDate), sub.billingCycle);
-        if (advanced.getTime() !== new Date(sub.nextBillingDate).getTime()) {
-          updateSubscription(sub.id, { nextBillingDate: advanced });
-        }
-      }
-    });
-  }, [subscriptions, updateSubscription]));
+  // NOTE: we deliberately do NOT auto-advance an overdue nextBillingDate. An unpaid
+  // bill must stay on its due date so the user can still record it — advancing it
+  // would erase the missed cycle. nextBillingDate only moves forward when the user
+  // marks a cycle paid (markSubscriptionPaid advances exactly one cycle), so it
+  // always points at the oldest unpaid cycle and arrears accumulate instead of
+  // silently rolling into the new month. See getOverdueOccurrences for the per-cycle
+  // rows that surface every missed bill.
 
   const afterCommitments = useMemo(() => {
     const walletBalance = wallets
@@ -874,7 +895,18 @@ const SubscriptionList: React.FC = () => {
 
     const today = startOfDay(new Date());
     const { remaining, paid, paused } = tabSections;
-    const overdue = remaining.filter(s => new Date(s.nextBillingDate) < today);
+    // Behind by more than one cycle → render one bill per missed cycle. Each extra
+    // row is a lightweight copy of the real record carrying __realId, so pay/edit/
+    // detail all route back to the single underlying subscription (paying clears the
+    // oldest cycle, so the row count drops by one each time).
+    const overdue = remaining
+      .filter(s => new Date(s.nextBillingDate) < today)
+      .flatMap(s => {
+        const occ = getOverdueOccurrences(s, today);
+        if (occ.length <= 1) return [s];
+        return occ.map((d, i) => ({ ...s, id: `${s.id}#${i}`, nextBillingDate: d, __realId: s.id } as any as Subscription));
+      })
+      .sort((a, b) => new Date(a.nextBillingDate).getTime() - new Date(b.nextBillingDate).getTime());
     const upcoming = remaining.filter(s => new Date(s.nextBillingDate) >= today);
 
     if (statusFilter === 'archived') {
@@ -1020,6 +1052,10 @@ const SubscriptionList: React.FC = () => {
     }
   }, [route.params?.highlightId, subscriptions, classifyKind]);
 
+  // Collapse the full-history view whenever the detail sheet opens a different
+  // commitment or closes, so it always starts on the recent slice.
+  useEffect(() => { setShowAllHistory(false); }, [detailSub?.id]);
+
   // Form save — receives the payload from CommitmentForm
   const handleFormSave = useCallback((payload: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt'>) => {
     const nextBilling = getNextBillingDate(payload.startDate, payload.billingCycle);
@@ -1097,6 +1133,14 @@ const SubscriptionList: React.FC = () => {
       return;
     }
 
+    // Gate 1b: hasn't started yet — paying before the start date records a payment
+    // dated before the bill itself exists (and means no overdue cycle is being
+    // cleared). Warn, but allow override.
+    if (startOfDay(new Date(sub.startDate)) > startOfDay(new Date())) {
+      setPayWarning({ sub, reason: 'notStarted', detail: format(new Date(sub.startDate), 'MMM d, yyyy') });
+      return;
+    }
+
     // Gate 2: already paid this cycle (skip for installments — they can pay ahead)
     if (!isInst && isClearedThisCycle(sub)) {
       const lastPaid = sub.lastPaidAt ? format(new Date(sub.lastPaidAt), 'MMM d') : 'recently';
@@ -1113,6 +1157,8 @@ const SubscriptionList: React.FC = () => {
       }
     }
 
+    setMarkPaidDate(null);
+    setMpCalendarOpen(false);
     setMarkPaidSub(sub);
   }, []);
 
@@ -1120,24 +1166,33 @@ const SubscriptionList: React.FC = () => {
     if (!markPaidSub) return;
     let txId: string | undefined;
     const wId = withExpense ? markPaidSub.walletId : undefined;
+    // When the user actually paid — they can pick a past date; defaults to today.
+    const paidOn = markPaidDate ?? new Date();
+    // The bill belongs to its due cycle. If paid late, date the expense to the cycle
+    // (the 25 May bill stays under May, not the June day it was paid) so reports,
+    // dashboard, budgets and the playbook all attribute it correctly. Never push an
+    // early payment into the future — keep the pay date when paying on time or ahead.
+    const cycleDate = new Date(markPaidSub.nextBillingDate);
+    const expenseDate = paidOn > cycleDate ? cycleDate : paidOn;
     if (withExpense && markPaidSub.walletId) {
       txId = addTransaction({
         amount: markPaidSub.amount,
         category: markPaidSub.category,
         description: markPaidSub.name,
         type: 'expense',
-        date: new Date(),
+        date: expenseDate,
         mode: 'personal',
         inputMethod: 'manual',
         walletId: markPaidSub.walletId,
       });
       deductFromWallet(markPaidSub.walletId, markPaidSub.amount);
     }
-    markSubscriptionPaid(markPaidSub.id, txId, wId);
+    markSubscriptionPaid(markPaidSub.id, txId, wId, paidOn);
     mediumTap();
 
     if (markPaidSub.sharedSubId) {
-      const month = format(new Date(), 'yyyy-MM');
+      // Per-cycle record — key by the cleared cycle's month so mark & undo agree.
+      const month = format(cycleDate, 'yyyy-MM');
       ensureMonthRecord(markPaidSub.sharedSubId, month);
       markSharedSubPayment(markPaidSub.sharedSubId, month, '__self__');
     }
@@ -1160,7 +1215,7 @@ const SubscriptionList: React.FC = () => {
 
     setMarkPaidSub(null);
     showToast('cleared.', 'success');
-  }, [markPaidSub, markSubscriptionPaid, addTransaction, deductFromWallet, showToast, markSharedSubPayment, ensureMonthRecord]);
+  }, [markPaidSub, markPaidDate, markSubscriptionPaid, addTransaction, deductFromWallet, showToast, markSharedSubPayment, ensureMonthRecord]);
 
   // ─── Render helpers ────────────────────────────────────
 
@@ -1190,6 +1245,11 @@ const SubscriptionList: React.FC = () => {
   const renderRow = useCallback((sub: Subscription, isCleared: boolean) => {
     const accentColor = avatarColorForName(sub.name);
     const { text: dueDateText, accent } = getDueDateInfo(sub.nextBillingDate);
+    // Overdue-arrears rows are virtual copies (id = "<realId>#<n>"); pay/edit/detail
+    // must act on the real subscription, not the throwaway occurrence row.
+    const realId = (sub as any).__realId as string | undefined;
+    const resolveReal = (): Subscription =>
+      realId ? (usePersonalStore.getState().subscriptions.find(s => s.id === realId) || sub) : sub;
     const dueColor = isCleared ? C.textMuted
       : accent === 'overdue' ? C.overdue
       : accent === 'today'   ? C.gold
@@ -1229,7 +1289,7 @@ const SubscriptionList: React.FC = () => {
       <Pressable
         style={[styles.row, (isCleared || sub.isPaused || installmentDone) && styles.rowDimmed]}
         android_ripple={{ color: withAlpha(C.textMuted, 0.06) }}
-        onPress={() => { lightTap(); setDetailSub(sub); }}
+        onPress={() => { lightTap(); setDetailSub(resolveReal()); }}
       >
         {/* Squircle avatar */}
         {installmentDone ? (
@@ -1299,13 +1359,13 @@ const SubscriptionList: React.FC = () => {
       hardSwipedRef.current.add(sub.id);
       s.close();
       mediumTap();
-      smartMarkPaid(sub);
+      smartMarkPaid(resolveReal());
     };
     const triggerEdit = (s: SwipeableMethods) => {
       hardSwipedRef.current.add(sub.id);
       s.close();
       mediumTap();
-      handleEdit(sub.id);
+      handleEdit(resolveReal().id);
     };
 
     const renderRightActions = (
@@ -1837,10 +1897,12 @@ const SubscriptionList: React.FC = () => {
     const overdue = remaining.filter(s => new Date(s.nextBillingDate) < today);
     const upcoming = remaining.filter(s => new Date(s.nextBillingDate) >= today);
     const archivedCount = subscriptions.filter(s => !s.isActive).length;
+    // Count each missed cycle as its own bill so the chip matches the rows shown.
+    const overdueCount = overdue.reduce((sum, s) => sum + Math.max(1, getOverdueOccurrences(s, today).length), 0);
     return {
       all: remaining.length + paid.length + paused.length,
       upcoming: upcoming.length,
-      overdue: overdue.length,
+      overdue: overdueCount,
       cleared: paid.length,
       paused: paused.length,
       archived: archivedCount,
@@ -2310,12 +2372,16 @@ const SubscriptionList: React.FC = () => {
             return (
               <View style={styles.historySection}>
                 <Text style={styles.fieldLabel}>payment history</Text>
-                {history.slice().reverse().slice(0, 8).map(p => (
+                {history.slice().reverse().slice(0, 8).map(p => {
+                  const periodD = new Date(p.periodDate ?? p.paidAt);
+                  const paidLate = startOfDay(new Date(p.paidAt)) > startOfDay(periodD);
+                  return (
                   <View key={p.id} style={styles.historyRow}>
-                    <Text style={styles.historyDate}>{format(p.paidAt, 'MMM d, yyyy')}</Text>
+                    <Text style={styles.historyDate}>{format(periodD, 'd MMM yyyy')}{paidLate ? ` · paid ${format(new Date(p.paidAt), 'd MMM')}` : ''}</Text>
                     <Text style={styles.historyAmt}>{currency} {p.amount.toFixed(2)}</Text>
                   </View>
-                ))}
+                  );
+                })}
               </View>
             );
           })()}
@@ -2465,52 +2531,93 @@ const SubscriptionList: React.FC = () => {
       default:          nextAfterPaid.setMonth(nextAfterPaid.getMonth() + 1);  break;
     }
 
+    const paidOn = markPaidDate ?? new Date();
+    const today = new Date();
+    const closeMp = () => { setMpCalendarOpen(false); setMarkPaidSub(null); };
+
     return (
-      <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMarkPaidSub(null)}>
-        <Pressable style={styles.overlayCenter} onPress={() => setMarkPaidSub(null)}>
-          <View style={styles.markPaidCard} onStartShouldSetResponder={() => true}>
-            {/* Dismiss X */}
-            <TouchableOpacity
-              onPress={() => setMarkPaidSub(null)}
-              style={styles.mpCloseBtn}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Feather name="x" size={18} color={C.textMuted} />
-            </TouchableOpacity>
-
-            {/* Hero amount */}
-            <Text style={styles.mpHeroAmount}>
-              <Text style={styles.mpHeroCurrency}>{currency} </Text>
-              {markPaidSub.amount.toFixed(2)}
-            </Text>
-            <Text style={styles.mpName}>{markPaidSub.name}</Text>
-
-            {/* Next cycle pill */}
-            <View style={styles.mpNextPill}>
-              <Feather name="repeat" size={11} color={C.textMuted} />
-              <Text style={styles.mpNextText}>next cycle {format(nextAfterPaid, 'MMM d')}</Text>
-            </View>
-
-            {/* Actions */}
-            <View style={styles.mpActions}>
-              {linkedWallet && (
+      <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={closeMp}>
+        <Pressable style={styles.overlayCenter} onPress={closeMp}>
+          <View style={[styles.markPaidCard, mpCalendarOpen && { width: '94%', paddingHorizontal: SPACING.sm }]} onStartShouldSetResponder={() => true}>
+            {mpCalendarOpen ? (
+              <>
+                <View style={[styles.modalHeader, { width: '100%' }]}>
+                  <TouchableOpacity onPress={() => setMpCalendarOpen(false)} style={styles.backBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                    <Feather name="arrow-left" size={20} color={C.textPrimary} />
+                  </TouchableOpacity>
+                  <Text style={styles.modalTitle}>when did you pay?</Text>
+                  <View style={{ width: 32 }} />
+                </View>
+                <View style={{ width: '100%' }}>
+                  <CalendarPicker
+                    value={paidOn}
+                    minimumDate={getPrevBillingDate(markPaidSub.nextBillingDate, markPaidSub.billingCycle)}
+                    maximumDate={today}
+                    onChange={(d) => { setMarkPaidDate(d); setMpCalendarOpen(false); }}
+                  />
+                </View>
+              </>
+            ) : (
+              <>
+                {/* Dismiss X */}
                 <TouchableOpacity
-                  style={[styles.markPaidBtn, { backgroundColor: withAlpha(linkedWallet.color, 0.15), borderWidth: 1, borderColor: withAlpha(linkedWallet.color, 0.25) }]}
-                  onPress={() => handleMarkPaid(true)}
-                  activeOpacity={0.8}
+                  onPress={closeMp}
+                  style={styles.mpCloseBtn}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
-                  <WalletLogo wallet={linkedWallet} size={18} />
-                  <Text style={[styles.markPaidBtnText, { color: linkedWallet.color }]}>
-                    pay from {linkedWallet.name}
-                  </Text>
+                  <Feather name="x" size={18} color={C.textMuted} />
                 </TouchableOpacity>
-              )}
 
-              <TouchableOpacity style={linkedWallet ? styles.mpWalletBtn : styles.markPaidBtn} onPress={() => handleMarkPaid(false)} activeOpacity={0.8}>
-                <Feather name="check" size={18} color={linkedWallet ? C.textSecondary : C.onAccent} />
-                <Text style={linkedWallet ? styles.mpWalletBtnText : styles.markPaidBtnText}>mark as paid</Text>
-              </TouchableOpacity>
-            </View>
+                {/* Hero amount */}
+                <Text style={styles.mpHeroAmount}>
+                  <Text style={styles.mpHeroCurrency}>{currency} </Text>
+                  {markPaidSub.amount.toFixed(2)}
+                </Text>
+                <Text style={styles.mpName}>{markPaidSub.name}</Text>
+
+                {/* Paid-on date — tap to pick when you actually paid */}
+                <TouchableOpacity
+                  style={styles.mpDatePill}
+                  onPress={() => { lightTap(); setMpCalendarOpen(true); }}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`change pay date, currently ${isSameDay(paidOn, today) ? 'today' : format(paidOn, 'd MMMM yyyy')}`}
+                >
+                  <Feather name="calendar" size={13} color={C.accent} />
+                  <Text style={styles.mpDateLabel}>paid</Text>
+                  <Text style={styles.mpDateText}>{isSameDay(paidOn, today) ? 'today' : format(paidOn, 'd MMM yyyy')}</Text>
+                  <Feather name="chevron-down" size={14} color={C.textMuted} />
+                </TouchableOpacity>
+
+                {/* Next cycle pill */}
+                <View style={styles.mpNextPill}>
+                  <Feather name="repeat" size={11} color={C.textMuted} />
+                  <Text style={styles.mpNextText}>next cycle {format(nextAfterPaid, 'MMM d')}</Text>
+                </View>
+
+                {/* Actions */}
+                <View style={styles.mpActions}>
+                  {linkedWallet && (
+                    <TouchableOpacity
+                      style={[styles.markPaidBtn, { backgroundColor: withAlpha(linkedWallet.color, 0.15), borderWidth: 1, borderColor: withAlpha(linkedWallet.color, 0.25) }]}
+                      onPress={() => handleMarkPaid(true)}
+                      activeOpacity={0.8}
+                    >
+                      <WalletLogo wallet={linkedWallet} size={18} />
+                      <Text style={[styles.markPaidBtnText, { color: linkedWallet.color }]}>
+                        pay from {linkedWallet.name}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity style={linkedWallet ? styles.mpWalletBtn : styles.markPaidBtn} onPress={() => handleMarkPaid(false)} activeOpacity={0.8}>
+                    <Feather name="check" size={18} color={linkedWallet ? C.textSecondary : C.onAccent} />
+                    <Text style={linkedWallet ? styles.mpWalletBtnText : styles.markPaidBtnText}>mark as paid</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </Pressable>
       </Modal>
@@ -2522,22 +2629,25 @@ const SubscriptionList: React.FC = () => {
     if (!payWarning) return null;
     const { sub, reason, detail } = payWarning;
     const isDouble = reason === 'double';
+    const isNotStarted = reason === 'notStarted';
 
     return (
       <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => setPayWarning(null)}>
         <Pressable style={styles.overlayCenter} onPress={() => setPayWarning(null)}>
           <View style={styles.warnCard} onStartShouldSetResponder={() => true}>
             <View style={styles.warnIconCircle}>
-              <Feather name={isDouble ? 'alert-circle' : 'clock'} size={24} color={C.gold} />
+              <Feather name={isDouble ? 'alert-circle' : isNotStarted ? 'calendar' : 'clock'} size={24} color={C.gold} />
             </View>
             <Text style={styles.warnTitle}>
-              {isDouble ? 'already ' : 'not due '}
+              {isDouble ? 'already ' : isNotStarted ? 'not started ' : 'not due '}
               <Text style={styles.warnTitleAccent}>{isDouble ? 'paid' : 'yet'}</Text>
             </Text>
             <Text style={styles.warnBody}>
               {isDouble
                 ? `you paid ${sub.name.toLowerCase()} on ${detail}.\npay again for this cycle?`
-                : `${sub.name.toLowerCase()} isn't due until ${detail}.\nmark it paid now?`}
+                : isNotStarted
+                  ? `${sub.name.toLowerCase()} doesn't start until ${detail}.\nyou'd be recording a payment before it begins. mark it paid anyway?`
+                  : `${sub.name.toLowerCase()} isn't due until ${detail}.\nmark it paid now?`}
             </Text>
             <Pressable
               style={styles.warnPayBtn}
@@ -2743,7 +2853,8 @@ const SubscriptionList: React.FC = () => {
     const catObj = expenseCategories.find(c => c.id === sub.category);
     const allPayments = (sub.paymentHistory || []).slice().reverse();
     const activePayments = allPayments.filter(p => !p.undoneAt);
-    const history = activePayments.slice(0, 6);
+    const HISTORY_PREVIEW = 6;
+    const history = showAllHistory ? activePayments : activePayments.slice(0, HISTORY_PREVIEW);
     const mostRecentPaymentId = activePayments[0]?.id;
 
     return (
@@ -2957,13 +3068,28 @@ const SubscriptionList: React.FC = () => {
               {/* Payment history */}
               {history.length > 0 && (
                 <View style={styles.dtHistorySection}>
-                  <Text style={styles.dtHistoryLabel}>payment history</Text>
+                  <View style={styles.dtHistoryHeader}>
+                    <Text style={styles.dtHistoryLabel}>payment history</Text>
+                    {activePayments.length > HISTORY_PREVIEW && (
+                      <Text style={styles.dtHistoryCount}>{activePayments.length} total</Text>
+                    )}
+                  </View>
                   {history.map(p => {
                     const isLatest = p.id === mostRecentPaymentId;
+                    // Show the cycle this payment settled (its period), not the day it was
+                    // paid — so a late payment files under the right month, with a note.
+                    const periodD = new Date(p.periodDate ?? p.paidAt);
+                    const paidD = new Date(p.paidAt);
+                    const paidLate = startOfDay(paidD) > startOfDay(periodD);
                     return (
                       <View key={p.id} style={styles.dtHistoryRow}>
                         <Feather name="check-circle" size={12} color={C.positive} />
-                        <Text style={styles.dtHistoryDate}>{format(new Date(p.paidAt), 'MMM d, yyyy')}</Text>
+                        <View style={styles.dtHistoryDateCol}>
+                          <Text style={styles.dtHistoryDate}>{format(periodD, 'd MMM yyyy')}</Text>
+                          {paidLate && (
+                            <Text style={styles.dtHistoryLate}>paid {format(paidD, 'd MMM')}</Text>
+                          )}
+                        </View>
                         <Text style={styles.dtHistoryAmt}>{currency} {p.amount.toFixed(2)}</Text>
                         {isLatest && !isArchived && (
                           <Pressable
@@ -2980,7 +3106,7 @@ const SubscriptionList: React.FC = () => {
                                     onPress: () => {
                                       undoSubscriptionPayment(sub.id, p.id);
                                       if (sub.sharedSubId) {
-                                        const month = format(new Date(p.paidAt), 'yyyy-MM');
+                                        const month = format(new Date(p.periodDate ?? p.paidAt), 'yyyy-MM');
                                         unmarkSharedSubPayment(sub.sharedSubId, month, '__self__');
                                       }
                                       showToast('payment undone', 'success');
@@ -2998,6 +3124,26 @@ const SubscriptionList: React.FC = () => {
                       </View>
                     );
                   })}
+                  {activePayments.length > HISTORY_PREVIEW && (
+                    <Pressable
+                      onPress={() => { lightTap(); setShowAllHistory(v => !v); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={styles.dtHistorySeeAll}
+                    >
+                      {({ pressed }) => (
+                        <>
+                          <Text style={[styles.dtHistorySeeAllText, pressed && { opacity: 0.55 }]}>
+                            {showAllHistory ? 'show less' : `see all ${activePayments.length} payments`}
+                          </Text>
+                          <Feather
+                            name={showAllHistory ? 'chevron-up' : 'chevron-down'}
+                            size={13}
+                            color={C.accent}
+                          />
+                        </>
+                      )}
+                    </Pressable>
+                  )}
                 </View>
               )}
             </ScrollView>
@@ -4416,7 +4562,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   fgInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     paddingVertical: 0,
@@ -4454,7 +4600,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   fgReminderInput: {
     width: 40,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     textAlign: 'center',
@@ -4664,6 +4810,31 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
     letterSpacing: 0.1,
+  },
+  mpDatePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.14 : 0.10),
+    borderRadius: RADIUS.full,
+    paddingLeft: SPACING.md,
+    paddingRight: SPACING.sm + 2,
+    paddingVertical: 8,
+    marginBottom: SPACING.sm,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
+  },
+  mpDateLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  mpDateText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    letterSpacing: -0.1,
   },
   mpActions: {
     width: '100%',
@@ -5359,13 +5530,39 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: SPACING.md,
     marginBottom: SPACING.sm,
   },
+  dtHistoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
   dtHistoryLabel: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    marginBottom: SPACING.sm,
+  },
+  dtHistoryCount: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    letterSpacing: 0.2,
+  },
+  dtHistorySeeAll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: C.border,
+  },
+  dtHistorySeeAllText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.accent,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    letterSpacing: 0.2,
   },
   dtHistoryRow: {
     flexDirection: 'row',
@@ -5373,10 +5570,17 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.sm,
     paddingVertical: SPACING.xs + 2,
   },
+  dtHistoryDateCol: {
+    flex: 1,
+    gap: 1,
+  },
   dtHistoryDate: {
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
-    flex: 1,
+  },
+  dtHistoryLate: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.bronze,
   },
   dtHistoryAmt: {
     fontSize: TYPOGRAPHY.size.sm,

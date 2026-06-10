@@ -6,6 +6,7 @@
 
 import { ExtractionIntent } from '../types';
 import { useLearningStore } from '../store/learningStore';
+import { parseCommitmentSchedule, type BillingCycle } from '../utils/commitmentParse';
 
 export interface PreFilterResult {
   amounts: number[];
@@ -160,6 +161,20 @@ function isQuery(text: string): boolean {
   return QUERY_PATTERNS.some((p) => p.test(text));
 }
 
+// Recurring-commitment signals. Kept narrow on purpose: a bare service name
+// ("netflix 55") stays an expense — only a clear recurring cue (cycle word, sewa,
+// langganan, insurans, a known always-recurring service) promotes it to a commitment.
+// Installment/atome words are intentionally absent — those stay bnpl.
+const SUBSCRIPTION_KEYWORDS = [
+  'subscription', 'langganan', 'recurring', 'auto debit', 'autodebit',
+  'monthly', 'bulanan', 'tiap bulan', 'setiap bulan', 'sebulan',
+  'yearly', 'tahunan', 'mingguan', 'weekly',
+  'rumah sewa', 'sewa rumah', 'sewa kedai', 'sewa bilik',
+  'insurans', 'takaful', 'yuran', 'ptptn',
+  'netflix', 'spotify', 'youtube premium', 'yt premium', 'disney', 'hbo', 'viu',
+  'icloud', 'apple music', 'google one', 'chatgpt', 'canva', 'unifi', 'streamyx', 'astro', 'gym',
+];
+
 function guessIntent(text: string, amounts: number[]): ExtractionIntent | null {
   const lower = text.toLowerCase();
 
@@ -167,6 +182,7 @@ function guessIntent(text: string, amounts: number[]): ExtractionIntent | null {
   if (findKeywords(lower, DEBT_UPDATE_KEYWORDS).length > 0) return 'debt_update';
   if (findKeywords(lower, DEBT_KEYWORDS).length > 0) return 'debt';
   if (findKeywords(lower, BNPL_KEYWORDS).length > 0) return 'bnpl';
+  if (findKeywords(lower, SUBSCRIPTION_KEYWORDS).length > 0) return 'subscription';
   if (findKeywords(lower, SELLER_COST_KEYWORDS).length > 0) return 'seller_cost';
   if (findKeywords(lower, SELLER_KEYWORDS).length > 0) return 'seller_order';
   if (findKeywords(lower, SAVINGS_KEYWORDS).length > 0) return 'savings_goal';
@@ -196,6 +212,7 @@ export function preFilter(text: string): PreFilterResult {
     ...findKeywords(text, SELLER_KEYWORDS),
     ...findKeywords(text, SELLER_COST_KEYWORDS),
     ...findKeywords(text, SAVINGS_KEYWORDS),
+    ...findKeywords(text, SUBSCRIPTION_KEYWORDS),
   ];
 
   const hintIntent = queryFlag ? 'query' : guessIntent(text, amounts);
@@ -282,6 +299,72 @@ export function matchCategory(text: string): string | null {
     }
   }
   return null;
+}
+
+// ── One-line commitment draft (for the Commitment screen quick-add) ──
+
+export interface CommitmentDraft {
+  name: string;
+  amount: number;
+  billingCycle: BillingCycle;
+  dueDay?: number;
+  installments?: number;
+  category: string | null;
+}
+
+// Strip amount / schedule cues so what's left reads as the commitment name.
+function cleanCommitmentName(text: string): string {
+  let s = ` ${text} `;
+  s = s.replace(/\b\d{1,2}\s*[x×]\s*(?:rm\s*)?\d+(?:\.\d{1,2})?\b/gi, ' '); // "3x49.90"
+  s = s.replace(/\b[x×]\s*\d{1,2}\b/gi, ' ');                              // "x3"
+  s = s.replace(/\b\d{1,2}\s*(?:kali|installments?|instalments?|payments?)\b/gi, ' ');
+  // Due-day BEFORE the bare "25hb" strip (so "due 25hb" goes as one unit, no orphan "due").
+  s = s.replace(/\bdue\s*(?:on\s*)?(?:the\s*)?\d{1,2}(?:st|nd|rd|th|hb)?\b/gi, ' ');
+  s = s.replace(/\b(?:on|every|each|setiap|tiap)\s+(?:the\s*)?\d{1,2}(?:st|nd|rd|th|hb)?\b/gi, ' ');
+  s = s.replace(/\b\d{1,2}\s*(?:hb|haribulan)\b/gi, ' ');                  // standalone "25hb"
+  s = s.replace(/\b(weekly|mingguan|tiap minggu|setiap minggu|every week|per week|seminggu|wkly|quarterly|suku tahun|tiap 3 bulan|every 3 months|per quarter|yearly|annual|annually|tahunan|setahun|per year|every year|tiap tahun|monthly|bulanan|tiap bulan|setiap bulan|sebulan|per month|every month|each month|mthly|recurring|langganan|auto ?debit|subscription)\b/gi, ' ');
+  s = s.replace(/\brm\s?\d+(?:[.,]\d+)?\b/gi, ' ');                        // "rm850"
+  s = s.replace(/\b\d+(?:\.\d{1,2})?\b/g, ' ');                            // any leftover number
+  s = s.replace(/\b(due|every|setiap|tiap)\b/gi, ' ');                     // orphaned connectors
+  s = s.replace(/[-–]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return s;
+}
+
+/**
+ * Parse one free-text line into a commitment draft for the Commitment screen's
+ * quick-add (mirrors the Notes capture). Amount is the per-installment/period figure.
+ */
+// Commitment lines are free-form ("Hbo max 39.90 sebulan", "rumah sewa 850"), so the
+// amount is usually a BARE number with no RM/ringgit cue. Read it with or without RM,
+// ignoring the due-day and installment-count numbers.
+function extractCommitmentAmount(text: string, dueDay?: number, installments?: number): number {
+  // Installment "3x49.90" / "3 x rm49.90" → the amount is the price after the x.
+  const inst = /\b\d{1,2}\s*[x×]\s*(?:rm\s*)?(\d+(?:\.\d{1,2})?)\b/i.exec(text);
+  if (inst) { const v = parseFloat(inst[1]); if (v > 0) return v; }
+  const nums: number[] = [];
+  const re = /(?:rm\s*)?(\d+(?:\.\d{1,2})?)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) { const v = parseFloat(m[1]); if (v > 0) nums.push(v); }
+  const pool = nums.filter((v) => v !== dueDay && v !== installments);
+  const use = pool.length ? pool : nums;
+  // Prefer a decimal (a price like 39.90), else the last number (amount usually trails the name).
+  const decimals = use.filter((v) => !Number.isInteger(v));
+  if (decimals.length) return decimals[decimals.length - 1];
+  return use.length ? use[use.length - 1] : 0;
+}
+
+export function parseCommitmentDraft(text: string): CommitmentDraft {
+  const sched = parseCommitmentSchedule(text);
+  const amount = extractCommitmentAmount(text, sched.dueDay, sched.installments);
+  const name = cleanCommitmentName(text);
+  return {
+    name,
+    amount,
+    billingCycle: sched.billingCycle,
+    dueDay: sched.dueDay,
+    installments: sched.installments,
+    category: matchCategory(text),
+  };
 }
 
 // ── Structured line parsing ──

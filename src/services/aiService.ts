@@ -378,17 +378,24 @@ function parseParsedProducts(raw: string): ParsedProduct[] | null {
   }).filter((p: ParsedProduct) => p.name.length > 0);
 }
 
+const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+function geminiUrl() {
+  const key = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+  if (!key) return null;
+  return `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${key}`;
+}
+
 export async function parseProductList(
   text: string,
   existingUnits: string[],
   existingProducts?: string[]
 ): Promise<ParsedProduct[] | null> {
-  const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
-  const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
-
-  if (GEMINI_KEY) {
+  const url = geminiUrl();
+  if (url) {
     try {
-      const response = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -417,53 +424,43 @@ export async function parseProductList(
   }
 }
 
-/**
- * Parse products from an image (screenshot/photo) using Gemini vision.
- * Accepts an image URI (file path).
- */
 export async function parseProductImage(
   imageUri: string,
   existingUnits: string[],
   existingProducts?: string[]
 ): Promise<ParsedProduct[] | null> {
-  const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
-  const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-  if (!GEMINI_KEY) {
-    return null;
-  }
+  const url = geminiUrl();
+  if (!url) return null;
 
   const resized = await manipulateAsync(imageUri, [{ resize: { width: 1024 } }], { compress: 0.7, format: SaveFormat.JPEG, base64: true });
   const base64 = resized.base64 || await readAsStringAsync(resized.uri, { encoding: EncodingType.Base64 });
 
-  const response = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
+  const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: PRODUCT_PARSE_SYSTEM(existingUnits, existingProducts) },
-            { inlineData: { mimeType: 'image/jpeg', data: base64 } },
-          ],
-        },
-      ],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 1024, responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } },
+      contents: [{
+        parts: [
+          { text: `Extract EVERY product from this image (catalog, menu, price list, flyer). Name and price are required. Ignore watermarks, logos, and contact info.\n${PRODUCT_PARSE_SYSTEM(existingUnits, existingProducts)}` },
+          { inlineData: { mimeType: 'image/jpeg', data: base64 } },
+        ],
+      }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 2048, responseMimeType: 'application/json' },
     }),
   });
 
   if (!response.ok) {
+    if (__DEV__) {
+      const err = await response.text().catch(() => '');
+      console.warn('[parseProductImage]', response.status, err.slice(0, 200));
+    }
     return null;
   }
 
   const data: GeminiVisionResponse = await response.json();
-  const candidate = data?.candidates?.[0];
-  const text = candidate?.content?.parts?.[0]?.text;
-  if (!text) {
-    return null;
-  }
-
-  const products = parseParsedProducts(text);
-  return products;
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) return null;
+  return parseParsedProducts(text);
 }
 
 /**

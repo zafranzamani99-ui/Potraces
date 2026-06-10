@@ -98,7 +98,9 @@ export const useSellerStore = create<SellerState>()(
       stockAdjustments: [],
       costCategories: DEFAULT_COST_CATEGORIES,
       costCategoriesSeeded: true,
+      isSyncing: false,
       seenOnlineOrderIds: [],
+      readOrderIds: [],
       skippedOnboardingSteps: [],
       _deletedProductIds: [],
       _deletedOrderIds: [],
@@ -143,6 +145,7 @@ export const useSellerStore = create<SellerState>()(
       addOrder: (order) =>
         set((state) => {
           const validItems = order.items.filter((i) => {
+            if (i.productId.startsWith('custom_')) return true;
             const exists = state.products.some((p) => p.id === i.productId);
             if (!exists) console.warn(`[sellerStore] addOrder: productId ${i.productId} not found, dropping item`);
             return exists;
@@ -814,30 +817,33 @@ export const useSellerStore = create<SellerState>()(
           return { orders: [newOrder, ...state.orders], products: updatedProducts };
         }),
 
-      // ─── Seen Online Orders ──────────────────────────────
+      // ─── Read / Unread Orders ─────────────────────────────
       markOrdersSeen: (ids: string[]) =>
         set((state) => {
-          const next = new Set(state.seenOnlineOrderIds);
+          const next = new Set<string>(state.readOrderIds);
           for (const id of ids) next.add(id);
-          const onlineIds = new Set(
-            state.orders.filter((o) => o.source === 'order_link').map((o) => o.id),
-          );
-          const pruned = [...next].filter((id) => onlineIds.has(id)).slice(-200);
-          return { seenOnlineOrderIds: pruned };
+          const orderIds = new Set<string>(state.orders.map((o) => o.id));
+          const pruned = [...next].filter((rid: string) => orderIds.has(rid)).slice(-500);
+          return { readOrderIds: pruned, seenOnlineOrderIds: pruned };
         }),
 
       markAllOnlineSeen: () =>
-        set((state) => ({
-          seenOnlineOrderIds: state.orders
-            .filter((o) => o.source === 'order_link')
-            .map((o) => o.id)
-            .slice(-200),
-        })),
+        set((state) => {
+          const next = new Set<string>(state.readOrderIds);
+          for (const o of state.orders) {
+            if (o.source === 'order_link') next.add(o.id);
+          }
+          const pruned = [...next].slice(-500);
+          return { readOrderIds: pruned, seenOnlineOrderIds: pruned };
+        }),
 
       markOrderUnseen: (id: string) =>
         set((state) => ({
-          seenOnlineOrderIds: state.seenOnlineOrderIds.filter((i) => i !== id),
+          readOrderIds: state.readOrderIds.filter((i: string) => i !== id),
+          seenOnlineOrderIds: state.seenOnlineOrderIds.filter((i: string) => i !== id),
         })),
+
+      setSyncing: (syncing: boolean) => set({ isSyncing: syncing }),
 
       skipOnboardingStep: (step: string) =>
         set((state) => ({
@@ -1096,6 +1102,7 @@ export const useSellerStore = create<SellerState>()(
         costCategories: state.costCategories,
         costCategoriesSeeded: state.costCategoriesSeeded,
         seenOnlineOrderIds: state.seenOnlineOrderIds,
+        readOrderIds: state.readOrderIds,
         skippedOnboardingSteps: state.skippedOnboardingSteps,
         _deletedProductIds: state._deletedProductIds,
         _deletedOrderIds: state._deletedOrderIds,
@@ -1174,6 +1181,9 @@ export const useSellerStore = create<SellerState>()(
             date: sd(a.date),
           }));
           state.seenOnlineOrderIds = state.seenOnlineOrderIds || [];
+          if (!state.readOrderIds || state.readOrderIds.length === 0) {
+            state.readOrderIds = (state.orders || []).map((o: any) => o.id);
+          }
           state.skippedOnboardingSteps = state.skippedOnboardingSteps || [];
           state._deletedProductIds = state._deletedProductIds || [];
           state._deletedOrderIds = state._deletedOrderIds || [];

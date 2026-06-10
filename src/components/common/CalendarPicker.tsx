@@ -1,5 +1,6 @@
 import React, { useRef, useState, useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, Keyboard } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import {
   startOfMonth,
   endOfMonth,
@@ -7,6 +8,7 @@ import {
   getDay,
   isSameDay,
   isBefore,
+  isAfter,
   setMonth,
   setYear,
   getMonth,
@@ -21,6 +23,7 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 interface CalendarPickerProps {
   value: Date;
   minimumDate?: Date;
+  maximumDate?: Date;
   onChange: (date: Date) => void;
 }
 
@@ -33,21 +36,24 @@ const MONTH_GRID_STYLE = { marginTop: SPACING.md };
 const EDIT_ICON_STYLE = { marginLeft: 5 };
 const CHEVRON_STYLE = { marginLeft: 5 };
 
-const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, onChange }: CalendarPickerProps) {
+const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, maximumDate, onChange }: CalendarPickerProps) {
   const C = useCalm();
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const [viewMonth, setViewMonth] = useState(startOfMonth(value));
   const [showPicker, setShowPicker] = useState(false);
   const [pickerYear, setPickerYear] = useState(getYear(value));
-  const [editingYear, setEditingYear] = useState(false);
-  const [yearInputText, setYearInputText] = useState('');
-  const yearInputRef = useRef<TextInput>(null);
+  const [showYearGrid, setShowYearGrid] = useState(false);
+  const yearScrollRef = useRef<any>(null);
 
   const today = useMemo(() => startOfDay(new Date()), []);
   const minDate = useMemo(
     () => (minimumDate ? startOfDay(minimumDate) : undefined),
     [minimumDate],
+  );
+  const maxDate = useMemo(
+    () => (maximumDate ? startOfDay(maximumDate) : undefined),
+    [maximumDate],
   );
 
   // ── Memoized grid computation ──
@@ -79,23 +85,20 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
   const decrementYear = useCallback(() => setPickerYear((y) => y - 1), []);
   const incrementYear = useCallback(() => setPickerYear((y) => y + 1), []);
 
-  const startEditYear = useCallback(() => {
-    setYearInputText(String(pickerYear));
-    setEditingYear(true);
-  }, [pickerYear]);
+  const [yearPageStart, setYearPageStart] = useState(() => {
+    const base = minimumDate ? getYear(minimumDate) : getYear(value) - 4;
+    return base;
+  });
+  const yearRange = useMemo(() => Array.from({ length: 16 }, (_, i) => yearPageStart + i), [yearPageStart]);
 
-  const commitYear = useCallback(() => {
-    const y = parseInt(yearInputText, 10);
-    if (y >= 1900 && y <= 2100) setPickerYear(y);
-    setEditingYear(false);
-    Keyboard.dismiss();
-  }, [yearInputText]);
+  const toggleYearGrid = useCallback(() => {
+    setShowYearGrid(v => !v);
+  }, []);
 
-  const onYearBlur = useCallback(() => {
-    const y = parseInt(yearInputText, 10);
-    if (y >= 1900 && y <= 2100) setPickerYear(y);
-    setEditingYear(false);
-  }, [yearInputText]);
+  const selectYear = useCallback((y: number) => {
+    setPickerYear(y);
+    setShowYearGrid(false);
+  }, []);
 
   const selectMonth = useCallback(
     (idx: number) => {
@@ -114,41 +117,26 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={decrementYear}
+            onPress={showYearGrid ? () => setYearPageStart(p => p - 16) : decrementYear}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={styles.navBtn}
           >
             <Feather name="chevron-left" size={18} color={C.accent} />
           </TouchableOpacity>
 
-          {editingYear ? (
-            <TextInput
-              ref={yearInputRef}
-              style={styles.yearInput}
-              value={yearInputText}
-              onChangeText={setYearInputText}
-              keyboardType="number-pad"
-              maxLength={4}
-              returnKeyType="done"
-              onSubmitEditing={commitYear}
-              onBlur={onYearBlur}
-              autoFocus
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
-            />
-          ) : (
-            <TouchableOpacity
-              onPress={startEditYear}
-              hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
-              style={styles.yearPill}
-            >
-              <Text style={styles.yearPillText}>{pickerYear}</Text>
-              <Feather name="edit-2" size={11} color={C.accent} style={EDIT_ICON_STYLE} />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            onPress={toggleYearGrid}
+            hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
+            style={styles.yearPill}
+          >
+            <Text style={styles.yearPillText}>
+              {showYearGrid ? `${yearRange[0]}–${yearRange[yearRange.length - 1]}` : pickerYear}
+            </Text>
+            <Feather name={showYearGrid ? 'chevron-up' : 'chevron-down'} size={13} color={C.accent} style={EDIT_ICON_STYLE} />
+          </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={incrementYear}
+            onPress={showYearGrid ? () => setYearPageStart(p => p + 16) : incrementYear}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={styles.navBtn}
           >
@@ -158,28 +146,65 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
 
         <View style={styles.divider} />
 
-        <View style={MONTH_GRID_STYLE}>
-          {MONTH_ROWS.map((start) => (
-            <View key={start} style={styles.monthRow}>
-              {MONTH_NAMES.slice(start, start + 4).map((name, offset) => {
-                const idx = start + offset;
-                const isCurrentView = currentViewYear === pickerYear && currentViewMonth === idx;
-                return (
-                  <TouchableOpacity
-                    key={name}
-                    style={[styles.monthCell, isCurrentView && styles.monthCellSelected]}
-                    onPress={() => selectMonth(idx)}
-                    activeOpacity={0.65}
-                  >
-                    <Text style={[styles.monthCellText, isCurrentView && styles.monthCellTextSelected]}>
-                      {name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ))}
-        </View>
+        {showYearGrid ? (
+          <ScrollView
+            ref={yearScrollRef}
+            style={styles.yearGridScroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            contentContainerStyle={{ paddingVertical: SPACING.sm }}
+            onLayout={() => {
+              const idx = yearRange.indexOf(pickerYear);
+              if (idx >= 0 && yearScrollRef.current) {
+                yearScrollRef.current.scrollTo({ y: Math.max(0, Math.floor(idx / 4) * 48 - 48), animated: false });
+              }
+            }}
+          >
+            {Array.from({ length: Math.ceil(yearRange.length / 4) }, (_, row) => (
+              <View key={row} style={styles.monthRow}>
+                {yearRange.slice(row * 4, row * 4 + 4).map((year) => {
+                  const sel = pickerYear === year;
+                  return (
+                    <TouchableOpacity
+                      key={year}
+                      style={[styles.monthCell, sel && styles.monthCellSelected]}
+                      onPress={() => selectYear(year)}
+                      activeOpacity={0.65}
+                    >
+                      <Text style={[styles.monthCellText, sel && styles.monthCellTextSelected]}>
+                        {year}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
+          </ScrollView>
+        ) : (
+          <View style={MONTH_GRID_STYLE}>
+            {MONTH_ROWS.map((start) => (
+              <View key={start} style={styles.monthRow}>
+                {MONTH_NAMES.slice(start, start + 4).map((name, offset) => {
+                  const idx = start + offset;
+                  const isCurrentView = currentViewYear === pickerYear && currentViewMonth === idx;
+                  return (
+                    <TouchableOpacity
+                      key={name}
+                      style={[styles.monthCell, isCurrentView && styles.monthCellSelected]}
+                      onPress={() => selectMonth(idx)}
+                      activeOpacity={0.65}
+                    >
+                      <Text style={[styles.monthCellText, isCurrentView && styles.monthCellTextSelected]}>
+                        {name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+        )}
       </View>
     );
   }
@@ -228,7 +253,10 @@ const CalendarPicker = React.memo(function CalendarPicker({ value, minimumDate, 
         <View key={ri} style={styles.row}>
           {row.map((day, di) => {
             if (!day) return <View key={di} style={styles.cell} />;
-            const disabled = !!(minDate && isBefore(startOfDay(day), minDate));
+            const disabled = !!(
+              (minDate && isBefore(startOfDay(day), minDate)) ||
+              (maxDate && isAfter(startOfDay(day), maxDate))
+            );
             const selected = isSameDay(day, value);
             const todayCell = isSameDay(day, today);
             return (
@@ -397,6 +425,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   monthCellTextSelected: {
     color: C.onAccent,
     fontWeight: TYPOGRAPHY.weight.bold,
+  },
+  yearGridScroll: {
+    maxHeight: 200,
+    marginTop: SPACING.sm,
   },
 });
 

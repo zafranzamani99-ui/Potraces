@@ -62,8 +62,16 @@ interface QuickAddExpenseProps {
 // Accepts an optional direction override so external callers (GettingStarted,
 // future deep links) can request the sheet pre-flipped to income.
 let _quickAddOpenRef: ((dir?: Direction) => void) | null = null;
+// When the sheet isn't mounted yet (deep link / Back Tap from cold start, from
+// business mode, or from a non-Dashboard tab), remember the request and honour
+// it the moment the sheet mounts. Prevents the deep link from silently no-op-ing.
+let _pendingQuickAdd: Direction | null = null;
 export function openQuickAdd(direction?: Direction) {
-  _quickAddOpenRef?.(direction);
+  if (_quickAddOpenRef) {
+    _quickAddOpenRef(direction);
+  } else {
+    _pendingQuickAdd = direction ?? 'expense';
+  }
 }
 
 // ─── Numpad Key ──────────────────────────────────────────────
@@ -252,7 +260,15 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
 
   useEffect(() => {
     _quickAddOpenRef = handleOpen;
+    let pendingTimer: ReturnType<typeof setTimeout> | undefined;
+    if (_pendingQuickAdd) {
+      const dir = _pendingQuickAdd;
+      _pendingQuickAdd = null;
+      // Defer so the screen finishes mounting before the sheet animates in.
+      pendingTimer = setTimeout(() => handleOpen(dir), 250);
+    }
     return () => {
+      if (pendingTimer) clearTimeout(pendingTimer);
       if (_quickAddOpenRef === handleOpen) _quickAddOpenRef = null;
     };
   }, [handleOpen]);
@@ -424,28 +440,6 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
           deductFromWallet(walletId, storedAmount);
         } else {
           addToWallet(walletId, storedAmount);
-        }
-      }
-
-      // Playbook auto-link for expenses
-      if (txType === 'expense') {
-        const activePbs = usePlaybookStore.getState().getActivePlaybooks();
-        const linkToPb = (pbId: string) => {
-          usePlaybookStore.getState().linkExpense(pbId, txId);
-          updateTransaction(txId, {
-            playbookLinks: [{ playbookId: pbId, amount: storedAmount }],
-          });
-        };
-        if (activePbs.length === 1) {
-          linkToPb(activePbs[0].id);
-        } else if (activePbs.length > 1) {
-          Alert.alert(t.expense.linkPlaybook, t.expense.whichPlaybook, [
-            ...activePbs.map((pb) => ({
-              text: pb.name,
-              onPress: () => linkToPb(pb.id),
-            })),
-            { text: t.quickAdd.dupSkip, style: 'cancel' as const },
-          ]);
         }
       }
 

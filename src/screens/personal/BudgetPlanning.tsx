@@ -15,23 +15,23 @@ import {
   FlatList,
   Animated as RNAnimated,
   useWindowDimensions,
+  AccessibilityInfo,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 import { ScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
-import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
   withTiming,
+  withDelay,
+  withSequence,
   runOnJS,
   interpolate,
   Extrapolation,
-  useAnimatedReaction,
   SharedValue,
   FadeIn,
-  FadeOut,
-  SlideInDown,
-  SlideOutUp,
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import {
@@ -53,7 +53,10 @@ import EchoDragHideZone from '../../components/wallet/EchoDragHideZone';
 import { useCategories } from '../../hooks/useCategories';
 import { FREE_TIER } from '../../constants/premium';
 import CategoryPicker from '../../components/common/CategoryPicker';
+import CircularProgress from '../../components/common/CircularProgress';
+import HalfGauge from '../../components/common/HalfGauge';
 import PaywallModal from '../../components/common/PaywallModal';
+import EmptyState from '../../components/common/EmptyState';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
@@ -69,100 +72,17 @@ import { computePlaybookStats, isOverspent, getOverspentAmount, isPlaybookStale 
 import PlaybookNotebook from '../../components/playbook/PlaybookNotebook';
 import { format } from 'date-fns';
 
-const HARD_SWIPE = 120;
-const SWIPE_ACTION_MIN = 72;
-const SWIPE_ACTION_MAX = 140;
-
-type BudgetSwipeActionProps = {
-  variant: 'edit' | 'delete';
-  direction: 'right' | 'left';
-  drag: SharedValue<number>;
-  label: string;
-  styles: ReturnType<typeof makeStyles>;
-  onTap: () => void;
-  onHardSwipe: () => void;
-};
-
-function BudgetSwipeAction({
-  variant, direction, drag, label, styles, onTap, onHardSwipe,
-}: BudgetSwipeActionProps) {
-  const triggered = useSharedValue(false);
-
-  useAnimatedReaction(
-    () => drag.value,
-    (v) => {
-      'worklet';
-      const crossed = direction === 'right' ? v < -HARD_SWIPE : v > HARD_SWIPE;
-      if (crossed && !triggered.value) {
-        triggered.value = true;
-        runOnJS(onHardSwipe)();
-      }
-      if (Math.abs(v) < 10) {
-        triggered.value = false;
-      }
-    },
-  );
-
-  const animatedStyle = useAnimatedStyle(() => {
-    const absDrag = Math.abs(drag.value);
-    const w = Math.min(SWIPE_ACTION_MAX, Math.max(SWIPE_ACTION_MIN, absDrag));
-    return { width: w };
-  });
-
-  return (
-    <Reanimated.View
-      style={[
-        styles.swipeFill,
-        variant === 'edit' ? styles.swipeEditColor : styles.swipeDeleteColor,
-        animatedStyle,
-      ]}
-    >
-      <TouchableOpacity
-        style={styles.swipeInner}
-        onPress={onTap}
-        activeOpacity={0.85}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-      >
-        <Feather
-          name={variant === 'edit' ? 'edit-2' : 'trash-2'}
-          size={22}
-          color="#fff"
-        />
-      </TouchableOpacity>
-    </Reanimated.View>
-  );
-}
 
 // ─── Pace helpers ──────────────────────────────────────────
 // Pace color resolves against the active palette (light/dark) — pass `C` from
 // the component scope so dark mode renders the dark-variant tokens.
 // (UX-H5, DESIGN-H1)
+// One attention ramp, worst = bronze (matches the over-budget treatment):
+// olive (on track) → gold (moving fast) → bronze (hot / over).
 const getPaceColor = (paceRatio: number, C: typeof CALM) => {
   if (paceRatio <= 1.1) return C.accent; // olive — on track / ahead
-  if (paceRatio <= 1.3) return C.bronze; // bronze — moving a bit fast
-  return C.gold; // gold — needs attention (icon/pill use, not body text)
-};
-
-const getPaceLabel = (paceRatio: number) => {
-  if (paceRatio < 0.9) return 'ahead';
-  if (paceRatio <= 1.1) return 'on track';
-  if (paceRatio <= 1.3) return 'moving a bit fast';
-  return 'needs attention';
-};
-
-const getPaceIcon = (paceRatio: number): 'trending-down' | 'check-circle' | 'trending-up' | 'alert-circle' => {
-  if (paceRatio < 0.9) return 'trending-down';
-  if (paceRatio <= 1.1) return 'check-circle';
-  if (paceRatio <= 1.3) return 'trending-up';
-  return 'alert-circle';
-};
-
-type BudgetStatus = 'urgent' | 'track' | 'plenty';
-const classifyBudget = (percentSpent: number, paceRatio: number): BudgetStatus => {
-  if (percentSpent >= 0.85 || paceRatio > 1.3) return 'urgent';
-  if (percentSpent >= 0.4 || paceRatio > 0.9) return 'track';
-  return 'plenty';
+  if (paceRatio <= 1.3) return C.gold;   // gold — moving a bit fast
+  return C.bronze; // bronze — hot, same as over-budget
 };
 
 const getPeriodInterval = (period: 'weekly' | 'monthly' | 'yearly', now: Date) => {
@@ -209,7 +129,6 @@ const BudgetPlanning: React.FC = () => {
   const [paywallVisible, setPaywallVisible] = useState(false);
   const [echoPaywallVisible, setEchoPaywallVisible] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [echoSheetVisible, setEchoSheetVisible] = useState(false);
   const [greetingDismissed, setGreetingDismissed] = useState(false);
   const [greetingHiddenDuringDrag, setGreetingHiddenDuringDrag] = useState(false);
@@ -218,6 +137,16 @@ const BudgetPlanning: React.FC = () => {
   const [echoAutoPrompt, setEchoAutoPrompt] = useState<string | undefined>(undefined);
   const [fabSide, setFabSide] = useState<'left' | 'right'>('right');
   const [chipRotation, setChipRotation] = useState(0);
+
+  // ── Once-per-day delight gate ──
+  const HERO_ANIM_KEY = 'potraces_budget_hero_last_anim_date';
+  const [shouldRunWakeUp, setShouldRunWakeUp] = useState(false);
+  const [heroCountDisplay, setHeroCountDisplay] = useState(0);
+  const [wakeUpGreeting, setWakeUpGreeting] = useState('');
+  const glowOpacity = useSharedValue(0);
+  const countUpRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [mathSheetVisible, setMathSheetVisible] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   // ── Bottom-sheet animation for Add/Edit Budget ──
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
@@ -244,9 +173,13 @@ const BudgetPlanning: React.FC = () => {
     if (bClosingRef.current) return;
     bClosingRef.current = true;
     Keyboard.dismiss();
-    bSheetY.value = withTiming(SCREEN_H, { duration: 220 }, (finished) => {
-      if (finished) runOnJS(bFinishClose)();
+    bSheetY.value = withTiming(SCREEN_H, { duration: 220 }, () => {
+      // No `if (finished)` guard — an interrupted animation must still finish-close,
+      // otherwise the backdrop stays mounted and blocks all taps (Goals-modal bug).
+      runOnJS(bFinishClose)();
     });
+    // Fallback in case the worklet callback never fires (animation interrupted).
+    setTimeout(() => { if (bClosingRef.current) bFinishClose(); }, 320);
   }, [SCREEN_H, bSheetY, bFinishClose]);
 
   const bSheetGesture = useMemo(
@@ -282,6 +215,95 @@ const BudgetPlanning: React.FC = () => {
     opacity: interpolate(bSheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP),
   }));
 
+  // ── Bottom-sheet animation for Category Detail ──
+  // Store only the id — derive the live entity below so spentAmount stays fresh
+  // while the sheet is open (avoids a frozen snapshot disagreeing with the rows).
+  const [detailBudgetId, setDetailBudgetId] = useState<string | null>(null);
+  const dSheetY = useSharedValue(SCREEN_H);
+  const dDragStart = useSharedValue(0);
+  const dClosingRef = useRef(false);
+  // Deferred action after the sheet finishes closing (edit / delete) — avoids modal-on-modal.
+  const dPendingActionRef = useRef<null | (() => void)>(null);
+  // Id the deferred action targets — re-validated against the store before running.
+  const pendingBudgetIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (detailBudgetId) {
+      dClosingRef.current = false;
+      dSheetY.value = SCREEN_H;
+      dSheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
+    }
+  }, [detailBudgetId, SCREEN_H, dSheetY]);
+
+  const dFinishClose = useCallback(() => {
+    if (!dClosingRef.current) return;
+    dClosingRef.current = false;
+    setDetailBudgetId(null);
+    const action = dPendingActionRef.current;
+    dPendingActionRef.current = null;
+    // Re-validate the budget still exists before running the deferred edit/delete —
+    // it may have been deleted elsewhere while the sheet was open (phantom id guard).
+    if (action) {
+      const stillExists = pendingBudgetIdRef.current
+        ? usePersonalStore.getState().budgets.some((b) => b.id === pendingBudgetIdRef.current)
+        : true;
+      pendingBudgetIdRef.current = null;
+      if (stillExists) setTimeout(action, 60);
+    }
+  }, []);
+
+  const dCloseSheet = useCallback((pending?: () => void, pendingBudgetId?: string) => {
+    if (dClosingRef.current) return;
+    dClosingRef.current = true;
+    if (pending) dPendingActionRef.current = pending;
+    pendingBudgetIdRef.current = pendingBudgetId ?? null;
+    dSheetY.value = withTiming(SCREEN_H, { duration: 220 }, () => {
+      // No `if (finished)` guard — an interrupted animation must still finish-close,
+      // otherwise the backdrop stays mounted and blocks all taps (Goals-modal bug).
+      runOnJS(dFinishClose)();
+    });
+    // Fallback in case the worklet callback never fires (animation interrupted).
+    setTimeout(() => { if (dClosingRef.current) dFinishClose(); }, 320);
+  }, [dSheetY, dFinishClose]);
+
+  const dSheetGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY([10, 9999])
+        .onStart(() => {
+          'worklet';
+          dDragStart.value = dSheetY.value;
+        })
+        .onUpdate((e) => {
+          'worklet';
+          let newY = dDragStart.value + e.translationY;
+          if (newY < 0) newY = newY / 3;
+          dSheetY.value = newY;
+        })
+        .onEnd((e) => {
+          'worklet';
+          const passedThreshold = e.translationY > 100 || e.velocityY > 800;
+          if (passedThreshold) {
+            runOnJS(dCloseSheet)();
+          } else {
+            dSheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
+          }
+        }),
+    [dCloseSheet]
+  );
+
+  const dSheetAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: dSheetY.value }],
+  }));
+  const dBackdropAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(dSheetY.value, [0, SCREEN_H], [1, 0], Extrapolation.CLAMP),
+  }));
+
+  const openBudgetDetail = useCallback((budget: Budget & { spentAmount: number }) => {
+    lightTap();
+    setDetailBudgetId(budget.id);
+  }, []);
+
   // ── Draggable Echo FAB — free X+Y drag, snaps to edge, drag-to-hide ──
   const { echoFabPan, echoFabPanResponder, hideZoneAnim, hideZoneHoverAnim, fabScale, hideZoneRef } = useEchoFabPan({
     fabSide,
@@ -307,25 +329,9 @@ const BudgetPlanning: React.FC = () => {
   const [notebookPb, setNotebookPb] = useState<Playbook | null>(null);
   const navigation = useNavigation<any>();
 
-  useLayoutEffect(() => {
-    if (!echoHidden) {
-      navigation.setOptions({ headerRight: undefined, headerRightContainerStyle: undefined });
-      return;
-    }
-    navigation.setOptions({
-      headerRightContainerStyle: { paddingRight: 12 },
-      headerRight: () => (
-        <TouchableOpacity
-          onPress={() => { lightTap(); setEchoHidden(false); }}
-          accessibilityRole="button"
-          accessibilityLabel="Show Echo assistant"
-          style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Feather name="zap" size={20} color={C.textPrimary} />
-        </TouchableOpacity>
-      ),
-    });
-  }, [echoHidden, navigation, C]);
+  // Header Echo zap consolidated into a single useLayoutEffect below (after
+  // `hasBudgets`/`tier` are computed) — two competing effects were fighting over
+  // navigation.setOptions({ headerRight }).
 
   const pendingNavRef = useRef<string | null>(null);
   const pendingNavParamsRef = useRef<Record<string, any> | undefined>(undefined);
@@ -376,9 +382,43 @@ const BudgetPlanning: React.FC = () => {
   const deletePlaybookAction = usePlaybookStore((s) => s.deletePlaybook);
   const reopenPlaybookAction = usePlaybookStore((s) => s.reopenPlaybook);
   const canCreatePb = usePlaybookStore((s) => s.canCreatePlaybook);
-  const canClosePb = usePlaybookStore((s) => s.canClosePlaybook);
 
   const now = useMemo(() => new Date(), []);
+
+  // ── Reduce-motion check ──
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+  }, []);
+
+  // Cleanup count-up interval on unmount
+  useEffect(() => {
+    return () => {
+      if (countUpRef.current) clearInterval(countUpRef.current);
+    };
+  }, []);
+
+  // ── Once-per-day wake-up gate ──
+  useEffect(() => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    AsyncStorage.getItem(HERO_ANIM_KEY).then((stored) => {
+      if (stored !== todayStr) {
+        setShouldRunWakeUp(true);
+      }
+    }).catch(() => {});
+  }, []);
+
+  // ── Glow animated style ──
+  const glowAnimStyle = useAnimatedStyle(() => ({
+    opacity: glowOpacity.value,
+  }));
+
+  // O(1) category lookup by id — replaces repeated expenseCategories.find(...) in
+  // getBudgetMeta / smartInsight, which ran once per category per render.
+  const categoryMap = useMemo(() => {
+    const map = new Map<string, CategoryOption>();
+    for (const c of expenseCategories) map.set(c.id, c);
+    return map;
+  }, [expenseCategories]);
 
   // ─── Compute spent per budget from transactions (no stale useEffect) ───
   const budgetsWithSpent = useMemo(() => {
@@ -391,11 +431,17 @@ const BudgetPlanning: React.FC = () => {
             t.category === budget.category &&
             isWithinInterval(t.date, { start, end })
         )
-        .reduce((sum, t) => sum + t.amount, 0);
+        .reduce((sum, t) => sum + (Number.isFinite(t.amount) ? t.amount : 0), 0);
 
       return { ...budget, spentAmount: spent };
     });
   }, [budgets, transactions, now]);
+
+  // Live detail-sheet entity derived from the id — stays fresh as spent changes.
+  const detailBudget = useMemo(
+    () => (detailBudgetId ? (budgetsWithSpent.find((b) => b.id === detailBudgetId) ?? null) : null),
+    [detailBudgetId, budgetsWithSpent]
+  );
 
   // ─── Breathing room hero calculations ────────────────────
   const heroData = useMemo(() => {
@@ -408,7 +454,7 @@ const BudgetPlanning: React.FC = () => {
           t.type === 'income' &&
           isWithinInterval(t.date, { start: monthStart, end: monthEnd })
       )
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + (Number.isFinite(t.amount) ? t.amount : 0), 0);
 
     const totalExpenses = transactions
       .filter(
@@ -416,15 +462,22 @@ const BudgetPlanning: React.FC = () => {
           t.type === 'expense' &&
           isWithinInterval(t.date, { start: monthStart, end: monthEnd })
       )
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + (Number.isFinite(t.amount) ? t.amount : 0), 0);
 
-    // Baseline: sum of budgeted allocations (monthly)
-    const totalAllocated = budgetsWithSpent
-      .filter((b) => b.period === 'monthly')
-      .reduce((sum, b) => sum + b.allocatedAmount, 0);
-    const totalBudgetSpent = budgetsWithSpent
-      .filter((b) => b.period === 'monthly')
-      .reduce((sum, b) => sum + b.spentAmount, 0);
+    // Baseline: sum of budgeted allocations, normalized to a monthly-equivalent so
+    // weekly/yearly budgets contribute consistently to the hero math. weekly → ×52/12,
+    // yearly → ÷12, monthly → as-is. Both the allocation AND that budget's spent are
+    // normalized by the same factor so the ratio (spent/allocated) is preserved.
+    const monthlyFactor = (period: 'weekly' | 'monthly' | 'yearly') =>
+      period === 'weekly' ? 52 / 12 : period === 'yearly' ? 1 / 12 : 1;
+    const totalAllocated = budgetsWithSpent.reduce((sum, b) => {
+      const f = monthlyFactor(b.period);
+      return sum + (Number.isFinite(b.allocatedAmount) ? b.allocatedAmount * f : 0);
+    }, 0);
+    const totalBudgetSpent = budgetsWithSpent.reduce((sum, b) => {
+      const f = monthlyFactor(b.period);
+      return sum + (Number.isFinite(b.spentAmount) ? b.spentAmount * f : 0);
+    }, 0);
 
     const overBudgets = budgetsWithSpent.filter((b) => b.spentAmount > b.allocatedAmount);
     const totalOverBy = overBudgets.reduce((s, b) => s + (b.spentAmount - b.allocatedAmount), 0);
@@ -446,8 +499,10 @@ const BudgetPlanning: React.FC = () => {
       : totalIncome > 0 ? totalSpent / totalIncome : 0;
     const paceRatio = percentElapsed > 0 ? percentSpent / percentElapsed : 0;
 
-    // Runway prediction — uses BUDGET baseline (not income)
-    const daysElapsed = Math.max(dayOfMonth, 1);
+    // Runway prediction — uses BUDGET baseline (not income).
+    // Floor the burn denominator at 3 so a single early-month purchase doesn't
+    // predict "runs out on day 2-3". Honest later in the month (dayOfMonth wins).
+    const daysElapsed = Math.max(dayOfMonth, 3);
     const runwayBaseline = totalAllocated > 0 ? totalAllocated : totalIncome;
     const runwayBurn = totalAllocated > 0
       ? totalBudgetSpent / daysElapsed
@@ -477,21 +532,24 @@ const BudgetPlanning: React.FC = () => {
       return next >= now && next <= monthEnd;
     }).length;
 
-    // Active goals still being contributed to — reserve ~5% of remaining target per month
+    // Active goals still being contributed to — reserve ~5% of remaining target per month.
+    // Exclude archived/paused goals and guard targetAmount (finite > 0) so reserves can't NaN.
+    const isLiveGoal = (g: typeof goals[number]) => {
+      if (g.isArchived || g.isPaused) return false;
+      if (!Number.isFinite(g.targetAmount) || g.targetAmount <= 0) return false;
+      const contributed = (g.contributions || []).reduce(
+        (s, c) => s + (Number.isFinite(c.amount) ? c.amount : 0), 0);
+      return contributed < g.targetAmount;
+    };
     const activeGoalReserve = goals
-      .filter((g) => {
-        const contributed = (g.contributions || []).reduce((s, c) => s + c.amount, 0);
-        return contributed < g.targetAmount;
-      })
+      .filter(isLiveGoal)
       .reduce((sum, g) => {
-        const contributed = (g.contributions || []).reduce((s, c) => s + c.amount, 0);
+        const contributed = (g.contributions || []).reduce(
+          (s, c) => s + (Number.isFinite(c.amount) ? c.amount : 0), 0);
         const remaining = Math.max(g.targetAmount - contributed, 0);
         return sum + Math.min(remaining * 0.05, remaining);
       }, 0);
-    const activeGoalCount = goals.filter((g) => {
-      const contributed = (g.contributions || []).reduce((s, c) => s + c.amount, 0);
-      return contributed < g.targetAmount;
-    }).length;
+    const activeGoalCount = goals.filter(isLiveGoal).length;
 
     // 10% safety buffer on remaining free money
     const rawFree = Math.max(budgetLeft > 0 ? budgetLeft : freeToSpend, 0);
@@ -534,13 +592,61 @@ const BudgetPlanning: React.FC = () => {
       totalOverBy,
       budgetLeft,
       totalBudgetSpent,
-      paceColor: getPaceColor(paceRatio, C),
+      paceColor: getPaceColor(dayOfMonth < 5 && percentSpent <= 1 ? Math.min(paceRatio, 1.0) : paceRatio, C),
     };
   }, [transactions, budgetsWithSpent, now, subscriptions, goals, C]);
 
+  // ── Time-of-day greeting (after heroData) ──
+  const resolveGreeting = useCallback(() => {
+    const h = new Date().getHours();
+    if (heroData.alreadyOver) return t.budget.greetTight;
+    if (h < 12) return t.budget.greetMorning;
+    if (h < 17) return t.budget.greetAfternoon;
+    return t.budget.greetEvening;
+  }, [heroData.alreadyOver, t.budget]);
+
+  // ── Arc animation complete → trigger count-up + glow + haptic ──
+  const handleArcAnimationComplete = useCallback(() => {
+    if (!shouldRunWakeUp || reduceMotion) return;
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    AsyncStorage.setItem(HERO_ANIM_KEY, todayStr).catch(() => {});
+    setWakeUpGreeting(resolveGreeting());
+    const dailyFigureSnap = heroData.smartDaily > 0 ? heroData.smartDaily : heroData.dailyAllowance;
+    const target = Math.round(dailyFigureSnap);
+    const steps = 40;
+    const stepMs = 850 / steps;
+    let step = 0;
+    if (countUpRef.current) clearInterval(countUpRef.current);
+    countUpRef.current = setInterval(() => {
+      step++;
+      const progress = step / steps;
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setHeroCountDisplay(Math.round(eased * target));
+      if (step >= steps) {
+        clearInterval(countUpRef.current!);
+        countUpRef.current = null;
+        setHeroCountDisplay(target);
+        setShouldRunWakeUp(false);
+        glowOpacity.value = withSequence(
+          withTiming(1, { duration: 300 }),
+          withDelay(300, withTiming(0, { duration: 600 })),
+        );
+        lightTap();
+      }
+    }, stepMs);
+  }, [shouldRunWakeUp, reduceMotion, heroData, resolveGreeting, glowOpacity]);
+
   // ─── Handlers ────────────────────────────────────────────
   const handleAdd = useCallback(() => {
-    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+    // Strict: digits with up to 2 decimals only — rejects "12.34.56" and blank.
+    const trimmed = amount.trim();
+    const MAX_BUDGET = 100000000;
+    if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+      showToast('enter a valid amount', 'error');
+      return;
+    }
+    const parsedAmount = parseFloat(trimmed);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || parsedAmount > MAX_BUDGET) {
       showToast('enter a valid amount', 'error');
       return;
     }
@@ -549,7 +655,6 @@ const BudgetPlanning: React.FC = () => {
       return;
     }
 
-    const parsedAmount = parseFloat(amount);
     const dates = getPeriodDates(period, new Date());
 
     if (editingBudget) {
@@ -614,7 +719,6 @@ const BudgetPlanning: React.FC = () => {
           onPress: () => {
             mediumTap();
             deleteBudget(budget.id);
-            setExpandedId(null);
             showToast('budget deleted', 'success');
           },
         },
@@ -644,16 +748,6 @@ const BudgetPlanning: React.FC = () => {
   }, [canCreateBudget, budgets.length]);
 
   // ── Swipeable refs per budget (for closing after action) ──
-  const budgetSwipeRefs = useRef<Record<string, React.RefObject<SwipeableMethods | null>>>({}).current;
-  const getBudgetSwipeRef = useCallback((id: string) => {
-    if (!budgetSwipeRefs[id]) budgetSwipeRefs[id] = React.createRef<SwipeableMethods | null>();
-    return budgetSwipeRefs[id];
-  }, [budgetSwipeRefs]);
-
-  const toggleExpand = useCallback((id: string) => {
-    lightTap();
-    setExpandedId((prev) => (prev === id ? null : id));
-  }, []);
 
   // togglePbExpand removed — cards tap-to-open notebook directly
 
@@ -668,10 +762,15 @@ const BudgetPlanning: React.FC = () => {
     const percentElapsed = elapsed / totalDays;
     const paceRatio = percentElapsed > 0 ? percentSpent / percentElapsed : 0;
 
+    // Early-month warmup: in the first 5 days percentElapsed is tiny, so one
+    // normal purchase reads as "hot". Keep the color calm unless actually over
+    // budget — the over-budget ring/colour is handled separately.
+    const colorPaceRatio = elapsed < 5 && percentSpent <= 1 ? Math.min(paceRatio, 1.0) : paceRatio;
+
     const leftAmount = Math.max(budget.allocatedAmount - budget.spentAmount, 0);
     const dailyBudget = remaining > 0 ? leftAmount / remaining : 0;
 
-    const cat = expenseCategories.find((c) => c.id === budget.category);
+    const cat = categoryMap.get(budget.category);
 
     return {
       totalDays,
@@ -680,20 +779,29 @@ const BudgetPlanning: React.FC = () => {
       percentSpent,
       percentElapsed,
       paceRatio,
-      paceColor: getPaceColor(paceRatio, C),
-      paceLabel: getPaceLabel(paceRatio),
+      paceColor: getPaceColor(colorPaceRatio, C),
       leftAmount,
       dailyBudget,
       cat,
     };
-  }, [now, expenseCategories, C]);
+  }, [now, categoryMap, C]);
+
+  // Worst-first sorted budget list for the category section. Memoized so we don't
+  // re-sort (and call getBudgetMeta twice per comparison) on every render — only
+  // when the underlying data or theme changes.
+  const sortedBudgets = useMemo(
+    () => [...budgetsWithSpent].sort(
+      (a, b) => getBudgetMeta(b).percentSpent - getBudgetMeta(a).percentSpent,
+    ),
+    [budgetsWithSpent, getBudgetMeta],
+  );
 
   // ─── Smart insight — observes patterns and narrates them ───
   const smartInsight = useMemo(() => {
     if (heroData.overBudgets.length > 0) {
       const worst = [...heroData.overBudgets].sort((a, b) => (b.spentAmount - b.allocatedAmount) - (a.spentAmount - a.allocatedAmount))[0];
       const overBy = worst.spentAmount - worst.allocatedAmount;
-      const cat = expenseCategories.find((c) => c.id === worst.category);
+      const cat = categoryMap.get(worst.category);
       const biggest = transactions
         .filter((tx) => tx.category === worst.category && tx.type === 'expense' && tx.date >= startOfMonth(now))
         .sort((a, b) => b.amount - a.amount)[0];
@@ -713,7 +821,7 @@ const BudgetPlanning: React.FC = () => {
     });
     if (close.length > 0) {
       const nearest = close[0];
-      const cat = expenseCategories.find((c) => c.id === nearest.category);
+      const cat = categoryMap.get(nearest.category);
       const leftAmt = nearest.allocatedAmount - nearest.spentAmount;
       const dailyLeft = leftAmt / Math.max(heroData.daysRemaining, 1);
       return {
@@ -733,7 +841,7 @@ const BudgetPlanning: React.FC = () => {
     }
     const cushion = [...budgetsWithSpent].sort((a, b) => (b.allocatedAmount - b.spentAmount) - (a.allocatedAmount - a.spentAmount))[0];
     if (cushion && cushion.allocatedAmount - cushion.spentAmount > 0) {
-      const cat = expenseCategories.find((c) => c.id === cushion.category);
+      const cat = categoryMap.get(cushion.category);
       const left = cushion.allocatedAmount - cushion.spentAmount;
       return {
         mode: 'healthy' as const,
@@ -746,7 +854,7 @@ const BudgetPlanning: React.FC = () => {
       title: `add a budget to unlock coaching`,
       subtitle: `echo works best when there's something to measure against. start with your biggest category.`,
     };
-  }, [heroData, budgetsWithSpent, transactions, expenseCategories, now, currency]);
+  }, [heroData, budgetsWithSpent, transactions, categoryMap, now, currency]);
 
   // ─── Psychology-driven chip pool (Gollwitzer, Thaler, Hershfield, MI) ───
   // STING: loss aversion, regret, mental accounting — reflective framing
@@ -761,7 +869,7 @@ const BudgetPlanning: React.FC = () => {
 
     // Context injection — user's actual worst category, name-qualified
     const topOver = [...budgetsWithSpent].sort((a, b) => (b.spentAmount - b.allocatedAmount) - (a.spentAmount - a.allocatedAmount))[0];
-    const topCatName = (expenseCategories.find((c) => c.id === topOver?.category)?.name || topOver?.category || 'spending').toLowerCase();
+    const topCatName = ((topOver ? categoryMap.get(topOver.category) : undefined)?.name || topOver?.category || 'spending').toLowerCase();
     const overBy = heroData.totalOverBy;
     const deficit = Math.max((heroData.dailyBurn - heroData.smartDaily) * heroData.daysRemaining, 100);
 
@@ -863,7 +971,7 @@ const BudgetPlanning: React.FC = () => {
     ].filter((c): c is { label: string; question: string } => c !== null);
 
     return chips;
-  }, [heroData, budgetsWithSpent, expenseCategories, currency, chipRotation]);
+  }, [heroData, budgetsWithSpent, categoryMap, currency, chipRotation]);
 
   // ─── Upcoming bills this week (next 7 days) ───
   const upcomingBillsThisWeek = useMemo(() => {
@@ -886,8 +994,10 @@ const BudgetPlanning: React.FC = () => {
   // ─── Top active savings goal (connects budget defense with saving offense) ───
   const topGoal = useMemo(() => {
     const active = goals
+      .filter((g) => !g.isArchived && !g.isPaused && Number.isFinite(g.targetAmount) && g.targetAmount > 0)
       .map((g) => {
-        const contributed = (g.contributions || []).reduce((s, c) => s + c.amount, 0);
+        const contributed = (g.contributions || []).reduce(
+          (s, c) => s + (Number.isFinite(c.amount) ? c.amount : 0), 0);
         const pct = g.targetAmount > 0 ? contributed / g.targetAmount : 0;
         return { goal: g, contributed, pct };
       })
@@ -901,6 +1011,23 @@ const BudgetPlanning: React.FC = () => {
       return b.pct - a.pct;
     });
     return active[0];
+  }, [goals]);
+
+  // ─── Aggregate across ALL active goals (scales to any number) ───
+  const goalsSummary = useMemo(() => {
+    const active = goals
+      .filter((g) => !g.isArchived && !g.isPaused && Number.isFinite(g.targetAmount) && g.targetAmount > 0)
+      .map((g) => {
+        const contributed = (g.contributions || []).reduce(
+          (s, c) => s + (Number.isFinite(c.amount) ? c.amount : 0), 0);
+        return { goal: g, contributed };
+      })
+      .filter(({ goal, contributed }) => contributed < goal.targetAmount);
+    if (active.length === 0) return null;
+    const totalContributed = active.reduce((s, a) => s + a.contributed, 0);
+    const totalTarget = active.reduce((s, a) => s + a.goal.targetAmount, 0);
+    const pct = totalTarget > 0 ? totalContributed / totalTarget : 0;
+    return { count: active.length, totalContributed, totalTarget, pct };
   }, [goals]);
 
   // ─── Build adaptive budget snapshot for Echo ───
@@ -983,7 +1110,7 @@ const BudgetPlanning: React.FC = () => {
         `${label} over budget — want a plan?`,
         `${label} went over — let's look at it`,
         `overspent in ${label} — shall we rebalance?`,
-        `${label} in the red — want to fix it?`,
+        `${label} a bit over — want to rebalance?`,
       ];
     }
     if (m === 'close') {
@@ -1182,10 +1309,15 @@ const BudgetPlanning: React.FC = () => {
   // ─── Render ──────────────────────────────────────────────
   const hasBudgets = budgetsWithSpent.length > 0;
 
-  // ─── Header Echo button (only when FAB is hidden) ─
+  // ─── Header Echo button (only when FAB is hidden) — single source of truth ─
   useLayoutEffect(() => {
+    const show = hasBudgets && echoHidden;
+    if (!show) {
+      navigation.setOptions({ headerRight: undefined });
+      return;
+    }
     navigation.setOptions({
-      headerRight: () => hasBudgets && echoHidden ? (
+      headerRight: () => (
         <TouchableOpacity
           onPress={() => {
             lightTap();
@@ -1194,7 +1326,7 @@ const BudgetPlanning: React.FC = () => {
           }}
           accessibilityRole="button"
           accessibilityLabel="Open Echo assistant"
-          style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+          style={{ width: 32, height: 32, marginRight: 12, alignItems: 'center', justifyContent: 'center' }}
         >
           <Feather
             name="zap"
@@ -1202,7 +1334,7 @@ const BudgetPlanning: React.FC = () => {
             color={tier !== 'premium' ? C.textMuted : C.textPrimary}
           />
         </TouchableOpacity>
-      ) : null,
+      ),
     });
   }, [echoHidden, tier, hasBudgets, navigation, C, setEchoHidden]);
 
@@ -1230,7 +1362,7 @@ const BudgetPlanning: React.FC = () => {
               activeOpacity={0.7}
             >
               <Text style={[styles.segmentText, viewMode === 'playbook' && styles.segmentTextActive]}>
-                playbook
+                {t.budget.playbookTab}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1238,75 +1370,113 @@ const BudgetPlanning: React.FC = () => {
         {/* ══════════════ BUDGET VIEW ══════════════ */}
         {viewMode === 'budget' && (<>
 
-        {/* ── Hero: Runway narrative + AI daily inline ── */}
-        {hasBudgets ? (
-          <View style={styles.heroV2}>
-            {/* Narrative hero — always visible anchor */}
-            <Text style={styles.runwayEyebrow}>
-              {heroData.alreadyOver ? 'heads up' : 'at this pace'}
-            </Text>
-            <Text style={styles.runwayNarrative}>
-              {heroData.alreadyOver ? (
-                <>
-                  you're over in{' '}
-                  <Text style={[styles.runwayHighlight, { color: C.bronze }]}>
-                    {heroData.overBudgets.length} categor{heroData.overBudgets.length === 1 ? 'y' : 'ies'}
-                  </Text>
-                  {' by '}
-                  <Text style={[styles.runwayHighlight, { color: C.bronze }]}>
-                    {currency} {heroData.totalOverBy.toFixed(0)}
-                  </Text>
-                </>
-              ) : heroData.stretchesWholeMonth ? (
-                <>
-                  you'll stretch to{' '}
-                  <Text style={[styles.runwayHighlight, { color: heroData.paceColor }]}>the end of the month</Text>
-                  {heroData.runwayOverage > 2 && <Text> with room to spare</Text>}
-                </>
-              ) : (
-                <>
-                  money runs out on{' '}
-                  <Text style={[styles.runwayHighlight, { color: heroData.paceColor }]}>
-                    day {heroData.runsOutOnDay}
-                  </Text>
-                  <Text> of {heroData.daysInMonth}</Text>
-                </>
-              )}
-            </Text>
+        {/* ── Hero: daily-allowance arc card ── */}
+        {hasBudgets ? (() => {
+          const dailyFigure = heroData.smartDaily > 0 ? heroData.smartDaily : heroData.dailyAllowance;
 
-            {/* Month bar — single horizontal timeline with two markers */}
-            <View style={styles.monthBarWrap}>
-              <View style={styles.monthBar}>
-                <View
-                  style={[
-                    styles.monthBarElapsed,
-                    { width: `${Math.min(heroData.percentElapsed * 100, 100)}%` },
-                  ]}
-                />
-                {!heroData.stretchesWholeMonth && (
-                  <View
-                    style={[
-                      styles.monthBarRunwayMark,
-                      {
-                        left: `${Math.min((heroData.runsOutOnDay / heroData.daysInMonth) * 100, 99)}%`,
-                        backgroundColor: heroData.paceColor,
-                      },
-                    ]}
-                  />
-                )}
-                <View
-                  style={[
-                    styles.monthBarTodayMark,
-                    { left: `${Math.min((heroData.dayOfMonth / heroData.daysInMonth) * 100, 99)}%` },
-                  ]}
-                />
-              </View>
-              <View style={styles.monthBarLabels}>
-                <Text style={styles.monthBarLabelText}>day 1</Text>
-                <Text style={[styles.monthBarLabelText, { color: C.textSecondary, fontWeight: TYPOGRAPHY.weight.semibold }]}>
-                  today — day {heroData.dayOfMonth}
-                </Text>
-                <Text style={styles.monthBarLabelText}>day {heroData.daysInMonth}</Text>
+          return (
+          <View style={styles.heroOpenV3}>
+            {/* Top row — solid, visible add-budget button */}
+            <View style={styles.heroTopRowV3}>
+              <TouchableOpacity
+                style={styles.heroAddBtn}
+                onPress={openAddModal}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t.budget.addBudget}
+              >
+                <Feather name="plus" size={15} color={C.onAccent} />
+                <Text style={styles.heroAddBtnText}>{t.budget.addBudget.toLowerCase()}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Gauge — emotional centrepiece, animated SVG half-ring */}
+            <View style={styles.heroGaugeWrap}>
+              {/* Gold glow bloom — fades in then out on first open each day */}
+              <Reanimated.View
+                style={[styles.heroGlowBloom, glowAnimStyle]}
+                pointerEvents="none"
+              />
+
+              <HalfGauge
+                size={224}
+                strokeWidth={15}
+                /* Fill on what's SPENT — intuitive: small arc = used a little,
+                   grows as you spend. Matches the category rings. */
+                percentage={Math.min(heroData.percentSpent * 100, 100)}
+                color={heroData.paceColor}
+                gradient={
+                  heroData.alreadyOver
+                    ? [C.bronze, C.bronze]
+                    : isDark
+                    ? ['#6E7233', C.bronze]
+                    : [C.accent, C.bronze]
+                }
+                trackColor={isDark ? withAlpha(C.accent, 0.14) : withAlpha(C.accent, 0.08)}
+                animate
+                animDuration={850}
+                onAnimationComplete={handleArcAnimationComplete}
+              >
+                {/* Only the number lives inside the arc — no overlap */}
+                <Reanimated.View
+                  entering={FadeIn.duration(500).delay(300)}
+                  style={styles.heroGaugeCenterWrap}
+                >
+                  <Text
+                    style={styles.heroGaugeAmount}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
+                  >
+                    <Text style={styles.heroGaugePrefix}>{currency} </Text>
+                    <Text style={{ color: C.textPrimary }}>
+                      {shouldRunWakeUp && heroCountDisplay > 0
+                        ? String(heroCountDisplay)
+                        : dailyFigure.toFixed(0)}
+                    </Text>
+                  </Text>
+                </Reanimated.View>
+              </HalfGauge>
+
+              {/* Labels sit BELOW the arc — clear, never overlapping it */}
+              <View style={styles.heroLabelStack}>
+                <Text style={styles.heroGaugeSub}>{t.budget.heroDailyLabel}</Text>
+
+                {(() => {
+                  const bills = Math.round(heroData.upcomingBillsTotal);
+                  const goalsAmt = Math.round(heroData.activeGoalReserve);
+                  let line: string | null = null;
+                  if (bills > 0 && goalsAmt > 0) {
+                    line = t.budget.heroTrustLine
+                      .replace('{{currency}}', currency)
+                      .replace('{{bills}}', String(bills))
+                      .replace('{{currency}}', currency)
+                      .replace('{{goals}}', String(goalsAmt));
+                  } else if (bills > 0) {
+                    line = t.budget.heroTrustLineBillsOnly
+                      .replace('{{currency}}', currency)
+                      .replace('{{bills}}', String(bills));
+                  } else if (goalsAmt > 0) {
+                    line = t.budget.heroTrustLineGoalsOnly
+                      .replace('{{currency}}', currency)
+                      .replace('{{goals}}', String(goalsAmt));
+                  }
+                  return line ? <Text style={styles.heroTrustLine}>{line}</Text> : null;
+                })()}
+
+                <Text style={styles.heroResetsTomorrow}>{t.budget.heroResetsTomorrow}</Text>
+
+                <TouchableOpacity
+                  onPress={() => { lightTap(); setMathSheetVisible(true); }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.budget.heroHowCalculated}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={styles.heroInfoBtn}
+                >
+                  <Feather name="info" size={12} color={C.bronze} />
+                  <Text style={styles.heroInfoBtnText}>{t.budget.heroHowCalculated}</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -1318,49 +1488,90 @@ const BudgetPlanning: React.FC = () => {
                 </View>
                 <View style={styles.billsStripContent}>
                   <Text style={styles.billsStripTitle}>
-                    {upcomingBillsThisWeek.count} bill{upcomingBillsThisWeek.count > 1 ? 's' : ''} this week · {currency} {upcomingBillsThisWeek.total.toFixed(0)}
+                    {upcomingBillsThisWeek.count} {upcomingBillsThisWeek.count > 1 ? t.budget.heroBillsPlural : t.budget.heroBillsSingular} · {currency} {upcomingBillsThisWeek.total.toFixed(0)}
                   </Text>
                   <Text style={styles.billsStripNames} numberOfLines={1}>
                     {upcomingBillsThisWeek.bills
                       .slice(0, 3)
                       .map((b) => `${b.name} ${currency}${b.amount.toFixed(0)}`)
                       .join('  ·  ')}
-                    {upcomingBillsThisWeek.bills.length > 3 ? '  ·  …' : ''}
                   </Text>
                 </View>
               </View>
             )}
 
-            {/* ── Top savings goal — aspirational offense beneath defensive budget ── */}
-            {topGoal && (
+            {/* ── Savings — single named goal, or a summary card that scales to any number ── */}
+            {goalsSummary && (
               <TouchableOpacity
-                style={styles.goalStrip}
+                style={[styles.goalStrip, { backgroundColor: withAlpha(C.accent, 0.07), borderColor: withAlpha(C.accent, 0.2) }]}
                 onPress={() => { lightTap(); navigation.navigate('Goals'); }}
-                activeOpacity={0.75}
+                activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel={`Open ${topGoal.goal.name} goal`}
+                accessibilityLabel={goalsSummary.count === 1 && topGoal ? `Open ${topGoal.goal.name} goal` : `Open ${goalsSummary.count} savings goals`}
               >
-                <View style={styles.goalStripIcon}>
-                  <Feather name="target" size={12} color={C.accent} />
-                </View>
+                <CircularProgress
+                  size={44}
+                  strokeWidth={4}
+                  percentage={goalsSummary.pct * 100}
+                  color={C.accent}
+                  trackColor={withAlpha(C.accent, 0.2)}
+                >
+                  <Feather name="target" size={16} color={C.accent} />
+                </CircularProgress>
                 <View style={styles.goalStripContent}>
-                  <View style={styles.goalStripHeader}>
-                    <Text style={styles.goalStripName} numberOfLines={1}>
-                      {topGoal.goal.name}
-                    </Text>
-                    <Text style={styles.goalStripAmount}>
-                      {currency} {topGoal.contributed.toFixed(0)} / {topGoal.goal.targetAmount.toFixed(0)}
-                    </Text>
-                  </View>
-                  <View style={styles.goalStripBarTrack}>
-                    <View style={[styles.goalStripBarFill, { width: `${Math.min(topGoal.pct * 100, 100)}%` }]} />
-                  </View>
+                  <Text style={[styles.goalStripEyebrow, { color: withAlpha(C.accent, 0.7) }]}>{t.budget.savingTowards}</Text>
+                  <Text style={styles.goalStripName} numberOfLines={1}>
+                    {goalsSummary.count === 1 && topGoal
+                      ? topGoal.goal.name
+                      : t.budget.goalsCount.replace('{{n}}', String(goalsSummary.count))}
+                  </Text>
+                  <Text style={styles.goalStripAmount}>
+                    {currency} {goalsSummary.totalContributed.toFixed(0)} {t.budget.ofWord} {currency} {goalsSummary.totalTarget.toFixed(0)}
+                  </Text>
                 </View>
-                <Feather name="chevron-right" size={14} color={C.textMuted} />
+                <View style={styles.goalStripPctWrap}>
+                  <Text style={[styles.goalStripPct, { color: C.accent }]}>{Math.round(goalsSummary.pct * 100)}%</Text>
+                  <Feather name="chevron-right" size={16} color={withAlpha(C.accent, 0.5)} />
+                </View>
               </TouchableOpacity>
             )}
+
+            {/* ── Reward good behaviour gently: "you kept RM__ here" ──
+                Only shown when budget is healthy, at least one category has
+                meaningful headroom, and we're past the first 5 days (so it's
+                earned, not trivially early-month). One quiet warm line — not a
+                celebration, just acknowledgement. Never shown when over budget. */}
+            {(() => {
+              if (heroData.alreadyOver || heroData.dayOfMonth < 5) return null;
+              const cushionBudget = [...budgetsWithSpent]
+                .filter((b) => b.allocatedAmount > 0 && b.spentAmount < b.allocatedAmount * 0.6)
+                .sort((a, b) => (b.allocatedAmount - b.spentAmount) - (a.allocatedAmount - a.spentAmount))[0];
+              if (!cushionBudget) return null;
+              const keptAmt = Math.round(cushionBudget.allocatedAmount - cushionBudget.spentAmount);
+              if (keptAmt < 10) return null;
+              const cat = categoryMap.get(cushionBudget.category);
+              const keptText = t.budget.heroKeptNote
+                .replace('{{currency}}', currency)
+                .replace('{{n}}', String(keptAmt));
+              return (
+                <Reanimated.View
+                  entering={FadeIn.duration(560).delay(900)}
+                  style={styles.heroKeptNote}
+                >
+                  <View style={[styles.heroKeptDot, { backgroundColor: C.accent }]} />
+                  <Text style={styles.heroKeptText} numberOfLines={2}>
+                    <Text style={[styles.heroKeptLabel, { color: withAlpha(C.accent, 0.7) }]}>
+                      {t.budget.heroKeptNoteLabel}{' '}—{' '}
+                    </Text>
+                    {keptText}
+                    {cat ? ` (${cat.name.toLowerCase()})` : ''}
+                  </Text>
+                </Reanimated.View>
+              );
+            })()}
           </View>
-        ) : null}
+          );
+        })() : null}
 
         {/* ── Over-limit banner (free tier) ── */}
         {tier === 'free' && budgets.length > FREE_TIER.maxBudgets && (
@@ -1379,221 +1590,114 @@ const BudgetPlanning: React.FC = () => {
         )}
 
         {/* ── Quick actions (Wallet-style outline buttons) ── */}
-        {hasBudgets && (
-          <View style={styles.actionsRowV2}>
-            <TouchableOpacity
-              style={styles.actionBtnV2}
-              onPress={openAddModal}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={t.budget.addBudget}
-            >
-              <Feather name="plus" size={16} color={C.accent} />
-              <Text style={styles.actionBtnV2Label}>add budget</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionBtnV2}
-              onPress={() => { lightTap(); setViewMode('playbook'); }}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="playbooks"
-            >
-              <Feather name="book-open" size={16} color={C.accent} />
-              <Text style={styles.actionBtnV2Label}>playbooks</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {/* ── Budget groups by status (Wallet-style grouped sections) ── */}
         {hasBudgets ? (() => {
-          const urgent: typeof budgetsWithSpent = [];
-          const track: typeof budgetsWithSpent = [];
-          const plenty: typeof budgetsWithSpent = [];
-          budgetsWithSpent.forEach((b) => {
-            const meta = getBudgetMeta(b);
-            const status = classifyBudget(meta.percentSpent, meta.paceRatio);
-            if (status === 'urgent') urgent.push(b);
-            else if (status === 'track') track.push(b);
-            else plenty.push(b);
-          });
+          // Flat list, worst-first — over-budget and high-spend float to the top.
+          // Sorting is memoized in `sortedBudgets` above.
+          const sorted = sortedBudgets;
+          // NOTE: this is a `.map()` inside the outer ScrollView with a per-row
+          // ReanimatedSwipeable. Converting to FlatList here is structurally risky
+          // (nested VirtualizedList-in-ScrollView + swipe gesture conflicts), so it
+          // is intentionally left as a memoized .map(). Revisit FlatList only if a
+          // user routinely exceeds ~30 budget categories.
 
-          const renderBudgetRowV2 = (budget: typeof budgetsWithSpent[0], isLast: boolean) => {
+          const renderCatRow = (budget: typeof budgetsWithSpent[0], isLast: boolean, rowIndex: number) => {
             const meta = getBudgetMeta(budget);
-            const percentage = meta.percentSpent * 100;
-            const tickPercent = Math.min(meta.percentElapsed * 100, 100);
+            const isOver = meta.percentSpent > 1;
             const leftAmount = Math.max(budget.allocatedAmount - budget.spentAmount, 0);
+            const overAmount = Math.max(budget.spentAmount - budget.allocatedAmount, 0);
             const catColor = meta.cat?.color || C.accent;
-            const perDaySpend = meta.elapsed > 0 ? budget.spentAmount / meta.elapsed : 0;
-            const perCategoryRunway = perDaySpend > 0
-              ? Math.floor(leftAmount / perDaySpend)
-              : meta.remaining;
-            const willStretch = perCategoryRunway >= meta.remaining;
-
-            const renderRightActions = (
-              _prog: SharedValue<number>,
-              drag: SharedValue<number>,
-              swipeable: SwipeableMethods,
-            ) => (
-              <BudgetSwipeAction
-                variant="edit"
-                direction="right"
-                drag={drag}
-                label="edit"
-                styles={styles}
-                onTap={() => { swipeable.close(); handleEdit(budget); }}
-                onHardSwipe={() => { swipeable.close(); handleEdit(budget); }}
-              />
-            );
-
-            const renderLeftActions = (
-              _prog: SharedValue<number>,
-              drag: SharedValue<number>,
-              swipeable: SwipeableMethods,
-            ) => (
-              <BudgetSwipeAction
-                variant="delete"
-                direction="left"
-                drag={drag}
-                label="delete"
-                styles={styles}
-                onTap={() => { handleDelete(budget); }}
-                onHardSwipe={() => { handleDelete(budget); }}
-              />
-            );
+            const catIcon = (meta.cat?.icon || 'circle') as keyof typeof Feather.glyphMap;
 
             return (
-              <View key={budget.id}>
-                <ReanimatedSwipeable
-                  ref={getBudgetSwipeRef(budget.id)}
-                  renderRightActions={renderRightActions}
-                  renderLeftActions={renderLeftActions}
-                  friction={1.2}
-                  rightThreshold={48}
-                  leftThreshold={48}
-                  overshootRight
-                  overshootLeft
-                  overshootFriction={2}
-                  dragOffsetFromLeftEdge={15}
-                  dragOffsetFromRightEdge={15}
-                  animationOptions={{ mass: 0.5, damping: 24, stiffness: 420, overshootClamping: true }}
+              <Reanimated.View
+                key={budget.id}
+                entering={FadeIn.duration(420).delay(Math.min(rowIndex, 11) * 50)}
+              >
+                <Pressable
+                  onPress={() => openBudgetDetail(budget)}
+                  style={({ pressed }) => [styles.catRowV3, pressed && { backgroundColor: withAlpha(C.textMuted, 0.04) }]}
                 >
-                  <Pressable
-                    onLongPress={() => {
-                      mediumTap();
-                      Alert.alert(meta.cat?.name || budget.category, undefined, [
-                        { text: t.common.edit, onPress: () => handleEdit(budget) },
-                        { text: t.common.delete, style: 'destructive', onPress: () => handleDelete(budget) },
-                        { text: t.common.cancel, style: 'cancel' },
-                      ]);
-                    }}
-                    delayLongPress={350}
-                    style={({ pressed }) => [styles.editorialRow, pressed && { opacity: 0.6 }]}
+                  {/* Avatar — category icon wrapped in a spend-progress ring, tinted by category colour */}
+                  <CircularProgress
+                    size={52}
+                    strokeWidth={5}
+                    percentage={meta.percentSpent * 100}
+                    color={isOver ? C.bronze : meta.paceColor}
+                    trackColor={withAlpha(isOver ? C.bronze : catColor, 0.22)}
                   >
-                    {/* Eyebrow — category name + tiny color dot */}
-                    <View style={styles.editorialEyebrow}>
-                      <View style={[styles.editorialDot, { backgroundColor: catColor }]} />
-                      <Text style={styles.editorialCategoryName} numberOfLines={1}>
-                        {meta.cat?.name || budget.category}
-                      </Text>
-                      <Text style={[styles.editorialPercent, { color: meta.paceColor }]}>
-                        {percentage.toFixed(0)}%
-                      </Text>
+                    <View
+                      style={[
+                        styles.catAvatarV3,
+                        { backgroundColor: withAlpha(isOver ? C.bronze : catColor, 0.2) },
+                      ]}
+                    >
+                      <Feather name={catIcon} size={19} color={isOver ? C.bronze : catColor} />
                     </View>
+                  </CircularProgress>
 
-                    {/* Main line — spent, "of", allocated — newspaper-style */}
-                    <Text style={styles.editorialMainLine}>
-                      <Text style={styles.editorialSpent}>
-                        {currency} {budget.spentAmount.toFixed(0)}
-                      </Text>
-                      <Text style={styles.editorialOfLabel}> of </Text>
-                      <Text style={styles.editorialAllocated}>
-                        {currency} {budget.allocatedAmount.toFixed(0)}
-                      </Text>
+                  {/* Name + spent subtitle */}
+                  <View style={styles.catRowMidV3}>
+                    <Text style={styles.catRowNameV3} numberOfLines={1}>
+                      {meta.cat?.name || budget.category}
                     </Text>
-
-                    {/* Ultra-thin hairline progress with tick */}
-                    <View style={styles.editorialBar}>
-                      <View
-                        style={[
-                          styles.editorialBarFill,
-                          {
-                            width: `${Math.min(percentage, 100)}%`,
-                            backgroundColor: meta.paceColor,
-                          },
-                        ]}
-                      />
-                      <View style={[styles.editorialBarTick, { left: `${tickPercent}%` }]} />
-                    </View>
-
-                    {/* Tight meta line — just the essentials */}
-                    <Text style={styles.editorialCaption}>
-                      {meta.percentSpent > 1
-                        ? `over by ${currency} ${(budget.spentAmount - budget.allocatedAmount).toFixed(0)}`
-                        : willStretch
-                        ? `${currency} ${leftAmount.toFixed(0)} left · ${meta.remaining}d`
-                        : `${currency} ${leftAmount.toFixed(0)} left · ${perCategoryRunway}d at this pace`}
+                    <Text style={styles.catRowSubV3} numberOfLines={1}>
+                      {currency} {budget.spentAmount.toFixed(0)} {t.budget.ofWord} {currency} {budget.allocatedAmount.toFixed(0)}
                     </Text>
+                  </View>
 
-                    {budget.rollover && budget.rolloverAmount != null && budget.rolloverAmount !== 0 && (
-                      <Text style={styles.editorialRollover}>
-                        {budget.rolloverAmount > 0
-                          ? `+${currency} ${budget.rolloverAmount.toFixed(0)} carried`
-                          : `−${currency} ${Math.abs(budget.rolloverAmount).toFixed(0)} debt`}
-                      </Text>
-                    )}
-                  </Pressable>
-                </ReanimatedSwipeable>
-                {!isLast && <View style={styles.editorialHairline} />}
-              </View>
-            );
-          };
-
-          const renderSection = (
-            label: string,
-            icon: keyof typeof Feather.glyphMap,
-            color: string,
-            list: typeof budgetsWithSpent,
-          ) => {
-            if (list.length === 0) return null;
-            return (
-              <View style={styles.sectionV2}>
-                <View style={styles.sectionHeaderV2}>
-                  <View style={[styles.sectionIconDot, { backgroundColor: color }]} />
-                  <Feather name={icon} size={13} color={C.textSecondary} />
-                  <Text style={styles.sectionTitleV2}>{label}</Text>
-                  <Text style={styles.sectionCountV2}>{list.length}</Text>
-                </View>
-                {list.map((b, i) => renderBudgetRowV2(b, i === list.length - 1))}
-              </View>
+                  {/* Remaining — olive when on track, bronze when over */}
+                  <Text
+                    style={[
+                      styles.catRowRightV3,
+                      { color: isOver ? C.bronze : C.accent },
+                    ]}
+                  >
+                    {currency} {isOver ? overAmount.toFixed(0) : leftAmount.toFixed(0)}{' '}
+                    <Text style={styles.catRowRightLabelV3}>
+                      {isOver ? t.budget.overLabel : t.budget.leftLabel}
+                    </Text>
+                  </Text>
+                  <Feather name="chevron-right" size={16} color={withAlpha(C.textMuted, 0.5)} style={{ marginLeft: SPACING.xs }} />
+                </Pressable>
+                {!isLast && <View style={styles.catRowDividerV3} />}
+              </Reanimated.View>
             );
           };
 
           return (
-            <View style={styles.budgetGroupsWrap}>
-              {renderSection(t.budget.needsAttention, 'alert-circle', C.gold, urgent)}
-              {renderSection(t.budget.onTrackSection, 'check-circle', C.accent, track)}
-              {renderSection(t.budget.plentyOfRoom, 'circle', C.bronze, plenty)}
+            <View style={styles.categoriesWrapV3}>
+              <View style={styles.categoriesHeaderV3}>
+                <Text style={styles.categoriesHeaderTextV3}>{t.budget.budgetCategories}</Text>
+                <Text style={styles.categoriesCountV3}>{sorted.length}</Text>
+              </View>
+              <View style={styles.categoriesCardV3}>
+                {sorted.map((b, i) => renderCatRow(b, i === sorted.length - 1, i))}
+              </View>
             </View>
           );
         })() : (
-          /* ── Empty state ── */
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconCircle}>
-              <Feather name="pie-chart" size={48} color={C.textMuted} />
+          /* ── Empty state — warm, specific, inviting ── */
+          <Reanimated.View style={styles.emptyContainer} entering={FadeIn.duration(560)}>
+            {/* Warm icon circle — olive tinted, not muted grey */}
+            <View style={[styles.emptyIconCircle, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
+              <Feather name="target" size={40} color={C.accent} />
             </View>
-            <Text style={styles.emptyTitle}>{t.budget.noBudgets}</Text>
+            <Text style={styles.emptyTitle}>{t.budget.emptyHeroTitle}</Text>
             <Text style={styles.emptyMessage}>
-              {t.budget.setBudget}
+              {t.budget.emptyHeroSub}
             </Text>
             <TouchableOpacity
               style={styles.emptyButton}
               onPress={openAddModal}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={t.budget.addBudget}
             >
               <Feather name="plus" size={18} color={C.onAccent} />
               <Text style={styles.emptyButtonText}>{t.budget.addBudget.toLowerCase()}</Text>
             </TouchableOpacity>
-          </View>
+          </Reanimated.View>
         )}
 
         </>)}
@@ -1609,7 +1713,7 @@ const BudgetPlanning: React.FC = () => {
               activeOpacity={0.7}
             >
               <Text style={[styles.pbTabText, playbookTab === 'active' && styles.pbTabTextActive]}>
-                active ({activePlaybooks.length})
+                {t.budget.playbookActive} ({activePlaybooks.length})
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -1618,7 +1722,7 @@ const BudgetPlanning: React.FC = () => {
               activeOpacity={0.7}
             >
               <Text style={[styles.pbTabText, playbookTab === 'past' && styles.pbTabTextActive]}>
-                past ({closedPlaybooks.length}{tier === 'free' ? `/${FREE_TIER.maxSavedPlaybooks}` : ''})
+                {t.budget.playbookPast} ({closedPlaybooks.length}{tier === 'free' ? `/${FREE_TIER.maxSavedPlaybooks}` : ''})
               </Text>
             </TouchableOpacity>
           </View>
@@ -1650,110 +1754,165 @@ const BudgetPlanning: React.FC = () => {
 
           {/* ── Active tab ── */}
           {playbookTab === 'active' && (<>
-            {activePlaybooks.length > 0 ? (
-              <View style={styles.groupCard}>
-                {activePlaybooks.map((pb, index) => {
-                  const stats = playbookStatsMap[pb.id];
-                  if (!stats) return null;
-                  const over = isOverspent(pb, stats);
-                  const overAmount = getOverspentAmount(pb, stats);
-                  const rawRemaining = pb.sourceAmount - stats.totalSpent;
-                  const isLast = index === activePlaybooks.length - 1;
-                  const percentage = stats.percentSpent;
-                  const paceColor = over ? C.neutral : C.accent;
+            {activePlaybooks.length > 0 ? (() => {
+              // ── Summary hero figures across all active playbooks ──
+              let totalPlanned = 0;
+              let totalSpent = 0;
+              let totalBurn = 0;
+              let totalTxns = 0;
+              for (const pb of activePlaybooks) {
+                const s = playbookStatsMap[pb.id];
+                if (!s) continue;
+                totalPlanned += pb.sourceAmount;
+                totalSpent += s.totalSpent;
+                totalBurn += s.dailyBurnRate;
+                totalTxns += s.linkedTransactionCount;
+              }
+              const pctSpent = totalPlanned > 0 ? (totalSpent / totalPlanned) * 100 : 0;
+              const heroOver = totalSpent > totalPlanned;
+              const heroColor = heroOver ? C.bronze : C.accent;
+              const heroRemaining = totalPlanned - totalSpent;
+              const subLine = heroOver
+                ? `${currency} ${Math.abs(heroRemaining).toFixed(0)} over · ~${currency} ${totalBurn.toFixed(0)}/day`
+                : `${currency} ${heroRemaining.toFixed(0)} left · ~${currency} ${totalBurn.toFixed(0)}/day`;
 
-                  return (
-                    <View key={pb.id}>
-                      <Pressable
-                        onPress={() => { lightTap(); setNotebookPb(pb); }}
-                        onLongPress={() => {
-                          mediumTap();
-                          Alert.alert(pb.name, undefined, [
-                            { text: 'Edit', onPress: () => handleEditPlaybook(pb) },
-                            { text: 'Close Playbook', style: 'destructive', onPress: () => handleClosePlaybook(pb) },
-                            { text: 'Delete', style: 'destructive', onPress: () => handleDeletePlaybook(pb) },
-                            { text: 'Cancel', style: 'cancel' },
-                          ]);
-                        }}
-                        style={({ pressed }) => [styles.budgetRow, pressed && { opacity: 0.7 }]}
-                      >
-                        {/* Icon */}
-                        <View
-                          style={[styles.iconCircle, { backgroundColor: withAlpha(C.accent, 0.08) }]}
-                        >
-                          <Feather name="book-open" size={18} color={C.accent} />
-                        </View>
+              return (
+              <>
+                {/* ── Playbook summary hero ── */}
+                <View
+                  style={styles.heroCardV3}
+                  accessibilityRole="summary"
+                  accessibilityLabel={`active plans, ${currency} ${totalPlanned.toFixed(0)} planned, ${subLine}`}
+                >
+                  <LinearGradient
+                    colors={[
+                      heroOver ? withAlpha(C.bronze, 0.07) : withAlpha(C.deepOlive, 0.06),
+                      withAlpha(C.surface, 0),
+                    ]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                    pointerEvents="none"
+                  />
+                  <View style={styles.heroTopRowV3}>
+                    <Text style={styles.heroEyebrowV3}>active plans</Text>
+                    <Text style={styles.pbHeroCountV3}>
+                      {activePlaybooks.length} {activePlaybooks.length === 1 ? 'plan' : 'plans'}
+                    </Text>
+                  </View>
 
-                        {/* Content */}
-                        <View style={styles.budgetContent}>
-                          <View style={styles.budgetNameRow}>
-                            <Text style={styles.budgetName} numberOfLines={1}>{pb.name}</Text>
-                            <Text style={styles.budgetAmounts}>
-                              <Text style={{ fontWeight: TYPOGRAPHY.weight.semibold }}>
-                                {currency} {stats.totalSpent.toFixed(0)}
-                              </Text>
-                              {' / '}
-                              {pb.sourceAmount.toFixed(0)}
-                            </Text>
-                          </View>
+                  <Text style={styles.heroBigAmountV3}>
+                    <Text style={styles.heroBigPrefixV3}>{currency} </Text>
+                    {totalPlanned.toFixed(0)}
+                  </Text>
+                  <Text style={styles.pbHeroSubV3}>{subLine}</Text>
 
-                          {/* Progress bar */}
-                          <View style={styles.barTrack}>
-                            <View
-                              style={[
-                                styles.barFill,
-                                {
-                                  width: `${Math.min(percentage, 100)}%`,
-                                  backgroundColor: paceColor,
-                                },
-                              ]}
-                            />
-                          </View>
-
-                          {/* Pace row */}
-                          <View style={styles.paceRow}>
-                            <Text style={styles.paceText}>
-                              {stats.linkedTransactionCount} txns
-                              {'  ·  '}
-                              ~{currency} {stats.dailyBurnRate.toFixed(0)}/day
-                              {'  ·  '}
-                              <Text style={{ color: paceColor }}>
-                                {over
-                                  ? `${currency} ${overAmount.toFixed(0)} over`
-                                  : stats.daysUntilEmpty != null ? `~${stats.daysUntilEmpty}d left` : `${currency} ${rawRemaining.toFixed(0)} left`}
-                              </Text>
-                            </Text>
-                            <Text style={[styles.percentLabel, { color: paceColor }]}>
-                              {percentage.toFixed(0)}%
-                            </Text>
-                          </View>
-                        </View>
-
-                        <Feather name="chevron-right" size={16} color={withAlpha(C.accent, 0.4)} />
-                      </Pressable>
-
-                      {!isLast && <View style={styles.divider} />}
-                    </View>
-                  );
-                })}
-              </View>
-            ) : (
-              <View style={styles.emptyContainer}>
-                <View style={styles.emptyIconCircle}>
-                  <Feather name="book-open" size={48} color={C.textMuted} />
+                  <View style={styles.heroTrackV3}>
+                    <View
+                      style={[
+                        styles.heroFillV3,
+                        { width: `${Math.min(pctSpent, 100)}%`, backgroundColor: heroColor },
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.pbHeroMetaRowV3}>
+                    <Text style={[styles.heroCaptionV3, { flex: 1 }]} numberOfLines={1}>
+                      {currency} {totalSpent.toFixed(0)} spent · {totalTxns} entries
+                    </Text>
+                    <Text style={[styles.heroStatusCaptionV3, { color: heroColor }]}>
+                      {pctSpent.toFixed(0)}%
+                    </Text>
+                  </View>
                 </View>
-                <Text style={styles.emptyTitle}>no active playbooks</Text>
-                <Text style={styles.emptyMessage}>
-                  create one when income arrives to track where every ringgit goes
-                </Text>
-              </View>
+
+                {/* ── Active playbook rows (ring-avatar anatomy) ── */}
+                <View style={styles.categoriesCardV3}>
+                  {activePlaybooks.map((pb, index) => {
+                    const stats = playbookStatsMap[pb.id];
+                    if (!stats) return null;
+                    const over = isOverspent(pb, stats);
+                    const overAmount = getOverspentAmount(pb, stats);
+                    const rawRemaining = pb.sourceAmount - stats.totalSpent;
+                    const isLast = index === activePlaybooks.length - 1;
+                    const percentage = stats.percentSpent;
+                    const paceColor = over ? C.bronze : C.accent;
+
+                    return (
+                      <View key={pb.id}>
+                        <Pressable
+                          onPress={() => { lightTap(); setNotebookPb(pb); }}
+                          onLongPress={() => {
+                            mediumTap();
+                            Alert.alert(pb.name, undefined, [
+                              { text: 'Edit', onPress: () => handleEditPlaybook(pb) },
+                              { text: 'Close Playbook', style: 'destructive', onPress: () => handleClosePlaybook(pb) },
+                              { text: 'Delete', style: 'destructive', onPress: () => handleDeletePlaybook(pb) },
+                              { text: 'Cancel', style: 'cancel' },
+                            ]);
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${pb.name}, ${currency} ${stats.totalSpent.toFixed(0)} of ${currency} ${pb.sourceAmount.toFixed(0)} spent, ${percentage.toFixed(0)} percent`}
+                          style={({ pressed }) => [styles.catRowV3, pressed && { backgroundColor: withAlpha(C.textMuted, 0.04) }]}
+                        >
+                          {/* Avatar — book icon wrapped in a spend-progress ring */}
+                          <CircularProgress
+                            size={52}
+                            strokeWidth={4}
+                            percentage={percentage}
+                            color={paceColor}
+                            trackColor={withAlpha(C.textMuted, 0.2)}
+                          >
+                            <View style={[styles.catAvatarV3, { backgroundColor: withAlpha(paceColor, 0.14) }]}>
+                              <Feather name="book-open" size={19} color={paceColor} />
+                            </View>
+                          </CircularProgress>
+
+                          {/* Two-line content */}
+                          <View style={styles.catRowMidV3}>
+                            {/* line 1 — name + spent / total */}
+                            <View style={styles.pbRowLineV3}>
+                              <Text style={[styles.catRowNameV3, styles.pbRowFlexV3]} numberOfLines={1}>{pb.name}</Text>
+                              <Text style={styles.pbRowAmountV3} numberOfLines={1}>
+                                {currency} {stats.totalSpent.toFixed(0)} / {pb.sourceAmount.toFixed(0)}
+                              </Text>
+                            </View>
+                            {/* line 2 — meta + percent */}
+                            <View style={styles.pbRowLineV3}>
+                              <Text style={[styles.catRowSubV3, styles.pbRowFlexV3]} numberOfLines={1}>
+                                {stats.linkedTransactionCount} entries · ~{currency} {stats.dailyBurnRate.toFixed(0)}/day
+                                {'  ·  '}
+                                <Text style={{ color: paceColor }}>
+                                  {over
+                                    ? `${currency} ${overAmount.toFixed(0)} over`
+                                    : stats.daysUntilEmpty != null ? `~${stats.daysUntilEmpty}d left` : `${currency} ${rawRemaining.toFixed(0)} left`}
+                                </Text>
+                              </Text>
+                              <Text style={[styles.pbRowPercentV3, { color: paceColor }]}>
+                                {percentage.toFixed(0)}%
+                              </Text>
+                            </View>
+                          </View>
+                        </Pressable>
+                        {!isLast && <View style={styles.catRowDividerV3} />}
+                      </View>
+                    );
+                  })}
+                </View>
+              </>
+              );
+            })() : (
+              <EmptyState
+                icon="book-open"
+                title="no active playbooks"
+                message="create one when income arrives to track where every ringgit goes"
+              />
             )}
           </>)}
 
           {/* ── Past tab ── */}
           {playbookTab === 'past' && (<>
             {closedPlaybooks.length > 0 ? (
-              <View style={styles.groupCard}>
+              <View style={styles.categoriesCardV3}>
                 {closedPlaybooks.map((pb, index) => {
                   const stats = playbookStatsMap[pb.id];
                   if (!stats) return null;
@@ -1773,71 +1932,54 @@ const BudgetPlanning: React.FC = () => {
                             { text: 'Cancel', style: 'cancel' },
                           ]);
                         }}
-                        style={({ pressed }) => [styles.budgetRow, pressed && { opacity: 0.7 }]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${pb.name}, closed, ${currency} ${stats.totalSpent.toFixed(0)} of ${currency} ${pb.sourceAmount.toFixed(0)} spent`}
+                        style={({ pressed }) => [styles.catRowV3, styles.pbRowClosedV3, pressed && { backgroundColor: withAlpha(C.textMuted, 0.04) }]}
                       >
-                        {/* Icon */}
-                        <View
-                          style={[styles.iconCircle, { backgroundColor: withAlpha(C.neutral, 0.08) }]}
+                        {/* Avatar — muted, settled ring for closed plans */}
+                        <CircularProgress
+                          size={52}
+                          strokeWidth={4}
+                          percentage={stats.percentSpent}
+                          color={C.neutral}
+                          trackColor={withAlpha(C.textMuted, 0.2)}
                         >
-                          <Feather name="book-open" size={18} color={C.neutral} />
-                        </View>
+                          <View style={[styles.catAvatarV3, { backgroundColor: withAlpha(C.neutral, 0.12) }]}>
+                            <Feather name="book-open" size={19} color={C.neutral} />
+                          </View>
+                        </CircularProgress>
 
-                        {/* Content */}
-                        <View style={styles.budgetContent}>
-                          <View style={styles.budgetNameRow}>
-                            <Text style={[styles.budgetName, { color: C.textSecondary }]} numberOfLines={1}>{pb.name}</Text>
-                            <Text style={styles.budgetAmounts}>
-                              <Text style={{ fontWeight: TYPOGRAPHY.weight.semibold }}>
-                                {stats.totalSpent.toFixed(0)}
-                              </Text>
-                              {' / '}
-                              {pb.sourceAmount.toFixed(0)}
+                        {/* Two-line content */}
+                        <View style={styles.catRowMidV3}>
+                          {/* line 1 — name + spent / total */}
+                          <View style={styles.pbRowLineV3}>
+                            <Text style={[styles.catRowNameV3, styles.pbRowFlexV3, { color: C.textSecondary }]} numberOfLines={1}>{pb.name}</Text>
+                            <Text style={[styles.pbRowAmountV3, { color: C.textSecondary }]} numberOfLines={1}>
+                              {currency} {stats.totalSpent.toFixed(0)} / {pb.sourceAmount.toFixed(0)}
                             </Text>
                           </View>
-
-                          {/* Progress bar */}
-                          <View style={styles.barTrack}>
-                            <View
-                              style={[
-                                styles.barFill,
-                                {
-                                  width: `${Math.min(stats.percentSpent, 100)}%`,
-                                  backgroundColor: C.neutral,
-                                },
-                              ]}
-                            />
-                          </View>
-
-                          {/* Stats row */}
-                          <View style={styles.paceRow}>
-                            <Text style={styles.paceText}>
-                              {startStr} – {endStr}
-                              {'  ·  '}
-                              {stats.daysActive} days
-                              {'  ·  '}
-                              {stats.linkedTransactionCount} txns
+                          {/* line 2 — span + days + entries */}
+                          <View style={styles.pbRowLineV3}>
+                            <Text style={[styles.catRowSubV3, styles.pbRowFlexV3]} numberOfLines={1}>
+                              {startStr} – {endStr} · {stats.daysActive} days · {stats.linkedTransactionCount} entries
                             </Text>
-                            <Text style={[styles.percentLabel, { color: C.neutral }]}>
+                            <Text style={[styles.pbRowPercentV3, { color: C.neutral }]}>
                               {stats.percentSpent.toFixed(0)}%
                             </Text>
                           </View>
                         </View>
-
-                        <Feather name="chevron-right" size={16} color={withAlpha(C.neutral, 0.4)} />
                       </Pressable>
-
-                      {!isLast && <View style={styles.divider} />}
+                      {!isLast && <View style={styles.catRowDividerV3} />}
                     </View>
                   );
                 })}
               </View>
             ) : (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyTitle}>no past playbooks</Text>
-                <Text style={styles.emptyMessage}>
-                  closed playbooks will appear here
-                </Text>
-              </View>
+              <EmptyState
+                icon="book-open"
+                title="no past playbooks"
+                message="closed playbooks will appear here"
+              />
             )}
 
             {/* Free tier counter */}
@@ -1852,16 +1994,288 @@ const BudgetPlanning: React.FC = () => {
 
       </ScrollView>
 
-      {/* ── FAB ── */}
-      {viewMode === 'budget' && hasBudgets && !modalVisible && (
-        <TouchableOpacity
-          style={[styles.fab, { bottom: Math.max(insets.bottom, SPACING.lg) + SPACING.md }]}
-          onPress={openAddModal}
-          activeOpacity={0.85}
+      {/* add budget now lives in the hero pill — no floating FAB over content */}
+
+      {/* ── "How we got this" math receipt sheet ── */}
+      <Modal
+        visible={mathSheetVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMathSheetVisible(false)}
+        statusBarTranslucent
+      >
+        <Pressable
+          style={styles.mathOverlay}
+          onPress={() => setMathSheetVisible(false)}
+          accessibilityLabel="Close"
         >
-          <Feather name="plus" size={24} color={C.onAccent} />
-        </TouchableOpacity>
-      )}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.mathKAV}
+            pointerEvents="box-none"
+          >
+            <View
+              style={styles.mathCard}
+              onStartShouldSetResponder={() => true}
+            >
+              {/* Title */}
+              <Text style={styles.mathTitle}>
+                {t.budget.mathSheetTitle
+                  .replace('{{currency}}', currency)
+                  .replace('{{n}}', Math.round(heroData.smartDaily > 0 ? heroData.smartDaily : heroData.dailyAllowance).toString())}
+              </Text>
+
+              {/* Receipt waterfall */}
+              <View style={styles.mathRows}>
+                {/* Row: money in budgets */}
+                <View style={styles.mathRow}>
+                  <Text style={styles.mathRowLabel}>{t.budget.mathMoneyInBudgets}</Text>
+                  <Text style={styles.mathRowAmount}>{currency} {Math.round(heroData.budgetLeft + heroData.totalBudgetSpent)}</Text>
+                </View>
+
+                {/* Row: bills coming up */}
+                {heroData.upcomingBillsTotal > 0 && (
+                  <View style={styles.mathRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.mathRowLabel}>
+                        {'− '}{t.budget.mathBillsComing}
+                      </Text>
+                      {heroData.upcomingBillsCount > 0 && (
+                        <Text style={styles.mathRowSub}>
+                          {t.budget.mathBillsCount.replace('{{n}}', String(heroData.upcomingBillsCount))}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={[styles.mathRowAmount, { color: C.bronze }]}>
+                      − {currency} {Math.round(heroData.upcomingBillsTotal)}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Row: goals */}
+                {heroData.activeGoalReserve > 0 && (
+                  <View style={styles.mathRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.mathRowLabel}>
+                        {'− '}{t.budget.mathSetAsideGoals}
+                      </Text>
+                      {heroData.activeGoalCount > 0 && (
+                        <Text style={styles.mathRowSub}>
+                          {t.budget.mathGoalsCount.replace('{{n}}', String(heroData.activeGoalCount))}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={[styles.mathRowAmount, { color: C.bronze }]}>
+                      − {currency} {Math.round(heroData.activeGoalReserve)}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Row: safety cushion */}
+                {heroData.safetyBuffer > 0 && (
+                  <View style={styles.mathRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.mathRowLabel}>
+                        {'− '}{t.budget.mathSafetyBuffer}
+                      </Text>
+                      <Text style={styles.mathRowSub}>{t.budget.mathBufferWhy}</Text>
+                    </View>
+                    <Text style={[styles.mathRowAmount, { color: C.bronze }]}>
+                      − {currency} {Math.round(heroData.safetyBuffer)}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Divider */}
+                <View style={styles.mathDivider} />
+
+                {/* Row: left over days */}
+                <View style={styles.mathRow}>
+                  <Text style={styles.mathRowLabel}>
+                    {t.budget.mathLeftOverDays.replace('{{days}}', String(heroData.daysRemaining))}
+                  </Text>
+                  <Text style={styles.mathRowAmount}>
+                    = {currency} {Math.round(Math.max(heroData.budgetLeft - heroData.upcomingBillsTotal - heroData.activeGoalReserve - heroData.safetyBuffer, 0))}
+                  </Text>
+                </View>
+
+                {/* Row: divide days */}
+                <View style={styles.mathRow}>
+                  <Text style={styles.mathRowLabel}>
+                    {t.budget.mathDivideDays.replace('{{days}}', String(heroData.daysRemaining))}
+                  </Text>
+                  <Text style={[styles.mathRowAmount, { color: C.accent, fontWeight: TYPOGRAPHY.weight.semibold as any }]}>
+                    {t.budget.mathDailyResult
+                      .replace('{{currency}}', currency)
+                      .replace('{{n}}', Math.round(heroData.smartDaily > 0 ? heroData.smartDaily : heroData.dailyAllowance).toString())}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Close */}
+              <TouchableOpacity
+                style={styles.mathCloseBtn}
+                onPress={() => setMathSheetVisible(false)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={t.common.close}
+              >
+                <Text style={styles.mathCloseBtnText}>{t.common.close.toLowerCase()}</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      {/* ── Category Detail — bottom-sheet (spending + transactions + actions) ─── */}
+      {detailBudget && (() => {
+        const dBudget = detailBudget; // non-null snapshot for deferred-action closures
+        const dMeta = getBudgetMeta(detailBudget);
+        const dCatColor = dMeta.cat?.color || C.accent;
+        const dCatIcon = (dMeta.cat?.icon || 'circle') as keyof typeof Feather.glyphMap;
+        const dIsOver = dMeta.percentSpent > 1;
+        const dRingColor = dIsOver ? C.bronze : dMeta.paceColor;
+        const dLeft = Math.max(detailBudget.allocatedAmount - detailBudget.spentAmount, 0);
+        const dOver = Math.max(detailBudget.spentAmount - detailBudget.allocatedAmount, 0);
+        const { start, end } = getPeriodInterval(detailBudget.period, now);
+        const dTxnsAll = transactions
+          .filter((tx) => tx.type === 'expense' && tx.category === detailBudget.category && isWithinInterval(tx.date, { start, end }))
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        // Perf cap: a heavy category can hold hundreds of txns — rendering them all
+        // through ScrollView+.map() freezes/OOMs the sheet on open. Render only the
+        // most-recent 20; "see all transactions" (filtered) covers the rest.
+        const DETAIL_TXN_CAP = 20;
+        const dTxns = dTxnsAll.slice(0, DETAIL_TXN_CAP);
+        const dTxnsHasMore = dTxnsAll.length > DETAIL_TXN_CAP;
+        return (
+        <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={() => dCloseSheet()}>
+          <Reanimated.View style={[styles.modalBackdrop, dBackdropAnimatedStyle]}>
+            <Pressable style={{ flex: 1 }} onPress={() => dCloseSheet()} />
+          </Reanimated.View>
+
+          <Reanimated.View style={[styles.modalSheetContainer, dSheetAnimatedStyle]}>
+            <GestureDetector gesture={dSheetGesture}>
+              <View collapsable={false}>
+                <View style={styles.modalHandleRow}>
+                  <View style={styles.modalHandle} />
+                </View>
+
+                {/* Header — ring + name + spent-of */}
+                <View style={styles.bdHeader}>
+                  <CircularProgress
+                    size={56}
+                    strokeWidth={5}
+                    percentage={dMeta.percentSpent * 100}
+                    color={dRingColor}
+                    trackColor={withAlpha(dCatColor, 0.18)}
+                  >
+                    <View style={[styles.bdAvatar, { backgroundColor: withAlpha(dCatColor, 0.16) }]}>
+                      <Feather name={dCatIcon} size={22} color={dRingColor} />
+                    </View>
+                  </CircularProgress>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.bdName} numberOfLines={1}>{dMeta.cat?.name || detailBudget.category}</Text>
+                    <Text style={styles.bdSub}>
+                      {t.budget.detailSpentOf
+                        .replace('{{currency}}', currency)
+                        .replace('{{spent}}', detailBudget.spentAmount.toFixed(0))
+                        .replace('{{currency}}', currency)
+                        .replace('{{allocated}}', detailBudget.allocatedAmount.toFixed(0))}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Big left / over figure */}
+                <Text style={[styles.bdFigure, { color: dIsOver ? C.bronze : C.textPrimary }]}>
+                  <Text style={styles.bdFigurePrefix}>{currency} </Text>
+                  {dIsOver ? dOver.toFixed(0) : dLeft.toFixed(0)}
+                  <Text style={styles.bdFigureLabel}> {dIsOver ? t.budget.overLabel : t.budget.leftLabel}</Text>
+                </Text>
+
+                {/* Progress + pace */}
+                <View style={styles.bdBarTrack}>
+                  <View style={[styles.bdBarFill, { width: `${Math.min(dMeta.percentSpent * 100, 100)}%`, backgroundColor: dRingColor }]} />
+                </View>
+                {!dIsOver && dMeta.remaining > 0 && (
+                  <Text style={styles.bdPace}>
+                    {t.budget.detailPerDayLeft
+                      .replace('{{currency}}', currency)
+                      .replace('{{n}}', dMeta.dailyBudget.toFixed(0))
+                      .replace('{{days}}', String(dMeta.remaining))}
+                  </Text>
+                )}
+              </View>
+            </GestureDetector>
+
+            {/* Transactions this period */}
+            <View style={styles.bdBody}>
+              <Text style={styles.bdSectionLabel}>
+                {t.budget.detailRecentInCategory.replace('{{category}}', (dMeta.cat?.name || detailBudget.category).toLowerCase())}
+              </Text>
+              {dTxns.length === 0 ? (
+                <Text style={styles.bdEmpty}>{t.budget.detailNoTransactions}</Text>
+              ) : (
+                <ScrollView
+                  style={{ maxHeight: SCREEN_H * 0.30 }}
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {dTxns.map((tx) => (
+                    <View key={tx.id} style={styles.bdTxnRow}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.bdTxnDesc} numberOfLines={1}>
+                          {tx.description || dMeta.cat?.name || detailBudget.category}
+                        </Text>
+                        <Text style={styles.bdTxnDate}>{format(new Date(tx.date), 'MMM d')}</Text>
+                      </View>
+                      <Text style={styles.bdTxnAmt}>{currency} {tx.amount.toFixed(0)}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+              {dTxns.length > 0 && (
+                <TouchableOpacity
+                  style={styles.bdSeeAll}
+                  onPress={() => dCloseSheet(() => navigation.getParent()?.navigate('TransactionsList', { filterCategory: dBudget.category }))}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.bdSeeAllText}>
+                    {dTxnsHasMore
+                      ? t.budget.detailSeeAllCount.replace('{{n}}', String(dTxnsAll.length))
+                      : t.budget.detailSeeAll}
+                  </Text>
+                  <Feather name="arrow-right" size={14} color={C.accent} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Footer actions */}
+            <View style={[styles.bdActions, { paddingBottom: Math.max(insets.bottom, SPACING.lg) }]}>
+              <TouchableOpacity
+                style={styles.bdEditBtn}
+                onPress={() => dCloseSheet(() => handleEdit(dBudget), dBudget.id)}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t.budget.editBudget}
+              >
+                <Feather name="edit-2" size={16} color={C.onAccent} />
+                <Text style={styles.bdEditBtnText}>{t.common.edit.toLowerCase()}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.bdDeleteBtn}
+                onPress={() => dCloseSheet(() => handleDelete(dBudget), dBudget.id)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.common.delete}
+              >
+                <Feather name="trash-2" size={16} color={C.bronze} />
+              </TouchableOpacity>
+            </View>
+          </Reanimated.View>
+        </Modal>
+        );
+      })()}
 
       {/* ── Add / Edit Budget — bottom-sheet (drag-to-dismiss, animated backdrop) ─── */}
       {modalVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={bCloseSheet}>
@@ -1880,7 +2294,7 @@ const BudgetPlanning: React.FC = () => {
                   {editingBudget ? 'edit ' : 'add '}
                   <Text style={styles.modalTitleAccent}>
                     {editingBudget
-                      ? (expenseCategories.find((c) => c.id === editingBudget.category)?.name?.toLowerCase() || 'budget')
+                      ? (categoryMap.get(editingBudget.category)?.name?.toLowerCase() || 'budget')
                       : 'budget'}
                   </Text>
                 </Text>
@@ -2271,55 +2685,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     padding: SPACING.xl,
   },
 
-  // Hero
-  heroCard: {
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    marginBottom: SPACING.lg,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
-  },
-  heroLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    marginBottom: SPACING.xs,
-    textTransform: 'lowercase',
-  },
-  heroAmount: {
-    fontSize: TYPOGRAPHY.size['2xl'],
-    fontWeight: TYPOGRAPHY.weight.light,
-    color: C.textPrimary,
-    marginBottom: 2,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  heroAmountSub: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.regular,
-    color: C.textSecondary,
-  },
-  heroDailyText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    marginBottom: SPACING.md,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  heroBarTrack: {
-    height: 6,
-    backgroundColor: withAlpha(C.accent, 0.1),
-    borderRadius: RADIUS.full,
-    overflow: 'hidden',
-    marginBottom: SPACING.xs,
-  },
-  heroBarFill: {
-    height: '100%',
-    borderRadius: RADIUS.full,
-  },
-  heroPercentText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    textAlign: 'right',
-  },
-
   // Banner
   bannerCard: {
     flexDirection: 'row',
@@ -2341,120 +2706,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
-  // Grouped card
-  groupCard: {
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.xl,
-    overflow: 'hidden',
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
-  },
-
-  // Budget row
-  budgetRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: SPACING.md,
-    paddingVertical: SPACING.md,
-  },
-  iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.md,
-    marginTop: 2,
-  },
-  budgetContent: {
-    flex: 1,
-  },
-  budgetNameRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.xs,
-  },
-  budgetName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-    flex: 1,
-    marginRight: SPACING.sm,
-  },
-  budgetAmounts: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    fontVariant: ['tabular-nums'] as any,
-  },
-
-  // Progress bar (thin)
-  barTrack: {
-    height: 3,
-    backgroundColor: withAlpha(C.accent, 0.1),
-    borderRadius: RADIUS.full,
-    overflow: 'hidden',
-    marginBottom: SPACING.xs,
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: RADIUS.full,
-  },
-
-  // Pace
-  paceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  paceText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    flex: 1,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  percentLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    marginLeft: SPACING.sm,
-    fontVariant: ['tabular-nums'] as any,
-  },
-
-  // Rollover hint on card
-  rolloverText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.bronze,
-    marginTop: 2,
-  },
-
-  // Divider
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: C.border,
-    marginLeft: 36 + SPACING.md + SPACING.md, // icon width + margins
-  },
-
-  // Expanded actions
-  expandedActions: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.md,
-    paddingBottom: SPACING.md,
-    paddingLeft: 36 + SPACING.md + SPACING.md,
-    gap: SPACING.lg,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.md,
-    backgroundColor: C.background,
-  },
-  actionText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-
   // Empty state
   emptyContainer: {
     alignItems: 'center',
@@ -2462,6 +2713,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: SPACING.lg,
   },
   emptyTitle: {
@@ -2585,106 +2841,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderColor: withAlpha(C.accent, 0.2),
     transform: [{ rotate: '45deg' }],
   },
-  echoSheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-  },
-  echoSheetCard: {
-    backgroundColor: C.surface,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.md,
-    ...(C === CALM_DARK ? SHADOWS.sm : SHADOWS.lg),
-  },
-  echoSheetHandle: {
-    alignSelf: 'center',
-    width: 44,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: C.border,
-    marginBottom: SPACING.md,
-  },
-  echoSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  echoSheetHeaderLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: SPACING.sm + 2,
-  },
-  echoSheetIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  echoSheetEyebrow: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.accent,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  echoSheetTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    lineHeight: 22,
-  },
-  echoSheetSubtitle: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    lineHeight: 20,
-    marginBottom: SPACING.md,
-  },
-  echoSheetChips: {
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  echoSheetChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
-    borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(C.accent, 0.06),
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.15),
-  },
-  echoSheetChipText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-    lineHeight: 19,
-  },
-  echoSheetOpenBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    backgroundColor: C.accent,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.md,
-  },
-  echoSheetOpenBtnText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.onAccent,
-  },
-
   // ─── Add / Edit Budget Modal — matches DebtTracking sheet pattern ───────────
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -2713,6 +2869,158 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: withAlpha(C.textPrimary, 0.15),
+  },
+
+  // ─── Category detail sheet ───
+  bdHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.lg,
+  },
+  bdAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bdName: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+  },
+  bdSub: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    marginTop: 1,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  bdFigure: {
+    paddingHorizontal: SPACING.xl,
+    fontSize: 34,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    letterSpacing: -1,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  bdFigurePrefix: {
+    fontSize: 18,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+  },
+  bdFigureLabel: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+  },
+  bdBarTrack: {
+    height: 6,
+    backgroundColor: withAlpha(C.textMuted, 0.12),
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+    marginHorizontal: SPACING.xl,
+    marginTop: SPACING.md,
+  },
+  bdBarFill: {
+    height: 6,
+    borderRadius: RADIUS.full,
+  },
+  bdPace: {
+    paddingHorizontal: SPACING.xl,
+    marginTop: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  bdBody: {
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
+  },
+  bdSectionLabel: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: SPACING.sm,
+  },
+  bdEmpty: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    paddingVertical: SPACING.md,
+  },
+  bdTxnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.border,
+  },
+  bdTxnDesc: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+  },
+  bdTxnDate: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    marginTop: 1,
+  },
+  bdTxnAmt: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  bdSeeAll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.xs,
+  },
+  bdSeeAllText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.accent,
+  },
+  bdActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: C.border,
+  },
+  bdEditBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.accent,
+  },
+  bdEditBtnText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.onAccent,
+    textTransform: 'lowercase',
+  },
+  bdDeleteBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(C.bronze, 0.1),
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.25),
   },
   // Centered title zone with italic serif accent (mirrors dDebtTitleZone)
   modalTitleZone: {
@@ -2801,7 +3109,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalFieldRequired: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: '#C1694F',
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.bold,
   },
   // Normal-weight label used for rollover toggle row
@@ -3079,65 +3387,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
 
-  // ─── Playbook expanded ──────────────────────────────────
-  pbExpandedWrap: {
-    paddingHorizontal: SPACING.md,
-    paddingBottom: SPACING.md,
-    gap: SPACING.sm,
-  },
-  pbNotebookBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: RADIUS.lg,
-  },
-  pbNotebookBtnTitle: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-  },
-  pbNotebookBtnSub: {
-    fontSize: TYPOGRAPHY.size.xs,
-    marginTop: 1,
-  },
-  pbQuickBreakdown: {
-    paddingHorizontal: SPACING.sm,
-    gap: SPACING.xs,
-  },
-  pbQuickRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  pbQuickDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  pbQuickLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    flex: 1,
-  },
-  pbQuickAmount: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  pbQuickMore: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    paddingLeft: 6 + SPACING.sm,
-  },
-
-  //
-  pbEmptyMessage: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
   pbTierCounter: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
@@ -3162,409 +3411,316 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: SPACING.xs,
   },
 
-  // ─── Transaction modal ────────────────────────────────────
-  pbTxModalSummary: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    fontVariant: ['tabular-nums'] as any,
+  // ─── Hero card V3 — daily-allowance arc design ───
+  heroCardV3: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    overflow: 'hidden',
+    ...(C === CALM_DARK ? { ...SHADOWS.none, borderColor: withAlpha(C.textPrimary, 0.12) } : SHADOWS.sm),
   },
-  pbTxRow: {
+  heroTopRowV3: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginBottom: SPACING.md,
+  },
+  heroAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.border,
-    gap: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.accent,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
   },
-  pbTxDate: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    width: 44,
-  },
-  pbTxInfo: {
-    flex: 1,
-  },
-  pbTxDesc: {
+  heroAddBtnText: {
     fontSize: TYPOGRAPHY.size.sm,
-    color: C.textPrimary,
-  },
-  pbTxCat: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-  },
-  pbTxAmount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'] as any,
-  },
-
-  // ═══ V2 Redesign ═══════════════════════════════════════════
-  // Hero (Wallet-caliber typography)
-  heroV2: {
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.lg,
-    marginBottom: SPACING.lg,
-  },
-  heroV2Label: {
-    fontSize: TYPOGRAPHY.size.xl,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.onAccent,
     textTransform: 'lowercase',
   },
-  heroV2AmountLine: {
+  heroEyebrowV3: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+    textTransform: 'lowercase',
+    flex: 1,
+  },
+  // ─── Open hero (borderless — breathes on the page, not a card) ───
+  heroOpenV3: {
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.lg,
+    marginBottom: SPACING.md,
+  },
+  // Warm gradient backdrop for the hero zone — sunrise wash behind the gauge
+  heroGradientBg: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: RADIUS['2xl'],
+  },
+  heroGaugeWrap: {
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.lg,
+  },
+  // Label stack sits below the arc — no overlap with the gauge
+  heroLabelStack: {
+    alignItems: 'center',
     marginTop: SPACING.xs,
+  },
+  // Pace-aware Manglish sub-line above the arc — the "alive" copy device
+  heroGaugePaceLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary, // overridden inline to paceColor so it's always readable
+    textTransform: 'lowercase',
+    letterSpacing: 0.1,
+    marginBottom: SPACING.md,
+    textAlign: 'center',
+  },
+  // Number wrapper inside HalfGauge — lifted into the bowl of the arc
+  heroGaugeCenterWrap: {
+    alignItems: 'center',
+    paddingBottom: SPACING.lg,
+  },
+  heroGaugeAmount: {
+    fontSize: 52,
+    fontWeight: TYPOGRAPHY.weight.regular as any,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+    letterSpacing: -0.5,
+    lineHeight: 56,
+  },
+  heroGaugePrefix: {
+    fontSize: 23,
+    fontWeight: TYPOGRAPHY.weight.regular as any,
+    color: C.textSecondary,
+    letterSpacing: 0,
+  },
+  heroGaugeSub: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+    marginTop: 2,
+    letterSpacing: 0.1,
+    textTransform: 'lowercase',
+  },
+  // Trust line — "after RMx bills + RMy savings"
+  heroTrustLine: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    marginTop: 4,
+    letterSpacing: 0.05,
+    textAlign: 'center',
     fontVariant: ['tabular-nums'] as any,
   },
-  heroV2Prefix: {
-    fontSize: 22,
-    fontWeight: TYPOGRAPHY.weight.medium,
+  // "resets tomorrow" — small, muted temporal anchor
+  heroResetsTomorrow: {
+    fontSize: 11,
     color: C.textMuted,
+    marginTop: 3,
+    letterSpacing: 0.1,
+    textAlign: 'center',
   },
-  heroV2Int: {
+  // "how we got this" info tap
+  heroInfoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+  },
+  heroInfoBtnText: {
+    fontSize: 11,
+    color: C.bronze,
+    letterSpacing: 0.1,
+  },
+  // Gold glow bloom — sits behind the gauge, centered
+  heroGlowBloom: {
+    position: 'absolute',
+    width: 220,
+    height: 120,
+    top: SPACING.lg,
+    borderRadius: 110,
+    backgroundColor: withAlpha(C.gold, C === CALM_DARK ? 0.22 : 0.18),
+    alignSelf: 'center',
+  },
+  // Progress bar — thin version below captions (still used by playbook hero)
+  heroTrackV3: {
+    height: 4,
+    backgroundColor: withAlpha(C.textMuted, 0.10),
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+    marginTop: SPACING.sm,
+  },
+  heroFillV3: {
+    height: 4,
+    borderRadius: RADIUS.full,
+  },
+  heroCaptionV3: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  heroStatusCaptionV3: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontVariant: ['tabular-nums'] as any,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
+  heroBigAmountV3: {
+    marginTop: SPACING.sm,
     fontSize: 48,
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
     letterSpacing: -1,
+    fontVariant: ['tabular-nums'] as any,
   },
-  heroV2Sub: {
+  heroBigPrefixV3: {
+    fontSize: 22,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+  },
+
+  // ─── Category rows V3 (reference: avatar list) ───
+  categoriesWrapV3: {
+    marginBottom: SPACING.lg,
+  },
+  categoriesHeaderV3: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+  },
+  categoriesHeaderTextV3: {
+    fontSize: 11,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  categoriesCountV3: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.accent,
+    overflow: 'hidden',
+    backgroundColor: withAlpha(C.accent, 0.1),
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+  },
+  categoriesCardV3: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: C === CALM_DARK ? C.border : withAlpha(C.bronze, 0.14),
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
+  },
+  catRowV3: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingLeft: SPACING.xs,
+    paddingRight: SPACING.md,
+    paddingVertical: SPACING.lg,
+    minHeight: 80,
+    backgroundColor: C.surface,
+  },
+  catAvatarV3: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catRowMidV3: {
+    flex: 1,
+  },
+  catRowNameV3: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    flexShrink: 1,
+  },
+  catRowSubV3: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+    marginTop: 2,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  catRowRightV3: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontVariant: ['tabular-nums'] as any,
+  },
+  catRowRightLabelV3: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.regular,
+    color: C.textMuted,
+  },
+  catRowDividerV3: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+    marginLeft: 52 + SPACING.md + SPACING.md,
+  },
+
+  // ─── Playbook list (reuses heroCardV3 + catRowV3 anatomy) ───
+  pbHeroCountV3: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+    fontVariant: ['tabular-nums'] as any,
+    textTransform: 'lowercase',
+  },
+  pbHeroSubV3: {
     marginTop: SPACING.xs,
     fontSize: TYPOGRAPHY.size.sm,
     color: C.textSecondary,
     fontWeight: TYPOGRAPHY.weight.medium,
+    fontVariant: ['tabular-nums'] as any,
   },
-  heroV2TrackWrap: {
-    marginTop: SPACING.lg,
-  },
-  heroV2Track: {
-    height: 8,
-    backgroundColor: withAlpha(C.textMuted, 0.12),
-    borderRadius: 4,
-    overflow: 'visible',
-    position: 'relative',
-  },
-  heroV2Fill: {
-    height: 8,
-    borderRadius: 4,
-    position: 'absolute',
-    left: 0,
-    top: 0,
-  },
-  heroV2Marker: {
-    position: 'absolute',
-    top: -3,
-    width: 2,
-    height: 14,
-    backgroundColor: withAlpha(C.textPrimary, 0.35),
-    borderRadius: 1,
-    zIndex: 2,
-  },
-  heroV2TrackMeta: {
+  pbHeroMetaRowV3: {
     marginTop: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  heroV2TrackMetaText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  heroV2PaceChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
-  },
-  heroV2PaceChipText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    textTransform: 'lowercase',
-  },
-  heroV2Footer: {
-    marginTop: SPACING.md,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: SPACING.sm,
   },
-  heroV2FooterText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-
-  // Quick actions row (Wallet-style outline buttons)
-  actionsRowV2: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.lg,
-  },
-  actionBtnV2: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  actionBtnV2Label: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-
-  // Budget groups wrapper
-  budgetGroupsWrap: {
-    gap: SPACING.lg,
-  },
-
-  // Section — editorial groupings, no card wrapper
-  sectionV2: {
-    marginBottom: SPACING.md,
-  },
-  sectionHeaderV2: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-    paddingHorizontal: SPACING.xs,
-  },
-  sectionIconDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  sectionTitleV2: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
-    flex: 1,
-    textTransform: 'lowercase',
-  },
-  sectionCountV2: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-  },
-  sectionCardV2: {
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
-    overflow: 'hidden',
-  },
-
-  // Budget row V2
-  budgetRowV2: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: SPACING.md,
-    gap: SPACING.md,
-  },
-  iconCircleV2: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  budgetContentV2: {
-    flex: 1,
-    minWidth: 0,
-  },
-  budgetHeaderRowV2: {
+  // Two-line playbook row layout (line1 = name+amount, line2 = meta+percent)
+  pbRowLineV3: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    marginBottom: SPACING.xs,
     gap: SPACING.sm,
   },
-  budgetNameV2: {
-    fontSize: TYPOGRAPHY.size.base,
+  pbRowAmountV3: {
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
-    textTransform: 'lowercase',
+    fontVariant: ['tabular-nums'] as any,
+    flexShrink: 0,
+  },
+  pbRowPercentV3: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontVariant: ['tabular-nums'] as any,
+    flexShrink: 0,
+  },
+  pbRowFlexV3: {
     flex: 1,
+    marginRight: SPACING.sm,
   },
-  budgetAmountsV2: {
-    fontVariant: ['tabular-nums'] as any,
-  },
-  budgetSpentV2: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  budgetAllocV2: {
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.regular,
-  },
-  barTrackV2: {
-    height: 6,
-    backgroundColor: withAlpha(C.textMuted, 0.12),
-    borderRadius: 3,
-    marginBottom: SPACING.xs,
-    position: 'relative',
-    overflow: 'visible',
-  },
-  barFillV2: {
-    height: 6,
-    borderRadius: 3,
-  },
-  budgetMetaRowV2: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: SPACING.sm,
-  },
-  budgetMetaTextV2: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    flex: 1,
-  },
-  budgetPercentV2: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  rolloverTextV2: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.bronze,
-    fontStyle: 'italic',
-    marginTop: 4,
-  },
-  dividerV2: {
-    height: 1,
-    backgroundColor: C.border,
-    marginHorizontal: SPACING.md,
-  },
-
-  // ─── Runway narrative hero ───
-  runwayEyebrow: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-  },
-  runwayNarrative: {
-    marginTop: 6,
-    fontSize: 28,
-    lineHeight: 36,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    letterSpacing: -0.5,
-  },
-  runwayHighlight: {
-    fontWeight: TYPOGRAPHY.weight.bold,
-  },
-
-  // ─── AI callout nested in hero ───
-  aiCallout: {
-    marginTop: SPACING.xl,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    backgroundColor: withAlpha(C.accent, 0.06),
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.15),
-  },
-  aiCalloutHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: SPACING.sm,
-  },
-  aiCalloutBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    backgroundColor: withAlpha(C.accent, 0.15),
-    borderRadius: RADIUS.full,
-  },
-  aiCalloutBadgeText: {
-    fontSize: 10,
-    color: C.accent,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  aiCalloutDailyLine: {
-    fontVariant: ['tabular-nums'] as any,
-  },
-  aiCalloutDailyPrefix: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-  },
-  aiCalloutDailyInt: {
-    fontSize: 22,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-  },
-  aiCalloutDailyPerDay: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-  },
-  aiCalloutReason: {
-    marginTop: 4,
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textSecondary,
-    lineHeight: 18,
-  },
-
-  // ─── Smart daily inline + Ask Echo CTA ───
-  smartDailyInline: {
-    marginTop: SPACING.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  smartDailyInlineText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  smartDailyInlineLabel: {
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-  },
-  smartDailyInlineAmount: {
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  askEchoBtn: {
-    marginTop: SPACING.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md + 2,
-    paddingHorizontal: SPACING.lg,
-    backgroundColor: C.accent,
-    borderRadius: RADIUS.full,
-  },
-  askEchoBtnText: {
-    color: C.onAccent,
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    textTransform: 'lowercase',
-    letterSpacing: 0.3,
+  pbRowClosedV3: {
+    opacity: 0.85,
   },
 
   // ─── Bills this week strip ───
@@ -3606,577 +3762,155 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: SPACING.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm + 2,
-    paddingVertical: SPACING.sm + 2,
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
-    backgroundColor: withAlpha(C.accent, 0.06),
-    borderRadius: RADIUS.md,
-  },
-  goalStripIcon: {
-    width: 22,
-    alignItems: 'center',
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.xs),
   },
   goalStripContent: {
     flex: 1,
     minWidth: 0,
   },
-  goalStripHeader: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: SPACING.sm,
-    marginBottom: 6,
+  goalStripEyebrow: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 1,
   },
   goalStripName: {
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     textTransform: 'lowercase',
-    flex: 1,
   },
   goalStripAmount: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  goalStripBarTrack: {
-    height: 4,
-    backgroundColor: withAlpha(C.textMuted, 0.15),
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  goalStripBarFill: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: C.accent,
-  },
-
-  // ─── Echo CTA (collapsed state) ───
-  echoCTA: {
-    marginTop: SPACING.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.22),
-  },
-  echoCTALeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm + 2,
-    flex: 1,
-    minWidth: 0,
-  },
-  echoCTAIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: C.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  echoCTATextCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  echoCTATitle: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    textTransform: 'lowercase',
-    letterSpacing: -0.2,
-  },
-  echoCTASubtitle: {
     marginTop: 1,
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
+    fontVariant: ['tabular-nums'] as any,
   },
-  echoCTAArrow: {
+  goalStripPctWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 2,
   },
-  livePulseDotBig: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: C.accent,
-  },
-
-  // ─── Echo expanded panel ───
-  echoPanel: {
-    marginTop: SPACING.xl,
-    paddingVertical: SPACING.lg,
-    paddingHorizontal: SPACING.md,
-    backgroundColor: withAlpha(C.accent, 0.06),
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.2),
-  },
-  echoPanelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
-  },
-  echoPanelTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    lineHeight: 24,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    letterSpacing: -0.3,
-    textTransform: 'lowercase',
-  },
-  echoPanelSubtitle: {
-    marginTop: 4,
+  goalStripPct: {
     fontSize: TYPOGRAPHY.size.sm,
-    lineHeight: 20,
-    color: C.textSecondary,
-  },
-  echoPanelChips: {
-    marginTop: SPACING.md,
-    flexDirection: 'row',
-    gap: SPACING.xs,
-    flexWrap: 'wrap',
-  },
-  echoPanelChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: SPACING.xs + 2,
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.25),
-    maxWidth: '100%',
-  },
-  echoPanelChipText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.accent,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    flexShrink: 1,
-  },
-
-  // ─── Echo collapsed pill (legacy, unused but kept) ───
-  echoCollapsedPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: SPACING.sm + 2,
-    paddingHorizontal: SPACING.md,
-    backgroundColor: withAlpha(C.accent, 0.08),
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.22),
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-  },
-  echoCollapsedText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
-    color: C.accent,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    textTransform: 'lowercase',
-  },
-
-  // ─── Echo expanded card ───
-  echoExpandedCard: {
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    backgroundColor: withAlpha(C.accent, 0.05),
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.18),
-  },
-  echoExpandedHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-
-  // ─── Echo insight eyebrow + chips ───
-  insightEyebrow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  livePulseDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: C.accent,
-  },
-  insightEyebrowText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.accent,
     fontWeight: TYPOGRAPHY.weight.bold,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-  },
-  insightTitle: {
-    fontSize: 26,
-    lineHeight: 34,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    letterSpacing: -0.5,
-    textTransform: 'lowercase',
-  },
-  insightSubtitle: {
-    marginTop: 8,
-    fontSize: TYPOGRAPHY.size.sm,
-    lineHeight: 22,
-    color: C.textSecondary,
-  },
-  promptChipsRow: {
-    marginTop: SPACING.lg,
-    flexDirection: 'row',
-    gap: SPACING.xs,
-    flexWrap: 'wrap',
-  },
-  promptChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: SPACING.xs + 2,
-    backgroundColor: withAlpha(C.accent, 0.08),
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.2),
-    maxWidth: '100%',
-  },
-  promptChipText: {
-    fontSize: TYPOGRAPHY.size.xs,
     color: C.accent,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    flexShrink: 1,
-  },
-
-  // Month timeline bar
-  monthBarWrap: {
-    marginTop: SPACING.xl,
-    marginBottom: SPACING.xs,
-  },
-  monthBar: {
-    height: 6,
-    backgroundColor: withAlpha(C.textMuted, 0.1),
-    borderRadius: 3,
-    position: 'relative',
-    overflow: 'visible',
-  },
-  monthBarElapsed: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: withAlpha(C.textPrimary, 0.15),
-    position: 'absolute',
-    left: 0,
-    top: 0,
-  },
-  monthBarTodayMark: {
-    position: 'absolute',
-    top: -4,
-    width: 3,
-    height: 14,
-    backgroundColor: C.textPrimary,
-    borderRadius: 1.5,
-    marginLeft: -1.5,
-  },
-  monthBarRunwayMark: {
-    position: 'absolute',
-    top: -7,
-    width: 2,
-    height: 20,
-    borderRadius: 1,
-    marginLeft: -1,
-    opacity: 0.9,
-  },
-  monthBarLabels: {
-    marginTop: SPACING.sm,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  monthBarLabelText: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    textTransform: 'lowercase',
-  },
-
-  // 3-tile stat strip
-  statStrip: {
-    marginTop: SPACING.xl,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-  },
-  statTile: {
-    flex: 1,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-  },
-  statTileDivider: {
-    width: 1,
-    backgroundColor: C.border,
-    marginHorizontal: SPACING.sm,
-  },
-  statTileLabel: {
-    fontSize: 10,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  statTileValue: {
-    marginTop: 4,
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textPrimary,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    textTransform: 'lowercase',
     fontVariant: ['tabular-nums'] as any,
   },
 
-  // Monarch-style time-of-month tick on budget row progress bars
-  barTickV2: {
-    position: 'absolute',
-    top: -2,
-    width: 2,
-    height: 10,
-    backgroundColor: withAlpha(C.textPrimary, 0.45),
-    borderRadius: 1,
-    marginLeft: -1,
-  },
-
-  // Swipe actions (Edit / Delete) — shown when swiping row left
-  swipeFill: {
-    width: 72,
-    alignSelf: 'stretch' as const,
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden' as const,
-  },
-  swipeInner: {
+  // ─── Math receipt sheet (how we got this) ───
+  mathOverlay: {
     flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  swipeEditColor: {
-    backgroundColor: C.accent,
+  mathKAV: {
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  swipeDeleteColor: {
-    backgroundColor: C.neutral,
-  },
-
-  // ─── Depth Card — the budget row ───
-  depthCard: {
-    flexDirection: 'row',
+  mathCard: {
     backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: C.border,
+    borderRadius: RADIUS['2xl'],
+    width: '88%',
+    maxWidth: 420,
+    padding: SPACING.xl,
+    ...(C === CALM_DARK
+      ? { borderWidth: 1, borderColor: C.border, ...SHADOWS.none }
+      : SHADOWS.lg),
   },
-  depthCardEdge: {
-    width: 4,
-    alignSelf: 'stretch',
+  mathTitle: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    marginBottom: SPACING.lg,
+    textTransform: 'lowercase',
   },
-  depthCardInner: {
-    flex: 1,
-    padding: SPACING.md,
+  mathRows: {
+    gap: SPACING.sm,
   },
-  depthCardTopRow: {
+  mathRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
     gap: SPACING.md,
   },
-  depthCardIdentity: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
+  mathRowLabel: {
     flex: 1,
-    minWidth: 0,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    lineHeight: 20,
   },
-  depthCardIconBg: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  depthCardNameCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  depthCardName: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    textTransform: 'lowercase',
-  },
-  depthCardBudgetOf: {
+  mathRowSub: {
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
     marginTop: 1,
   },
-  depthCardAmountCol: {
-    alignItems: 'flex-end',
-  },
-  depthCardSpentAmount: {
-    fontSize: 22,
-    fontWeight: TYPOGRAPHY.weight.bold,
+  mathRowAmount: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'] as any,
-    letterSpacing: -0.3,
+    flexShrink: 0,
   },
-  depthCardPercent: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    marginTop: 2,
-    fontVariant: ['tabular-nums'] as any,
+  mathDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+    marginVertical: SPACING.xs,
   },
-  depthCardBarTrack: {
-    height: 6,
-    backgroundColor: withAlpha(C.textMuted, 0.12),
-    borderRadius: 3,
-    position: 'relative',
-    overflow: 'visible',
-    marginBottom: SPACING.sm,
-  },
-  depthCardBarFill: {
-    height: 6,
-    borderRadius: 3,
-  },
-  depthCardBarTick: {
-    position: 'absolute',
-    top: -3,
-    width: 2,
-    height: 12,
-    backgroundColor: withAlpha(C.textPrimary, 0.5),
-    borderRadius: 1,
-    marginLeft: -1,
-  },
-  depthCardFooter: {
-    flexDirection: 'row',
+  mathCloseBtn: {
+    marginTop: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.textPrimary, 0.06),
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: SPACING.sm,
   },
-  depthCardFooterText: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.size.xs,
+  mathCloseBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  depthCardFooterEmphasis: {
-    fontWeight: TYPOGRAPHY.weight.bold,
-  },
-  depthCardDailyHint: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  depthCardSpacer: {
-    height: SPACING.sm,
   },
 
-  // ─── Editorial Row (bordered card, typography-first) ───
-  editorialRow: {
-    paddingVertical: SPACING.lg,
-    paddingHorizontal: SPACING.lg,
-    backgroundColor: C.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  editorialEyebrow: {
+  // ─── "Kept" reward note — gentle olive warm line, not a celebration ───
+  heroKeptNote: {
+    marginTop: SPACING.lg,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: SPACING.sm,
-    marginBottom: SPACING.xs,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: withAlpha(C.accent, 0.06),
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.15),
   },
-  editorialDot: {
-    width: 6,
-    height: 6,
+  heroKeptDot: {
+    width: 5,
+    height: 5,
     borderRadius: 3,
+    marginTop: 5,
+    flexShrink: 0,
   },
-  editorialCategoryName: {
+  heroKeptText: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textSecondary,
+    lineHeight: 18,
+  },
+  heroKeptLabel: {
     fontWeight: TYPOGRAPHY.weight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
   },
-  editorialPercent: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    fontVariant: ['tabular-nums'] as any,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  editorialMainLine: {
-    marginTop: 2,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  editorialSpent: {
-    fontSize: 28,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    letterSpacing: -0.7,
-  },
-  editorialOfLabel: {
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.regular,
-  },
-  editorialAllocated: {
-    fontSize: TYPOGRAPHY.size.base,
-    color: C.textSecondary,
-    fontWeight: TYPOGRAPHY.weight.medium,
-  },
-  editorialBar: {
-    marginTop: SPACING.md,
-    height: 2,
-    backgroundColor: withAlpha(C.textMuted, 0.15),
-    position: 'relative',
-    overflow: 'visible',
-  },
-  editorialBarFill: {
-    height: 2,
-  },
-  editorialBarTick: {
-    position: 'absolute',
-    top: -3,
-    width: 1,
-    height: 8,
-    backgroundColor: withAlpha(C.textPrimary, 0.55),
-    marginLeft: -0.5,
-  },
-  editorialCaption: {
-    marginTop: SPACING.sm,
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  editorialRollover: {
-    marginTop: SPACING.xs,
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.bronze,
-    fontStyle: 'italic',
-  },
-  editorialHairline: {
-    height: SPACING.sm,
-  },
+
 });
 
 export default BudgetPlanning;

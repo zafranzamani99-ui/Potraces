@@ -148,7 +148,7 @@ For each finding, write:
 - **How it breaks**: concrete scenario (e.g., "User adds RM 0.10 + RM 0.20, displayed total is RM 0.30000000000000004")
 - **Fix**: specific code change
 
-Write findings to: docs/audit/DATA_INTEGRITY_AUDIT.md
+Write findings to: audit/DATA_INTEGRITY_AUDIT.md
 ```
 
 ---
@@ -195,7 +195,7 @@ AUDIT THESE FILES:
 
 10. **Error messages** — do any error messages expose internal state, stack traces, user IDs, or database structure to the user?
 
-Write findings to: docs/audit/SECURITY_AUDIT.md
+Write findings to: audit/SECURITY_AUDIT.md
 ```
 
 ---
@@ -274,7 +274,7 @@ AUDIT THESE FILES:
 
 22. **Clipboard / sensitive data exposure** — can the user copy wallet balances, debt amounts, phone numbers? Does copied data persist in system clipboard accessible to other apps? Is there any clipboard clearing?
 
-Write findings to: docs/audit/EDGE_CASES_AUDIT.md
+Write findings to: audit/EDGE_CASES_AUDIT.md
 ```
 
 ---
@@ -332,7 +332,7 @@ AUDIT THESE FILES:
 
 12. **Product cost vs selling price** — margin calculation needs both. What if cost is not set? Is it treated as 0 (100% margin) or null (margin not shown)? Inconsistency here misleads the user.
 
-Write findings to: docs/audit/BUSINESS_LOGIC_AUDIT.md
+Write findings to: audit/BUSINESS_LOGIC_AUDIT.md
 ```
 
 ---
@@ -418,7 +418,7 @@ AUDIT THESE FILES:
 
 7. **Feature flag / premium state transitions** — user has premium → creates premium-only data (extra wallets, custom categories) → premium expires → what happens to that data? Is it hidden? Deleted? Accessible read-only? Can the user edit premium data after downgrade?
 
-Write findings to: docs/audit/STATE_LIFECYCLE_AUDIT.md
+Write findings to: audit/STATE_LIFECYCLE_AUDIT.md
 ```
 
 ---
@@ -498,7 +498,7 @@ AUDIT THESE FILES:
 
 12. **Supabase realtime subscription cleanup** — are realtime subscriptions unsubscribed on unmount/sign-out? A leaked subscription means: memory leak, stale updates, and potentially receiving another user's data after sign-out/sign-in.
 
-Write findings to: docs/audit/EXTERNAL_SERVICES_AUDIT.md
+Write findings to: audit/EXTERNAL_SERVICES_AUDIT.md
 ```
 
 ---
@@ -550,7 +550,7 @@ AUDIT APPROACH:
 - src/screens/seller/Customers.tsx vs src/screens/seller/OrderList.tsx (customer totals)
 - src/screens/stall/Dashboard.tsx vs src/screens/stall/SessionSummary.tsx vs src/screens/stall/SessionHistory.tsx
 
-Write findings to: docs/audit/NUMBERS_CONSISTENCY_AUDIT.md
+Write findings to: audit/NUMBERS_CONSISTENCY_AUDIT.md
 ```
 
 ---
@@ -616,7 +616,7 @@ AUDIT THESE FILES:
     - Is there a timeout with helpful message?
     - If the order submits but network drops before response — is the order saved? Duplicate submitted?
 
-Write findings to: docs/audit/OFFLINE_RESILIENCE_AUDIT.md
+Write findings to: audit/OFFLINE_RESILIENCE_AUDIT.md
 ```
 
 ---
@@ -625,24 +625,24 @@ Write findings to: docs/audit/OFFLINE_RESILIENCE_AUDIT.md
 
 **Batch 1 (parallel):**
 ```
-Stream 1 — Data Integrity & Financial Safety      → docs/audit/DATA_INTEGRITY_AUDIT.md
-Stream 2 — Auth, Security & Data Isolation         → docs/audit/SECURITY_AUDIT.md
-Stream 3 — Edge Cases, Crashes & Defensive Gaps    → docs/audit/EDGE_CASES_AUDIT.md
-Stream 4 — Logic & Business Rule Correctness       → docs/audit/BUSINESS_LOGIC_AUDIT.md
+Stream 1 — Data Integrity & Financial Safety      → audit/DATA_INTEGRITY_AUDIT.md
+Stream 2 — Auth, Security & Data Isolation         → audit/SECURITY_AUDIT.md
+Stream 3 — Edge Cases, Crashes & Defensive Gaps    → audit/EDGE_CASES_AUDIT.md
+Stream 4 — Logic & Business Rule Correctness       → audit/BUSINESS_LOGIC_AUDIT.md
 ```
 
 **Batch 2 (parallel, after batch 1):**
 ```
-Stream 5 — State Machine & Lifecycle Integrity     → docs/audit/STATE_LIFECYCLE_AUDIT.md
-Stream 6 — AI & External Service Trust             → docs/audit/EXTERNAL_SERVICES_AUDIT.md
-Stream 7 — Cross-Store Numbers Must Match           → docs/audit/NUMBERS_CONSISTENCY_AUDIT.md
-Stream 8 — Offline Resilience & Recovery           → docs/audit/OFFLINE_RESILIENCE_AUDIT.md
+Stream 5 — State Machine & Lifecycle Integrity     → audit/STATE_LIFECYCLE_AUDIT.md
+Stream 6 — AI & External Service Trust             → audit/EXTERNAL_SERVICES_AUDIT.md
+Stream 7 — Cross-Store Numbers Must Match           → audit/NUMBERS_CONSISTENCY_AUDIT.md
+Stream 8 — Offline Resilience & Recovery           → audit/OFFLINE_RESILIENCE_AUDIT.md
 ```
 
 **After all 8 — consolidation pass:**
 ```
-Read ALL 8 audit files in docs/audit/.
-Create docs/audit/CONSOLIDATED_FINDINGS.md:
+Read ALL 8 audit files in audit/.
+Create audit/CONSOLIDATED_FINDINGS.md:
 1. Deduplicate findings across all 8 reports (same bug found by multiple streams)
 2. Rank ALL unique findings: CRITICAL → HIGH → MEDIUM → LOW
 3. For CRITICAL and HIGH: add blast radius estimate — how many users? how bad?

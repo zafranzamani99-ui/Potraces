@@ -18,6 +18,7 @@ import { useT } from '../../i18n';
 import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { explainStallHistory } from '../../utils/explainStallHistory';
+import { lightTap } from '../../services/haptics';
 import ModeToggle from '../../components/common/ModeToggle';
 import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
 import OfflineBanner from '../../components/common/OfflineBanner';
@@ -58,6 +59,9 @@ const StallDashboard: React.FC = () => {
     activeSessionId,
     getActiveSession,
     getLifetimeStats,
+    preOrders,
+    pauseSession,
+    resumeSession,
   } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const navigation = useNavigation<any>();
@@ -65,6 +69,28 @@ const StallDashboard: React.FC = () => {
 
   const activeSession = getActiveSession();
   const hasActiveSession = !!activeSession;
+  const pendingPreOrders = useMemo(() => preOrders.filter((p) => p.status === 'pending').length, [preOrders]);
+
+  const renderPreOrdersLink = () => (
+    <TouchableOpacity
+      style={styles.preOrderRow}
+      onPress={() => navigation.getParent()?.navigate('StallPreOrders')}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${t.stall.preOrdersCard}. ${pendingPreOrders} to collect.`}
+    >
+      <View style={[styles.preOrderIcon, { backgroundColor: withAlpha(C.bronze, 0.12) }]}>
+        <Feather name="clipboard" size={16} color={C.bronze} />
+      </View>
+      <Text style={styles.preOrderLabel}>{t.stall.preOrdersCard}</Text>
+      {pendingPreOrders > 0 && (
+        <View style={styles.preOrderBadge}>
+          <Text style={styles.preOrderBadgeText}>{pendingPreOrders}</Text>
+        </View>
+      )}
+      <Feather name="chevron-right" size={16} color={C.textMuted} />
+    </TouchableOpacity>
+  );
 
   // Pull-to-refresh — no-op revalidation (touches stallStore to re-derive)
   const [refreshing, setRefreshing] = useState(false);
@@ -146,13 +172,18 @@ const StallDashboard: React.FC = () => {
         >
           <ModeToggle />
           <OfflineBanner />
-          {/* Selling now indicator */}
-          <View style={styles.sellingNowRow}>
-            <Animated.View
-              style={[styles.pulsingDot, { opacity: pulseAnim }]}
-            />
-            <Text style={styles.sellingNowLabel}>{t.stallDashboard.sellingNow}</Text>
-          </View>
+          {/* Selling now / paused indicator */}
+          {activeSession.paused ? (
+            <View style={styles.sellingNowRow}>
+              <View style={[styles.pulsingDot, { backgroundColor: C.bronze, opacity: 1 }]} />
+              <Text style={[styles.sellingNowLabel, { color: C.bronze }]}>{t.stall.pausedLabel}</Text>
+            </View>
+          ) : (
+            <View style={styles.sellingNowRow}>
+              <Animated.View style={[styles.pulsingDot, { opacity: pulseAnim }]} />
+              <Text style={styles.sellingNowLabel}>{t.stallDashboard.sellingNow}</Text>
+            </View>
+          )}
 
           {/* Session name */}
           {activeSession.name ? (
@@ -214,17 +245,32 @@ const StallDashboard: React.FC = () => {
             </View>
           )}
 
-          {/* Close session — outlined button instead of subtle link */}
-          <TouchableOpacity
-            style={styles.closeSessionButton}
-            onPress={() => navigation.getParent()?.navigate('StallCloseSession')}
-            accessibilityRole="button"
-            accessibilityLabel="Close current selling session"
-            activeOpacity={0.7}
-          >
-            <Feather name="square" size={16} color={C.textSecondary} />
-            <Text style={styles.closeSessionText}>{t.stallDashboard.closeSession}</Text>
-          </TouchableOpacity>
+          {/* Pre-orders */}
+          {renderPreOrdersLink()}
+
+          {/* Pause + close */}
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={styles.pauseButton}
+              onPress={() => { lightTap(); activeSession.paused ? resumeSession() : pauseSession(); }}
+              accessibilityRole="button"
+              accessibilityLabel={activeSession.paused ? t.stall.resumeSession : t.stall.pauseSession}
+              activeOpacity={0.7}
+            >
+              <Feather name={activeSession.paused ? 'play' : 'pause'} size={16} color={C.bronze} />
+              <Text style={styles.pauseText}>{activeSession.paused ? t.stall.resumeSession : t.stall.pauseSession}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.closeSessionButton}
+              onPress={() => navigation.getParent()?.navigate('StallCloseSession')}
+              accessibilityRole="button"
+              accessibilityLabel="Close current selling session"
+              activeOpacity={0.7}
+            >
+              <Feather name="square" size={16} color={C.textSecondary} />
+              <Text style={styles.closeSessionText}>{t.stallDashboard.closeSession}</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </View>
     );
@@ -266,6 +312,11 @@ const StallDashboard: React.FC = () => {
             <Text style={styles.startButtonText}>{t.stallDashboard.startSelling}</Text>
           </TouchableOpacity>
         </Animated.View>
+
+        {/* Pre-orders */}
+        <View style={styles.preOrderWrap}>
+          {renderPreOrdersLink()}
+        </View>
 
         {/* Lifetime stats */}
         {lifetimeStats.totalSessions > 0 && (
@@ -378,6 +429,74 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.onAccent,
   },
+
+  // ─── Pre-orders link + action row ──────────────────────────
+  preOrderWrap: {
+    marginBottom: SPACING.xl,
+  },
+  preOrderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    minHeight: 56,
+    marginTop: SPACING.lg,
+  },
+  preOrderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  preOrderLabel: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  preOrderBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.bronze,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  preOrderBadgeText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.onAccent,
+    fontVariant: ['tabular-nums'],
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.lg,
+  },
+  pauseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    flex: 1,
+    minHeight: 48,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.3),
+    backgroundColor: withAlpha(C.bronze, 0.06),
+  },
+  pauseText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+  },
+
   lifetimeSection: {
     marginBottom: SPACING.xl,
   },
@@ -536,6 +655,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textSecondary,
   },
   closeSessionButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

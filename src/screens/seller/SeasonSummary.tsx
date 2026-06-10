@@ -1181,7 +1181,7 @@ const SeasonSummary: React.FC = () => {
               value={renameValue}
               onChangeText={setRenameValue}
               placeholder={t.seller.seasonNamePlaceholder}
-              placeholderTextColor={C.textSecondary}
+              placeholderTextColor={withAlpha(C.textMuted, 0.6)}
               autoFocus
               selectTextOnFocus
               keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -1225,7 +1225,7 @@ const SeasonSummary: React.FC = () => {
               value={targetInput}
               onChangeText={setTargetInput}
               placeholder={t.seller.targetPlaceholder}
-              placeholderTextColor={C.textSecondary}
+              placeholderTextColor={withAlpha(C.textMuted, 0.6)}
               keyboardType="numeric"
               autoFocus
               selectTextOnFocus
@@ -2008,6 +2008,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   renameModalInput: {
     fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
+    fontWeight: TYPOGRAPHY.weight.medium,
     backgroundColor: C.background,
     borderRadius: RADIUS.md,
     padding: SPACING.md,

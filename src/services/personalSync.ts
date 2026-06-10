@@ -47,6 +47,25 @@ let _sessionExpired = false;
 export function isPersonalSessionExpired(): boolean { return _sessionExpired; }
 export function clearPersonalSessionExpired(): void { _sessionExpired = false; }
 
+// A push that did not fully succeed must NOT advance the sync clock or reconcile.
+let _syncIncomplete = false;
+export function isPersonalSyncIncomplete(): boolean { return _syncIncomplete; }
+// Set when a different account signs in on this device while local data exists.
+let _accountMismatch = false;
+export function isPersonalAccountMismatch(): boolean { return _accountMismatch; }
+export function clearPersonalAccountMismatch(): void { _accountMismatch = false; }
+
+function hasLocalPersonalData(): boolean {
+  const p = usePersonalStore.getState();
+  const w = useWalletStore.getState();
+  const d = useDebtStore.getState();
+  const s = useSavingsStore.getState();
+  return (
+    p.transactions.length + p.subscriptions.length + p.budgets.length + p.goals.length +
+    w.wallets.length + d.debts.length + s.accounts.length
+  ) > 0;
+}
+
 async function getSession() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
@@ -462,34 +481,28 @@ async function deleteTombstones(
   return true;
 }
 
-async function upsertBatch(table: string, rows: any[]) {
-  if (rows.length === 0) return;
-  const { error } = await supabase.from(table).upsert(rows, { onConflict: 'user_id,local_id' });
-  if (error && __DEV__) console.warn(`[personalSync] upsert ${table} failed:`, error.message);
+async function upsertBatch(table: string, rows: any[]): Promise<boolean> {
+  if (rows.length === 0) return true;
+  // Chunk to stay under PostgREST request-body limits for heavy users.
+  const CHUNK = 500;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const slice = rows.slice(i, i + CHUNK);
+    const { error } = await supabase.from(table).upsert(slice, { onConflict: 'user_id,local_id' });
+    if (error) {
+      // Capture in production too — a swallowed push failure silently diverges devices.
+      console.warn(`[personalSync] upsert ${table} failed:`, error.message);
+      return false;
+    }
+  }
+  return true;
 }
 
-async function deleteMissing(
-  table: string,
-  userId: string,
-  localIds: Set<string>,
-  syncStart: string,
-) {
-  const { data: remote } = await supabase
-    .from(table)
-    .select('local_id, updated_at')
-    .eq('user_id', userId);
-  if (!remote) return;
-  const toDelete = (remote as any[])
-    .filter((r) => r.local_id && !localIds.has(r.local_id) && r.updated_at < syncStart)
-    .map((r) => r.local_id);
-  if (toDelete.length === 0) return;
-  const { error } = await supabase
-    .from(table)
-    .delete()
-    .eq('user_id', userId)
-    .in('local_id', toDelete);
-  if (error && __DEV__) console.warn(`[personalSync] delete missing ${table} failed:`, error.message);
-}
+// NOTE: the old `deleteMissing` set-difference delete was REMOVED. It could
+// permanently delete another device's just-created cloud rows it simply hadn't
+// pulled yet (the #1 critical data-loss bug). Remote deletes are now driven
+// EXCLUSIVELY by explicit tombstones (deleteTombstones). Propagating a delete to
+// a device that still holds the row locally will be restored via an authoritative
+// cloud tombstone table (audit doc 05, later phase).
 
 // ─── Pull all + merge into stores ─────────────────────────────────────────────
 async function pullAll(userId: string): Promise<boolean> {
@@ -569,14 +582,75 @@ async function pullAll(userId: string): Promise<boolean> {
     // to prevent resurrecting items that were deleted locally.
     const allDeletedIds = durableTombstones;
 
-    const mergeById = <T extends { id: string; updatedAt?: Date }>(local: T[], remote: T[]): T[] => {
+    const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+    const newer = (a: any, b: any) =>
+      (b.updatedAt?.getTime?.() ?? 0) >= (a.updatedAt?.getTime?.() ?? 0) ? b : a;
+
+    // Union nested money arrays (payments / contributions / snapshots) by stable
+    // child id so a concurrent edit on another device can NEVER silently drop one
+    // (whole-row LWW would). On a genuine id conflict keep the copy with the
+    // longer editLog (more edits = newer).
+    const childUnion = <C extends { id: string; editLog?: any[] }>(a: C[] = [], b: C[] = []): C[] => {
+      const m = new Map<string, C>();
+      for (const x of a) m.set(x.id, x);
+      for (const x of b) {
+        const ex = m.get(x.id);
+        if (!ex || (x.editLog?.length ?? 0) > (ex.editLog?.length ?? 0)) m.set(x.id, x);
+      }
+      return Array.from(m.values());
+    };
+    // Append-only-safe merges: scalar fields by LWW, children UNIONED, derived
+    // totals recomputed from the merged children (matches the store formulas).
+    const mergeDebt = (l: any, r: any) => {
+      const base = newer(l, r);
+      const payments = childUnion(l.payments ?? [], r.payments ?? []);
+      const paidAmount = round2(Math.min(base.totalAmount, payments.reduce((s: number, p: any) => s + (p.amount || 0), 0)));
+      const status = paidAmount >= base.totalAmount ? 'settled' : paidAmount > 0 ? 'partial' : 'pending';
+      return { ...base, payments, paidAmount, status };
+    };
+    const mergeGoal = (l: any, r: any) => {
+      const base = newer(l, r);
+      const contributions = childUnion(l.contributions ?? [], r.contributions ?? []);
+      const currentAmount = round2(contributions.reduce((s: number, c: any) => s + (c.amount || 0), 0));
+      return { ...base, contributions, currentAmount };
+    };
+    const mergeSavings = (l: any, r: any) => {
+      const base = newer(l, r);
+      const history = childUnion<any>(l.history ?? [], r.history ?? []);
+      let currentValue = base.currentValue;
+      if (history.length) {
+        const latest = history.reduce((a: any, b: any) =>
+          (new Date(b.date).getTime() > new Date(a.date).getTime() ? b : a));
+        currentValue = latest.value;
+      }
+      return { ...base, history, currentValue };
+    };
+
+    // skew-tolerant LWW: near-ties (within the window) fall back to a stable
+    // deterministic tiebreak (higher id wins) so a slightly-fast device clock
+    // can't silently invert which edit wins.
+    const SKEW_MS = 2000;
+    const remoteWinsScalar = (existing: any, r: any) => {
+      const re = r.updatedAt?.getTime?.() ?? 0;
+      const ex = existing.updatedAt?.getTime?.() ?? 0;
+      if (Math.abs(re - ex) <= SKEW_MS) return String(r.id) > String(existing.id);
+      return re > ex;
+    };
+
+    const mergeById = <T extends { id: string; updatedAt?: Date }>(
+      local: T[],
+      remote: T[],
+      mergeFn?: (l: T, r: T) => T,
+    ): T[] => {
       const map = new Map<string, T>();
       for (const l of local) map.set(l.id, l);
       for (const r of remote) {
         if (allDeletedIds.has(r.id)) continue;
         const existing = map.get(r.id);
-        if (!existing) map.set(r.id, r);
-        else if ((r.updatedAt?.getTime() ?? 0) > (existing.updatedAt?.getTime() ?? 0)) {
+        if (!existing) { map.set(r.id, r); continue; }
+        if (mergeFn) {
+          map.set(r.id, mergeFn(existing, r));
+        } else if (remoteWinsScalar(existing, r)) {
           map.set(r.id, r);
         }
       }
@@ -587,7 +661,7 @@ async function pullAll(userId: string): Promise<boolean> {
       transactions: mergeById(personalState.transactions, transactions.remote as any),
       subscriptions: mergeById(personalState.subscriptions, subscriptions.remote as any),
       budgets: mergeById(personalState.budgets, budgets.remote as any),
-      goals: mergeById(personalState.goals, goals.remote as any),
+      goals: mergeById(personalState.goals, goals.remote as any, mergeGoal as any),
     } as any);
 
     useWalletStore.setState({
@@ -596,7 +670,7 @@ async function pullAll(userId: string): Promise<boolean> {
     } as any);
 
     useDebtStore.setState({
-      debts: mergeById(debtState.debts, debts.remote as any),
+      debts: mergeById(debtState.debts, debts.remote as any, mergeDebt as any),
       splits: mergeById(debtState.splits as any, splits.remote as any) as any,
       contacts: mergeById(debtState.contacts as any, contacts.remote as any) as any,
     } as any);
@@ -606,7 +680,7 @@ async function pullAll(userId: string): Promise<boolean> {
     } as any);
 
     useSavingsStore.setState({
-      accounts: mergeById(savingsState.accounts, savings.remote as any),
+      accounts: mergeById(savingsState.accounts, savings.remote as any, mergeSavings as any),
     } as any);
 
     return true;
@@ -616,43 +690,8 @@ async function pullAll(userId: string): Promise<boolean> {
   }
 }
 
-interface LocalIdSnapshot {
-  transactions: Set<string>;
-  wallets: Set<string>;
-  transfers: Set<string>;
-  subscriptions: Set<string>;
-  budgets: Set<string>;
-  goals: Set<string>;
-  debts: Set<string>;
-  splits: Set<string>;
-  contacts: Set<string>;
-  savings: Set<string>;
-  receipts: Set<string>;
-}
-
-function captureLocalIds(): LocalIdSnapshot {
-  const p = usePersonalStore.getState();
-  const w = useWalletStore.getState();
-  const d = useDebtStore.getState();
-  const r = useReceiptStore.getState();
-  const s = useSavingsStore.getState();
-  return {
-    transactions: new Set(p.transactions.map((t) => t.id)),
-    wallets: new Set(w.wallets.map((x) => x.id)),
-    transfers: new Set((w.transfers ?? []).map((x) => x.id)),
-    subscriptions: new Set(p.subscriptions.map((x) => x.id)),
-    budgets: new Set(p.budgets.map((x) => x.id)),
-    goals: new Set(p.goals.map((x) => x.id)),
-    debts: new Set(d.debts.map((x) => x.id)),
-    splits: new Set(d.splits.map((x) => x.id)),
-    contacts: new Set(d.contacts.map((x) => x.id)),
-    savings: new Set(s.accounts.map((x) => x.id)),
-    receipts: new Set((r.receipts ?? []).map((x) => x.id)),
-  };
-}
-
 // ─── Push each table ──────────────────────────────────────────────────────────
-async function pushAll(userId: string, syncStart: string, snapshotIds?: LocalIdSnapshot) {
+async function pushAll(userId: string): Promise<boolean> {
   const p = usePersonalStore.getState();
   const w = useWalletStore.getState();
   const d = useDebtStore.getState();
@@ -677,8 +716,9 @@ async function pushAll(userId: string, syncStart: string, snapshotIds?: LocalIdS
     tombstones.map(([table, ids]) => deleteTombstones(table, userId, ids)),
   );
 
-  // 2) Upsert current state
-  await Promise.allSettled([
+  // 2) Upsert current state (chunked; track success). A swallowed push failure
+  //    must NOT advance the sync clock or trigger reconcile/tombstone-clear.
+  const upsertResults = await Promise.all([
     upsertBatch('personal_transactions', p.transactions.map((t) => txToRemote(userId, t))),
     upsertBatch('personal_wallets', w.wallets.map((x) => walletToRemote(userId, x))),
     upsertBatch('personal_wallet_transfers', (w.transfers ?? []).map((x) => transferToRemote(userId, x))),
@@ -691,48 +731,21 @@ async function pushAll(userId: string, syncStart: string, snapshotIds?: LocalIdS
     upsertBatch('personal_savings_accounts', s.accounts.map((x) => savingsToRemote(userId, x))),
     upsertBatch('personal_receipts', (r.receipts ?? []).map((x) => receiptToRemote(userId, x))),
   ]);
+  const allUpsertsSucceeded = upsertResults.every((ok) => ok);
 
-  // 3) Fallback "missing from local" delete — catches edits from other clients
-  //    that pushed rows we never saw locally. Only after first sync.
-  const lastSync = useSettingsStore.getState().lastPersonalSyncAt;
-  if (lastSync) {
-    const ids = snapshotIds ?? {
-      transactions: new Set(p.transactions.map((t) => t.id)),
-      wallets: new Set(w.wallets.map((x) => x.id)),
-      transfers: new Set((w.transfers ?? []).map((x) => x.id)),
-      subscriptions: new Set(p.subscriptions.map((x) => x.id)),
-      budgets: new Set(p.budgets.map((x) => x.id)),
-      goals: new Set(p.goals.map((x) => x.id)),
-      debts: new Set(d.debts.map((x) => x.id)),
-      splits: new Set(d.splits.map((x) => x.id)),
-      contacts: new Set(d.contacts.map((x) => x.id)),
-      savings: new Set(s.accounts.map((x) => x.id)),
-      receipts: new Set((r.receipts ?? []).map((x) => x.id)),
-    };
-    await Promise.allSettled([
-      deleteMissing('personal_transactions', userId, ids.transactions, syncStart),
-      deleteMissing('personal_wallets', userId, ids.wallets, syncStart),
-      deleteMissing('personal_wallet_transfers', userId, ids.transfers, syncStart),
-      deleteMissing('personal_subscriptions', userId, ids.subscriptions, syncStart),
-      deleteMissing('personal_budgets', userId, ids.budgets, syncStart),
-      deleteMissing('personal_goals', userId, ids.goals, syncStart),
-      deleteMissing('personal_debts', userId, ids.debts, syncStart),
-      deleteMissing('personal_splits', userId, ids.splits, syncStart),
-      deleteMissing('personal_contacts', userId, ids.contacts, syncStart),
-      deleteMissing('personal_savings_accounts', userId, ids.savings, syncStart),
-      deleteMissing('personal_receipts', userId, ids.receipts, syncStart),
-    ]);
-  }
-
-  // 4) Clear tombstones only if every tombstone delete succeeded
+  // 3) Remote deletes are tombstone-driven ONLY now (the unsafe set-difference
+  //    "deleteMissing" was removed). Clear ephemeral tombstones only if BOTH
+  //    their deletes AND every upsert succeeded — so a failed push is retried.
   const allTombstonesSucceeded = tombResults.every((ok) => ok);
-  if (allTombstonesSucceeded) {
+  if (allTombstonesSucceeded && allUpsertsSucceeded) {
     p.clearPersonalTombstones?.();
     w.clearWalletTombstones?.();
     d.clearDebtTombstones?.();
     r.clearReceiptTombstones?.();
     s.clearSavingsTombstones?.();
   }
+
+  return allTombstonesSucceeded && allUpsertsSucceeded;
 }
 
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
@@ -753,6 +766,18 @@ export async function syncPersonal(): Promise<void> {
     return;
   }
 
+  // Account-switch guard: if a DIFFERENT account is now signed in on this device
+  // and local personal data still exists, refuse to auto-merge/push — otherwise
+  // the previous account's money data leaks into (and pollutes) the new account.
+  // The merge / account-switch UI resolves this explicitly.
+  const lastUser = settings.lastSyncedUserId;
+  if (lastUser && lastUser !== session.user.id && hasLocalPersonalData()) {
+    _accountMismatch = true;
+    console.warn('[personalSync] account mismatch — sync blocked pending explicit merge decision');
+    return;
+  }
+  _accountMismatch = false;
+
   const run = async () => {
     // Prune expired durable tombstones (>30 days) before sync
     const pruned = useTombstoneStore.getState().pruneExpired();
@@ -760,17 +785,22 @@ export async function syncPersonal(): Promise<void> {
       console.log(`[personalSync] pruned ${pruned} expired tombstones`);
     }
 
-    const syncStart = new Date().toISOString();
-    const snapshotIds = captureLocalIds();
     const pulled = await pullAll(session.user.id);
     if (!pulled) {
       throw new Error('pull failed — aborted push to prevent data loss');
     }
-    await pushAll(session.user.id, syncStart, snapshotIds);
+    const pushed = await pushAll(session.user.id);
+    if (!pushed) {
+      // Surface incomplete — do NOT advance the clock, reconcile, or delete.
+      _syncIncomplete = true;
+      throw new Error('push incomplete — will retry; sync state not advanced');
+    }
+    _syncIncomplete = false;
     useSettingsStore.getState().setLastPersonalSyncAt(new Date());
+    useSettingsStore.getState().setLastSyncedUserId?.(session.user.id);
 
-    // Post-sync reconciliation: fix wallet balance drift caused by
-    // multi-device sync (CF-10) overwriting balances with stale values.
+    // Reconcile ONLY after a fully successful pull+push (never on a failed push,
+    // which would otherwise compute a balance from a half-synced state).
     try {
       autoReconcileWallets();
     } catch {

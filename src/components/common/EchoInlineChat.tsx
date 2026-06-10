@@ -20,6 +20,8 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  interpolate,
+  Extrapolation,
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
@@ -72,7 +74,7 @@ const DEFAULT_CHIPS: EchoChip[] = [
   { label: 'end of month forecast', question: 'based on my spending pace, how much will I have left at the end of the month?' },
 ];
 
-const SPRING = { damping: 55, stiffness: 400 };
+const SPRING = { damping: 22, stiffness: 220, mass: 0.5 };
 
 const EchoInlineChat: React.FC<Props> = ({
   visible,
@@ -105,6 +107,15 @@ const EchoInlineChat: React.FC<Props> = ({
 
   const cardAnimStyle = useAnimatedStyle(() => ({
     height: sheetHeight.value,
+  }));
+
+  const backdropAnimStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      sheetHeight.value,
+      [0, DETENT_MED],
+      [0, 1],
+      Extrapolation.CLAMP,
+    ),
   }));
 
   const handlePan = useMemo(
@@ -143,14 +154,14 @@ const EchoInlineChat: React.FC<Props> = ({
   const listRef = useRef<FlatList<Msg>>(null);
   const didAutoPromptRef = useRef(false);
 
-  // Reset to medium detent on open; clear input on close
+  // Animate sheet up on open; reset on close
   useEffect(() => {
     if (visible) {
+      sheetHeight.value = 0;
       sheetHeight.value = withSpring(DETENT_MED, SPRING);
     } else {
       setInput('');
       setSending(false);
-      // Delay until after the modal fade-out (~300ms) so the height reset is invisible
       setTimeout(() => { sheetHeight.value = DETENT_MED; }, 350);
     }
   // DETENT_MED is derived from SCREEN_H — intentionally omitted to avoid loop
@@ -240,8 +251,9 @@ const EchoInlineChat: React.FC<Props> = ({
   );
 
   return (
-    <Modal visible={visible} animationType="fade" transparent statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="none" transparent statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.overlay}>
+        <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropAnimStyle]} pointerEvents="none" />
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -376,6 +388,8 @@ const makeStyles = (C: typeof CALM) =>
   StyleSheet.create({
     overlay: {
       flex: 1,
+    },
+    backdrop: {
       backgroundColor: 'rgba(0,0,0,0.45)',
     },
     kav: {
@@ -531,7 +545,7 @@ const makeStyles = (C: typeof CALM) =>
       flex: 1,
       minHeight: 40,
       maxHeight: 120,
-      fontSize: TYPOGRAPHY.size.sm,
+      fontSize: TYPOGRAPHY.size.base,
       color: C.textPrimary,
       backgroundColor: withAlpha(C.accent, 0.04),
       borderRadius: RADIUS.lg,

@@ -10,6 +10,9 @@ import {
   Animated,
   Pressable,
   Keyboard,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
@@ -18,8 +21,10 @@ import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useT } from '../../i18n';
+import { StallProduct, StallModifier } from '../../types';
 
-import { successNotification } from '../../services/haptics';
+import { successNotification, lightTap } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -38,9 +43,17 @@ const SellScreen: React.FC = () => {
   const isDark = useIsDark();
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<any>();
-  const { products, getActiveSession, addSale } = useStallStore();
+  const t = useT();
+  const {
+    products, getActiveSession, addSale, quickSale, addCustomSale,
+    updateSale, removeSale, restockProduct, setSessionDefaultPayment, addProduct,
+    regularCustomers, recordVisit, loyalty, setClearance,
+  } = useStallStore();
   const currency = useSettingsStore((s) => s.currency);
   const { showToast } = useToast();
+
+  // Sell mode: quick (1 tap = 1 sale) vs cart (multi-item)
+  const [mode, setMode] = useState<'quick' | 'cart'>('quick');
 
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -54,7 +67,55 @@ const SellScreen: React.FC = () => {
   const [cartExpanded, setCartExpanded] = useState(false);
   const cartWidthAnim = useRef(new Animated.Value(CART_COLLAPSED_WIDTH)).current;
 
+  // Ledger (today's sales) sheet
+  const [ledgerVisible, setLedgerVisible] = useState(false);
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+
+  // Custom-amount sale
+  const [customVisible, setCustomVisible] = useState(false);
+  const [customAmount, setCustomAmount] = useState('');
+  const [customLabel, setCustomLabel] = useState('');
+  const [customMethod, setCustomMethod] = useState<'cash' | 'qr'>('cash');
+  const [customSaveProduct, setCustomSaveProduct] = useState(false);
+
+  // Restock-during-session
+  const [restockTarget, setRestockTarget] = useState<{ id: string; name: string } | null>(null);
+  const [restockAmount, setRestockAmount] = useState('');
+
+  // Serving a regular customer (attribution + loyalty)
+  const [servingCustomerId, setServingCustomerId] = useState<string | null>(null);
+  const [visitRecordedForServing, setVisitRecordedForServing] = useState(false);
+  const [customerPickerVisible, setCustomerPickerVisible] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState('');
+
+  // Clearance + modifiers
+  const [clearanceVisible, setClearanceVisible] = useState(false);
+  const [clearanceInput, setClearanceInput] = useState('');
+  const [modifierProduct, setModifierProduct] = useState<StallProduct | null>(null);
+
   const session = getActiveSession();
+  const defaultPayment: 'cash' | 'qr' = session?.defaultPayment || 'cash';
+  const clearance = session?.clearancePercent || 0;
+  const priceOf = useCallback(
+    (p: { price: number }) => (clearance > 0 ? Math.round(p.price * (1 - clearance / 100) * 100) / 100 : p.price),
+    [clearance],
+  );
+  const servingCustomer = servingCustomerId
+    ? regularCustomers.find((c) => c.id === servingCustomerId) || null
+    : null;
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch.trim()) return regularCustomers;
+    const q = customerSearch.toLowerCase();
+    return regularCustomers.filter((c) => c.name.toLowerCase().includes(q));
+  }, [regularCustomers, customerSearch]);
+
+  const loyaltyOn = loyalty.everyN > 0 && !!loyalty.reward;
+  const loyaltyProgressText = (visitCount: number): string => {
+    if (!loyaltyOn) return visitCount > 0 ? `${visitCount} ${t.stall.loyaltyVisitsWord}` : '';
+    const mod = visitCount % loyalty.everyN;
+    if (visitCount > 0 && mod === 0) return t.stall.loyaltyReady.replace('{reward}', loyalty.reward);
+    return t.stall.loyaltyProgress.replace('{count}', String(mod)).replace('{n}', String(loyalty.everyN));
+  };
   const activeProducts = useMemo(
     () => products.filter((p) => p.isActive),
     [products],
@@ -127,11 +188,11 @@ const SellScreen: React.FC = () => {
         }
         return [
           ...prev,
-          { productId, productName: product.name, unitPrice: product.price, quantity: 1 },
+          { productId, productName: product.name, unitPrice: priceOf(product), quantity: 1 },
         ];
       });
     },
-    [session, activeProducts, snapshotMap],
+    [session, activeProducts, snapshotMap, priceOf],
   );
 
   const updateQuantity = useCallback(
@@ -153,6 +214,29 @@ const SellScreen: React.FC = () => {
 
   const removeFromCart = useCallback((productId: string) => {
     setCart((prev) => prev.filter((i) => i.productId !== productId));
+  }, []);
+
+  // Record ONE visit per serving (not per item), and fire the loyalty toast on a milestone.
+  const recordServingVisit = useCallback(() => {
+    if (!servingCustomerId || visitRecordedForServing) return;
+    recordVisit(servingCustomerId);
+    setVisitRecordedForServing(true);
+    const cust = useStallStore.getState().regularCustomers.find((c) => c.id === servingCustomerId);
+    if (cust && loyalty.everyN > 0 && loyalty.reward && cust.visitCount % loyalty.everyN === 0) {
+      successNotification();
+      showToast(
+        t.stall.loyaltyReachedToast.replace('{name}', cust.name).replace('{reward}', loyalty.reward),
+        'success',
+      );
+    }
+  }, [servingCustomerId, visitRecordedForServing, recordVisit, loyalty, showToast, t]);
+
+  const selectCustomer = useCallback((id: string | null) => {
+    setServingCustomerId(id);
+    setVisitRecordedForServing(false);
+    setCustomerPickerVisible(false);
+    setCustomerSearch('');
+    lightTap();
   }, []);
 
   // ── Totals with discount ──
@@ -191,6 +275,7 @@ const SellScreen: React.FC = () => {
           unitPrice: item.unitPrice,
           total: Math.max(0, itemTotal - itemDiscount),
           paymentMethod: method,
+          regularCustomerId: servingCustomerId || undefined,
         });
       });
 
@@ -199,10 +284,137 @@ const SellScreen: React.FC = () => {
       setDiscountValue('');
       collapseCart();
       successNotification();
-      showToast('Sale recorded.', 'success');
+      recordServingVisit();
+      showToast(t.stall.saleRecorded, 'success');
     },
-    [cart, session, addSale, collapseCart, showToast, subtotal, discountAmount],
+    [cart, session, addSale, collapseCart, showToast, subtotal, discountAmount, t, servingCustomerId, recordServingVisit],
   );
+
+  // ── Quick-sell: tap a tile = 1 sale at the session default payment ──
+  const handleQuickSale = useCallback(
+    (product: StallProduct) => {
+      const id = quickSale(product.id, servingCustomerId || undefined);
+      if (!id) return;
+      successNotification();
+      recordServingVisit();
+      showToast(`${product.name} · ${currency}${priceOf(product).toFixed(0)}`, 'success', {
+        label: t.stall.undo,
+        onPress: () => removeSale(id),
+      });
+    },
+    [quickSale, removeSale, showToast, currency, t, servingCustomerId, recordServingVisit, priceOf],
+  );
+
+  // ── Sell a product with a chosen modifier (immediate sale) ──
+  const handleModifierSale = useCallback(
+    (product: StallProduct, modifier: StallModifier | null) => {
+      const unit = Math.max(0, Math.round((priceOf(product) + (modifier?.priceDelta || 0)) * 100) / 100);
+      const name = modifier ? `${product.name} (${modifier.label})` : product.name;
+      const id = addSale({
+        productId: product.id,
+        productName: name,
+        quantity: 1,
+        unitPrice: unit,
+        total: unit,
+        paymentMethod: defaultPayment,
+        regularCustomerId: servingCustomerId || undefined,
+      });
+      setModifierProduct(null);
+      if (!id) return;
+      successNotification();
+      recordServingVisit();
+      showToast(`${name} · ${currency}${unit.toFixed(0)}`, 'success', {
+        label: t.stall.undo,
+        onPress: () => removeSale(id),
+      });
+    },
+    [addSale, priceOf, defaultPayment, servingCustomerId, recordServingVisit, removeSale, showToast, currency, t],
+  );
+
+  // ── Tile press dispatcher: modifier chooser, else quick/cart ──
+  const handleTilePress = useCallback(
+    (product: StallProduct) => {
+      if (product.modifiers && product.modifiers.length > 0) {
+        setModifierProduct(product);
+        return;
+      }
+      if (mode === 'quick') handleQuickSale(product);
+      else addToCart(product.id);
+    },
+    [mode, handleQuickSale, addToCart],
+  );
+
+  // ── Flip the session default payment (quick mode) ──
+  const toggleDefaultPayment = useCallback(() => {
+    if (!session) return;
+    lightTap();
+    setSessionDefaultPayment((session.defaultPayment || 'cash') === 'cash' ? 'qr' : 'cash');
+  }, [session, setSessionDefaultPayment]);
+
+  // ── Clearance ──
+  const openClearance = useCallback(() => {
+    setClearanceInput(clearance > 0 ? String(clearance) : '');
+    setClearanceVisible(true);
+  }, [clearance]);
+  const applyClearance = useCallback(() => {
+    const v = parseInt(clearanceInput, 10);
+    setClearance(isNaN(v) ? 0 : v);
+    setClearanceVisible(false);
+    Keyboard.dismiss();
+    lightTap();
+  }, [clearanceInput, setClearance]);
+  const clearClearance = useCallback(() => {
+    setClearance(0);
+    setClearanceVisible(false);
+    Keyboard.dismiss();
+    lightTap();
+  }, [setClearance]);
+
+  // ── Custom-amount sale ──
+  const openCustom = useCallback(() => {
+    if (!session) return;
+    setCustomMethod(session.defaultPayment || 'cash');
+    setCustomAmount('');
+    setCustomLabel('');
+    setCustomSaveProduct(false);
+    setCustomVisible(true);
+  }, [session]);
+
+  const handleConfirmCustom = useCallback(() => {
+    const amt = parseFloat(customAmount);
+    if (isNaN(amt) || amt <= 0) return;
+    const label = customLabel.trim();
+    const id = addCustomSale({ amount: amt, paymentMethod: customMethod, label: label || undefined, regularCustomerId: servingCustomerId || undefined });
+    if (customSaveProduct && label) {
+      addProduct({ name: label, price: amt, isActive: true });
+    }
+    setCustomVisible(false);
+    Keyboard.dismiss();
+    successNotification();
+    recordServingVisit();
+    if (id) {
+      showToast(`${label || t.stall.customSale} · ${currency}${amt.toFixed(0)}`, 'success', {
+        label: t.stall.undo,
+        onPress: () => removeSale(id),
+      });
+    }
+  }, [customAmount, customLabel, customMethod, customSaveProduct, addCustomSale, addProduct, removeSale, showToast, currency, t, servingCustomerId, recordServingVisit]);
+
+  // ── Restock during session ──
+  const handleConfirmRestock = useCallback(() => {
+    if (!restockTarget) return;
+    const qty = parseInt(restockAmount, 10);
+    if (isNaN(qty) || qty <= 0) {
+      setRestockTarget(null);
+      return;
+    }
+    restockProduct(restockTarget.id, qty);
+    lightTap();
+    showToast(`+${qty} ${restockTarget.name}`, 'success');
+    setRestockTarget(null);
+    setRestockAmount('');
+    Keyboard.dismiss();
+  }, [restockTarget, restockAmount, restockProduct, showToast]);
 
   // ─── No active session ──────────────────────────────────────
   if (!session) {
@@ -267,10 +479,131 @@ const SellScreen: React.FC = () => {
               qr {currency} {session.totalQR.toFixed(0)}
             </Text>
           </View>
-          <Text style={styles.sessionSaleCount}>
-            {session.sales.length} sale{session.sales.length !== 1 ? 's' : ''}
-          </Text>
+          <TouchableOpacity
+            style={styles.saleCountPill}
+            onPress={() => setLedgerVisible(true)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`${session.sales.length} sales. Tap to view and edit.`}
+          >
+            <Feather name="list" size={13} color={C.bronze} />
+            <Text style={styles.saleCountText}>
+              {session.sales.length} {session.sales.length === 1 ? t.stall.saleLabel : t.stall.salesLabel}
+            </Text>
+          </TouchableOpacity>
         </View>
+
+        <View style={styles.controlsRow}>
+          {/* Quick / Cart mode toggle */}
+          <View style={styles.modeToggle}>
+            <TouchableOpacity
+              style={[styles.modeBtn, mode === 'quick' && styles.modeBtnActive]}
+              onPress={() => {
+                lightTap();
+                if (cart.length > 0) { showToast(t.stall.cartBusySwitch, 'info'); return; }
+                setMode('quick');
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: mode === 'quick' }}
+              accessibilityLabel={t.stall.quickMode}
+            >
+              <Feather name="zap" size={13} color={mode === 'quick' ? C.onAccent : C.textSecondary} />
+              <Text style={[styles.modeBtnText, mode === 'quick' && styles.modeBtnTextActive]}>{t.stall.quickMode}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeBtn, mode === 'cart' && styles.modeBtnActive]}
+              onPress={() => { lightTap(); setMode('cart'); }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: mode === 'cart' }}
+              accessibilityLabel={t.stall.cartMode}
+            >
+              <Feather name="shopping-cart" size={13} color={mode === 'cart' ? C.onAccent : C.textSecondary} />
+              <Text style={[styles.modeBtnText, mode === 'cart' && styles.modeBtnTextActive]}>{t.stall.cartMode}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.controlsRight}>
+            {mode === 'quick' && (
+              <TouchableOpacity
+                style={styles.payDefaultPill}
+                onPress={toggleDefaultPayment}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Default payment ${defaultPayment === 'cash' ? t.stall.cashPrefix : t.stall.qrPrefix}. Tap to switch.`}
+              >
+                <Feather name={defaultPayment === 'cash' ? 'dollar-sign' : 'smartphone'} size={13} color={C.bronze} />
+                <Text style={styles.payDefaultText}>{defaultPayment === 'cash' ? t.stall.cashPrefix : t.stall.qrPrefix}</Text>
+                <Feather name="repeat" size={11} color={C.textSecondary} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={clearance > 0 ? styles.clearancePillOn : styles.headerIconBtn}
+              onPress={openClearance}
+              accessibilityRole="button"
+              accessibilityLabel={clearance > 0 ? `Clearance ${clearance} percent off` : t.stall.clearanceTitle}
+            >
+              {clearance > 0 ? (
+                <>
+                  <Feather name="tag" size={13} color={C.onAccent} />
+                  <Text style={styles.clearancePillText}>{t.stall.clearanceOnShort.replace('{n}', String(clearance))}</Text>
+                </>
+              ) : (
+                <Feather name="tag" size={16} color={C.textSecondary} />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerIconBtn}
+              onPress={openCustom}
+              accessibilityRole="button"
+              accessibilityLabel={t.stall.customSaleTitle}
+            >
+              <Feather name="hash" size={16} color={C.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerIconBtn}
+              onPress={() => navigation.getParent()?.navigate('StallProducts')}
+              accessibilityRole="button"
+              accessibilityLabel={t.stall.manageProducts}
+            >
+              <Feather name="package" size={16} color={C.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Serving a regular (optional attribution) */}
+        {servingCustomer ? (
+          <TouchableOpacity
+            style={styles.servingChip}
+            activeOpacity={0.7}
+            onPress={() => { setCustomerSearch(''); setCustomerPickerVisible(true); }}
+            accessibilityRole="button"
+            accessibilityLabel={`${t.stall.servingCustomer}: ${servingCustomer.name}. Tap to change.`}
+          >
+            <Feather name="user" size={13} color={C.bronze} />
+            <Text style={styles.servingText} numberOfLines={1}>
+              {t.stall.servingCustomer}: {servingCustomer.name}
+            </Text>
+            <TouchableOpacity
+              onPress={() => selectCustomer(null)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={t.stall.clearCustomer}
+            >
+              <Feather name="x" size={14} color={C.bronze} />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.addCustomerChip}
+            onPress={() => { setCustomerSearch(''); setCustomerPickerVisible(true); }}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t.stall.addCustomerChip}
+          >
+            <Feather name="user-plus" size={13} color={C.textSecondary} />
+            <Text style={styles.addCustomerText}>{t.stall.addCustomerChip}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Row layout: Products | Cart */}
@@ -328,23 +661,36 @@ const SellScreen: React.FC = () => {
                   <TouchableOpacity
                     style={[
                       styles.productButton,
-                      inCartQty > 0 && styles.productInCart,
+                      mode === 'cart' && inCartQty > 0 && styles.productInCart,
                       isSoldOut && styles.productOutOfStock,
                     ]}
-                    onPress={() => addToCart(product.id)}
+                    onPress={() => handleTilePress(product)}
+                    onLongPress={() => { lightTap(); setRestockAmount(''); setRestockTarget({ id: product.id, name: product.name }); }}
+                    delayLongPress={350}
                     activeOpacity={0.7}
                     disabled={!!isSoldOut}
-                    accessibilityLabel={`${product.name}, ${currency} ${product.price.toFixed(2)}${hasQty ? `, ${snap.remainingQty} left` : ''}${isSoldOut ? ', sold out' : ''}`}
-                    accessibilityHint={isSoldOut ? 'This product is sold out' : 'Tap to add to cart'}
+                    accessibilityLabel={`${product.name}, ${currency} ${priceOf(product).toFixed(2)}${hasQty ? `, ${snap.remainingQty} left` : ''}${isSoldOut ? ', sold out' : ''}`}
+                    accessibilityHint={isSoldOut ? 'This product is sold out' : (product.modifiers && product.modifiers.length > 0) ? 'Tap to choose an option. Long-press to restock.' : mode === 'quick' ? 'Tap to sell one. Long-press to restock.' : 'Tap to add to cart. Long-press to restock.'}
                     accessibilityRole="button"
                   >
                     <View style={styles.productInner}>
                       <Text style={styles.productName} numberOfLines={2}>
                         {product.name}
                       </Text>
-                      <Text style={styles.productPrice}>
-                        {currency} {product.price.toFixed(2)}
-                      </Text>
+                      <View style={styles.priceLine}>
+                        <Text style={styles.productPrice}>
+                          {currency} {priceOf(product).toFixed(2)}
+                        </Text>
+                        {clearance > 0 && (
+                          <Text style={styles.productPriceWas}>{currency} {product.price.toFixed(2)}</Text>
+                        )}
+                      </View>
+                      {product.modifiers && product.modifiers.length > 0 && (
+                        <View style={styles.optionsTag}>
+                          <Feather name="sliders" size={10} color={C.textSecondary} />
+                          <Text style={styles.optionsTagText}>{t.stall.pickOptionTitle}</Text>
+                        </View>
+                      )}
                       {/* Remaining qty */}
                       {hasQty && !isSoldOut && (
                         <View style={styles.productStock}>
@@ -359,7 +705,7 @@ const SellScreen: React.FC = () => {
                       )}
                     </View>
                   </TouchableOpacity>
-                  {inCartQty > 0 && (
+                  {mode === 'cart' && inCartQty > 0 && (
                     <View style={styles.cartBadge}>
                       <Text style={styles.cartBadgeText}>{inCartQty}</Text>
                     </View>
@@ -376,7 +722,8 @@ const SellScreen: React.FC = () => {
           </ScrollView>
         </View>
 
-        {/* ── Cart Panel (animated) ── */}
+        {/* ── Cart Panel (animated) — cart mode only ── */}
+        {mode === 'cart' && (
         <Animated.View style={[styles.cartSection, { width: cartWidthAnim }]}>
           {/* Cart header */}
           <View style={styles.cartHeader}>
@@ -627,7 +974,384 @@ const SellScreen: React.FC = () => {
             </View>
           </Pressable>
         </Animated.View>
+        )}
       </View>
+
+      {/* ═══ Ledger — today's sales (tap to edit / void) ═══ */}
+      <Modal
+        visible={ledgerVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => { setLedgerVisible(false); setEditingSaleId(null); }}
+      >
+        <Pressable style={styles.sheetOverlay} onPress={() => { setLedgerVisible(false); setEditingSaleId(null); }}>
+          <View style={styles.sheetCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>{t.stall.todaysSales}</Text>
+            {session.sales.length === 0 ? (
+              <Text style={styles.ledgerEmpty}>{t.stall.noSalesYetSession}</Text>
+            ) : (
+              <ScrollView
+                style={styles.ledgerScroll}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {[...session.sales].reverse().map((sale) => {
+                  const editing = editingSaleId === sale.id;
+                  return (
+                    <View key={sale.id} style={styles.ledgerRow}>
+                      <TouchableOpacity
+                        style={styles.ledgerRowMain}
+                        activeOpacity={0.7}
+                        onPress={() => setEditingSaleId(editing ? null : sale.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${sale.productName}, ${currency} ${sale.total.toFixed(2)}, ${sale.paymentMethod}. Tap to edit.`}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.ledgerName} numberOfLines={1}>
+                            {sale.productName}{sale.quantity > 1 ? ` ×${sale.quantity}` : ''}
+                          </Text>
+                          <Text style={styles.ledgerMeta}>
+                            {sale.paymentMethod === 'cash' ? t.stall.cashPrefix : t.stall.qrPrefix}
+                          </Text>
+                        </View>
+                        <Text style={styles.ledgerTotal}>{currency} {sale.total.toFixed(2)}</Text>
+                        <Feather name={editing ? 'chevron-up' : 'chevron-down'} size={16} color={C.textMuted} />
+                      </TouchableOpacity>
+                      {editing && (
+                        <View style={styles.ledgerEdit}>
+                          {!sale.isCustom && (
+                            <View style={styles.ledgerStepper}>
+                              <TouchableOpacity
+                                style={styles.ledgerStepBtn}
+                                onPress={() => updateSale(sale.id, { quantity: sale.quantity - 1 })}
+                                accessibilityLabel="Decrease quantity"
+                              >
+                                <Feather name="minus" size={14} color={C.textPrimary} />
+                              </TouchableOpacity>
+                              <Text style={styles.ledgerQty}>{sale.quantity}</Text>
+                              <TouchableOpacity
+                                style={styles.ledgerStepBtn}
+                                onPress={() => updateSale(sale.id, { quantity: sale.quantity + 1 })}
+                                accessibilityLabel="Increase quantity"
+                              >
+                                <Feather name="plus" size={14} color={C.textPrimary} />
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                          <View style={styles.ledgerPayToggle}>
+                            <TouchableOpacity
+                              style={[styles.ledgerPayBtn, sale.paymentMethod === 'cash' && styles.ledgerPayActive]}
+                              onPress={() => updateSale(sale.id, { paymentMethod: 'cash' })}
+                            >
+                              <Text style={[styles.ledgerPayText, sale.paymentMethod === 'cash' && styles.ledgerPayTextActive]}>{t.stall.cashPrefix}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.ledgerPayBtn, sale.paymentMethod === 'qr' && styles.ledgerPayActive]}
+                              onPress={() => updateSale(sale.id, { paymentMethod: 'qr' })}
+                            >
+                              <Text style={[styles.ledgerPayText, sale.paymentMethod === 'qr' && styles.ledgerPayTextActive]}>{t.stall.qrPrefix}</Text>
+                            </TouchableOpacity>
+                          </View>
+                          <TouchableOpacity
+                            style={styles.ledgerVoid}
+                            onPress={() => { removeSale(sale.id); setEditingSaleId(null); lightTap(); }}
+                            accessibilityLabel={t.stall.voidSale}
+                          >
+                            <Feather name="trash-2" size={16} color={C.bronze} />
+                            <Text style={styles.ledgerVoidText}>{t.stall.voidSale}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* ═══ Custom-amount sale ═══ */}
+      <Modal
+        visible={customVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setCustomVisible(false)}
+      >
+        <Pressable style={styles.centerOverlay} onPress={() => { Keyboard.dismiss(); setCustomVisible(false); }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.centerKav}
+            pointerEvents="box-none"
+          >
+            <View style={styles.centerCard} onStartShouldSetResponder={() => true}>
+              <Text style={styles.centerTitle}>{t.stall.customSaleTitle}</Text>
+              <View style={styles.customAmountRow}>
+                <Text style={styles.customCurrency}>{currency}</Text>
+                <TextInput
+                  style={styles.customAmountInput}
+                  value={customAmount}
+                  onChangeText={setCustomAmount}
+                  placeholder="0.00"
+                  placeholderTextColor={C.neutral}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                  selectionColor={C.accent}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                />
+              </View>
+              <TextInput
+                style={styles.customLabelInput}
+                value={customLabel}
+                onChangeText={setCustomLabel}
+                placeholder={t.stall.customLabelPlaceholder}
+                placeholderTextColor={C.neutral}
+                selectionColor={C.accent}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+              />
+              <View style={styles.customPayRow}>
+                <TouchableOpacity
+                  style={[styles.customPayBtn, customMethod === 'cash' && styles.customPayActive]}
+                  onPress={() => setCustomMethod('cash')}
+                >
+                  <Feather name="dollar-sign" size={15} color={customMethod === 'cash' ? C.onAccent : C.textSecondary} />
+                  <Text style={[styles.customPayText, customMethod === 'cash' && { color: C.onAccent }]}>{t.stall.cashPrefix}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.customPayBtn, customMethod === 'qr' && styles.customPayActive]}
+                  onPress={() => setCustomMethod('qr')}
+                >
+                  <Feather name="smartphone" size={15} color={customMethod === 'qr' ? C.onAccent : C.textSecondary} />
+                  <Text style={[styles.customPayText, customMethod === 'qr' && { color: C.onAccent }]}>{t.stall.qrPrefix}</Text>
+                </TouchableOpacity>
+              </View>
+              {customLabel.trim().length > 0 && (
+                <TouchableOpacity
+                  style={styles.saveProductRow}
+                  onPress={() => setCustomSaveProduct((v) => !v)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: customSaveProduct }}
+                >
+                  <Feather name={customSaveProduct ? 'check-square' : 'square'} size={18} color={customSaveProduct ? C.bronze : C.textSecondary} />
+                  <Text style={styles.saveProductText}>{t.stall.saveAsProduct}</Text>
+                </TouchableOpacity>
+              )}
+              <View style={styles.centerBtns}>
+                <TouchableOpacity style={[styles.centerBtn, styles.centerCancelBtn]} onPress={() => { Keyboard.dismiss(); setCustomVisible(false); }}>
+                  <Text style={styles.centerCancelText}>{t.common.cancel}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.centerBtn, styles.centerPrimaryBtn]} onPress={handleConfirmCustom}>
+                  <Text style={styles.centerPrimaryText}>{t.stall.addSaleBtn}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      {/* ═══ Restock during session ═══ */}
+      <Modal
+        visible={!!restockTarget}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setRestockTarget(null)}
+      >
+        <Pressable style={styles.centerOverlay} onPress={() => { Keyboard.dismiss(); setRestockTarget(null); }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.centerKav}
+            pointerEvents="box-none"
+          >
+            <View style={styles.centerCard} onStartShouldSetResponder={() => true}>
+              <Text style={styles.centerTitle}>{t.stall.restockTitle}</Text>
+              {!!restockTarget && <Text style={styles.restockName} numberOfLines={1}>{restockTarget.name}</Text>}
+              <View style={styles.customAmountRow}>
+                <Feather name="package" size={18} color={C.textSecondary} />
+                <TextInput
+                  style={styles.customAmountInput}
+                  value={restockAmount}
+                  onChangeText={(v) => setRestockAmount(v.replace(/[^0-9]/g, ''))}
+                  placeholder={t.stall.restockPlaceholder}
+                  placeholderTextColor={C.neutral}
+                  keyboardType="number-pad"
+                  autoFocus
+                  selectionColor={C.accent}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                />
+              </View>
+              <View style={styles.centerBtns}>
+                <TouchableOpacity style={[styles.centerBtn, styles.centerCancelBtn]} onPress={() => { Keyboard.dismiss(); setRestockTarget(null); }}>
+                  <Text style={styles.centerCancelText}>{t.common.cancel}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.centerBtn, styles.centerPrimaryBtn]} onPress={handleConfirmRestock}>
+                  <Text style={styles.centerPrimaryText}>{t.stall.restockBtn}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      {/* ═══ Customer picker (who's buying) ═══ */}
+      <Modal
+        visible={customerPickerVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setCustomerPickerVisible(false)}
+      >
+        <Pressable style={styles.sheetOverlay} onPress={() => { Keyboard.dismiss(); setCustomerPickerVisible(false); }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.sheetKav}
+            pointerEvents="box-none"
+          >
+            <View style={styles.sheetCard} onStartShouldSetResponder={() => true}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>{t.stall.pickCustomerTitle}</Text>
+
+              <View style={styles.customerSearchRow}>
+                <Feather name="search" size={16} color={C.textSecondary} />
+                <TextInput
+                  style={styles.customerSearchInput}
+                  value={customerSearch}
+                  onChangeText={setCustomerSearch}
+                  placeholder={t.stall.searchRegulars}
+                  placeholderTextColor={C.neutral}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectionColor={C.accent}
+                />
+              </View>
+
+              <TouchableOpacity style={styles.customerRow} onPress={() => selectCustomer(null)} activeOpacity={0.7}>
+                <View style={styles.customerWalkIn}>
+                  <Feather name="users" size={16} color={C.textSecondary} />
+                </View>
+                <Text style={styles.customerRowName}>{t.stall.clearCustomer}</Text>
+                {servingCustomerId === null && <Feather name="check" size={16} color={C.bronze} />}
+              </TouchableOpacity>
+
+              {regularCustomers.length === 0 ? (
+                <Text style={styles.ledgerEmpty}>{t.stall.noRegularsYet}</Text>
+              ) : (
+                <ScrollView
+                  style={styles.customerScroll}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
+                  {filteredCustomers.map((c) => {
+                    const progress = loyaltyProgressText(c.visitCount);
+                    return (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={[styles.customerRow, servingCustomerId === c.id && styles.customerRowActive]}
+                        onPress={() => selectCustomer(c.id)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.customerAvatar}>
+                          <Text style={styles.customerAvatarText}>{c.name.charAt(0).toUpperCase()}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.customerRowName} numberOfLines={1}>{c.name}</Text>
+                          {!!progress && <Text style={styles.customerRowMeta}>{progress}</Text>}
+                        </View>
+                        {servingCustomerId === c.id && <Feather name="check" size={16} color={C.bronze} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      {/* ═══ Clearance ═══ */}
+      <Modal
+        visible={clearanceVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setClearanceVisible(false)}
+      >
+        <Pressable style={styles.centerOverlay} onPress={() => { Keyboard.dismiss(); setClearanceVisible(false); }}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.centerKav} pointerEvents="box-none">
+            <View style={styles.centerCard} onStartShouldSetResponder={() => true}>
+              <Text style={styles.centerTitle}>{t.stall.clearanceTitle}</Text>
+              <View style={styles.customAmountRow}>
+                <Feather name="tag" size={18} color={C.textSecondary} />
+                <TextInput
+                  style={styles.customAmountInput}
+                  value={clearanceInput}
+                  onChangeText={(v) => setClearanceInput(v.replace(/[^0-9]/g, ''))}
+                  placeholder={t.stall.clearancePlaceholder}
+                  placeholderTextColor={C.neutral}
+                  keyboardType="number-pad"
+                  autoFocus
+                  selectionColor={C.accent}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
+                />
+                <Text style={styles.customCurrency}>%</Text>
+              </View>
+              <View style={styles.centerBtns}>
+                <TouchableOpacity style={[styles.centerBtn, styles.centerCancelBtn]} onPress={clearClearance}>
+                  <Text style={styles.centerCancelText}>{t.stall.clearanceClear}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.centerBtn, styles.centerPrimaryBtn]} onPress={applyClearance}>
+                  <Text style={styles.centerPrimaryText}>{t.stall.clearanceApply}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      {/* ═══ Modifier chooser ═══ */}
+      <Modal
+        visible={!!modifierProduct}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setModifierProduct(null)}
+      >
+        <Pressable style={styles.centerOverlay} onPress={() => setModifierProduct(null)}>
+          <View style={styles.centerKav} pointerEvents="box-none">
+            <View style={styles.centerCard} onStartShouldSetResponder={() => true}>
+              <Text style={styles.centerTitle}>{modifierProduct?.name}</Text>
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => modifierProduct && handleModifierSale(modifierProduct, null)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.optionName}>{t.stall.optionNone}</Text>
+                <Text style={styles.optionPrice}>{currency} {modifierProduct ? priceOf(modifierProduct).toFixed(2) : ''}</Text>
+              </TouchableOpacity>
+              {modifierProduct?.modifiers?.map((m) => {
+                const unit = modifierProduct ? Math.round((priceOf(modifierProduct) + m.priceDelta) * 100) / 100 : 0;
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={styles.optionRow}
+                    onPress={() => modifierProduct && handleModifierSale(modifierProduct, m)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.optionName}>
+                      {m.label}{m.priceDelta ? ` (${m.priceDelta > 0 ? '+' : ''}${m.priceDelta})` : ''}
+                    </Text>
+                    <Text style={styles.optionPrice}>{currency} {unit.toFixed(2)}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1144,6 +1868,530 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
+  },
+
+  // ─── Header: sale-count pill + controls row ────────────
+  saleCountPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.bronze, 0.10),
+    minHeight: 32,
+  },
+  saleCountText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+    fontVariant: ['tabular-nums'],
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  modeToggle: {
+    flexDirection: 'row',
+    backgroundColor: C.background,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 2,
+  },
+  modeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    minHeight: 32,
+  },
+  modeBtnActive: {
+    backgroundColor: C.bronze,
+  },
+  modeBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+  },
+  modeBtnTextActive: {
+    color: C.onAccent,
+  },
+  controlsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  payDefaultPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.3),
+    backgroundColor: withAlpha(C.bronze, 0.06),
+    minHeight: 36,
+  },
+  payDefaultText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+  },
+  headerIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.surface,
+  },
+  clearancePillOn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    height: 36,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.bronze,
+  },
+  clearancePillText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.onAccent,
+    fontVariant: ['tabular-nums'],
+  },
+  priceLine: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: SPACING.xs,
+    flexWrap: 'wrap',
+  },
+  productPriceWas: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    textDecorationLine: 'line-through',
+  },
+  optionsTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: SPACING.xs,
+  },
+  optionsTagText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  optionName: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    flex: 1,
+  },
+  optionPrice: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // ─── Ledger (bottom sheet) ─────────────────────────────
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  sheetCard: {
+    backgroundColor: C.surface,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING['2xl'],
+    maxHeight: '72%',
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
+    ...SHADOWS.lg,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.border,
+    alignSelf: 'center',
+    marginBottom: SPACING.md,
+  },
+  sheetTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    marginBottom: SPACING.md,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
+  },
+  ledgerEmpty: {
+    ...TYPE.muted,
+    textAlign: 'center',
+    paddingVertical: SPACING['2xl'],
+  },
+  ledgerScroll: {
+    flexGrow: 0,
+  },
+  ledgerRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  ledgerRowMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
+  },
+  ledgerName: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  ledgerMeta: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    marginTop: 2,
+  },
+  ledgerTotal: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  ledgerEdit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    paddingBottom: SPACING.md,
+  },
+  ledgerStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  ledgerStepBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  ledgerQty: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    minWidth: 28,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
+  ledgerPayToggle: {
+    flexDirection: 'row',
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: C.border,
+    overflow: 'hidden',
+  },
+  ledgerPayBtn: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    minHeight: 32,
+    justifyContent: 'center',
+  },
+  ledgerPayActive: {
+    backgroundColor: C.bronze,
+  },
+  ledgerPayText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+  },
+  ledgerPayTextActive: {
+    color: C.onAccent,
+  },
+  ledgerVoid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    minHeight: 32,
+  },
+  ledgerVoidText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.bronze,
+  },
+
+  // ─── Centered card modals (custom / restock) ───────────
+  centerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  centerKav: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  centerCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: SPACING.xl,
+    width: '100%',
+    maxWidth: 400,
+    gap: SPACING.md,
+    ...SHADOWS.lg,
+  },
+  centerTitle: {
+    fontSize: TYPOGRAPHY.size.lg,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    letterSpacing: C === CALM_DARK ? 0.2 : 0,
+  },
+  restockName: {
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textSecondary,
+    marginTop: -SPACING.xs,
+  },
+  customAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+  },
+  customCurrency: {
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+  },
+  customAmountInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+    padding: 0,
+  },
+  customLabelInput: {
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+  },
+  customPayRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  customPayBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    minHeight: 48,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.background,
+  },
+  customPayActive: {
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
+  },
+  customPayText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+  },
+  saveProductRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.xs,
+  },
+  saveProductText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+  },
+  centerBtns: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  centerBtn: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerCancelBtn: {
+    backgroundColor: C.background,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  centerPrimaryBtn: {
+    backgroundColor: C.bronze,
+  },
+  centerCancelText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+  },
+  centerPrimaryText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.onAccent,
+  },
+
+  // ─── Serving customer chip ─────────────────────────────
+  servingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.bronze, 0.10),
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.3),
+    maxWidth: '100%',
+  },
+  servingText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+    flexShrink: 1,
+  },
+  addCustomerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: C.border,
+    minHeight: 30,
+  },
+  addCustomerText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textSecondary,
+  },
+
+  // ─── Customer picker sheet ─────────────────────────────
+  sheetKav: {
+    width: '100%',
+  },
+  customerSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: C.background,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  customerSearchInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    padding: 0,
+  },
+  customerScroll: {
+    flexGrow: 0,
+  },
+  customerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  customerRowActive: {
+    backgroundColor: withAlpha(C.bronze, 0.04),
+  },
+  customerWalkIn: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.background,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  customerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(C.bronze, 0.12),
+  },
+  customerAvatarText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.bronze,
+  },
+  customerRowName: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+  },
+  customerRowMeta: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.bronze,
+    marginTop: 2,
   },
 });
 

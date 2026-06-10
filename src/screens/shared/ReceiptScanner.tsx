@@ -38,7 +38,6 @@ import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useReceiptStore } from '../../store/receiptStore';
 import { useCategoryStore } from '../../store/categoryStore';
-import { usePlaybookStore } from '../../store/playbookStore';
 import { useToast } from '../../context/ToastContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
@@ -445,28 +444,6 @@ const ReceiptScanner: React.FC = () => {
         transactionId: txId,
         year: getYear(editDate),
       });
-
-      // 5. Playbook auto-link
-      if (txId) {
-        const activePbs = usePlaybookStore.getState().getActivePlaybooks();
-        const linkToPb = (pbId: string) => {
-          usePlaybookStore.getState().linkExpense(pbId, txId!);
-          updateTransaction(txId!, {
-            playbookLinks: [{ playbookId: pbId, amount: total }],
-          });
-        };
-        if (activePbs.length === 1) {
-          linkToPb(activePbs[0].id);
-        } else if (activePbs.length > 1) {
-          Alert.alert(t.receipts.linkToPlaybook, t.receipts.whichPlaybook, [
-            ...activePbs.map((pb) => ({
-              text: pb.name,
-              onPress: () => linkToPb(pb.id),
-            })),
-            { text: t.receipts.skipAction, style: 'cancel' as const },
-          ]);
-        }
-      }
 
       clearDraft();
       showToast(t.receipts.receiptSaved, 'success');

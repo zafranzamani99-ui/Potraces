@@ -15,6 +15,7 @@ import { useAppStore } from '../store/appStore';
 import { useDebtStore } from '../store/debtStore';
 import { useSellerStore } from '../store/sellerStore';
 import { usePlaybookStore } from '../store/playbookStore';
+import { parseCommitmentSchedule, computeNextBillingDate } from '../utils/commitmentParse';
 import { AIExtraction } from '../types';
 
 interface UseIntentEngineOptions {
@@ -287,18 +288,22 @@ export function useIntentEngine({
         return;
       }
 
-      // ── Subscription → personalStore ──
+      // ── Subscription / Commitment → personalStore ──
       if (extraction.type === 'subscription' && amount > 0) {
-        const cycle = (extraction.extractedData as any).billingCycle || 'monthly';
+        const data = extraction.extractedData as any;
+        // Honor any schedule the parser stated; otherwise re-derive it from the raw
+        // text so a late-night "rumah sewa 850 sebulan due 25hb" lands as a monthly
+        // commitment due on the 25th — not "today + 1 month".
+        const parsed = parseCommitmentSchedule(extraction.rawText || description || '');
+        const cycle = (data.billingCycle as any) || parsed.billingCycle;
+        const dueDay: number | undefined = data.dueDay ?? parsed.dueDay;
+        const installments: number | undefined = data.installments ?? parsed.installments;
         const now = new Date();
-        const nextBilling = new Date(now);
-        if (cycle === 'monthly') nextBilling.setMonth(nextBilling.getMonth() + 1);
-        else if (cycle === 'quarterly') nextBilling.setMonth(nextBilling.getMonth() + 3);
-        else if (cycle === 'yearly') nextBilling.setFullYear(nextBilling.getFullYear() + 1);
-        else nextBilling.setDate(nextBilling.getDate() + 7);
+        const nextBilling = computeNextBillingDate(now, cycle, dueDay);
+        const isInstallment = !!installments && installments > 1;
 
         addSubscription({
-          name: description || 'subscription',
+          name: description || 'commitment',
           amount,
           billingCycle: cycle,
           startDate: now,
@@ -306,7 +311,17 @@ export function useIntentEngine({
           category: category || 'subscription',
           isActive: true,
           reminderDays: 3,
-          isInstallment: false,
+          isInstallment,
+          // `amount` is the PER-INSTALLMENT figure (e.g. "3x49.90" → 49.90), so the
+          // outstanding balance is amount × count. The parser/prompt extract per-
+          // installment amounts, never the plan total.
+          ...(isInstallment
+            ? {
+                totalInstallments: installments,
+                completedInstallments: 0,
+                outstandingBalance: Math.round(amount * (installments as number) * 100) / 100,
+              }
+            : {}),
         });
         updateExtractionStatus(pageId, extractionId, 'confirmed');
         return;

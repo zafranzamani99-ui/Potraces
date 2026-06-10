@@ -182,7 +182,7 @@ function getDeliveryDateInfo(order: SellerOrder): {
 }
 
 // ─── ORDER LIFECYCLE STEPS ───────────────────────────────────
-const LIFECYCLE_STEPS: OrderStatus[] = ['pending', 'confirmed', 'ready', 'delivered'];
+const LIFECYCLE_STEPS: OrderStatus[] = ['pending', 'confirmed', 'ready', 'delivered', 'completed'];
 
 const OrderLifecycleBar: React.FC<{
   currentStatus: OrderStatus;
@@ -192,14 +192,25 @@ const OrderLifecycleBar: React.FC<{
   const C = useCalm();
   const isDark = useIsDark();
   const currentIndex = LIFECYCLE_STEPS.indexOf(currentStatus);
-  const currentColor = statusColor(currentStatus);
+
+  const safeColor = (s: OrderStatus) => {
+    switch (s) {
+      case 'pending':   return semantic(BIZ_SAFE.pending, isDark);
+      case 'confirmed': return semantic(BIZ_SAFE.success, isDark);
+      case 'ready':     return CALM.gold;
+      case 'delivered': return semantic(BIZ_SAFE.delivered, isDark);
+      case 'completed': return C.textMuted;
+      default:          return C.textMuted;
+    }
+  };
+  const currentColor = safeColor(currentStatus);
 
   return (
     <View style={styles.lifecycleContainer}>
       <View style={styles.lifecycleRow}>
         {LIFECYCLE_STEPS.map((step, i) => {
           const isCompleted = i <= currentIndex;
-          const dotColor = isCompleted ? statusColor(step) : C.border;
+          const dotColor = isCompleted ? safeColor(step) : C.border;
 
           return (
             <React.Fragment key={step}>
@@ -207,7 +218,7 @@ const OrderLifecycleBar: React.FC<{
                 <View
                   style={[
                     styles.lifecycleLine,
-                    { backgroundColor: i <= currentIndex ? statusColor(step) : C.border },
+                    { backgroundColor: i <= currentIndex ? safeColor(step) : C.border },
                   ]}
                 />
               )}
@@ -379,8 +390,9 @@ const AnimatedOrderCard: React.FC<{
         )}
         <View style={styles.orderCardBody}>
           <View style={styles.orderTopRow}>
-            <Text style={styles.customerName} numberOfLines={1}>{item.customerName || 'walk-in'}</Text>
-            <Text style={styles.orderTotal}>{currency} {item.totalAmount.toFixed(2)}</Text>
+            <Text style={[styles.customerName, isUnseen && styles.customerNameUnread]} numberOfLines={1}>{item.customerName || 'walk-in'}</Text>
+            {isUnseen && <View style={styles.unreadDot} />}
+            <Text style={[styles.orderTotal, isUnseen && styles.orderTotalUnread]}>{currency} {item.totalAmount.toFixed(2)}</Text>
           </View>
           <View style={styles.orderBottomRow}>
             <View style={styles.orderMetaLeft}>
@@ -449,13 +461,13 @@ const GroupedCustomerCard: React.FC<{
   currency: string;
   selectMode: boolean;
   selectedIds: Set<string>;
-  seenSet: Set<string>;
+  readSet: Set<string>;
   onOpenDetail: (item: SellerOrder) => void;
   onLongPress: (item: SellerOrder) => void;
   onToggleSelect: (id: string) => void;
   onSwipePay: (item: SellerOrder) => void;
   styles: ReturnType<typeof makeStyles>;
-}> = React.memo(({ group, index, currency, selectMode, selectedIds, seenSet, onOpenDetail, onLongPress, onToggleSelect, onSwipePay, styles }) => {
+}> = React.memo(({ group, index, currency, selectMode, selectedIds, readSet, onOpenDetail, onLongPress, onToggleSelect, onSwipePay, styles }) => {
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
@@ -484,7 +496,7 @@ const GroupedCustomerCard: React.FC<{
         currency={currency}
         selectMode={selectMode}
         isSelected={selectedIds.has(group.orders[0].id)}
-        isUnseen={group.orders[0].source === 'order_link' && !seenSet.has(group.orders[0].id)}
+        isUnseen={!readSet.has(group.orders[0].id)}
         onOpenDetail={onOpenDetail}
         onLongPress={onLongPress}
         onToggleSelect={onToggleSelect}
@@ -526,7 +538,7 @@ const GroupedCustomerCard: React.FC<{
                 styles.subOrderRow,
                 i < group.orders.length - 1 && styles.subOrderRowBorder,
                 selectMode && isSelected && styles.subOrderSelected,
-                order.source === 'order_link' && !seenSet.has(order.id) && styles.subOrderUnseen,
+                !readSet.has(order.id) && styles.subOrderUnseen,
               ]}
               onPress={() => {
                 if (selectMode) { selectionChanged(); onToggleSelect(order.id); }
@@ -616,7 +628,7 @@ const OrderList: React.FC = () => {
   const markOrdersSeen = useSellerStore((s) => s.markOrdersSeen);
   const markAllOnlineSeen = useSellerStore((s) => s.markAllOnlineSeen);
   const markOrderUnseen = useSellerStore((s) => s.markOrderUnseen);
-  const seenOnlineOrderIds = useSellerStore((s) => s.seenOnlineOrderIds);
+  const readOrderIds = useSellerStore((s) => s.readOrderIds);
   const currency = useSettingsStore((s) => s.currency);
   const userName = useSettingsStore((s) => s.userName);
   const paymentQrs = useSettingsStore((s) => s.businessPaymentQrs);
@@ -640,10 +652,10 @@ const OrderList: React.FC = () => {
   const [overdueOnly, setOverdueOnly] = useState(initialFilter === 'overdue');
   const [onlineOnly, setOnlineOnly] = useState(initialFilter === 'online');
 
-  const seenSet = useMemo(() => new Set(seenOnlineOrderIds), [seenOnlineOrderIds]);
-  const unseenOnlineCount = useMemo(
-    () => orders.filter((o) => o.source === 'order_link' && !seenSet.has(o.id)).length,
-    [orders, seenSet],
+  const readSet = useMemo(() => new Set(readOrderIds), [readOrderIds]);
+  const unreadCount = useMemo(
+    () => orders.filter((o) => !readSet.has(o.id)).length,
+    [orders, readSet],
   );
 
   // Update filter/search when navigating back with new params
@@ -915,7 +927,7 @@ const OrderList: React.FC = () => {
       if (existing) {
         existing.orders.push(order);
         existing.totalAmount += order.totalAmount;
-        if (!order.isPaid) existing.unpaidAmount += order.totalAmount;
+        if (!order.isPaid) existing.unpaidAmount += order.totalAmount - (order.paidAmount || 0);
         if (orderDate > existing.latestDate) existing.latestDate = orderDate;
         if (order.customerPhone && !existing.customerPhone) existing.customerPhone = order.customerPhone;
       } else {
@@ -925,7 +937,7 @@ const OrderList: React.FC = () => {
           customerPhone: order.customerPhone,
           orders: [order],
           totalAmount: order.totalAmount,
-          unpaidAmount: order.isPaid ? 0 : order.totalAmount,
+          unpaidAmount: order.isPaid ? 0 : order.totalAmount - (order.paidAmount || 0),
           latestDate: orderDate,
         });
       }
@@ -1316,16 +1328,16 @@ const OrderList: React.FC = () => {
   const handleSaveEdit = useCallback(() => {
     if (!selectedOrder) return;
 
-    const updates: Partial<Pick<SellerOrder, 'note' | 'deliveryDate' | 'customerPhone' | 'customerAddress' | 'isPaid' | 'paymentMethod' | 'paidAt'>> = {};
+    const updates: Partial<Pick<SellerOrder, 'note' | 'deliveryDate' | 'customerPhone' | 'customerAddress' | 'isPaid' | 'paymentMethod' | 'paidAt' | 'paidAmount'>> = {};
     if (editNote !== (selectedOrder.note || '')) updates.note = editNote || undefined;
     if (editPhone !== (selectedOrder.customerPhone || '')) updates.customerPhone = editPhone || undefined;
     if (editAddress !== (selectedOrder.customerAddress || '')) updates.customerAddress = editAddress || undefined;
 
-    // Delivery date (already a Date object from CalendarPicker)
-    if (editDeliveryDate) {
-      updates.deliveryDate = editDeliveryDate;
-    } else {
-      updates.deliveryDate = undefined;
+    // Delivery date — only update if changed
+    const oldDelivery = selectedOrder.deliveryDate ? new Date(selectedOrder.deliveryDate).getTime() : null;
+    const newDelivery = editDeliveryDate ? new Date(editDeliveryDate).getTime() : null;
+    if (oldDelivery !== newDelivery) {
+      updates.deliveryDate = editDeliveryDate || undefined;
     }
 
     // Save items if changed
@@ -1337,18 +1349,20 @@ const OrderList: React.FC = () => {
       newTotal = editItems.reduce((s, i) => s + (i.unitPrice || 0) * (i.quantity || 0), 0);
       const paidSoFar = selectedOrder.paidAmount || 0;
 
-      // Overpaid — new total is less than what was already paid
-      if (selectedOrder.isPaid && newTotal < paidSoFar) {
-        warningNotification();
-        showToast('undo payment first — new total is less than paid amount', 'error');
-        return;
+      if (paidSoFar > 0 && paidSoFar > newTotal) {
+        // Deposits exceed new total — cap paidAmount
+        updates.paidAmount = newTotal;
       }
 
-      // Underpaid — new total exceeds paid amount, revert to unpaid
-      if (selectedOrder.isPaid && newTotal > paidSoFar) {
-        updates.isPaid = false;
-        updates.paymentMethod = undefined;
-        updates.paidAt = undefined;
+      if (paidSoFar > 0) {
+        const effectivePaid = Math.min(paidSoFar, newTotal);
+        updates.isPaid = effectivePaid >= newTotal;
+        if (updates.isPaid) {
+          updates.paidAt = selectedOrder.paidAt || new Date();
+          updates.paymentMethod = selectedOrder.paymentMethod || selectedOrder.deposits?.[selectedOrder.deposits.length - 1]?.method;
+        } else {
+          updates.paymentMethod = undefined;
+        }
       }
     }
 
@@ -1392,11 +1406,7 @@ const OrderList: React.FC = () => {
 
   const handleOpenNavPicker = useCallback((address: string) => {
     lightTap();
-    setSelectedOrder(null);
-    setShowRawWhatsApp(false);
-    setIsEditing(false);
-    // Small delay to let the detail modal close before opening nav picker
-    navTimerRef.current = setTimeout(() => setNavAddress(address), 200);
+    setNavAddress(address);
   }, []);
 
   const handleNavChoice = useCallback((app: 'google' | 'waze' | 'apple') => {
@@ -1438,14 +1448,17 @@ const OrderList: React.FC = () => {
   }, [unpaidFilteredIds]);
 
   const handleBulkMarkPaid = useCallback(() => {
-    const ids = Array.from(selectedIds);
+    const ids = Array.from(selectedIds).filter(id => {
+      const order = orders.find(o => o.id === id);
+      return order && !order.isPaid;
+    });
     if (ids.length === 0) return;
     lightTap();
     setBulkPayIds(ids);
     setPendingPayOrder(null);
     setSelectedPaymentMethod(null);
     setPaymentNote('');
-  }, [selectedIds]);
+  }, [selectedIds, orders]);
 
   const handleBulkMarkUnseen = useCallback(() => {
     const ids = Array.from(selectedIds);
@@ -1453,16 +1466,20 @@ const OrderList: React.FC = () => {
     lightTap();
     for (const id of ids) markOrderUnseen(id);
     setSelectedIds(new Set());
-    showToast(`${ids.length} order${ids.length > 1 ? 's' : ''} marked unseen.`, 'info');
+    showToast(`${ids.length} order${ids.length > 1 ? 's' : ''} marked unread`, 'info');
   }, [selectedIds, markOrderUnseen, showToast]);
 
   const handleBulkDelete = useCallback(() => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     warningNotification();
+    const transferredOrders = orders.filter(o => ids.includes(o.id) && o.transferredToPersonal);
+    const walletWarning = transferredOrders.length > 0
+      ? `\n\n${transferredOrders.length} of these were sent to personal wallet — deleting will remove that income too.`
+      : '';
     Alert.alert(
       '',
-      `delete ${ids.length} order${ids.length > 1 ? 's' : ''}? this cannot be undone.`,
+      `delete ${ids.length} order${ids.length > 1 ? 's' : ''}? this cannot be undone.${walletWarning}`,
       [
         { text: 'cancel', style: 'cancel' },
         {
@@ -1500,7 +1517,7 @@ const OrderList: React.FC = () => {
   }, []);
 
   const handleSwipePay = useCallback((order: SellerOrder) => {
-    if (order.source === 'order_link' && !seenSet.has(order.id)) {
+    if (!readSet.has(order.id)) {
       markOrdersSeen([order.id]);
     }
     const remaining = order.totalAmount - (order.paidAmount || 0);
@@ -1508,16 +1525,16 @@ const OrderList: React.FC = () => {
     setDepositMethod(null);
     setDepositNote('');
     setSwipePayOrder(order);
-  }, [seenSet, markOrdersSeen]);
+  }, [readSet, markOrdersSeen]);
 
   // Read fresh order from store when opening detail (avoids stale data after edits)
   const handleOpenDetail = useCallback((order: SellerOrder) => {
     const fresh = useSellerStore.getState().orders.find(o => o.id === order.id);
-    if (fresh?.source === 'order_link' && !seenSet.has(fresh.id)) {
+    if (fresh && !readSet.has(fresh.id)) {
       markOrdersSeen([fresh.id]);
     }
     setSelectedOrder(fresh || order);
-  }, [seenSet, markOrdersSeen]);
+  }, [readSet, markOrdersSeen]);
 
   const renderOrder = useCallback(
     ({ item, index }: { item: SellerOrder; index: number }) => (
@@ -1527,7 +1544,7 @@ const OrderList: React.FC = () => {
         currency={currency}
         selectMode={selectMode}
         isSelected={selectedIds.has(item.id)}
-        isUnseen={item.source === 'order_link' && !seenSet.has(item.id)}
+        isUnseen={!readSet.has(item.id)}
         onOpenDetail={handleOpenDetail}
         onLongPress={handleLongPress}
         onToggleSelect={handleToggleSelect}
@@ -1535,7 +1552,7 @@ const OrderList: React.FC = () => {
         styles={styles}
       />
     ),
-    [currency, selectMode, selectedIds, seenSet, handleOpenDetail, handleLongPress, handleToggleSelect, handleSwipePay, styles]
+    [currency, selectMode, selectedIds, readSet, handleOpenDetail, handleLongPress, handleToggleSelect, handleSwipePay, styles]
   );
 
   const renderGroup = useCallback(
@@ -1546,7 +1563,7 @@ const OrderList: React.FC = () => {
         currency={currency}
         selectMode={selectMode}
         selectedIds={selectedIds}
-        seenSet={seenSet}
+        readSet={readSet}
         onOpenDetail={handleOpenDetail}
         onLongPress={handleLongPress}
         onToggleSelect={handleToggleSelect}
@@ -1554,7 +1571,7 @@ const OrderList: React.FC = () => {
         styles={styles}
       />
     ),
-    [currency, selectMode, selectedIds, seenSet, handleOpenDetail, handleLongPress, handleToggleSelect, handleSwipePay, styles]
+    [currency, selectMode, selectedIds, readSet, handleOpenDetail, handleLongPress, handleToggleSelect, handleSwipePay, styles]
   );
 
   // Stable keyExtractor — avoids creating new function reference every render
@@ -1567,7 +1584,7 @@ const OrderList: React.FC = () => {
   const listEmptyComponent = useMemo(() => (
     <View style={styles.emptyState}>
       <View style={styles.emptyIconCircle}>
-        <Feather name="inbox" size={32} color={C.textMuted} />
+        <Feather name="inbox" size={28} color={C.textMuted} />
       </View>
       <Text style={styles.emptyTitle}>
         {hasActiveFilters ? 'no matching orders' : 'no orders yet'}
@@ -1612,7 +1629,7 @@ const OrderList: React.FC = () => {
           <TextInput
             style={styles.searchInput}
             placeholder="search orders..."
-            placeholderTextColor={C.textMuted}
+            placeholderTextColor={withAlpha(C.textMuted, 0.6)}
             value={searchInput}
             onChangeText={setSearchInput}
             returnKeyType="search"
@@ -1706,17 +1723,17 @@ const OrderList: React.FC = () => {
           >
             <Feather name="globe" size={12} color={semantic(BIZ_SAFE.success, isDark)} style={{ marginRight: 4 }} />
             <Text style={[styles.quickChipText, activeChip === 'online' && styles.quickChipTextActive]}>online</Text>
-            {unseenOnlineCount > 0 && (
+            {unreadCount > 0 && (
               <View style={[styles.chipCountBadge, { backgroundColor: withAlpha(semantic(BIZ_SAFE.warning, isDark), 0.2) }]}>
-                <Text style={[styles.chipCountText, { color: semantic(BIZ_SAFE.warning, isDark) }]}>{unseenOnlineCount}</Text>
+                <Text style={[styles.chipCountText, { color: semantic(BIZ_SAFE.warning, isDark) }]}>{unreadCount}</Text>
               </View>
             )}
           </TouchableOpacity>
-          {activeChip === 'online' && unseenOnlineCount > 0 && (
+          {activeChip === 'online' && unreadCount > 0 && (
             <>
               <View style={styles.unseenHint}>
                 <View style={styles.unseenHintBar} />
-                <Text style={styles.unseenHintText}>{unseenOnlineCount} new</Text>
+                <Text style={styles.unseenHintText}>{unreadCount} new</Text>
               </View>
               <TouchableOpacity
                 style={styles.markAllSeenBtn}
@@ -2080,7 +2097,7 @@ const OrderList: React.FC = () => {
                 value={paymentNote}
                 onChangeText={setPaymentNote}
                 placeholder="note (optional)"
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 returnKeyType="done"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={C.accent}
@@ -2116,47 +2133,28 @@ const OrderList: React.FC = () => {
               <>
                 <View style={styles.modalHeader}>
                   <View style={styles.modalHeaderLeft}>
-                    <View style={styles.modalTitleRow}>
-                      <Text style={styles.modalTitle}>
-                        {selectedOrder.customerName || 'Order'}
+                    <Text style={styles.modalTitle} numberOfLines={2}>
+                      {selectedOrder.customerName || 'Order'}
+                    </Text>
+                    <View style={styles.modalAmountRow}>
+                      <Text style={styles.modalHeroAmount}>
+                        {currency} {selectedOrder.totalAmount.toFixed(2)}
                       </Text>
                       {!!selectedOrder.orderNumber && (
                         <Text style={styles.modalOrderCode}>{selectedOrder.orderNumber}</Text>
                       )}
                     </View>
-                    {customerContext && (
-                      <Text style={styles.customerContextText}>
-                        {customerContext.orderCount} order{customerContext.orderCount !== 1 ? 's' : ''} · {currency} {customerContext.totalSpent.toFixed(2)} paid
-                      </Text>
-                    )}
                   </View>
-                  <View style={styles.modalHeaderRight}>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        { borderWidth: 1, borderColor: withAlpha(statusColor(selectedOrder.status), 0.5) },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.statusText,
-                          { color: statusColor(selectedOrder.status) },
-                        ]}
-                      >
-                        {selectedOrder.status}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.modalCloseButton}
-                      activeOpacity={0.7}
-                      onPress={handleCloseModal}
-                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Close"
-                    >
-                      <Feather name="x" size={18} color={C.textMuted} />
-                    </TouchableOpacity>
-                  </View>
+                  <TouchableOpacity
+                    style={styles.modalCloseButtonAbsolute}
+                    activeOpacity={0.7}
+                    onPress={handleCloseModal}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close"
+                  >
+                    <Feather name="x" size={18} color={C.textMuted} />
+                  </TouchableOpacity>
                 </View>
               </>
             )}
@@ -2275,7 +2273,7 @@ const OrderList: React.FC = () => {
                         value={editPhone}
                         onChangeText={setEditPhone}
                         placeholder="customer phone"
-                        placeholderTextColor={C.textMuted}
+                        placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                         keyboardType="phone-pad"
                         keyboardAppearance={isDark ? 'dark' : 'light'}
                         selectionColor={C.accent}
@@ -2288,7 +2286,7 @@ const OrderList: React.FC = () => {
                         value={editAddress}
                         onChangeText={setEditAddress}
                         placeholder="customer address"
-                        placeholderTextColor={C.textMuted}
+                        placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                         multiline
                         numberOfLines={3}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -2320,7 +2318,7 @@ const OrderList: React.FC = () => {
                         value={editNote}
                         onChangeText={setEditNote}
                         placeholder="order note"
-                        placeholderTextColor={C.textMuted}
+                        placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                         multiline
                         keyboardAppearance={isDark ? 'dark' : 'light'}
                         selectionColor={C.accent}
@@ -2335,6 +2333,17 @@ const OrderList: React.FC = () => {
                           <Text style={styles.editSaveText}>save</Text>
                         </TouchableOpacity>
                       </View>
+
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={styles.deleteButton}
+                        onPress={() => handleDeleteOrder(selectedOrder)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Delete this order"
+                      >
+                        <Feather name="trash-2" size={14} color={C.textMuted} />
+                        <Text style={styles.deleteButtonText}>{t.seller.olDelete}</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
 
@@ -2344,6 +2353,7 @@ const OrderList: React.FC = () => {
                       <View style={styles.modalDateRow}>
                         <Feather name="calendar" size={14} color={C.textMuted} />
                         <Text style={styles.modalDateText}>
+                          {t.seller.olOrdered}{' '}
                           {format(
                             selectedOrder.date instanceof Date
                               ? selectedOrder.date
@@ -2351,6 +2361,12 @@ const OrderList: React.FC = () => {
                             'dd MMM yyyy, h:mm a'
                           )}
                         </Text>
+                        {selectedOrder.source === 'order_link' && (
+                          <View style={styles.onlineBadgeSmall}>
+                            <Feather name="globe" size={10} color={semantic(BIZ_SAFE.success, isDark)} />
+                            <Text style={[styles.onlineBadgeSmallText, { color: semantic(BIZ_SAFE.success, isDark) }]}>{t.seller.olOnline}</Text>
+                          </View>
+                        )}
                       </View>
 
                       {(() => {
@@ -2403,13 +2419,56 @@ const OrderList: React.FC = () => {
                         ]}
                       >
                         <Text style={styles.modalItemName}>
-                          {item.productName} {'\u00D7'}{item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)} {item.unit}
+                          {item.productName} {'\u00D7'}{item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)}{item.unit && item.unit !== 'pcs' ? ` ${item.unit}` : ''}
                         </Text>
                         <Text style={styles.modalItemPrice}>
                           {currency} {(item.unitPrice * item.quantity).toFixed(2)}
                         </Text>
                       </View>
                     ))}
+
+                    {selectedOrder.items.length > 1 && (
+                      <View style={styles.modalTotalRow}>
+                        <Text style={styles.modalTotalLabel}>{t.seller.olTotal}</Text>
+                        <Text style={styles.modalTotalAmount}>
+                          {currency} {selectedOrder.totalAmount.toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* ── Payment status summary ── */}
+                  <View style={styles.paymentSummaryRow}>
+                    <Feather
+                      name={selectedOrder.isPaid ? 'check-circle' : 'alert-circle'}
+                      size={18}
+                      color={
+                        selectedOrder.isPaid
+                          ? semantic(BIZ_SAFE.success, isDark)
+                          : (selectedOrder.paidAmount || 0) > 0
+                            ? C.bronze
+                            : semantic(BIZ_SAFE.pending, isDark)
+                      }
+                    />
+                    {selectedOrder.isPaid ? (
+                      <Text style={[styles.paymentSummaryText, { color: semantic(BIZ_SAFE.success, isDark) }]}>
+                        {t.seller.olPaidBadge} · {currency} {selectedOrder.totalAmount.toFixed(2)}
+                      </Text>
+                    ) : (selectedOrder.paidAmount || 0) > 0 ? (
+                      <Text style={styles.paymentSummaryText}>
+                        <Text style={{ color: semantic(BIZ_SAFE.success, isDark) }}>
+                          {currency} {(selectedOrder.paidAmount || 0).toFixed(2)} {t.seller.olPaidBadge}
+                        </Text>
+                        {'  ·  '}
+                        <Text style={{ color: C.bronze }}>
+                          {currency} {(selectedOrder.totalAmount - (selectedOrder.paidAmount || 0)).toFixed(2)} {t.seller.olRemaining}
+                        </Text>
+                      </Text>
+                    ) : (
+                      <Text style={[styles.paymentSummaryText, { color: semantic(BIZ_SAFE.pending, isDark) }]}>
+                        {t.seller.olUnpaidBadge} · {currency} {selectedOrder.totalAmount.toFixed(2)} {t.seller.olDue}
+                      </Text>
+                    )}
                   </View>
 
                   {/* ── Payment history ── */}
@@ -2546,7 +2605,7 @@ const OrderList: React.FC = () => {
                   {/* ── Actions ── */}
                   {!isEditing && (
                     <View style={styles.modalActions}>
-                      {/* Primary: Status advance — one primary CTA */}
+                      {/* Row 1: Status advance */}
                       {NEXT_STATUS[selectedOrder.status] && (
                         <TouchableOpacity
                           activeOpacity={0.7}
@@ -2562,9 +2621,9 @@ const OrderList: React.FC = () => {
                         </TouchableOpacity>
                       )}
 
-                      {/* Payment group — secondary outline */}
-                      {!selectedOrder.isPaid && (
-                        <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+                      {/* Row 2: Record payment + Edit */}
+                      <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+                        {!selectedOrder.isPaid && (
                           <TouchableOpacity
                             activeOpacity={0.7}
                             style={[styles.outlineButton, { flex: 1 }]}
@@ -2576,95 +2635,52 @@ const OrderList: React.FC = () => {
                               setShowDepositInput(true);
                             }}
                             accessibilityRole="button"
-                            accessibilityLabel="Record a deposit"
+                            accessibilityLabel="Record a payment"
                           >
                             <Feather name="credit-card" size={16} color={C.bronze} />
-                            <Text style={[styles.outlineButtonText, { color: C.bronze }]}>deposit</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            style={[styles.outlineButton, { flex: 1 }]}
-                            onPress={() => {
-                              lightTap();
-                              setPendingPayOrder(selectedOrder);
-                              setSelectedPaymentMethod(null);
-                              setPaymentNote('');
-                              setSelectedOrder(null);
-                              setShowRawWhatsApp(false);
-                              setIsEditing(false);
-                            }}
-                            accessibilityRole="button"
-                            accessibilityLabel="Mark order as paid"
-                          >
-                            <Feather name="dollar-sign" size={16} color={C.accent} />
-                            <Text style={[styles.outlineButtonText, { color: C.accent }]}>mark as paid</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-
-                      {/* Utility row — 2-column grid */}
-                      <View style={styles.secondaryActionsGrid}>
-                        {selectedOrder.status === 'completed' && (
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            style={styles.gridAction}
-                            onPress={() => handleShareReceiptWA(selectedOrder)}
-                            accessibilityRole="button"
-                            accessibilityLabel="Send receipt via WhatsApp"
-                          >
-                            <Feather name="send" size={16} color={C.accent} />
-                            <Text style={[styles.gridActionText, { color: C.accent }]}>send receipt</Text>
+                            <Text style={[styles.outlineButtonText, { color: C.bronze }]}>{t.seller.olRecordPayment}</Text>
                           </TouchableOpacity>
                         )}
-
-                        {!selectedOrder.isPaid && (
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            style={styles.gridAction}
-                            onPress={() => handleSendQR(selectedOrder)}
-                            accessibilityRole="button"
-                            accessibilityLabel="Send QR with total via WhatsApp"
-                          >
-                            <Feather name="maximize" size={16} color={C.accent} />
-                            <Text style={[styles.gridActionText, { color: C.accent }]}>send QR</Text>
-                          </TouchableOpacity>
-                        )}
-
-                        {!selectedOrder.isPaid && (
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            style={styles.gridAction}
-                            onPress={() => handleSendReminder(selectedOrder)}
-                            accessibilityRole="button"
-                            accessibilityLabel="Copy reminder"
-                          >
-                            <Feather name="message-circle" size={16} color={C.bronze} />
-                            <Text style={styles.gridActionText}>reminder</Text>
-                          </TouchableOpacity>
-                        )}
-
                         <TouchableOpacity
                           activeOpacity={0.7}
-                          style={styles.gridAction}
+                          style={[styles.outlineButton, { flex: 1 }]}
                           onPress={() => handleStartEdit(selectedOrder)}
                           accessibilityRole="button"
-                          accessibilityLabel="Edit details"
+                          accessibilityLabel="Edit order"
                         >
                           <Feather name="edit-2" size={16} color={C.bronze} />
-                          <Text style={styles.gridActionText}>edit</Text>
+                          <Text style={[styles.outlineButtonText, { color: C.bronze }]}>{t.seller.olEdit}</Text>
                         </TouchableOpacity>
                       </View>
 
-                      {/* Delete — separated, with icon */}
+                      {/* Row 3: Send */}
                       <TouchableOpacity
                         activeOpacity={0.7}
-                        style={styles.deleteButton}
-                        onPress={() => handleDeleteOrder(selectedOrder)}
+                        style={[styles.gridAction, { width: undefined }]}
+                        onPress={() => {
+                          lightTap();
+                          const options: { text: string; onPress: () => void }[] = [];
+                          if (!selectedOrder.isPaid) {
+                            options.push({ text: t.seller.olSendQR, onPress: () => handleSendQR(selectedOrder) });
+                            options.push({ text: t.seller.olReminder, onPress: () => handleSendReminder(selectedOrder) });
+                          }
+                          if (selectedOrder.isPaid || selectedOrder.status === 'completed') {
+                            options.push({ text: t.seller.olSendReceipt, onPress: () => handleShareReceiptWA(selectedOrder) });
+                          }
+                          if (options.length === 1) {
+                            options[0].onPress();
+                          } else if (options.length > 1) {
+                            Alert.alert(t.seller.olSend, undefined, [
+                              ...options,
+                              { text: t.seller.olCancel, style: 'cancel' as const },
+                            ]);
+                          }
+                        }}
                         accessibilityRole="button"
-                        accessibilityLabel="Delete this order"
+                        accessibilityLabel="Send options"
                       >
-                        <Feather name="trash-2" size={14} color={C.textMuted} />
-                        <Text style={styles.deleteButtonText}>delete order</Text>
+                        <Feather name="send" size={16} color={C.accent} />
+                        <Text style={[styles.gridActionText, { color: C.accent }]}>{t.seller.olSend}</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -2690,6 +2706,59 @@ const OrderList: React.FC = () => {
                     value={editDeliveryDate ?? new Date()}
                     onChange={(date) => { setEditDeliveryDate(date); setShowDeliveryDateModal(false); }}
                   />
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* ─── Nav picker overlay (inside detail modal) ─── */}
+            {!!navAddress && (
+              <TouchableOpacity
+                style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }]}
+                activeOpacity={1}
+                onPress={() => setNavAddress(null)}
+              >
+                <View style={[styles.dateModalSheet, { padding: SPACING.lg }]} onStartShouldSetResponder={() => true}>
+                  <Text style={styles.dateModalTitle}>open with</Text>
+                  <View style={styles.navPickerRow}>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      style={styles.navAppButton}
+                      onPress={() => handleNavChoice('google')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Open in Google Maps"
+                    >
+                      <View style={styles.navAppIcon}>
+                        <Feather name="map" size={18} color={C.bronze} />
+                      </View>
+                      <Text style={styles.navAppLabel}>Google Maps</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      style={styles.navAppButton}
+                      onPress={() => handleNavChoice('waze')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Open in Waze"
+                    >
+                      <View style={styles.navAppIcon}>
+                        <Feather name="navigation" size={18} color={C.bronze} />
+                      </View>
+                      <Text style={styles.navAppLabel}>Waze</Text>
+                    </TouchableOpacity>
+                    {Platform.OS === 'ios' && (
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={styles.navAppButton}
+                        onPress={() => handleNavChoice('apple')}
+                        accessibilityRole="button"
+                        accessibilityLabel="Open in Apple Maps"
+                      >
+                        <View style={styles.navAppIcon}>
+                          <Feather name="compass" size={18} color={C.bronze} />
+                        </View>
+                        <Text style={styles.navAppLabel}>Apple Maps</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               </TouchableOpacity>
             )}
@@ -2720,7 +2789,7 @@ const OrderList: React.FC = () => {
                   value={addProductSearch}
                   onChangeText={setAddProductSearch}
                   placeholder="search products..."
-                  placeholderTextColor={C.textMuted}
+                  placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                   selectionColor={C.accent}
                 />
@@ -2808,7 +2877,7 @@ const OrderList: React.FC = () => {
                 value={depositAmount}
                 onChangeText={setDepositAmount}
                 placeholder="amount"
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 keyboardType="decimal-pad"
                 autoFocus
                 keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -2852,7 +2921,7 @@ const OrderList: React.FC = () => {
                 value={depositNote}
                 onChangeText={setDepositNote}
                 placeholder="note (optional)"
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 returnKeyType="done"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={C.accent}
@@ -3010,7 +3079,7 @@ const OrderList: React.FC = () => {
                           onChangeText={setEditPayAmount}
                           keyboardType="decimal-pad"
                           placeholder="amount"
-                          placeholderTextColor={C.textMuted}
+                          placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                           returnKeyType="done"
                           keyboardAppearance={isDark ? 'dark' : 'light'}
                           selectionColor={C.accent}
@@ -3030,7 +3099,7 @@ const OrderList: React.FC = () => {
                         value={editPayNote}
                         onChangeText={setEditPayNote}
                         placeholder="note (optional)"
-                        placeholderTextColor={C.textMuted}
+                        placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                         returnKeyType="done"
                         keyboardAppearance={isDark ? 'dark' : 'light'}
                         selectionColor={C.accent}
@@ -3059,9 +3128,13 @@ const OrderList: React.FC = () => {
                           if (!amt || amt <= 0) { warningNotification(); showToast('enter a valid amount.', 'error'); return; }
                           mediumTap();
                           const noteVal = editPayNote.trim() || undefined;
-                          updateDeposit(selectedOrder.id, i, amt, editPayMethod, noteVal);
-                          const deps = selectedOrder.deposits!.map((dep, idx) => idx === i ? { ...dep, amount: amt, method: editPayMethod, note: noteVal, editedAt: new Date() } : dep);
-                          const newPaid = deps.reduce((s, dep) => s + dep.amount, 0);
+                          // Cap deposit amount so it can't exceed remaining balance
+                          const otherDepositsSum = selectedOrder.deposits!.filter((_, idx) => idx !== i).reduce((s, dep) => s + dep.amount, 0);
+                          const maxForThis = Math.max(0, selectedOrder.totalAmount - otherDepositsSum);
+                          const cappedAmt = Math.min(amt, maxForThis);
+                          updateDeposit(selectedOrder.id, i, cappedAmt, editPayMethod, noteVal);
+                          const deps = selectedOrder.deposits!.map((dep, idx) => idx === i ? { ...dep, amount: cappedAmt, method: editPayMethod, note: noteVal, editedAt: new Date() } : dep);
+                          const newPaid = Math.min(deps.reduce((s, dep) => s + dep.amount, 0), selectedOrder.totalAmount);
                           const fullyPaid = newPaid >= selectedOrder.totalAmount;
                           setSelectedOrder({ ...selectedOrder, deposits: deps, paidAmount: newPaid, isPaid: fullyPaid, paymentMethod: editPayMethod, paidAt: fullyPaid ? (selectedOrder.paidAt || new Date()) : undefined, updatedAt: new Date() });
                           setEditPayIdx(null);
@@ -3082,66 +3155,7 @@ const OrderList: React.FC = () => {
       )}
 
       {/* ─── Navigation app picker overlay ─── */}
-      {!!navAddress && (
-        <TouchableOpacity
-          style={[StyleSheet.absoluteFill, styles.sortOverlay]}
-          activeOpacity={1}
-          onPress={() => setNavAddress(null)}
-        >
-          <View style={styles.paymentSheet} onStartShouldSetResponder={() => true}>
-            <Text style={styles.paymentSheetTitle}>open with</Text>
-            <View style={styles.navPickerRow}>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={styles.navAppButton}
-                onPress={() => handleNavChoice('google')}
-                accessibilityRole="button"
-                accessibilityLabel="Open in Google Maps"
-              >
-                <View style={styles.navAppIcon}>
-                  <Feather name="map" size={18} color={C.bronze} />
-                </View>
-                <Text style={styles.navAppLabel}>Google Maps</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={styles.navAppButton}
-                onPress={() => handleNavChoice('waze')}
-                accessibilityRole="button"
-                accessibilityLabel="Open in Waze"
-              >
-                <View style={styles.navAppIcon}>
-                  <Feather name="navigation" size={18} color={C.bronze} />
-                </View>
-                <Text style={styles.navAppLabel}>Waze</Text>
-              </TouchableOpacity>
-              {Platform.OS === 'ios' && (
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  style={styles.navAppButton}
-                  onPress={() => handleNavChoice('apple')}
-                  accessibilityRole="button"
-                  accessibilityLabel="Open in Apple Maps"
-                >
-                  <View style={styles.navAppIcon}>
-                    <Feather name="compass" size={18} color={C.bronze} />
-                  </View>
-                  <Text style={styles.navAppLabel}>Apple Maps</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              style={styles.navCancelBtn}
-              onPress={() => setNavAddress(null)}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-            >
-              <Text style={styles.navCancelText}>close</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      )}
+      {/* Nav picker moved inside FloatingModal */}
 
       {/* ─── Delete item confirmation overlay ─── */}
       {deleteItemConfirm && (() => {
@@ -3249,7 +3263,7 @@ const OrderList: React.FC = () => {
                     const idx = removeDepositConfirm.idx;
                     removeDeposit(selectedOrder.id, idx);
                     const deps = selectedOrder.deposits!.filter((_, i) => i !== idx);
-                    const newPaid = deps.reduce((s, dep) => s + dep.amount, 0);
+                    const newPaid = Math.min(deps.reduce((s, dep) => s + dep.amount, 0), selectedOrder.totalAmount);
                     const fullyPaid = newPaid >= selectedOrder.totalAmount;
                     setSelectedOrder({ ...selectedOrder, deposits: deps, paidAmount: newPaid, isPaid: fullyPaid, paymentMethod: deps.length > 0 ? deps[deps.length - 1].method : undefined, paidAt: fullyPaid ? selectedOrder.paidAt : undefined, updatedAt: new Date() });
                     if (editPayIdx === idx) setEditPayIdx(null);
@@ -3302,7 +3316,7 @@ const OrderList: React.FC = () => {
                 value={depositAmount}
                 onChangeText={setDepositAmount}
                 placeholder="amount"
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 keyboardType="decimal-pad"
                 autoFocus
                 keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -3379,7 +3393,7 @@ const OrderList: React.FC = () => {
                 value={depositNote}
                 onChangeText={setDepositNote}
                 placeholder="note (optional)"
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 returnKeyType="done"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
                 selectionColor={C.accent}
@@ -3462,7 +3476,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
     paddingVertical: SPACING.xs,
   },
@@ -3663,8 +3678,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: withAlpha(C.bronze, 0.04),
   },
   orderCardUnseen: {
-    borderLeftWidth: 3,
-    borderLeftColor: BIZ.warning,
+    backgroundColor: withAlpha(C.bronze, 0.06),
   },
   swipeAction: {
     width: 72,
@@ -3730,15 +3744,28 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   customerName: {
     flex: 1,
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontWeight: TYPOGRAPHY.weight.medium,
     color: C.textPrimary,
+    marginRight: SPACING.sm,
+  },
+  customerNameUnread: {
+    fontWeight: TYPOGRAPHY.weight.bold,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: C.bronze,
     marginRight: SPACING.sm,
   },
   orderTotal: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
+    fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
+  },
+  orderTotalUnread: {
+    fontWeight: TYPOGRAPHY.weight.bold,
   },
   orderItemsRow: {
     flexDirection: 'row',
@@ -3950,18 +3977,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.sm,
   },
   emptyIconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: withAlpha(C.bronze, 0.08),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.sm,
   },
   emptyTitle: {
-    fontSize: TYPOGRAPHY.size.base,
+    fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textSecondary,
+    color: C.textPrimary,
   },
   emptySubtitle: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -3973,8 +4000,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: C.bronze,
-    borderRadius: RADIUS.lg,
+    backgroundColor: C.deepOliveBiz,
+    borderRadius: RADIUS.xl,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING['2xl'],
     gap: SPACING.sm,
@@ -4259,7 +4286,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm + 2,
-    fontSize: TYPOGRAPHY.size.sm,
+    fontSize: TYPOGRAPHY.size.base,
     color: C.textPrimary,
     marginBottom: SPACING.md,
     minHeight: 40,
@@ -4607,22 +4634,27 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   modalHeaderLeft: {
     flex: 1,
-    marginRight: SPACING.sm,
+    paddingRight: SPACING['2xl'],
   },
-  modalHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  modalTitleRow: {
+  modalAmountRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+    marginTop: 2,
   },
   modalTitle: {
-    fontSize: TYPOGRAPHY.size.lg,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+    fontSize: TYPOGRAPHY.size.xl,
+    fontWeight: TYPOGRAPHY.weight.bold,
     color: C.textPrimary,
+  },
+  modalCloseButtonAbsolute: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.lg,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalOrderCode: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -4633,6 +4665,14 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingVertical: 2,
     borderRadius: RADIUS.sm,
     letterSpacing: 0.8,
+  },
+  modalHeroAmount: {
+    fontSize: TYPOGRAPHY.size['2xl'],
+    fontWeight: TYPOGRAPHY.weight.light,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+    marginTop: 2,
+    letterSpacing: -0.5,
   },
   customerContextText: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -4975,6 +5015,24 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
+  // ── Payment summary ──
+  paymentSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: withAlpha(C.textMuted, 0.06),
+  },
+  paymentSummaryText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'] as any,
+  },
+
   // ── Modal note ──
   modalNoteRow: {
     flexDirection: 'row',
@@ -5117,10 +5175,32 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginTop: SPACING.md,
     minHeight: 44,
   },
+  deleteButtonInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    minHeight: 44,
+  },
   deleteButtonText: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.regular,
     color: C.textMuted,
+  },
+  onlineBadgeSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginLeft: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
+    borderRadius: RADIUS.sm,
+    backgroundColor: withAlpha(C.accent, 0.08),
+  },
+  onlineBadgeSmallText: {
+    fontSize: 10,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
   // ── Grouped customer card ──
@@ -5167,8 +5247,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     backgroundColor: withAlpha(C.bronze, 0.06),
   },
   subOrderUnseen: {
-    borderLeftWidth: 3,
-    borderLeftColor: BIZ.warning,
+    backgroundColor: withAlpha(C.bronze, 0.06),
   },
   selectCheckboxSmall: {
     width: 18,

@@ -185,6 +185,9 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
               {transaction.linkedDebtId && (
                 <Feather name="link" size={11} color={C.bronze} style={styles.nameBadge} />
               )}
+              {transaction.linkedGoalId && (
+                <Feather name="target" size={11} color={C.accent} style={styles.nameBadge} />
+              )}
               {transaction.emotionalFlag && <View style={styles.emotionalDot} />}
             </View>
             <Text style={[styles.amount, !isExpense && styles.amountIncome]} numberOfLines={1}>
