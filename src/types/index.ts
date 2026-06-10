@@ -442,6 +442,10 @@ export interface StallSession {
   totalRevenue: number;
   totalCash: number;
   totalQR: number;
+  /** Card (Tap to Pay) takings — its own bucket alongside cash and QR. Card
+   *  money settles to Stripe, NOT the cash drawer, so it never affects the
+   *  cash reconciliation. Optional for back-compat with pre-card sessions. */
+  totalCard?: number;
   /** Default payment method for one-tap quick-sell during this session (cash/qr only). */
   defaultPayment?: StallDefaultPayment;
   /** Whether the session is paused (e.g. rain break). */
@@ -541,7 +545,7 @@ export interface StallState {
   /** Edit an existing sale in the active session (quantity and/or payment method). */
   updateSale: (saleId: string, updates: { quantity?: number; paymentMethod?: StallPaymentMethod }) => void;
   /** Off-menu sale with a typed amount and no product. Returns the new sale id. */
-  addCustomSale: (sale: { amount: number; paymentMethod: StallPaymentMethod; label?: string; regularCustomerId?: string }) => string | undefined;
+  addCustomSale: (sale: { amount: number; paymentMethod: StallPaymentMethod; label?: string; regularCustomerId?: string; pspTransactionId?: string }) => string | undefined;
   /** Add stock back to a product mid-session (clears "sold out"). */
   restockProduct: (productId: string, addQty: number) => void;
 
@@ -574,6 +578,7 @@ export interface StallState {
     totalRevenue: number;
     totalCash: number;
     totalQR: number;
+    totalCard: number;
     saleCount: number;
     productBreakdown: { productName: string; qtySold: number; revenue: number }[];
     avgSaleValue: number;

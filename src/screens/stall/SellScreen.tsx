@@ -26,6 +26,9 @@ import { StallProduct, StallModifier } from '../../types';
 
 import { successNotification, lightTap } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
+import { useNetInfo } from '@react-native-community/netinfo';
+import TapToPaySheet from '../../components/common/TapToPaySheet';
+import { tapToPayAvailable } from '../../services/tapToPay';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CART_COLLAPSED_WIDTH = SCREEN_WIDTH * 0.30;
@@ -52,6 +55,16 @@ const SellScreen: React.FC = () => {
   const currency = useSettingsStore((s) => s.currency);
   const { showToast } = useToast();
 
+  // Tap to Pay (card) availability — re-renders on connectivity change so the
+  // Card option enables/disables live. `cardConfigured` = this device/build can
+  // ever show card; `cardOffline` = configured but currently offline (button
+  // stays visible-but-disabled and taps explain why).
+  useNetInfo();
+  const cardAvail = tapToPayAvailable();
+  const cardConfigured = cardAvail.available || cardAvail.reason === 'offline';
+  const cardOffline = !cardAvail.available;
+  const [cardSheet, setCardSheet] = useState<null | { amountCents: number; label: string; onDone: (txnId: string) => void }>(null);
+
   // Sell mode: quick (1 tap = 1 sale) vs cart (multi-item)
   const [mode, setMode] = useState<'quick' | 'cart'>('quick');
 
@@ -75,7 +88,7 @@ const SellScreen: React.FC = () => {
   const [customVisible, setCustomVisible] = useState(false);
   const [customAmount, setCustomAmount] = useState('');
   const [customLabel, setCustomLabel] = useState('');
-  const [customMethod, setCustomMethod] = useState<'cash' | 'qr'>('cash');
+  const [customMethod, setCustomMethod] = useState<'cash' | 'qr' | 'card'>('cash');
   const [customSaveProduct, setCustomSaveProduct] = useState(false);
 
   // Restock-during-session
@@ -258,8 +271,10 @@ const SellScreen: React.FC = () => {
   const totalAmount = useMemo(() => Math.max(0, subtotal - discountAmount), [subtotal, discountAmount]);
 
   // ── Checkout ──
+  // For card, `pspTransactionId` (set after a successful Tap to Pay charge) is
+  // stamped onto every per-item sale — one charge covers the whole cart.
   const handleCheckout = useCallback(
-    (method: 'cash' | 'qr') => {
+    (method: 'cash' | 'qr' | 'card', pspTransactionId?: string) => {
       if (cart.length === 0 || !session) return;
 
       // Distribute discount proportionally across items
@@ -276,6 +291,7 @@ const SellScreen: React.FC = () => {
           total: Math.max(0, itemTotal - itemDiscount),
           paymentMethod: method,
           regularCustomerId: servingCustomerId || undefined,
+          ...(pspTransactionId ? { pspTransactionId, paymentProvider: 'stripe' as const } : {}),
         });
       });
 
@@ -289,6 +305,18 @@ const SellScreen: React.FC = () => {
     },
     [cart, session, addSale, collapseCart, showToast, subtotal, discountAmount, t, servingCustomerId, recordServingVisit],
   );
+
+  // ── Card (Tap to Pay) cart checkout: charge first, record on success ──
+  const openCardCheckout = useCallback(() => {
+    if (cart.length === 0 || !session) return;
+    if (cardOffline) { showToast(t.tapToPay.offlineToast, 'info'); return; }
+    const names = cart.map((i) => i.productName).join(', ');
+    setCardSheet({
+      amountCents: Math.round(totalAmount * 100),
+      label: names || t.stall.todaysSales,
+      onDone: (txnId: string) => handleCheckout('card', txnId),
+    });
+  }, [cart, session, cardOffline, totalAmount, handleCheckout, showToast, t]);
 
   // ── Quick-sell: tap a tile = 1 sale at the session default payment ──
   const handleQuickSale = useCallback(
@@ -380,16 +408,18 @@ const SellScreen: React.FC = () => {
     setCustomVisible(true);
   }, [session]);
 
-  const handleConfirmCustom = useCallback(() => {
-    const amt = parseFloat(customAmount);
-    if (isNaN(amt) || amt <= 0) return;
-    const label = customLabel.trim();
-    const id = addCustomSale({ amount: amt, paymentMethod: customMethod, label: label || undefined, regularCustomerId: servingCustomerId || undefined });
-    if (customSaveProduct && label) {
+  // Record the custom sale (shared by cash/qr and the post-charge card path).
+  const finishCustomSale = useCallback((amt: number, label: string, save: boolean, pspTransactionId?: string) => {
+    const id = addCustomSale({
+      amount: amt,
+      paymentMethod: pspTransactionId ? 'card' : customMethod,
+      label: label || undefined,
+      regularCustomerId: servingCustomerId || undefined,
+      ...(pspTransactionId ? { pspTransactionId } : {}),
+    });
+    if (save && label) {
       addProduct({ name: label, price: amt, isActive: true });
     }
-    setCustomVisible(false);
-    Keyboard.dismiss();
     successNotification();
     recordServingVisit();
     if (id) {
@@ -398,7 +428,32 @@ const SellScreen: React.FC = () => {
         onPress: () => removeSale(id),
       });
     }
-  }, [customAmount, customLabel, customMethod, customSaveProduct, addCustomSale, addProduct, removeSale, showToast, currency, t, servingCustomerId, recordServingVisit]);
+  }, [addCustomSale, customMethod, servingCustomerId, addProduct, removeSale, showToast, currency, t, recordServingVisit]);
+
+  const handleConfirmCustom = useCallback(() => {
+    const amt = parseFloat(customAmount);
+    if (isNaN(amt) || amt <= 0) return;
+    const label = customLabel.trim();
+    const save = customSaveProduct;
+    if (customMethod === 'card') {
+      if (cardOffline) { showToast(t.tapToPay.offlineToast, 'info'); return; }
+      // Charge first; close the custom modal before opening the card sheet so
+      // the two native modals never overlap (iOS), then record on success.
+      setCustomVisible(false);
+      Keyboard.dismiss();
+      setTimeout(() => {
+        setCardSheet({
+          amountCents: Math.round(amt * 100),
+          label: label || t.stall.customSale,
+          onDone: (txnId: string) => finishCustomSale(amt, label, save, txnId),
+        });
+      }, 60);
+      return;
+    }
+    setCustomVisible(false);
+    Keyboard.dismiss();
+    finishCustomSale(amt, label, save);
+  }, [customAmount, customLabel, customMethod, customSaveProduct, cardOffline, finishCustomSale, showToast, t]);
 
   // ── Restock during session ──
   const handleConfirmRestock = useCallback(() => {
@@ -971,6 +1026,24 @@ const SellScreen: React.FC = () => {
                   QR
                 </Text>
               </TouchableOpacity>
+
+              {/* Card — Tap to Pay. Only when configured for this device/build.
+                  Offline: stays visible but muted; tapping explains why. */}
+              {cardConfigured && (
+                <TouchableOpacity
+                  style={[styles.cashButton, cardOffline && { opacity: 0.5 }]}
+                  onPress={openCardCheckout}
+                  activeOpacity={0.85}
+                  disabled={cart.length === 0}
+                  accessibilityLabel={`${t.tapToPay.card}, ${currency} ${totalAmount.toFixed(2)}`}
+                  accessibilityRole="button"
+                >
+                  <Feather name="wifi" size={18} color={cart.length > 0 ? C.textPrimary : C.neutral} />
+                  <Text style={[styles.cashButtonText, cart.length === 0 && { color: C.neutral }]}>
+                    {t.tapToPay.card}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           </Pressable>
         </Animated.View>
@@ -1014,7 +1087,7 @@ const SellScreen: React.FC = () => {
                             {sale.productName}{sale.quantity > 1 ? ` ×${sale.quantity}` : ''}
                           </Text>
                           <Text style={styles.ledgerMeta}>
-                            {sale.paymentMethod === 'cash' ? t.stall.cashPrefix : t.stall.qrPrefix}
+                            {sale.paymentMethod === 'cash' ? t.stall.cashPrefix : sale.paymentMethod === 'qr' ? t.stall.qrPrefix : t.tapToPay.card}
                           </Text>
                         </View>
                         <Text style={styles.ledgerTotal}>{currency} {sale.total.toFixed(2)}</Text>
@@ -1041,20 +1114,37 @@ const SellScreen: React.FC = () => {
                               </TouchableOpacity>
                             </View>
                           )}
-                          <View style={styles.ledgerPayToggle}>
-                            <TouchableOpacity
-                              style={[styles.ledgerPayBtn, sale.paymentMethod === 'cash' && styles.ledgerPayActive]}
-                              onPress={() => updateSale(sale.id, { paymentMethod: 'cash' })}
-                            >
-                              <Text style={[styles.ledgerPayText, sale.paymentMethod === 'cash' && styles.ledgerPayTextActive]}>{t.stall.cashPrefix}</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[styles.ledgerPayBtn, sale.paymentMethod === 'qr' && styles.ledgerPayActive]}
-                              onPress={() => updateSale(sale.id, { paymentMethod: 'qr' })}
-                            >
-                              <Text style={[styles.ledgerPayText, sale.paymentMethod === 'qr' && styles.ledgerPayTextActive]}>{t.stall.qrPrefix}</Text>
-                            </TouchableOpacity>
-                          </View>
+                          {sale.pspTransactionId ? (
+                            // Card-charged sale: method is locked (relabeling can't
+                            // move a real card charge). No charge ever happens here.
+                            <View style={[styles.ledgerPayToggle, { alignItems: 'center' }]}>
+                              <Feather name="lock" size={12} color={C.textMuted} />
+                              <Text style={[styles.ledgerPayText, { color: C.textMuted, marginLeft: 6 }]}>{t.tapToPay.lockedMethod}</Text>
+                            </View>
+                          ) : (
+                            <View style={styles.ledgerPayToggle}>
+                              <TouchableOpacity
+                                style={[styles.ledgerPayBtn, sale.paymentMethod === 'cash' && styles.ledgerPayActive]}
+                                onPress={() => updateSale(sale.id, { paymentMethod: 'cash' })}
+                              >
+                                <Text style={[styles.ledgerPayText, sale.paymentMethod === 'cash' && styles.ledgerPayTextActive]}>{t.stall.cashPrefix}</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.ledgerPayBtn, sale.paymentMethod === 'qr' && styles.ledgerPayActive]}
+                                onPress={() => updateSale(sale.id, { paymentMethod: 'qr' })}
+                              >
+                                <Text style={[styles.ledgerPayText, sale.paymentMethod === 'qr' && styles.ledgerPayTextActive]}>{t.stall.qrPrefix}</Text>
+                              </TouchableOpacity>
+                              {cardConfigured && (
+                                <TouchableOpacity
+                                  style={[styles.ledgerPayBtn, sale.paymentMethod === 'card' && styles.ledgerPayActive]}
+                                  onPress={() => updateSale(sale.id, { paymentMethod: 'card' })}
+                                >
+                                  <Text style={[styles.ledgerPayText, sale.paymentMethod === 'card' && styles.ledgerPayTextActive]}>{t.tapToPay.card}</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          )}
                           <TouchableOpacity
                             style={styles.ledgerVoid}
                             onPress={() => { removeSale(sale.id); setEditingSaleId(null); lightTap(); }}
@@ -1128,6 +1218,15 @@ const SellScreen: React.FC = () => {
                   <Feather name="smartphone" size={15} color={customMethod === 'qr' ? C.onAccent : C.textSecondary} />
                   <Text style={[styles.customPayText, customMethod === 'qr' && { color: C.onAccent }]}>{t.stall.qrPrefix}</Text>
                 </TouchableOpacity>
+                {cardConfigured && (
+                  <TouchableOpacity
+                    style={[styles.customPayBtn, customMethod === 'card' && styles.customPayActive]}
+                    onPress={() => setCustomMethod('card')}
+                  >
+                    <Feather name="wifi" size={15} color={customMethod === 'card' ? C.onAccent : C.textSecondary} />
+                    <Text style={[styles.customPayText, customMethod === 'card' && { color: C.onAccent }]}>{t.tapToPay.card}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               {customLabel.trim().length > 0 && (
                 <TouchableOpacity
@@ -1352,6 +1451,20 @@ const SellScreen: React.FC = () => {
           </View>
         </Pressable>
       </Modal>
+
+      {/* Tap to Pay charge sheet — shared by cart + custom-amount card flows. */}
+      <TapToPaySheet
+        visible={!!cardSheet}
+        amountCents={cardSheet?.amountCents ?? 0}
+        label={cardSheet?.label ?? ''}
+        metadata={{ mode: 'stall', refId: session?.id ?? 'stall' }}
+        onSuccess={(txnId) => {
+          const cb = cardSheet?.onDone;
+          setCardSheet(null);
+          cb?.(txnId);
+        }}
+        onClose={() => setCardSheet(null)}
+      />
     </SafeAreaView>
   );
 };

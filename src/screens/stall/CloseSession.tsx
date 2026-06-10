@@ -185,10 +185,19 @@ const CloseSession: React.FC = () => {
                 {t.stall.qrPrefix} {currency} {summary.totalQR.toFixed(0)}
               </Text>
             </View>
+            {summary.totalCard > 0 && (
+              <View style={styles.breakdownItem}>
+                <Feather name="wifi" size={14} color={C.textSecondary} />
+                <Text style={styles.breakdownText}>
+                  {t.tapToPay.card} {currency} {summary.totalCard.toFixed(0)}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* Cash box — optional reconciliation */}
+        {/* Cash box — optional reconciliation. Card settles to Stripe, not the
+            drawer, so expected cash stays cash-only above. */}
         <View style={styles.section}>
           <Text style={styles.inputLabel}>{t.stall.cashBoxHeading}</Text>
           <Text style={styles.sectionHint}>{t.stall.cashBoxHint}</Text>

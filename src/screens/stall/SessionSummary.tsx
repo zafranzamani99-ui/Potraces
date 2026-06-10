@@ -150,7 +150,8 @@ const SessionSummary: React.FC = () => {
 
     let message = `${sessionLabel}\n${dateStr}\n`;
     message += `${t.stall.totalLine}: ${currency} ${summary.totalRevenue.toFixed(2)}\n`;
-    message += `${t.stall.cashLine}: ${currency} ${summary.totalCash.toFixed(2)} | ${t.stall.qrLine}: ${currency} ${summary.totalQR.toFixed(2)}\n`;
+    message += `${t.stall.cashLine}: ${currency} ${summary.totalCash.toFixed(2)} | ${t.stall.qrLine}: ${currency} ${summary.totalQR.toFixed(2)}`;
+    message += summary.totalCard > 0 ? ` | ${t.tapToPay.card}: ${currency} ${summary.totalCard.toFixed(2)}\n` : '\n';
     message += '---\n';
 
     for (const product of summary.productBreakdown) {
@@ -249,6 +250,21 @@ const SessionSummary: React.FC = () => {
               {currency} {summary.totalQR.toFixed(0)}
             </Text>
           </View>
+          {summary.totalCard > 0 && (
+            <>
+              <View style={styles.splitDivider} />
+              <View style={styles.splitItem}>
+                <Feather name="wifi" size={16} color={C.textSecondary} style={{ marginBottom: 4 }} />
+                <Text style={styles.splitLabel}>{t.tapToPay.card}</Text>
+                <Text
+                  style={styles.splitValue}
+                  accessibilityLabel={`Card came in ${currency} ${summary.totalCard.toFixed(2)}`}
+                >
+                  {currency} {summary.totalCard.toFixed(0)}
+                </Text>
+              </View>
+            </>
+          )}
         </View>
 
         {/* What you kept — only when costs were entered */}

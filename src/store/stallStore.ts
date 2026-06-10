@@ -72,6 +72,7 @@ export const useStallStore = create<StallState>()(
           totalRevenue: 0,
           totalCash: 0,
           totalQR: 0,
+          totalCard: 0,
         };
 
         set((state) => ({
@@ -263,6 +264,7 @@ export const useStallStore = create<StallState>()(
               totalRevenue: roundMoney(s.totalRevenue + newSale.total),
               totalCash: sale.paymentMethod === 'cash' ? roundMoney(s.totalCash + newSale.total) : s.totalCash,
               totalQR: sale.paymentMethod === 'qr' ? roundMoney(s.totalQR + newSale.total) : s.totalQR,
+              totalCard: sale.paymentMethod === 'card' ? roundMoney((s.totalCard || 0) + newSale.total) : (s.totalCard || 0),
             };
           }),
           // Update product totalSold
@@ -305,7 +307,7 @@ export const useStallStore = create<StallState>()(
       },
 
       // Off-menu sale: a typed amount, no product, no stock decrement.
-      addCustomSale: ({ amount, paymentMethod, label, regularCustomerId }) => {
+      addCustomSale: ({ amount, paymentMethod, label, regularCustomerId, pspTransactionId }) => {
         const activeId = get().activeSessionId;
         if (!activeId || !amount || amount <= 0) return undefined;
 
@@ -323,6 +325,7 @@ export const useStallStore = create<StallState>()(
           isCustom: true,
           label: trimmed,
           regularCustomerId,
+          ...(pspTransactionId ? { pspTransactionId, paymentProvider: 'stripe' as const } : {}),
           timestamp: new Date(),
         };
 
@@ -335,6 +338,7 @@ export const useStallStore = create<StallState>()(
                   totalRevenue: roundMoney(s.totalRevenue + total),
                   totalCash: paymentMethod === 'cash' ? roundMoney(s.totalCash + total) : s.totalCash,
                   totalQR: paymentMethod === 'qr' ? roundMoney(s.totalQR + total) : s.totalQR,
+                  totalCard: paymentMethod === 'card' ? roundMoney((s.totalCard || 0) + total) : (s.totalCard || 0),
                 }
               : s
           ),
@@ -362,11 +366,15 @@ export const useStallStore = create<StallState>()(
           const qtyDelta = newQty - sale.quantity;
           const totalDelta = newTotal - sale.total;
 
-          // Rebuild cash/QR splits: remove the old contribution, add the new.
+          // Rebuild cash/QR/card splits: remove the old contribution, add the new.
           let totalCash = session.totalCash;
           let totalQR = session.totalQR;
-          if (sale.paymentMethod === 'cash') totalCash -= sale.total; else totalQR -= sale.total;
-          if (newMethod === 'cash') totalCash += newTotal; else totalQR += newTotal;
+          let totalCard = session.totalCard || 0;
+          const apply = (m: 'cash' | 'qr' | 'card', amt: number) => {
+            if (m === 'cash') totalCash += amt; else if (m === 'qr') totalQR += amt; else totalCard += amt;
+          };
+          apply(sale.paymentMethod, -sale.total);
+          apply(newMethod, newTotal);
 
           return {
             sessions: state.sessions.map((s) => {
@@ -386,6 +394,7 @@ export const useStallStore = create<StallState>()(
                 totalRevenue: roundMoney(s.totalRevenue + totalDelta),
                 totalCash: roundMoney(totalCash),
                 totalQR: roundMoney(totalQR),
+                totalCard: roundMoney(totalCard),
               };
             }),
             products: sale.isCustom
@@ -607,6 +616,7 @@ export const useStallStore = create<StallState>()(
             totalRevenue: 0,
             totalCash: 0,
             totalQR: 0,
+            totalCard: 0,
             saleCount: 0,
             productBreakdown: [],
             avgSaleValue: 0,
@@ -634,6 +644,7 @@ export const useStallStore = create<StallState>()(
           totalRevenue: session.totalRevenue,
           totalCash: session.totalCash,
           totalQR: session.totalQR,
+          totalCard: session.totalCard || 0,
           saleCount: session.sales.length,
           productBreakdown: Object.values(breakdown).sort((a, b) => b.revenue - a.revenue),
           avgSaleValue: session.sales.length > 0 ? session.totalRevenue / session.sales.length : 0,
