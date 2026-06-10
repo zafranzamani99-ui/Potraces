@@ -137,7 +137,8 @@ const StallPreOrders: React.FC = () => {
     setCollectAt(po.collectAt || '');
     setNote(po.note || '');
     setIsPaid(po.isPaid);
-    setPayMethod(po.paymentMethod || 'cash');
+    // Pre-orders are cash/qr only — card is never a pre-order method.
+    setPayMethod(po.paymentMethod === 'qr' ? 'qr' : 'cash');
     setItems(po.items.map((i) => ({ key: nextKey(), productId: i.productId, name: i.name, qty: String(i.quantity), price: String(i.unitPrice) })));
     setExpandedId(null);
     setShowForm(true);

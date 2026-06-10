@@ -130,6 +130,9 @@ interface SettingsState {
   setSpendingAlertsEnabled: (value: boolean) => void;
   quickAddConfirm: boolean;
   setQuickAddConfirm: (value: boolean) => void;
+  /** Per-device opt-in for accepting card payments via Tap to Pay (iOS pilot). */
+  tapToPayEnabled: boolean;
+  setTapToPayEnabled: (value: boolean) => void;
   getPaymentMethods: () => CategoryOption[];
   addCustomPaymentMethod: (method: CategoryOption) => void;
   removeCustomPaymentMethod: (id: string) => void;
@@ -191,12 +194,14 @@ export const useSettingsStore = create<SettingsState>()(
       lastSyncedUserId: null,
       spendingAlertsEnabled: true,
       quickAddConfirm: false,
+      tapToPayEnabled: false,
 
       setPersonalSyncEnabled: (personalSyncEnabled) => set({ personalSyncEnabled }),
       setLastPersonalSyncAt: (lastPersonalSyncAt) => set({ lastPersonalSyncAt }),
       setLastSyncedUserId: (lastSyncedUserId) => set({ lastSyncedUserId }),
       setSpendingAlertsEnabled: (spendingAlertsEnabled) => set({ spendingAlertsEnabled }),
       setQuickAddConfirm: (quickAddConfirm) => set({ quickAddConfirm }),
+      setTapToPayEnabled: (tapToPayEnabled) => set({ tapToPayEnabled }),
 
       getPaymentMethods: () => {
         const { customPaymentMethods, paymentMethodOverrides } = get();
@@ -584,6 +589,9 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (typeof state.personalSyncEnabled !== 'boolean') {
           state.personalSyncEnabled = false;
+        }
+        if (typeof state.tapToPayEnabled !== 'boolean') {
+          state.tapToPayEnabled = false;
         }
       },
     }

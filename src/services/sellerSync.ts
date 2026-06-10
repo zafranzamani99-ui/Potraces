@@ -369,6 +369,24 @@ export async function pushOrders(
     await supabase
       .from('seller_orders')
       .upsert(rows, { onConflict: 'user_id,local_id' });
+
+    // Tap to Pay card orders also carry a Stripe transaction id. The
+    // psp_transaction_id / payment_provider columns exist only after the
+    // card-payment migration, and card orders only exist on pilot builds where
+    // it is applied — so writing them here never affects the byte-identical
+    // bulk upsert above for non-card orders. The id also lives on the paid
+    // deposit entry (deposits JSONB), so it survives even without these columns.
+    const cardOrders = appOrders.filter((o) => o.pspTransactionId);
+    for (const o of cardOrders) {
+      await supabase
+        .from('seller_orders')
+        .update({
+          psp_transaction_id: o.pspTransactionId,
+          payment_provider: o.paymentProvider ?? 'stripe',
+        })
+        .eq('user_id', session.user.id)
+        .eq('local_id', o.id);
+    }
   }
 
   // ── Order_link orders — push local edits back ──────────────
@@ -392,6 +410,11 @@ export async function pushOrders(
         paid_at: toIso(o.paidAt),
         note: o.note ?? null,
         deposits: o.deposits ?? [],
+        // Only set for card (pilot) orders → never touches the new columns for
+        // existing order_link flows on an un-migrated database.
+        ...(o.pspTransactionId
+          ? { psp_transaction_id: o.pspTransactionId, payment_provider: o.paymentProvider ?? 'stripe' }
+          : {}),
         delivery_date: toIso(o.deliveryDate),
         order_number: o.orderNumber ?? null,
         transferred_to_personal: o.transferredToPersonal ?? false,
@@ -924,6 +947,8 @@ export async function pullAll(): Promise<void> {
         isPaid: ro.is_paid,
         paidAmount: ro.paid_amount ?? undefined,
         paymentMethod: (ro.payment_method as SellerPaymentMethod | null) ?? undefined,
+        pspTransactionId: (ro.psp_transaction_id as string | null) ?? undefined,
+        paymentProvider: (ro.payment_provider as 'stripe' | null) ?? undefined,
         paidAt: ro.paid_at ? sd(ro.paid_at) : undefined,
         note: ro.note ?? undefined,
         deliveryDate: ro.delivery_date ? sd(ro.delivery_date) : undefined,

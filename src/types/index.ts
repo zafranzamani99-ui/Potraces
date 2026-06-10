@@ -93,7 +93,7 @@ export type Transfer = {
 
 // ─── SELLER TYPES ─────────────────────────────────────────
 export type OrderStatus = 'pending' | 'confirmed' | 'ready' | 'delivered' | 'completed';
-export type SellerPaymentMethod = 'cash' | 'bank_transfer' | 'duitnow' | 'tng' | 'grab' | 'boost' | 'maybank_qr' | 'ewallet';
+export type SellerPaymentMethod = 'cash' | 'bank_transfer' | 'duitnow' | 'tng' | 'grab' | 'boost' | 'maybank_qr' | 'ewallet' | 'card';
 
 export interface SellerProduct {
   id: string;
@@ -130,6 +130,10 @@ export interface DepositEntry {
   date: Date;
   note?: string;
   editedAt?: Date;
+  /** Stripe PaymentIntent id when this deposit was paid by Tap to Pay card. */
+  pspTransactionId?: string;
+  /** Payment service provider that processed a card payment. */
+  paymentProvider?: 'stripe';
 }
 
 export interface SellerOrderItem {
@@ -154,6 +158,10 @@ export interface SellerOrder {
   paymentMethod?: SellerPaymentMethod;
   paidAt?: Date;
   deposits?: DepositEntry[];
+  /** Stripe PaymentIntent id when the order was paid by Tap to Pay card. */
+  pspTransactionId?: string;
+  /** Payment service provider that processed a card payment. */
+  paymentProvider?: 'stripe';
   note?: string;
   rawWhatsApp?: string;
   date: Date;
@@ -363,7 +371,10 @@ export interface SellerState {
 
 // ─── STALL TYPES ──────────────────────────────────────────
 export type SessionCondition = 'good' | 'slow' | 'rainy' | 'hot' | 'normal';
-export type StallPaymentMethod = 'cash' | 'qr';
+export type StallPaymentMethod = 'cash' | 'qr' | 'card';
+/** Payment methods eligible for the one-tap session default. Card is excluded:
+ *  a card tap is a wait-state ceremony and must not sit on a quick-sell tile. */
+export type StallDefaultPayment = 'cash' | 'qr';
 
 /** Optional quick variant on a product (e.g. "ais" +0.50, "kurang manis" +0). */
 export interface StallModifier {
@@ -412,6 +423,10 @@ export interface StallSale {
   label?: string;
   /** Cost of goods per unit, stamped from the product at sale time (for net "kept"). */
   costPerUnit?: number;
+  /** Stripe PaymentIntent id when this sale was paid by Tap to Pay card. */
+  pspTransactionId?: string;
+  /** Payment service provider that processed a card payment. */
+  paymentProvider?: 'stripe';
   timestamp: Date;
 }
 
@@ -427,8 +442,8 @@ export interface StallSession {
   totalRevenue: number;
   totalCash: number;
   totalQR: number;
-  /** Default payment method for one-tap quick-sell during this session. */
-  defaultPayment?: StallPaymentMethod;
+  /** Default payment method for one-tap quick-sell during this session (cash/qr only). */
+  defaultPayment?: StallDefaultPayment;
   /** Whether the session is paused (e.g. rain break). */
   paused?: boolean;
   /** Accumulated paused milliseconds, subtracted from session duration. */
@@ -506,7 +521,7 @@ export interface StallState {
   startSession: (name?: string, productSetup?: { productId: string; startQty: number }[]) => string;
   closeSession: (condition?: SessionCondition, note?: string) => void;
   getActiveSession: () => StallSession | null;
-  setSessionDefaultPayment: (method: StallPaymentMethod) => void;
+  setSessionDefaultPayment: (method: StallDefaultPayment) => void;
   pauseSession: () => void;
   resumeSession: () => void;
   setClearance: (percent: number) => void;

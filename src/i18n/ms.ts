@@ -2957,4 +2957,35 @@ export const ms: Translations = {
     thinking: 'berfikir...',
     showSummary: 'tunjuk ringkasan',
   },
+  tapToPay: {
+    // label kaedah bayaran kongsi
+    card: 'kad',
+    // baris tetapan
+    settingsTitle: 'bayaran kad (tap to pay)',
+    settingsSubtitle: 'terima kad tanpa sentuh pada iPhone ini',
+    statusAvailable: 'tersedia',
+    statusPlatform: 'iphone sahaja',
+    statusFlag: 'dimatikan',
+    statusCurrency: 'untuk RM sahaja',
+    statusDevice: 'tiada di ipad',
+    statusOffline: 'perlukan internet',
+    statusConfig: 'belum disediakan',
+    // helaian bayaran
+    title: 'bayaran kad',
+    preparing: 'sedang bersedia…',
+    firstUseNote: 'persediaan kali pertama mungkin muncul',
+    ready: 'dekatkan kad ke bahagian atas iPhone ini',
+    processing: 'memproses…',
+    success: 'dibayar',
+    declined: 'kad ditolak',
+    canceled: 'bayaran dibatalkan',
+    errorGeneric: 'tidak dapat selesaikan bayaran',
+    retry: 'cuba lagi',
+    cancel: 'batal',
+    close: 'tutup',
+    // toast / nota dalam baris
+    offlineToast: 'bayaran kad perlukan internet',
+    bulkUnsupported: 'bayaran kad tak boleh ditanda secara pukal — caj satu demi satu',
+    lockedMethod: 'dibayar dengan kad — kaedah dikunci',
+  },
 };

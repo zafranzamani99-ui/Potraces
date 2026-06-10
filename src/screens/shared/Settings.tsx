@@ -47,6 +47,7 @@ import PaymentMethodManager from '../../components/common/PaymentMethodManager';
 import UnitManager from '../../components/common/UnitManager';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
+import { tapToPayAvailable } from '../../services/tapToPay';
 import * as Clipboard from 'expo-clipboard';
 import { openQuickAdd } from '../../components/common/QuickAddExpense';
 import { signOut } from '../../services/supabase';
@@ -526,6 +527,8 @@ const Settings: React.FC = () => {
   const setSpendingAlertsEnabled = useSettingsStore((s) => s.setSpendingAlertsEnabled);
   const quickAddConfirm = useSettingsStore((s) => s.quickAddConfirm);
   const setQuickAddConfirm = useSettingsStore((s) => s.setQuickAddConfirm);
+  const tapToPayEnabled = useSettingsStore((s) => s.tapToPayEnabled);
+  const setTapToPayEnabled = useSettingsStore((s) => s.setTapToPayEnabled);
   const personalQrs = useSettingsStore((s) => s.paymentQrs) || [];
   const businessQrs = useSettingsStore((s) => s.businessPaymentQrs) || [];
   const paymentQrs = mode === 'business' ? businessQrs : personalQrs;
@@ -1110,6 +1113,42 @@ const Settings: React.FC = () => {
               thumbColor={C.surface}
             />
           </View>
+
+          {/* Card payments (Tap to Pay) — iOS only. Status reflects why it's
+              unavailable when the toggle is on but a gate isn't met. */}
+          {Platform.OS === 'ios' && (() => {
+            const av = tapToPayAvailable();
+            const status = !tapToPayEnabled
+              ? t.tapToPay.settingsSubtitle
+              : av.available
+                ? t.tapToPay.statusAvailable
+                : av.reason === 'currency' ? t.tapToPay.statusCurrency
+                  : av.reason === 'device' ? t.tapToPay.statusDevice
+                    : av.reason === 'offline' ? t.tapToPay.statusOffline
+                      : av.reason === 'config' ? t.tapToPay.statusConfig
+                        : av.reason === 'platform' ? t.tapToPay.statusPlatform
+                          : t.tapToPay.statusFlag;
+            return (
+              <>
+                <View style={[styles.divider, { backgroundColor: C.border }]} />
+                <View style={styles.settingRow}>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.settingLabelRow}>
+                      <Feather name="wifi" size={18} color={C.textSecondary} />
+                      <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.tapToPay.settingsTitle}</Text>
+                    </View>
+                    <Text style={styles.settingDescription}>{status}</Text>
+                  </View>
+                  <Switch
+                    value={tapToPayEnabled}
+                    onValueChange={(v) => { lightTap(); setTapToPayEnabled(v); }}
+                    trackColor={{ false: C.border, true: C.positive }}
+                    thumbColor={C.surface}
+                  />
+                </View>
+              </>
+            );
+          })()}
 
           <View style={[styles.divider, { backgroundColor: C.border }]} />
 

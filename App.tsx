@@ -24,6 +24,7 @@ import { openQuickAdd } from './src/components/common/QuickAddExpense';
 import { logQuickExpense, undoQuickExpense } from './src/services/quickLog';
 import BiometricGate from './src/components/common/BiometricGate';
 import PersonalSyncManager from './src/components/common/PersonalSyncManager';
+import TapToPayProvider from './src/components/common/TapToPayProvider';
 import { checkStorageIntegrity, clearCorruptedStores } from './src/services/storageIntegrity';
 import { usePersonalStore } from './src/store/personalStore';
 import { ensurePermissionAndScheduleAll, scheduleBehavior as scheduleSubBehavior } from './src/services/subscriptionNotifications';
@@ -465,7 +466,9 @@ export default function App() {
                   <StatusBar style={isDark ? 'light' : 'dark'} />
                   <BiometricGate>
                     <PersonalSyncManager />
-                    <RootNavigator />
+                    <TapToPayProvider>
+                      <RootNavigator />
+                    </TapToPayProvider>
                   </BiometricGate>
                 </ToastProvider>
               </View>

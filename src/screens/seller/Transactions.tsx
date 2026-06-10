@@ -71,6 +71,7 @@ const METHOD_ICON: Record<SellerPaymentMethod, string> = {
   grab: 'credit-card',
   boost: 'credit-card',
   maybank_qr: 'grid',
+  card: 'wifi',
 };
 
 // ─── Component ─────────────────────────────────────────────
@@ -111,6 +112,7 @@ const SellerTransactions: React.FC = () => {
     grab: t.seller.methodGrab,
     boost: t.seller.methodBoost,
     maybank_qr: t.seller.methodMaybankQr,
+    card: t.tapToPay.card,
   };
   const { orders } = useSellerStore();
   const currency = useSettingsStore((s) => s.currency);

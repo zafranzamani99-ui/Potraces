@@ -15,8 +15,9 @@ import { roundMoney } from '../utils/money';
 /** Round to the nearest 5 sen (Malaysian cash rounding). */
 const roundTo5 = (n: number) => Math.round(n * 20) / 20;
 
-/** Round a sale total: 5-sen for cash when the setting is on, else 2-dp. */
-const roundCash = (amount: number, method: 'cash' | 'qr', roundCashTo5: boolean) =>
+/** Round a sale total: 5-sen for cash when the setting is on, else 2-dp.
+ *  Card charges to the exact sen (Stripe), so only cash is ever 5-sen rounded. */
+const roundCash = (amount: number, method: 'cash' | 'qr' | 'card', roundCashTo5: boolean) =>
   method === 'cash' && roundCashTo5 ? roundTo5(amount) : roundMoney(amount);
 
 export const useStallStore = create<StallState>()(

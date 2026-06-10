@@ -2986,6 +2986,37 @@ export const en = {
     thinking: 'thinking...',
     showSummary: 'show summary',
   },
+  tapToPay: {
+    // shared payment-method label
+    card: 'card',
+    // settings row
+    settingsTitle: 'card payments (tap to pay)',
+    settingsSubtitle: 'accept contactless cards on this iPhone',
+    statusAvailable: 'available',
+    statusPlatform: 'iphone only',
+    statusFlag: 'turned off',
+    statusCurrency: 'available for RM only',
+    statusDevice: 'not available on ipad',
+    statusOffline: 'needs internet',
+    statusConfig: 'not set up yet',
+    // charge sheet
+    title: 'card payment',
+    preparing: 'getting ready…',
+    firstUseNote: 'first-time setup may appear',
+    ready: 'hold the card near the top of this iPhone',
+    processing: 'processing…',
+    success: 'paid',
+    declined: 'card declined',
+    canceled: 'payment canceled',
+    errorGeneric: "couldn't complete the payment",
+    retry: 'try again',
+    cancel: 'cancel',
+    close: 'close',
+    // toasts / inline notes
+    offlineToast: 'card payments need internet',
+    bulkUnsupported: "card payments can't be marked in bulk — charge one at a time",
+    lockedMethod: 'paid by card — method is locked',
+  },
 };
 
 export type Translations = typeof en;
