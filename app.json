@@ -55,7 +55,13 @@
         "expo-image-picker",
         {
           "photosPermission": "Potraces needs access to your photos to scan receipts.",
-          "cameraPermission": "Potraces needs access to your camera to scan receipts."
+          "cameraPermission": "Potraces needs the camera to scan receipts and your DuitNow QR standee."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Potraces needs the camera to scan receipts and your DuitNow QR standee."
         }
       ],
       "@react-native-community/datetimepicker",

@@ -29,6 +29,7 @@ import { useToast } from '../../context/ToastContext';
 import { useNetInfo } from '@react-native-community/netinfo';
 import TapToPaySheet from '../../components/common/TapToPaySheet';
 import { tapToPayAvailable } from '../../services/tapToPay';
+import QrPaySheet from '../../components/common/QrPaySheet';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CART_COLLAPSED_WIDTH = SCREEN_WIDTH * 0.30;
@@ -64,6 +65,14 @@ const SellScreen: React.FC = () => {
   const cardConfigured = cardAvail.available || cardAvail.reason === 'offline';
   const cardOffline = !cardAvail.available;
   const [cardSheet, setCardSheet] = useState<null | { amountCents: number; label: string; onDone: (txnId: string) => void }>(null);
+
+  // DuitNow QR pay sheet (stall mode is business mode). The QR shown is the
+  // first business QR with a decoded payload (exact-amount capable), else the
+  // first stored QR (image fallback). No money flows through the app — both
+  // sheet actions just complete the existing 'qr' sale.
+  const businessQrs = useSettingsStore((s) => s.businessPaymentQrs) || [];
+  const qrForPay = useMemo(() => businessQrs.find((q) => q.payload) || businessQrs[0], [businessQrs]);
+  const [qrSheet, setQrSheet] = useState<null | { amountCents: number; onComplete: () => void }>(null);
 
   // Sell mode: quick (1 tap = 1 sale) vs cart (multi-item)
   const [mode, setMode] = useState<'quick' | 'cart'>('quick');
@@ -318,6 +327,17 @@ const SellScreen: React.FC = () => {
     });
   }, [cart, session, cardOffline, totalAmount, handleCheckout, showToast, t]);
 
+  // ── QR cart checkout: show the exact-amount DuitNow QR, then record ──
+  // If no QR is set up, fall straight through to today's one-tap behavior.
+  const openQrCheckout = useCallback(() => {
+    if (cart.length === 0 || !session) return;
+    if (!qrForPay) { handleCheckout('qr'); return; }
+    setQrSheet({
+      amountCents: Math.round(totalAmount * 100),
+      onComplete: () => { setQrSheet(null); handleCheckout('qr'); },
+    });
+  }, [cart, session, qrForPay, totalAmount, handleCheckout]);
+
   // ── Quick-sell: tap a tile = 1 sale at the session default payment ──
   const handleQuickSale = useCallback(
     (product: StallProduct) => {
@@ -450,10 +470,22 @@ const SellScreen: React.FC = () => {
       }, 60);
       return;
     }
+    if (customMethod === 'qr' && qrForPay) {
+      // Show the exact-amount QR for the custom amount, then record on confirm.
+      setCustomVisible(false);
+      Keyboard.dismiss();
+      setTimeout(() => {
+        setQrSheet({
+          amountCents: Math.round(amt * 100),
+          onComplete: () => { setQrSheet(null); finishCustomSale(amt, label, save); },
+        });
+      }, 60);
+      return;
+    }
     setCustomVisible(false);
     Keyboard.dismiss();
     finishCustomSale(amt, label, save);
-  }, [customAmount, customLabel, customMethod, customSaveProduct, cardOffline, finishCustomSale, showToast, t]);
+  }, [customAmount, customLabel, customMethod, customSaveProduct, cardOffline, qrForPay, finishCustomSale, showToast, t]);
 
   // ── Restock during session ──
   const handleConfirmRestock = useCallback(() => {
@@ -1015,7 +1047,7 @@ const SellScreen: React.FC = () => {
 
               <TouchableOpacity
                 style={[styles.qrButton, cart.length === 0 && styles.qrButtonDisabled]}
-                onPress={() => handleCheckout('qr')}
+                onPress={openQrCheckout}
                 activeOpacity={0.85}
                 disabled={cart.length === 0}
                 accessibilityLabel={`Pay QR, ${currency} ${totalAmount.toFixed(2)}`}
@@ -1464,6 +1496,16 @@ const SellScreen: React.FC = () => {
           cb?.(txnId);
         }}
         onClose={() => setCardSheet(null)}
+      />
+
+      {/* DuitNow QR pay sheet — shared by cart + custom-amount QR flows. */}
+      <QrPaySheet
+        visible={!!qrSheet}
+        amountCents={qrSheet?.amountCents ?? 0}
+        paymentQr={qrForPay}
+        onConfirmReceived={() => qrSheet?.onComplete()}
+        onSkip={() => qrSheet?.onComplete()}
+        onClose={() => setQrSheet(null)}
       />
     </SafeAreaView>
   );

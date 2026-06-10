@@ -29,6 +29,7 @@ import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
 import { useNetInfo } from '@react-native-community/netinfo';
 import TapToPaySheet from '../../components/common/TapToPaySheet';
+import QrPaySheet from '../../components/common/QrPaySheet';
 import { tapToPayAvailable } from '../../services/tapToPay';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
@@ -79,6 +80,11 @@ const PAYMENT_METHODS: { value: SellerPaymentMethod; label: string; icon: keyof 
   { value: 'ewallet', label: 'e-wallet', icon: 'credit-card' },
   { value: 'duitnow', label: 'QR', icon: 'grid' },
 ];
+
+// QR-family methods that can be shown as an exact-amount DuitNow QR (when the
+// seller has a scanned/pasted payload). Bank transfer / cash / card excluded.
+const isQrFamily = (m: SellerPaymentMethod): boolean =>
+  m === 'duitnow' || m === 'maybank_qr' || m === 'tng' || m === 'ewallet';
 
 type SortOption = 'newest' | 'oldest' | 'highest' | 'delivery';
 type PeriodFilter = 'all' | 'today' | 'week' | 'month';
@@ -651,6 +657,12 @@ const OrderList: React.FC = () => {
   const cardOption = { value: 'card' as SellerPaymentMethod, label: t.tapToPay.card, icon: 'wifi' as keyof typeof Feather.glyphMap };
   const [cardSheet, setCardSheet] = useState<null | { amountCents: number; label: string; refId: string; onDone: (txnId: string) => void }>(null);
 
+  // DuitNow QR pay sheet — shown when a QR-family method is chosen for a single
+  // order/deposit AND the seller has a scanned payload QR. No money flows; the
+  // sheet's "received"/"record without" just complete the existing call.
+  const qrForPay = useMemo(() => paymentQrs.find((q) => q.payload) || paymentQrs[0], [paymentQrs]);
+  const [qrSheet, setQrSheet] = useState<null | { amountCents: number; onComplete: () => void }>(null);
+
   // Accept initialFilter, searchQuery, and orderId from navigation
   const initialFilter = (route.params as { initialFilter?: string; searchQuery?: string; orderId?: string } | undefined)?.initialFilter;
   const initialSearch = (route.params as { searchQuery?: string } | undefined)?.searchQuery;
@@ -1126,6 +1138,26 @@ const OrderList: React.FC = () => {
       }, 60);
       return;
     }
+    // QR-family (single order) with a scannable QR: show the exact-amount QR
+    // first, then mark paid on the seller's confirmation. "Record without
+    // confirming" inside the sheet keeps today's trust-based behavior.
+    if (pendingPayOrder && qrForPay?.payload && isQrFamily(selectedPaymentMethod)) {
+      const order = pendingPayOrder;
+      const method = selectedPaymentMethod;
+      const note = paymentNote.trim() || undefined;
+      const remaining = order.totalAmount - (order.paidAmount || 0);
+      const amountCents = Math.round((remaining > 0 ? remaining : order.totalAmount) * 100);
+      setPendingPayOrder(null);
+      setSelectedPaymentMethod(null);
+      setPaymentNote('');
+      setTimeout(() => {
+        setQrSheet({
+          amountCents,
+          onComplete: () => { setQrSheet(null); markOrderPaid(order.id, method, note); showToast('marked as paid.', 'info'); },
+        });
+      }, 60);
+      return;
+    }
     mediumTap();
     const note = paymentNote.trim() || undefined;
     if (pendingPayOrder) {
@@ -1140,7 +1172,7 @@ const OrderList: React.FC = () => {
     setBulkPayIds([]);
     setSelectedPaymentMethod(null);
     setPaymentNote('');
-  }, [pendingPayOrder, bulkPayIds, selectedPaymentMethod, paymentNote, markOrderPaid, markOrdersPaid, showToast, cardOffline, t]);
+  }, [pendingPayOrder, bulkPayIds, selectedPaymentMethod, paymentNote, markOrderPaid, markOrdersPaid, showToast, cardOffline, qrForPay, t]);
 
   const handleCloseModal = useCallback(() => {
     setSelectedOrder(null);
@@ -3011,6 +3043,22 @@ const OrderList: React.FC = () => {
                   }, 60);
                   return;
                 }
+                if (isQrFamily(depositMethod) && qrForPay?.payload) {
+                  // Show the exact-amount QR for this deposit, then record on confirm.
+                  const order = selectedOrder;
+                  const method = depositMethod;
+                  const note = finalNote || undefined;
+                  const payAmt = amt;
+                  setShowDepositInput(false);
+                  setSelectedOrder(null);
+                  setTimeout(() => {
+                    setQrSheet({
+                      amountCents: Math.round(payAmt * 100),
+                      onComplete: () => { setQrSheet(null); recordPayment(order.id, payAmt, method, note); },
+                    });
+                  }, 60);
+                  return;
+                }
                 mediumTap();
                 recordPayment(selectedOrder.id, amt, depositMethod, finalNote || undefined);
                 const freshOrder = useSellerStore.getState().orders.find(o => o.id === selectedOrder.id);
@@ -3496,6 +3544,20 @@ const OrderList: React.FC = () => {
                   }, 60);
                   return;
                 }
+                if (isQrFamily(depositMethod) && qrForPay?.payload) {
+                  const order = swipePayOrder;
+                  const method = depositMethod;
+                  const note = finalNote || undefined;
+                  const payAmt = amt;
+                  setSwipePayOrder(null);
+                  setTimeout(() => {
+                    setQrSheet({
+                      amountCents: Math.round(payAmt * 100),
+                      onComplete: () => { setQrSheet(null); recordPayment(order.id, payAmt, method, note); },
+                    });
+                  }, 60);
+                  return;
+                }
                 mediumTap();
                 recordPayment(swipePayOrder.id, amt, depositMethod, finalNote || undefined);
                 setSwipePayOrder(null);
@@ -3531,6 +3593,16 @@ const OrderList: React.FC = () => {
           cb?.(txnId);
         }}
         onClose={() => setCardSheet(null)}
+      />
+
+      {/* DuitNow QR pay sheet — shared by mark-paid, deposit, swipe-pay. */}
+      <QrPaySheet
+        visible={!!qrSheet}
+        amountCents={qrSheet?.amountCents ?? 0}
+        paymentQr={qrForPay}
+        onConfirmReceived={() => qrSheet?.onComplete()}
+        onSkip={() => qrSheet?.onComplete()}
+        onClose={() => setQrSheet(null)}
       />
     </View>
   );

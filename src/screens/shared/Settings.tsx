@@ -44,6 +44,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import CategoryManager from '../../components/common/CategoryManager';
 import PaymentMethodManager from '../../components/common/PaymentMethodManager';
+import QrCaptureModal, { type QrCaptureResult } from '../../components/common/QrCaptureModal';
 import UnitManager from '../../components/common/UnitManager';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
@@ -494,6 +495,7 @@ const Settings: React.FC = () => {
   const [qrLabelModal, setQrLabelModal] = useState<{ visible: boolean; uri?: string; replaceIndex?: number; renameIndex?: number; defaultLabel: string }>({ visible: false, defaultLabel: '' });
   const [qrLabelInput, setQrLabelInput] = useState('');
   const [qrPreviewIndex, setQrPreviewIndex] = useState<number | null>(null);
+  const [scanModalVisible, setScanModalVisible] = useState(false);
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const scrollRef = useRef<any>(null);
   const sectionY = useRef<Record<string, number>>({});
@@ -752,6 +754,12 @@ const Settings: React.FC = () => {
       showToast(t.settings.qrRemoved, 'success');
     }
   }, [qrActionIndex, paymentQrs, updatePaymentQrLabel, removePaymentQr, showToast, mode, t]);
+
+  const handleScannedQr = useCallback((r: QrCaptureResult) => {
+    setScanModalVisible(false);
+    addPaymentQr(r.uri, r.label, mode, { payload: r.payload, network: r.network, merchantName: r.merchantName });
+    showToast(t.qrPay.qrSaved, 'success');
+  }, [addPaymentQr, mode, showToast, t]);
 
   const handleDeleteAccount = useCallback(() => {
     // Step 1: initial warning
@@ -1592,6 +1600,12 @@ const Settings: React.FC = () => {
         />
         )}
 
+        <QrCaptureModal
+          visible={scanModalVisible}
+          onClose={() => setScanModalVisible(false)}
+          onCaptured={handleScannedQr}
+        />
+
         {/* Subscription */}
         <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.subscription}</Text>
         <Card style={styles.card}>
@@ -1745,6 +1759,21 @@ const Settings: React.FC = () => {
               );
             })}
           </View>
+          {paymentQrs.length < 2 && (
+            <>
+              <Button
+                title={t.qrPay.scanStandee}
+                onPress={() => { lightTap(); setScanModalVisible(true); }}
+                variant="outline"
+                icon="camera"
+                fullWidth
+                style={{ marginTop: SPACING.md }}
+              />
+              <Text style={[styles.qrSubtitle, { marginTop: SPACING.sm, marginBottom: 0 }]}>
+                {t.qrPay.scanStandeeHint}
+              </Text>
+            </>
+          )}
         </Card>
 
         {/* Data */}

@@ -85,7 +85,20 @@ export async function clearBusinessLocalData(): Promise<void> {
 export interface PaymentQr {
   uri: string;
   label: string;
+  /**
+   * Decoded EMVCo payload of a DuitNow *static* QR (captured via scan / paste).
+   * When present, the app can re-render this QR with an exact amount embedded
+   * (tag 54). Absent on plain photo-uploaded QRs — those behave exactly as before.
+   */
+  payload?: string;
+  /** QR network, set on capture. 'duitnow' when validated, else 'unknown'. */
+  network?: 'duitnow' | 'unknown';
+  /** Merchant name decoded from the payload (tag 59), for display/confirmation. */
+  merchantName?: string;
 }
+
+/** Optional decoded fields attached to a captured (scanned/pasted) QR. */
+type PaymentQrMeta = Partial<Pick<PaymentQr, 'payload' | 'network' | 'merchantName'>>;
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 export type AppLanguage = 'en' | 'ms';
@@ -145,9 +158,9 @@ interface SettingsState {
   setDefaultMode: (mode: 'personal' | 'business') => void;
   setThemePreference: (pref: ThemePreference) => void;
   setLanguage: (lang: AppLanguage) => void;
-  addPaymentQr: (uri: string, label: string, mode?: 'personal' | 'business') => void;
+  addPaymentQr: (uri: string, label: string, mode?: 'personal' | 'business', meta?: PaymentQrMeta) => void;
   removePaymentQr: (index: number, mode?: 'personal' | 'business') => void;
-  replacePaymentQr: (index: number, uri: string, label?: string, mode?: 'personal' | 'business') => void;
+  replacePaymentQr: (index: number, uri: string, label?: string, mode?: 'personal' | 'business', meta?: PaymentQrMeta) => void;
   updatePaymentQrLabel: (index: number, label: string, mode?: 'personal' | 'business') => void;
   getPaymentQrs: (mode: 'personal' | 'business') => PaymentQr[];
   setHasCompletedOnboarding: (value: boolean) => void;
@@ -227,18 +240,20 @@ export const useSettingsStore = create<SettingsState>()(
       setDefaultMode: (defaultMode) => set({ defaultMode }),
       setThemePreference: (themePreference) => set({ themePreference }),
       setLanguage: (language) => set({ language }),
-      addPaymentQr: (uri, label, mode) => set((s) => {
+      addPaymentQr: (uri, label, mode, meta) => set((s) => {
         const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
         const arr = s[key] || [];
-        return { [key]: arr.length < 2 ? [...arr, { uri, label }] : arr };
+        return { [key]: arr.length < 2 ? [...arr, { uri, label, ...(meta || {}) }] : arr };
       }),
       removePaymentQr: (index, mode) => set((s) => {
         const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
         return { [key]: (s[key] || []).filter((_, i) => i !== index) };
       }),
-      replacePaymentQr: (index, uri, label, mode) => set((s) => {
+      // Replacing with a plain photo (no meta) intentionally drops any stale
+      // payload/network/merchantName — it's a different QR now.
+      replacePaymentQr: (index, uri, label, mode, meta) => set((s) => {
         const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
-        return { [key]: (s[key] || []).map((q, i) => i === index ? { uri, label: label ?? q.label } : q) };
+        return { [key]: (s[key] || []).map((q, i) => i === index ? { uri, label: label ?? q.label, ...(meta || {}) } : q) };
       }),
       updatePaymentQrLabel: (index, label, mode) => set((s) => {
         const key = mode === 'business' ? 'businessPaymentQrs' : 'paymentQrs';
