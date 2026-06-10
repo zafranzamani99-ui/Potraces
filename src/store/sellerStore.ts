@@ -227,13 +227,14 @@ export const useSellerStore = create<SellerState>()(
           }),
         })),
 
-      markOrderPaid: (id, paymentMethod, note) =>
+      markOrderPaid: (id, paymentMethod, note, pspTransactionId) =>
         set((state) => ({
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
             const remaining = o.totalAmount - (o.paidAmount || 0);
-            const entry = { amount: remaining > 0 ? remaining : o.totalAmount, method: paymentMethod, date: new Date(), ...(note ? { note } : {}) };
-            return { ...o, isPaid: true, paidAmount: o.totalAmount, paymentMethod, paidAt: new Date(), deposits: [...(o.deposits || []), entry], updatedAt: new Date() };
+            const card = pspTransactionId ? { pspTransactionId, paymentProvider: 'stripe' as const } : {};
+            const entry = { amount: remaining > 0 ? remaining : o.totalAmount, method: paymentMethod, date: new Date(), ...(note ? { note } : {}), ...card };
+            return { ...o, isPaid: true, paidAmount: o.totalAmount, paymentMethod, paidAt: new Date(), deposits: [...(o.deposits || []), entry], updatedAt: new Date(), ...card };
           }),
         })),
 
@@ -436,7 +437,7 @@ export const useSellerStore = create<SellerState>()(
         }
       },
 
-      recordPayment: (id, amount, paymentMethod, note) =>
+      recordPayment: (id, amount, paymentMethod, note, pspTransactionId) =>
         set((state) => ({
           orders: state.orders.map((o) => {
             if (o.id !== id) return o;
@@ -445,7 +446,8 @@ export const useSellerStore = create<SellerState>()(
             // (mirrors updateDeposit). Prevents "Paid RM80 / RM50" states.
             const newPaidAmount = roundMoney(Math.min(o.totalAmount, (o.paidAmount || 0) + amount));
             const fullyPaid = newPaidAmount >= o.totalAmount;
-            const entry = { amount, method: paymentMethod, date: new Date(), ...(note ? { note } : {}) };
+            const card = pspTransactionId ? { pspTransactionId, paymentProvider: 'stripe' as const } : {};
+            const entry = { amount, method: paymentMethod, date: new Date(), ...(note ? { note } : {}), ...card };
             return {
               ...o,
               paidAmount: newPaidAmount,
@@ -454,6 +456,7 @@ export const useSellerStore = create<SellerState>()(
               paidAt: fullyPaid ? new Date() : o.paidAt,
               deposits: [...(o.deposits || []), entry],
               updatedAt: new Date(),
+              ...card,
             };
           }),
         })),

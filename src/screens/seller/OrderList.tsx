@@ -27,6 +27,9 @@ import { useSellerStore } from '../../store/sellerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
 import { lightTap, mediumTap, selectionChanged, warningNotification } from '../../services/haptics';
+import { useNetInfo } from '@react-native-community/netinfo';
+import TapToPaySheet from '../../components/common/TapToPaySheet';
+import { tapToPayAvailable } from '../../services/tapToPay';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { SellerOrder, SellerOrderItem, OrderStatus, SellerPaymentMethod, SellerProduct, DepositEntry } from '../../types';
@@ -125,6 +128,7 @@ function paymentMethodIcon(method?: SellerPaymentMethod): keyof typeof Feather.g
     case 'boost': return 'trending-up';
     case 'maybank_qr': return 'grid';
     case 'ewallet': return 'smartphone';
+    case 'card': return 'wifi';
     default: return 'dollar-sign';
   }
 }
@@ -139,6 +143,7 @@ function paymentMethodLabel(method?: SellerPaymentMethod): string {
     case 'boost': return 'Boost';
     case 'maybank_qr': return 'MAE QR';
     case 'ewallet': return 'e-wallet';
+    case 'card': return 'card';
     default: return method || 'cash';
   }
 }
@@ -636,6 +641,16 @@ const OrderList: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
 
+  // ── Tap to Pay (card) — available-gated; re-renders on connectivity flips so
+  //    the card pill enables/disables live. Card appears only on the mark-paid
+  //    (single order) and deposit sheets, both of which charge before recording.
+  useNetInfo();
+  const cardAvail = tapToPayAvailable();
+  const cardConfigured = cardAvail.available || cardAvail.reason === 'offline';
+  const cardOffline = !cardAvail.available;
+  const cardOption = { value: 'card' as SellerPaymentMethod, label: t.tapToPay.card, icon: 'wifi' as keyof typeof Feather.glyphMap };
+  const [cardSheet, setCardSheet] = useState<null | { amountCents: number; label: string; refId: string; onDone: (txnId: string) => void }>(null);
+
   // Accept initialFilter, searchQuery, and orderId from navigation
   const initialFilter = (route.params as { initialFilter?: string; searchQuery?: string; orderId?: string } | undefined)?.initialFilter;
   const initialSearch = (route.params as { searchQuery?: string } | undefined)?.searchQuery;
@@ -1081,6 +1096,36 @@ const OrderList: React.FC = () => {
       showToast('select a payment method', 'error');
       return;
     }
+    // Bulk + card would charge one card for many orders blindly — refuse.
+    if (selectedPaymentMethod === 'card' && bulkPayIds.length > 0 && !pendingPayOrder) {
+      warningNotification();
+      showToast(t.tapToPay.bulkUnsupported, 'info');
+      return;
+    }
+    // Card (single order): charge the outstanding balance first, then mark paid
+    // with the transaction id. Nothing is recorded unless Stripe confirms.
+    if (selectedPaymentMethod === 'card' && pendingPayOrder) {
+      if (cardOffline) { showToast(t.tapToPay.offlineToast, 'info'); return; }
+      const order = pendingPayOrder;
+      const note = paymentNote.trim() || undefined;
+      const remaining = order.totalAmount - (order.paidAmount || 0);
+      const amountCents = Math.round((remaining > 0 ? remaining : order.totalAmount) * 100);
+      setPendingPayOrder(null);
+      setSelectedPaymentMethod(null);
+      setPaymentNote('');
+      setTimeout(() => {
+        setCardSheet({
+          amountCents,
+          label: order.customerName || `#${order.orderNumber || order.id.slice(0, 4)}`,
+          refId: order.id,
+          onDone: (txnId: string) => {
+            markOrderPaid(order.id, 'card', note, txnId);
+            showToast('marked as paid.', 'info');
+          },
+        });
+      }, 60);
+      return;
+    }
     mediumTap();
     const note = paymentNote.trim() || undefined;
     if (pendingPayOrder) {
@@ -1095,7 +1140,7 @@ const OrderList: React.FC = () => {
     setBulkPayIds([]);
     setSelectedPaymentMethod(null);
     setPaymentNote('');
-  }, [pendingPayOrder, bulkPayIds, selectedPaymentMethod, paymentNote, markOrderPaid, markOrdersPaid, showToast]);
+  }, [pendingPayOrder, bulkPayIds, selectedPaymentMethod, paymentNote, markOrderPaid, markOrdersPaid, showToast, cardOffline, t]);
 
   const handleCloseModal = useCallback(() => {
     setSelectedOrder(null);
@@ -2074,7 +2119,7 @@ const OrderList: React.FC = () => {
             )}
 
             <View style={styles.paymentPickerRow}>
-              {PAYMENT_METHODS.map((m) => {
+              {(cardConfigured && pendingPayOrder && bulkPayIds.length === 0 ? [...PAYMENT_METHODS, cardOption] : PAYMENT_METHODS).map((m) => {
                 const active = selectedPaymentMethod === m.value;
                 return (
                   <TouchableOpacity
@@ -2898,7 +2943,7 @@ const OrderList: React.FC = () => {
             })()}
 
             <View style={styles.paymentPickerRow}>
-              {PAYMENT_METHODS.map((m) => {
+              {(cardConfigured ? [...PAYMENT_METHODS, cardOption] : PAYMENT_METHODS).map((m) => {
                 const active = depositMethod === m.value;
                 return (
                   <TouchableOpacity
@@ -2947,6 +2992,24 @@ const OrderList: React.FC = () => {
                   const tip = amt - remaining;
                   const tipText = `tip ${currency} ${tip.toFixed(2)}`;
                   finalNote = finalNote ? `${finalNote} · ${tipText}` : tipText;
+                }
+                if (depositMethod === 'card') {
+                  if (cardOffline) { showToast(t.tapToPay.offlineToast, 'info'); return; }
+                  // Charge first. Close the detail/deposit modal so the charge
+                  // sheet isn't stacked on it (iOS); the order list reflects the
+                  // payment when the store updates. Record only on confirm.
+                  const order = selectedOrder;
+                  setShowDepositInput(false);
+                  setSelectedOrder(null);
+                  setTimeout(() => {
+                    setCardSheet({
+                      amountCents: Math.round(amt * 100),
+                      label: order.customerName || `#${order.orderNumber || order.id.slice(0, 4)}`,
+                      refId: order.id,
+                      onDone: (txnId: string) => { recordPayment(order.id, amt, 'card', finalNote || undefined, txnId); },
+                    });
+                  }, 60);
+                  return;
                 }
                 mediumTap();
                 recordPayment(selectedOrder.id, amt, depositMethod, finalNote || undefined);
@@ -3369,7 +3432,7 @@ const OrderList: React.FC = () => {
             })()}
 
             <View style={styles.paymentPickerRow}>
-              {PAYMENT_METHODS.map((m) => {
+              {(cardConfigured ? [...PAYMENT_METHODS, cardOption] : PAYMENT_METHODS).map((m) => {
                 const active = depositMethod === m.value;
                 return (
                   <TouchableOpacity
@@ -3419,6 +3482,20 @@ const OrderList: React.FC = () => {
                   const tipText = `tip ${currency} ${tip.toFixed(2)}`;
                   finalNote = finalNote ? `${finalNote} · ${tipText}` : tipText;
                 }
+                if (depositMethod === 'card') {
+                  if (cardOffline) { showToast(t.tapToPay.offlineToast, 'info'); return; }
+                  const order = swipePayOrder;
+                  setSwipePayOrder(null);
+                  setTimeout(() => {
+                    setCardSheet({
+                      amountCents: Math.round(amt * 100),
+                      label: order.customerName || `#${order.orderNumber || order.id.slice(0, 4)}`,
+                      refId: order.id,
+                      onDone: (txnId: string) => { recordPayment(order.id, amt, 'card', finalNote || undefined, txnId); },
+                    });
+                  }, 60);
+                  return;
+                }
                 mediumTap();
                 recordPayment(swipePayOrder.id, amt, depositMethod, finalNote || undefined);
                 setSwipePayOrder(null);
@@ -3442,6 +3519,19 @@ const OrderList: React.FC = () => {
         </FloatingModal>
       )}
 
+      {/* Tap to Pay charge sheet — shared by mark-paid, deposit, swipe-pay. */}
+      <TapToPaySheet
+        visible={!!cardSheet}
+        amountCents={cardSheet?.amountCents ?? 0}
+        label={cardSheet?.label ?? ''}
+        metadata={{ mode: 'seller', refId: cardSheet?.refId ?? 'seller' }}
+        onSuccess={(txnId) => {
+          const cb = cardSheet?.onDone;
+          setCardSheet(null);
+          cb?.(txnId);
+        }}
+        onClose={() => setCardSheet(null)}
+      />
     </View>
   );
 };

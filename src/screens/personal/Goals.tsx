@@ -73,7 +73,8 @@ import CircularProgress from '../../components/common/CircularProgress';
 
 // ── ICON RENDERING (multi-library) ───────────────────────────
 function renderGoalIcon(iconId: string, size: number, color: string) {
-  const [lib, name] = iconId.includes('/') ? iconId.split('/') : ['f', iconId];
+  const safe = iconId || 'f/target'; // tolerate goals saved without an icon
+  const [lib, name] = safe.includes('/') ? safe.split('/') : ['f', safe];
   switch (lib) {
     case 'm': return <MaterialCommunityIcons name={name as any} size={size} color={color} />;
     case 'i': return <Ionicons name={name as any} size={size} color={color} />;
@@ -692,7 +693,7 @@ const Goals: React.FC = () => {
     setGoalTarget(goal.targetAmount.toString());
     setGoalDeadline(goal.deadline ? new Date(goal.deadline) : undefined);
     setShowCalendar(false);
-    setGoalIcon(goal.icon.includes('/') ? goal.icon : `f/${goal.icon}`);
+    setGoalIcon(goal.icon ? (goal.icon.includes('/') ? goal.icon : `f/${goal.icon}`) : 'f/target');
     setGoalColor(goal.color);
     setGoalImageUri(goal.imageUri);
     goalClosingRef.current = false;
@@ -1281,7 +1282,7 @@ const Goals: React.FC = () => {
   const applyTemplate = useCallback((template: typeof goalTemplates[0]) => {
     selectionChanged();
     setGoalName(template.name);
-    setGoalIcon(template.icon.includes('/') ? template.icon : `f/${template.icon}`);
+    setGoalIcon(template.icon ? (template.icon.includes('/') ? template.icon : `f/${template.icon}`) : 'f/target');
     setGoalColor(template.color);
     setGoalImageUri(undefined);
   }, [goalTemplates]);

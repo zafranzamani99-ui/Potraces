@@ -283,10 +283,10 @@ export interface SellerState {
   updateOrderItems: (id: string, items: SellerOrderItem[]) => void;
   updateOrderWithItems: (id: string, items: SellerOrderItem[], updates: Partial<SellerOrder>) => void;
   untransferOrder: (id: string) => void;
-  recordPayment: (id: string, amount: number, paymentMethod: SellerPaymentMethod, note?: string) => void;
+  recordPayment: (id: string, amount: number, paymentMethod: SellerPaymentMethod, note?: string, pspTransactionId?: string) => void;
   updateDeposit: (id: string, index: number, amount: number, method: SellerPaymentMethod, note?: string) => void;
   removeDeposit: (id: string, index: number) => void;
-  markOrderPaid: (id: string, paymentMethod: SellerPaymentMethod, note?: string) => void;
+  markOrderPaid: (id: string, paymentMethod: SellerPaymentMethod, note?: string, pspTransactionId?: string) => void;
   markOrdersPaid: (ids: string[], paymentMethod: SellerPaymentMethod, note?: string) => void;
   updateOrdersStatus: (ids: string[], status: OrderStatus) => void;
   deleteOrder: (id: string) => void;
