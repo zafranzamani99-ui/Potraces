@@ -126,9 +126,9 @@ the flag on for the v1.0.0 build unless the whole ladder is done first.
 ## DuitNow QR — remaining work
 
 **State today:** Phase 1 (exact-amount QR) is **LIVE**, committed `eebcb0b`.
-Phases 2–3 (soundbox push + bank-standee honesty) are **built but uncommitted**
-and **dormant** behind `EXPO_PUBLIC_QR_PROVIDER` (default `none`). `src/` is
-tsc-clean; zero new i18n violations. Full runbook: [`docs/DUITNOW_QR.md`](docs/DUITNOW_QR.md).
+Phases 2–3 (soundbox push + bank-standee honesty) are **built + committed**
+(`c47377d`) and **dormant** behind `EXPO_PUBLIC_QR_PROVIDER` (default `none`).
+`src/` is tsc-clean; zero new i18n violations. Full runbook: [`docs/DUITNOW_QR.md`](docs/DUITNOW_QR.md).
 
 ### Decision for v1.0.0
 **Phase 1 ships** (real value, no external blocker). **Leave Phase 2 dormant**
@@ -136,18 +136,12 @@ tsc-clean; zero new i18n violations. Full runbook: [`docs/DUITNOW_QR.md`](docs/D
 
 ### Roadmap to finish (in order — check off top to bottom)
 
-**Step 0 — Commit the build _(no device needed; do this first)_**
-- [ ] Stage **QR files only** and commit Phase 2/3. Do NOT sweep in the
-      pre-existing edits: `App.tsx` has a **1-line** Phase-2 deep-link change
-      mixed with unrelated uncommitted work; `personalSync.ts`, `debtStore.ts`,
-      and this file are **not** part of the QR feature.
-- [ ] New: `qrProvider.ts`, `qrPaymentResolver.ts`, `qrPaymentReminder.ts`,
-      `pendingPaymentsStore.ts`, `PendingPaymentsBanner.tsx`,
-      `supabase/functions/qr-payment-webhook/`,
-      `supabase/migrations/20260611000000_qr_payments_push.sql`.
-      Edited: `QrPaySheet.tsx`, `OrderList.tsx`, `Settings.tsx`,
-      `pushNotifications.ts`, `en.ts`/`ms.ts`, `app.json`, `.env.example`,
-      `App.tsx` (1 line).
+**Step 0 — Commit the build ✅ DONE (`c47377d`)**
+- [x] Phase 2/3 committed (18 files). `App.tsx` (1-line deep-link) + this file
+      were included; `personalSync.ts` + `debtStore.ts` were correctly **left
+      out** (pre-existing WIP from `99fd572`, not the QR feature — still
+      uncommitted in the working tree).
+- [ ] Not pushed (standing preference) — `git push` when ready to ship.
 
 **Step 1 — Phase 1 device verification _(needs any iOS/Android dev build; no PSP)_**
 - [ ] Capture a **real** standee payload (scan + paste); confirm merchant name;
