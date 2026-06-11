@@ -76,17 +76,26 @@ the flag on for the v1.0.0 build unless the whole ladder is done first.
   **Undo** toast; Settings has a "Quick add shortcut" setup card (copy link + Back Tap guide
   + "Test it now"). Code-complete, `tsc`-clean. Lets an Apple Shortcut collect details with
   native prompts and hand them to Potraces. Spec: [`docs/feature-guides/04-Smart-Capture-Nudge-to-Log.docx`].
-- **Personal Cloud Sync safety** — a 9-agent audit found **7 critical + 12 high** issues;
-  several are **LIVE in current `personalSync.ts`** (can delete or duplicate real money on a
-  second device). Full spec + phased plan: [`docs/feature-guides/05-Account-and-Multi-Device-Sync.docx`].
+- **Personal Cloud Sync safety** — a 9-agent audit found **7 critical + 12 high** issues.
+  **Phase 0 (stop the bleeding) + Phase 1 (account-safety guard) are now DONE + committed
+  (`c300cae`)** and the sync round-trips losslessly (`npm run test:sync` → 11/11). Sync stays
+  **dormant** (gated off behind `personalSyncEnabled` + a schema preflight) until the Phase 2
+  sign-in UI ships. Full spec + phased plan: [`docs/feature-guides/05-Account-and-Multi-Device-Sync.docx`].
+- **Local Backups & Restore — LIVE in v1.0.0.** Independent of cloud sync: the app snapshots
+  every money/data store once a day on launch (`storageBackup.ts`) and **Settings → Backups &
+  Restore** lets any user recover a chosen day (reversible). No cloud, no account — a safety net
+  for everyone. Committed `c300cae`.
 
 ### Decision for v1.0.0
 - **Quick Add shortcut:** safe to ship — it is just a deep link, harmless if left untested.
   Verify on the first dev build.
 - **Personal Cloud Sync:** it is **opt-in (default OFF)** and currently only reachable via the
   business auth gate, so a normal personal user never turns it on. **Do NOT add the inline
-  personal "Sign in to sync" UI to v1.0.0** until the sync-safety ladder below lands — shipping
-  easy multi-device sign-in on top of today's sync would expose the live data-loss bugs.
+  personal "Sign in to sync" UI to v1.0.0** until the rest of the sync-safety ladder lands
+  (Phase 0+1 are now done, but the Phase 2 sign-in/merge UX is not) — shipping easy
+  multi-device sign-in before then would re-expose the data-loss surface.
+- **Local Backups & Restore:** **ships ON** — local-only, no external blocker. Verify the
+  capture/restore round-trip on the first dev build (added to the list below).
 
 ### Blocking prerequisites (operator tasks)
 - [ ] **Apple Developer enrollment** — for a standard **iOS dev build**. NOTE: Quick Add needs
@@ -99,16 +108,23 @@ the flag on for the v1.0.0 build unless the whole ladder is done first.
 - [ ] Apple Shortcut (amount → category → wallet → date → Open URL) logs with the **right wallet**;
       `potraces://income` logs income; **Undo** works.
 - [ ] **Back Tap** (double-tap the back of the phone) runs it from the lock screen.
+- [ ] **Backups & Restore:** force ≥2 daily snapshots, restore an earlier day, confirm the app
+      reloads with the restored data intact, and that the restore is itself reversible
+      (`prerestore-*` snapshot written).
 
 ### Sync-safety ladder (code — detail in doc 05)
-- [ ] **Phase 0 — stop the live bleeding (IN PROGRESS, edits mid-flight — finish + `tsc` before
-      relying on it):** removed the unsafe set-difference `deleteMissing`; tombstone-only remote
-      deletes; child-array **union** merge for debt payments / goal contributions / savings
-      snapshots (no more silently-dropped money rows); honest push failures (don't advance the
-      sync clock or reconcile on a failed push; chunked upserts); skew-tolerant LWW; reconcile
-      no longer always wins the next conflict.
-- [ ] **Phase 1 — account safety:** `lastSyncedUserId` guard, refuse cross-account push, clear
-      tombstones on account switch.
+- [x] **Phase 0 — stop the live bleeding — DONE + committed (`c300cae`), `src/` `tsc`-clean:**
+      removed the unsafe set-difference `deleteMissing`; tombstone-only remote deletes;
+      child-array **union** merge for debt payments / goal contributions / savings snapshots
+      (no more silently-dropped money rows); honest push failures (don't advance the sync clock
+      or reconcile on a failed push; chunked upserts); skew-tolerant LWW. **Plus:** every field
+      mapper extracted to a pure `personalSyncMappers.ts` that carries **all** fields both ways;
+      a round-trip completeness test (`npm run test:sync` → **11/11**); migration
+      `20260612000000` adds every missing column; a **schema preflight** auto-disables sync if
+      the remote DB is incomplete (never writes a lossy round-trip).
+- [x] **Phase 1 — account safety (guard DONE, `c300cae`):** `lastSyncedUserId` guard +
+      account-mismatch block refuse a cross-account push. _Still owed in Phase 2:_ the explicit
+      account-switch **merge UI** and clearing tombstones on switch.
 - [ ] **Phase 2 — reachable sign-in + lifecycle:** inline personal sign-in, drop the `isVerified`
       gate, `startAutoRefresh`/`stopAutoRefresh`, session-expiry re-auth UX.
 - [ ] **Phase 3 — coverage parity:** sync custom categories, Playbook, shared subscriptions,
