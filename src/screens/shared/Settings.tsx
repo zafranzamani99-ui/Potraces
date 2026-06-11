@@ -1774,6 +1774,9 @@ const Settings: React.FC = () => {
               </Text>
             </>
           )}
+          <Text style={[styles.qrSubtitle, { marginTop: SPACING.md, marginBottom: 0 }]}>
+            {t.qrPay.bankAppNote}
+          </Text>
         </Card>
 
         {/* Data */}

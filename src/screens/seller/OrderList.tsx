@@ -30,7 +30,12 @@ import { lightTap, mediumTap, selectionChanged, warningNotification } from '../.
 import { useNetInfo } from '@react-native-community/netinfo';
 import TapToPaySheet from '../../components/common/TapToPaySheet';
 import QrPaySheet from '../../components/common/QrPaySheet';
+import PendingPaymentsBanner from '../../components/common/PendingPaymentsBanner';
 import { tapToPayAvailable } from '../../services/tapToPay';
+import { qrProviderConfigured, createQrCharge } from '../../services/qrProvider';
+import { resolvePendingPayments } from '../../services/qrPaymentResolver';
+import { usePendingPaymentsStore } from '../../store/pendingPaymentsStore';
+import { scheduleUnpaidQrReminder, cancelUnpaidQrReminder } from '../../services/qrPaymentReminder';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { SellerOrder, SellerOrderItem, OrderStatus, SellerPaymentMethod, SellerProduct, DepositEntry } from '../../types';
@@ -661,7 +666,81 @@ const OrderList: React.FC = () => {
   // order/deposit AND the seller has a scanned payload QR. No money flows; the
   // sheet's "received"/"record without" just complete the existing call.
   const qrForPay = useMemo(() => paymentQrs.find((q) => q.payload) || paymentQrs[0], [paymentQrs]);
-  const [qrSheet, setQrSheet] = useState<null | { amountCents: number; onComplete: () => void }>(null);
+  const [qrSheet, setQrSheet] = useState<
+    null | {
+      amountCents: number;
+      onComplete: () => void;
+      refId?: string;
+      orderNumber?: string;
+      providerPayload?: string;
+      waiting?: boolean;
+    }
+  >(null);
+
+  // Open the QR sheet for an amount. When a PSP is configured, mint a provider
+  // QR (its webhook will auto-confirm) and track it as pending; otherwise fall
+  // back to the static embedded-amount QR with manual confirmation.
+  const openQrSheet = useCallback(
+    async (args: { amountCents: number; refId: string; orderNumber?: string; onComplete: () => void }) => {
+      let providerPayload: string | undefined;
+      let waiting = false;
+      if (qrProviderConfigured()) {
+        try {
+          const charge = await createQrCharge({ amountCents: args.amountCents, refId: args.refId, mode: 'seller' });
+          providerPayload = charge.qrPayload;
+          waiting = true;
+          usePendingPaymentsStore.getState().addPending({
+            id: charge.chargeId,
+            refId: args.refId,
+            amountCents: args.amountCents,
+            createdAt: new Date().toISOString(),
+            mode: 'seller',
+          });
+        } catch {
+          // provider not configured / not implemented / failed → static fallback
+        }
+      }
+      setQrSheet({
+        amountCents: args.amountCents,
+        onComplete: args.onComplete,
+        refId: args.refId,
+        orderNumber: args.orderNumber,
+        providerPayload,
+        waiting,
+      });
+    },
+    [],
+  );
+
+  // Dismissed the QR sheet without confirming. On the static path (no PSP
+  // webhook to auto-confirm), if the order is still unpaid, schedule a single
+  // 10-min local nudge — the bank-standee reality (Phase 3).
+  const closeQrSheet = useCallback(() => {
+    const s = qrSheet;
+    setQrSheet(null);
+    if (s && !s.waiting && s.refId) {
+      const o = useSellerStore.getState().orders.find((x) => x.id === s.refId);
+      if (o && (o.paidAmount || 0) < o.totalAmount) {
+        const amountText = `${currency} ${(s.amountCents / 100).toFixed(2)}`;
+        scheduleUnpaidQrReminder({
+          orderId: s.refId,
+          title: t.qrPay.reminderTitle,
+          body: t.qrPay.reminderBody.replace('{amount}', amountText).replace('{order}', String(s.orderNumber ?? '')),
+        });
+      }
+    }
+  }, [qrSheet, currency, t]);
+
+  // Poll the server's payment_events on focus to resolve any waiting QR charges
+  // (poll-on-focus, matching the app's foreground-pull pattern — see resolver).
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', () => {
+      resolvePendingPayments().then((resolved) => {
+        if (resolved.length > 0) showToast(t.qrPay.paymentReceivedToast, 'success');
+      });
+    });
+    return unsub;
+  }, [navigation, showToast, t]);
 
   // Accept initialFilter, searchQuery, and orderId from navigation
   const initialFilter = (route.params as { initialFilter?: string; searchQuery?: string; orderId?: string } | undefined)?.initialFilter;
@@ -1151,9 +1230,11 @@ const OrderList: React.FC = () => {
       setSelectedPaymentMethod(null);
       setPaymentNote('');
       setTimeout(() => {
-        setQrSheet({
+        void openQrSheet({
           amountCents,
-          onComplete: () => { setQrSheet(null); markOrderPaid(order.id, method, note); showToast('marked as paid.', 'info'); },
+          refId: order.id,
+          orderNumber: order.orderNumber,
+          onComplete: () => { setQrSheet(null); cancelUnpaidQrReminder(order.id); markOrderPaid(order.id, method, note); showToast('marked as paid.', 'info'); },
         });
       }, 60);
       return;
@@ -1162,6 +1243,7 @@ const OrderList: React.FC = () => {
     const note = paymentNote.trim() || undefined;
     if (pendingPayOrder) {
       markOrderPaid(pendingPayOrder.id, selectedPaymentMethod, note);
+      cancelUnpaidQrReminder(pendingPayOrder.id);
       showToast('marked as paid.', 'info');
     } else if (bulkPayIds.length > 0) {
       markOrdersPaid(bulkPayIds, selectedPaymentMethod, note);
@@ -1860,6 +1942,9 @@ const OrderList: React.FC = () => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Waiting-for-payment banner (PSP QR charges; inert without a provider) */}
+      <PendingPaymentsBanner />
 
       {/* ─── Order list ─── */}
       <FlatList
@@ -3052,9 +3137,11 @@ const OrderList: React.FC = () => {
                   setShowDepositInput(false);
                   setSelectedOrder(null);
                   setTimeout(() => {
-                    setQrSheet({
+                    void openQrSheet({
                       amountCents: Math.round(payAmt * 100),
-                      onComplete: () => { setQrSheet(null); recordPayment(order.id, payAmt, method, note); },
+                      refId: order.id,
+                      orderNumber: order.orderNumber,
+                      onComplete: () => { setQrSheet(null); cancelUnpaidQrReminder(order.id); recordPayment(order.id, payAmt, method, note); },
                     });
                   }, 60);
                   return;
@@ -3551,9 +3638,11 @@ const OrderList: React.FC = () => {
                   const payAmt = amt;
                   setSwipePayOrder(null);
                   setTimeout(() => {
-                    setQrSheet({
+                    void openQrSheet({
                       amountCents: Math.round(payAmt * 100),
-                      onComplete: () => { setQrSheet(null); recordPayment(order.id, payAmt, method, note); },
+                      refId: order.id,
+                      orderNumber: order.orderNumber,
+                      onComplete: () => { setQrSheet(null); cancelUnpaidQrReminder(order.id); recordPayment(order.id, payAmt, method, note); },
                     });
                   }, 60);
                   return;
@@ -3600,9 +3689,11 @@ const OrderList: React.FC = () => {
         visible={!!qrSheet}
         amountCents={qrSheet?.amountCents ?? 0}
         paymentQr={qrForPay}
+        providerPayload={qrSheet?.providerPayload}
+        waiting={qrSheet?.waiting}
         onConfirmReceived={() => qrSheet?.onComplete()}
         onSkip={() => qrSheet?.onComplete()}
-        onClose={() => setQrSheet(null)}
+        onClose={closeQrSheet}
       />
     </View>
   );

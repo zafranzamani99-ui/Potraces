@@ -25,7 +25,8 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "entitlements": {
-        "com.apple.developer.proximity-reader.payment.acceptance": true
+        "com.apple.developer.proximity-reader.payment.acceptance": true,
+        "aps-environment": "production"
       }
     },
     "android": {

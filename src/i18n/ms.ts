@@ -3026,5 +3026,13 @@ export const ms: Translations = {
     qrA11yNoName: 'QR DuitNow untuk {amount}',
     // pemasangan penjual
     showQrFor: 'tunjuk QR untuk {amount}',
+    // keadaan menunggu provider (Fasa 2 — webhook PSP sahkan automatik)
+    waiting: 'menunggu bayaran…',
+    waitingBanner: 'menunggu bayaran',
+    paymentReceivedToast: 'bayaran diterima',
+    // kejujuran standee bank (Fasa 3)
+    bankAppNote: 'makluman bayaran untuk QR bank anda datang dari app bank anda — pastikan notifikasinya dihidupkan.',
+    reminderTitle: 'bayaran diterima?',
+    reminderBody: 'adakah bayaran {amount} untuk pesanan #{order} sudah masuk?',
   },
 };

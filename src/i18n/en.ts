@@ -3055,6 +3055,14 @@ export const en = {
     qrA11yNoName: 'DuitNow QR for {amount}',
     // seller wiring
     showQrFor: 'show QR for {amount}',
+    // provider waiting state (Phase 2 — PSP webhook auto-confirms)
+    waiting: 'waiting for payment…',
+    waitingBanner: 'waiting for payment',
+    paymentReceivedToast: 'payment received',
+    // bank-standee honesty (Phase 3)
+    bankAppNote: "payment alerts for your own bank QR come from your bank's app — keep its notifications on.",
+    reminderTitle: 'payment received?',
+    reminderBody: 'did the {amount} payment for order #{order} arrive?',
   },
 };
 

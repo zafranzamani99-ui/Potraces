@@ -55,7 +55,10 @@ export async function registerPushNotifications(): Promise<string | null> {
     });
   }
 
-  // Save token to seller_profiles
+  // Save token. seller_profiles.push_token (single, back-compat) AND device_tokens
+  // (one row per device → a payment alert reaches every phone the seller is
+  // logged into, e.g. two phones at one counter). qr-payment-webhook reads
+  // device_tokens; legacy senders still read seller_profiles.push_token.
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
@@ -63,6 +66,13 @@ export async function registerPushNotifications(): Promise<string | null> {
         .from('seller_profiles')
         .update({ push_token: token })
         .eq('user_id', session.user.id);
+      // Upsert per-device token (unique on user_id+token).
+      await supabase
+        .from('device_tokens')
+        .upsert(
+          { user_id: session.user.id, token, platform: Platform.OS, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id,token' },
+        );
     }
   } catch (e) {
     if (__DEV__) console.warn('[push] Failed to save token:', e);

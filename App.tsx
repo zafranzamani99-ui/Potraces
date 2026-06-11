@@ -96,6 +96,7 @@ export default function App() {
         waitForStore(useTombstoneStore),
       ]);
 
+
       // Reconcile wallet balances after all stores have hydrated.
       // Catches drift from CF-02 (crash between cross-store mutations)
       // and CF-10 (multi-device sync overwriting balances).
@@ -423,7 +424,7 @@ export default function App() {
   React.useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as { type?: string; orderId?: string } | undefined;
-      if (data?.type === 'new_order' && data.orderId) {
+      if ((data?.type === 'new_order' || data?.type === 'payment_received') && data.orderId) {
         // Switch to business mode and navigate to order
         useAppStore.getState().setMode('business');
         // Small delay to let mode switch + navigator mount

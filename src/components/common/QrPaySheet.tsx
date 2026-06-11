@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Image,
   Pressable,
+  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
@@ -33,6 +34,17 @@ export interface QrPaySheetProps {
   onSkip: () => void;
   /** Dismissed with no action — records nothing. */
   onClose: () => void;
+  /**
+   * PSP-issued dynamic QR payload (Phase 2). When present it's rendered instead
+   * of the static embedded-amount QR, and a payment fires the webhook.
+   */
+  providerPayload?: string;
+  /**
+   * Provider charge in flight — the webhook will confirm automatically. Shows a
+   * live "waiting for payment…" state; the manual "record without confirming"
+   * stays as a fallback. No manual "received" button in this mode.
+   */
+  waiting?: boolean;
 }
 
 /**
@@ -50,7 +62,7 @@ export default function QrPaySheet(props: QrPaySheetProps) {
   );
 }
 
-function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip }: QrPaySheetProps) {
+function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip, providerPayload, waiting }: QrPaySheetProps) {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
@@ -71,6 +83,8 @@ function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip }: QrPayShe
     }
   }, [paymentQr?.payload, amountCents]);
 
+  // A PSP dynamic QR (if any) takes priority over the static embedded one.
+  const qrValue = providerPayload || embedded;
   const hasImage = !!paymentQr?.uri;
   const merchantName = paymentQr?.merchantName?.trim();
   const a11y = merchantName
@@ -97,9 +111,9 @@ function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip }: QrPayShe
 
       {/* QR / image always on a white card so it scans even in dark mode. */}
       <View style={[styles.qrCard, { width: qrSize + SPACING.xl, height: qrSize + SPACING.xl }]}>
-        {embedded ? (
+        {qrValue ? (
           <QRCode
-            value={embedded}
+            value={qrValue}
             size={qrSize}
             color="#111111"
             backgroundColor="#FFFFFF"
@@ -116,23 +130,30 @@ function PayBody({ amountCents, paymentQr, onConfirmReceived, onSkip }: QrPayShe
           <Text style={styles.noQr}>{t.qrPay.imageFallbackNote}</Text>
         )}
       </View>
-      {embedded && (
+      {qrValue && (
         <View accessibilityLabel={a11y} accessible style={styles.srOnly} />
       )}
 
       <Text style={styles.note}>
-        {embedded ? t.qrPay.autoFillNote : t.qrPay.imageFallbackNote}
+        {qrValue ? t.qrPay.autoFillNote : t.qrPay.imageFallbackNote}
       </Text>
 
       <View style={styles.actions}>
-        <Pressable
-          style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
-          onPress={handleReceived}
-          accessibilityRole="button"
-          accessibilityLabel={t.qrPay.received}
-        >
-          <Text style={styles.primaryText}>{t.qrPay.received}</Text>
-        </Pressable>
+        {waiting ? (
+          <View style={styles.waitingRow}>
+            <ActivityIndicator size="small" color={C.accent} />
+            <Text style={styles.waitingText}>{t.qrPay.waiting}</Text>
+          </View>
+        ) : (
+          <Pressable
+            style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
+            onPress={handleReceived}
+            accessibilityRole="button"
+            accessibilityLabel={t.qrPay.received}
+          >
+            <Text style={styles.primaryText}>{t.qrPay.received}</Text>
+          </Pressable>
+        )}
         <Pressable
           style={styles.secondaryBtn}
           onPress={handleSkip}
@@ -208,6 +229,18 @@ const makeStyles = (C: typeof CALM) =>
       width: '100%',
       gap: SPACING.sm,
       marginTop: SPACING.lg,
+    },
+    waitingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: SPACING.sm,
+      minHeight: 50,
+    },
+    waitingText: {
+      fontSize: TYPOGRAPHY.size.base,
+      fontWeight: TYPOGRAPHY.weight.semibold,
+      color: C.textSecondary,
     },
     primaryBtn: {
       minHeight: 50,
