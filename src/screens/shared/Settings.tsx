@@ -1815,6 +1815,14 @@ const Settings: React.FC = () => {
             style={{ marginBottom: SPACING.md }}
           />
           <Button
+            title={t.settings.backupsRestore}
+            onPress={() => { lightTap(); navigation.navigate('BackupRestore' as never); }}
+            variant="outline"
+            icon="shield"
+            fullWidth
+            style={{ marginBottom: SPACING.md }}
+          />
+          <Button
             title={t.settings.inviteFriends}
             onPress={async () => {
               lightTap();

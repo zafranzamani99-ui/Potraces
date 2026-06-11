@@ -8,7 +8,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint:i18n": "bash scripts/check-hardcoded-strings.sh",
-    "lint:i18n:staged": "bash scripts/check-hardcoded-strings.sh --staged"
+    "lint:i18n:staged": "bash scripts/check-hardcoded-strings.sh --staged",
+    "test:sync": "tsx scripts/test-personal-sync-roundtrip.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -76,6 +77,7 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "@types/react": "~19.1.0",
+    "tsx": "^4.22.4",
     "typescript": "^5.3.0"
   },
   "private": true

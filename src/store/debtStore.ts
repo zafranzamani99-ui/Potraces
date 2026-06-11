@@ -605,6 +605,10 @@ export const useDebtStore = create<DebtState>()(
             return {
               ...d,
               groupId,
+              // Back-fill mode for debts that lost it (e.g. restored from sync, which
+              // didn't store it). DebtTracking filters by `d.mode === mode`, so a
+              // missing mode makes a debt invisible. Default to personal.
+              mode: d.mode ?? 'personal',
               dueDate: d.dueDate ? sd(d.dueDate) : undefined,
               archivedAt: d.archivedAt ? sd(d.archivedAt) : undefined,
               createdAt: sd(d.createdAt),
@@ -626,6 +630,16 @@ export const useDebtStore = create<DebtState>()(
           });
           state.splits = state.splits.map((s: any) => ({
             ...s,
+            mode: s.mode ?? 'personal', // same mode-filter fix as debts
+            // Back-fill REQUIRED fields for splits restored from sync (the mapper
+            // dropped them) — else the Splits tab crashes on description.toLowerCase()
+            // / items.map / splitMethod access.
+            description: s.description ?? '',
+            // 'custom' (per-person amounts), not 'equal' — restored splits keep each
+            // participant's explicit amount; 'equal' would misrepresent them.
+            splitMethod: s.splitMethod ?? 'custom',
+            items: Array.isArray(s.items) ? s.items : [],
+            participants: Array.isArray(s.participants) ? s.participants : [],
             archivedAt: s.archivedAt ? sd(s.archivedAt) : undefined,
             createdAt: sd(s.createdAt),
             updatedAt: sd(s.updatedAt),

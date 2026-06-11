@@ -24,6 +24,7 @@ import DebtTracking from '../screens/shared/DebtTracking';
 import ReceiptScanner from '../screens/shared/ReceiptScanner';
 import ReceiptHistory from '../screens/shared/ReceiptHistory';
 import ReceiptDetail from '../screens/shared/ReceiptDetail';
+import BackupRestore from '../screens/shared/BackupRestore';
 import Onboarding from '../screens/shared/Onboarding';
 import WalletManagement from '../screens/personal/WalletManagement';
 import ImportFromStatement from '../screens/personal/ImportFromStatement';
@@ -353,6 +354,11 @@ const RootNavigator: React.FC = () => {
           name="WalletManagement"
           component={WalletManagement}
           options={makeBackHeader(C, mode, 'Manage Wallets')}
+        />
+        <Stack.Screen
+          name="BackupRestore"
+          component={BackupRestore}
+          options={makeBackHeader(C, mode, 'Backups & Restore')}
         />
         <Stack.Screen
           name="AccountOverview"

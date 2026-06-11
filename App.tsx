@@ -32,6 +32,7 @@ import { maybeRunSpendingAlertCheck } from './src/services/spendingAlerts';
 import { recordFirstRun, maybeRequestReview } from './src/services/reviewPrompt';
 import { syncPersonal } from './src/services/personalSync';
 import { runReceiptDrain } from './src/services/receiptQueueDrainer';
+import { snapshotAll } from './src/services/storageBackup';
 import { withBackoff } from './src/services/syncBackoff';
 import NetInfo from '@react-native-community/netinfo';
 import { prefetchWalletLogos } from './src/utils/prefetchAssets';
@@ -95,6 +96,11 @@ export default function App() {
         waitForStore(useDebtStore),
         waitForStore(useTombstoneStore),
       ]);
+
+      // Local rolling safety net: snapshot the money/data stores once per day so a
+      // bad write (sync bug, crash, migration) is never an unrecoverable loss again.
+      // Non-blocking, best-effort. See src/services/storageBackup.ts.
+      snapshotAll().catch(() => {});
 
 
       // Reconcile wallet balances after all stores have hydrated.

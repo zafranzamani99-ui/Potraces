@@ -7,40 +7,12 @@ import { useSavingsStore } from '../store/savingsStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useTombstoneStore } from '../store/tombstoneStore';
 import { autoReconcileWallets } from '../utils/walletReconcile';
-import type {
-  Transaction,
-  Subscription,
-  Budget,
-  Goal,
-  Wallet,
-  WalletTransfer,
-  Debt,
-  SplitExpense,
-  Contact,
-  SavingsAccount,
-  SavedReceipt,
-} from '../types';
-
-// ─── Safe date parsing ────────────────────────────────────────────────────────
-const sd = (v: any): Date => {
-  if (!v) return new Date();
-  const d = v instanceof Date ? v : new Date(v);
-  return isNaN(d.getTime()) ? new Date() : d;
-};
-
-const iso = (d: any): string => {
-  if (!d) return new Date().toISOString();
-  if (d instanceof Date) return d.toISOString();
-  const parsed = new Date(d);
-  return isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
-};
-
-const isoOrNull = (d: any): string | null => {
-  if (!d) return null;
-  if (d instanceof Date) return d.toISOString();
-  const parsed = new Date(d);
-  return isNaN(parsed.getTime()) ? null : parsed.toISOString();
-};
+import {
+  txToRemote, walletToRemote, transferToRemote, subToRemote, budgetToRemote,
+  goalToRemote, debtToRemote, splitToRemote, contactToRemote, savingsToRemote, receiptToRemote,
+  txFromRemote, walletFromRemote, transferFromRemote, subFromRemote, budgetFromRemote,
+  goalFromRemote, debtFromRemote, splitFromRemote, contactFromRemote, savingsFromRemote, receiptFromRemote,
+} from './personalSyncMappers';
 
 // ─── Session helper ───────────────────────────────────────────────────────────
 let _sessionExpired = false;
@@ -84,352 +56,9 @@ async function getSession() {
   return session;
 }
 
-// ─── Mappers: Local → Remote ──────────────────────────────────────────────────
-function txToRemote(userId: string, t: Transaction) {
-  return {
-    user_id: userId,
-    local_id: t.id,
-    amount: t.amount,
-    category: t.category ?? null,
-    description: t.description ?? null,
-    date: iso(t.date),
-    type: t.type,
-    wallet_local_id: t.walletId ?? null,
-    edit_log: (t.editLog ?? []).map((e) => ({
-      ...e,
-      editedAt: iso(e.editedAt),
-    })),
-    updated_at: iso(t.updatedAt),
-  };
-}
-
-function walletToRemote(userId: string, w: Wallet) {
-  return {
-    user_id: userId,
-    local_id: w.id,
-    name: w.name,
-    type: w.type ?? 'bank',
-    balance: w.balance,
-    initial_balance: w.initialBalance ?? w.balance,
-    is_default: !!w.isDefault,
-    used_credit: w.usedCredit ?? null,
-    credit_limit: w.creditLimit ?? null,
-    color: w.color ?? null,
-    icon: w.icon ?? null,
-    bank_name: (w as any).bankName ?? null,
-    updated_at: iso(w.updatedAt),
-  };
-}
-
-function transferToRemote(userId: string, t: WalletTransfer) {
-  return {
-    user_id: userId,
-    local_id: t.id,
-    from_wallet_local_id: t.fromWalletId ?? null,
-    to_wallet_local_id: t.toWalletId ?? null,
-    amount: t.amount,
-    date: iso(t.date),
-    note: t.note ?? null,
-  };
-}
-
-function subToRemote(userId: string, s: Subscription) {
-  return {
-    user_id: userId,
-    local_id: s.id,
-    name: s.name,
-    amount: s.amount,
-    billing_cycle: s.billingCycle ?? 'monthly',
-    start_date: iso(s.startDate),
-    next_billing_date: iso(s.nextBillingDate),
-    category: s.category ?? null,
-    wallet_local_id: (s as any).walletId ?? null,
-    is_active: s.isActive ?? true,
-    is_paused: !!s.isPaused,
-    note: (s as any).note ?? null,
-    updated_at: iso(s.updatedAt),
-  };
-}
-
-function budgetToRemote(userId: string, b: Budget) {
-  return {
-    user_id: userId,
-    local_id: b.id,
-    category: b.category,
-    allocated_amount: b.allocatedAmount,
-    spent_amount: b.spentAmount,
-    period: b.period ?? 'monthly',
-    start_date: iso(b.startDate),
-    end_date: isoOrNull(b.endDate),
-    updated_at: iso(b.updatedAt),
-  };
-}
-
-function goalToRemote(userId: string, g: Goal) {
-  return {
-    user_id: userId,
-    local_id: g.id,
-    name: g.name,
-    target_amount: g.targetAmount,
-    current_amount: g.currentAmount,
-    deadline: isoOrNull(g.deadline),
-    category: (g as any).category ?? null,
-    contributions: g.contributions.map((c) => ({ ...c, date: iso(c.date) })),
-    milestones: g.milestones.map((m) => ({
-      ...m,
-      reachedAt: m.reachedAt ? iso(m.reachedAt) : null,
-    })),
-    is_paused: !!g.isPaused,
-    is_archived: !!g.isArchived,
-    updated_at: iso(g.updatedAt),
-  };
-}
-
-function debtToRemote(userId: string, d: Debt) {
-  return {
-    user_id: userId,
-    local_id: d.id,
-    contact_name: d.contact?.name ?? '',
-    contact_phone: d.contact?.phone ?? null,
-    type: d.type,
-    total_amount: d.totalAmount,
-    paid_amount: d.paidAmount,
-    status: d.status,
-    payments: d.payments.map((p) => ({
-      ...p,
-      date: iso(p.date),
-      createdAt: iso(p.createdAt),
-      editLog: (p.editLog ?? []).map((e) => ({ ...e, editedAt: iso(e.editedAt) })),
-    })),
-    due_date: isoOrNull(d.dueDate),
-    note: (d as any).note ?? null,
-    wallet_local_id: (d as any).walletId ?? null,
-    updated_at: iso(d.updatedAt),
-  };
-}
-
-function splitToRemote(userId: string, s: SplitExpense) {
-  return {
-    user_id: userId,
-    local_id: s.id,
-    title: (s as any).title ?? (s as any).description ?? 'split',
-    total_amount: s.totalAmount,
-    participants: s.participants,
-    my_participant_id: (s as any).myParticipantId ?? null,
-    category: (s as any).category ?? null,
-    date: iso((s as any).date ?? s.createdAt),
-    note: (s as any).note ?? null,
-    updated_at: iso(s.updatedAt),
-  };
-}
-
-function contactToRemote(userId: string, c: Contact) {
-  return {
-    user_id: userId,
-    local_id: c.id,
-    name: c.name,
-    phone: c.phone ?? null,
-    note: (c as any).note ?? null,
-  };
-}
-
-function savingsToRemote(userId: string, a: SavingsAccount) {
-  return {
-    user_id: userId,
-    local_id: a.id,
-    name: a.name,
-    balance: a.currentValue,
-    target_amount: a.target ?? null,
-    note: a.description ?? null,
-    snapshots: a.history.map((h) => ({ ...h, date: iso(h.date) })),
-    updated_at: iso(a.updatedAt),
-  };
-}
-
-function receiptToRemote(userId: string, r: SavedReceipt) {
-  return {
-    user_id: userId,
-    local_id: r.id,
-    vendor: (r as any).vendor ?? (r as any).merchant ?? null,
-    items: (r as any).items ?? [],
-    total: (r as any).total ?? 0,
-    date: iso((r as any).date),
-    year: (r as any).year ?? null,
-    my_tax_category: (r as any).myTaxCategory ?? null,
-    transaction_local_id: (r as any).transactionId ?? null,
-    image_url: (r as any).imageUri ?? (r as any).imageUrl ?? null,
-    updated_at: iso(r.updatedAt),
-  };
-}
-
-// ─── Mappers: Remote → Local ──────────────────────────────────────────────────
-function txFromRemote(r: any): Transaction {
-  return {
-    id: r.local_id,
-    amount: Number(r.amount),
-    category: r.category,
-    description: r.description ?? '',
-    date: sd(r.date),
-    type: r.type,
-    mode: 'personal',
-    inputMethod: 'manual',
-    walletId: r.wallet_local_id ?? undefined,
-    editLog: (r.edit_log ?? []).map((e: any) => ({ ...e, editedAt: sd(e.editedAt) })),
-    createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
-  } as Transaction;
-}
-
-function walletFromRemote(r: any): Wallet {
-  return {
-    id: r.local_id,
-    name: r.name,
-    type: r.type,
-    balance: Number(r.balance),
-    initialBalance: r.initial_balance != null ? Number(r.initial_balance) : Number(r.balance),
-    icon: r.icon ?? '',
-    color: r.color ?? '',
-    isDefault: !!r.is_default,
-    usedCredit: r.used_credit != null ? Number(r.used_credit) : undefined,
-    creditLimit: r.credit_limit != null ? Number(r.credit_limit) : undefined,
-    createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
-  };
-}
-
-function transferFromRemote(r: any): WalletTransfer {
-  return {
-    id: r.local_id,
-    fromWalletId: r.from_wallet_local_id,
-    toWalletId: r.to_wallet_local_id,
-    amount: Number(r.amount),
-    note: r.note ?? undefined,
-    date: sd(r.date),
-    createdAt: sd(r.created_at),
-  };
-}
-
-function subFromRemote(r: any): Subscription {
-  return {
-    id: r.local_id,
-    name: r.name,
-    amount: Number(r.amount),
-    billingCycle: r.billing_cycle,
-    startDate: sd(r.start_date),
-    nextBillingDate: sd(r.next_billing_date),
-    category: r.category,
-    isActive: !!r.is_active,
-    isPaused: !!r.is_paused,
-    createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
-  } as Subscription;
-}
-
-function budgetFromRemote(r: any): Budget {
-  return {
-    id: r.local_id,
-    category: r.category,
-    allocatedAmount: Number(r.allocated_amount),
-    spentAmount: Number(r.spent_amount),
-    period: r.period,
-    startDate: sd(r.start_date),
-    endDate: r.end_date ? sd(r.end_date) : (undefined as any),
-    createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
-  } as Budget;
-}
-
-function goalFromRemote(r: any): Goal {
-  return {
-    id: r.local_id,
-    name: r.name,
-    targetAmount: Number(r.target_amount),
-    currentAmount: Number(r.current_amount),
-    deadline: r.deadline ? sd(r.deadline) : undefined,
-    contributions: (r.contributions ?? []).map((c: any) => ({ ...c, date: sd(c.date) })),
-    milestones: (r.milestones ?? []).map((m: any) => ({
-      ...m,
-      reachedAt: m.reachedAt ? sd(m.reachedAt) : undefined,
-    })),
-    isPaused: !!r.is_paused,
-    isArchived: !!r.is_archived,
-    createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
-  } as Goal;
-}
-
-function debtFromRemote(r: any): Debt {
-  return {
-    id: r.local_id,
-    contact: { id: `synced-${r.contact_name}-${r.contact_phone || 'nophone'}`, name: r.contact_name, phone: r.contact_phone ?? undefined } as any,
-    type: r.type,
-    totalAmount: Number(r.total_amount),
-    paidAmount: Number(r.paid_amount),
-    status: r.status,
-    payments: (r.payments ?? []).map((p: any) => ({
-      ...p,
-      date: sd(p.date),
-      createdAt: sd(p.createdAt),
-      editLog: (p.editLog ?? []).map((e: any) => ({ ...e, editedAt: sd(e.editedAt) })),
-    })),
-    dueDate: r.due_date ? sd(r.due_date) : undefined,
-    createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
-  } as Debt;
-}
-
-function splitFromRemote(r: any): SplitExpense {
-  return {
-    id: r.local_id,
-    totalAmount: Number(r.total_amount),
-    participants: r.participants ?? [],
-    createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
-    ...(r.title ? { title: r.title } : {}),
-    ...(r.category ? { category: r.category } : {}),
-    ...(r.note ? { note: r.note } : {}),
-    ...(r.date ? { date: sd(r.date) } : {}),
-  } as any;
-}
-
-function contactFromRemote(r: any): Contact {
-  return {
-    id: r.local_id,
-    name: r.name,
-    phone: r.phone ?? undefined,
-  } as Contact;
-}
-
-function savingsFromRemote(r: any): SavingsAccount {
-  return {
-    id: r.local_id,
-    name: r.name,
-    type: 'savings',
-    currentValue: Number(r.balance),
-    initialInvestment: Number(r.balance),
-    target: r.target_amount != null ? Number(r.target_amount) : undefined,
-    description: r.note ?? undefined,
-    history: (r.snapshots ?? []).map((s: any) => ({ ...s, date: sd(s.date) })),
-    createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
-  } as SavingsAccount;
-}
-
-function receiptFromRemote(r: any): SavedReceipt {
-  return {
-    id: r.local_id,
-    vendor: r.vendor ?? '',
-    items: r.items ?? [],
-    total: Number(r.total ?? 0),
-    date: sd(r.date),
-    year: r.year ?? new Date(r.date).getFullYear(),
-    myTaxCategory: r.my_tax_category ?? null,
-    transactionId: r.transaction_local_id ?? undefined,
-    imageUri: r.image_url ?? undefined,
-    createdAt: sd(r.created_at),
-    updatedAt: sd(r.updated_at),
-  } as any as SavedReceipt;
-}
+// ─── Mappers ─────────────────────────────────────────────────────────────────
+// All local⇄remote field mappers live in ./personalSyncMappers (pure, no RN/Supabase
+// imports) so they can be round-trip tested. See scripts/test-personal-sync-roundtrip.ts.
 
 // ─── Generic pull / push / tombstone helpers ──────────────────────────────────
 type PullResult<TLocal> = { remote: TLocal[]; remoteLocalIds: Set<string> } | null;
@@ -491,6 +120,17 @@ async function upsertBatch(table: string, rows: any[]): Promise<boolean> {
     if (error) {
       // Capture in production too — a swallowed push failure silently diverges devices.
       console.warn(`[personalSync] upsert ${table} failed:`, error.message);
+      // A missing-column / schema-cache error means the remote DB schema is out of
+      // sync with the app (migrations not applied). Auto-disable personal sync so it
+      // STOPS running against a broken backend — protects local data from further
+      // round-trips until the schema is migrated and sync is re-enabled deliberately.
+      const msg = error.message || '';
+      if ((error as any).code === 'PGRST204' || /could not find|schema cache|column/i.test(msg)) {
+        try {
+          useSettingsStore.getState().setPersonalSyncEnabled(false);
+          console.warn('[personalSync] DISABLED personal sync — remote schema is incomplete. Re-enable only after the Supabase migrations are applied.');
+        } catch {}
+      }
       return false;
     }
   }
@@ -585,6 +225,9 @@ async function pullAll(userId: string): Promise<boolean> {
     const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
     const newer = (a: any, b: any) =>
       (b.updatedAt?.getTime?.() ?? 0) >= (a.updatedAt?.getTime?.() ?? 0) ? b : a;
+    // First value that's actually present. Unlike `??`, this treats '' as empty —
+    // so an empty remote field can NEVER blank a real local one (descriptions etc.).
+    const keep = (...vals: any[]) => vals.find((v) => v !== undefined && v !== null && v !== '');
 
     // Union nested money arrays (payments / contributions / snapshots) by stable
     // child id so a concurrent edit on another device can NEVER silently drop one
@@ -606,13 +249,35 @@ async function pullAll(userId: string): Promise<boolean> {
       const payments = childUnion(l.payments ?? [], r.payments ?? []);
       const paidAmount = round2(Math.min(base.totalAmount, payments.reduce((s: number, p: any) => s + (p.amount || 0), 0)));
       const status = paidAmount >= base.totalAmount ? 'settled' : paidAmount > 0 ? 'partial' : 'pending';
-      return { ...base, payments, paidAmount, status };
+      // These fields aren't carried in the remote schema yet — keep the local value
+      // so a pull can't drop a debt's grouping/description and hide it from the list.
+      return {
+        ...base, payments, paidAmount, status,
+        groupId: keep(base.groupId, l.groupId, r.groupId),
+        description: keep(base.description, l.description, r.description) ?? '',
+        category: keep(base.category, l.category, r.category),
+        walletId: keep(base.walletId, l.walletId, r.walletId),
+        mode: keep(base.mode, l.mode, r.mode) ?? 'personal',
+        isArchived: base.isArchived ?? l.isArchived,
+        archivedAt: base.archivedAt ?? l.archivedAt,
+        editLog: (base.editLog && base.editLog.length) ? base.editLog : (l.editLog ?? r.editLog),
+        contact: (base.contact && base.contact.name) ? base.contact : (l.contact ?? r.contact),
+      };
     };
     const mergeGoal = (l: any, r: any) => {
       const base = newer(l, r);
       const contributions = childUnion(l.contributions ?? [], r.contributions ?? []);
       const currentAmount = round2(contributions.reduce((s: number, c: any) => s + (c.amount || 0), 0));
-      return { ...base, contributions, currentAmount };
+      // icon/color/iconName/imageUri/category aren't round-tripped through Supabase
+      // yet — keep the local values so a pull can't blank a goal's look.
+      return {
+        ...base, contributions, currentAmount,
+        icon: keep(base.icon, l.icon, r.icon),
+        color: keep(base.color, l.color, r.color),
+        iconName: keep(base.iconName, l.iconName, r.iconName),
+        imageUri: keep(base.imageUri, l.imageUri, r.imageUri),
+        category: keep(base.category, l.category, r.category),
+      };
     };
     const mergeSavings = (l: any, r: any) => {
       const base = newer(l, r);
@@ -748,9 +413,53 @@ async function pushAll(userId: string): Promise<boolean> {
   return allTombstonesSucceeded && allUpsertsSucceeded;
 }
 
+// ─── Schema preflight ─────────────────────────────────────────────────────────
+// Before ANY write we verify the remote schema actually has the columns the
+// mappers depend on. The 2026-06-11 loss happened because sync ran against an
+// incomplete schema (missing initial_balance et al) and the mappers dropped
+// fields. If a probe column is missing we DISABLE sync rather than write a lossy
+// round-trip. One representative new column per table is probed (cheap; cached).
+const SCHEMA_PROBES: Array<[string, string]> = [
+  ['personal_transactions', 'playbook_links'],
+  ['personal_wallets', 'initial_balance'],
+  ['personal_wallet_transfers', 'kind'],
+  ['personal_subscriptions', 'payment_history'],
+  ['personal_budgets', 'rollover'],
+  ['personal_goals', 'icon'],
+  ['personal_debts', 'group_id'],
+  ['personal_splits', 'items'],
+  ['personal_contacts', 'is_from_phone'],
+];
+
+let _schemaVerified: boolean | null = null;
+/** Re-run the schema preflight on next sync (call after applying migrations). */
+export function resetPersonalSchemaCheck(): void { _schemaVerified = null; }
+
+async function verifyPersonalSchema(): Promise<boolean> {
+  if (_schemaVerified !== null) return _schemaVerified;
+  for (const [table, col] of SCHEMA_PROBES) {
+    const { error } = await supabase.from(table).select(col).limit(1);
+    if (error) {
+      console.warn(`[personalSync] schema preflight FAILED: ${table}.${col} missing — ${error.message}`);
+      _schemaVerified = false;
+      return false;
+    }
+  }
+  _schemaVerified = true;
+  return true;
+}
+
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
 let inflight: Promise<void> | null = null;
 
+// Personal cloud sync is GATED, not hard-disabled. It runs ONLY when ALL hold:
+//   1. settings.personalSyncEnabled === true (default false; forced false on
+//      rehydrate — no UI enables it until personal sign-in ships)
+//   2. a valid Supabase session exists
+//   3. the schema preflight passes (every mapper column present remotely)
+// A failed preflight (or a schema error mid-push, see upsertBatch) auto-disables
+// sync. This layered guard replaced the blunt kill-switch after the 2026-06-11
+// data-loss incident. See memory: personal-sync-critical-bugs.
 export async function syncPersonal(): Promise<void> {
   if (inflight) return inflight;
   const settings = useSettingsStore.getState();
@@ -777,6 +486,14 @@ export async function syncPersonal(): Promise<void> {
     return;
   }
   _accountMismatch = false;
+
+  // Schema preflight — never write a lossy round-trip against an incomplete DB.
+  const schemaOk = await verifyPersonalSchema();
+  if (!schemaOk) {
+    settings.setPersonalSyncEnabled(false);
+    console.warn('[personalSync] DISABLED — remote schema incomplete. Apply the latest migrations, then re-enable.');
+    return;
+  }
 
   const run = async () => {
     // Prune expired durable tombstones (>30 days) before sync
