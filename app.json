@@ -39,7 +39,6 @@
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.READ_CONTACTS",
-        "android.permission.WRITE_CONTACTS",
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
@@ -81,13 +80,21 @@
       [
         "@react-native-google-signin/google-signin",
         {
-          "iosUrlScheme": "com.googleusercontent.apps.REPLACE_WITH_IOS_CLIENT_ID"
+          "iosUrlScheme": "com.googleusercontent.apps.376098674310-3rqmhbmr0v9b9j5p9kgvkj6sqodjshl9"
         }
       ],
       [
         "@stripe/stripe-terminal-react-native",
         {
           "locationWhenInUsePermission": "Location access is required to accept card payments."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
         }
       ]
     ],
