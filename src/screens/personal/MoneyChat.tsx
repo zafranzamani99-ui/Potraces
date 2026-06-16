@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, memo } from 'react';
+import React, { useState, useRef, useCallback, useContext, useEffect, useLayoutEffect, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -7,35 +7,59 @@ import {
   TextInput,
   TouchableOpacity,
   Pressable,
-  KeyboardAvoidingView,
-  Platform,
   Modal,
   Animated,
   Image,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+import { LinearGradient } from 'expo-linear-gradient';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import * as ImagePicker from 'expo-image-picker';
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { format } from 'date-fns';
 import * as Clipboard from 'expo-clipboard';
 import { useAppStore } from '../../store/appStore';
 import { useAIInsightsStore } from '../../store/aiInsightsStore';
 import { useWalletStore } from '../../store/walletStore';
 import { useLearningStore } from '../../store/learningStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import ModalToastHost from '../../components/common/ModalToastHost';
-import { AIMessage, AIMessageAction } from '../../types';
+import { useToast } from '../../context/ToastContext';
+import { AIMessage, AIMessageAction, Transaction } from '../../types';
 import ScreenGuide from '../../components/common/ScreenGuide';
 import { useCategories } from '../../hooks/useCategories';
 import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
-import { sendChatMessage } from '../../services/moneyChat';
-import { parseActions, executeAction, ChatAction, ChatActionType } from '../../services/chatActions';
+import { sendChatMessageStream } from '../../services/moneyChat';
+import {
+  parseActions,
+  executeAction,
+  isLikelyDuplicate,
+  isUnusualAmount,
+  isDuplicateOfPending,
+  recurringCandidate,
+  isKnownRecurringMerchant,
+  isDestructiveAction,
+  sanitizeUserText,
+  resolveTargetTransaction,
+  looksLikeTransfer,
+  looksLikeDebt,
+  ChatAction,
+  ChatActionType,
+  ActionReceipt,
+  ResolvedTarget,
+} from '../../services/chatActions';
+import { useDebtStore } from '../../store/debtStore';
+import { usePersonalStore } from '../../store/personalStore';
+import ReviewEntriesSheet from '../../components/common/ReviewEntriesSheet';
 import { lightTap, successNotification } from '../../services/haptics';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 
@@ -178,6 +202,41 @@ const HighlightedText = memo(({ text, style }: { text: string; style: any }) => 
   );
 });
 
+// Live assistant bubble shown while the reply streams in token-by-token.
+// A blinking caret (inline, so it wraps with the text) gives the "typing" feel.
+const StreamingBubble = memo(({ text }: { text: string }) => {
+  const C = useCalm();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const caret = useRef(new Animated.Value(1)).current;
+  const parts = useMemo(() => text.split(/(RM\s?[\d,]+\.?\d*)/gi), [text]);
+
+  useEffect(() => {
+    const blink = Animated.loop(
+      Animated.sequence([
+        Animated.timing(caret, { toValue: 0.15, duration: 500, useNativeDriver: true }),
+        Animated.timing(caret, { toValue: 1, duration: 500, useNativeDriver: true }),
+      ])
+    );
+    blink.start();
+    return () => blink.stop();
+  }, [caret]);
+
+  return (
+    <View style={[styles.messageBubble, styles.assistantBubble]}>
+      <Text style={styles.messageText}>
+        {parts.map((part, i) =>
+          /^RM\s?[\d,]+\.?\d*$/i.test(part) ? (
+            <Text key={i} style={{ fontWeight: '700', color: C.deepOlive }}>{part}</Text>
+          ) : (
+            <Text key={i}>{part}</Text>
+          )
+        )}
+        <Animated.Text style={[styles.streamingCaretText, { opacity: caret }]}>▌</Animated.Text>
+      </Text>
+    </View>
+  );
+});
+
 // Confirmed/failed action card (shown in chat history)
 const ActionCard = memo(({ action }: { action: AIMessageAction }) => {
   const C = useCalm();
@@ -214,9 +273,11 @@ const ActionCard = memo(({ action }: { action: AIMessageAction }) => {
 const PendingChip = memo(({
   action,
   onPress,
+  flagged,
 }: {
   action: ChatAction;
   onPress: () => void;
+  flagged?: boolean;
 }) => {
   const C = useCalm();
   const t = useT();
@@ -225,6 +286,17 @@ const PendingChip = memo(({
   const typeLabel = getActionLabel(action.type, t);
   const personLabel = action.person ? ` · ${action.person}` : '';
   const amountLabel = action.amount != null ? ` RM ${action.amount.toFixed(2)}` : '';
+  // B9: show the entry's date on the chip when it isn't today (chip saved for a
+  // past/future day should book on the intended day, so make the date visible).
+  const dateLabel = useMemo(() => {
+    const raw = action.date ?? (action.preparedAt ? new Date(action.preparedAt).toISOString() : null);
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return null;
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) return null;
+    return format(d, 'MMM d');
+  }, [action.date, action.preparedAt]);
 
   return (
     <TouchableOpacity
@@ -233,14 +305,18 @@ const PendingChip = memo(({
       onPress={onPress}
       hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
       accessibilityRole="button"
-      accessibilityLabel={`${typeLabel}: ${action.description}${personLabel}${amountLabel}`}
+      accessibilityLabel={`${typeLabel}: ${action.description}${personLabel}${amountLabel}${dateLabel ? ` · ${dateLabel}` : ''}`}
     >
       <View style={styles.pendingChipIconWrap}>
         <Feather name={icon} size={12} color={C.bronze} />
+        {flagged && (
+          <View style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: 4, backgroundColor: C.bronze, borderWidth: 1, borderColor: C.surface }} />
+        )}
       </View>
       <Text style={styles.pendingChipText} numberOfLines={1}>
         {action.description}{personLabel}
       </Text>
+      {dateLabel && <Text style={styles.pendingChipDate}>{dateLabel}</Text>}
       {action.amount != null && <Text style={styles.pendingChipAmount}>RM {action.amount.toFixed(2)}</Text>}
     </TouchableOpacity>
   );
@@ -258,13 +334,17 @@ const SWITCHABLE_TYPE_KEYS: { key: ChatActionType; icon: keyof typeof Feather.gl
 const ActionEditModal = ({
   visible,
   action,
+  flagNote,
   onConfirm,
   onClose,
+  onDiscard,
 }: {
   visible: boolean;
   action: ChatAction | null;
+  flagNote?: string | null;
   onConfirm: (edited: ChatAction) => void;
   onClose: () => void;
+  onDiscard: () => void;
 }) => {
   const C = useCalm();
   const t = useT();
@@ -283,6 +363,7 @@ const ActionEditModal = ({
   const expenseCategories = useCategories('expense');
   const incomeCategories = useCategories('income');
   const wallets = useWalletStore((s) => s.wallets);
+  const debts = useDebtStore((s) => s.debts);
 
   // Close modal instantly then navigate to Settings
   const handleNavigateToSettings = useCallback(() => {
@@ -299,6 +380,30 @@ const ActionEditModal = ({
   const showCategory = ['add_expense', 'add_income', 'add_subscription', 'update_subscription'].includes(actionType);
   const showWallet = ['add_expense', 'add_income', 'add_bnpl', 'repay_credit'].includes(actionType);
   const showPerson = ['add_debt', 'split_bill', 'debt_update', 'forgive_debt'].includes(actionType);
+
+  // B11: for a debt payment, resolve the matching debt + remaining balance so the
+  // owner sees what they're paying down (and what's left after) before confirm.
+  const debtPreview = useMemo(() => {
+    if (!action || !['debt_update', 'forgive_debt'].includes(actionType)) return null;
+    const name = (person || action.person || '').toLowerCase().trim();
+    if (!name) return null;
+    const match = debts.find((d) => d.contact?.name?.toLowerCase().trim() === name)
+      || debts.find((d) => d.contact?.name?.toLowerCase().includes(name));
+    if (!match) return { remaining: null as number | null, after: null as number | null, missing: name };
+    const remaining = Math.max(0, (match.totalAmount || 0) - (match.paidAmount || 0));
+    const pay = Math.min(parseFloat(amount) || 0, remaining);
+    return { remaining, after: Math.max(0, remaining - pay), missing: null };
+  }, [action, actionType, person, amount, debts]);
+
+  // B12: nudge to reshape an expense/income chip into a transfer or debt when the
+  // text looks like one. Only offered when we're not already that type.
+  const reshape = useMemo(() => {
+    if (!action) return null;
+    const probe: ChatAction = { ...action, type: actionType, description: desc || action.description, person: person || action.person };
+    if (actionType !== 'transfer' && looksLikeTransfer(probe)) return 'transfer' as const;
+    if (!['add_debt', 'debt_update', 'split_bill'].includes(actionType) && looksLikeDebt(probe)) return 'debt' as const;
+    return null;
+  }, [action, actionType, desc, person]);
 
   useEffect(() => {
     if (action) {
@@ -359,7 +464,7 @@ const ActionEditModal = ({
     <Modal visible={visible} transparent animationType={modalAnim} onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.modalOverlayKav}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
       >
         <View style={styles.modalOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
@@ -380,6 +485,47 @@ const ActionEditModal = ({
               bounces={false}
               contentContainerStyle={styles.modalScrollContent}
             >
+              {flagNote ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: withAlpha(C.bronze, 0.08), borderRadius: RADIUS.md, paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm, marginBottom: SPACING.sm }}>
+                  <Feather name="alert-circle" size={14} color={C.bronze} />
+                  <Text style={{ flex: 1, fontSize: TYPOGRAPHY.size.xs, color: C.bronze }}>{flagNote}</Text>
+                </View>
+              ) : null}
+
+              {/* B12: reshape affordance — "looks like a transfer / debt — switch?" */}
+              {reshape ? (
+                <View style={styles.reshapeBar}>
+                  <Feather name={reshape === 'transfer' ? 'arrow-right' : 'repeat'} size={14} color={C.bronze} />
+                  <Text style={styles.reshapeText}>
+                    {reshape === 'transfer' ? t.moneyChat.looksTransferAsk : t.moneyChat.looksDebtAsk}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.reshapeBtn}
+                    onPress={() => { lightTap(); setActionType(reshape === 'transfer' ? 'transfer' : 'add_debt'); }}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={reshape === 'transfer' ? t.moneyChat.switchToTransfer : t.moneyChat.switchToDebt}
+                  >
+                    <Text style={styles.reshapeBtnText}>
+                      {reshape === 'transfer' ? t.moneyChat.switchToTransfer : t.moneyChat.switchToDebt}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
+              {/* B11: debt payment preview — remaining + after-this balance */}
+              {debtPreview ? (
+                <View style={styles.debtPreviewBar}>
+                  <Feather name="repeat" size={14} color={C.bronze} />
+                  <Text style={styles.debtPreviewText}>
+                    {debtPreview.missing
+                      ? t.moneyChat.debtNotFound.replace('{name}', person || action.person || '')
+                      : debtPreview.after != null
+                      ? `${t.moneyChat.debtRemaining.replace('{amount}', (debtPreview.remaining ?? 0).toFixed(2))} · ${t.moneyChat.debtNewBalance.replace('{amount}', debtPreview.after.toFixed(2))}`
+                      : t.moneyChat.debtRemaining.replace('{amount}', (debtPreview.remaining ?? 0).toFixed(2))}
+                  </Text>
+                </View>
+              ) : null}
               {/* Type selector — tap to open picker */}
               <View style={styles.editField}>
                 <Text style={styles.editLabel}>{t.moneyChat.typeLabel}</Text>
@@ -505,6 +651,16 @@ const ActionEditModal = ({
                 <Feather name="check" size={15} color="#fff" />
                 <Text style={styles.confirmBtnText}>{t.moneyChat.save}</Text>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.discardBtn}
+                onPress={onDiscard}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.moneyChat.discardItem}
+              >
+                <Text style={styles.discardBtnText}>{t.moneyChat.discardItem}</Text>
+              </TouchableOpacity>
             </ScrollView>
           </View>
         </View>
@@ -559,7 +715,100 @@ const ActionEditModal = ({
   );
 };
 
-const ChatBubble = memo(({ item, onSelectText }: { item: AIMessage; onSelectText: (text: string) => void }) => {
+// Confirmation surface for a delete/edit of a SAVED record (B5). Shows the
+// matched row (desc · amount · date) before confirm; on 'many' a small pick list;
+// on 'none' a calm "couldn't find it". Deletes carry undo (handled by caller).
+const ResolveTargetModal = ({
+  state,
+  onConfirm,
+  onClose,
+}: {
+  state: { action: ChatAction; resolved: ResolvedTarget } | null;
+  onConfirm: (action: ChatAction, target: { description: string; amount: number; type: string }) => void;
+  onClose: () => void;
+}) => {
+  const C = useCalm();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(C), [C]);
+  if (!state) return null;
+
+  const { action, resolved } = state;
+  const isDelete = action.type === 'delete_transaction';
+  const fmtRow = (r: { description: string; amount: number; date: Date }) => {
+    const d = r.date instanceof Date ? r.date : new Date(r.date);
+    const dateStr = isNaN(d.getTime()) ? '' : ` · ${format(d, 'MMM d')}`;
+    return `${r.description} · RM ${r.amount.toFixed(2)}${dateStr}`;
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={styles.resolveRoot}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.resolveCard} onStartShouldSetResponder={() => true}>
+          <Text style={styles.resolveTitle}>
+            {resolved.status === 'none'
+              ? t.moneyChat.noMatchFound
+              : resolved.status === 'many'
+              ? t.moneyChat.pickWhich
+              : isDelete
+              ? t.moneyChat.confirmDeleteTitle
+              : t.moneyChat.confirmEditTitle}
+          </Text>
+
+          {resolved.status === 'one' && resolved.match && (
+            <>
+              <View style={styles.resolveRow}>
+                <Feather name={isDelete ? 'trash-2' : 'edit-3'} size={15} color={C.bronze} />
+                <Text style={styles.resolveRowText}>{fmtRow(resolved.match)}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.confirmBtnFull}
+                activeOpacity={0.8}
+                onPress={() => onConfirm(action, { description: resolved.match!.description, amount: resolved.match!.amount, type: resolved.match!.type })}
+                accessibilityRole="button"
+                accessibilityLabel={isDelete ? t.moneyChat.removeEntry : t.moneyChat.save}
+              >
+                <Feather name="check" size={15} color="#fff" />
+                <Text style={styles.confirmBtnText}>{isDelete ? t.moneyChat.removeEntry : t.moneyChat.save}</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {resolved.status === 'many' && (
+            <ScrollView
+              style={{ maxHeight: 280 }}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+            >
+              {(resolved.candidates ?? []).map((c) => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={styles.resolveRow}
+                  activeOpacity={0.7}
+                  onPress={() => onConfirm(action, { description: c.description, amount: c.amount, type: c.type })}
+                  accessibilityRole="button"
+                  accessibilityLabel={fmtRow(c)}
+                >
+                  <Feather name={isDelete ? 'trash-2' : 'edit-3'} size={15} color={C.bronze} />
+                  <Text style={styles.resolveRowText}>{fmtRow(c)}</Text>
+                  <Feather name="chevron-right" size={15} color={C.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+
+          <TouchableOpacity style={styles.discardBtn} onPress={onClose} activeOpacity={0.7}>
+            <Text style={styles.discardBtnText}>{t.moneyChat.cancel}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <ModalToastHost />
+    </Modal>
+  );
+};
+
+const ChatBubble = memo(({ item, onSelectText, onViewImage }: { item: AIMessage; onSelectText: (text: string) => void; onViewImage: (uri: string) => void }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
   const isUser = item.role === 'user';
@@ -584,11 +833,18 @@ const ChatBubble = memo(({ item, onSelectText }: { item: AIMessage; onSelectText
             style={[styles.messageBubble, isUser ? styles.userBubble : styles.assistantBubble]}
           >
             {hasImage && (
-              <Image
-                source={{ uri: item.imageUri }}
-                style={styles.chatImage}
-                resizeMode="cover"
-              />
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => item.imageUri && onViewImage(item.imageUri)}
+                accessibilityRole="imagebutton"
+                accessibilityLabel="view image"
+              >
+                <Image
+                  source={{ uri: item.imageUri }}
+                  style={styles.chatImage}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
             )}
             {isUser ? (
               hasText ? (
@@ -610,12 +866,31 @@ const ChatBubble = memo(({ item, onSelectText }: { item: AIMessage; onSelectText
 });
 
 const MoneyChat: React.FC = () => {
+  // ScreenGuide spotlight target — the message input bar.
+  const guideTargetRef = useRef<any>(null);
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const route = useRoute<any>();
   const navigation = useNavigation();
   const headerHeight = useHeaderHeight();
+  // Echo is mounted in two navigators: a bottom-tab screen (navbar) and a root native-stack
+  // screen (opened from quick actions, no tab bar). KeyboardAvoidingView's keyboardVerticalOffset
+  // must equal the chat container's top position in the window. For the tab screen that's exactly
+  // headerHeight (content sits below the JS header). For the native-stack screen on edge-to-edge
+  // Android the content draws partly under the native header — headerHeight over-shoots (gap) and
+  // 0 under-shoots (input hidden) — so we measure the real top in the window instead of guessing.
+  const tabBarHeight = useContext(BottomTabBarHeightContext);
+  const isRootStack = tabBarHeight === undefined;
+  const containerRef = useRef<View>(null);
+  const [measuredTop, setMeasuredTop] = useState(0);
+  const onContainerLayout = useCallback(() => {
+    if (!isRootStack) return;
+    containerRef.current?.measureInWindow((_x, y) => {
+      if (typeof y === 'number' && !Number.isNaN(y)) setMeasuredTop(y);
+    });
+  }, [isRootStack]);
+  const kavOffset = isRootStack ? measuredTop : headerHeight;
   const initialContext = route.params?.noteContext as string | undefined;
   const extractionContext = route.params?.extractionContext as string | undefined;
   const budgetContext = route.params?.budgetContext as string | undefined;
@@ -632,21 +907,35 @@ const MoneyChat: React.FC = () => {
   const conversations = useAIInsightsStore((s) => s.conversations);
   const loadConversation = useAIInsightsStore((s) => s.loadConversation);
   const deleteConversation = useAIInsightsStore((s) => s.deleteConversation);
+  const pendingActions = useAIInsightsStore((s) => s.pendingActions);
+  const addPendingActions = useAIInsightsStore((s) => s.addPendingActions);
+  const removePendingActionById = useAIInsightsStore((s) => s.removePendingActionById);
+  const replacePendingActionById = useAIInsightsStore((s) => s.replacePendingActionById);
+  const lastSave = useAIInsightsStore((s) => s.lastSave);
+  const setLastSave = useAIInsightsStore((s) => s.setLastSave);
+  const clearLastSave = useAIInsightsStore((s) => s.clearLastSave);
+  const echoDailyCheckin = useSettingsStore((s) => s.echoDailyCheckin);
+  const { showToast } = useToast();
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // Live assistant text while streaming. null = not streaming; '' = started but
+  // no token yet (show typing dots); non-empty = render the streaming bubble.
+  const [streamingText, setStreamingText] = useState<string | null>(null);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
-  const [pendingActions, setPendingActions] = useState<ChatAction[]>([]);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // Delete/edit-of-saved confirmation: resolved target + the action that wants it.
+  const [resolving, setResolving] = useState<{ action: ChatAction; resolved: ResolvedTarget } | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [selectTextContent, setSelectTextContent] = useState<string | null>(null);
   const [lastFailedSend, setLastFailedSend] = useState<{ text: string; base64?: string } | null>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [viewerUri, setViewerUri] = useState<string | null>(null);
+  const [showReviewSheet, setShowReviewSheet] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const didAutoSendRef = useRef(false);
   const lastAutoSentKeyRef = useRef<string | null>(null);
-  const didArchiveRef = useRef(false);
   const prevCountRef = useRef(chatMessages.length);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
@@ -673,13 +962,81 @@ const MoneyChat: React.FC = () => {
     [isBusinessMode, t],
   );
 
-  // Auto-archive previous chat on mount → start fresh each time
+  // The live chat resumes across screen opens / app backgrounding. It only
+  // resets on a true cold start (app swiped away in the task switcher), which
+  // is handled once during store rehydration in aiInsightsStore.
+
+  // When Echo opens with entries already waiting (e.g. left unsaved before a
+  // reload), nudge the user toward the chips with a one-time toast — instead of
+  // a home-screen banner. Fires once on open; new in-session chips don't
+  // re-trigger it.
   useEffect(() => {
-    if (!didArchiveRef.current && chatMessages.length > 0) {
-      didArchiveRef.current = true;
-      archiveChat();
+    if (pendingActions.length === 0) return;
+    const total = pendingActions.reduce((sum, a) => sum + (a.amount || 0), 0);
+    const title = total > 0
+      ? t.moneyChat.unsavedAmountTitle.replace('{amount}', `RM ${total.toFixed(2)}`)
+      : t.moneyChat.unsavedCountTitle.replace('{n}', String(pendingActions.length));
+    const id = setTimeout(() => showToast(`${title} — ${t.moneyChat.unsavedHint}`, 'info'), 400);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // When the queue grows past a few items, auto-open the review sheet so the
+  // owner sees everything at once instead of scrolling a long chip row (B8).
+  const autoOpenedReviewRef = useRef(false);
+  useEffect(() => {
+    if (pendingActions.length >= 4 && !autoOpenedReviewRef.current && !showReviewSheet) {
+      autoOpenedReviewRef.current = true;
+      setShowReviewSheet(true);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (pendingActions.length < 4) autoOpenedReviewRef.current = false;
+  }, [pendingActions.length, showReviewSheet]);
+
+  // A capture that failed to send (offline / AI down) is kept across reloads —
+  // bring it back into the composer on open so it's never lost.
+  useEffect(() => {
+    const txt = useAIInsightsStore.getState().failedCaptureText;
+    if (txt && !initialContext && !walletContext && !budgetContext) {
+      setInput((cur) => cur || txt);
+      useAIInsightsStore.getState().setFailedCaptureText(null);
+      showToast(t.moneyChat.pickedUpNote, 'info');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Daily check-in (opt-in, default off): once a day Echo greets with today's
+  // tally + a calm rhythm note. Gated by the setting and a once-a-day flag — no nag.
+  useEffect(() => {
+    if (!echoDailyCheckin) return;
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const ai = useAIInsightsStore.getState();
+    if (ai.dailyCheckinShownOn === today) return;
+    ai.markDailyCheckinShown(today);
+
+    const txns = usePersonalStore.getState().transactions;
+    const dayKey = (d: any) => {
+      const dt = d instanceof Date ? d : new Date(d);
+      return isNaN(dt.getTime()) ? '' : format(dt, 'yyyy-MM-dd');
+    };
+    const todays = txns.filter((tx) => tx.type === 'expense' && dayKey(tx.date) === today);
+    const count = todays.length;
+    const total = todays.reduce((s, tx) => s + tx.amount, 0);
+    let msg = count > 0
+      ? t.moneyChat.dailyCheckinSome.replace('{amount}', `RM ${total.toFixed(2)}`).replace('{n}', String(count))
+      : t.moneyChat.dailyCheckinNone;
+
+    // Calm rhythm: consecutive days (ending today or yesterday) with an expense.
+    const days = new Set(txns.filter((tx) => tx.type === 'expense').map((tx) => dayKey(tx.date)));
+    let streak = 0;
+    const cursor = new Date();
+    if (!days.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+    while (days.has(dayKey(cursor))) { streak += 1; cursor.setDate(cursor.getDate() - 1); }
+    if (streak >= 3) msg += ' ' + t.moneyChat.rhythmNote.replace('{n}', String(streak));
+
+    const id = setTimeout(() => addChatMessage({ role: 'assistant', content: msg, timestamp: new Date().toISOString() }), 500);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -765,7 +1122,7 @@ const MoneyChat: React.FC = () => {
           )}
           {chatMessages.length > 0 && (
             <TouchableOpacity
-              onPress={() => { archiveChat(); setPendingActions([]); }}
+              onPress={() => { archiveChat(); }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Feather name="plus" size={24} color={C.textMuted} />
@@ -778,12 +1135,24 @@ const MoneyChat: React.FC = () => {
 
   // Scroll to bottom when new messages arrive
   const shouldScrollRef = useRef(false);
+  // Ref mirror of showScrollDown so streaming callbacks (stable deps) can read
+  // whether the user has scrolled away without going stale.
+  const showScrollDownRef = useRef(false);
   useEffect(() => {
+    showScrollDownRef.current = showScrollDown;
     if (chatMessages.length > prevCountRef.current && !showScrollDown) {
       shouldScrollRef.current = true;
     }
     prevCountRef.current = chatMessages.length;
   }, [chatMessages.length, showScrollDown]);
+
+  // While streaming, follow the bottom as text grows — but only if the user is
+  // already near the bottom (don't yank them back if they scrolled up to read).
+  const followStream = useCallback(() => {
+    if (!showScrollDownRef.current) {
+      shouldScrollRef.current = true;
+    }
+  }, []);
 
   const handleContentSizeChange = useCallback(() => {
     if (shouldScrollRef.current) {
@@ -811,18 +1180,119 @@ const MoneyChat: React.FC = () => {
     // Add the text as a chat message
     addChatMessage({ role: 'assistant', content: cleanText, timestamp: new Date().toISOString() });
 
-    // All actions go through confirmation chips
+    // Fill category/wallet the AI left blank from what the user taught us
+    // before (learningStore), then route each action: an "amend" re-emit updates
+    // the matching pending chip; everything else queues (accumulates).
     if (actions.length > 0) {
-      setPendingActions(actions);
+      const learn = useLearningStore.getState();
+      const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+      actions.forEach((a) => {
+        let action = a;
+        if (a.type === 'add_expense' || a.type === 'add_income') {
+          action = { ...a };
+          if (!action.category) { const c = learn.getSuggestedCategory(a.description); if (c) action.category = c; }
+          if (!action.wallet) { const w = learn.getSuggestedWallet(a.description); if (w) action.wallet = w; }
+        }
+        if (action.amend) {
+          const current = useAIInsightsStore.getState().pendingActions;
+          // Prefer an explicit clientId carried back on the amend; else match by description.
+          const match = (action.clientId && current.find((p) => p.clientId === action.clientId))
+            || current.find((p) => norm(p.description) === norm(action.description));
+          if (match?.clientId) { replacePendingActionById(match.clientId, { ...action, clientId: match.clientId }); return; }
+        }
+        addPendingActions([action]);
+      });
     }
-  }, [addChatMessage]);
+  }, [addChatMessage, addPendingActions, replacePendingActionById]);
 
-  // Confirm a pending action (receives edited version from modal)
-  const handleConfirmAction = useCallback((index: number, edited: ChatAction) => {
-    const action = edited;
-    setEditingIndex(null);
+  // True only when a receipt carries something we can actually reverse. The undo
+  // affordance must EITHER reverse correctly OR not be offered (honest undo) \u2014 an
+  // empty `{}` receipt (transfer, add_subscription) is NOT undoable.
+  const hasReversiblePayload = useCallback((r?: ActionReceipt): boolean => {
+    if (!r) return false;
+    return !!(
+      r.transactionIds?.length ||
+      r.edited ||
+      r.deletedTransactions?.length ||
+      r.debtPaymentId ||
+      r.debtIds?.length ||
+      r.subscriptionId
+    );
+  }, []);
 
-    const result = executeAction(action);
+  // Reverse exactly what a save mutated, using the receipts (B4). Exact undo \u2014
+  // no fragile tx-id diffing. Each branch keeps the wallet balanced exactly once
+  // under the single-owner contract.
+  const undoReceipts = useCallback((receipts: ActionReceipt[]) => {
+    const personal = usePersonalStore.getState();
+    const debt = useDebtStore.getState();
+    const wallets = useWalletStore.getState();
+    receipts.forEach((r) => {
+      // edit_transaction: RESTORE the pre-edit values (updateTransaction
+      // self-reconciles the wallet). Never delete the record.
+      if (r.edited) personal.updateTransaction(r.edited.id, r.edited.prev);
+
+      // delete_transaction: re-add each snapshot, then re-apply the wallet
+      // adjustment the same way the add path does (addTransaction does NOT touch
+      // the wallet \u2014 the caller owns it). Single touch, balance ends correct.
+      r.deletedTransactions?.forEach((tx) => {
+        const { id, createdAt, updatedAt, ...rest } = tx;
+        const newId = personal.addTransaction(rest as Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>);
+        if (newId && tx.walletId) {
+          if (tx.type === 'expense') wallets.deductFromWallet(tx.walletId, tx.amount);
+          else if (tx.type === 'income') wallets.addToWallet(tx.walletId, tx.amount);
+        }
+      });
+
+      // Plain created txns (add_expense/income, bnpl, split expense, debt-payment
+      // linked txn): deleteTransaction self-reconciles the wallet (refund once).
+      r.transactionIds?.forEach((id) => personal.deleteTransaction(id));
+
+      // Debt PAYMENT undo: drop the payment. The linked transaction (above) already
+      // refunded the wallet exactly once; deletePayment never touches the wallet.
+      if (r.debtId && r.debtPaymentId) debt.deletePayment?.(r.debtId, r.debtPaymentId);
+      // Created debts (add_debt / split_bill) WITHOUT a payment: remove the debt(s).
+      else if (r.debtIds?.length) r.debtIds.forEach((id) => debt.deleteDebt?.(id));
+
+      if (r.subscriptionId) personal.deleteSubscription?.(r.subscriptionId);
+    });
+  }, []);
+
+  // Offer a "make recurring" nudge after a save; returns true if it fired.
+  const maybeNudgeRecurring = useCallback((edited: ChatAction): boolean => {
+    const key = (edited.description || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+    const ai = useAIInsightsStore.getState();
+    if (edited.type !== 'add_expense' || !key || ai.recurringNudged.includes(key)) return false;
+    const cand = recurringCandidate(edited.description);
+    if (!cand && !isKnownRecurringMerchant(edited.description)) return false;
+    const subs = usePersonalStore.getState().subscriptions || [];
+    const isSub = subs.some((s) => {
+      const n = s.name.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+      return n === key || n.includes(key) || key.includes(n);
+    });
+    if (isSub) return false;
+    ai.markRecurringNudged(key);
+    showToast(
+      t.moneyChat.recurringNudge.replace('{name}', edited.description),
+      'info',
+      { label: t.moneyChat.makeRecurring, onPress: () => {
+        addPendingActions([{
+          type: 'add_subscription',
+          amount: cand?.amount ?? edited.amount,
+          description: edited.description,
+          billingCycle: 'monthly',
+          category: edited.category || 'subscription',
+        } as ChatAction]);
+        showToast(t.moneyChat.recurringQueued, 'info');
+      } },
+    );
+    return true;
+  }, [addPendingActions, t, showToast]);
+
+  // Run a single action through executeAction, dequeue its chip on success,
+  // and surface the calm outcome. Returns the receipt if it saved.
+  const runSingleSave = useCallback((edited: ChatAction): ActionReceipt | null => {
+    const result = executeAction(edited);
     if (result.success) successNotification();
     else lightTap();
 
@@ -834,9 +1304,178 @@ const MoneyChat: React.FC = () => {
       timestamp: new Date().toISOString(),
     });
 
-    // Remove from pending
-    setPendingActions((prev) => prev.filter((_, i) => i !== index));
-  }, [addChatMessage]);
+    // Dequeue only on success \u2014 a failed save leaves the chip queued (B2).
+    if (result.success && edited.clientId) removePendingActionById(edited.clientId);
+    // Return the receipt as-is (may be undefined for transfer/add_subscription).
+    // Callers gate the undo affordance via hasReversiblePayload so an empty/absent
+    // receipt never lies as undoable \u2014 but the save still confirms.
+    return result.success ? (result.receipt ?? {}) : null;
+  }, [addChatMessage, removePendingActionById]);
+
+  // Confirm a single pending action (receives edited version from modal). B4 undo
+  // via the receipt; record lastSave so undo survives leaving + reopening (B10).
+  const handleConfirmAction = useCallback((id: string, edited: ChatAction) => {
+    setEditingId(null);
+    const receipt = runSingleSave(edited);
+    if (!receipt) return;
+
+    // Honest undo: only offer it when the receipt actually carries something
+    // reversible. A transfer / add_subscription save shows NO undo button.
+    const reversible = hasReversiblePayload(receipt);
+    if (reversible) setLastSave([receipt], 1);
+    const nudged = maybeNudgeRecurring(edited);
+    if (!nudged) {
+      showToast(
+        t.moneyChat.savedToast.replace('{amount}', `RM ${(edited.amount || 0).toFixed(2)}`),
+        'success',
+        reversible
+          ? { label: t.moneyChat.undo, onPress: () => {
+              undoReceipts([receipt]);
+              clearLastSave();
+              showToast(t.moneyChat.undoneToast, 'info');
+            } }
+          : undefined,
+      );
+    }
+  }, [runSingleSave, hasReversiblePayload, setLastSave, maybeNudgeRecurring, undoReceipts, clearLastSave, t, showToast]);
+
+  // Soft heads-up shown on a chip / review row (never blocks saving). Also
+  // surfaces the dedupe-against-pending flag (B8) so two queued chips warn.
+  const flagNoteFor = useCallback((action: ChatAction): string | null => {
+    const pending = useAIInsightsStore.getState().pendingActions;
+    const others = pending.filter((p) => p.clientId !== action.clientId);
+    if (isDuplicateOfPending(action, others) || isLikelyDuplicate(action)) return t.moneyChat.flagDuplicate;
+    if (isUnusualAmount(action)) return t.moneyChat.flagLarge;
+    return null;
+  }, [t]);
+
+  // Save every NON-destructive pending entry in one go (B2/B3/B4/B6). Dequeue
+  // each chip AS it succeeds; failed/destructive chips stay queued. Undo reverses
+  // only what actually saved, via receipts.
+  const handleSaveAll = useCallback(() => {
+    const actions = useAIInsightsStore.getState().pendingActions;
+    if (actions.length === 0) return;
+
+    const savable = actions.filter((a) => !isDestructiveAction(a));
+    const hasDestructive = actions.length > savable.length;
+
+    const receipts: ActionReceipt[] = [];
+    const savedActions: ChatAction[] = [];
+    let cameIn = 0;
+    let wentOut = 0;
+    let failed = 0;
+    for (const a of savable) {
+      const result = executeAction(a);
+      if (result.success) {
+        if (a.clientId) removePendingActionById(a.clientId); // dequeue as it succeeds
+        receipts.push(result.receipt ?? {});
+        savedActions.push(a);
+        if (a.type === 'add_income') cameIn += a.amount || 0;
+        else wentOut += a.amount || 0;
+      } else {
+        failed += 1; // leave the chip queued
+      }
+    }
+
+    const saved = receipts.length;
+    if (saved > 0) successNotification(); else lightTap();
+    setShowReviewSheet(false);
+
+    if (saved === 0) {
+      showToast(t.moneyChat.nothingSavedToast, 'info');
+      return;
+    }
+
+    // Honest undo: only offer it (and stash lastSave) when at least one saved
+    // receipt is actually reversible \u2014 a batch of only transfers shows no button.
+    const reversibleReceipts = receipts.filter((r) => hasReversiblePayload(r));
+    const anyReversible = reversibleReceipts.length > 0;
+    if (anyReversible) setLastSave(reversibleReceipts, saved);
+    const segment = t.moneyChat.segmentedTotal
+      .replace('{in}', cameIn.toFixed(2))
+      .replace('{out}', wentOut.toFixed(2));
+    const title = failed > 0
+      ? t.moneyChat.savedSomeToast.replace('{n}', String(saved)).replace('{failed}', String(failed))
+      : `${t.moneyChat.savedAllToast.replace('{n}', String(saved)).replace('{amount}', '')}`.trim();
+    showToast(
+      `${title} \u00B7 ${segment}`.replace(' \u00B7 ', failed > 0 ? ' \u2014 ' : ' \u00B7 '),
+      'success',
+      anyReversible
+        ? { label: t.moneyChat.undo, onPress: () => {
+            undoReceipts(reversibleReceipts);
+            clearLastSave();
+            showToast(t.moneyChat.undoneToast, 'info');
+          } }
+        : undefined,
+    );
+    if (hasDestructive) {
+      setTimeout(() => showToast(t.moneyChat.destructiveExcluded, 'info'), 600);
+    }
+    // B14: recurring nudge also fires after save-all (first eligible saved expense).
+    const firstRecurring = savedActions.find((a) => a.type === 'add_expense');
+    if (firstRecurring) setTimeout(() => maybeNudgeRecurring(firstRecurring), 900);
+  }, [removePendingActionById, hasReversiblePayload, setLastSave, undoReceipts, clearLastSave, maybeNudgeRecurring, t, showToast]);
+
+  // Discard a pending action without saving it (keyed by clientId)
+  const handleDismissAction = useCallback((id: string) => {
+    lightTap();
+    setEditingId(null);
+    removePendingActionById(id);
+  }, [removePendingActionById]);
+
+  // A chip was tapped. Destructive (delete/edit of a SAVED record) resolves the
+  // target first and shows the matched row before confirm (B5). Everything else
+  // opens the normal edit modal.
+  const handleChipPress = useCallback((action: ChatAction) => {
+    lightTap();
+    if (isDestructiveAction(action) && (action.type === 'delete_transaction' || action.type === 'edit_transaction')) {
+      const resolved = resolveTargetTransaction(action);
+      setResolving({ action, resolved });
+      return;
+    }
+    if (action.clientId) setEditingId(action.clientId);
+  }, []);
+
+  // Confirm a resolved delete/edit against a specific saved row (B5). Carries undo.
+  // We pin the action to the chosen candidate (description·amount·type, no
+  // deleteAll) so A's resolver lands on exactly that one row.
+  const confirmResolved = useCallback((
+    action: ChatAction,
+    target: { description: string; amount: number; type: string },
+  ) => {
+    setResolving(null);
+    const targetAmount = target.amount;
+    const pinned: ChatAction = {
+      ...action,
+      description: target.description,
+      amount: target.amount,
+      matchType: target.type === 'income' ? 'income' : 'expense',
+      deleteAll: false,
+    };
+    const result = executeAction(pinned);
+    if (result.success) successNotification(); else lightTap();
+    addChatMessage({
+      role: 'assistant',
+      content: `${result.success ? 'Recorded \u2705' : 'Failed \u274C'} ${result.message}`,
+      timestamp: new Date().toISOString(),
+    });
+    if (result.success && action.clientId) removePendingActionById(action.clientId);
+    if (result.success && result.receipt) {
+      const reversible = hasReversiblePayload(result.receipt);
+      if (reversible) setLastSave([result.receipt], 1);
+      showToast(
+        t.moneyChat.deletedToast.replace('{amount}', `RM ${targetAmount.toFixed(2)}`),
+        'info',
+        reversible
+          ? { label: t.moneyChat.undo, onPress: () => {
+              undoReceipts([result.receipt!]);
+              clearLastSave();
+              showToast(t.moneyChat.undoneToast, 'info');
+            } }
+          : undefined,
+      );
+    }
+  }, [addChatMessage, removePendingActionById, hasReversiblePayload, setLastSave, undoReceipts, clearLastSave, t, showToast]);
 
   // Auto-send context if passed from another screen
   useEffect(() => {
@@ -885,10 +1524,20 @@ const MoneyChat: React.FC = () => {
       setInput('');
       addChatMessage({ role: 'user', content: question, timestamp: new Date().toISOString() });
       setIsLoading(true);
+      setStreamingText('');
       const thisRequestId = ++requestIdRef.current;
       (async () => {
-        const result = await sendChatMessage(question, chatMessages);
+        const result = await sendChatMessageStream(
+          question,
+          chatMessages,
+          (textSoFar) => {
+            if (requestIdRef.current !== thisRequestId) return;
+            setStreamingText(textSoFar);
+            followStream();
+          },
+        );
         if (requestIdRef.current !== thisRequestId) return;
+        setStreamingText(null);
         if (result.ok) {
           processResponse(result.text);
         } else {
@@ -905,12 +1554,13 @@ const MoneyChat: React.FC = () => {
     if ((!question && !hasImage) || isLoading) return;
 
     lightTap();
-    const sendText = question;
+    // Strip any model-control tokens a user might paste so they can't inject an
+    // [ACTION] block by echoing it back into the chat (B16 / contract #4).
+    const sendText = sanitizeUserText(question);
     const sendImageUri = imageUri;
     setInput('');
     setImageUri(null);
     setErrorNotice(null);
-    setPendingActions([]); // clear any unconfirmed actions
     addChatMessage({
       role: 'user',
       content: sendText,
@@ -918,44 +1568,78 @@ const MoneyChat: React.FC = () => {
       imageUri: sendImageUri || undefined,
     });
     setIsLoading(true);
+    setStreamingText(''); // started — typing dots until first token
 
     const thisRequestId = ++requestIdRef.current;
 
-    // Convert image to base64 if attached
+    // Resize + compress before sending. A full-res photo's base64 is several
+    // MB, which made the vision call crawl — it was nearly hitting the 45s
+    // timeout. Mirrors the receipt-scan path: width 1024, JPEG q0.7.
     let base64: string | undefined;
     if (sendImageUri) {
       try {
-        base64 = await readAsStringAsync(sendImageUri, { encoding: EncodingType.Base64 });
+        const resized = await manipulateAsync(
+          sendImageUri,
+          [{ resize: { width: 1024 } }],
+          { compress: 0.7, format: SaveFormat.JPEG, base64: true },
+        );
+        base64 = resized.base64 || (await readAsStringAsync(resized.uri, { encoding: EncodingType.Base64 }));
       } catch {
         showError('could not read image');
         setIsLoading(false);
+        setStreamingText(null);
         return;
       }
     }
 
-    const result = await sendChatMessage(sendText, chatMessages, base64);
+    // Stream the reply in; spinner drops as soon as the first token arrives.
+    const result = await sendChatMessageStream(
+      sendText,
+      chatMessages,
+      (textSoFar) => {
+        if (requestIdRef.current !== thisRequestId) return; // ignore stale stream
+        setStreamingText(textSoFar);
+        followStream();
+      },
+      base64,
+    );
 
     // Discard stale response if a newer request was fired
     if (requestIdRef.current !== thisRequestId) return;
 
+    setStreamingText(null); // clear live bubble before committing the final message
+
     if (result.ok) {
       setLastFailedSend(null);
+      useAIInsightsStore.getState().setFailedCaptureText(null);
       processResponse(result.text);
     } else {
       setLastFailedSend({ text: sendText, base64 });
+      if (sendText) useAIInsightsStore.getState().setFailedCaptureText(sendText);
       showError(result.error);
     }
 
     setIsLoading(false);
-  }, [input, imageUri, isLoading, chatMessages, addChatMessage, showError, processResponse]);
+  }, [input, imageUri, isLoading, chatMessages, addChatMessage, showError, processResponse, followStream]);
 
   const handleRetry = useCallback(async () => {
     if (!lastFailedSend || isLoading) return;
     setErrorNotice(null);
     setIsLoading(true);
+    setStreamingText('');
     const thisRequestId = ++requestIdRef.current;
-    const result = await sendChatMessage(lastFailedSend.text, chatMessages, lastFailedSend.base64);
+    const result = await sendChatMessageStream(
+      lastFailedSend.text,
+      chatMessages,
+      (textSoFar) => {
+        if (requestIdRef.current !== thisRequestId) return;
+        setStreamingText(textSoFar);
+        followStream();
+      },
+      lastFailedSend.base64,
+    );
     if (requestIdRef.current !== thisRequestId) return;
+    setStreamingText(null);
     if (result.ok) {
       setLastFailedSend(null);
       processResponse(result.text);
@@ -963,7 +1647,7 @@ const MoneyChat: React.FC = () => {
       showError(result.error);
     }
     setIsLoading(false);
-  }, [lastFailedSend, isLoading, chatMessages, processResponse, showError]);
+  }, [lastFailedSend, isLoading, chatMessages, processResponse, showError, followStream]);
 
   const handleSelectText = useCallback((text: string) => {
     setSelectTextContent(text);
@@ -976,18 +1660,53 @@ const MoneyChat: React.FC = () => {
     }
   }, [selectTextContent]);
 
+  const handleViewImage = useCallback((uri: string) => {
+    setViewerUri(uri);
+  }, []);
+
   const renderMessage = useCallback(({ item }: { item: AIMessage }) => (
-    <ChatBubble item={item} onSelectText={handleSelectText} />
-  ), [handleSelectText]);
+    <ChatBubble item={item} onSelectText={handleSelectText} onViewImage={handleViewImage} />
+  ), [handleSelectText, handleViewImage]);
 
   const keyExtractor = useCallback((_: AIMessage, index: number) => index.toString(), []);
 
+  // The action currently open in the edit modal, resolved by clientId (B1).
+  const editingAction = useMemo(
+    () => (editingId ? pendingActions.find((a) => a.clientId === editingId) ?? null : null),
+    [editingId, pendingActions],
+  );
+
+  // Segmented totals for the review sheet — never one summed RM (B6).
+  const cameInTotal = useMemo(
+    () => pendingActions.filter((a) => a.type === 'add_income').reduce((s, a) => s + (a.amount || 0), 0),
+    [pendingActions],
+  );
+  const wentOutTotal = useMemo(
+    () => pendingActions.filter((a) => a.type !== 'add_income').reduce((s, a) => s + (a.amount || 0), 0),
+    [pendingActions],
+  );
+
+  // Cross-nav "undo last save" affordance (B10): valid only within a short TTL,
+  // and only when the stashed receipts actually carry something reversible
+  // (honest undo — never a no-op bar for a transfer-only save).
+  const UNDO_TTL_MS = 5 * 60 * 1000;
+  const lastSaveFresh = !!lastSave
+    && Date.now() - lastSave.at < UNDO_TTL_MS
+    && lastSave.receipts.some((r) => hasReversiblePayload(r));
+  const handleUndoLastSave = useCallback(() => {
+    const ls = useAIInsightsStore.getState().lastSave;
+    if (!ls) return;
+    undoReceipts(ls.receipts);
+    clearLastSave();
+    showToast(t.moneyChat.undoneToast, 'info');
+  }, [undoReceipts, clearLastSave, t, showToast]);
+
   return (
-    <View style={styles.container}>
+    <View ref={containerRef} style={styles.container} onLayout={onContainerLayout}>
       <KeyboardAvoidingView
         style={styles.chatContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={headerHeight}
+        behavior="padding"
+        keyboardVerticalOffset={kavOffset}
       >
         {chatMessages.length === 0 && !isLoading ? (
           <View style={styles.emptyState}>
@@ -1026,7 +1745,13 @@ const MoneyChat: React.FC = () => {
             onContentSizeChange={handleContentSizeChange}
             onScroll={handleScroll}
             scrollEventThrottle={100}
-            ListFooterComponent={isLoading ? <TypingDots /> : null}
+            ListFooterComponent={
+              streamingText
+                ? <StreamingBubble text={streamingText} />
+                : isLoading
+                ? <TypingDots />
+                : null
+            }
           />
         )}
 
@@ -1037,37 +1762,127 @@ const MoneyChat: React.FC = () => {
           </TouchableOpacity>
         )}
 
+        {/* Cross-nav undo of the last save — survives leaving + reopening Echo,
+            within a short TTL (B10). Hidden while chips are queued to avoid clutter. */}
+        {lastSaveFresh && pendingActions.length === 0 && (
+          <TouchableOpacity
+            style={styles.undoLastBar}
+            onPress={handleUndoLastSave}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={t.moneyChat.undoLastSave}
+          >
+            <Feather name="rotate-ccw" size={14} color={C.bronze} />
+            <Text style={styles.undoLastText}>{t.moneyChat.undoLastSave}</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Pending actions — scrollable chips, tap to open edit modal */}
         {pendingActions.length > 0 && (
           <View style={styles.pendingSection}>
             <Text style={styles.pendingSectionLabel}>
-              {pendingActions.length} item{pendingActions.length > 1 ? 's' : ''} to confirm — tap to review:
+              {(pendingActions.length === 1 ? t.moneyChat.pendingHintOne : t.moneyChat.pendingHintMany)
+                .replace('{n}', String(pendingActions.length))}
             </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.pendingChipRow}
-            >
-              {pendingActions.map((action, i) => (
-                <PendingChip
-                  key={`${action.type}-${action.amount}-${i}`}
-                  action={action}
-                  onPress={() => setEditingIndex(i)}
-                />
-              ))}
-            </ScrollView>
+            {/* Right-edge fade — mandatory on every horizontal scroller (B13) */}
+            <View style={styles.pendingScrollWrap}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled
+                scrollEventThrottle={16}
+                contentContainerStyle={styles.pendingChipRow}
+              >
+                {pendingActions.map((action, i) => (
+                  <PendingChip
+                    key={action.clientId ?? `${action.type}-${action.amount}-${i}`}
+                    action={action}
+                    flagged={!!flagNoteFor(action)}
+                    onPress={() => handleChipPress(action)}
+                  />
+                ))}
+              </ScrollView>
+              <LinearGradient
+                colors={[withAlpha(C.background, 0), C.background]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                pointerEvents="none"
+                style={styles.pendingFade}
+              />
+            </View>
+            {pendingActions.length >= 2 && (
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: SPACING.sm, paddingVertical: SPACING.sm, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: withAlpha(C.deepOlive, 0.3), backgroundColor: withAlpha(C.deepOlive, 0.06) }}
+                activeOpacity={0.8}
+                onPress={() => { lightTap(); setShowReviewSheet(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={`${t.moneyChat.reviewAll} (${pendingActions.length})`}
+              >
+                <Feather name="check-circle" size={15} color={C.deepOlive} />
+                <Text style={{ fontSize: TYPOGRAPHY.size.sm, fontWeight: TYPOGRAPHY.weight.semibold, color: C.deepOlive }}>
+                  {t.moneyChat.reviewAll} ({pendingActions.length})
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
-        {/* Edit modal for pending action */}
-        {editingIndex !== null && (
+        {/* Edit modal for pending action — keyed by clientId (B1) */}
+        {editingAction && (
           <ActionEditModal
             visible
-            action={pendingActions[editingIndex]}
-            onConfirm={(edited) => handleConfirmAction(editingIndex, edited)}
-            onClose={() => setEditingIndex(null)}
+            action={editingAction}
+            flagNote={flagNoteFor(editingAction)}
+            onConfirm={(edited) => handleConfirmAction(editingAction.clientId!, edited)}
+            onClose={() => setEditingId(null)}
+            onDiscard={() => handleDismissAction(editingAction.clientId!)}
           />
         )}
+
+        {/* Delete/edit-of-saved: show the matched row(s) before confirm (B5) */}
+        <ResolveTargetModal
+          state={resolving}
+          onConfirm={confirmResolved}
+          onClose={() => setResolving(null)}
+        />
+
+        {/* Review & save all — shown when 2+ entries are pending */}
+        <ReviewEntriesSheet
+          visible={showReviewSheet}
+          actions={pendingActions}
+          cameIn={cameInTotal}
+          wentOut={wentOutTotal}
+          hasDestructive={pendingActions.some(isDestructiveAction)}
+          onClose={() => setShowReviewSheet(false)}
+          onConfirmAll={handleSaveAll}
+          onEditEntry={(id) => { setShowReviewSheet(false); setTimeout(() => setEditingId(id), 60); }}
+          onRemoveEntry={(id) => { removePendingActionById(id); if (pendingActions.length <= 1) setShowReviewSheet(false); }}
+          flagNoteFor={flagNoteFor}
+        />
+
+        {/* Fullscreen image viewer — tap a sent photo to open it */}
+        <Modal
+          visible={!!viewerUri}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setViewerUri(null)}
+          statusBarTranslucent
+        >
+          <Pressable style={styles.imageViewerBackdrop} onPress={() => setViewerUri(null)}>
+            {viewerUri && (
+              <Image source={{ uri: viewerUri }} style={styles.imageViewerImage} resizeMode="contain" />
+            )}
+            <TouchableOpacity
+              style={styles.imageViewerClose}
+              onPress={() => setViewerUri(null)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="close"
+            >
+              <Feather name="x" size={24} color="#fff" />
+            </TouchableOpacity>
+          </Pressable>
+        </Modal>
 
         {/* Transient error notice — not saved to chat */}
         {errorNotice && !isLoading && (
@@ -1124,7 +1939,7 @@ const MoneyChat: React.FC = () => {
           </View>
         )}
 
-        <View style={styles.inputBar}>
+        <View ref={guideTargetRef} style={styles.inputBar} collapsable={false}>
           {/* Camera + Gallery buttons */}
           <TouchableOpacity
             style={styles.inputIconButton}
@@ -1308,6 +2123,11 @@ const MoneyChat: React.FC = () => {
         icon="message-circle"
         description={t.guide.descChat}
         accent="#6BA3BE"
+        points={[
+          { icon: 'message-circle', text: t.guide.chatPoint1 },
+          { icon: 'image', text: t.guide.chatPoint2 },
+        ]}
+        spotlight={{ targetRef: guideTargetRef, label: t.guide.chatPoint1, sublabel: t.guide.chatPoint2 }}
       />
     </View>
   );
@@ -1388,6 +2208,12 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: '#fff',
   },
 
+  // Streaming bubble — inline blinking caret that wraps with the text
+  streamingCaretText: {
+    color: C.deepOlive,
+    fontWeight: '700',
+  },
+
   // Confirmed action cards (in chat)
   actionCard: {
     alignSelf: 'flex-start',
@@ -1448,9 +2274,20 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
     paddingHorizontal: SPACING.lg,
   },
+  pendingScrollWrap: {
+    position: 'relative',
+  },
   pendingChipRow: {
-    paddingHorizontal: SPACING.lg,
+    paddingLeft: SPACING.lg,
+    paddingRight: SPACING['2xl'],
     gap: SPACING.sm,
+  },
+  pendingFade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 40,
   },
   pendingChip: {
     flexDirection: 'row',
@@ -1476,11 +2313,122 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
     maxWidth: 120,
   },
+  pendingChipDate: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textMuted,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
   pendingChipAmount: {
     fontSize: TYPOGRAPHY.size.xs,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: C.bronze,
     fontVariant: ['tabular-nums'] as any,
+  },
+
+  // Cross-nav "undo last save" pill (B10)
+  undoLastBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 6,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: withAlpha(C.bronze, 0.25),
+  },
+  undoLastText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.bronze,
+  },
+
+  // Reshape ask + debt preview bars (B11/B12)
+  reshapeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: withAlpha(C.bronze, 0.08),
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  reshapeText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.bronze,
+  },
+  reshapeBtn: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.bronze, 0.15),
+  },
+  reshapeBtnText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+  },
+  debtPreviewBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: withAlpha(C.bronze, 0.06),
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  debtPreviewText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+  },
+
+  // Resolve-target modal (B5)
+  resolveRoot: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.lg,
+  },
+  resolveCard: {
+    width: '90%',
+    maxWidth: 460,
+    maxHeight: '80%',
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: SPACING.lg,
+    gap: SPACING.sm,
+    ...SHADOWS.lg,
+  },
+  resolveTitle: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.textPrimary,
+    marginBottom: SPACING.xs,
+  },
+  resolveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginBottom: 6,
+  },
+  resolveRowText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textPrimary,
   },
 
   // Floating edit modal
@@ -1657,6 +2605,40 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
     color: '#fff',
+  },
+  discardBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  discardBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+  },
+
+  // Fullscreen image viewer (lightbox) — dark backdrop regardless of theme
+  imageViewerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageViewerImage: {
+    width: '92%',
+    height: '82%',
+  },
+  imageViewerClose: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Error notice — transient, above input bar

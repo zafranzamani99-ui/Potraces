@@ -479,7 +479,7 @@ const SellerDashboard: React.FC = () => {
 
   // ── Maps app picker (delivery route) ─────────────────────
   // Update after deploying to Vercel — replace with your actual Vercel URL
-  const ORDER_PAGE_BASE = 'https://potraces.vercel.app';
+  const ORDER_PAGE_BASE = 'https://jejakbaki.my';
   const shopLinkUrl = shopSlug ? `${ORDER_PAGE_BASE}/?slug=${shopSlug}` : null;
 
   const handlePickLogo = useCallback(async () => {

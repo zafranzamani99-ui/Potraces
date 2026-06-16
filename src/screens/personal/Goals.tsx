@@ -1347,6 +1347,10 @@ const Goals: React.FC = () => {
     );
   }, [styles]);
 
+  // ScreenGuide spotlight target — the FAB (absent on first visit when there
+  // are no goals yet; the guide falls back to inline points then).
+  const guideTargetRef = useRef<any>(null);
+
   return (
     <View style={styles.container}>
       <ScreenGuide
@@ -1354,6 +1358,11 @@ const Goals: React.FC = () => {
         title={t.goals.screenGuideTitle ?? 'track your savings goals'}
         description={t.goals.screenGuideDesc ?? 'set targets, contribute regularly, and watch your progress grow'}
         icon="target"
+        points={[
+          { icon: 'plus', text: t.guide.goalsPoint1 },
+          { icon: 'trending-up', text: t.guide.goalsPoint2 },
+        ]}
+        spotlight={{ targetRef: guideTargetRef, label: t.guide.goalsPoint1, sublabel: t.guide.goalsPoint2 }}
       />
       <ScrollView
         style={styles.scrollView}
@@ -1506,6 +1515,7 @@ const Goals: React.FC = () => {
       {/* ── FAB ── */}
       {activeGoals.length > 0 && goalsList.length < MAX_GOALS && (
         <FAB
+          ref={guideTargetRef}
           onPress={openAddGoal}
           style={{ bottom: Math.max(SPACING['2xl'], insets.bottom + SPACING.md) }}
         />

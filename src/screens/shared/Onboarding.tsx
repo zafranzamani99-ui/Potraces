@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useMemo } from 'react';
+import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,17 +7,29 @@ import {
   StyleSheet,
   Dimensions,
   TouchableOpacity,
+  Pressable,
   ViewToken,
+  Animated,
+  Easing,
+  LayoutChangeEvent,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
-import { useCalm, useIsDark } from '../../hooks/useCalm';
-import { useSettingsStore } from '../../store/settingsStore';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { useIsDark } from '../../hooks/useCalm';
+import { useSettingsStore, ThemePreference } from '../../store/settingsStore';
 import { useAppStore } from '../../store/appStore';
 import { useT } from '../../i18n';
+import { lightTap } from '../../services/haptics';
+import { SkyBackdrop, FlyingWau } from '../../components/common/WauScene';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// The wau's flight area on the welcome page. The sky itself is the whole
+// screen (SkyBackdrop); this just bounds where the kite can roam.
+const HERO_SKY_W = Math.min(SCREEN_WIDTH - 48, 360);
+const HERO_SKY_H = 232;
 
 interface OnboardingSlideMeta {
   id: string;
@@ -50,154 +62,457 @@ const MODE_OPTIONS: { id: ModeChoice; icon: keyof typeof Feather.glyphMap }[] = 
   { id: 'both', icon: 'layers' },
 ];
 
+// ─── Sky palettes ─────────────────────────────────────────
+// The onboarding sits on its own sky (cream day / navy night), so it gets its
+// own WCAG-validated palette instead of the app's neutral C tokens. Every text
+// pair here is contrast-checked — ratios + rules in docs/DARK_MODE_READABILITY.md.
+// Surfaces follow the research rules: day = translucent warm white + warm
+// umber shadow (never black on cream); night = navy lightened by a white-alpha
+// overlay + lighter stroke, NO shadow (Material dark-elevation rule).
+type SkyPalette = {
+  ink: string;          // body text — ≥ 4.5:1 on sky AND surface
+  sub: string;          // secondary text — ≥ 4.5:1 on sky AND surface
+  faint: string;        // placeholders/hints ONLY (3:1 band)
+  fieldBg: string;
+  fieldBgFocus: string;
+  fieldBorder: string;
+  focusBorder: string;
+  choiceBorder: string; // mode-card resting border
+  segTrack: string;
+  segThumb: string;
+  segThumbBorder: string;
+  cardBg: string;       // solid surface for text-heavy mockup cards
+  cardBorder: string;
+  accent: string;       // interactive accent (olive by day, gold by night)
+  ctaInk: string;       // text on the accent
+  dotInactive: string;
+};
+
+const SKY_DAY: SkyPalette = {
+  ink: '#2E2E1F',                          // 11.5:1 on sky
+  sub: '#6E6B54',                          // 4.51:1 on sky — do not lighten
+  faint: '#8A8770',                        // 3:1 band — placeholders only
+  fieldBg: 'rgba(255,255,255,0.55)',
+  fieldBgFocus: 'rgba(255,255,255,0.78)',
+  fieldBorder: 'rgba(255,255,255,0.65)',   // the glass edge
+  focusBorder: '#4F5104',
+  choiceBorder: 'rgba(122,98,56,0.20)',
+  segTrack: 'rgba(94,76,48,0.10)',         // groove pressed into the sky
+  segThumb: 'rgba(255,255,255,0.92)',
+  segThumbBorder: 'rgba(255,255,255,0.80)',
+  cardBg: '#FFFDF9',
+  cardBorder: 'rgba(122,98,56,0.20)',
+  accent: '#4F5104',
+  ctaInk: '#FFFFFF',                       // 8.36:1 on olive
+  dotInactive: 'rgba(79,81,4,0.20)',
+};
+
+const SKY_NIGHT: SkyPalette = {
+  ink: '#F0EDE8',                          // 12.1:1 on sky
+  sub: '#AEB6CC',                          // 6.95:1 on sky
+  faint: '#8C93A8',                        // 4.6:1 on sky — placeholders only
+  fieldBg: 'rgba(255,255,255,0.07)',       // lighter-than-sky = elevated
+  fieldBgFocus: 'rgba(255,255,255,0.11)',
+  fieldBorder: 'rgba(255,255,255,0.14)',
+  focusBorder: 'rgba(222,171,34,0.85)',
+  choiceBorder: 'rgba(255,255,255,0.12)',
+  segTrack: 'rgba(0,0,0,0.22)',
+  segThumb: 'rgba(255,255,255,0.14)',
+  segThumbBorder: 'rgba(255,255,255,0.18)',
+  cardBg: '#2B3248',
+  cardBorder: 'rgba(255,255,255,0.14)',
+  accent: '#DEAB22',                       // 6.68:1 on navy as a UI color
+  ctaInk: '#23250F',                       // 7.41:1 on gold
+  dotInactive: 'rgba(240,237,232,0.28)',
+};
+
+// Warm umber shadows for day (black shadows look like grime on cream).
+const WARM_SHADOW = {
+  shadowColor: '#7A6238',
+  shadowOpacity: 0.14,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 4,
+} as const;
+const WARM_SHADOW_SM = {
+  shadowColor: '#7A6238',
+  shadowOpacity: 0.18,
+  shadowRadius: 6,
+  shadowOffset: { width: 0, height: 2 },
+  elevation: 2,
+} as const;
+const NO_SHADOW = {
+  shadowColor: 'transparent',
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  shadowOffset: { width: 0, height: 0 },
+  elevation: 0,
+} as const;
+
+// Night-bright versions of the slide accents — the day olive/bronze/brown
+// disappear on the navy sky (olive #4F5104 on #232B40 ≈ 1.3:1).
+const NIGHT_ACCENT: Record<string, string> = {
+  '#4F5104': '#A8AD52',
+  '#B2780A': '#DEAB22',
+  '#8B7355': '#C2A37E',
+};
+const accentFor = (hex: string, dark: boolean) => (dark ? NIGHT_ACCENT[hex] ?? '#DEAB22' : hex);
+
+// ─── Tiny animation primitives ────────────────────────────
+// Shared building blocks so every page can stage its entrance. All native-driver.
+
+/** Fades + slides children in when `active` flips true; resets when false so a revisit replays. */
+const Reveal: React.FC<{
+  active: boolean;
+  delay?: number;
+  from?: number;
+  style?: object;
+  children: React.ReactNode;
+}> = ({ active, delay = 0, from = 16, style, children }) => {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (active) {
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.spring(v, { toValue: 1, friction: 8, tension: 60, useNativeDriver: true }),
+      ]).start();
+    } else {
+      v.setValue(0);
+    }
+  }, [active, delay, v]);
+  return (
+    <Animated.View
+      style={[
+        style,
+        {
+          opacity: v,
+          transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [from, 0] }) }],
+        },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+};
+
+/** Springs children from 0 → full scale on mount (radio fills, chips). */
+const Pop: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(v, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
+  }, [v]);
+  return <Animated.View style={{ opacity: v, transform: [{ scale: v }] }}>{children}</Animated.View>;
+};
+
+/** Animated number that counts up while its slide is on screen. */
+const CountUp: React.FC<{ active: boolean; to: number; style?: object; prefix?: string }> = ({
+  active,
+  to,
+  style,
+  prefix = 'RM ',
+}) => {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    if (!active) {
+      setVal(0);
+      return;
+    }
+    const v = new Animated.Value(0);
+    const id = v.addListener(({ value }) => setVal(Math.round(value)));
+    Animated.timing(v, { toValue: to, duration: 1100, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    return () => v.removeListener(id);
+  }, [active, to]);
+  return (
+    <Text style={style}>
+      {prefix}
+      {val.toLocaleString()}
+    </Text>
+  );
+};
+
+// ─── Day/Night switch ─────────────────────────────────────
+// An iOS/Pixel-class animated switch: spring thumb that morphs sun → moon,
+// track that deepens to night with stars surfacing inside it. Lives in the
+// onboarding HEADER (always reachable, no scrolling) and drives the whole-sky
+// sunrise/sunset behind the content.
+const ThemeSwitch: React.FC<{
+  dark: boolean;
+  onToggle: () => void;
+  label: string;
+  trackW?: number;
+  trackH?: number;
+  thumb?: number;
+}> = ({ dark, onToggle, label, trackW = 84, trackH = 44, thumb = 34 }) => {
+  const a = useRef(new Animated.Value(dark ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.spring(a, { toValue: dark ? 1 : 0, friction: 7.5, tension: 70, useNativeDriver: false }).start();
+  }, [dark, a]);
+
+  const pad = (trackH - thumb) / 2;
+  const x = a.interpolate({ inputRange: [0, 1], outputRange: [pad, trackW - thumb - pad] });
+  const trackBg = a.interpolate({ inputRange: [0, 1], outputRange: ['#EAE3D1', '#27304A'] });
+  const thumbBg = a.interpolate({ inputRange: [0, 1], outputRange: ['#DEAB22', '#E9E4D4'] });
+  const sunO = a.interpolate({ inputRange: [0, 0.5], outputRange: [1, 0], extrapolate: 'clamp' });
+  const moonO = a.interpolate({ inputRange: [0.5, 1], outputRange: [0, 1], extrapolate: 'clamp' });
+
+  return (
+    <Pressable
+      onPress={onToggle}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: dark }}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
+      <Animated.View
+        style={{
+          width: trackW,
+          height: trackH,
+          borderRadius: trackH / 2,
+          backgroundColor: trackBg,
+          borderWidth: 1,
+          borderColor: withAlpha('#000000', 0.07),
+        }}
+      >
+        {/* stars surface in the track at night (left, where the thumb isn't) */}
+        <Animated.View style={{ position: 'absolute', left: trackW * 0.15, top: trackH * 0.32, opacity: moonO }}>
+          <View style={{ width: 2.5, height: 2.5, borderRadius: 1.25, backgroundColor: '#E9E4D4' }} />
+          <View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: '#E9E4D4', marginTop: 5, marginLeft: 7 }} />
+          <View style={{ width: 2.5, height: 2.5, borderRadius: 1.25, backgroundColor: '#E9E4D4', marginTop: -8, marginLeft: 13 }} />
+        </Animated.View>
+        {/* a wisp of cloud by day (right) */}
+        <Animated.View style={{ position: 'absolute', right: trackW * 0.14, top: trackH * 0.44, opacity: sunO }}>
+          <View style={{ width: trackH * 0.4, height: trackH * 0.14, borderRadius: trackH * 0.07, backgroundColor: withAlpha('#FFFFFF', 0.85) }} />
+        </Animated.View>
+        {/* the thumb morphs sun → moon */}
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: pad,
+            left: 0,
+            width: thumb,
+            height: thumb,
+            borderRadius: thumb / 2,
+            backgroundColor: thumbBg,
+            alignItems: 'center',
+            justifyContent: 'center',
+            transform: [{ translateX: x }],
+            shadowColor: '#000000',
+            shadowOpacity: 0.18,
+            shadowRadius: 3,
+            shadowOffset: { width: 0, height: 2 },
+            elevation: 3,
+          }}
+        >
+          <Animated.View style={{ position: 'absolute', opacity: sunO }}>
+            <Feather name="sun" size={Math.round(thumb * 0.54)} color="#8A6A10" />
+          </Animated.View>
+          <Animated.View style={{ position: 'absolute', opacity: moonO }}>
+            <Feather name="moon" size={Math.round(thumb * 0.5)} color="#7A7565" />
+          </Animated.View>
+        </Animated.View>
+      </Animated.View>
+    </Pressable>
+  );
+};
+
 // ─── Mini Visual Mockups ──────────────────────────────────
 
-const MockupRow: React.FC<{ icon: string; label: string; accent: string; C: typeof CALM }> = ({ icon, label, accent, C }) => (
+const MockupRow: React.FC<{ icon: string; label: string; accent: string; sky: SkyPalette }> = ({ icon, label, accent, sky }) => (
   <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}>
     <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: accent + '18', marginRight: 8, justifyContent: 'center', alignItems: 'center' }}>
       <Feather name={icon as keyof typeof Feather.glyphMap} size={10} color={accent} />
     </View>
-    <Text style={{ fontSize: 11, color: C.textSecondary, flex: 1 }}>{label}</Text>
+    <Text style={{ fontSize: 11, color: sky.sub, flex: 1 }}>{label}</Text>
   </View>
 );
 
-const SlideMockup: React.FC<{ slideId: string; accent: string; C: typeof CALM }> = ({ slideId, accent, C }) => {
+const NOTE_TEXT = 'makan rm12\ngrab rm8\nparking rm3\nteh tarik rm2.50';
+
+/** Notes mockup that TYPES its note live, then pops the Echo chip. */
+const NotesMockup: React.FC<{ accent: string; sky: SkyPalette; active: boolean; card: object }> = ({ accent, sky, active, card }) => {
+  const [n, setN] = useState(0);
+  const done = n >= NOTE_TEXT.length;
+  useEffect(() => {
+    if (!active) {
+      setN(0);
+      return;
+    }
+    const id = setInterval(() => {
+      setN((p) => {
+        if (p >= NOTE_TEXT.length) {
+          clearInterval(id);
+          return p;
+        }
+        return p + 1;
+      });
+    }, 28);
+    return () => clearInterval(id);
+  }, [active]);
+
+  return (
+    <View style={card}>
+      <Text style={{ fontSize: 10, color: sky.faint, marginBottom: 6 }}>Notes</Text>
+      <Text style={{ fontSize: 12, color: sky.ink, lineHeight: 18, height: 72 }}>
+        {NOTE_TEXT.slice(0, n)}
+        {!done && active ? '▍' : ''}
+      </Text>
+      <View style={{ marginTop: 10, height: 26, justifyContent: 'center' }}>
+        {done && (
+          <Pop>
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: accent + '12', borderRadius: RADIUS.md, padding: 6 }}>
+              <Feather name="zap" size={12} color={accent} />
+              <Text style={{ fontSize: 10, color: accent, marginLeft: 4, fontWeight: '500' }}>4 amounts detected — tap to save</Text>
+            </View>
+          </Pop>
+        )}
+      </View>
+    </View>
+  );
+};
+
+const SlideMockup: React.FC<{ slideId: string; accent: string; sky: SkyPalette; isDark: boolean; active: boolean }> = ({ slideId, accent, sky, isDark, active }) => {
   const card = {
-    width: 260,
-    height: 210,
+    width: 264,
+    height: 212,
     borderRadius: RADIUS.xl,
-    backgroundColor: C.surface,
+    backgroundColor: sky.cardBg,
+    borderWidth: 1.5,
+    borderColor: sky.cardBorder,
     padding: SPACING.md,
     overflow: 'hidden' as const,
-    ...(C === CALM_DARK ? SHADOWS.none : SHADOWS.sm),
+    ...(isDark ? NO_SHADOW : WARM_SHADOW),
   };
 
   switch (slideId) {
-    case '1': // Track Money — mini transaction list
+    case '1': // Track Money — rows cascade in, the month total counts up
       return (
         <View style={card}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
-            <View style={{ width: 50, height: 8, backgroundColor: accent + '30', borderRadius: 4 }} />
-            <Text style={{ fontSize: 12, color: accent, fontWeight: '600' }}>RM 4,250</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
+            <Text style={{ fontSize: 10, color: sky.faint }}>this month</Text>
+            <CountUp active={active} to={4250} style={{ fontSize: 13, color: accent, fontWeight: '700' }} />
           </View>
-          <MockupRow icon="coffee" label="nasi lemak  RM8.50" accent={accent} C={C} />
-          <MockupRow icon="navigation" label="Grab to work  RM15" accent={accent} C={C} />
-          <MockupRow icon="zap" label="Unifi bill  RM129" accent={accent} C={C} />
-          <MockupRow icon="shopping-bag" label="Shopee  RM89.90" accent={accent} C={C} />
-          <View style={{ marginTop: 8, alignSelf: 'center' }}>
-            <Text style={{ fontSize: 9, color: C.textMuted }}>auto-categorised</Text>
-          </View>
-        </View>
-      );
-
-    case '2': // Business — mini order cards
-      return (
-        <View style={card}>
-          <View style={{ backgroundColor: accent + '10', borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.xs }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: accent }}>Order #001</Text>
-            <Text style={{ fontSize: 10, color: C.textSecondary, marginTop: 2 }}>Tshirt (L) x3, Sticker pack x5</Text>
-            <Text style={{ fontSize: 10, fontWeight: '600', color: accent, marginTop: 4 }}>RM 85.00</Text>
-          </View>
-          <View style={{ backgroundColor: accent + '10', borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.xs }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: accent }}>Order #002</Text>
-            <Text style={{ fontSize: 10, color: C.textSecondary, marginTop: 2 }}>Nasi lemak x2, Kuih lapis x4</Text>
-            <Text style={{ fontSize: 10, fontWeight: '600', color: accent, marginTop: 4 }}>RM 52.00</Text>
-          </View>
-          <View style={{ marginTop: 4, alignSelf: 'center' }}>
-            <Text style={{ fontSize: 9, color: C.textMuted }}>paste from WhatsApp</Text>
-          </View>
-        </View>
-      );
-
-    case '3': // Split & Settle — mini split view
-      return (
-        <View style={card}>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: C.textPrimary, marginBottom: 8 }}>makan malam  RM120</Text>
           {[
-            { name: 'Amin', amt: 'RM40', done: true },
-            { name: 'Siti', amt: 'RM40', done: false },
-            { name: 'You', amt: 'RM40', done: true },
-          ].map((p) => (
-            <View key={p.name} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}>
-              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: p.done ? accent + '20' : C.border, marginRight: 8 }} />
-              <Text style={{ fontSize: 11, color: C.textSecondary, flex: 1 }}>{p.name}</Text>
-              <Text style={{ fontSize: 11, color: p.done ? accent : C.textMuted, fontWeight: '500' }}>{p.amt}</Text>
-              {p.done && <Feather name="check" size={10} color={accent} style={{ marginLeft: 4 }} />}
-            </View>
+            { icon: 'coffee', label: 'nasi lemak  RM8.50' },
+            { icon: 'navigation', label: 'Grab to work  RM15' },
+            { icon: 'zap', label: 'Unifi bill  RM129' },
+            { icon: 'shopping-bag', label: 'Shopee  RM89.90' },
+          ].map((r, i) => (
+            <Reveal key={r.label} active={active} delay={250 + i * 140} from={10}>
+              <MockupRow icon={r.icon} label={r.label} accent={accent} sky={sky} />
+            </Reveal>
           ))}
-          <View style={{ marginTop: 8, alignSelf: 'center' }}>
-            <Text style={{ fontSize: 9, color: C.textMuted }}>no more awkward moments</Text>
-          </View>
+          <Reveal active={active} delay={900} from={6} style={{ marginTop: 8, alignSelf: 'center' }}>
+            <Text style={{ fontSize: 9, color: sky.faint }}>auto-categorised</Text>
+          </Reveal>
         </View>
       );
 
-    case '4': // Notes & Echo — mini note
+    case '2': // Business — order cards slide in like incoming orders
       return (
         <View style={card}>
-          <Text style={{ fontSize: 10, color: C.textMuted, marginBottom: 6 }}>Notes</Text>
-          <Text style={{ fontSize: 12, color: C.textPrimary, lineHeight: 18 }}>
-            makan rm12{'\n'}grab rm8{'\n'}parking rm3{'\n'}teh tarik rm2.50
-          </Text>
-          <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', backgroundColor: accent + '12', borderRadius: RADIUS.md, padding: 6 }}>
-            <Feather name="zap" size={12} color={accent} />
-            <Text style={{ fontSize: 10, color: accent, marginLeft: 4, fontWeight: '500' }}>4 amounts detected — tap to save</Text>
-          </View>
+          <Reveal active={active} delay={200} from={14}>
+            <View style={{ backgroundColor: accent + '14', borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.xs }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: accent }}>Order #001</Text>
+              <Text style={{ fontSize: 10, color: sky.sub, marginTop: 2 }}>Tshirt (L) x3, Sticker pack x5</Text>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: accent, marginTop: 4 }}>RM 85.00</Text>
+            </View>
+          </Reveal>
+          <Reveal active={active} delay={420} from={14}>
+            <View style={{ backgroundColor: accent + '14', borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.xs }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: accent }}>Order #002</Text>
+              <Text style={{ fontSize: 10, color: sky.sub, marginTop: 2 }}>Nasi lemak x2, Kuih lapis x4</Text>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: accent, marginTop: 4 }}>RM 52.00</Text>
+            </View>
+          </Reveal>
+          <Reveal active={active} delay={650} from={6} style={{ marginTop: 4, alignSelf: 'center' }}>
+            <Text style={{ fontSize: 9, color: sky.faint }}>paste from WhatsApp</Text>
+          </Reveal>
         </View>
       );
 
-    case '5': // Receipts & Pulse
-      return (
-        <View style={card}>
-          {/* Receipt card */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: accent + '10', borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.sm }}>
-            <View style={{ width: 36, height: 36, borderRadius: RADIUS.md, backgroundColor: accent + '20', justifyContent: 'center', alignItems: 'center', marginRight: SPACING.sm }}>
-              <Feather name="camera" size={16} color={accent} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: C.textPrimary }}>Mydin Groceries</Text>
-              <Text style={{ fontSize: 10, color: C.textSecondary, marginTop: 1 }}>5 items · RM 87.30</Text>
-            </View>
-            <View style={{ backgroundColor: accent + '20', borderRadius: RADIUS.sm, paddingHorizontal: 6, paddingVertical: 2 }}>
-              <Text style={{ fontSize: 9, color: accent, fontWeight: '600' }}>saved</Text>
-            </View>
-          </View>
-          {/* Pulse card */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.background, borderRadius: RADIUS.md, padding: SPACING.sm, borderWidth: 1, borderColor: C.border }}>
-            <View style={{ width: 36, height: 36, borderRadius: RADIUS.md, backgroundColor: accent + '15', justifyContent: 'center', alignItems: 'center', marginRight: SPACING.sm }}>
-              <Feather name="activity" size={16} color={accent} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: C.textPrimary }}>Financial Pulse</Text>
-              <Text style={{ fontSize: 10, color: C.textSecondary, marginTop: 1 }}>spending up 12% this week</Text>
-            </View>
-          </View>
-          <View style={{ marginTop: SPACING.sm, alignSelf: 'center' }}>
-            <Text style={{ fontSize: 9, color: C.textMuted }}>always know where you stand</Text>
-          </View>
-        </View>
-      );
+    case '4': // Notes & Echo — live typewriter + chip pop
+      return <NotesMockup accent={accent} sky={sky} active={active} card={card} />;
 
     default:
       return null;
   }
 };
 
+// ─── Pager dots that stretch into pills ───────────────────
+const Dots: React.FC<{ count: number; index: number; colors: string[]; inactive: string }> = ({ count, index, colors, inactive }) => {
+  const vals = useRef(Array.from({ length: count }, (_, i) => new Animated.Value(i === 0 ? 1 : 0))).current;
+  useEffect(() => {
+    vals.forEach((v, i) =>
+      Animated.spring(v, { toValue: i === index ? 1 : 0, friction: 8, tension: 90, useNativeDriver: false }).start(),
+    );
+  }, [index, vals]);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+      {vals.map((v, i) => (
+        <Animated.View
+          key={`dot-${i}`}
+          style={{
+            height: 8,
+            borderRadius: RADIUS.full,
+            width: v.interpolate({ inputRange: [0, 1], outputRange: [8, 26] }),
+            backgroundColor: v.interpolate({ inputRange: [0, 1], outputRange: [inactive, colors[i]] }),
+          }}
+        />
+      ))}
+    </View>
+  );
+};
+
 const Onboarding: React.FC = () => {
-  const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
-  const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [name, setName] = useState('');
+  const [nameFocused, setNameFocused] = useState(false);
   const [selectedLang, setSelectedLang] = useState<'en' | 'ms'>('en');
   const [selectedMode, setSelectedMode] = useState<ModeChoice | null>(null);
+  // While the wau is being dragged, the pager + welcome scroll must not move.
+  const [wauDragging, setWauDragging] = useState(false);
   const setHasCompletedOnboarding = useSettingsStore((s) => s.setHasCompletedOnboarding);
   const setUserName = useSettingsStore((s) => s.setUserName);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const setDefaultMode = useSettingsStore((s) => s.setDefaultMode);
   const setMode = useAppStore((s) => s.setMode);
+  const themePreference = useSettingsStore((s) => s.themePreference);
+  const setThemePreference = useSettingsStore((s) => s.setThemePreference);
+
+  // Highlight/animate against what's on screen now. If the saved preference is
+  // 'system', resolve to the actual light/dark so every control has a state.
+  const effectiveTheme: 'light' | 'dark' =
+    themePreference === 'dark' || (themePreference === 'system' && isDark) ? 'dark' : 'light';
+  const skyDark = effectiveTheme === 'dark';
+  // The onboarding's own WCAG-validated palette (see docs/DARK_MODE_READABILITY.md).
+  const sky = skyDark ? SKY_NIGHT : SKY_DAY;
+  const styles = useMemo(() => makeStyles(skyDark, sky), [skyDark, sky]);
+
+  // Language segmented control — sliding thumb.
+  const [segW, setSegW] = useState(0);
+  const segAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(segAnim, { toValue: selectedLang === 'ms' ? 1 : 0, friction: 8, tension: 90, useNativeDriver: false }).start();
+  }, [selectedLang, segAnim]);
+  const onSegLayout = useCallback((e: LayoutChangeEvent) => setSegW(e.nativeEvent.layout.width), []);
+
+  // CTA arrow nudge — a gentle "go on" gesture.
+  const nudge = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(nudge, { toValue: 1, duration: 650, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(nudge, { toValue: 0, duration: 650, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.delay(700),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [nudge]);
 
   const PAGES: OnboardingPage[] = useMemo(() => [
     { ...SLIDE_META[0], title: t.onboarding.trackMoney, description: t.onboarding.trackMoneyDesc },
@@ -211,6 +526,11 @@ const Onboarding: React.FC = () => {
     { type: 'mode' as const },
   ], [PAGES]);
 
+  const DOT_COLORS = useMemo(
+    () => [sky.accent, ...PAGES.map((p) => accentFor(p.accentColor, skyDark)), sky.accent],
+    [sky, skyDark, PAGES],
+  );
+
   // FIRSTRUN-H6 — persist on every change so swiping past welcome cannot lose the name.
   const handleNameChange = useCallback((next: string) => {
     setName(next);
@@ -220,9 +540,16 @@ const Onboarding: React.FC = () => {
   }, [setUserName]);
 
   const handleLangChange = useCallback((lang: 'en' | 'ms') => {
+    lightTap();
     setSelectedLang(lang);
     setLanguage(lang);
   }, [setLanguage]);
+
+  // Apply immediately — useCalm() is reactive, so the whole screen re-themes live.
+  const handleThemeChange = useCallback((pref: ThemePreference) => {
+    lightTap();
+    setThemePreference(pref);
+  }, [setThemePreference]);
 
   // FIRSTRUN-C2 — apply mode choice. Default 'personal' if user skips before picking.
   const applyModeChoice = useCallback((choice: ModeChoice | null) => {
@@ -255,6 +582,7 @@ const Onboarding: React.FC = () => {
   }, [currentIndex, handleComplete, ALL_PAGES.length]);
 
   const handleModePick = useCallback((choice: ModeChoice) => {
+    lightTap();
     setSelectedMode(choice);
   }, []);
 
@@ -268,54 +596,109 @@ const Onboarding: React.FC = () => {
 
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
 
-  const renderPage = useCallback(({ item }: { item: PageItem }) => {
+  const renderPage = useCallback(({ item, index }: { item: PageItem; index: number }) => {
+    const active = currentIndex === index;
+
     if (item.type === 'welcome') {
+      // Warm, personal greeting — updates live as they type their name.
+      const firstName = name.trim().split(/\s+/)[0];
+      const greeting = firstName
+        ? t.onboarding.hiThere.replace(/!?$/, `, ${firstName}!`)
+        : t.onboarding.hiThere;
       return (
-        <View style={styles.page}>
-          <Text style={styles.welcomeTitle} accessibilityRole="header">{t.onboarding.hiThere}</Text>
-          <Text style={styles.description}>{t.onboarding.letsSetUp}</Text>
+        <View style={styles.welcomePage}>
+          <KeyboardAwareScrollView
+            style={styles.welcomeScroll}
+            contentContainerStyle={styles.welcomeScrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            bounces={false}
+            scrollEnabled={!wauDragging}
+            bottomOffset={24}
+          >
+            <View style={styles.welcomeInner}>
+              {/* The wau in the open sky — drag it and it fights the wind,
+                  release and it glides slowly home. The whole screen behind
+                  is the sky (SkyBackdrop), so no frame here. */}
+              <View style={styles.heroArea}>
+                <FlyingWau
+                  size={150}
+                  panelW={HERO_SKY_W}
+                  panelH={HERO_SKY_H}
+                  dark={skyDark}
+                  onDraggingChange={setWauDragging}
+                />
+              </View>
 
-          <View style={styles.welcomeForm}>
-            <Text style={styles.welcomeLabel}>{t.onboarding.whatCallYou}</Text>
-            <TextInput
-              style={styles.welcomeInput}
-              value={name}
-              onChangeText={handleNameChange}
-              placeholder={t.onboarding.nameOptional}
-              placeholderTextColor={C.textMuted}
-              autoCapitalize="words"
-              returnKeyType="done"
-              accessibilityLabel={t.onboarding.whatCallYou}
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
-            />
+              <Text style={styles.welcomeTitle} accessibilityRole="header">{greeting}</Text>
+              <Text style={styles.description}>{t.onboarding.letsSetUp}</Text>
 
-            <Text style={[styles.welcomeLabel, { marginTop: SPACING['2xl'] }]}>{t.onboarding.language}</Text>
-            <View style={styles.langRow}>
-              <TouchableOpacity
-                style={[styles.langCard, selectedLang === 'en' && styles.langCardActive]}
-                onPress={() => handleLangChange('en')}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="English"
-                accessibilityState={{ selected: selectedLang === 'en' }}
-              >
-                <Text style={styles.langFlag}>EN</Text>
-                <Text style={[styles.langCardText, selectedLang === 'en' && styles.langCardTextActive]}>English</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.langCard, selectedLang === 'ms' && styles.langCardActive]}
-                onPress={() => handleLangChange('ms')}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Bahasa Melayu"
-                accessibilityState={{ selected: selectedLang === 'ms' }}
-              >
-                <Text style={styles.langFlag}>BM</Text>
-                <Text style={[styles.langCardText, selectedLang === 'ms' && styles.langCardTextActive]}>Bahasa Melayu</Text>
-              </TouchableOpacity>
+              <View style={styles.welcomeForm}>
+                {/* Name — filled card input with focus ring */}
+                <View style={styles.sectionLabelRow}>
+                  <Feather name="user" size={13} color={sky.sub} />
+                  <Text style={styles.welcomeLabel}>{t.onboarding.whatCallYou}</Text>
+                </View>
+                <View style={[styles.inputCard, nameFocused && styles.inputCardFocused]}>
+                  <TextInput
+                    style={styles.inputCardField}
+                    value={name}
+                    onChangeText={handleNameChange}
+                    onFocus={() => setNameFocused(true)}
+                    onBlur={() => setNameFocused(false)}
+                    placeholder={t.onboarding.nameOptional}
+                    placeholderTextColor={sky.faint}
+                    autoCapitalize="words"
+                    returnKeyType="done"
+                    accessibilityLabel={t.onboarding.whatCallYou}
+                    keyboardAppearance={skyDark ? 'dark' : 'light'}
+                    selectionColor={sky.accent}
+                  />
+                </View>
+
+                {/* Language — sliding segmented control */}
+                <View style={[styles.sectionLabelRow, { marginTop: SPACING.xl }]}>
+                  <Feather name="globe" size={13} color={sky.sub} />
+                  <Text style={styles.welcomeLabel}>{t.onboarding.language}</Text>
+                </View>
+                <View style={styles.segTrack} onLayout={onSegLayout}>
+                  {segW > 0 && (
+                    <Animated.View
+                      style={[
+                        styles.segThumb,
+                        {
+                          width: (segW - 6) / 2,
+                          transform: [
+                            { translateX: segAnim.interpolate({ inputRange: [0, 1], outputRange: [3, 3 + (segW - 6) / 2] }) },
+                          ],
+                        },
+                      ]}
+                    />
+                  )}
+                  <Pressable
+                    style={styles.segItem}
+                    onPress={() => handleLangChange('en')}
+                    accessibilityRole="button"
+                    accessibilityLabel="English"
+                    accessibilityState={{ selected: selectedLang === 'en' }}
+                  >
+                    <Text style={[styles.segText, selectedLang === 'en' && styles.segTextActive]}>English</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.segItem}
+                    onPress={() => handleLangChange('ms')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Bahasa Melayu"
+                    accessibilityState={{ selected: selectedLang === 'ms' }}
+                  >
+                    <Text style={[styles.segText, selectedLang === 'ms' && styles.segTextActive]}>Bahasa Melayu</Text>
+                  </Pressable>
+                </View>
+
+              </View>
             </View>
-          </View>
+          </KeyboardAwareScrollView>
         </View>
       );
     }
@@ -323,45 +706,56 @@ const Onboarding: React.FC = () => {
     if (item.type === 'mode') {
       return (
         <View style={styles.page}>
-          <Text style={styles.title} accessibilityRole="header">{t.onboarding.modePickTitle}</Text>
-          <Text style={styles.description}>{t.onboarding.modePickSubtitle}</Text>
+          <View style={styles.pageInner}>
+            <Reveal active={active} delay={60} from={12} style={{ alignSelf: 'stretch' }}>
+              <Text style={styles.title} accessibilityRole="header">{t.onboarding.modePickTitle}</Text>
+              <Text style={styles.description}>{t.onboarding.modePickSubtitle}</Text>
+            </Reveal>
 
-          <View style={styles.modeList}>
-            {MODE_OPTIONS.map((opt) => {
-              const active = selectedMode === opt.id;
-              const label = t.onboarding[
-                opt.id === 'personal' ? 'modeTrackMine'
-                : opt.id === 'business' ? 'modeRunSomething'
-                : 'modeBoth'
-              ];
-              const sub = t.onboarding[
-                opt.id === 'personal' ? 'modeTrackMineSub'
-                : opt.id === 'business' ? 'modeRunSomethingSub'
-                : 'modeBothSub'
-              ];
-              return (
-                <TouchableOpacity
-                  key={opt.id}
-                  style={[styles.modeCard, active && styles.modeCardActive]}
-                  onPress={() => handleModePick(opt.id)}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel={label}
-                  accessibilityState={{ selected: active }}
-                >
-                  <View style={[styles.modeIconWrap, active && styles.modeIconWrapActive]}>
-                    <Feather name={opt.icon} size={20} color={active ? C.accent : C.textSecondary} />
-                  </View>
-                  <View style={styles.modeTextWrap}>
-                    <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>{label}</Text>
-                    <Text style={styles.modeSub}>{sub}</Text>
-                  </View>
-                  {active && (
-                    <Feather name="check" size={18} color={C.accent} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
+            <View style={styles.modeList}>
+              {MODE_OPTIONS.map((opt, i) => {
+                const isActive = selectedMode === opt.id;
+                const label = t.onboarding[
+                  opt.id === 'personal' ? 'modeTrackMine'
+                  : opt.id === 'business' ? 'modeRunSomething'
+                  : 'modeBoth'
+                ];
+                const sub = t.onboarding[
+                  opt.id === 'personal' ? 'modeTrackMineSub'
+                  : opt.id === 'business' ? 'modeRunSomethingSub'
+                  : 'modeBothSub'
+                ];
+                return (
+                  <Reveal key={opt.id} active={active} delay={180 + i * 120} from={18}>
+                    <TouchableOpacity
+                      style={[styles.modeCard, isActive && styles.modeCardActive]}
+                      onPress={() => handleModePick(opt.id)}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={label}
+                      accessibilityState={{ selected: isActive }}
+                    >
+                      <View style={[styles.modeIconWrap, isActive && styles.modeIconWrapActive]}>
+                        <Feather name={opt.icon} size={20} color={isActive ? sky.accent : sky.sub} />
+                      </View>
+                      <View style={styles.modeTextWrap}>
+                        <Text style={[styles.modeLabel, isActive && styles.modeLabelActive]}>{label}</Text>
+                        <Text style={styles.modeSub}>{sub}</Text>
+                      </View>
+                      <View style={[styles.radioOuter, isActive && styles.radioOuterActive]}>
+                        {isActive && (
+                          <Pop>
+                            <View style={styles.radioInner}>
+                              <Feather name="check" size={12} color={sky.ctaInk} />
+                            </View>
+                          </Pop>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  </Reveal>
+                );
+              })}
+            </View>
           </View>
         </View>
       );
@@ -370,14 +764,20 @@ const Onboarding: React.FC = () => {
     const slide = item.data;
     return (
       <View style={styles.page}>
-        <View style={styles.mockupContainer}>
-          <SlideMockup slideId={slide.id} accent={slide.accentColor} C={C} />
+        <View style={styles.pageInner}>
+          <View style={styles.mockupContainer}>
+            <Reveal active={active} delay={40} from={20}>
+              <SlideMockup slideId={slide.id} accent={accentFor(slide.accentColor, skyDark)} sky={sky} isDark={skyDark} active={active} />
+            </Reveal>
+          </View>
+          <Reveal active={active} delay={140} from={14} style={{ alignSelf: 'stretch' }}>
+            <Text style={styles.title} accessibilityRole="header">{slide.title}</Text>
+            <Text style={styles.description}>{slide.description}</Text>
+          </Reveal>
         </View>
-        <Text style={styles.title} accessibilityRole="header">{slide.title}</Text>
-        <Text style={styles.description}>{slide.description}</Text>
       </View>
     );
-  }, [name, selectedLang, selectedMode, C, t, styles, handleNameChange, handleLangChange, handleModePick]);
+  }, [name, nameFocused, selectedLang, selectedMode, currentIndex, effectiveTheme, skyDark, sky, wauDragging, segW, segAnim, t, styles, handleNameChange, handleLangChange, handleThemeChange, handleModePick, onSegLayout]);
 
   const isLastPage = currentIndex === ALL_PAGES.length - 1;
   // FIRSTRUN-C4 — skip available on every page except the final mode-pick (where the button
@@ -386,8 +786,22 @@ const Onboarding: React.FC = () => {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      {/* Skip button — top right, present on every page except the final mode-pick. */}
+      {/* The entire onboarding lives under one sky — clouds by day, stars by
+          night, following the theme choice live. */}
+      <SkyBackdrop dark={effectiveTheme === 'dark'} />
+
+      {/* Header — day/night switch top-left (always reachable, no scrolling;
+          flipping it plays sunrise/sunset across the whole screen), skip
+          top-right on every page except the final mode-pick. */}
       <View style={styles.header}>
+        <ThemeSwitch
+          dark={effectiveTheme === 'dark'}
+          onToggle={() => handleThemeChange(effectiveTheme === 'dark' ? 'light' : 'dark')}
+          label={t.onboarding.appearance}
+          trackW={64}
+          trackH={34}
+          thumb={26}
+        />
         {canSkip ? (
           <TouchableOpacity
             onPress={handleComplete}
@@ -413,6 +827,7 @@ const Onboarding: React.FC = () => {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         bounces={false}
+        scrollEnabled={!wauDragging}
         removeClippedSubviews
         maxToRenderPerBatch={6}
         windowSize={7}
@@ -428,33 +843,16 @@ const Onboarding: React.FC = () => {
 
       {/* Bottom: dots + button */}
       <View style={styles.footer}>
-        <View style={styles.dotsContainer}>
-          {ALL_PAGES.map((page, index) => {
-            // Welcome and mode pages share the personal accent so the dot palette stays calm.
-            const slideIndex = page.type === 'slide' ? index - 1 : -1;
-            const accentColor = slideIndex >= 0
-              ? PAGES[slideIndex]?.accentColor ?? C.accent
-              : C.accent;
-            return (
-              <View
-                key={`dot-${index}`}
-                style={[
-                  styles.dot,
-                  index === currentIndex
-                    ? [styles.dotActive, { backgroundColor: accentColor }]
-                    : styles.dotInactive,
-                ]}
-              />
-            );
-          })}
-        </View>
+        <Dots count={ALL_PAGES.length} index={currentIndex} colors={DOT_COLORS} inactive={sky.dotInactive} />
 
         {(() => {
           const currentPage = ALL_PAGES[currentIndex];
           const slideIndex = currentPage?.type === 'slide' ? currentIndex - 1 : -1;
+          // Night CTAs use the bright accent variants (gold family) with near-black
+          // ink — the day olives fail contrast on the navy sky.
           const buttonAccent = slideIndex >= 0
-            ? PAGES[slideIndex]?.accentColor ?? C.accent
-            : C.accent;
+            ? accentFor(PAGES[slideIndex]?.accentColor ?? SKY_DAY.accent, skyDark)
+            : sky.accent;
           // Final page = mode-pick. Disable until the user picks one.
           const isModePage = currentPage?.type === 'mode';
           const disabled = isModePage && selectedMode == null;
@@ -468,7 +866,7 @@ const Onboarding: React.FC = () => {
             <TouchableOpacity
               style={[
                 styles.button,
-                { backgroundColor: buttonAccent },
+                { backgroundColor: buttonAccent, shadowColor: buttonAccent },
                 disabled && styles.buttonDisabled,
               ]}
               onPress={handleNext}
@@ -480,7 +878,14 @@ const Onboarding: React.FC = () => {
             >
               <Text style={styles.buttonText}>{label}</Text>
               {!isLastPage && (
-                <Feather name="arrow-right" size={18} color={C.surface} style={{ marginLeft: SPACING.xs }} />
+                <Animated.View
+                  style={{
+                    marginLeft: SPACING.xs,
+                    transform: [{ translateX: nudge.interpolate({ inputRange: [0, 1], outputRange: [0, 4] }) }],
+                  }}
+                >
+                  <Feather name="arrow-right" size={18} color={sky.ctaInk} />
+                </Animated.View>
               )}
             </TouchableOpacity>
           );
@@ -490,14 +895,16 @@ const Onboarding: React.FC = () => {
   );
 };
 
-const makeStyles = (C: typeof CALM) => StyleSheet.create({
+const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: C.background,
+    // Matches the SkyBackdrop base so there's no flash before it paints.
+    backgroundColor: skyDark ? '#232B40' : '#F3EAD6',
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
@@ -509,8 +916,8 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   skipText: {
     fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: sky.sub,
     textAlign: 'right',
   },
   page: {
@@ -520,6 +927,11 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING['3xl'],
   },
+  pageInner: {
+    width: '100%',
+    maxWidth: 460,
+    alignItems: 'center',
+  },
   mockupContainer: {
     marginBottom: SPACING['3xl'],
     alignItems: 'center',
@@ -528,21 +940,22 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   title: {
     fontSize: TYPOGRAPHY.size['2xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
+    color: sky.ink,
     textAlign: 'center',
     marginBottom: SPACING.md,
   },
   welcomeTitle: {
     fontSize: TYPOGRAPHY.size['4xl'],
     fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
+    color: sky.ink,
     textAlign: 'center',
-    marginBottom: SPACING.md,
+    letterSpacing: -0.5,
+    marginBottom: SPACING.xs,
   },
   description: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.regular,
-    color: C.textSecondary,
+    color: sky.sub,
     textAlign: 'center',
     lineHeight: TYPOGRAPHY.size.base * TYPOGRAPHY.lineHeight.relaxed,
     paddingHorizontal: SPACING.md,
@@ -553,25 +966,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.xl,
   },
-  dotsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  dot: {
-    borderRadius: RADIUS.full,
-  },
-  dotActive: {
-    width: 24,
-    height: 8,
-    borderRadius: RADIUS.full,
-  },
-  dotInactive: {
-    width: 8,
-    height: 8,
-    backgroundColor: C.border,
-  },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -581,6 +975,9 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderRadius: RADIUS.lg,
     width: '100%',
     maxWidth: 320,
+    ...(skyDark
+      ? NO_SHADOW
+      : { shadowOpacity: 0.22, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6 }),
   },
   buttonDisabled: {
     opacity: 0.45,
@@ -588,8 +985,107 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   buttonText: {
     fontSize: TYPOGRAPHY.size.lg,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.surface,
+    color: sky.ctaInk,
   },
+
+  // ── Welcome page ──
+  welcomePage: {
+    width: SCREEN_WIDTH,
+    flex: 1,
+  },
+  welcomeScroll: {
+    flex: 1,
+  },
+  welcomeScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING['3xl'],
+    paddingVertical: SPACING['2xl'],
+  },
+  welcomeInner: {
+    width: '100%',
+    maxWidth: 440,
+    alignItems: 'center',
+  },
+  heroArea: {
+    alignSelf: 'center',
+    marginBottom: SPACING.md,
+  },
+  welcomeForm: {
+    width: '100%',
+    marginTop: SPACING['2xl'],
+  },
+  sectionLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: SPACING.sm,
+  },
+  welcomeLabel: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: sky.sub,
+  },
+  // Glass field: translucent warm white by day (warm umber shadow, never
+  // black-on-cream); lighter-than-sky fill + stroke by night (no shadow).
+  inputCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: sky.fieldBg,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: sky.fieldBorder,
+    paddingHorizontal: SPACING.md,
+    minHeight: 56,
+    ...(skyDark ? NO_SHADOW : WARM_SHADOW),
+  },
+  inputCardFocused: {
+    borderColor: sky.focusBorder,
+    backgroundColor: sky.fieldBgFocus,
+  },
+  inputCardField: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.size.lg,
+    color: sky.ink,
+  },
+  // iOS-style segmented control: groove pressed into the sky, elevated thumb.
+  segTrack: {
+    flexDirection: 'row',
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: sky.segTrack,
+    alignItems: 'center',
+  },
+  segThumb: {
+    position: 'absolute',
+    top: 3,
+    left: 0,
+    height: 46,
+    borderRadius: 11,
+    backgroundColor: sky.segThumb,
+    borderWidth: 1,
+    borderColor: sky.segThumbBorder,
+    ...(skyDark ? NO_SHADOW : WARM_SHADOW_SM),
+  },
+  segItem: {
+    flex: 1,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: sky.sub,
+  },
+  segTextActive: {
+    color: sky.ink,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+  },
+
+  // ── Mode page ──
   modeList: {
     width: '100%',
     marginTop: SPACING['2xl'],
@@ -600,26 +1096,27 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.lg,
-    backgroundColor: C.surface,
+    borderRadius: 16,
+    backgroundColor: sky.fieldBg,
     borderWidth: 1.5,
-    borderColor: C.border,
+    borderColor: sky.choiceBorder,
     gap: SPACING.md,
+    ...(skyDark ? NO_SHADOW : WARM_SHADOW_SM),
   },
   modeCardActive: {
-    borderColor: C.accent,
-    backgroundColor: withAlpha(C.accent, 0.06),
+    borderColor: sky.accent,
+    backgroundColor: withAlpha(sky.accent, 0.14),
   },
   modeIconWrap: {
     width: 40,
     height: 40,
     borderRadius: RADIUS.md,
-    backgroundColor: withAlpha(C.textMuted, 0.1),
+    backgroundColor: withAlpha(sky.sub, 0.15),
     alignItems: 'center',
     justifyContent: 'center',
   },
   modeIconWrapActive: {
-    backgroundColor: withAlpha(C.accent, 0.12),
+    backgroundColor: withAlpha(sky.accent, 0.18),
   },
   modeTextWrap: {
     flex: 1,
@@ -627,67 +1124,37 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   modeLabel: {
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
+    color: sky.ink,
   },
   modeLabelActive: {
-    color: C.accent,
+    color: skyDark ? sky.accent : sky.accent,
   },
   modeSub: {
     fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.regular,
-    color: C.textSecondary,
+    color: sky.sub,
     marginTop: SPACING.xs / 2,
     lineHeight: TYPOGRAPHY.size.sm * TYPOGRAPHY.lineHeight.normal,
   },
-  welcomeForm: {
-    width: '100%',
-    marginTop: SPACING['2xl'],
-  },
-  welcomeLabel: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-    marginBottom: SPACING.sm,
-  },
-  welcomeInput: {
-    borderBottomWidth: 2,
-    borderBottomColor: C.border,
-    paddingVertical: SPACING.md,
-    fontSize: TYPOGRAPHY.size.xl,
-    color: C.textPrimary,
-  },
-  langRow: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  langCard: {
-    flex: 1,
-    paddingVertical: SPACING.lg,
-    borderRadius: RADIUS.lg,
-    backgroundColor: C.surface,
-    borderWidth: 1.5,
-    borderColor: C.border,
+  radioOuter: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: sky.choiceBorder,
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
   },
-  langCardActive: {
-    borderColor: C.accent,
-    backgroundColor: withAlpha(C.accent, 0.06),
+  radioOuterActive: {
+    borderColor: sky.accent,
   },
-  langFlag: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textMuted,
-    letterSpacing: 1,
-  },
-  langCardText: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textSecondary,
-  },
-  langCardTextActive: {
-    color: C.accent,
-    fontWeight: TYPOGRAPHY.weight.semibold,
+  radioInner: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: sky.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

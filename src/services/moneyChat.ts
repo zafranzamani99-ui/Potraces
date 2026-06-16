@@ -7,7 +7,10 @@
  */
 
 import { format, startOfMonth, endOfMonth, subMonths, isWithinInterval, getDaysInMonth } from 'date-fns';
-import { callGeminiAPI, isGeminiAvailable, getCooldownSecondsLeft, isDailyQuotaExhausted, resetDailyQuota, GeminiPart, GeminiContent } from './geminiClient';
+import { callGeminiAPI, streamGeminiText, isGeminiAvailable, getCooldownSecondsLeft, isDailyQuotaExhausted, resetDailyQuota, GeminiPart, GeminiContent } from './geminiClient';
+import { isAiProxyConfigured } from './aiProxy';
+import { parseActions } from './chatActions';
+import { scrubPii } from '../utils/pii';
 import { usePremiumStore } from '../store/premiumStore';
 import { usePersonalStore } from '../store/personalStore';
 import { useWalletStore } from '../store/walletStore';
@@ -22,6 +25,7 @@ import { AIMessage } from '../types';
 import { ACTION_PROMPT } from './chatActions';
 import { useSettingsStore } from '../store/settingsStore';
 import { useLearningStore } from '../store/learningStore';
+import { useAIInsightsStore } from '../store/aiInsightsStore';
 
 function buildSystemPrompt(currency: string): string {
   return `You are Echo, the AI inside Potraces, a Malaysian personal finance app built for young adults.
@@ -44,6 +48,15 @@ OPENER RULE (CRITICAL — NEVER BREAK):
 - FORBIDDEN openers: "Wah", "Haha", "That's a great/fun/interesting question", "I hear you", "Nice!", "Good question", "Sure!", "Of course!", "Great!", "Oh wow"
 - START DIRECTLY with the information or observation
 - If you're about to write a filler opener — DELETE IT and start with the actual content
+
+CONFIRMATION MODEL (CRITICAL — NEVER BREAK):
+- You CANNOT save, record, edit, or delete anything yourself. Every money entry you identify becomes a confirmation chip that ONLY the owner can tap to save. Until they tap and confirm, NOTHING is recorded — not the expense, not the debt, nothing.
+- So NEVER claim an entry is done or already counted. FORBIDDEN: "recorded", "saved", "added", "tracked", "logged", "noted", "done" — and in Malay "dah record", "dah simpan", "dah masuk", "dah tolak". Never imply it's counted (e.g. "that's your first food expense this month") — it is not counted until they confirm.
+- Instead, say you've PREPARED it and ask them to tap to confirm: EN "Lined up ${currency} 40 for Jaya Grocer — tap to confirm and I'll save it." / MS "Dah sedia RM40 Jaya Grocer — tekan untuk sahkan & simpan." — and in that SAME reply emit the matching [ACTION] block.
+- A chip exists ONLY because you emitted its [ACTION] block. So EVERY time you say "lined up" / "dah sedia" / "tap to confirm", you MUST include the matching [ACTION] block in that same reply — one block per entry. If you mention two entries (e.g. ${currency} 50 Jaya Grocer AND ${currency} 30 makanan), emit TWO [ACTION] blocks. Confirmation words with NO [ACTION] block create no chip and will confuse the user — this is a critical failure, never do it.
+- If the user mentions something they "forgot to record": it is NOT saved unless they tapped to confirm. Don't claim you saved it earlier. Ask for the amount and what it was for, and prepare the chip again.
+- To change an entry that's still waiting (shown under UNSAVED), re-emit its [ACTION] block with "amend":true and the SAME description — that updates the existing chip instead of adding a new one.
+- The owner always commits the entry. Your job is to prepare it accurately and remind them to tap — never to assert it's done.
 
 ABSOLUTE RULES:
 1. NEVER say "you should", "you need to", "I recommend", "consider", "try to"
@@ -108,17 +121,29 @@ Good: "${currency} 75.00 for Netflix — nice. So that's 6 people including you,
 Bad: "Okay, I've recorded your Netflix subscription for ${currency} 75.00 and split it with 5 people." (didn't ask who they are, didn't ask who paid, just assumed and acted)
 
 User: "yeah i paid first. its ali, abu, siti, maya, zaref"
-Good: [creates subscription action + 5 debt actions] "Got it! Added Netflix ${currency} 75.00/month as your subscription. And tracked that Ali, Abu, Siti, Maya, and Zaref each owe you ${currency} 12.50."
-Bad: "I've recorded the subscription." (incomplete — forgot the debts)
+Good: [creates subscription action + 5 debt actions] "Lined up Netflix ${currency} 75.00/month + a ${currency} 12.50 IOU for Ali, Abu, Siti, Maya, and Zaref each. Tap each chip to confirm and I'll save them."
+Bad: "I've recorded the subscription." (claims it's done — nothing is saved until the owner taps; also forgot the debts)
 
 User: "i lent ali rm200"
-Good: [adds debt action for Ali ${currency} 200, type they_owe] "Tracked — Ali owes you ${currency} 200.00. What was it for?"
-Bad: "I've noted the ${currency} 200 transaction." (vague, no debt record, not curious)
+Good: [adds debt action for Ali ${currency} 200, type they_owe] "Lined up Ali owing you ${currency} 200.00 — tap to confirm. What was it for?"
+Bad: "I've noted the ${currency} 200 transaction." (claims it's done, vague, no debt record, not curious)
 
 User: [sends photo of a list: "230-uniqlo jacket, 270-kasut nike, 120-servis minyak hitam, 100-rantai, 230-tayar+fork+brake"]
 Good: [creates 5 expense actions with auto categories] "Got all 5 — ${currency} 950 total. Tap each one to review before confirming."
   (uniqlo jacket → shopping, kasut nike → shopping, servis minyak → transport, rantai → transport, tayar+fork+brake → transport)
 Bad: "What category for uniqlo jacket? Which wallet?" (asking unnecessary questions — just auto-pick and let them edit)
+
+User: "ulang semalam" / "same as yesterday's lunch"
+Good: [re-creates the most recent matching expense as a new action] "Lined up ${currency} 12 for lunch again — tap to confirm."
+
+User: "that grab tadi was 25 not 15"
+Good: [emits edit_transaction matching the recent grab, newAmount 25] "Changing that grab to ${currency} 25 — tap to confirm."
+
+User: "delete the last one" / "cancel benda tadi"
+Good: [emits delete_transaction matching the most recent entry] "The ${currency} 12 lunch — tap to confirm and I'll remove it."
+
+User: "what can I afford this week?"
+Good: "${currency} 1,540 across your wallets, ${currency} 580 kept this month, 12 days left — about ${currency} 48/day to stay even. Your call." (numbers only, never a yes/no)
 
 SCENARIO HANDLING (handle ALL of these correctly):
 
@@ -252,7 +277,7 @@ Debt awareness — when user asks "who owes me?" or "siapa hutang aku?":
 - If someone is overdue, mention it without pressure: "Ali's ${currency} 200 was due 5 days ago"
 - Never suggest how to collect or pressure people
 
-Post-action observation — after recording any transaction:
+Post-confirmation observation — after the owner taps to confirm an entry:
 - Add ONE short context line showing the impact
 - Expense: "That puts food at ${currency} 480/500 this month" or "food is past breathing room now"
 - Debt payment: "Ali's down to ${currency} 150 left" or "Ali's all settled!"
@@ -792,14 +817,14 @@ export async function sendChatMessage(
   }
 }
 
-async function _doSendChatMessage(
-  message: string,
-  history: AIMessage[],
-  imageBase64?: string,
-): Promise<ChatResult> {
+/**
+ * Shared availability + quota gate. Returns an error result if the call must
+ * not proceed, or null if it's clear to send. Mutates rate-limit state (may
+ * reset stale blocks), so call exactly once per send attempt.
+ */
+function _preflightGate(): { ok: false; error: string } | null {
   if (!isGeminiAvailable()) {
-    const key = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
-    if (!key) return { ok: false, error: 'Gemini API key is missing. Add it in .env' };
+    if (!isAiProxyConfigured()) return { ok: false, error: 'AI is not configured.' };
     const secs = getCooldownSecondsLeft();
     if (secs > 0) {
       if (secs <= 120) {
@@ -820,44 +845,73 @@ async function _doSendChatMessage(
     }
   }
 
-  const premium = usePremiumStore.getState();
-  if (!premium.canUseAI()) {
+  if (!usePremiumStore.getState().canUseAI()) {
     return { ok: false, error: 'AI limit reached this month. Resets next month!' };
   }
 
+  return null;
+}
+
+/** Build the Gemini request body (system prompt + history + current turn). */
+function _buildChatBody(message: string, history: AIMessage[], imageBase64?: string) {
+  const currency = useSettingsStore.getState().currency;
+  // Image messages need full context (AI needs everything to categorize what it sees)
+  const context = buildFinancialContext(imageBase64 ? undefined : message);
+  const learnedHints = useLearningStore.getState().getPromptHints();
+  // Echo is aware of entries it already prepared but the owner hasn't saved yet,
+  // so it can answer "what haven't I saved?", avoid re-proposing them, and amend
+  // them on request (see the amend rule).
+  const pending = useAIInsightsStore.getState().pendingActions;
+  const pendingBlock = pending.length
+    ? `\n\nUNSAVED — entries you already prepared, waiting for the owner's tap (do NOT propose these again; to change one, re-emit it with "amend":true and the SAME description):\n${pending
+        .map((p) => `- ${p.type} · ${p.description}${p.amount ? ` · ${currency} ${p.amount}` : ''}`)
+        .join('\n')}`
+    : '';
+  const fullSystem = `${buildSystemPrompt(currency)}\n\n${ACTION_PROMPT}${learnedHints}${pendingBlock}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
+
+  // Build conversation history — last 10 messages to keep token usage low.
+  // Scrub PII (card / IC numbers) from any user-authored text before it leaves
+  // the device; assistant turns are model-generated and already clean.
+  const recentHistory = history.slice(-10);
+  const contents: GeminiContent[] = recentHistory.map((msg) => ({
+    role: msg.role === 'assistant' ? ('model' as const) : ('user' as const),
+    parts: [{ text: msg.role === 'assistant' ? msg.content : scrubPii(msg.content) }],
+  }));
+
+  // Add current message (with optional image). OCR-extracted text is already
+  // scrubbed in ocrService; this covers free-typed chat text.
+  const userParts: GeminiPart[] = [{ text: scrubPii(message) || 'What do you see in this image?' }];
+  if (imageBase64) {
+    userParts.push({
+      inlineData: { mimeType: 'image/jpeg', data: imageBase64 },
+    });
+  }
+  contents.push({ role: 'user' as const, parts: userParts });
+
+  return {
+    system_instruction: { parts: [{ text: fullSystem }] },
+    contents,
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 4096,
+    },
+  };
+}
+
+async function _doSendChatMessage(
+  message: string,
+  history: AIMessage[],
+  imageBase64?: string,
+): Promise<ChatResult> {
+  const gate = _preflightGate();
+  if (gate) return gate;
+
+  const premium = usePremiumStore.getState();
+
   try {
-    const currency = useSettingsStore.getState().currency;
-    // Image messages need full context (AI needs everything to categorize what it sees)
-    const context = buildFinancialContext(imageBase64 ? undefined : message);
-    const learnedHints = useLearningStore.getState().getPromptHints();
-    const fullSystem = `${buildSystemPrompt(currency)}\n\n${ACTION_PROMPT}${learnedHints}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
-
-    // Build conversation history — last 10 messages to keep token usage low
-    const recentHistory = history.slice(-10);
-    const contents: GeminiContent[] = recentHistory.map((msg) => ({
-      role: msg.role === 'assistant' ? ('model' as const) : ('user' as const),
-      parts: [{ text: msg.content }],
-    }));
-
-    // Add current message (with optional image)
-    const userParts: GeminiPart[] = [{ text: message || 'What do you see in this image?' }];
-    if (imageBase64) {
-      userParts.push({
-        inlineData: { mimeType: 'image/jpeg', data: imageBase64 },
-      });
-    }
-    contents.push({ role: 'user' as const, parts: userParts });
-
     const hasImage = !!imageBase64;
     const data = await callGeminiAPI(
-      {
-        system_instruction: { parts: [{ text: fullSystem }] },
-        contents,
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 4096,
-        },
-      },
+      _buildChatBody(message, history, imageBase64),
       hasImage ? 45_000 : 30_000,
       hasImage, // noFallback for image — both models share quota
     );
@@ -884,5 +938,74 @@ async function _doSendChatMessage(
     if (__DEV__) console.warn('[MoneyChat] Gemini failed:', err);
     if (err instanceof Error && err.name === 'AbortError') return { ok: false, error: 'Request timed out.' };
     return { ok: false, error: 'Something went wrong. Try again.' };
+  }
+}
+
+/**
+ * Strip the human-readable reply out of partial streamed text.
+ *
+ * The model embeds `[ACTION]{...}[/ACTION]` blocks inline. parseActions removes
+ * the *complete* ones; we additionally drop any trailing *unclosed* block so the
+ * user never sees raw `[ACTION]{` markup mid-stream. The final, full text is
+ * still post-processed by the screen via parseActions (chips + execution).
+ */
+function _displayTextFromPartial(partial: string): string {
+  const { cleanText } = parseActions(partial);
+  // Drop a trailing, not-yet-closed action block (no [/ACTION] yet).
+  const open = cleanText.lastIndexOf('[ACTION]');
+  if (open !== -1) return cleanText.slice(0, open).trim();
+  return cleanText;
+}
+
+/**
+ * Streaming variant of sendChatMessage. Reuses streamGeminiText and calls
+ * `onToken` with the cleaned, human-readable text-so-far on each delta (raw
+ * action markup stripped). Resolves with the FINAL full RAW text (with action
+ * blocks intact) so the caller's existing post-processing — parseActions,
+ * pending-action chips, saving the message — runs unchanged.
+ *
+ * Falls back to the non-streaming sendChatMessage if streaming is unavailable,
+ * throws, or yields nothing, so the chat is never left broken.
+ */
+export async function sendChatMessageStream(
+  message: string,
+  history: AIMessage[],
+  onToken: (textSoFar: string) => void,
+  imageBase64?: string,
+): Promise<ChatResult> {
+  if (_chatSending) return { ok: false, error: 'Already processing a message.' };
+  _chatSending = true;
+  try {
+    const gate = _preflightGate();
+    if (gate) return gate;
+
+    const premium = usePremiumStore.getState();
+    const hasImage = !!imageBase64;
+
+    let lastRaw = '';
+    let yieldedAny = false;
+    try {
+      const body = _buildChatBody(message, history, imageBase64);
+      for await (const textSoFar of streamGeminiText(body, hasImage ? 45_000 : 30_000)) {
+        lastRaw = textSoFar;
+        yieldedAny = true;
+        onToken(_displayTextFromPartial(textSoFar));
+      }
+    } catch (err: unknown) {
+      if (__DEV__) console.warn('[MoneyChat] stream failed, falling back:', err);
+      // Fall back to the non-streaming path — never leave the chat broken.
+      return await _doSendChatMessage(message, history, imageBase64);
+    }
+
+    const finalText = lastRaw.trim();
+    if (yieldedAny && finalText) {
+      premium.incrementAiCalls();
+      return { ok: true, text: finalText };
+    }
+
+    // Stream produced nothing usable — fall back.
+    return await _doSendChatMessage(message, history, imageBase64);
+  } finally {
+    _chatSending = false;
   }
 }

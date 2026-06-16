@@ -5,11 +5,12 @@
 //
 // Design tokens: CALM.accent, RADIUS.full, SPACING.
 
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, forwardRef } from 'react';
 import {
   Animated,
   Pressable,
   StyleSheet,
+  View,
   ViewStyle,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -33,12 +34,13 @@ const ICON_SIZE = 24;
 
 // ─── Component ─────────────────────────────────────────────
 
-const FAB: React.FC<FABProps> = ({
+// forwardRef so screens can spotlight the FAB (ScreenGuide measures it).
+const FAB = forwardRef<View, FABProps>(({
   onPress,
   icon = 'plus',
   color: colorProp,
   style,
-}) => {
+}, ref) => {
   const C = useCalm();
   const color = colorProp ?? C.accent;
   const opacityAnim = useRef(new Animated.Value(1)).current;
@@ -70,6 +72,7 @@ const FAB: React.FC<FABProps> = ({
 
   return (
     <Animated.View
+      ref={ref as any}
       style={[
         styles.container,
         { opacity: opacityAnim },
@@ -90,7 +93,9 @@ const FAB: React.FC<FABProps> = ({
       </Pressable>
     </Animated.View>
   );
-};
+});
+
+FAB.displayName = 'FAB';
 
 // ─── Styles ────────────────────────────────────────────────
 

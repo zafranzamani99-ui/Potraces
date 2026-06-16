@@ -22,7 +22,7 @@
 Before any feature work, knock out items that block store submission or pollute every PR.
 
 ### 0.1 Privacy policy page
-- `docs/privacy.html` — static HTML hosted on Vercel at `potraces.vercel.app/privacy`.
+- `docs/privacy.html` — static HTML hosted on Vercel at `jejakbaki.my/privacy`.
 - Cover: what data is collected (personal transactions, receipts, phone, location?), where it's stored (Supabase, AWS ap-southeast-1), retention, deletion flow, contact email.
 - `src/screens/shared/Settings.tsx` — "Privacy Policy" row that opens the URL in system browser via `WebBrowser.openBrowserAsync`.
 
@@ -457,7 +457,7 @@ CREATE TABLE public.referrals (
 
 **Flow:**
 - Each user gets a static `referral_code` in their profile (6-char).
-- "Invite friends" card in Settings → shares URL: `https://potraces.vercel.app/r/{code}`.
+- "Invite friends" card in Settings → shares URL: `https://jejakbaki.my/r/{code}`.
 - Landing page = short Vercel page that deep-links back to app install + passes `code`.
 - On first sign-up, if `code` present, create `referrals` row + apply bonus (e.g., 30-day premium trial for both).
 

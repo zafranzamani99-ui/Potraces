@@ -6,10 +6,14 @@
  * On 429 → skip to fallback model immediately (no retry wait on same model).
  */
 
-const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
-const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+// Expo SDK 54 ships a streaming-capable fetch whose Response exposes a
+// ReadableStream `body` (RN's built-in global fetch does NOT). Required for
+// streamGeminiText below — the global fetch above is fine for non-streaming.
+import { fetch as expoFetch } from 'expo/fetch';
+import { AI_PROXY_URL, aiProxyHeaders, aiProxyFetch, isAiProxyConfigured } from './aiProxy';
 
-// Model fallback chain — current free tier models
+// Model fallback chain — current free tier models. The provider API key lives ONLY
+// on the server (ai-proxy Edge Function); the client never holds it.
 const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
 // Per-model rate limit tracking
@@ -19,7 +23,7 @@ let allModelsExhausted = false;
 const MAX_BLOCK_MS = 120_000; // Cap blocks at 2 minutes — free tier resets fast
 
 export function isGeminiAvailable(): boolean {
-  if (!GEMINI_KEY) return false;
+  if (!isAiProxyConfigured()) return false;
   const now = Date.now();
   // Auto-clear stale blocks (cap at MAX_BLOCK_MS)
   for (const m of MODELS) {
@@ -101,21 +105,13 @@ interface GeminiRequestBody {
   generationConfig?: GeminiGenerationConfig;
 }
 
-function getUrl(model: string): string {
-  return `${API_BASE}/${model}:generateContent?key=${GEMINI_KEY}`;
-}
-
 async function doFetch(
   model: string,
   body: GeminiRequestBody,
   signal?: AbortSignal
 ): Promise<Response> {
-  return fetch(getUrl(model), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal,
-    body: JSON.stringify(body),
-  });
+  // Routed through the server proxy, which injects the Gemini key + meters usage.
+  return aiProxyFetch({ provider: 'gemini', mode: 'generate', model, payload: body }, signal);
 }
 
 /**
@@ -224,5 +220,131 @@ export async function callGeminiAPI(
       if (__DEV__) console.warn('[Gemini] Request failed:', err);
     }
     return null;
+  }
+}
+
+// ─── Streaming (SSE) ─────────────────────────────────────
+
+/** Minimal shape of a Gemini SSE chunk's JSON payload. */
+interface GeminiStreamChunk {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> };
+  }>;
+}
+
+/**
+ * Stream text from Gemini via Server-Sent Events.
+ *
+ * Yields the CUMULATIVE text-so-far each time a new delta arrives (not the
+ * delta alone), so a consumer can replace its displayed text wholesale:
+ *
+ *   for await (const textSoFar of streamGeminiText(body)) { setText(textSoFar); }
+ *
+ * Vision shares one rate-limit quota across both models, so this mirrors the
+ * `noFallback` behavior in callGeminiAPI — it only tries the first available
+ * model, no fallback loop. Uses `fetch` from `expo/fetch` because RN's built-in
+ * global fetch does not support reading a streaming `response.body`.
+ *
+ * @param body       Gemini request body
+ * @param timeoutMs  Overall request timeout (default 30s) — aborts the reader.
+ * @throws Error if AI is unavailable, busy, unreachable, or returns no text.
+ */
+export async function* streamGeminiText(
+  body: GeminiRequestBody,
+  timeoutMs = 30_000
+): AsyncGenerator<string, void, unknown> {
+  if (!isGeminiAvailable()) {
+    throw new Error('AI is not available right now.');
+  }
+
+  // Vision shares one quota — pick first available model, no fallback loop.
+  const available = getAvailableModels();
+  const model = available[0];
+  if (!model) {
+    throw new Error('AI is busy — try again shortly.');
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    // Routed through the server proxy, which injects the Gemini key, meters usage,
+    // and streams the provider SSE back unchanged.
+    const headers = await aiProxyHeaders();
+    const response = await expoFetch(AI_PROXY_URL, {
+      method: 'POST',
+      headers,
+      signal: controller.signal,
+      body: JSON.stringify({ provider: 'gemini', mode: 'stream', model, payload: body }),
+    });
+
+    if (response.status === 429) {
+      const retryMs = await parse429(model, response as unknown as Response);
+      blockModel(model, retryMs);
+      throw new Error('AI is busy — try again shortly.');
+    }
+
+    if (!response.ok) {
+      if (__DEV__) console.warn(`[Gemini] ${model} stream error: ${response.status}`);
+      throw new Error('Could not reach AI. Please try again.');
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('Could not reach AI. Please try again.');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = ''; // leftover for SSE events split across chunk boundaries
+    let accumulated = ''; // running cumulative text
+    let yieldedAny = false;
+
+    // Parse one complete SSE event block, yielding cumulative text if it has any.
+    const handleEvent = function* (event: string): Generator<string> {
+      for (const line of event.split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice('data: '.length).trim();
+        if (!payload || payload === '[DONE]') continue;
+        let obj: GeminiStreamChunk;
+        try {
+          obj = JSON.parse(payload);
+        } catch {
+          // Partial/incomplete line — skip; buffer logic re-feeds complete events.
+          continue;
+        }
+        const delta = obj?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (delta) {
+          accumulated += delta;
+          yieldedAny = true;
+          yield accumulated;
+        }
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // Split on SSE event boundaries; keep the trailing incomplete event in buffer.
+      let boundary = buffer.indexOf('\n\n');
+      while (boundary !== -1) {
+        const event = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        yield* handleEvent(event);
+        boundary = buffer.indexOf('\n\n');
+      }
+    }
+
+    // Flush any remaining buffered event after the stream ends.
+    if (buffer.trim()) {
+      yield* handleEvent(buffer);
+    }
+
+    if (!yieldedAny) {
+      throw new Error('No response from AI. Please try a clearer photo.');
+    }
+  } finally {
+    clearTimeout(timeout);
   }
 }

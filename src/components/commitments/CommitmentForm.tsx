@@ -290,10 +290,14 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
   const sheetY = useSharedValue(SCREEN_H);
   const dragStart = useSharedValue(0);
   const closingRef = useRef(false);
+  // Guards against a fast double-tap on "save" creating two commitments before
+  // the modal unmounts. Reset each time the sheet (re)opens.
+  const savingRef = useRef(false);
 
   useEffect(() => {
     if (visible) {
       closingRef.current = false;
+      savingRef.current = false;
       sheetY.value = SCREEN_H;
       sheetY.value = withSpring(0, { damping: 22, stiffness: 220, mass: 0.5 });
     }
@@ -458,6 +462,8 @@ const CommitmentForm: React.FC<Props> = ({ visible, subscription, onClose, onSav
     if (!name.trim()) { onError?.(t.subscriptions.enterName); return; }
     const amt = parseFloat(amount);
     if (!amt || isNaN(amt) || amt <= 0) { onError?.(t.subscriptions.enterValidAmount); return; }
+    if (savingRef.current) return; // ignore double-tap before the modal unmounts
+    savingRef.current = true;
     const validStart = isValid(startDate) ? startDate : new Date();
     const payload: SavePayload = {
       name: name.trim(),
@@ -1487,8 +1493,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconBoxActive: { backgroundColor: withAlpha(C.accent, 0.14) },
-  iconBoxPaused: { backgroundColor: withAlpha(C.bronze, 0.12) },
   fieldFlex: { flex: 1 },
   fieldLabel: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1529,43 +1533,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.2,
   },
   cyclePillTextActive: { color: C.onAccent },
-
-  // ── Avatar (tap to pick image) ───────────────────────
-  avatarWrap: {
-    alignSelf: 'center',
-    marginBottom: SPACING.sm,
-    position: 'relative',
-  },
-  avatarImage: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-  },
-  avatarFallback: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarLetter: {
-    fontSize: 22,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    letterSpacing: -0.5,
-  },
-  avatarCameraBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: withAlpha(C.textPrimary, 0.08),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   // ── Side-by-side ─────────────────────────────────────
   sideBySide: { flexDirection: 'row' },

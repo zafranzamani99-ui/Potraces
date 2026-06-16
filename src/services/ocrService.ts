@@ -1,4 +1,5 @@
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
+import { scrubCardNumbers } from '../utils/pii';
 
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_VISION_API_KEY || '';
 const API_URL = 'https://vision.googleapis.com/v1/images:annotate';
@@ -40,7 +41,8 @@ export async function recognizeText(imageUri: string): Promise<string | null> {
       data?.responses?.[0]?.textAnnotations?.[0]?.description ||
       null;
 
-    return text;
+    // Strip any card numbers (PAN) before the text is sent to an LLM or persisted.
+    return text ? scrubCardNumbers(text) : text;
   } catch {
     return null;
   }

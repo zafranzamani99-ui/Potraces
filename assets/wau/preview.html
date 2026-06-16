@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Potraces — Wau Bulan preview</title>
+<style>
+  :root{
+    --cream:#F1E7D3; --gold:#DEAB22; --bronze:#B2780A; --olive:#4F5104; --sage:#5E7B6A;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#F9F9F7;color:#2E2E26;padding:40px}
+  h1{font-size:22px;margin:0 0 4px}
+  p.sub{margin:0 0 28px;color:#777}
+  h2{font-size:14px;text-transform:uppercase;letter-spacing:.12em;color:#999;margin:40px 0 14px}
+  .row{display:flex;gap:20px;flex-wrap:wrap}
+  .card{border-radius:24px;width:260px;height:260px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(0,0,0,.07)}
+  .card img{width:200px;height:200px}
+  .card.icon{padding:0;overflow:hidden}
+  .card.icon img{width:100%;height:100%}
+  .label{font-size:12px;color:#999;text-align:center;margin-top:8px}
+
+  /* ── flying loader teaser ── */
+  .sky{position:relative;border-radius:24px;width:560px;height:300px;overflow:hidden;border:1px solid rgba(0,0,0,.07)}
+  .sky.day{background:linear-gradient(#F3EAD6 60%,#EAE4CE)}
+  .sky.night{background:linear-gradient(#232B40 60%,#1C2334)}
+
+  .wau-wrap{position:absolute;left:50%;top:46%;width:150px;height:150px;margin:-75px 0 0 -75px;
+    animation:fly 4.2s ease-in-out infinite}
+  .wau-wrap img{width:100%;height:100%}
+  @keyframes fly{
+    0%,100%{transform:translateY(0) rotate(-3deg)}
+    25%{transform:translateY(-12px) rotate(2deg)}
+    50%{transform:translateY(-4px) rotate(-1deg)}
+    75%{transform:translateY(-14px) rotate(3deg)}
+  }
+
+  /* the "line" it flies on — a dashed string drawing past */
+  .string{position:absolute;inset:0;pointer-events:none}
+  .string path{stroke-dasharray:10 14;animation:dash 1.6s linear infinite}
+  .day .string path{stroke:rgba(79,81,4,.35)}
+  .night .string path{stroke:rgba(222,171,34,.45)}
+  @keyframes dash{to{stroke-dashoffset:-24}}
+
+  .cloud{position:absolute;background:rgba(255,255,255,.85);border-radius:999px;animation:drift linear infinite}
+  .cloud::after{content:"";position:absolute;top:-55%;left:28%;width:45%;height:120%;background:inherit;border-radius:999px}
+  .night .cloud{background:rgba(255,255,255,.10)}
+  @keyframes drift{from{transform:translateX(620px)}to{transform:translateX(-160px)}}
+
+  .star{position:absolute;width:3px;height:3px;border-radius:50%;background:#F0EDE2;animation:tw 1.8s ease-in-out infinite}
+  @keyframes tw{0%,100%{opacity:.25}50%{opacity:1}}
+
+  .loadingtxt{position:absolute;bottom:18px;left:0;right:0;text-align:center;font-size:13px;letter-spacing:.04em}
+  .day .loadingtxt{color:#8a8468}
+  .night .loadingtxt{color:#9aa3bd}
+  .loadingtxt span{display:inline-block;animation:tw 1.4s ease-in-out infinite}
+</style>
+</head>
+<body>
+  <h1>Potraces — Wau</h1>
+  <p class="sub">wau kucing-inspired, original interpretation: swept wings, gold spire, swallow-tail fins, floral medallion + filigree — in the Potraces palette</p>
+
+  <h2>icon &amp; backgrounds</h2>
+  <div class="row">
+    <div>
+      <div class="card icon"><img src="potraces-wau-sage.svg" alt="wau on sage"/></div>
+      <div class="label">app icon (sage)</div>
+    </div>
+    <div>
+      <div class="card" style="background:#F9F9F7"><img src="potraces-wau.svg" alt="wau on light"/></div>
+      <div class="label">light app background</div>
+    </div>
+    <div>
+      <div class="card" style="background:#121212"><img src="potraces-wau.svg" alt="wau on dark"/></div>
+      <div class="label">dark app background</div>
+    </div>
+  </div>
+
+  <h2>loading-screen concept — “flying in the sky” (final version animates the tail too)</h2>
+  <div class="row">
+    <div>
+      <div class="sky day">
+        <svg class="string" viewBox="0 0 560 300" fill="none">
+          <path d="M-20 235 C 120 200 200 250 280 205 C 350 165 420 215 580 165" stroke-width="2.5"/>
+        </svg>
+        <div class="cloud" style="top:54px;width:64px;height:20px;animation-duration:13s"></div>
+        <div class="cloud" style="top:120px;width:44px;height:15px;animation-duration:19s;animation-delay:-8s"></div>
+        <div class="wau-wrap"><img src="potraces-wau.svg" alt="flying wau"/></div>
+        <div class="loadingtxt">loading<span>…</span></div>
+      </div>
+      <div class="label">light mode loader</div>
+    </div>
+    <div>
+      <div class="sky night">
+        <svg class="string" viewBox="0 0 560 300" fill="none">
+          <path d="M-20 235 C 120 200 200 250 280 205 C 350 165 420 215 580 165" stroke-width="2.5"/>
+        </svg>
+        <div class="star" style="top:36px;left:80px"></div>
+        <div class="star" style="top:70px;left:200px;animation-delay:.5s"></div>
+        <div class="star" style="top:44px;left:330px;animation-delay:.9s"></div>
+        <div class="star" style="top:96px;left:460px;animation-delay:.3s"></div>
+        <div class="cloud" style="top:120px;width:44px;height:15px;animation-duration:19s;animation-delay:-8s"></div>
+        <div class="wau-wrap"><img src="potraces-wau.svg" alt="flying wau"/></div>
+        <div class="loadingtxt">loading<span>…</span></div>
+      </div>
+      <div class="label">dark mode loader</div>
+    </div>
+  </div>
+</body>
+</html>

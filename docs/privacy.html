@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Potraces — Privacy Policy</title>
+<meta name="description" content="How Potraces collects, stores, and lets you export or delete your data. Built in Malaysia.">
+<link rel="icon" href="/assets/icon.png" type="image/png">
+<link rel="apple-touch-icon" href="/assets/icon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Potraces — Privacy Policy">
+<meta property="og:description" content="How Potraces collects, stores, and lets you export or delete your data. Built in Malaysia.">
+<meta property="og:image" content="https://jejakbaki.my/assets/icon.png">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="1024">
+<meta property="og:image:alt" content="Potraces — the wau (kite) brand mark">
+<meta property="og:url" content="https://jejakbaki.my/privacy.html">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Potraces — Privacy Policy">
+<meta name="twitter:description" content="How Potraces collects, stores, and lets you export or delete your data. Built in Malaysia.">
+<meta name="twitter:image" content="https://jejakbaki.my/assets/icon.png">
 <style>
   :root { --bg:#F9F9F7; --ink:#2C2C28; --muted:#6B6B66; --accent:#4F5104; --surface:#FFFFFF; --border:#E8E6E0; }
   * { box-sizing: border-box; }
@@ -27,14 +42,14 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="lang-switch">
-    <button id="btn-en" class="active" onclick="show('en')">English</button>
-    <button id="btn-ms" onclick="show('ms')">Bahasa Malaysia</button>
+  <div class="lang-switch" role="group" aria-label="Language">
+    <button id="btn-en" class="active" aria-pressed="true" onclick="show('en')">English</button>
+    <button id="btn-ms" aria-pressed="false" onclick="show('ms')">Bahasa Malaysia</button>
   </div>
 
   <section id="en">
     <h1>Privacy Policy</h1>
-    <p class="meta">Last updated: 17 April 2026</p>
+    <p class="meta">Last updated: 16 June 2026</p>
 
     <div class="card">
       <p>Potraces is a personal &amp; small-business finance app built in Malaysia. This policy explains what we collect, why, where we store it, and how to get your data out or delete it.</p>
@@ -49,7 +64,7 @@
 
     <h2>2. What we do not collect</h2>
     <ul>
-      <li>We do not read your contacts, photos, messages, call logs, or location beyond the specific image you choose to upload as a receipt.</li>
+      <li>When you add a person to a debt or split, we read only the contact you pick (to fill in their name and number). We do not scan your full address book, photos, messages, call logs, or location, beyond the specific image you choose to upload as a receipt.</li>
       <li>We do not sell or share your data with advertisers.</li>
       <li>We do not track you across other apps or websites.</li>
     </ul>
@@ -59,6 +74,7 @@
       <li><strong>Personal mode</strong>: data is stored locally on your device (encrypted device storage) and, if you enable cloud backup, synced to our Supabase project hosted in Singapore (ap-southeast-1).</li>
       <li><strong>Business/seller mode</strong>: data syncs to the same Supabase project so it can reach your customers' order pages.</li>
       <li>Receipt images are stored in Supabase Storage, access-controlled to your account.</li>
+      <li><strong>Other service providers</strong> (some outside Malaysia): Telegram (delivers your one-time login code), Stripe (card payments for sellers; PCI-compliant — we don't store card numbers), Vercel (hosts the seller order-link page), Expo (push notifications), and the AI providers in section 6. They process data only to provide their feature.</li>
     </ul>
 
     <h2>4. How long we keep it</h2>
@@ -72,7 +88,7 @@
     </ul>
 
     <h2>6. AI features</h2>
-    <p>Receipt scanning and AI-assisted categorization send the image or text you submit to third-party AI providers (Groq, Google Gemini) strictly to generate the response. We do not store prompts or responses beyond what you save as a transaction. Providers' terms apply — do not scan receipts containing data you consider highly sensitive.</p>
+    <p>Optional AI features (receipt scanning, note-to-entry, and Money Chat) send the text or image you submit — and, for Money Chat, a short summary of your finances — to our third-party AI providers <strong>Anthropic (Claude)</strong> and <strong>Google (Gemini)</strong>, both in the United States, strictly to generate the response. We do not store prompts or responses beyond what you save. The AI gives general information only — not financial, investment, tax, or legal advice. We strip card numbers from receipts before sending. Providers' terms apply — do not submit data you consider highly sensitive.</p>
 
     <h2>7. Children</h2>
     <p>Potraces is not directed at children under 13. If we learn we've collected data from a child, we delete it.</p>
@@ -86,7 +102,7 @@
 
   <section id="ms" class="hide">
     <h1>Dasar Privasi</h1>
-    <p class="meta">Kemas kini terakhir: 17 April 2026</p>
+    <p class="meta">Kemas kini terakhir: 16 Jun 2026</p>
 
     <div class="card">
       <p>Potraces ialah aplikasi kewangan peribadi &amp; perniagaan kecil yang dibina di Malaysia. Dasar ini menerangkan apa yang kami kumpul, mengapa, di mana ia disimpan, dan bagaimana untuk mengeluarkan atau memadam data anda.</p>
@@ -101,7 +117,7 @@
 
     <h2>2. Apa yang kami tidak kumpul</h2>
     <ul>
-      <li>Kami tidak membaca kenalan, gambar, mesej, log panggilan atau lokasi anda melainkan imej khusus yang anda pilih untuk dimuat naik sebagai resit.</li>
+      <li>Apabila anda menambah seseorang ke dalam hutang atau perkongsian, kami hanya membaca kenalan yang anda pilih (untuk mengisi nama dan nombor mereka). Kami tidak mengimbas seluruh buku alamat, gambar, mesej, log panggilan atau lokasi anda, melainkan imej khusus yang anda pilih untuk dimuat naik sebagai resit.</li>
       <li>Kami tidak menjual atau berkongsi data anda dengan pengiklan.</li>
       <li>Kami tidak menjejak anda di aplikasi atau laman web lain.</li>
     </ul>
@@ -111,6 +127,7 @@
       <li><strong>Mod peribadi</strong>: data disimpan secara tempatan pada peranti anda dan, jika anda aktifkan sandaran awan, disegerakkan ke projek Supabase kami di Singapura (ap-southeast-1).</li>
       <li><strong>Mod perniagaan/penjual</strong>: data disegerakkan ke Supabase yang sama supaya halaman pesanan pelanggan anda boleh berfungsi.</li>
       <li>Imej resit disimpan dalam Supabase Storage, dikawal akses kepada akaun anda sahaja.</li>
+      <li><strong>Pembekal perkhidmatan lain</strong> (sebahagiannya di luar Malaysia): Telegram (menghantar kod log masuk sekali guna anda), Stripe (pembayaran kad untuk penjual; mematuhi PCI — kami tidak simpan nombor kad), Vercel (menghoskan halaman pautan pesanan penjual), Expo (notifikasi tolak), dan pembekal AI dalam seksyen 6. Mereka memproses data hanya untuk menyediakan ciri mereka.</li>
     </ul>
 
     <h2>4. Berapa lama kami simpan</h2>
@@ -124,7 +141,7 @@
     </ul>
 
     <h2>6. Ciri AI</h2>
-    <p>Imbasan resit dan pengkategorian berbantukan AI menghantar imej atau teks yang anda masukkan kepada pembekal AI pihak ketiga (Groq, Google Gemini) secara ketat hanya untuk menjana respons. Kami tidak menyimpan arahan atau respons melebihi apa yang anda simpan sebagai transaksi. Syarat pembekal terpakai — jangan imbas resit yang mengandungi data yang anda anggap sangat sensitif.</p>
+    <p>Ciri AI pilihan (imbasan resit, nota-ke-entri, dan Money Chat) menghantar teks atau imej yang anda masukkan — dan, untuk Money Chat, ringkasan ringkas kewangan anda — kepada pembekal AI pihak ketiga kami <strong>Anthropic (Claude)</strong> dan <strong>Google (Gemini)</strong>, kedua-duanya di Amerika Syarikat, secara ketat hanya untuk menjana respons. Kami tidak menyimpan arahan atau respons melebihi apa yang anda simpan. AI memberi maklumat umum sahaja — bukan nasihat kewangan, pelaburan, cukai, atau undang-undang. Kami membuang nombor kad daripada resit sebelum menghantar. Syarat pembekal terpakai — jangan masukkan data yang anda anggap sangat sensitif.</p>
 
     <h2>7. Kanak-kanak</h2>
     <p>Potraces tidak ditujukan kepada kanak-kanak di bawah 13 tahun. Jika kami dapat tahu kami telah mengumpul data kanak-kanak, kami akan memadamnya.</p>
@@ -139,15 +156,26 @@
   <footer>© 2026 Potraces. Built in Malaysia.</footer>
 </div>
 <script>
+var LANG_STORAGE = 'potraces_lang'; // shared with index.html / beta.html
 function show(lang){
+  if (lang!=='ms') lang='en';
   document.getElementById('en').classList.toggle('hide', lang!=='en');
   document.getElementById('ms').classList.toggle('hide', lang!=='ms');
   document.getElementById('btn-en').classList.toggle('active', lang==='en');
   document.getElementById('btn-ms').classList.toggle('active', lang==='ms');
+  document.getElementById('btn-en').setAttribute('aria-pressed', String(lang==='en'));
+  document.getElementById('btn-ms').setAttribute('aria-pressed', String(lang==='ms'));
+  document.documentElement.setAttribute('lang', lang);
+  try { localStorage.setItem(LANG_STORAGE, lang); } catch(e){}
 }
-// Respect device language on first load
-var lang = (navigator.language||'').toLowerCase();
-if (lang.startsWith('ms')) show('ms');
+// 1) carry over the choice made on the marketing site; 2) else device language
+var saved = null;
+try { saved = localStorage.getItem(LANG_STORAGE); } catch(e){}
+if (saved === 'ms' || saved === 'en') {
+  show(saved);
+} else if ((navigator.language||'').toLowerCase().startsWith('ms')) {
+  show('ms');
+}
 </script>
 </body>
 </html>

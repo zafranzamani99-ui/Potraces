@@ -1,20 +1,30 @@
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import { callGeminiAPI, isGeminiAvailable, getCooldownSecondsLeft } from './geminiClient';
+import { callGeminiAPI, streamGeminiText, isGeminiAvailable, getCooldownSecondsLeft } from './geminiClient';
 import { enqueueReceipt } from './receiptQueue';
+import { extractCompleteItems } from '../utils/streamingJson';
 import { ExtractedReceipt, SellerReceiptResult } from '../types';
 
 /**
  * Resize + compress the image so Gemini processes it faster and more accurately.
- * Uses base64 output directly from manipulator to avoid file-system URI issues.
- * Falls back to raw image if manipulation fails.
+ *
+ * Image size is a SPEED vs ACCURACY dial and it cannot win both on a single
+ * image-based call: smaller = faster encoding but loses the small text that
+ * dense/long receipts depend on. 1080px is the balanced interim — legible on
+ * most thermal receipts without being huge. The real fix for long/complex
+ * receipts is the on-device-OCR-first hybrid (read text locally at full res,
+ * send only TEXT to the model), which removes this tradeoff entirely.
+ *
+ * Width-only resize keeps aspect ratio and avoids upscaling already-cropped
+ * scans from the document scanner. Uses base64 output directly from the
+ * manipulator to avoid file-system URI issues; falls back to raw on failure.
  */
 async function prepareImage(uri: string): Promise<string> {
   try {
     const result = await manipulateAsync(
       uri,
-      [{ resize: { width: 1600 } }],
-      { compress: 0.9, format: SaveFormat.JPEG, base64: true }
+      [{ resize: { width: 1080 } }],
+      { compress: 0.8, format: SaveFormat.JPEG, base64: true }
     );
     if (result.base64) {
       return result.base64;
@@ -121,7 +131,7 @@ export async function scanReceipt(imageUri: string): Promise<ExtractedReceipt> {
   }
 }
 
-async function _doScanReceipt(imageUri: string): Promise<ExtractedReceipt> {
+async function _doScanReceipt(imageUri: string, preparedBase64?: string): Promise<ExtractedReceipt> {
   if (!isGeminiAvailable()) {
     const secs = getCooldownSecondsLeft();
     if (secs > 0) {
@@ -130,7 +140,9 @@ async function _doScanReceipt(imageUri: string): Promise<ExtractedReceipt> {
     throw new Error('AI is not available. Check your API key.');
   }
 
-  const base64 = await prepareImage(imageUri);
+  // Reuse an already-prepared image when the streaming path falls back to us,
+  // so we don't pay the resize/compress cost twice.
+  const base64 = preparedBase64 ?? await prepareImage(imageUri);
 
   const data = await callGeminiAPI(
     {
@@ -151,6 +163,10 @@ async function _doScanReceipt(imageUri: string): Promise<ExtractedReceipt> {
       generationConfig: {
         temperature: 0.1,
         maxOutputTokens: 16384,
+        // JSON mode: Gemini emits clean parseable JSON (no markdown fences /
+        // prose), which trims output tokens and removes a class of parse
+        // failures. stripJsonFences() below stays as a defensive fallback.
+        responseMimeType: 'application/json',
         thinkingConfig: { thinkingBudget: 0 },
       },
     },
@@ -179,38 +195,129 @@ async function _doScanReceipt(imageUri: string): Promise<ExtractedReceipt> {
   }
 
   try {
-    const parsed = JSON.parse(stripJsonFences(text));
-
-    let total = Number(parsed.total) || 0;
-    if (total > MAX_RECEIPT_AMOUNT) total = 0;
-
-    const paymentMethod = typeof parsed.paymentMethod === 'string' && VALID_PAYMENT_METHODS.has(parsed.paymentMethod)
-      ? parsed.paymentMethod
-      : undefined;
-
-    const suggestedExpenseCategory = typeof parsed.suggestedExpenseCategory === 'string' && VALID_EXPENSE_CATEGORIES.has(parsed.suggestedExpenseCategory)
-      ? parsed.suggestedExpenseCategory
-      : undefined;
-
-    return {
-      vendor: parsed.vendor || undefined,
-      items: Array.isArray(parsed.items)
-        ? parsed.items
-            .filter((i: any) => i.name && typeof i.amount === 'number' && i.amount > 0 && i.amount <= MAX_RECEIPT_AMOUNT)
-            .map((i: any) => ({ name: String(i.name), amount: Number(i.amount) }))
-        : [],
-      subtotal: typeof parsed.subtotal === 'number' ? parsed.subtotal : undefined,
-      tax: typeof parsed.tax === 'number' ? parsed.tax : undefined,
-      total,
-      date: parsed.date || undefined,
-      rawText: text,
-      location: parsed.location || undefined,
-      paymentMethod,
-      suggestedExpenseCategory,
-      suggestedTaxCategory: parsed.suggestedTaxCategory || undefined,
-    };
+    return parseReceiptJson(text);
   } catch {
     throw new Error('Could not parse receipt data. Please try again.');
+  }
+}
+
+/**
+ * Shared parse of the model's JSON receipt response into an ExtractedReceipt.
+ * Used by both the non-streaming and streaming scan paths.
+ */
+function parseReceiptJson(text: string): ExtractedReceipt {
+  const parsed = JSON.parse(stripJsonFences(text));
+
+  let total = Number(parsed.total) || 0;
+  if (total > MAX_RECEIPT_AMOUNT) total = 0;
+
+  const paymentMethod = typeof parsed.paymentMethod === 'string' && VALID_PAYMENT_METHODS.has(parsed.paymentMethod)
+    ? parsed.paymentMethod
+    : undefined;
+
+  const suggestedExpenseCategory = typeof parsed.suggestedExpenseCategory === 'string' && VALID_EXPENSE_CATEGORIES.has(parsed.suggestedExpenseCategory)
+    ? parsed.suggestedExpenseCategory
+    : undefined;
+
+  return {
+    vendor: parsed.vendor || undefined,
+    items: Array.isArray(parsed.items)
+      ? parsed.items
+          .filter((i: any) => i.name && typeof i.amount === 'number' && i.amount > 0 && i.amount <= MAX_RECEIPT_AMOUNT)
+          .map((i: any) => ({ name: String(i.name), amount: Number(i.amount) }))
+      : [],
+    subtotal: typeof parsed.subtotal === 'number' ? parsed.subtotal : undefined,
+    tax: typeof parsed.tax === 'number' ? parsed.tax : undefined,
+    total,
+    date: parsed.date || undefined,
+    rawText: text,
+    location: parsed.location || undefined,
+    paymentMethod,
+    suggestedExpenseCategory,
+    suggestedTaxCategory: parsed.suggestedTaxCategory || undefined,
+  };
+}
+
+/** Callbacks for progressive receipt streaming. */
+export interface ReceiptStreamHandlers {
+  /** Fires once, the moment the first complete item is parsed from the stream. */
+  onFirstItem?: () => void;
+  /** Fires whenever the set of complete items grows (cumulative list). */
+  onItems?: (items: { name: string; amount: number }[]) => void;
+}
+
+/**
+ * Streaming variant of scanReceipt: items surface progressively as Gemini
+ * generates them, so the UI can drop its blocking spinner on the first item
+ * instead of waiting for the whole JSON. Resolves with the final, authoritative
+ * ExtractedReceipt (vendor/total/tax + cleaned items). Falls back to the
+ * non-streaming path if streaming is unavailable or errors mid-flight.
+ */
+export async function scanReceiptStream(
+  imageUri: string,
+  handlers: ReceiptStreamHandlers = {},
+): Promise<ExtractedReceipt> {
+  if (_scanningReceipt) {
+    throw new Error('A receipt scan is already in progress.');
+  }
+  _scanningReceipt = true;
+  try {
+    return await _doScanReceiptStream(imageUri, handlers);
+  } finally {
+    _scanningReceipt = false;
+  }
+}
+
+async function _doScanReceiptStream(
+  imageUri: string,
+  handlers: ReceiptStreamHandlers,
+): Promise<ExtractedReceipt> {
+  if (!isGeminiAvailable()) {
+    const secs = getCooldownSecondsLeft();
+    if (secs > 0) throw new Error(`AI is cooling down — try again in ${secs}s`);
+    throw new Error('AI is not available. Check your API key.');
+  }
+
+  const base64 = await prepareImage(imageUri);
+
+  try {
+    let finalText = '';
+    let emitted = 0;
+    for await (const textSoFar of streamGeminiText(
+      {
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: RECEIPT_PROMPT },
+              { inlineData: { mimeType: 'image/jpeg', data: base64 } },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 16384,
+          responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      },
+      30_000,
+    )) {
+      finalText = textSoFar;
+      const items = extractCompleteItems(textSoFar);
+      if (items.length > emitted) {
+        if (emitted === 0) handlers.onFirstItem?.();
+        emitted = items.length;
+        handlers.onItems?.(items);
+      }
+    }
+    // Stream finished — parse the complete JSON for authoritative totals/tax/etc.
+    return parseReceiptJson(finalText);
+  } catch (streamErr) {
+    // Streaming unsupported on this platform, or it failed mid-flight — fall
+    // back to the proven non-streaming scan so the user still gets a result.
+    if (__DEV__) console.warn('[receiptScanner] stream failed, falling back to blocking scan:', streamErr);
+    return _doScanReceipt(imageUri, base64);
   }
 }
 
@@ -300,6 +407,10 @@ async function _doScanSellerReceipt(imageUri: string): Promise<SellerReceiptResu
       generationConfig: {
         temperature: 0.1,
         maxOutputTokens: 16384,
+        // JSON mode: Gemini emits clean parseable JSON (no markdown fences /
+        // prose), which trims output tokens and removes a class of parse
+        // failures. stripJsonFences() below stays as a defensive fallback.
+        responseMimeType: 'application/json',
         thinkingConfig: { thinkingBudget: 0 },
       },
     },

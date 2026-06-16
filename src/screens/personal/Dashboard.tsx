@@ -18,13 +18,13 @@ import {
 import { ScrollView } from 'react-native-gesture-handler';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { format, addDays, isWithinInterval, startOfMonth, endOfMonth, startOfDay, subMonths, getDaysInMonth } from 'date-fns';
+import { addDays, isWithinInterval, startOfMonth, endOfMonth, startOfDay, subMonths, getDaysInMonth } from 'date-fns';
 
 import { useNavigation } from '@react-navigation/native';
 import { usePersonalStore } from '../../store/personalStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
+import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
@@ -38,6 +38,8 @@ import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import WeekBar from '../../components/common/WeekBar';
 import CollapsibleSection from '../../components/common/CollapsibleSection';
+import DuoIcon, { FEATHER_TO_GLYPH } from '../../components/common/DuoIcon';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useWalletStore } from '../../store/walletStore';
 import { useSellerStore } from '../../store/sellerStore';
 import { useBusinessStore } from '../../store/businessStore';
@@ -72,7 +74,7 @@ const getGreetingKey = (): 'goodMorning' | 'goodAfternoon' | 'goodEvening' => {
 // contrast is preserved (DESIGN-H1, UX-H5). No more raw hex.
 const getQuickActions = (C: typeof CALM) => [
   { key: 'wallets' as const, icon: 'credit-card' as const, screen: 'WalletManagement', color: C.accent },
-  { key: 'savings' as const, icon: 'archive' as const, screen: 'SavingsTracker', color: C.neutral },
+  { key: 'savings' as const, icon: 'archive' as const, screen: 'SavingsTracker', color: C.gold },
   { key: 'debts' as const, icon: 'git-branch' as const, screen: 'DebtTracking', color: C.bronze },
   { key: 'bills' as const, icon: 'refresh-cw' as const, screen: 'SubscriptionList', color: C.accent },
   { key: 'budgets' as const, icon: 'sliders' as const, screen: 'BudgetPlanning', color: C.bronze },
@@ -82,6 +84,104 @@ const getQuickActions = (C: typeof CALM) => [
   { key: 'chat' as const, icon: 'zap' as const, screen: 'MoneyChat', color: C.gold },
   { key: 'pulse' as const, icon: 'activity' as const, screen: 'FinancialPulse', color: C.accent },
 ];
+
+// ─── Insight micro-visualizations ─────────────────────────────
+// Each insight card carries a tiny instrument of the user's real data
+// instead of a decorative icon — the strip becomes alive as data grows.
+
+const polarXY = (cx: number, cy: number, r: number, deg: number) => {
+  const a = (deg * Math.PI) / 180;
+  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+};
+const arcD = (cx: number, cy: number, r: number, startDeg: number, endDeg: number) => {
+  const s = polarXY(cx, cy, r, startDeg);
+  const e = polarXY(cx, cy, r, endDeg);
+  const large = endDeg - startDeg > 180 ? 1 : 0;
+  return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
+};
+
+// One dot per day of the month; lit where the user logged something.
+const DotCalendar: React.FC<{
+  daysInMonth: number;
+  dayOfMonth: number;
+  activeDays: Set<number>;
+  color: string;
+  C: typeof CALM;
+}> = ({ daysInMonth, dayOfMonth, activeDays, color, C }) => (
+  <View style={{ width: 49, flexDirection: 'row', flexWrap: 'wrap' }}>
+    {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => (
+      <View
+        key={d}
+        style={{
+          width: 4,
+          height: 4,
+          borderRadius: 2,
+          marginRight: 3,
+          marginBottom: 3,
+          backgroundColor:
+            d > dayOfMonth
+              ? withAlpha(C.textMuted, 0.14)
+              : activeDays.has(d)
+              ? color
+              : withAlpha(C.textMuted, 0.3),
+        }}
+      />
+    ))}
+  </View>
+);
+
+// 270° gauge; tick marks 100% of usual pace, scale caps at 150%.
+const PaceGauge: React.FC<{ percent: number; color: string; C: typeof CALM }> = ({ percent, color, C }) => {
+  const r = 14.5;
+  const cx = 19;
+  const cy = 19;
+  const frac = Math.min(Math.max(percent, 0), 150) / 150;
+  const tickIn = polarXY(cx, cy, r - 1, 315);
+  const tickOut = polarXY(cx, cy, r + 4, 315);
+  return (
+    <Svg width={38} height={38} viewBox="0 0 38 38">
+      <SvgPath d={arcD(cx, cy, r, 135, 405)} stroke={withAlpha(color, 0.18)} strokeWidth={5} strokeLinecap="round" fill="none" />
+      {frac > 0.01 && (
+        <SvgPath d={arcD(cx, cy, r, 135, 135 + 270 * frac)} stroke={color} strokeWidth={5} strokeLinecap="round" fill="none" />
+      )}
+      <SvgPath
+        d={`M ${tickIn.x} ${tickIn.y} L ${tickOut.x} ${tickOut.y}`}
+        stroke={withAlpha(C.textMuted, 0.6)}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+};
+
+// came-in vs went-out side by side — the net explains itself.
+const TwinBars: React.FC<{ inAmt: number; outAmt: number; C: typeof CALM }> = ({ inAmt, outAmt, C }) => {
+  const max = Math.max(inAmt, outAmt, 1);
+  const h = (v: number) => 8 + Math.round(24 * (v / max));
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 5 }}>
+      <View style={{ width: 9, height: h(inAmt), borderRadius: 4.5, backgroundColor: C.positive }} />
+      <View style={{ width: 9, height: h(outAmt), borderRadius: 4.5, backgroundColor: withAlpha(C.bronze, 0.75) }} />
+    </View>
+  );
+};
+
+// next 7 days; a tall tick where a bill lands.
+const WeekTicks: React.FC<{ flags: boolean[]; color: string; C: typeof CALM }> = ({ flags, color, C }) => (
+  <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3 }}>
+    {flags.map((on, i) => (
+      <View
+        key={i}
+        style={{
+          width: 5,
+          height: on ? 18 : 11,
+          borderRadius: 2.5,
+          backgroundColor: on ? color : withAlpha(C.textMuted, 0.18),
+        }}
+      />
+    ))}
+  </View>
+);
 
 const PersonalDashboard: React.FC = () => {
   const C = useCalm();
@@ -180,22 +280,6 @@ const PersonalDashboard: React.FC = () => {
 
     const totalUpcoming = upcomingBills.reduce((sum, sub) => sum + sub.amount, 0);
 
-    const normalizeToMonthly = (amount: number, period: string) => {
-      switch (period) {
-        case 'weekly': return amount * 4.33;
-        case 'daily': return amount * 30;
-        case 'yearly': return amount / 12;
-        default: return amount;
-      }
-    };
-    const totalBudget = budgets.reduce((sum, b) => sum + normalizeToMonthly(b.allocatedAmount, b.period), 0);
-    const totalSpent = budgets.reduce((sum, b) => {
-      const spent = transactions
-        .filter((t) => t.type === 'expense' && t.category === b.category && isWithinInterval(t.date, { start: monthStart, end: monthEnd }))
-        .reduce((s, t) => s + t.amount, 0);
-      return sum + spent;
-    }, 0);
-
     const personalDebts = debts.filter((d) => d.mode === 'personal');
     const youOwe = personalDebts
       .filter((d) => d.type === 'i_owe' && d.status !== 'settled' && !d.isArchived)
@@ -221,18 +305,21 @@ const PersonalDashboard: React.FC = () => {
       upcomingBills: upcomingBills.length,
       upcomingBillsList: upcomingBills,
       upcomingTotal: totalUpcoming,
-      budgetProgress: totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0,
       youOwe,
       owedToYou,
     };
-  }, [transactions, subscriptions, budgets, debts]);
+  }, [transactions, subscriptions, debts]);
 
-  const heroBalance = useMemo(() =>
-    wallets.length > 0
-      ? wallets.filter((w) => w.type !== 'credit').reduce((sum, w) => sum + w.balance, 0)
-      : stats.balance,
-    [wallets, stats.balance]
-  );
+  const heroBalance = useMemo(() => {
+    if (wallets.length === 0) return stats.balance;
+    const cashWallets = wallets.filter((w) => w.type !== 'credit');
+    if (cashWallets.length > 0) {
+      return cashWallets.reduce((sum, w) => sum + w.balance, 0);
+    }
+    // Credit-only user: there is no cash balance — show available credit
+    // (limit − used) so the hero isn't a misleading RM 0.00.
+    return wallets.reduce((sum, w) => sum + Math.max(0, (w.creditLimit || 0) - (w.usedCredit || 0)), 0);
+  }, [wallets, stats.balance]);
 
   const netThisMonth = useMemo(() => stats.income - stats.expenses, [stats.income, stats.expenses]);
 
@@ -246,6 +333,16 @@ const PersonalDashboard: React.FC = () => {
       ? Math.round(((stats.income - stats.expenses) / stats.income) * 100)
       : 0;
     const h = t.dashboard.hero;
+
+    // Journey ladder (FIRSTRUN) — guidance → fact-echo → earned judgment.
+    // Never render an evaluative mood ("tight", "steady") about money the
+    // user hasn't recorded yet; with zero data the old buckets landed on
+    // "tight but managing" against RM 0.00.
+    if (transactions.length === 0) {
+      return wallets.length === 0
+        ? { headline: h.journeyFresh, subLine: h.journeyFreshSub }
+        : { headline: h.journeyReady, subLine: h.journeyReadySub };
+    }
 
     // Context-aware sub-line
     let subLine = '';
@@ -267,6 +364,22 @@ const PersonalDashboard: React.FC = () => {
       .reduce((s, tx) => s + tx.amount, 0);
     if (todayIncome > stats.income * 0.5 && todayIncome > 0) {
       return { headline: h.paydayLanded, subLine: `${currency} ${todayIncome.toFixed(0)} ${h.cameInToday}` };
+    }
+
+    // Early days: acknowledge and describe, don't evaluate — judgment needs
+    // a baseline (≥10 entries over ≥7 days, YNAB/Emma-style gates).
+    if (transactions.length <= 2) {
+      return { headline: h.journeyFirst, subLine: h.journeyFirstSub };
+    }
+    const firstTxTime = Math.min(
+      ...transactions.map((tx) => (tx.date instanceof Date ? tx.date : new Date(tx.date)).getTime()),
+    );
+    const daysSinceFirstTx = Math.floor((now.getTime() - firstTxTime) / 86400000);
+    if (transactions.length < 10 || daysSinceFirstTx < 7) {
+      return {
+        headline: h.journeyWarming,
+        subLine: h.journeyWarmingSub.replace('{n}', String(transactions.length)),
+      };
     }
 
     // No spending in 2+ days
@@ -295,7 +408,7 @@ const PersonalDashboard: React.FC = () => {
     if (savingsRate >= 5) return { headline: h.steady, subLine };
     if (savingsRate >= 0) return { headline: h.tight, subLine };
     return { headline: h.stretch, subLine };
-  }, [stats, heroBalance, netThisMonth, currency, transactions, t]);
+  }, [stats, heroBalance, netThisMonth, currency, transactions, wallets, t]);
 
   const recentTransactions = useMemo(() => {
     return [...transactions]
@@ -332,8 +445,13 @@ const PersonalDashboard: React.FC = () => {
         (stats.expenses / lastMonthExpenses) * (1 / monthProgress) * 100
       );
     }
+    // With no last-month baseline the percent is forced to 0 — show it neutral,
+    // not positive-green, so "0%" doesn't read as "great, spent nothing".
+    const hasBaseline = lastMonthExpenses > 0;
     const velocityColor =
-      velocityPercent < 90
+      !hasBaseline
+        ? C.neutral
+        : velocityPercent < 90
         ? C.positive
         : velocityPercent > 110
         ? C.neutral
@@ -350,6 +468,28 @@ const PersonalDashboard: React.FC = () => {
     );
     const upcomingTotal = upcomingWeek.reduce((sum, sub) => sum + sub.amount, 0);
 
+    // Days of this month with at least one entry — feeds the dot calendar.
+    const activeDays = new Set<number>();
+    for (const tx of transactions) {
+      const d = tx.date instanceof Date ? tx.date : new Date(tx.date);
+      if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) {
+        activeDays.add(d.getDate());
+      }
+    }
+
+    // Which of the next 7 days has a bill landing — feeds the week ticks.
+    const upcomingDayFlags = Array.from({ length: 7 }, (_, i) => {
+      const day = addDays(today, i);
+      return upcomingWeek.some((sub) => {
+        const bd = new Date(sub.nextBillingDate);
+        return (
+          bd.getFullYear() === day.getFullYear() &&
+          bd.getMonth() === day.getMonth() &&
+          bd.getDate() === day.getDate()
+        );
+      });
+    });
+
     return {
       savingsRate,
       savingsColor,
@@ -357,8 +497,12 @@ const PersonalDashboard: React.FC = () => {
       velocityColor,
       upcomingCount: upcomingWeek.length,
       upcomingTotal,
+      dayOfMonth,
+      daysInMonth,
+      activeDays,
+      upcomingDayFlags,
     };
-  }, [stats, subscriptions, C]);
+  }, [stats, subscriptions, transactions, C]);
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
@@ -423,7 +567,7 @@ const PersonalDashboard: React.FC = () => {
   const handleUpdateTransaction = useCallback(() => {
     if (!editingTransaction) return;
 
-    if (!editAmount || parseFloat(editAmount) <= 0) {
+    if (!editAmount || isNaN(parseFloat(editAmount)) || parseFloat(editAmount) <= 0) {
       showToast(t.transaction.invalidAmount, 'error');
       return;
     }
@@ -435,28 +579,10 @@ const PersonalDashboard: React.FC = () => {
 
     const newAmount = parseFloat(editAmount);
     const oldAmount = editingTransaction.amount;
-    const oldWalletId = editingTransaction.walletId;
     const oldType = editingTransaction.type;
 
-    // Reverse old wallet adjustment (only if wallet still exists)
-    const wallets = useWalletStore.getState().wallets;
-    if (oldWalletId && wallets.some(w => w.id === oldWalletId)) {
-      if (oldType === 'expense') {
-        addToWallet(oldWalletId, oldAmount);
-      } else {
-        deductFromWallet(oldWalletId, oldAmount);
-      }
-    }
-
-    // Apply new wallet adjustment (only if wallet still exists)
-    if (editWalletId && wallets.some(w => w.id === editWalletId)) {
-      if (editType === 'expense') {
-        deductFromWallet(editWalletId, newAmount);
-      } else {
-        addToWallet(editWalletId, newAmount);
-      }
-    }
-
+    // Wallet reconciliation is owned by personalStore.updateTransaction (it reverses
+    // the old adjustment and applies the new one). Do NOT adjust the wallet here.
     updateTransaction(editingTransaction.id, {
       amount: newAmount,
       description: editDescription.trim(),
@@ -518,18 +644,13 @@ const PersonalDashboard: React.FC = () => {
     const { linkedDebtId, linkedPaymentId } = editingTransaction;
 
     const doDelete = () => {
-      if (editingTransaction.walletId) {
-        if (editingTransaction.type === 'expense') {
-          addToWallet(editingTransaction.walletId, editingTransaction.amount);
-        } else {
-          deductFromWallet(editingTransaction.walletId, editingTransaction.amount);
-        }
-      }
+      // Wallet reconciliation is owned by personalStore.deleteTransaction (it rolls
+      // back the balance). deletePayment no longer touches the wallet either, so the
+      // single rollback below is correct for debt-linked transactions too.
       if (isTransferLinked && transferId) {
         unmarkOrdersTransferred(transferId);
         deleteTransfer(transferId);
       }
-      // Also delete the linked debt payment (wallet already reversed above)
       if (linkedDebtId && linkedPaymentId) {
         useDebtStore.getState().deletePayment(linkedDebtId, linkedPaymentId);
       }
@@ -662,7 +783,9 @@ const PersonalDashboard: React.FC = () => {
         {showFreshStart && <FreshStart />}
         {showGettingStarted && <GettingStarted />}
 
-        {/* Zone 5 — Insight Strip */}
+        {/* Zone 5 — Insight Strip. Hidden until real data exists — a row of
+            zeros ("0 transactions", "0%") reads as a dead app, not a report. */}
+        {transactions.length > 0 && (
         <RAnimated.View entering={FadeInDown.delay(150).duration(200)} style={styles.insightStripWrap}>
         <ScrollView
           horizontal
@@ -670,101 +793,127 @@ const PersonalDashboard: React.FC = () => {
           contentContainerStyle={styles.insightStripRow}
           style={styles.insightStripScroll}
         >
-          {/* Transactions */}
+          {/* Transactions — mini dot-calendar of the month */}
           <TouchableOpacity
-            style={[styles.insightCard, { backgroundColor: withAlpha(C.accent, 0.05) }]}
+            style={[styles.insightCard, {
+              backgroundColor: withAlpha(C.accent, isDark ? 0.10 : 0.05),
+              borderColor: withAlpha(C.accent, isDark ? 0.24 : 0.14),
+            }]}
             activeOpacity={0.7}
             onPress={() => { lightTap(); navigation.getParent()?.navigate('TransactionsList'); }}
             accessibilityLabel={`${stats.transactionCount} transactions this month`}
           >
-            <View style={styles.insightCardHeader}>
-              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(C.accent, 0.10) }]}>
-                <Feather name="layers" size={16} color={C.accent} />
+            <View style={[styles.insightSpine, { backgroundColor: C.accent }]} />
+            <Text style={styles.insightCardLabel}>{t.dashboard.thisMonth.toLowerCase()}</Text>
+            <View style={styles.insightBody}>
+              <View style={styles.insightTextCol}>
+                <Text style={[styles.insightValue, { color: C.textPrimary }]}>
+                  {stats.transactionCount}
+                </Text>
+                <Text style={styles.insightContext}>{t.dashboard.transactions.toLowerCase()}</Text>
               </View>
-              <Text style={styles.insightCardLabel}>{t.dashboard.thisMonth.toLowerCase()}</Text>
+              <DotCalendar
+                daysInMonth={insightStrip.daysInMonth}
+                dayOfMonth={insightStrip.dayOfMonth}
+                activeDays={insightStrip.activeDays}
+                color={C.accent}
+                C={C}
+              />
             </View>
-            <Text style={[styles.insightValue, { color: C.textPrimary }]}>
-              {stats.transactionCount}
-            </Text>
-            <Text style={styles.insightContext}>{t.dashboard.transactions.toLowerCase()}</Text>
           </TouchableOpacity>
 
-          {/* Spending Pace */}
+          {/* Spending Pace — gauge with a tick at "usual" */}
           <TouchableOpacity
-            style={[styles.insightCard, { backgroundColor: withAlpha(insightStrip.velocityColor, 0.05) }]}
+            style={[styles.insightCard, {
+              backgroundColor: withAlpha(insightStrip.velocityColor, isDark ? 0.10 : 0.05),
+              borderColor: withAlpha(insightStrip.velocityColor, isDark ? 0.24 : 0.14),
+            }]}
             activeOpacity={0.7}
             onPress={() => { lightTap(); navigation.getParent()?.navigate('FinancialPulse'); }}
             accessibilityLabel={`Spending velocity: ${insightStrip.velocityPercent} percent of usual pace`}
           >
-            <View style={styles.insightCardHeader}>
-              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(insightStrip.velocityColor, 0.10) }]}>
-                <Feather name="trending-up" size={16} color={insightStrip.velocityColor} />
+            <View style={[styles.insightSpine, { backgroundColor: insightStrip.velocityColor }]} />
+            <Text style={styles.insightCardLabel}>{t.dashboard.pace}</Text>
+            <View style={styles.insightBody}>
+              <View style={styles.insightTextCol}>
+                <Text style={[styles.insightValue, { color: C.textPrimary }]}>
+                  {insightStrip.velocityPercent}%
+                </Text>
+                <Text style={styles.insightContext}>{t.dashboard.ofUsualSpending}</Text>
               </View>
-              <Text style={styles.insightCardLabel}>{t.dashboard.pace}</Text>
+              <PaceGauge percent={insightStrip.velocityPercent} color={insightStrip.velocityColor} C={C} />
             </View>
-            <Text style={[styles.insightValue, { color: C.textPrimary }]}>
-              {insightStrip.velocityPercent}%
-            </Text>
-            <Text style={styles.insightContext}>{t.dashboard.ofUsualSpending}</Text>
           </TouchableOpacity>
 
-          {/* Kept */}
+          {/* Kept — came-in vs went-out twin bars */}
           <TouchableOpacity
-            style={[styles.insightCard, { backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, 0.08) }]}
+            style={[styles.insightCard, {
+              backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, isDark ? 0.10 : 0.05),
+              borderColor: withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, isDark ? 0.24 : 0.14),
+            }]}
             activeOpacity={0.7}
             onPress={() => { lightTap(); navigation.getParent()?.navigate('TransactionsList'); }}
             accessibilityLabel={`Kept ${currency} ${kept.keptThisMonth.toFixed(2)} this month`}
           >
-            <View style={styles.insightCardHeader}>
-              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(kept.keptThisMonth >= 0 ? C.positive : C.neutral, 0.10) }]}>
-                <Feather name="pocket" size={16} color={kept.keptThisMonth >= 0 ? C.positive : C.neutral} />
+            <View style={[styles.insightSpine, { backgroundColor: kept.keptThisMonth >= 0 ? C.positive : C.neutral }]} />
+            <Text style={styles.insightCardLabel}>{t.dashboard.hero.kept}</Text>
+            <View style={styles.insightBody}>
+              <View style={styles.insightTextCol}>
+                <Text style={[styles.insightValue, { color: C.textPrimary }]}>
+                  {kept.keptThisMonth >= 0 ? '+' : ''}{currency} {kept.keptThisMonth.toFixed(0)}
+                </Text>
+                <Text style={styles.insightContext}>{t.dashboard.netThisMonth}</Text>
               </View>
-              <Text style={styles.insightCardLabel}>{t.dashboard.hero.kept}</Text>
+              <TwinBars inAmt={stats.income} outAmt={stats.expenses} C={C} />
             </View>
-            <Text style={[styles.insightValue, { color: C.textPrimary }]}>
-              {kept.keptThisMonth >= 0 ? '+' : ''}{currency} {kept.keptThisMonth.toFixed(0)}
-            </Text>
-            <Text style={styles.insightContext}>{t.dashboard.netThisMonth}</Text>
           </TouchableOpacity>
 
           {/* BNPL / Credit */}
           {bnpl.walletCount > 0 && bnpl.totalUsed > 0 && (
             <TouchableOpacity
-              style={[styles.insightCard, { backgroundColor: withAlpha(C.bronze, 0.05) }]}
+              style={[styles.insightCard, {
+                backgroundColor: withAlpha(C.bronze, isDark ? 0.10 : 0.05),
+                borderColor: withAlpha(C.bronze, isDark ? 0.24 : 0.14),
+              }]}
               activeOpacity={0.7}
               onPress={() => { lightTap(); navigation.getParent()?.navigate('WalletManagement'); }}
               accessibilityLabel={`Future you owes ${currency} ${bnpl.totalUsed.toFixed(2)}`}
             >
-              <View style={styles.insightCardHeader}>
-                <View style={[styles.insightIconBg, { backgroundColor: withAlpha(C.bronze, 0.10) }]}>
-                  <Feather name="clock" size={16} color={C.bronze} />
+              <View style={[styles.insightSpine, { backgroundColor: C.bronze }]} />
+              <Text style={styles.insightCardLabel}>{t.dashboard.owedLater}</Text>
+              <View style={styles.insightBody}>
+                <View style={styles.insightTextCol}>
+                  <Text style={[styles.insightValue, { color: C.textPrimary }]}>
+                    {currency} {bnpl.totalUsed.toFixed(0)}
+                  </Text>
+                  <Text style={styles.insightContext}>{t.dashboard.buyNowPayLater}</Text>
                 </View>
-                <Text style={styles.insightCardLabel}>{t.dashboard.owedLater}</Text>
+                <DuoIcon glyph="clock" color={C.bronze} size={30} fillAlpha={isDark ? 0.32 : 0.26} />
               </View>
-              <Text style={[styles.insightValue, { color: C.textPrimary }]}>
-                {currency} {bnpl.totalUsed.toFixed(0)}
-              </Text>
-              <Text style={styles.insightContext}>{t.dashboard.buyNowPayLater}</Text>
             </TouchableOpacity>
           )}
 
-          {/* Upcoming Bills */}
+          {/* Upcoming Bills — 7-day tick ruler */}
           <TouchableOpacity
-            style={[styles.insightCard, { backgroundColor: withAlpha(C.gold, 0.05) }]}
+            style={[styles.insightCard, {
+              backgroundColor: withAlpha(C.gold, isDark ? 0.10 : 0.05),
+              borderColor: withAlpha(C.gold, isDark ? 0.24 : 0.14),
+            }]}
             activeOpacity={0.7}
             onPress={() => { lightTap(); navigation.getParent()?.navigate('SubscriptionList'); }}
             accessibilityLabel={`${insightStrip.upcomingCount} bills due this week`}
           >
-            <View style={styles.insightCardHeader}>
-              <View style={[styles.insightIconBg, { backgroundColor: withAlpha(C.gold, 0.10) }]}>
-                <Feather name="bell" size={16} color={C.gold} />
+            <View style={[styles.insightSpine, { backgroundColor: C.gold }]} />
+            <Text style={styles.insightCardLabel}>{t.dashboard.comingUp}</Text>
+            <View style={styles.insightBody}>
+              <View style={styles.insightTextCol}>
+                <Text style={[styles.insightValue, { color: C.textPrimary }]}>
+                  {insightStrip.upcomingCount} {insightStrip.upcomingCount === 1 ? t.dashboard.billOne : t.dashboard.billMany}
+                </Text>
+                <Text style={styles.insightContext}>{currency} {insightStrip.upcomingTotal.toFixed(0)} {t.dashboard.thisWeekLower}</Text>
               </View>
-              <Text style={styles.insightCardLabel}>{t.dashboard.comingUp}</Text>
+              <WeekTicks flags={insightStrip.upcomingDayFlags} color={C.gold} C={C} />
             </View>
-            <Text style={[styles.insightValue, { color: C.textPrimary }]}>
-              {insightStrip.upcomingCount} {insightStrip.upcomingCount === 1 ? t.dashboard.billOne : t.dashboard.billMany}
-            </Text>
-            <Text style={styles.insightContext}>{currency} {insightStrip.upcomingTotal.toFixed(0)} {t.dashboard.thisWeekLower}</Text>
           </TouchableOpacity>
         </ScrollView>
         <LinearGradient
@@ -775,6 +924,7 @@ const PersonalDashboard: React.FC = () => {
           pointerEvents="none"
         />
         </RAnimated.View>
+        )}
 
         {/* Quick Actions — pill grid */}
         {/* Quick Actions — 2-row horizontal scroll */}
@@ -797,14 +947,27 @@ const PersonalDashboard: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel={t.dashboard[action.key]}
                   >
-                    <View style={[styles.quickActionIcon, { backgroundColor: withAlpha(action.color, 0.08) }]}>
-                      <Feather name={action.icon} size={22} color={action.color} />
+                    <LinearGradient
+                      colors={[
+                        withAlpha(action.color, isDark ? 0.26 : 0.16),
+                        withAlpha(action.color, isDark ? 0.09 : 0.04),
+                      ]}
+                      start={{ x: 0.15, y: 0 }}
+                      end={{ x: 0.85, y: 1 }}
+                      style={[styles.quickActionIcon, { borderColor: withAlpha(action.color, isDark ? 0.28 : 0.16) }]}
+                    >
+                      <DuoIcon
+                        glyph={FEATHER_TO_GLYPH[action.icon]}
+                        color={action.color}
+                        size={27}
+                        fillAlpha={isDark ? 0.32 : 0.26}
+                      />
                       {action.key === 'bills' && billsBadge > 0 && (
                         <View style={styles.quickActionBadge}>
                           <Text style={styles.quickActionBadgeText}>{billsBadge}</Text>
                         </View>
                       )}
-                    </View>
+                    </LinearGradient>
                     <Text style={styles.quickActionLabel} numberOfLines={1}>
                       {t.dashboard[action.key]}
                     </Text>
@@ -1218,17 +1381,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     marginBottom: SPACING.lg,
   },
 
-  // Zone 4 — Spending Mirror
-  insightWrap: {
-    marginBottom: SPACING.lg,
-  },
-  insight: {
-    fontSize: TYPOGRAPHY.size.base,
-    lineHeight: 24,
-    color: C.textSecondary,
-    fontStyle: 'italic',
-  },
-
   // Zone 5 — Insight Strip
   insightStripWrap: {
     position: 'relative',
@@ -1249,23 +1401,32 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     gap: SPACING.sm,
   },
   insightCard: {
-    width: 150,
+    width: 168,
     padding: SPACING.md,
+    paddingLeft: SPACING.md + 6,
     borderRadius: RADIUS.xl,
+    borderWidth: 1,
     gap: 2,
+    overflow: 'hidden',
   },
-  insightCardHeader: {
+  insightSpine: {
+    position: 'absolute',
+    left: 0,
+    top: 14,
+    bottom: 14,
+    width: 3,
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
+  },
+  insightBody: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
     gap: SPACING.sm,
-    marginBottom: SPACING.sm,
+    marginTop: 6,
   },
-  insightIconBg: {
-    width: 32,
-    height: 32,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
+  insightTextCol: {
+    flexShrink: 1,
   },
   insightCardLabel: {
     fontSize: TYPOGRAPHY.size.xs,
@@ -1299,38 +1460,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     flexDirection: 'row',
     gap: SPACING.md,
     marginBottom: SPACING.md,
-  },
-
-  budgetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  budgetHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  budgetTitle: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-  },
-  budgetPercentage: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.accent,
-  },
-  budgetBar: {
-    height: SPACING.sm,
-    backgroundColor: C.border,
-    borderRadius: RADIUS.xs,
-    overflow: 'hidden',
-  },
-  budgetFill: {
-    height: SPACING.sm,
-    borderRadius: RADIUS.xs,
   },
 
   // Upcoming Bills
@@ -1426,9 +1555,10 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     width: 76,
   },
   quickActionIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: RADIUS.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 19,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

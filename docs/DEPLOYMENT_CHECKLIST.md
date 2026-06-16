@@ -51,7 +51,7 @@ OTA updates configured via `updates.url` in app.json.
 - [ ] Products: add, edit, active/inactive toggle
 - [ ] Customers: derived from orders, phone contact import
 - [ ] Season: start, track costs, end, transfer to personal
-- [ ] Order web page: `https://potraces.vercel.app/?slug={slug}`
+- [ ] Order web page: `https://jejakbaki.my/?slug={slug}`
 - [ ] Supabase sync: pull-before-push, realtime order link orders
 
 ### Shared

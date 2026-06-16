@@ -41,6 +41,10 @@ const FAB_SIZE = 56;
 const FAB_STORAGE_KEY = '@potraces/fab-position';
 const FAB_HINT_KEY = '@potraces/fab-hint-shown';
 const SNAP_MARGIN = 16;
+// Height of the bottom CustomTabBar ABOVE the safe-area inset (tabButton
+// minHeight 56 + padding). Reserved in the FAB's bottom clamp so it can never
+// be dragged/snapped behind the bottom navigation.
+const TAB_BAR_HEIGHT = 64;
 const CARD_WIDTH = SCREEN_WIDTH - 48;
 const CARD_PADDING = 20;
 const CONTENT_WIDTH = CARD_WIDTH - CARD_PADDING * 2;
@@ -171,7 +175,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
   // Snap to nearest horizontal edge
   const snapToEdge = useCallback((x: number, y: number) => {
     const minY = insets.top + SNAP_MARGIN;
-    const maxY = SCREEN_HEIGHT - FAB_SIZE - insets.bottom - SNAP_MARGIN;
+    const maxY = SCREEN_HEIGHT - FAB_SIZE - insets.bottom - TAB_BAR_HEIGHT - SNAP_MARGIN;
     const clampedY = Math.max(minY, Math.min(y, maxY));
     const snapX = x < SCREEN_WIDTH / 2 ? SNAP_MARGIN : SCREEN_WIDTH - FAB_SIZE - SNAP_MARGIN;
     const finalPos = { x: snapX, y: clampedY };
@@ -197,7 +201,7 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
         if (stored) {
           const pos = JSON.parse(stored);
           const minY = insets.top + SNAP_MARGIN;
-          const maxY = SCREEN_HEIGHT - FAB_SIZE - insets.bottom - SNAP_MARGIN;
+          const maxY = SCREEN_HEIGHT - FAB_SIZE - insets.bottom - TAB_BAR_HEIGHT - SNAP_MARGIN;
           const clampedY = Math.max(minY, Math.min(pos.y, maxY));
           const snapX = pos.x < SCREEN_WIDTH / 2 ? SNAP_MARGIN : SCREEN_WIDTH - FAB_SIZE - SNAP_MARGIN;
           const validPos = { x: snapX, y: clampedY };
@@ -450,19 +454,13 @@ const QuickAddExpense: React.FC<QuickAddExpenseProps> = ({ defaultDirection = 'e
       setVisible(false);
       const label = txType === 'expense' ? t.quickAdd.wentOut : t.quickAdd.cameIn;
       const capturedTxId = txId;
-      const capturedWalletId = walletId;
-      const capturedStored = storedAmount;
-      const capturedType = txType;
       const capturedHasMultiple = hasMultipleWallets;
       showToast(`${currency} ${parsed.toFixed(2)} ${label}`, 'success', {
         label: t.quickAdd.undo,
         onPress: () => {
+          // Wallet rollback is owned by personalStore.deleteTransaction — the add
+          // flow deducted on create, delete reverses it. Don't double-reverse here.
           deleteTransaction(capturedTxId);
-          if (capturedWalletId) {
-            capturedType === 'expense'
-              ? addToWallet(capturedWalletId, capturedStored)
-              : deductFromWallet(capturedWalletId, capturedStored);
-          }
           // Reopen at wallet step (or category if single wallet) with state intact
           const targetStep: Step = capturedHasMultiple ? 'wallet' : 'category';
           const targetIdx = capturedHasMultiple ? 2 : 1;

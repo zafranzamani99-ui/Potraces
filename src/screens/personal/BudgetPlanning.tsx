@@ -116,6 +116,9 @@ const BudgetPlanning: React.FC = () => {
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
+  // ScreenGuide spotlight target — the empty-state "add budget" hero pill
+  // (present on first visit; the guide falls back to inline points if not).
+  const guideTargetRef = useRef<any>(null);
   const { showToast } = useToast();
   const { budgets, addBudget, updateBudget, deleteBudget, transactions, subscriptions, goals } = usePersonalStore();
   const currency = useSettingsStore(state => state.currency);
@@ -1688,6 +1691,7 @@ const BudgetPlanning: React.FC = () => {
               {t.budget.emptyHeroSub}
             </Text>
             <TouchableOpacity
+              ref={guideTargetRef}
               style={styles.emptyButton}
               onPress={openAddModal}
               activeOpacity={0.8}
@@ -2667,6 +2671,11 @@ const BudgetPlanning: React.FC = () => {
         icon="sliders"
         description={t.guide.descBudget}
         accent={C.bronze}
+        points={[
+          { icon: 'plus', text: t.guide.budgetPoint1 },
+          { icon: 'bar-chart-2', text: t.guide.budgetPoint2 },
+        ]}
+        spotlight={{ targetRef: guideTargetRef, label: t.guide.budgetPoint1, sublabel: t.guide.budgetPoint2 }}
       />
     </View>
   );

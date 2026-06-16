@@ -10,7 +10,7 @@
  */
 
 import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
-import { callGeminiAPI, isGeminiAvailable, getCooldownSecondsLeft } from './geminiClient';
+import { callGeminiAPI, streamGeminiText, isGeminiAvailable, getCooldownSecondsLeft } from './geminiClient';
 import { usePersonalStore } from '../store/personalStore';
 import { useWalletStore } from '../store/walletStore';
 import { useDebtStore } from '../store/debtStore';
@@ -584,27 +584,29 @@ export async function askEchoPlan(
 
 // ─── Echo Chat (multi-turn follow-up) ────────────────────────
 
-export async function chatWithEcho(
-  playbook: Playbook,
-  plan: EchoPlanResponse,
-  messages: { role: 'user' | 'echo'; text: string }[],
-): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
+/** Availability + quota gate for Echo chat. Returns an error result or null. */
+function _echoChatGate(): { ok: false; error: string } | null {
   if (!isGeminiAvailable()) {
     const secs = getCooldownSecondsLeft();
     if (secs > 0) return { ok: false, error: `cooling down — ${secs}s` };
     return { ok: false, error: 'echo is unavailable right now' };
   }
-
-  const premium = usePremiumStore.getState();
-  if (!premium.canUseAI()) {
+  if (!usePremiumStore.getState().canUseAI()) {
     return { ok: false, error: 'AI limit reached this month' };
   }
+  return null;
+}
 
-  try {
-    const currency = useSettingsStore.getState().currency;
-    const context = _lastPlanContext || buildPlaybookContext(playbook);
+/** Build the Gemini request body for an Echo chat turn (shared by both paths). */
+function _buildEchoChatBody(
+  playbook: Playbook,
+  plan: EchoPlanResponse,
+  messages: { role: 'user' | 'echo'; text: string }[],
+) {
+  const currency = useSettingsStore.getState().currency;
+  const context = _lastPlanContext || buildPlaybookContext(playbook);
 
-    const systemPrompt = `You are Echo, a calm money companion inside Potraces — a Malaysian app. The person reading this is likely young and financially stressed. You just gave them a gentle, safety-first plan for their money. Now they want to talk it through.
+  const systemPrompt = `You are Echo, a calm money companion inside Potraces — a Malaysian app. The person reading this is likely young and financially stressed. You just gave them a gentle, safety-first plan for their money. Now they want to talk it through.
 
 VOICE (matters most):
 - Calm, quiet, plain. Like a steady older sibling who has been broke too. Never scold, never alarm, never imply they did anything wrong.
@@ -622,36 +624,47 @@ HOW TO RESPOND:
 
 BANNED WORDS — never use, anywhere: profit, loss, revenue, burn, pace, runway, discretionary, allocate, "you should", overspent, and the "%" symbol. No red/alarm framing, no judgement.`;
 
-    // Build multi-turn conversation
-    const contents: any[] = [
-      {
-        role: 'user' as const,
-        parts: [{ text: `Here is my full financial data:\n\n${context}\n\nHere is the plan you gave me:\n${JSON.stringify(plan)}\n\nI want to discuss it with you.` }],
-      },
-      {
-        role: 'model' as const,
-        parts: [{ text: `got it — ask me anything about the plan.` }],
-      },
-    ];
+  // Build multi-turn conversation
+  const contents: any[] = [
+    {
+      role: 'user' as const,
+      parts: [{ text: `Here is my full financial data:\n\n${context}\n\nHere is the plan you gave me:\n${JSON.stringify(plan)}\n\nI want to discuss it with you.` }],
+    },
+    {
+      role: 'model' as const,
+      parts: [{ text: `got it — ask me anything about the plan.` }],
+    },
+  ];
 
-    for (const msg of messages) {
-      contents.push({
-        role: msg.role === 'user' ? 'user' as const : 'model' as const,
-        parts: [{ text: msg.text }],
-      });
-    }
+  for (const msg of messages) {
+    contents.push({
+      role: msg.role === 'user' ? 'user' as const : 'model' as const,
+      parts: [{ text: msg.text }],
+    });
+  }
 
-    const data = await callGeminiAPI(
-      {
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents,
-        generationConfig: {
-          temperature: 0.5,
-          maxOutputTokens: 2048,
-        },
-      },
-      30_000,
-    );
+  return {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents,
+    generationConfig: {
+      temperature: 0.5,
+      maxOutputTokens: 2048,
+    },
+  };
+}
+
+export async function chatWithEcho(
+  playbook: Playbook,
+  plan: EchoPlanResponse,
+  messages: { role: 'user' | 'echo'; text: string }[],
+): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
+  const gate = _echoChatGate();
+  if (gate) return gate;
+
+  const premium = usePremiumStore.getState();
+
+  try {
+    const data = await callGeminiAPI(_buildEchoChatBody(playbook, plan, messages), 30_000);
 
     if (!data) {
       return { ok: false, error: "couldn't reach echo — check your internet" };
@@ -669,6 +682,53 @@ BANNED WORDS — never use, anywhere: profit, loss, revenue, burn, pace, runway,
     if (err?.name === 'AbortError') return { ok: false, error: 'request timed out' };
     return { ok: false, error: 'something went wrong — try again' };
   }
+}
+
+/**
+ * Streaming variant of chatWithEcho. Reuses streamGeminiText and calls `onToken`
+ * with the cumulative reply-so-far on each delta (REPLACE the displayed text each
+ * call). Echo chat replies are PLAIN TEXT — no action markup to strip.
+ *
+ * Resolves with the FINAL full reply so the caller's post-processing (appending
+ * the message to the thread) runs unchanged on the complete text.
+ *
+ * Falls back to the non-streaming chatWithEcho if streaming is unavailable,
+ * throws, or yields nothing — the chat is never left broken.
+ */
+export async function chatWithEchoStream(
+  playbook: Playbook,
+  plan: EchoPlanResponse,
+  messages: { role: 'user' | 'echo'; text: string }[],
+  onToken: (textSoFar: string) => void,
+): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
+  const gate = _echoChatGate();
+  if (gate) return gate;
+
+  const premium = usePremiumStore.getState();
+
+  let last = '';
+  let yieldedAny = false;
+  try {
+    const body = _buildEchoChatBody(playbook, plan, messages);
+    for await (const textSoFar of streamGeminiText(body, 30_000)) {
+      last = textSoFar;
+      yieldedAny = true;
+      onToken(textSoFar);
+    }
+  } catch (err: any) {
+    if (__DEV__) console.warn('[PlaybookAI] stream chat failed, falling back:', err);
+    // Fall back to the non-streaming path — never leave the chat broken.
+    return await chatWithEcho(playbook, plan, messages);
+  }
+
+  const finalText = last.trim();
+  if (yieldedAny && finalText) {
+    premium.incrementAiCalls();
+    return { ok: true, reply: finalText };
+  }
+
+  // Stream produced nothing usable — fall back.
+  return await chatWithEcho(playbook, plan, messages);
 }
 
 // ─── Lightweight Insight Call ────────────────────────────────

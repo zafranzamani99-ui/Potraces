@@ -777,6 +777,10 @@ const FinancialPulse: React.FC = () => {
         icon="activity"
         description={t.guide.descPulse}
         accent="#A688B8"
+        points={[
+          { icon: 'activity', text: t.guide.pulsePoint1 },
+          { icon: 'trending-up', text: t.guide.pulsePoint2 },
+        ]}
       />
     </View>
   );

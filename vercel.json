@@ -1,5 +1,12 @@
 {
   "buildCommand": null,
   "outputDirectory": "docs",
-  "framework": null
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "slug" }],
+      "destination": "/order.html"
+    }
+  ]
 }

@@ -85,7 +85,7 @@ Order lifecycle:
 Online Order Page (Vercel):
   1. Set up shop link in Dashboard → choose slug + display name
   2. Upload shop logo (stored in Supabase Storage)
-  3. Customers visit https://potraces.vercel.app/?slug=your-slug
+  3. Customers visit https://jejakbaki.my/?slug=your-slug
   4. Browse products with images, add to cart, submit order
   5. Order syncs to your app via Supabase realtime
   6. Push notification sent to seller
@@ -511,7 +511,7 @@ Static HTML hosted on Vercel at `docs/index.html`:
 - Orders inserted into `seller_orders` with `source: 'order_link'`
 - Push notification sent to seller via Supabase Edge Function
 - Features: image lightbox, skeleton loader, order history, WhatsApp CTA
-- URL pattern: `https://potraces.vercel.app/?slug={slug}`
+- URL pattern: `https://jejakbaki.my/?slug={slug}`
 
 ---
 

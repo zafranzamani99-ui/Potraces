@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <!-- Potraces wau — app-icon variant on sage, soft halo, slight flying tilt. -->
+  <rect width="1024" height="1024" fill="#5E7B6A"/>
+  <circle cx="512" cy="490" r="350" fill="#F1E7D3" opacity="0.05"/>
+  <circle cx="512" cy="490" r="262" fill="#F1E7D3" opacity="0.05"/>
+
+  <g transform="translate(0 96) rotate(-6 512 420)">
+    <!-- spire -->
+    <path d="M494 278 L512 92 L530 278 Z" fill="#DEAB22" stroke="#B2780A" stroke-width="5" stroke-linejoin="round"/>
+    <circle cx="512" cy="86" r="9" fill="#DEAB22"/>
+    <circle cx="512" cy="86" r="4" fill="#B2780A"/>
+    <rect x="486" y="268" width="52" height="14" rx="7" fill="#B2780A"/>
+
+    <!-- tail joint diamond -->
+    <path d="M512 428 L540 464 L512 502 L484 464 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="6" stroke-linejoin="round"/>
+
+    <!-- swallow-tail fins -->
+    <path d="M512 460 C470 535 432 600 374 660 C416 670 466 644 494 594 C504 560 510 510 512 460 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="7" stroke-linejoin="round"/>
+    <path d="M512 460 C554 535 592 600 650 660 C608 670 558 644 530 594 C520 560 514 510 512 460 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="7" stroke-linejoin="round"/>
+    <path d="M508 480 C478 546 448 598 402 646" stroke="#DEAB22" stroke-width="5" stroke-linecap="round"/>
+    <path d="M516 480 C546 546 576 598 622 646" stroke="#DEAB22" stroke-width="5" stroke-linecap="round"/>
+    <path d="M448 596 C432 588 420 592 414 606" stroke="#4F5104" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="411" cy="610" r="4" fill="#DEAB22"/>
+    <path d="M576 596 C592 588 604 592 610 606" stroke="#4F5104" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="613" cy="610" r="4" fill="#DEAB22"/>
+
+    <!-- swept wings — olive ink outline so the kite never melts into the sky -->
+    <path d="M130 560 C250 340 400 272 512 272 C624 272 774 340 894 560 C760 470 640 436 512 436 C384 436 264 470 130 560 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="8" stroke-linejoin="round"/>
+
+    <!-- inner gold trim echoing the silhouette -->
+    <path d="M220 500 C310 370 416 310 512 310 C608 310 714 370 804 500" stroke="#DEAB22" stroke-width="7" stroke-linecap="round"/>
+
+    <!-- wing filigree, left -->
+    <path d="M392 372 C352 354 318 360 300 392" stroke="#4F5104" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="296" cy="398" r="6" fill="#DEAB22"/>
+    <path d="M342 440 C312 428 290 432 278 454" stroke="#4F5104" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="274" cy="458" r="5" fill="#DEAB22"/>
+    <ellipse cx="430" cy="340" rx="7" ry="14" fill="#B2780A" opacity="0.85" transform="rotate(-35 430 340)"/>
+
+    <!-- wing filigree, right (mirrored) -->
+    <g transform="matrix(-1 0 0 1 1024 0)">
+      <path d="M392 372 C352 354 318 360 300 392" stroke="#4F5104" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="296" cy="398" r="6" fill="#DEAB22"/>
+      <path d="M342 440 C312 428 290 432 278 454" stroke="#4F5104" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="274" cy="458" r="5" fill="#DEAB22"/>
+      <ellipse cx="430" cy="340" rx="7" ry="14" fill="#B2780A" opacity="0.85" transform="rotate(-35 430 340)"/>
+    </g>
+
+    <!-- wing tip caps -->
+    <circle cx="133" cy="557" r="6" fill="#DEAB22"/>
+    <circle cx="891" cy="557" r="6" fill="#DEAB22"/>
+
+    <!-- floral medallion -->
+    <circle cx="512" cy="368" r="48" stroke="#DEAB22" stroke-width="4" opacity="0.6"/>
+    <g>
+      <ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22"/>
+      <ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(60 512 368)"/>
+      <ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(120 512 368)"/>
+      <ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(180 512 368)"/>
+      <ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(240 512 368)"/>
+      <ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(300 512 368)"/>
+    </g>
+    <circle cx="512" cy="368" r="11" fill="#B2780A"/>
+  </g>
+</svg>

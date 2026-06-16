@@ -99,6 +99,34 @@ export async function clearBusinessDataRemote() {
   }
 }
 
+/**
+ * Delete ALL of this user's PERSONAL cloud rows (the personal_* tables), leaving
+ * the auth user and any business data fully intact. Client-side; RLS scopes every
+ * delete to the signed-in user. A personal-only user who never signed in has no
+ * session and therefore no remote data — that's a no-op, not an error.
+ */
+export async function clearPersonalDataRemote(): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+  const userId = session.user.id;
+  const tables = [
+    'personal_transactions',
+    'personal_wallets',
+    'personal_wallet_transfers',
+    'personal_subscriptions',
+    'personal_budgets',
+    'personal_goals',
+    'personal_debts',
+    'personal_splits',
+    'personal_contacts',
+    'personal_savings_accounts',
+    'personal_receipts',
+  ];
+  await Promise.allSettled(
+    tables.map((t) => supabase.from(t).delete().eq('user_id', userId)),
+  );
+}
+
 export type SupabaseSellerProduct = {
   id: string;
   user_id: string;

@@ -8,13 +8,12 @@ import {
   Pressable,
   TextInput,
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   PanResponder,
   useWindowDimensions,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Animated, {
   FadeIn,
   useSharedValue,
@@ -256,7 +255,7 @@ const EchoInlineChat: React.FC<Props> = ({
         <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropAnimStyle]} pointerEvents="none" />
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
           style={styles.kav}
           pointerEvents="box-none"
         >

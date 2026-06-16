@@ -33,6 +33,18 @@ export const PROTECTED_KEYS = [
 const KEEP_DAYS = 5;
 const PREFIX = 'bak:';
 
+// The personal-data subset of PROTECTED_KEYS (excludes business/seller + shared
+// category storage) — used so a personal-only account deletion purges the right
+// backups without nuking business backups.
+export const PERSONAL_BACKUP_KEYS = [
+  'debt-storage',
+  'personal-storage',
+  'wallet-storage',
+  'savings-storage',
+  'playbook-storage',
+  'notes-storage',
+];
+
 function dayStamp(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -79,6 +91,23 @@ async function prune(key: string): Promise<void> {
       const oldest = stamps.shift();
       if (oldest) await AsyncStorage.removeItem(bakKey(key, oldest));
     }
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
+ * Delete ALL backup snapshots (incl. prerestore-*) for the given store keys —
+ * defaults to every protected store. Called on account/data deletion so the
+ * deletion right is complete (the backups hold copies of the same data).
+ */
+export async function purgeBackups(keys: string[] = PROTECTED_KEYS): Promise<void> {
+  try {
+    const all = await AsyncStorage.getAllKeys();
+    const toRemove = all.filter(
+      (k) => k.startsWith(PREFIX) && keys.some((key) => k.startsWith(`${PREFIX}${key}:`)),
+    );
+    if (toRemove.length) await AsyncStorage.multiRemove(toRemove);
   } catch {
     /* best-effort */
   }

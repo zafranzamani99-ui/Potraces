@@ -279,7 +279,7 @@ The stores use `immer` middleware, which means mutations are atomic within a sin
 
 ## 10. Order Link / Public Page Offline
 
-The public order page (`docs/index.html`, hosted on Vercel at `potraces.vercel.app`) is a **static HTML page** that fetches data from Supabase REST API client-side.
+The public order page (`docs/index.html`, hosted on Vercel at `jejakbaki.my`) is a **static HTML page** that fetches data from Supabase REST API client-side.
 
 ### Customer opens with bad network:
 

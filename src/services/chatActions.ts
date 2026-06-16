@@ -82,6 +82,9 @@ export interface ChatAction {
   walletType?: 'bank' | 'ewallet' | 'credit'; // for add_wallet
   walletColor?: string;    // for add_wallet
   walletIcon?: string;     // for add_wallet
+  amend?: boolean;         // re-emit to update an existing pending chip (same description)
+  clientId?: string;       // stable id stamped when queued (id-based queue ops)
+  preparedAt?: number;     // epoch ms when the chip was prepared (date honesty)
 }
 
 export interface ActionResult {
@@ -90,12 +93,55 @@ export interface ActionResult {
   action: ChatAction;
 }
 
+/** What a successful executeAction mutated, so undo can be exact. */
+export interface ActionReceipt {
+  transactionIds?: string[];   // txns created — undo via personalStore.deleteTransaction
+  debtId?: string;
+  debtIds?: string[];          // debts created (add_debt / split_bill) — undo via deleteDebt
+  debtPaymentId?: string;      // payment appended (if reversible)
+  subscriptionId?: string;
+  // edit_transaction: pre-edit values of the fields the edit changed — undo RESTORES
+  // (never deletes) via updateTransaction(id, prev), which self-reconciles the wallet.
+  edited?: { id: string; prev: Partial<Transaction> };
+  // delete_transaction: full snapshot(s) of what was deleted — undo re-adds them and
+  // re-applies the wallet adjustment the same way the add paths do.
+  deletedTransactions?: Transaction[];
+}
+
+export interface ExecuteResult {
+  success: boolean;
+  message: string;
+  action: ChatAction;
+  receipt?: ActionReceipt;     // what was mutated
+  noop?: boolean;              // true => nothing saved (e.g. amount<=0); success must be false
+}
+
 const DESTRUCTIVE_ACTIONS: Set<ChatActionType> = new Set([
   'delete_transaction', 'delete_budget', 'delete_debt', 'delete_goal',
   'forgive_debt', 'transfer', 'cancel_subscription',
   'edit_transaction', 'edit_budget', 'edit_debt',
   'repay_credit', 'withdraw_goal',
 ]);
+
+/** Action types the owner must tap individually — excluded from Save-All. */
+export const DESTRUCTIVE_ACTION_TYPES: ReadonlySet<ChatActionType> = DESTRUCTIVE_ACTIONS;
+
+export function isDestructiveAction(a: ChatAction): boolean {
+  return DESTRUCTIVE_ACTIONS.has(a.type);
+}
+
+/**
+ * Strip model-control tokens from USER-authored text so a user can't inject an
+ * [ACTION] block (or a stray confirmation marker) that parseActions would later
+ * pick up. parseActions only ever runs on MODEL output (see moneyChat.ts), and
+ * this is the matching guard for the user side.
+ */
+export function sanitizeUserText(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/\[\/?ACTION\]/gi, '')
+    .trim();
+}
 
 export interface PendingAction {
   action: ChatAction;
@@ -111,6 +157,18 @@ export function classifyActions(actions: ChatAction[]): PendingAction[] {
 
 // ─── Parser ──────────────────────────────────────────────
 
+// Action types that legitimately carry no `amount` field — used by both the
+// parser (accept the block without an amount) and the executor (skip the
+// amount guard). Single source of truth.
+const PARSE_NO_AMOUNT_TYPES: ChatActionType[] = [
+  'delete_transaction', 'edit_transaction',
+  'delete_budget', 'edit_budget',
+  'delete_debt', 'edit_debt',
+  'forgive_debt', 'cancel_subscription', 'update_subscription',
+  'pause_goal', 'archive_goal', 'delete_goal',
+  'pause_subscription', 'add_wallet', 'create_goal',
+];
+
 const ACTION_REGEX = /\[ACTION\]([\s\S]*?)\[\/ACTION\]/g;
 
 /** Strip markdown code fences that the model might wrap around JSON. */
@@ -121,19 +179,21 @@ function cleanJson(raw: string): string {
   return s.trim();
 }
 
+/**
+ * Parse [ACTION] blocks out of MODEL OUTPUT only.
+ *
+ * SECURITY: never run this on user-authored text. The owner's own messages must
+ * not be able to inject an [ACTION] block — user input is run through
+ * `sanitizeUserText` (which strips [ACTION]/[/ACTION]) before it is echoed or
+ * persisted. The only callers of parseActions are on Gemini's response text
+ * (moneyChat's stream display + MoneyChat's post-processing of the final reply).
+ */
 export function parseActions(text: string): { cleanText: string; actions: ChatAction[] } {
   const actions: ChatAction[] = [];
   const cleanText = text.replace(ACTION_REGEX, (_, json) => {
     try {
       const parsed = JSON.parse(cleanJson(json));
-      const NO_AMOUNT_TYPES: ChatActionType[] = [
-            'delete_transaction', 'edit_transaction',
-            'delete_budget', 'edit_budget',
-            'delete_debt', 'edit_debt',
-            'pause_goal', 'archive_goal', 'delete_goal',
-            'pause_subscription', 'add_wallet',
-          ];
-      if (parsed.type && (typeof parsed.amount === 'number' || NO_AMOUNT_TYPES.includes(parsed.type))) {
+      if (parsed.type && (typeof parsed.amount === 'number' || PARSE_NO_AMOUNT_TYPES.includes(parsed.type))) {
         actions.push(parsed as ChatAction);
       }
     } catch (e) {
@@ -143,6 +203,138 @@ export function parseActions(text: string): { cleanText: string; actions: ChatAc
   }).trim();
 
   return { cleanText, actions };
+}
+
+// ─── Soft pre-save checks ────────────────────────────────
+// These only INFORM the owner before they tap to save a chip — they never
+// block and never change what gets saved. Used to surface a calm heads-up.
+
+const DUP_WINDOW_MS = 48 * 60 * 60 * 1000; // 48h
+
+const normDesc = (s?: string) => (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+
+/** Fuzzy description match that avoids 1–2 char substring false positives. */
+function descMatches(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  // Only treat a substring as a match when the shorter side is meaningful
+  // (>= 3 chars) — guards against "a"/"e" matching everything.
+  const short = a.length <= b.length ? a : b;
+  const long = short === a ? b : a;
+  if (short.length < 3) return false;
+  return long.includes(short);
+}
+
+/** True if a near-identical transaction was already logged in the last ~48h. */
+export function isLikelyDuplicate(action: ChatAction): boolean {
+  if (action.type !== 'add_expense' && action.type !== 'add_income') return false;
+  if (!(action.amount > 0)) return false;
+  const wantType = action.type === 'add_income' ? 'income' : 'expense';
+  const target = normDesc(action.description);
+  if (!target) return false;
+  const now = Date.now();
+  return usePersonalStore.getState().transactions.some((t) => {
+    if (t.type !== wantType) return false;
+    if (Math.abs(t.amount - action.amount) > 0.001) return false;
+    const d = t.date instanceof Date ? t.date : new Date(t.date);
+    const age = now - d.getTime();
+    if (age < 0 || age > DUP_WINDOW_MS) return false;
+    return descMatches(normDesc(t.description), target);
+  });
+}
+
+/** True if the same add_expense/add_income is already sitting in the pending queue. */
+export function isDuplicateOfPending(action: ChatAction, pending: ChatAction[]): boolean {
+  if (action.type !== 'add_expense' && action.type !== 'add_income') return false;
+  if (!(action.amount > 0)) return false;
+  const target = normDesc(action.description);
+  if (!target) return false;
+  return pending.some((p) => {
+    if (p === action) return false;
+    if (p.clientId && action.clientId && p.clientId === action.clientId) return false;
+    if (p.type !== action.type) return false;
+    if (Math.abs((p.amount || 0) - action.amount) > 0.001) return false;
+    return descMatches(normDesc(p.description), target);
+  });
+}
+
+/** True when an expense is unusually large vs the user's recent spending. */
+export function isUnusualAmount(action: ChatAction): boolean {
+  if (action.type !== 'add_expense' && action.type !== 'add_bnpl') return false;
+  if (!(action.amount > 0)) return false;
+  const amounts = usePersonalStore.getState().transactions
+    .filter((t) => t.type === 'expense' && t.amount > 0)
+    .map((t) => t.amount)
+    .sort((a, b) => a - b);
+  let threshold = 2000;
+  // Need a real sample before trusting a median (guards tiny/empty datasets).
+  if (amounts.length >= 5) {
+    const median = amounts[Math.floor(amounts.length / 2)];
+    if (median > 0) threshold = Math.max(2000, median * 5);
+  }
+  return action.amount > threshold;
+}
+
+// Common Malaysian recurring merchants — nudge to "make it a subscription"
+// even for a month-1 user who hasn't built 3 months of history yet.
+const KNOWN_RECURRING = [
+  'netflix', 'spotify', 'astro', 'unifi', 'maxis', 'celcom', 'digi', 'umobile',
+  'tnb', 'air selangor', 'syabas', 'indah water', 'gym', 'youtube', 'icloud',
+  'disney', 'viu', 'iflix', 'apple music', 'youtube premium', 'amazon prime',
+  'adobe', 'microsoft 365', 'office 365', 'dropbox', 'notion', 'chatgpt',
+  'time internet', 'yes', 'tunetalk', 'hotlink', 'xpax',
+];
+
+/** True if a description matches a well-known recurring merchant/service.
+ * Short tokens (< 5 chars, e.g. "yes", "digi", "tnb") match on a whole word only
+ * — never as a substring — so "yesterday lunch" no longer triggers a recurring
+ * nudge. Longer tokens keep the fuzzy substring match. */
+export function isKnownRecurringMerchant(description: string): boolean {
+  const d = normDesc(description);
+  if (!d) return false;
+  const words = d.split(/\s+/);
+  return KNOWN_RECURRING.some((m) =>
+    m.length < 5 ? words.includes(m) : descMatches(d, m)
+  );
+}
+
+/** If a description looks like a recurring expense the user keeps logging by
+ * hand (appears across 2+ distinct months, OR is a known recurring merchant),
+ * returns a summary (month count + median amount); else null. Used to offer
+ * "make it recurring". Loosened from 3 → 2 months so it fires earlier. */
+export function recurringCandidate(description: string): { months: number; amount: number } | null {
+  const target = normDesc(description);
+  if (target.length < 2) return null;
+  const months = new Set<string>();
+  const amounts: number[] = [];
+  for (const t of usePersonalStore.getState().transactions) {
+    if (t.type !== 'expense') continue;
+    if (!descMatches(normDesc(t.description), target)) continue;
+    const d = t.date instanceof Date ? t.date : new Date(t.date);
+    if (isNaN(d.getTime())) continue;
+    months.add(`${d.getFullYear()}-${d.getMonth()}`);
+    amounts.push(t.amount);
+  }
+  if (amounts.length === 0) return null;
+  const known = isKnownRecurringMerchant(description);
+  // Known merchant nudges after a single logged month; unknown needs 2+ months.
+  if (!known && months.size < 2) return null;
+  amounts.sort((a, b) => a - b);
+  return { months: months.size, amount: amounts[Math.floor(amounts.length / 2)] };
+}
+
+/** Heads-up reshape: does this entry read like a wallet→wallet transfer? */
+export function looksLikeTransfer(a: ChatAction): boolean {
+  if (a.type === 'transfer') return false; // already one
+  const text = `${a.description || ''}`.toLowerCase();
+  return /\b(transfer|pindah|pindahkan|move to|moved to|tukar duit)\b/.test(text);
+}
+
+/** Heads-up reshape: does this entry read like a person-debt rather than a plain txn? */
+export function looksLikeDebt(a: ChatAction): boolean {
+  if (a.type === 'add_debt' || a.type === 'debt_update' || a.type === 'split_bill') return false;
+  const text = `${a.description || ''}`.toLowerCase();
+  return /\b(owes?|owed|hutang|pinjam|pinjamkan|lend|lent|borrow|borrowed|bayar balik)\b/.test(text);
 }
 
 // ─── Wallet Resolver ─────────────────────────────────────
@@ -163,6 +355,47 @@ function resolveDate(dateStr?: string): Date {
   if (!dateStr) return new Date();
   const d = new Date(dateStr);
   return isNaN(d.getTime()) ? new Date() : d;
+}
+
+// ─── Target resolver (preview + disambiguation for delete/edit) ──────────
+
+export interface ResolvedTarget {
+  status: 'one' | 'many' | 'none';
+  match?: { id: string; description: string; amount: number; date: Date; type: string };
+  candidates?: Array<{ id: string; description: string; amount: number; date: Date; type: string }>; // when 'many', most-recent first
+}
+
+/** Resolve the saved transaction(s) a delete_transaction/edit_transaction action
+ * targets, so the UI can preview the matched row before confirm and offer a pick
+ * list on multiple matches. Mirrors the matching filter used by the executor. */
+export function resolveTargetTransaction(a: ChatAction): ResolvedTarget {
+  if (a.type !== 'delete_transaction' && a.type !== 'edit_transaction') return { status: 'none' };
+  const { transactions } = usePersonalStore.getState();
+  const desc = (a.description || '').toLowerCase();
+  const matches = transactions
+    .filter((t) => {
+      if (a.matchType && t.type !== a.matchType) return false;
+      if (a.amount && a.amount > 0 && Math.abs(t.amount - a.amount) > 0.01) return false;
+      if (desc && !t.description.toLowerCase().includes(desc)) return false;
+      if (a.date) {
+        const target = resolveDate(a.date);
+        const td = t.date instanceof Date ? t.date : new Date(t.date);
+        if (format(target, 'yyyy-MM-dd') !== format(td, 'yyyy-MM-dd')) return false;
+      }
+      return true;
+    })
+    .map((t) => ({
+      id: t.id,
+      description: t.description,
+      amount: t.amount,
+      date: t.date instanceof Date ? t.date : new Date(t.date),
+      type: t.type,
+    }))
+    .sort((x, y) => y.date.getTime() - x.date.getTime()); // most-recent first
+
+  if (matches.length === 0) return { status: 'none' };
+  if (matches.length === 1) return { status: 'one', match: matches[0] };
+  return { status: 'many', match: matches[0], candidates: matches };
 }
 
 // ─── Budget impact helper ────────────────────────────────
@@ -196,9 +429,29 @@ function uniqueId(suffix?: string): string {
 
 // ─── Executor ────────────────────────────────────────────
 
-export function executeAction(action: ChatAction): ActionResult {
+// Types that legitimately carry no amount (lifecycle/delete/edit ops).
+const NO_AMOUNT_TYPES: Set<ChatActionType> = new Set(PARSE_NO_AMOUNT_TYPES);
+
+export function executeAction(action: ChatAction): ExecuteResult {
   const mode: AppMode = useAppStore.getState().mode;
-  const actionDate = resolveDate(action.date);
+  // Date honesty: a chip saved days after it was prepared books on the day it
+  // was meant for — explicit date, else when it was prepared, else now.
+  const actionDate = action.date
+    ? resolveDate(action.date)
+    : action.preparedAt
+      ? new Date(action.preparedAt)
+      : new Date();
+
+  // Amount guard: any amount-bearing action with a missing / non-positive /
+  // non-finite amount is a no-op — never report a phantom "saved RM0".
+  if (!NO_AMOUNT_TYPES.has(action.type) && !(typeof action.amount === 'number' && isFinite(action.amount) && action.amount > 0)) {
+    return {
+      success: false,
+      noop: true,
+      message: 'This one needs an amount before it can be saved.',
+      action,
+    };
+  }
 
   // Learn category + wallet associations from executed actions
   const learn = useLearningStore.getState();
@@ -209,7 +462,7 @@ export function executeAction(action: ChatAction): ActionResult {
     switch (action.type) {
       case 'add_expense': {
         const walletId = findWalletId(action.wallet);
-        usePersonalStore.getState().addTransaction({
+        const txId = usePersonalStore.getState().addTransaction({
           amount: action.amount,
           description: action.description,
           category: action.category || 'other',
@@ -233,12 +486,13 @@ export function executeAction(action: ChatAction): ActionResult {
           success: true,
           message: `Added expense: ${action.description} — RM ${action.amount.toFixed(2)}${impact}${pbNote}`,
           action,
+          receipt: { transactionIds: txId ? [txId] : [] },
         };
       }
 
       case 'add_income': {
         const walletId = findWalletId(action.wallet);
-        usePersonalStore.getState().addTransaction({
+        const txId = usePersonalStore.getState().addTransaction({
           amount: action.amount,
           description: action.description,
           category: action.category || 'income',
@@ -256,12 +510,13 @@ export function executeAction(action: ChatAction): ActionResult {
           success: true,
           message: incomeMsg,
           action,
+          receipt: { transactionIds: txId ? [txId] : [] },
         };
       }
 
       case 'add_debt': {
         const debtType = action.debtType || 'i_owe';
-        useDebtStore.getState().addDebt({
+        const debtId = useDebtStore.getState().addDebt({
           contact: {
             id: uniqueId(),
             name: action.person || 'someone',
@@ -278,6 +533,7 @@ export function executeAction(action: ChatAction): ActionResult {
           success: true,
           message: `${label}: ${action.person || 'someone'} — RM ${action.amount.toFixed(2)} (${action.description})`,
           action,
+          receipt: debtId ? { debtId, debtIds: [debtId] } : undefined,
         };
       }
 
@@ -317,7 +573,7 @@ export function executeAction(action: ChatAction): ActionResult {
 
         // Also record the full amount as an expense
         const walletId = findWalletId(action.wallet);
-        usePersonalStore.getState().addTransaction({
+        const splitTxId = usePersonalStore.getState().addTransaction({
           amount: action.amount,
           description: action.description,
           category: action.category || 'food',
@@ -342,8 +598,9 @@ export function executeAction(action: ChatAction): ActionResult {
           mode,
         });
         // Create individual debts for each person
+        const splitDebtIds: string[] = [];
         for (const name of people) {
-          useDebtStore.getState().addDebt({
+          const dId = useDebtStore.getState().addDebt({
             contact: { id: uniqueId(name), name, isFromPhone: false },
             type: 'they_owe',
             totalAmount: perPerson,
@@ -352,11 +609,16 @@ export function executeAction(action: ChatAction): ActionResult {
             mode,
             splitId,
           });
+          if (dId) splitDebtIds.push(dId);
         }
         return {
           success: true,
           message: `Split RM ${action.amount.toFixed(2)} for "${action.description}" — ${people.length} people owe RM ${perPerson.toFixed(2)} each (expense recorded)`,
           action,
+          receipt: {
+            ...(splitTxId ? { transactionIds: [splitTxId] } : {}),
+            ...(splitDebtIds.length ? { debtIds: splitDebtIds } : {}),
+          },
         };
       }
 
@@ -374,21 +636,58 @@ export function executeAction(action: ChatAction): ActionResult {
         if (!matchingDebt) {
           return { success: false, message: `No active debt found for ${personName}.`, action };
         }
+        // Cap the payment at what's actually left so the wallet move never
+        // exceeds the debt and remaining never goes negative.
+        const before = Math.max(0, matchingDebt.totalAmount - matchingDebt.paidAmount);
+        if (before <= 0) {
+          return { success: false, message: `${personName}'s debt is already settled.`, action };
+        }
+        const payAmount = Math.min(action.amount, before);
         const walletId = findWalletId(action.wallet);
-        useDebtStore.getState().addPayment(matchingDebt.id, {
-          amount: action.amount,
+
+        // they_owe (they pay me back) → money comes IN. i_owe (I pay them) → money goes OUT.
+        // Mirror DebtTracking.processPayment: create the linked transaction and let the
+        // CALLER move the wallet (single-owner contract — addPayment never touches it).
+        const txType: 'income' | 'expense' = matchingDebt.type === 'they_owe' ? 'income' : 'expense';
+        const txDesc = action.description || `${matchingDebt.type === 'they_owe' ? 'repayment from' : 'payment to'} ${personName}`;
+        const linkedTxId = usePersonalStore.getState().addTransaction({
+          amount: payAmount,
+          description: txDesc,
+          category: matchingDebt.type === 'they_owe' ? 'debt_paid' : 'debt_payment',
+          type: txType,
+          date: actionDate,
+          mode,
+          walletId,
+        });
+        if (walletId) {
+          if (txType === 'income') useWalletStore.getState().addToWallet(walletId, payAmount);
+          else useWalletStore.getState().deductFromWallet(walletId, payAmount);
+        }
+
+        const paymentId = useDebtStore.getState().addPayment(matchingDebt.id, {
+          amount: payAmount,
           date: actionDate,
           note: action.description || 'payment via chat',
           walletId,
+          linkedTransactionId: linkedTxId || undefined,
         });
-        const remaining = matchingDebt.totalAmount - matchingDebt.paidAmount - action.amount;
+        // If the payment somehow didn't take, roll back the transaction + wallet
+        // so we don't leave invisible cash. (addTransaction owns its own wallet
+        // reversal via deleteTransaction.)
+        if (!paymentId) {
+          if (linkedTxId) usePersonalStore.getState().deleteTransaction(linkedTxId);
+          return { success: false, message: `Couldn't record the payment for ${personName}.`, action };
+        }
+
+        const remaining = Math.max(0, before - payAmount);
         const remainMsg = remaining <= 0
           ? `${personName}'s debt is now settled!`
           : `${personName} has RM ${remaining.toFixed(2)} left`;
         return {
           success: true,
-          message: `Recorded RM ${action.amount.toFixed(2)} payment — ${remainMsg}`,
+          message: `Recorded RM ${payAmount.toFixed(2)} payment — ${remainMsg}`,
           action,
+          receipt: { debtId: matchingDebt.id, debtPaymentId: paymentId, transactionIds: linkedTxId ? [linkedTxId] : [] },
         };
       }
 
@@ -469,6 +768,7 @@ export function executeAction(action: ChatAction): ActionResult {
           success: true,
           message: `Forgiven ${personName}'s debt of RM ${remaining.toFixed(2)} — marked as settled`,
           action,
+          receipt: { debtId: matchingDebt.id },
         };
       }
 
@@ -510,7 +810,7 @@ export function executeAction(action: ChatAction): ActionResult {
           return { success: false, message: `"${action.creditWallet || action.wallet}" is not a credit wallet.`, action };
         }
         useWalletStore.getState().useCredit(walletId, action.amount);
-        usePersonalStore.getState().addTransaction({
+        const bnplTxId = usePersonalStore.getState().addTransaction({
           amount: action.amount,
           description: action.description,
           category: action.category || 'shopping',
@@ -525,6 +825,7 @@ export function executeAction(action: ChatAction): ActionResult {
           success: true,
           message: `BNPL purchase: ${action.description} — RM ${action.amount.toFixed(2)} on ${wallet.name} (RM ${available.toFixed(2)} available)`,
           action,
+          receipt: bnplTxId ? { transactionIds: [bnplTxId] } : undefined,
         };
       }
 
@@ -543,6 +844,11 @@ export function executeAction(action: ChatAction): ActionResult {
           useWalletStore.getState().deductFromWallet(fromId, action.amount);
         }
         useWalletStore.getState().repayCredit(creditId, action.amount);
+        // Record the source→credit movement so reconcileWalletBalances accounts
+        // for the source deduction (mirrors WalletManagement.handleRepay).
+        if (fromId) {
+          useWalletStore.getState().logActivity(fromId, creditId, action.amount, 'repayment');
+        }
         const newUsed = Math.max(0, (creditWallet.usedCredit || 0) - action.amount);
         return {
           success: true,
@@ -671,11 +977,8 @@ export function executeAction(action: ChatAction): ActionResult {
         const MAX_DELETE_BATCH = 5;
         const toDelete = action.deleteAll ? matches.slice(0, MAX_DELETE_BATCH) : [matches[matches.length - 1]];
         for (const tx of toDelete) {
-          // Reverse wallet impact
-          if (tx.walletId) {
-            if (tx.type === 'expense') useWalletStore.getState().addToWallet(tx.walletId, tx.amount);
-            else if (tx.type === 'income') useWalletStore.getState().deductFromWallet(tx.walletId, tx.amount);
-          }
+          // Wallet rollback is owned by personalStore.deleteTransaction — do not
+          // reverse the wallet here (that double-counted the balance).
           // Clean up playbook links
           if (tx.playbookLinks?.length) {
             try { usePlaybookStore.getState().unlinkAllFromTransaction(tx.id); } catch (_) {}
@@ -690,6 +993,9 @@ export function executeAction(action: ChatAction): ActionResult {
             ? `Deleted: ${toDelete[0].description} — RM ${toDelete[0].amount.toFixed(2)} (${toDelete[0].type}, ${format(toDelete[0].date instanceof Date ? toDelete[0].date : new Date(String(toDelete[0].date)), 'dd MMM')})`
             : `Deleted ${count} transactions totalling RM ${totalAmt.toFixed(2)}`,
           action,
+          // Full snapshots so undo can re-add each record AND re-apply its wallet
+          // adjustment exactly like the add path (never re-delete an absent id).
+          receipt: { deletedTransactions: toDelete.map((t) => ({ ...t })) },
         };
       }
 
@@ -722,17 +1028,17 @@ export function executeAction(action: ChatAction): ActionResult {
         if (Object.keys(updates).length === 0) {
           return { success: false, message: 'Nothing to change — provide newAmount, newDescription, newCategory, or newDate.', action };
         }
-        // Adjust wallet if amount changed
-        if (updates.amount && tx.walletId) {
-          const diff = updates.amount - tx.amount;
-          if (tx.type === 'expense') {
-            if (diff > 0) useWalletStore.getState().deductFromWallet(tx.walletId, diff);
-            else if (diff < 0) useWalletStore.getState().addToWallet(tx.walletId, Math.abs(diff));
-          } else if (tx.type === 'income') {
-            if (diff > 0) useWalletStore.getState().addToWallet(tx.walletId, diff);
-            else if (diff < 0) useWalletStore.getState().deductFromWallet(tx.walletId, Math.abs(diff));
-          }
-        }
+        // Snapshot the PRE-edit value of exactly the fields this edit changes, so
+        // undo can RESTORE them (updateTransaction self-reconciles the wallet) —
+        // never delete the record (that was data loss).
+        const prev: Partial<Transaction> = {};
+        if (updates.amount !== undefined) prev.amount = tx.amount;
+        if (updates.description !== undefined) prev.description = tx.description;
+        if (updates.category !== undefined) prev.category = tx.category;
+        if (updates.date !== undefined) prev.date = tx.date instanceof Date ? tx.date : new Date(tx.date);
+        // Wallet reconciliation for an amount change is owned by
+        // personalStore.updateTransaction (reverses old, applies new). Do not
+        // adjust the wallet here — that double-applied the delta.
         usePersonalStore.getState().updateTransaction(tx.id, updates);
         // Keep the playbook drain amount in sync with an edited amount.
         if (updates.amount !== undefined) syncLinkAmount(tx.id, updates.amount);
@@ -745,6 +1051,7 @@ export function executeAction(action: ChatAction): ActionResult {
           success: true,
           message: `Updated "${tx.description}": ${changes.join(', ')}`,
           action,
+          receipt: { edited: { id: tx.id, prev } },
         };
       }
 
@@ -822,6 +1129,7 @@ export function executeAction(action: ChatAction): ActionResult {
           success: true,
           message: `Debt deleted — ${personName}'s RM ${matchingDebt.totalAmount.toFixed(2)}`,
           action,
+          receipt: { debtId: matchingDebt.id },
         };
       }
 
@@ -854,6 +1162,7 @@ export function executeAction(action: ChatAction): ActionResult {
           success: true,
           message: `Debt updated — ${finalName} now RM ${finalAmt.toFixed(2)}`,
           action,
+          receipt: { debtId: matchingDebt.id },
         };
       }
 
@@ -1087,9 +1396,12 @@ RULES:
 - Only include ACTION blocks when the user CLEARLY asks to add/record/create/delete/edit something
 - NEVER include ACTION blocks when the user is just asking questions about their finances
 - wallet is optional — only include if the user mentions a specific wallet/bank
-- Always confirm what you did in your text response
+- CONFIRMATION HONESTY: you NEVER save anything — you only PREPARE a chip the owner taps to save. NEVER say "recorded", "saved", "added", "done", "dah record", "dah simpan". Say "lined up" / "dah sedia" and ask them to tap to confirm.
 - Use RM amounts — always a number, never a string
+- ECHO BACK ambiguous amounts you computed so the owner can sanity-check the number on the chip: "RM3.50 x2 = RM7", "1.2k = RM1200", "half of RM90 = RM45". Put the final figure in the amount field.
+- ONE [ACTION] block per item. A message with several items ("nasi RM8 and teh RM2") becomes SEPARATE [ACTION] blocks — one per entry — never one block summing them.
 - You CAN include MULTIPLE action blocks in one response
+- You can also reshape money between forms: a wallet-to-wallet move is a "transfer", money between you and a person is a "debt" (add_debt / debt_update), and a shared bill is a "split_bill". Pick the form that matches what the owner described.
 - If info is MISSING (e.g. "share with 5 people" but no names), DO NOT guess — ASK the user for the names first
 - For shared expenses: think about the FULL picture. Subscription sharing = 1 subscription action + multiple add_debt actions
 - For debt_update: ALWAYS check the debts context to find the right person. If no matching debt exists, tell the user.
@@ -1133,8 +1445,24 @@ Response: Adding RM 500 to your Japan Trip goal!
 
 Past date:
 User: "semalam lunch rm12"
-Response: Got it — recording yesterday's lunch.
+Response: Got it — yesterday's lunch, RM12. Tap to confirm.
 [ACTION]{"type":"add_expense","amount":12,"description":"lunch","category":"food","date":"2026-03-12"}[/ACTION]
+
+Multi-item — ONE block each, echo the math:
+User: "nasi goreng rm8, teh ais rm2, parking rm3"
+Response: Lined up 3 — RM8 nasi goreng, RM2 teh ais, RM3 parking (RM13 total). Tap each to confirm.
+[ACTION]{"type":"add_expense","amount":8,"description":"nasi goreng","category":"food"}[/ACTION]
+[ACTION]{"type":"add_expense","amount":2,"description":"teh ais","category":"food"}[/ACTION]
+[ACTION]{"type":"add_expense","amount":3,"description":"parking","category":"transport"}[/ACTION]
+
+Echo computed amount:
+User: "kopi rm3.50 x 2"
+Response: RM3.50 x2 = RM7 for kopi — tap to confirm.
+[ACTION]{"type":"add_expense","amount":7,"description":"kopi x2","category":"food"}[/ACTION]
+
+User: "gaji masuk 1.2k"
+Response: 1.2k = RM1,200 income — tap to confirm.
+[ACTION]{"type":"add_income","amount":1200,"description":"gaji","category":"income"}[/ACTION]
 
 Cancel subscription:
 User: "cancel gym subscription"

@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-const BASE_URL = 'https://potraces.vercel.app/r';
+const BASE_URL = 'https://jejakbaki.my/r';
 
 const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/0/1
 function generateCode(): string {

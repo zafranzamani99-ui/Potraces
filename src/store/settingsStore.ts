@@ -2,14 +2,12 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import { startOfMonth } from 'date-fns';
 import { usePersonalStore } from './personalStore';
 import { useBusinessStore } from './businessStore';
 import { useDebtStore } from './debtStore';
 import { useCRMStore } from './crmStore';
 import { useAppStore } from './appStore';
 import { useWalletStore } from './walletStore';
-import { usePremiumStore } from './premiumStore';
 import { useStallStore } from './stallStore';
 import { useSellerStore, clearSellerCaches } from './sellerStore';
 import { useCategoryStore } from './categoryStore';
@@ -24,7 +22,8 @@ import { usePlaybookStore } from './playbookStore';
 import { useAIInsightsStore } from './aiInsightsStore';
 import { useReceiptStore } from './receiptStore';
 import { useSavingsStore } from './savingsStore';
-import { clearBusinessDataRemote, signOut } from '../services/supabase';
+import { clearBusinessDataRemote, clearPersonalDataRemote, signOut } from '../services/supabase';
+import { purgeBackups, PERSONAL_BACKUP_KEYS } from '../services/storageBackup';
 import { clearProfileCache } from '../services/sellerSync';
 import { DEFAULT_PAYMENT_METHODS } from '../constants/taxCategories';
 import { DEFAULT_COST_CATEGORIES } from '../constants';
@@ -108,6 +107,7 @@ interface SettingsState {
   currency: string;
   hapticEnabled: boolean;
   notificationsEnabled: boolean;
+  echoDailyCheckin: boolean;
   businessModeEnabled: boolean;
   defaultMode: 'personal' | 'business';
   themePreference: ThemePreference;
@@ -153,6 +153,7 @@ interface SettingsState {
   setUserName: (name: string) => void;
   setCurrency: (currency: string) => void;
   setHapticEnabled: (enabled: boolean) => void;
+  setEchoDailyCheckin: (enabled: boolean) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
   setBusinessModeEnabled: (enabled: boolean) => void;
   setDefaultMode: (mode: 'personal' | 'business') => void;
@@ -168,7 +169,8 @@ interface SettingsState {
   dismissHint: (id: string) => void;
   setBiometricLockEnabled: (value: boolean) => void;
   setBiometricLockTimeoutMin: (value: number) => void;
-  clearAllData: () => Promise<void>;
+  /** Wipe ALL personal data (local + cloud). Never touches business data. */
+  clearPersonalData: () => Promise<void>;
   clearBusinessData: () => Promise<void>;
 }
 
@@ -179,6 +181,7 @@ export const useSettingsStore = create<SettingsState>()(
       currency: 'RM',
       hapticEnabled: true,
       notificationsEnabled: true,
+      echoDailyCheckin: false,
       businessModeEnabled: false,
       defaultMode: 'personal',
       themePreference: 'light',
@@ -235,6 +238,7 @@ export const useSettingsStore = create<SettingsState>()(
       setUserName: (userName) => set({ userName }),
       setCurrency: (currency) => set({ currency }),
       setHapticEnabled: (hapticEnabled) => set({ hapticEnabled }),
+      setEchoDailyCheckin: (echoDailyCheckin) => set({ echoDailyCheckin }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setBusinessModeEnabled: (businessModeEnabled) => set({ businessModeEnabled }),
       setDefaultMode: (defaultMode) => set({ defaultMode }),
@@ -271,47 +275,36 @@ export const useSettingsStore = create<SettingsState>()(
         dismissedHints: s.dismissedHints.includes(id) ? s.dismissedHints : [...s.dismissedHints, id],
       })),
 
-      clearAllData: async () => {
-        // 1. Reset every persisted store in-memory.
+      clearPersonalData: async () => {
+        // Wipes ALL personal data (local + cloud) and NOTHING business. Business
+        // stores, the Supabase session, and the auth user are left intact — a
+        // business user who deletes their personal data keeps their shop and stays
+        // signed in. Premium (a paid, account-level entitlement) is preserved.
+
+        // 1. Reset every PERSONAL store in-memory.
         usePersonalStore.setState({
           transactions: [],
           subscriptions: [],
           budgets: [],
           goals: [],
         });
-
-        useBusinessStore.setState({
-          incomeType: null,
-          businessSetupComplete: false,
-          businessTransactions: [],
-          clients: [],
-          riderCosts: [],
-          incomeStreams: [],
+        useDebtStore.setState({
+          debts: [],
+          splits: [],
+          contacts: [],
+        });
+        useWalletStore.setState({
+          wallets: [],
           transfers: [],
-          products: [],
-          sales: [],
-          suppliers: [],
+          selectedWalletId: null,
         });
-
-        useStallStore.setState({
-          sessions: [],
-          activeSessionId: null,
-          products: [],
-          regularCustomers: [],
+        useSavingsStore.setState({
+          accounts: [],
+          sortBy: 'manual',
+          accountOrder: [],
+          lastOpenedValue: null,
+          _deletedSavingsIds: [],
         });
-
-        useSellerStore.setState({
-          products: [],
-          orders: [],
-          seasons: [],
-          ingredientCosts: [],
-          customUnits: [],
-          sellerCustomers: [],
-          seenOnlineOrderIds: [],
-          costTemplates: [],
-          recurringCosts: [],
-        });
-
         useCategoryStore.setState({
           customExpenseCategories: [],
           customIncomeCategories: [],
@@ -320,54 +313,11 @@ export const useSettingsStore = create<SettingsState>()(
           expenseCategoryOrder: [],
           incomeCategoryOrder: [],
         });
-
-        useDebtStore.setState({
-          debts: [],
-          splits: [],
-          contacts: [],
-        });
-
-        useCRMStore.setState({
-          customers: [],
-          orders: [],
-        });
-
-        useFreelancerStore.setState({
-          clients: [],
-        });
-
-        usePartTimeStore.setState({
-          jobDetails: { jobName: '', setupComplete: false },
-        });
-
-        useOnTheRoadStore.setState({
-          roadDetails: { description: '', vehicleType: 'motorcycle', setupComplete: false },
-        });
-
-        useMixedStore.setState({
-          mixedDetails: { streams: [], hasRoadCosts: false, setupComplete: false },
-          lastUsedStream: null,
-        });
-
-        useWalletStore.setState({
-          wallets: [],
-          transfers: [],
-          selectedWalletId: null,
-        });
-
-        usePremiumStore.setState({
-          tier: 'free',
-          subscribedAt: null,
-          scanCount: 0,
-          scanResetDate: startOfMonth(new Date()),
-        });
-
         useNotesStore.setState({
           pages: [],
           activePageId: null,
           isFirstWrite: true,
         });
-
         useLearningStore.setState({
           categoryPatterns: [],
           personAliases: [],
@@ -375,12 +325,10 @@ export const useSettingsStore = create<SettingsState>()(
           typeCorrections: [],
           skippedKeywords: {},
         });
-
         usePlaybookStore.setState({
           playbooks: [],
           echoMemory: [],
         });
-
         useAIInsightsStore.setState({
           spendingMirrorText: null,
           spendingMirrorGeneratedAt: null,
@@ -392,98 +340,69 @@ export const useSettingsStore = create<SettingsState>()(
           chatMessages: [],
           conversations: [],
         });
-
         useReceiptStore.setState({
           receipts: [],
           draft: null,
           _deletedReceiptIds: [],
         });
 
-        useSavingsStore.setState({
-          accounts: [],
-          sortBy: 'manual',
-          accountOrder: [],
-          lastOpenedValue: null,
-          _deletedSavingsIds: [],
-        });
+        // Purge local rolling backups of personal stores too — otherwise deleted
+        // data survives in bak:* snapshots and the deletion right is incomplete.
+        await purgeBackups(PERSONAL_BACKUP_KEYS);
 
-        useAppStore.setState({ mode: 'personal' });
-
+        // Personal-only settings + a fresh-start reset so the app returns to the
+        // first-run Onboarding screen — RootNavigator renders Onboarding
+        // reactively while hasCompletedOnboarding is false, exactly like a fresh
+        // install. Business QRs, theme, language, currency, and the
+        // business-mode flag are all preserved.
         set({
-          userName: '',
-          currency: 'RM',
-          hapticEnabled: true,
-          notificationsEnabled: true,
-          businessModeEnabled: false,
-          defaultMode: 'personal',
-          themePreference: 'light',
-          language: 'en',
           paymentQrs: [],
-          businessPaymentQrs: [],
-          customPaymentMethods: [],
-          paymentMethodOverrides: {},
+          personalSyncEnabled: false,
+          lastPersonalSyncAt: null,
+          lastSyncedUserId: null,
+          userName: '',
           hasCompletedOnboarding: false,
           gettingStartedDismissed: false,
           dismissedHints: [],
         });
+        // Open in personal mode (the install default). Business data is untouched
+        // and reappears the moment the user switches back to business mode.
+        useAppStore.setState({ mode: 'personal' });
 
-        // 2. Delete remote business data + auth user (best-effort).
+        // 2. Delete this user's PERSONAL cloud rows (best-effort). Keeps the auth
+        //    user + any business data. No session (personal-only, never signed
+        //    in) is a no-op.
         try {
-          await clearBusinessDataRemote();
+          await clearPersonalDataRemote();
         } catch {
-          // Personal-only users won't have remote data — ignore.
+          // Offline / no session — local is wiped; remote prunes on the next wipe.
         }
 
-        // 3. Sign out of Supabase so the session can't rehydrate the user.
-        try {
-          await signOut();
-        } catch {
-          // Already signed out — ignore.
-        }
-        useAuthStore.getState().reset();
-        clearProfileCache();
-
-        // 4. Wipe FileSystem assets (payment QRs + scanned receipts).
+        // 3. Delete personal FileSystem assets (scanned receipts). Payment-QR
+        //    image files share a directory with business QRs, so we only drop the
+        //    personal QR references (above) and leave that shared dir untouched.
         const docDir = FileSystem.documentDirectory;
         if (docDir) {
-          await Promise.all([
-            FileSystem.deleteAsync(`${docDir}payment-qrs/`, { idempotent: true }).catch(() => {}),
-            FileSystem.deleteAsync(`${docDir}receipts/`, { idempotent: true }).catch(() => {}),
-          ]);
+          await FileSystem.deleteAsync(`${docDir}receipts/`, { idempotent: true }).catch(() => {});
         }
 
-        // 5. Nuke AsyncStorage so nothing rehydrates on next launch.
-        //    This is the single most important step — without it, every store's
-        //    persisted snapshot would resurrect on the next app start.
-        try {
-          await AsyncStorage.clear();
-        } catch {
-          // Fall back to removing every known key explicitly if .clear() fails.
-          await Promise.all([
-            'settings-storage',
-            'personal-storage',
-            'business-storage',
-            'stall-storage',
-            'seller-storage',
-            'category-storage',
-            'debt-storage',
-            'crm-storage',
-            'freelancer-storage',
-            'parttime-storage',
-            'ontheroad-storage',
-            'mixed-storage',
-            'wallet-storage',
-            'premium-storage',
-            'notes-storage',
-            'learning-storage',
-            'playbook-storage',
-            'ai-insights-storage',
-            'receipt-storage',
-            'savings-storage',
-            'app-storage',
-            'auth-storage',
-          ].map((k) => AsyncStorage.removeItem(k).catch(() => {})));
-        }
+        // 4. Remove ONLY the personal persisted keys so nothing rehydrates.
+        //    Business keys (business/seller/stall/crm/...), auth-storage, and
+        //    premium-storage are deliberately kept. settings-storage is kept too
+        //    (it holds business QRs + theme/language) — its personal fields were
+        //    already cleared via set() above.
+        await Promise.all([
+          'personal-storage',
+          'wallet-storage',
+          'savings-storage',
+          'category-storage',
+          'debt-storage',
+          'notes-storage',
+          'learning-storage',
+          'playbook-storage',
+          'ai-insights-storage',
+          'receipt-storage',
+        ].map((k) => AsyncStorage.removeItem(k).catch(() => {})));
       },
 
       clearBusinessData: async () => {

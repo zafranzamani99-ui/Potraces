@@ -108,6 +108,9 @@ const ReceiptScanner: React.FC = () => {
   const C = useCalm();
   const isDark = useIsDark();
   const t = useT();
+  // ScreenGuide spotlight target — the shutter button (hero state only; the
+  // guide falls back to inline points if it can't be measured).
+  const guideTargetRef = useRef<any>(null);
   const styles = useMemo(() => makeStyles(C), [C]);
   const navigation = useNavigation<NavigationProp>();
   const { showToast } = useToast();
@@ -161,6 +164,10 @@ const ReceiptScanner: React.FC = () => {
   const scanLineAnim = useRef(new Animated.Value(0)).current;
   const scanPulseAnim = useRef(new Animated.Value(0.4)).current;
 
+  // Set true right before any *intentional* leave (save / save-draft) so the
+  // back-guard below doesn't also stash a duplicate draft.
+  const leavingCleanlyRef = useRef(false);
+
   useEffect(() => {
     if (!loading) {
       scanLineAnim.setValue(0);
@@ -185,6 +192,38 @@ const ReceiptScanner: React.FC = () => {
     pulse.start();
     return () => { line.stop(); pulse.stop(); };
   }, [loading]);
+
+  // Always-fresh snapshot of the in-progress receipt for the back-guard, so the
+  // listener doesn't re-subscribe on every keystroke.
+  const backupRef = useRef({ editTitle, editVendor, editItems, editTotal, editDate, editCategory, editMyTaxCategory, editLocation, imageUri, receipt });
+  backupRef.current = { editTitle, editVendor, editItems, editTotal, editDate, editCategory, editMyTaxCategory, editLocation, imageUri, receipt };
+
+  // Auto-save a draft if the user leaves (back button / swipe-back) mid-scan
+  // without saving — accidental back never loses scanned work. Resume via the
+  // "continue draft" card on the home view. Mirrors DebtTracking's draft stash.
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', () => {
+      if (leavingCleanlyRef.current) return;
+      const s = backupRef.current;
+      // A picked-but-not-yet-scanned photo is NOT work — only extracted/entered
+      // data counts, so we never stash a junk image-only draft on accidental back.
+      const hasWork = !!s.receipt || s.editItems.length > 0 || !!s.editTotal.trim() || !!s.editTitle.trim();
+      if (!hasWork) return;
+      saveDraft({
+        title: s.editTitle,
+        vendor: s.editVendor,
+        items: s.editItems,
+        total: s.editTotal,
+        date: s.editDate,
+        category: s.editCategory,
+        myTaxCategory: s.editMyTaxCategory,
+        location: s.editLocation,
+        imageUri: s.imageUri,
+      });
+      showToast(t.receipts.draftSaved, 'success');
+    });
+    return unsub;
+  }, [navigation, saveDraft, showToast, t]);
 
   const selectedTaxCat = useMemo(
     () => MYTAX_CATEGORIES.find((c) => c.id === editMyTaxCategory) || MYTAX_CATEGORIES[0],
@@ -369,7 +408,6 @@ const ReceiptScanner: React.FC = () => {
     setSaving(true);
     let persistedUri: string | undefined;
     let txId: string | undefined;
-    let walletDeducted = false;
     try {
       const title = editTitle.trim() || editVendor.trim() || t.receipts.receiptFallbackName;
       const description = title;
@@ -391,7 +429,6 @@ const ReceiptScanner: React.FC = () => {
         // 2. Wallet deduction
         if (selectedWalletId) {
           deductFromWallet(selectedWalletId, total);
-          walletDeducted = true;
         }
       }
 
@@ -446,13 +483,12 @@ const ReceiptScanner: React.FC = () => {
       });
 
       clearDraft();
+      leavingCleanlyRef.current = true;
       showToast(t.receipts.receiptSaved, 'success');
       navigation.goBack();
     } catch (err: any) {
-      // Roll back partial writes
-      if (walletDeducted && selectedWalletId) {
-        try { useWalletStore.getState().addToWallet(selectedWalletId, total); } catch {}
-      }
+      // Roll back partial writes. deleteTransaction owns the wallet refund (it
+      // reverses the deduction from step 2) — do NOT also addToWallet here.
       if (txId) {
         try { usePersonalStore.getState().deleteTransaction(txId); } catch {}
       }
@@ -484,6 +520,7 @@ const ReceiptScanner: React.FC = () => {
       imageUri,
     });
     showToast(t.receipts.draftSaved, 'success');
+    leavingCleanlyRef.current = true;
     handleReset();
     navigation.goBack();
   }, [editTitle, editVendor, editItems, editTotal, editDate, editCategory, editMyTaxCategory, editLocation, imageUri, saveDraft, showToast, handleReset, navigation]);
@@ -563,6 +600,7 @@ const ReceiptScanner: React.FC = () => {
             {/* Shutter button */}
             <View style={styles.shutterRing}>
               <TouchableOpacity
+                ref={guideTargetRef}
                 style={styles.shutterButton}
                 onPress={handleTakePhoto}
                 activeOpacity={0.7}
@@ -1158,6 +1196,11 @@ const ReceiptScanner: React.FC = () => {
         icon="camera"
         description={t.guide.descReceipt}
         accent="#6BA3BE"
+        points={[
+          { icon: 'camera', text: t.guide.receiptPoint1 },
+          { icon: 'check', text: t.guide.receiptPoint2 },
+        ]}
+        spotlight={{ targetRef: guideTargetRef, label: t.guide.receiptPoint1, sublabel: t.guide.receiptPoint2 }}
       />
     </View>
   );

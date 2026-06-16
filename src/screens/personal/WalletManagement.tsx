@@ -4,18 +4,13 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Modal,
-  TextInput,
   Alert,
   Pressable,
   Animated,
   Easing,
-  Image,
   InteractionManager,
 } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
-import { ScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { ScrollView, Gesture } from 'react-native-gesture-handler';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Reanimated, {
   useAnimatedReaction,
@@ -38,13 +33,11 @@ import WalletLogo from '../../components/common/WalletLogo';
 import FAB from '../../components/common/FAB';
 import EmptyState from '../../components/common/EmptyState';
 import PaywallModal from '../../components/common/PaywallModal';
-import WalletPicker from '../../components/common/WalletPicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { lightTap } from '../../services/haptics';
 import ScreenGuide from '../../components/common/ScreenGuide';
 import EchoInlineChat from '../../components/common/EchoInlineChat';
-import TypewriterText from '../../components/common/TypewriterText';
 import { useT } from '../../i18n';
 import { reconcileWalletBalances } from '../../utils/walletReconcile';
 import { HITSLOP_10 } from '../../utils/hitSlop';
@@ -144,6 +137,8 @@ const WalletManagement: React.FC = () => {
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const insets = useSafeAreaInsets();
+  // ScreenGuide spotlight target — the scrim cuts a hole around the real FAB.
+  const guideTargetRef = useRef<any>(null);
   const currency = useSettingsStore((s) => s.currency);
   const echoHidden = useSettingsStore((s) => s.walletEchoHidden);
   const setEchoHidden = useSettingsStore((s) => s.setWalletEchoHidden);
@@ -344,7 +339,6 @@ const WalletManagement: React.FC = () => {
   const subscriptions = usePersonalStore((s) => s.subscriptions);
   const transactions = usePersonalStore((s) => s.transactions);
   const goals = usePersonalStore((s) => s.goals);
-  const addTransaction = usePersonalStore((s) => s.addTransaction);
 
   // ─── Net worth — cash minus credit debt ───
   const totalCreditUsed = useMemo(
@@ -506,6 +500,10 @@ const WalletManagement: React.FC = () => {
 
     return lines.join('\n');
   }, [wallets, bankWallets, ewalletWallets, creditWallets, totalBalance, totalCreditAvailable, currency, subscriptions]);
+
+  // Memoized so the Echo sheet prop doesn't rebuild the snapshot on every render
+  // (only when buildWalletSnapshot's inputs actually change).
+  const walletSnapshot = useMemo(() => buildWalletSnapshot(), [buildWalletSnapshot]);
 
   const handleAskEchoWallet = useCallback((specificQuestion?: string) => {
     lightTap();
@@ -822,6 +820,12 @@ const WalletManagement: React.FC = () => {
         const limitNum = parseFloat(creditLimit) || 0;
         const wallet = wallets.find((w) => w.id === editingWallet);
         const used = wallet?.usedCredit || 0;
+        if (limitNum < used) {
+          // A limit below what's already used would force a negative available
+          // balance and an impossible usedCredit > limit state.
+          Alert.alert(t.a11y.error, `Credit limit can't be below the ${currency} ${used.toFixed(2)} you've already used.`);
+          return;
+        }
         updates.creditLimit = limitNum;
         updates.balance = limitNum - used;
       } else {
@@ -922,40 +926,29 @@ const WalletManagement: React.FC = () => {
       return;
     }
     const sourceWallet = wallets.find((w) => w.id === transferFrom);
-    if (sourceWallet && amount > sourceWallet.balance) {
+    const destWallet = wallets.find((w) => w.id === transferTo);
+    if (!sourceWallet || !destWallet) {
+      // Stale selection (wallet deleted on another device). Bail rather than
+      // silently transferring out of / into a wallet that no longer exists.
+      Alert.alert(t.a11y.error, t.wallets.fillTransferDetails);
+      return;
+    }
+    if (amount > sourceWallet.balance) {
       Alert.alert(t.a11y.error, t.wallets.insufficientBalance);
       return;
     }
-    const toWallet = wallets.find((w) => w.id === transferTo);
+    // Record the transfer ONCE — transferBetweenWallets moves both balances and
+    // writes a transfer record (shown in wallet activity, counted by
+    // reconcileWalletBalances). Do NOT also create paired income/expense
+    // transactions: that double-counted the move on Recalculate and inflated both
+    // income and expense totals across every report.
     transferBetweenWallets(transferFrom, transferTo, amount, transferNote || undefined);
-    const now = new Date();
-    const noteStr = transferNote ? ` · ${transferNote}` : '';
-    addTransaction({
-      amount,
-      category: 'other',
-      description: `Transfer to ${toWallet?.name ?? 'wallet'}${noteStr}`,
-      date: now,
-      type: 'expense',
-      mode: 'personal',
-      walletId: transferFrom,
-      inputMethod: 'manual',
-    });
-    addTransaction({
-      amount,
-      category: 'other',
-      description: `Transfer from ${sourceWallet?.name ?? 'wallet'}${noteStr}`,
-      date: now,
-      type: 'income',
-      mode: 'personal',
-      walletId: transferTo,
-      inputMethod: 'manual',
-    });
     setTransferVisible(false);
     setTransferFrom(null);
     setTransferTo(null);
     setTransferAmount('');
     setTransferNote('');
-  }, [transferAmount, transferFrom, transferTo, transferNote, wallets, transferBetweenWallets, addTransaction]);
+  }, [transferAmount, transferFrom, transferTo, transferNote, wallets, transferBetweenWallets]);
 
   // Repay credit
   const handleRepay = useCallback(() => {
@@ -965,33 +958,31 @@ const WalletManagement: React.FC = () => {
       return;
     }
     const sourceWallet = wallets.find((w) => w.id === repaySourceId);
-    if (sourceWallet && amount > sourceWallet.balance) {
+    const creditWallet = wallets.find((w) => w.id === repayWalletId);
+    if (!sourceWallet || !creditWallet) {
+      Alert.alert(t.a11y.error, t.wallets.fillRepaymentDetails);
+      return;
+    }
+    if (amount > sourceWallet.balance) {
       Alert.alert(t.a11y.error, t.wallets.insufficientSourceBalance);
       return;
     }
-    const creditWallet = wallets.find((w) => w.id === repayWalletId);
-    if (creditWallet && amount > (creditWallet.usedCredit || 0)) {
+    if (amount > (creditWallet.usedCredit || 0)) {
       Alert.alert(t.a11y.error, t.wallets.repaymentExceedsCredit);
       return;
     }
     repayCredit(repayWalletId, amount);
     deductFromWallet(repaySourceId, amount);
+    // Recorded ONCE as a 'repayment' activity (shown in wallet activity, counted by
+    // reconcileWalletBalances). Do NOT also create a 'bills' expense transaction —
+    // a debt repayment is not spending, and it double-counted the source deduction
+    // on Recalculate.
     logActivity(repaySourceId, repayWalletId, amount, 'repayment');
-    addTransaction({
-      amount,
-      category: 'bills',
-      description: t.wallets.creditRepaymentDesc.replace('{name}', creditWallet?.name ?? 'credit card'),
-      date: new Date(),
-      type: 'expense',
-      mode: 'personal',
-      walletId: repaySourceId,
-      inputMethod: 'manual',
-    });
     setRepayVisible(false);
     setRepayWalletId(null);
     setRepaySourceId(null);
     setRepayAmount('');
-  }, [repayAmount, repayWalletId, repaySourceId, wallets, repayCredit, deductFromWallet, addTransaction, logActivity]);
+  }, [repayAmount, repayWalletId, repaySourceId, wallets, repayCredit, deductFromWallet, logActivity]);
 
   const openRepay = useCallback((walletId: string) => {
     setRepayWalletId(walletId);
@@ -1456,8 +1447,6 @@ const WalletManagement: React.FC = () => {
                   <Text style={styles.transferTimestamp}>
                     {(() => {
                       const d = item.date instanceof Date ? item.date : new Date(item.date);
-                      const today = new Date();
-                      void today;
                       const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                       return `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}, ${time}`;
                     })()}
@@ -1476,6 +1465,7 @@ const WalletManagement: React.FC = () => {
 
       {/* FAB — matches DebtTracking / BudgetPlanning pattern */}
       <FAB
+        ref={guideTargetRef}
         onPress={handleAdd}
         icon="plus"
         color={C.accent}
@@ -1632,7 +1622,7 @@ const WalletManagement: React.FC = () => {
         insightTitle={smartWalletInsight.title}
         insightSubtitle={smartWalletInsight.subtitle}
         chips={greetingChips}
-        contextSnapshot={buildWalletSnapshot()}
+        contextSnapshot={walletSnapshot}
         topInset={insets.top}
         bottomInset={insets.bottom}
         autoPrompt={echoAutoPrompt}
@@ -1666,6 +1656,11 @@ const WalletManagement: React.FC = () => {
         title={t.guide.yourWallets}
         icon="credit-card"
         description={t.guide.descWallet}
+        points={[
+          { icon: 'plus', text: t.guide.walletPoint1 },
+          { icon: 'repeat', text: t.guide.walletPoint2 },
+        ]}
+        spotlight={{ targetRef: guideTargetRef, label: t.guide.walletPoint1, sublabel: t.guide.walletPoint2 }}
       />
     </View>
   );
@@ -1924,20 +1919,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     color: C.textPrimary,
     fontVariant: ['tabular-nums'],
   },
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: C.surface,
-    borderTopLeftRadius: RADIUS['2xl'],
-    borderTopRightRadius: RADIUS['2xl'],
-    padding: SPACING.xl,
-    maxHeight: '85%',
-  },
-
   // ─── Net worth line (subtle, under cash balance) ───
   netWorthLine: {
     marginTop: 4,
@@ -1969,54 +1950,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.xs,
     color: C.textMuted,
     fontWeight: TYPOGRAPHY.weight.medium,
-  },
-
-  // ─── Bills preview modal rows ───
-  billRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.sm + 2,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  billRowLeft: {
-    flex: 1,
-    gap: 2,
-  },
-  billRowName: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-  },
-  billRowDate: {
-    fontSize: TYPOGRAPHY.size.xs,
-    color: C.textMuted,
-  },
-  billRowAmount: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'] as any,
-  },
-  billsTotalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: SPACING.sm + 2,
-  },
-  billsTotalLabel: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  billsTotalAmount: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.bold,
-    color: C.textPrimary,
-    fontVariant: ['tabular-nums'] as any,
   },
 });
 

@@ -28,7 +28,7 @@ import { computePlaybookStats, computeNotebookStats, computeLiveStats, computeSp
 import { roundMoney } from '../../utils/money';
 import { getPlaybookObligations, PlaybookObligation } from '../../utils/playbookObligations';
 import { lightTap, selectionChanged, mediumTap } from '../../services/haptics';
-import { askEchoPlan, chatWithEcho, getPlaybookInsight, buildEchoMemoryEntry, getPlanInputSummary, EchoPlanResponse } from '../../services/playbookAI';
+import { askEchoPlan, chatWithEcho, chatWithEchoStream, getPlaybookInsight, buildEchoMemoryEntry, getPlanInputSummary, EchoPlanResponse } from '../../services/playbookAI';
 import { isGeminiAvailable } from '../../services/geminiClient';
 import { useCategories } from '../../hooks/useCategories';
 import CircularProgress from '../common/CircularProgress';
@@ -502,6 +502,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
   const [echoMessages, setEchoMessages] = useState<{ role: 'user' | 'echo'; text: string }[]>([]);
   const [echoChatInput, setEchoChatInput] = useState('');
   const [echoChatLoading, setEchoChatLoading] = useState(false);
+  const [echoStreamingText, setEchoStreamingText] = useState(''); // Echo reply filling in live
   const echoScrollRef = useRef<ScrollView>(null);
 
   // ── Echo conversation state (turn-based, chip-driven) ──
@@ -842,12 +843,18 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
     setEchoMessages(newMessages);
     setEchoChatInput('');
     setEchoChatLoading(true);
-    const result = await chatWithEcho(livePb, echoPlan, newMessages);
+    setEchoStreamingText('');
+    // Stream the reply token-by-token; the spinner drops once the first token
+    // lands (echoStreamingText becomes non-empty). Falls back to the full reply.
+    const result = await chatWithEchoStream(livePb, echoPlan, newMessages, (textSoFar) => {
+      setEchoStreamingText(textSoFar);
+    });
     if (result.ok) {
       setEchoMessages(prev => [...prev, { role: 'echo' as const, text: result.reply }]);
     } else {
       setEchoMessages(prev => [...prev, { role: 'echo' as const, text: `hmm, ${result.error}` }]);
     }
+    setEchoStreamingText('');
     setEchoChatLoading(false);
   }, [echoChatInput, echoPlan, echoMessages, echoChatLoading, livePb]);
 
@@ -1970,7 +1977,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                 )}
 
                 {/* chat thread (typed / seeded follow-ups) */}
-                {echoMessages.length > 0 && (
+                {(echoMessages.length > 0 || echoChatLoading) && (
                   <View style={styles.echoChatWrap}>
                     {echoMessages.map((msg, i) => (
                       <View key={i} style={msg.role === 'user' ? styles.echoChatUserRow : styles.echoChatEchoRow}>
@@ -1984,10 +1991,23 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                         </View>
                       </View>
                     ))}
+                    {/* Live reply: once the first token lands, show it filling in a
+                        bubble (spinner drops). Before that, the bare spinner waits. */}
                     {echoChatLoading && (
-                      <View style={styles.echoChatEchoRow}>
-                        <ActivityIndicator size="small" color={C.accent} />
-                      </View>
+                      echoStreamingText ? (
+                        <View style={styles.echoChatEchoRow}>
+                          <View style={[styles.echoChatBubble, { backgroundColor: C.background, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }]}>
+                            <Text style={[styles.echoChatText, { color: C.textPrimary }]}>
+                              {echoStreamingText}
+                              <Text style={{ color: C.accent }}>▍</Text>
+                            </Text>
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={styles.echoChatEchoRow}>
+                          <ActivityIndicator size="small" color={C.accent} />
+                        </View>
+                      )
                     )}
                   </View>
                 )}

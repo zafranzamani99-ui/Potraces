@@ -277,7 +277,7 @@ Phone contacts imported via the `ContactPicker` are used locally to populate nam
 
 ### SEC-7.1 Slug Enumeration (LOW)
 
-Anyone can try slugs like `https://potraces.vercel.app/?slug=<guess>`. If the slug exists, they see:
+Anyone can try slugs like `https://jejakbaki.my/?slug=<guess>`. If the slug exists, they see:
 - Shop display name
 - Logo
 - Shop notice

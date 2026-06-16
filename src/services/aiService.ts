@@ -2,6 +2,7 @@ import { AIMessage, Transaction, IncomeType, BusinessTransaction, RiderCost, Cli
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants';
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { aiProxyFetch, isAiProxyConfigured } from './aiProxy';
 
 // ─── Anthropic API Types ────────────────────────────────
 
@@ -48,10 +49,15 @@ interface GeminiVisionResponse {
   candidates?: GeminiVisionCandidate[];
 }
 
-const API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '';
-const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-haiku-4-5-20251001';
 const CHAT_MODEL = 'claude-sonnet-4-6'; // conversational Echo — needs personality, not just speed
+
+// Regulatory guard (SC/CMSA + FSA): AI answers are general information only, never
+// licensed financial/investment advice. Appended to every money-answering prompt.
+const ADVICE_GUARD =
+  "You give general information only — NOT financial, investment, tax, or legal advice. " +
+  "Never recommend specific financial products or promise/guarantee returns. If asked for that, " +
+  "say you can't give advice and suggest speaking to a licensed adviser.";
 
 let _lastAnthropicCall = 0;
 const ANTHROPIC_COOLDOWN_MS = 1000;
@@ -76,7 +82,7 @@ async function callAnthropic(
   model: string = MODEL,
   prefill?: string
 ): Promise<string | null> {
-  if (!API_KEY) return null;
+  if (!isAiProxyConfigured()) return null;
 
   // Prefill: seed the assistant's response so it continues from that point.
   // The model physically cannot insert a filler opener before the prefill.
@@ -94,22 +100,12 @@ async function callAnthropic(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        system,
-        messages: msgsWithPrefill,
-      }),
-      signal: controller.signal,
-    });
+    const response = await aiProxyFetch({
+      provider: 'anthropic',
+      mode: 'generate',
+      model,
+      payload: { model, max_tokens: maxTokens, system, messages: msgsWithPrefill },
+    }, controller.signal);
 
     if (!response.ok) return null;
 
@@ -255,7 +251,7 @@ export async function askMoneyQuestion(
     ];
 
     return await callAnthropic(
-      `You are Echo — a financial companion for a young Malaysian. Always reply in the SAME language the user writes in. Malay message = Malay reply. English = English. Manglish = Manglish. Short, direct, casual. Use RM. Max 2 sentences.
+      `You are Echo — a financial companion for a young Malaysian. Always reply in the SAME language the user writes in. Malay message = Malay reply. English = English. Manglish = Manglish. Short, direct, casual. Use RM. Max 2 sentences. ${ADVICE_GUARD}
 
 ${summary}`,
       messages,
@@ -306,7 +302,7 @@ export async function askBusinessQuestion(
     ];
 
     return await callAnthropic(
-      `You are a calm, honest money companion for a Malaysian gig worker or small earner.\nYou understand that income is irregular and unpredictable.\nNever compare the user to a standard or ideal.\nNever use words like "should", "must", "discipline", or "goal".\nWhen asked about slow months, normalize them — they are part of this kind of work.\nWhen asked about affordability, calculate from realistic average income, not current month.\nIf the user earns from multiple sources, treat that as a strength, not complexity.\nKeep responses under 4 sentences.\nSpeak plainly. No jargon.\n\n${contextSummary}`,
+      `You are a calm, honest money companion for a Malaysian gig worker or small earner.\nYou understand that income is irregular and unpredictable.\nNever compare the user to a standard or ideal.\nNever use words like "should", "must", "discipline", or "goal".\nWhen asked about slow months, normalize them — they are part of this kind of work.\nWhen asked about affordability, calculate from realistic average income, not current month.\nIf the user earns from multiple sources, treat that as a strength, not complexity.\nKeep responses under 4 sentences.\nSpeak plainly. No jargon.\n${ADVICE_GUARD}\n\n${contextSummary}`,
       messages,
       150,
       CHAT_MODEL
@@ -379,29 +375,22 @@ function parseParsedProducts(raw: string): ParsedProduct[] | null {
 }
 
 const GEMINI_MODEL = 'gemini-2.5-flash-lite';
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-
-function geminiUrl() {
-  const key = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
-  if (!key) return null;
-  return `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${key}`;
-}
 
 export async function parseProductList(
   text: string,
   existingUnits: string[],
   existingProducts?: string[]
 ): Promise<ParsedProduct[] | null> {
-  const url = geminiUrl();
-  if (url) {
+  if (isAiProxyConfigured()) {
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const response = await aiProxyFetch({
+        provider: 'gemini',
+        mode: 'generate',
+        model: GEMINI_MODEL,
+        payload: {
           contents: [{ parts: [{ text: PRODUCT_PARSE_SYSTEM(existingUnits, existingProducts) + '\n\n' + text }] }],
           generationConfig: { temperature: 0, maxOutputTokens: 1024, responseMimeType: 'application/json' },
-        }),
+        },
       });
       if (response.ok) {
         const data: GeminiVisionResponse = await response.json();
@@ -429,16 +418,16 @@ export async function parseProductImage(
   existingUnits: string[],
   existingProducts?: string[]
 ): Promise<ParsedProduct[] | null> {
-  const url = geminiUrl();
-  if (!url) return null;
+  if (!isAiProxyConfigured()) return null;
 
   const resized = await manipulateAsync(imageUri, [{ resize: { width: 1024 } }], { compress: 0.7, format: SaveFormat.JPEG, base64: true });
   const base64 = resized.base64 || await readAsStringAsync(resized.uri, { encoding: EncodingType.Base64 });
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const response = await aiProxyFetch({
+    provider: 'gemini',
+    mode: 'generate',
+    model: GEMINI_MODEL,
+    payload: {
       contents: [{
         parts: [
           { text: `Extract EVERY product from this image (catalog, menu, price list, flyer). Name and price are required. Ignore watermarks, logos, and contact info.\n${PRODUCT_PARSE_SYSTEM(existingUnits, existingProducts)}` },
@@ -446,7 +435,7 @@ export async function parseProductImage(
         ],
       }],
       generationConfig: { temperature: 0.1, maxOutputTokens: 2048, responseMimeType: 'application/json' },
-    }),
+    },
   });
 
   if (!response.ok) {

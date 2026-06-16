@@ -44,6 +44,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import CategoryManager from '../../components/common/CategoryManager';
 import PaymentMethodManager from '../../components/common/PaymentMethodManager';
+import OcrDebugHarness from '../../components/dev/OcrDebugHarness';
 import QrCaptureModal, { type QrCaptureResult } from '../../components/common/QrCaptureModal';
 import UnitManager from '../../components/common/UnitManager';
 import { useToast } from '../../context/ToastContext';
@@ -55,8 +56,6 @@ import { signOut } from '../../services/supabase';
 import { clearProfileCache, syncAll } from '../../services/sellerSync';
 import { useAuthStore } from '../../store/authStore';
 import { useSellerStore } from '../../store/sellerStore';
-import { syncPersonal, disablePersonalSync } from '../../services/personalSync';
-import { resetBackoff } from '../../services/syncBackoff';
 import { getOrCreateReferralCode, referralMessage } from '../../services/referrals';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
@@ -515,6 +514,8 @@ const Settings: React.FC = () => {
   const setUserName = useSettingsStore((s) => s.setUserName);
   const setCurrency = useSettingsStore((s) => s.setCurrency);
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
+  const echoDailyCheckin = useSettingsStore((s) => s.echoDailyCheckin);
+  const setEchoDailyCheckin = useSettingsStore((s) => s.setEchoDailyCheckin);
   const setNotificationsEnabled = useSettingsStore((s) => s.setNotificationsEnabled);
   const setBusinessModeEnabled = useSettingsStore((s) => s.setBusinessModeEnabled);
   const setDefaultMode = useSettingsStore((s) => s.setDefaultMode);
@@ -522,9 +523,7 @@ const Settings: React.FC = () => {
   const setBiometricLockEnabled = useSettingsStore((s) => s.setBiometricLockEnabled);
   const biometricLockTimeoutMin = useSettingsStore((s) => s.biometricLockTimeoutMin);
   const setBiometricLockTimeoutMin = useSettingsStore((s) => s.setBiometricLockTimeoutMin);
-  const personalSyncEnabled = useSettingsStore((s) => s.personalSyncEnabled);
-  const setPersonalSyncEnabled = useSettingsStore((s) => s.setPersonalSyncEnabled);
-  const lastPersonalSyncAt = useSettingsStore((s) => s.lastPersonalSyncAt);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const spendingAlertsEnabled = useSettingsStore((s) => s.spendingAlertsEnabled);
   const setSpendingAlertsEnabled = useSettingsStore((s) => s.setSpendingAlertsEnabled);
   const quickAddConfirm = useSettingsStore((s) => s.quickAddConfirm);
@@ -538,7 +537,7 @@ const Settings: React.FC = () => {
   const removePaymentQr = useSettingsStore((s) => s.removePaymentQr);
   const replacePaymentQr = useSettingsStore((s) => s.replacePaymentQr);
   const updatePaymentQrLabel = useSettingsStore((s) => s.updatePaymentQrLabel);
-  const clearAllData = useSettingsStore((s) => s.clearAllData);
+  const clearPersonalData = useSettingsStore((s) => s.clearPersonalData);
   const clearBusinessData = useSettingsStore((s) => s.clearBusinessData);
   const themePreference = useSettingsStore((s) => s.themePreference);
   const setThemePreference = useSettingsStore((s) => s.setThemePreference);
@@ -785,9 +784,10 @@ const Settings: React.FC = () => {
                   style: 'destructive',
                   onPress: async () => {
                     try {
-                      // clearAllData now handles both personal + business cleanup,
-                      // remote wipe, sign out, FileSystem deletion, and AsyncStorage clear.
-                      await clearAllData();
+                      // Personal-only wipe: clears every personal store + this
+                      // user's personal cloud rows. Business data, the session,
+                      // and the auth user are left intact.
+                      await clearPersonalData();
                       showToast(t.settings.accountDeleted, 'success');
                     } catch (err: any) {
                       Alert.alert(t.settings.errorLabel, err?.message || t.settings.deletionError);
@@ -800,7 +800,7 @@ const Settings: React.FC = () => {
         },
       ]
     );
-  }, [clearAllData, showToast, t]);
+  }, [clearPersonalData, showToast, t]);
 
   const handleClearBusinessData = useCallback(() => {
     Alert.alert(
@@ -889,68 +889,6 @@ const Settings: React.FC = () => {
     }
   }, [setBiometricLockEnabled, showToast, t]);
 
-  const handlePersonalSyncToggle = useCallback(async (value: boolean) => {
-    lightTap();
-    if (!value) {
-      // Disable: keep remote data intact by default, user can wipe later
-      Alert.alert(
-        t.settings.turnOffCloudSync,
-        t.settings.turnOffCloudSyncMsg,
-        [
-          { text: t.common.cancel, style: 'cancel' },
-          {
-            text: t.settings.turnOff,
-            onPress: async () => {
-              await disablePersonalSync(false);
-              showToast(t.settings.cloudSyncDisabled, 'info');
-            },
-          },
-          {
-            text: t.settings.turnOffWipe,
-            style: 'destructive',
-            onPress: async () => {
-              await disablePersonalSync(true);
-              showToast(t.settings.cloudSyncDisabledWiped, 'info');
-            },
-          },
-        ],
-      );
-      return;
-    }
-
-    // Enable: require sign-in
-    const { isAuthenticated, isVerified } = useAuthStore.getState();
-    if (!isAuthenticated || !isVerified) {
-      Alert.alert(
-        t.settings.signInRequired,
-        t.settings.signInRequiredMsg,
-        [{ text: t.common.ok }],
-      );
-      return;
-    }
-
-    setPersonalSyncEnabled(true);
-    showToast(t.settings.cloudSyncEnabledSyncing, 'success');
-    try {
-      await syncPersonal();
-      showToast(t.settings.syncedToCloud, 'success');
-    } catch {
-      showToast(t.settings.syncFailedRetry, 'info');
-    }
-  }, [setPersonalSyncEnabled, showToast, t]);
-
-  const handleManualSyncNow = useCallback(async () => {
-    lightTap();
-    // User-initiated — bypass any active backoff window
-    resetBackoff('personalSync');
-    showToast(t.settings.syncing, 'info');
-    try {
-      await syncPersonal();
-      showToast(t.settings.synced, 'success');
-    } catch {
-      showToast(t.settings.syncFailed, 'info');
-    }
-  }, [showToast, t]);
 
   const handleNotificationsToggle = useCallback((value: boolean) => {
     lightTap();
@@ -1240,62 +1178,27 @@ const Settings: React.FC = () => {
           )}
         </Card>
 
-        {/* Cloud Sync */}
-        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.settings.cloudSync}</Text>
+        {/* Account & cloud backup */}
+        <Text style={[styles.sectionHeader, { color: C.textSecondary }]}>{t.auth.acctTitle}</Text>
         <Card style={styles.card}>
-          <View style={styles.settingRow}>
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => { lightTap(); navigation.navigate('Account' as never); }}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t.auth.acctTitle}
+          >
             <View style={{ flex: 1 }}>
               <View style={styles.settingLabelRow}>
                 <Feather name="cloud" size={18} color={C.textSecondary} />
-                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.syncPersonalData}</Text>
+                <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.auth.acctTitle}</Text>
               </View>
               <Text style={styles.settingDescription}>
-                {t.settings.syncPersonalDataDesc}
+                {isAuthenticated ? t.auth.acctManageEntry : t.auth.acctSignInEntry}
               </Text>
             </View>
-            <Switch
-              value={personalSyncEnabled}
-              onValueChange={handlePersonalSyncToggle}
-              trackColor={{ false: C.border, true: C.positive }}
-              thumbColor={C.surface}
-            />
-          </View>
-
-          {personalSyncEnabled && (
-            <>
-              <View style={[styles.divider, { backgroundColor: C.border }]} />
-              <View style={styles.settingRow}>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.settingLabelRow}>
-                    <Feather name="refresh-cw" size={18} color={C.textSecondary} />
-                    <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.lastSync}</Text>
-                  </View>
-                  <Text style={styles.settingDescription}>
-                    {lastPersonalSyncAt
-                      ? lastPersonalSyncAt.toLocaleString()
-                      : t.settings.notSyncedYet}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={handleManualSyncNow}
-                  style={{
-                    paddingHorizontal: SPACING.md,
-                    paddingVertical: 8,
-                    borderRadius: RADIUS.full,
-                    borderWidth: 1,
-                    borderColor: C.accent,
-                    backgroundColor: withAlpha(C.accent, 0.1),
-                  }}
-                >
-                  <Text style={{
-                    fontSize: TYPOGRAPHY.size.xs,
-                    fontWeight: TYPOGRAPHY.weight.medium,
-                    color: C.accent,
-                  }}>{t.settings.syncNow}</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
+            <Feather name="chevron-right" size={20} color={C.textMuted} />
+          </TouchableOpacity>
         </Card>
 
         {/* Appearance */}
@@ -1421,6 +1324,18 @@ const Settings: React.FC = () => {
             <Switch
               value={!commitmentEchoHidden}
               onValueChange={(v) => { lightTap(); setCommitmentEchoHidden(!v); }}
+              trackColor={{ false: C.border, true: C.positive }}
+              thumbColor={C.surface}
+            />
+          </View>
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1, paddingLeft: 26, paddingRight: 12 }}>
+              <Text style={[styles.settingLabel, { color: C.textSecondary }]}>{t.settings.echoCheckin}</Text>
+              <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{t.settings.echoCheckinDesc}</Text>
+            </View>
+            <Switch
+              value={echoDailyCheckin}
+              onValueChange={(v) => { lightTap(); setEchoDailyCheckin(v); }}
               trackColor={{ false: C.border, true: C.positive }}
               thumbColor={C.surface}
             />
@@ -1897,7 +1812,7 @@ const Settings: React.FC = () => {
           <View style={[styles.divider, { backgroundColor: C.border }]} />
           <TouchableOpacity
             style={styles.settingRow}
-            onPress={() => Linking.openURL('https://potraces.vercel.app/privacy.html')}
+            onPress={() => Linking.openURL('https://jejakbaki.my/privacy.html')}
             activeOpacity={0.7}
           >
             <Text style={[styles.settingLabel, { color: C.textPrimary }]}>{t.settings.privacyPolicy}</Text>
@@ -2183,6 +2098,7 @@ const Settings: React.FC = () => {
         </View>
         <ModalToastHost />
       </Modal>
+      {__DEV__ && <OcrDebugHarness />}
     </View>
   );
 };

@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<!--
+  Potraces — Beta feedback (account-gated).  jejakbaki.my/beta.html
+  Single self-contained file. Inline CSS + a small ES-module script. No build step, no framework.
+  Visual system reused verbatim from docs/index.html (CALM palette, wau SVG, lang toggle). NO red.
+
+  AUTH: supabase-js v2 from esm.sh. Reuses the SAME public anon key embedded in docs/order.html
+  (public, RLS-protected — never the service_role key). Google OAuth (primary) + email magic link
+  (fallback). Session gates the feedback form. Backend DDL: docs/beta_feedback.sql.
+
+  ── PLACEHOLDERS / TODO (swap when real assets exist) ──────────────────────────
+  • SCREENSHOTS: phone mockup is CSS, exact CALM colors. Drop a real PNG in docs/assets/ later.
+  • Replace redirect host if the domain changes (search "jejakbaki.my").
+  ───────────────────────────────────────────────────────────────────────────────
+
+  NOTE on CSP: the order page uses default-src 'none' which would BLOCK esm.sh. This page needs a
+  looser CSP that allows the CDN + Supabase + Google. Do NOT copy order.html's CSP verbatim.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#4F5104">
+
+<!-- CSP — allows esm.sh (module CDN), the Supabase host, and Google accounts for OAuth. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  base-uri 'self';
+  form-action 'self';
+  frame-ancestors 'none';
+  img-src 'self' data: https:;
+  font-src 'self' https://fonts.gstatic.com;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  script-src 'self' 'unsafe-inline' https://esm.sh;
+  connect-src 'self' https://iydqeeonaljqapulboaz.supabase.co https://esm.sh https://accounts.google.com;
+">
+
+<title>Potraces Beta — Send feedback</title>
+<meta name="description" content="You're in the Potraces beta. Sign in to send quick feedback — what happened, on which screen — so we can make calm money tracking better.">
+<meta name="robots" content="noindex, nofollow">
+<link rel="canonical" href="https://jejakbaki.my/beta.html">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Potraces">
+<meta property="og:title" content="Potraces Beta — Send feedback">
+<meta property="og:description" content="You're in the Potraces beta. Sign in to send quick feedback so we can make it better.">
+<meta property="og:url" content="https://jejakbaki.my/beta.html">
+<meta property="og:image" content="https://jejakbaki.my/assets/og-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Potraces — calm money tracking for irregular earners in Malaysia">
+<meta property="og:locale" content="en_MY">
+<meta property="og:locale:alternate" content="ms_MY">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Potraces Beta — Send feedback">
+<meta name="twitter:description" content="Sign in to send quick beta feedback.">
+<meta name="twitter:image" content="https://jejakbaki.my/assets/og-card.png">
+
+<link rel="icon" href="/assets/icon.png" type="image/png">
+<link rel="apple-touch-icon" href="/assets/icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F9F9F7;--bg2:#F5F3EF;--surface:#fff;
+  --olive:#4F5104;--olive-dark:#3D3E04;--olive-light:#6B6D1A;--olive-deep:#332D03;
+  --bronze:#8B7355;--bronze2:#9A6400;--gold:#B2780A;--gold-bright:#DEAB22;
+  --sky:#6BA3BE;--mauve:#A688B8;--terracotta:#C1694F;--biz:#B2780A;
+  --text:#1A1A1A;--text2:#555;--text3:#6B6B6B;--text-muted:#A0A0A0;
+  --border:#E5E0D8;--border2:#F0EDE8;--cream:#FFF7E6;
+  --r-xs:4px;--r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-2xl:28px;--r-full:9999px;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:0 4px 16px rgba(0,0,0,.08);
+  --shadow-lg:0 8px 24px rgba(0,0,0,.10);
+  --shadow-xl:0 12px 40px rgba(0,0,0,.12),0 4px 12px rgba(0,0,0,.06);
+  --maxw:1120px;
+  --nav-h:64px;
+  --ff:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{font-family:var(--ff);background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden;min-height:100vh;display:flex;flex-direction:column}
+img,svg{max-width:100%;display:block}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* lang: visible text is swapped in-place by JS (see apply()); no display toggling.
+   .block keeps multi-line copy block-level regardless of language. */
+.block{display:block}
+
+/* full-page soft-light grain — matches the marketing site warmth */
+.grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.04;mix-blend-mode:soft-light;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* layout */
+.container{width:100%;max-width:var(--maxw);margin:0 auto;padding:0 20px;position:relative;z-index:2}
+
+/* skip link */
+.skip{position:absolute;left:0;top:-60px;z-index:1000;background:var(--olive);color:#fff;padding:12px 18px;border-radius:0 0 var(--r-md) 0;font-weight:600}
+.skip:focus{top:0}
+
+/* focus */
+a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(79,81,4,.4);border-radius:var(--r-sm)}
+
+/* ─── NAV ─── */
+.nav{position:sticky;top:0;left:0;right:0;z-index:100;height:var(--nav-h);display:flex;align-items:center;background:rgba(249,249,247,.88);backdrop-filter:saturate(140%) blur(14px);-webkit-backdrop-filter:saturate(140%) blur(14px);border-bottom:1px solid var(--border)}
+.nav .container{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.18rem;letter-spacing:-.4px}
+.brand .logo{width:38px;height:38px;border-radius:11px;overflow:hidden;flex-shrink:0;box-shadow:var(--shadow);display:block}
+.brand .logo svg{width:100%;height:100%;display:block}
+.brand .beta-pill{font-size:.62rem;letter-spacing:.6px;text-transform:uppercase;font-weight:700;color:var(--gold);background:rgba(178,120,10,.12);padding:3px 8px;border-radius:var(--r-full);border:1px solid rgba(178,120,10,.18)}
+.nav-right{display:flex;align-items:center;gap:10px}
+.nav-back{font-size:.92rem;font-weight:500;color:var(--text2);padding:9px 13px;border-radius:var(--r-md);transition:color .15s,background .15s;display:none}
+.nav-back:hover{color:var(--text);background:rgba(26,26,26,.05)}
+@media (min-width:640px){.nav-back{display:inline-block}}
+
+/* lang toggle pill */
+.lang-toggle{display:inline-flex;background:rgba(26,26,26,.06);border:1px solid var(--border);border-radius:var(--r-full);padding:3px;gap:2px}
+.lang-toggle button{border:none;background:transparent;color:var(--text3);font-size:.8rem;font-weight:600;padding:6px 12px;border-radius:var(--r-full);min-height:34px;transition:color .15s}
+.lang-toggle button[aria-pressed="true"]{background:var(--surface);color:var(--olive);box-shadow:var(--shadow)}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;font-weight:600;font-size:.95rem;border:none;border-radius:var(--r-full);padding:13px 22px;min-height:48px;transition:transform .12s ease,box-shadow .2s,background .2s,border-color .2s;white-space:nowrap}
+.btn:active{transform:scale(.98)}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+.btn-primary{background:var(--olive);color:#fff;box-shadow:0 4px 14px rgba(79,81,4,.22)}
+.btn-primary:hover:not([disabled]){background:var(--olive-dark);box-shadow:0 6px 20px rgba(79,81,4,.28)}
+.btn-ghost{background:var(--surface);color:var(--text);border:1px solid var(--border);box-shadow:var(--shadow)}
+.btn-ghost:hover{border-color:var(--bronze)}
+.btn-block{width:100%}
+.btn-google{background:#fff;color:#1F1F1F;border:1px solid var(--border);box-shadow:var(--shadow);font-weight:600}
+.btn-google:hover:not([disabled]){border-color:var(--bronze);box-shadow:var(--shadow-md)}
+.btn-google svg{width:19px;height:19px}
+.btn-sm{padding:9px 16px;min-height:42px;font-size:.88rem}
+
+/* ─── MAIN WRAP ─── */
+main{flex:1;padding:36px 0 64px}
+@media (min-width:768px){main{padding:56px 0 80px}}
+.wrap{max-width:620px;margin:0 auto}
+
+/* hero head */
+.head{text-align:center;margin-bottom:32px;position:relative}
+.head::before{content:'';position:absolute;inset:-30% 0 -10%;z-index:-1;pointer-events:none;
+  background:radial-gradient(50% 50% at 30% 25%,rgba(79,81,4,.08),transparent 70%),
+            radial-gradient(45% 45% at 75% 20%,rgba(178,120,10,.08),transparent 70%);
+  filter:blur(6px);animation:meshDrift 46s ease-in-out infinite}
+@keyframes meshDrift{0%,100%{transform:translate(0,0)}50%{transform:translate(-8px,6px)}}
+@media (prefers-reduced-motion:reduce){.head::before{animation:none}}
+.head .wau-badge{width:72px;height:72px;margin:0 auto 18px;border-radius:20px;overflow:hidden;box-shadow:var(--shadow-lg)}
+.head .wau-badge svg{width:100%;height:100%}
+.eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--bronze2);background:rgba(154,100,0,.07);padding:6px 13px;border-radius:var(--r-full);border:1px solid rgba(154,100,0,.12)}
+.head h1{font-size:clamp(1.7rem,5vw,2.4rem);font-weight:700;letter-spacing:-.6px;line-height:1.15;margin:16px 0 12px}
+.head .lead{font-size:clamp(1rem,2.2vw,1.12rem);color:var(--text2);line-height:1.6;max-width:480px;margin:0 auto}
+
+/* card */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2xl);box-shadow:0 2px 4px rgba(51,45,3,.06),0 8px 24px rgba(51,45,3,.08);padding:28px 24px;position:relative;overflow:hidden}
+@media (min-width:560px){.card{padding:34px 32px}}
+.card::before{content:'';position:absolute;top:-60px;right:-60px;width:180px;height:180px;background:radial-gradient(circle,rgba(178,120,10,.08),transparent 70%);border-radius:50%;pointer-events:none}
+.card > *{position:relative;z-index:1}
+
+/* sign-in card */
+.signin-h{font-size:1.35rem;font-weight:600;letter-spacing:-.3px;margin-bottom:8px}
+.signin-sub{color:var(--text2);line-height:1.6;font-size:.98rem;margin-bottom:24px}
+.auth-actions{display:flex;flex-direction:column;gap:12px}
+.divider{display:flex;align-items:center;gap:14px;margin:20px 0;color:var(--text-muted);font-size:.82rem;font-weight:500}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* fields */
+.field{margin-bottom:16px}
+.field:last-child{margin-bottom:0}
+.field label{display:block;font-size:.86rem;font-weight:600;color:var(--text);margin-bottom:7px}
+.field .opt{font-weight:500;color:var(--text-muted);font-size:.78rem}
+.field input[type=email],.field input[type=text],.field textarea,.field select{
+  width:100%;font-family:inherit;font-size:1rem;color:var(--text);background:var(--bg2);
+  border:1px solid var(--border);border-radius:var(--r-md);padding:13px 15px;transition:border-color .15s,box-shadow .15s;outline:none}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--bronze);background:var(--surface);box-shadow:0 0 0 3px rgba(79,81,4,.1)}
+.field input::placeholder,.field textarea::placeholder{color:var(--text-muted)}
+.field textarea{min-height:120px;resize:vertical;line-height:1.55}
+.field select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B6B6B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 13px center;background-size:18px;padding-right:42px}
+
+/* severity pills (calm — no red) */
+.sev-group{display:flex;flex-wrap:wrap;gap:8px}
+.sev-pill{flex:1;min-width:90px;border:1px solid var(--border);background:var(--bg2);border-radius:var(--r-md);padding:11px 10px;text-align:center;font-size:.86rem;font-weight:600;color:var(--text2);transition:border-color .15s,background .15s,color .15s;display:flex;flex-direction:column;align-items:center;gap:4px}
+.sev-pill .se{font-size:1.1rem;line-height:1}
+.sev-pill[aria-pressed="true"]{border-color:var(--olive);background:rgba(79,81,4,.08);color:var(--olive)}
+.sev-pill.tone-bronze[aria-pressed="true"]{border-color:var(--bronze);background:rgba(139,115,85,.1);color:var(--bronze)}
+.sev-pill.tone-gold[aria-pressed="true"]{border-color:var(--gold);background:rgba(178,120,10,.1);color:var(--gold)}
+
+/* file input */
+.file-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.file-btn{display:inline-flex;align-items:center;gap:8px;font-size:.88rem;font-weight:600;color:var(--olive);background:rgba(79,81,4,.07);border:1px solid rgba(79,81,4,.14);padding:10px 15px;border-radius:var(--r-md);transition:background .15s}
+.file-btn:hover{background:rgba(79,81,4,.12)}
+.file-btn svg{width:16px;height:16px;stroke:var(--olive);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.file-name{font-size:.86rem;color:var(--text3);word-break:break-all}
+.file-clear{font-size:.8rem;color:var(--bronze);background:none;border:none;text-decoration:underline;padding:4px}
+
+/* messages */
+.msg{font-size:.9rem;font-weight:500;line-height:1.5;margin-top:14px;padding:12px 14px;border-radius:var(--r-md);display:none}
+.msg.show{display:block}
+.msg.ok{background:rgba(79,81,4,.08);color:var(--olive);border:1px solid rgba(79,81,4,.16)}
+.msg.info{background:var(--cream);color:var(--bronze2);border:1px solid rgba(178,120,10,.18)}
+.msg.warn{background:rgba(139,115,85,.1);color:var(--bronze);border:1px solid rgba(139,115,85,.22)}
+
+/* signed-in greeting bar */
+.who-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:20px;padding:14px 16px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r-lg)}
+.who-bar .who{display:flex;align-items:center;gap:11px;min-width:0}
+.who-bar .avatar{width:38px;height:38px;border-radius:50%;background:var(--olive);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;text-transform:uppercase}
+.who-bar .who-txt{min-width:0}
+.who-bar .who-txt b{display:block;font-size:.78rem;color:var(--text3);font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.who-bar .who-txt span{display:block;font-size:.95rem;font-weight:600;color:var(--text);word-break:break-all}
+.signout{font-size:.86rem;font-weight:600;color:var(--bronze);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:8px 15px;flex-shrink:0;transition:border-color .15s}
+.signout:hover{border-color:var(--bronze)}
+
+/* data note */
+.data-note{display:flex;align-items:flex-start;gap:10px;font-size:.84rem;color:var(--text3);line-height:1.55;margin-top:20px;padding:13px 15px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r-md)}
+.data-note svg{width:17px;height:17px;stroke:var(--bronze);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;margin-top:1px}
+.data-note a{color:var(--olive);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+
+/* reports list */
+.reports{margin-top:30px}
+.reports h2{font-size:1.05rem;font-weight:600;letter-spacing:-.2px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.reports h2 .count{font-size:.74rem;font-weight:700;color:var(--bronze);background:rgba(139,115,85,.1);padding:2px 9px;border-radius:var(--r-full)}
+.report-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:15px 16px;margin-bottom:10px}
+.report-item .ri-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:8px}
+.ri-chip{font-size:.66rem;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:3px 9px;border-radius:var(--r-full)}
+.ri-chip.s-idea{background:rgba(79,81,4,.1);color:var(--olive)}
+.ri-chip.s-minor{background:rgba(107,163,190,.14);color:var(--sky)}
+.ri-chip.s-major{background:rgba(139,115,85,.12);color:var(--bronze)}
+.ri-chip.s-blocker{background:rgba(178,120,10,.12);color:var(--gold)}
+.ri-screen{font-size:.78rem;font-weight:600;color:var(--text3)}
+.ri-date{font-size:.76rem;color:var(--text-muted);margin-left:auto}
+.ri-status{font-size:.66rem;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);background:var(--bg2);border:1px solid var(--border2);padding:3px 9px;border-radius:var(--r-full)}
+.report-item .ri-body{font-size:.92rem;color:var(--text2);line-height:1.55;white-space:pre-wrap;word-break:break-word}
+.report-item .ri-shot{font-size:.78rem;color:var(--bronze);margin-top:8px;display:inline-flex;align-items:center;gap:6px}
+.report-item .ri-shot svg{width:14px;height:14px;stroke:var(--bronze);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.reports-empty{text-align:center;color:var(--text3);font-size:.92rem;padding:24px 16px;background:var(--bg2);border:1px dashed var(--border);border-radius:var(--r-lg);line-height:1.6}
+
+/* loading state */
+.loading{text-align:center;padding:50px 16px;color:var(--text3)}
+.spinner{width:30px;height:30px;border:3px solid var(--border);border-top-color:var(--olive);border-radius:50%;margin:0 auto 14px;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation:none}}
+
+.hide{display:none !important}
+
+/* ─── FOOTER ─── */
+.footer{background:var(--bg);border-top:1px solid var(--border);padding:32px 0;margin-top:auto}
+.footer .container{display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center}
+.footer .flinks{display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:center}
+.footer .flinks a{font-size:.88rem;color:var(--text2);transition:color .15s}
+.footer .flinks a:hover{color:var(--olive)}
+.footer .copy{font-size:.82rem;color:var(--text3)}
+.footer .fdisc{font-size:.76rem;color:var(--text-muted);line-height:1.5;max-width:560px}
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<a class="skip" href="#main" data-en="Skip to content" data-bm="Terus ke kandungan">Skip to content</a>
+
+<!-- ════════════ NAV ════════════ -->
+<header class="nav">
+  <div class="container">
+    <a class="brand" href="/" aria-label="Potraces home">
+      <span class="logo" aria-hidden="true" id="navlogo"></span>
+      <span>Potraces</span>
+      <span class="beta-pill">Beta</span>
+    </a>
+    <div class="nav-right">
+      <a class="nav-back" href="/" data-en="← Home" data-bm="← Laman utama">← Home</a>
+      <div class="lang-toggle" role="group" aria-label="Language / Bahasa">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="ms" aria-pressed="false">BM</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="container">
+    <div class="wrap">
+
+      <!-- head -->
+      <div class="head">
+        <span class="wau-badge" aria-hidden="true" id="headlogo"></span>
+        <span class="eyebrow" data-en="You're in the beta" data-bm="Anda dalam beta">You're in the beta</span>
+        <h1>
+          <span data-en="Tell us what happened." data-bm="Bagitau kami apa jadi." class="block">Tell us what happened.</span>
+        </h1>
+        <p class="lead">
+          <span data-en="Spotted a bug, or got an idea? Send it in under a minute. Every report helps us make Potraces calmer and clearer." data-bm="Jumpa bug, atau ada idea? Hantar dalam seminit je. Setiap report tolong kami buat Potraces lagi tenang & jelas." class="block">Spotted a bug, or got an idea? Send it in under a minute. Every report helps us make Potraces calmer and clearer.</span>
+        </p>
+        <p class="lead" style="margin-top:10px">
+          <span data-en="Thanks for being here early." data-bm="Terima kasih sebab join awal." class="block">Thanks for being here early.</span>
+        </p>
+      </div>
+
+      <!-- ─── LOADING (initial session check) ─── -->
+      <div id="loadingState" class="loading" role="status" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <span data-en="Checking your sign-in…" data-bm="Semak sign-in anda…">Checking your sign-in…</span>
+      </div>
+
+      <!-- ─── SIGNED-OUT ─── -->
+      <section id="signinState" class="card hide" aria-labelledby="signinHeading">
+        <h2 class="signin-h" id="signinHeading" data-en="Sign in to send feedback" data-bm="Masuk dulu nak hantar feedback">Sign in to send feedback</h2>
+        <p class="signin-sub" data-en="A quick sign-in keeps your reports tied to you — so we can follow up and you can see your own history. No password to remember." data-bm="Sign-in cepat ikat report dengan anda — supaya kami boleh follow up dan anda nampak history sendiri. Takyah ingat password.">A quick sign-in keeps your reports tied to you — so we can follow up and you can see your own history. No password to remember.</p>
+
+        <div class="auth-actions">
+          <button type="button" id="googleBtn" class="btn btn-google btn-block">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.06 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h6.2a5.3 5.3 0 0 1-2.3 3.48v2.89h3.72c2.18-2 3.44-4.96 3.44-8.38z"/><path fill="#34A853" d="M12 24c3.11 0 5.72-1.03 7.62-2.79l-3.72-2.89c-1.03.69-2.35 1.1-3.9 1.1-3 0-5.54-2.03-6.45-4.76H1.7v2.98A11.5 11.5 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.55 14.66a6.9 6.9 0 0 1 0-4.4V7.28H1.7a11.5 11.5 0 0 0 0 10.36l3.85-2.98z"/><path fill="#EA4335" d="M12 4.84c1.69 0 3.21.58 4.4 1.72l3.3-3.3A11.5 11.5 0 0 0 12 0 11.5 11.5 0 0 0 1.7 7.28l3.85 2.98C6.46 6.87 9 4.84 12 4.84z"/></svg>
+            <span data-en="Continue with Google" data-bm="Teruskan dengan Google">Continue with Google</span>
+          </button>
+
+          <div class="divider"><span data-en="or" data-bm="atau">or</span></div>
+
+          <form id="magicForm" novalidate>
+            <div class="field" style="margin-bottom:12px">
+              <label for="magicEmail" data-en="Email me a sign-in link" data-bm="Hantar link masuk ke email">Email me a sign-in link</label>
+              <input id="magicEmail" name="email" type="email" inputmode="email" autocomplete="email"
+                data-ph-en="you@email.com" data-ph-bm="you@email.com" placeholder="you@email.com" required>
+            </div>
+            <button type="submit" id="magicBtn" class="btn btn-primary btn-block">
+              <span data-en="Send me the link" data-bm="Hantar link ke saya">Send me the link</span>
+            </button>
+          </form>
+        </div>
+
+        <div id="signinMsg" class="msg" role="status" aria-live="polite"></div>
+
+        <div class="data-note">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+          <span data-en="Beta = pre-release. Things may change or break — please keep your own records too. We only use your email to follow up on your feedback." data-bm="Beta = belum rasmi. Benda boleh berubah atau rosak — sila simpan rekod sendiri juga. Kami guna email anda untuk follow up feedback je.">Beta = pre-release. Things may change or break — please keep your own records too. We only use your email to follow up on your feedback.</span>
+        </div>
+      </section>
+
+      <!-- ─── SIGNED-IN ─── -->
+      <section id="formState" class="hide" aria-labelledby="formHeading">
+        <div class="who-bar">
+          <div class="who">
+            <span class="avatar" id="userAvatar" aria-hidden="true">·</span>
+            <span class="who-txt">
+              <b data-en="Signed in as" data-bm="Masuk sebagai">Signed in as</b>
+              <span id="userEmail">—</span>
+            </span>
+          </div>
+          <button type="button" id="signoutBtn" class="signout" data-en="Sign out" data-bm="Log keluar">Sign out</button>
+        </div>
+
+        <div class="card">
+          <h2 class="signin-h" id="formHeading" data-en="Send feedback" data-bm="Hantar feedback">Send feedback</h2>
+
+          <form id="feedbackForm" novalidate>
+            <!-- required: what happened -->
+            <div class="field">
+              <label for="fbBody" data-en="What happened? / Apa jadi?" data-bm="Apa jadi? / What happened?">What happened? / Apa jadi?</label>
+              <textarea id="fbBody" name="body" required
+                data-ph-en="Tell us what you tapped, what you expected, and what you saw…"
+                data-ph-bm="Cerita apa anda tekan, apa anda jangka, dan apa anda nampak…"
+                placeholder="Tell us what you tapped, what you expected, and what you saw…"></textarea>
+            </div>
+
+            <!-- optional: screen -->
+            <div class="field">
+              <label for="fbScreen">
+                <span data-en="Which screen?" data-bm="Skrin mana?">Which screen?</span>
+                <span class="opt" data-en="(optional)" data-bm="(pilihan)">(optional)</span>
+              </label>
+              <select id="fbScreen" name="screen">
+                <option value="" data-en="Not sure / general" data-bm="Tak pasti / umum">Not sure / general</option>
+                <option value="Dashboard" data-en="Dashboard" data-bm="Dashboard">Dashboard</option>
+                <option value="Receipt scan" data-en="Receipt scan" data-bm="Imbas resit">Receipt scan</option>
+                <option value="Notes / AI" data-en="Notes / AI" data-bm="Nota / AI">Notes / AI</option>
+                <option value="Budget" data-en="Budget" data-bm="Bajet">Budget</option>
+                <option value="Goals" data-en="Goals" data-bm="Matlamat">Goals</option>
+                <option value="Debts / Splits" data-en="Debts / Splits" data-bm="Hutang / Pecah bil">Debts / Splits</option>
+                <option value="Seller" data-en="Seller / Stall" data-bm="Penjual / Gerai">Seller / Stall</option>
+                <option value="Other" data-en="Other" data-bm="Lain-lain">Other</option>
+              </select>
+            </div>
+
+            <!-- optional: severity (calm, no red) -->
+            <div class="field">
+              <label>
+                <span data-en="How much does it bug you?" data-bm="Berapa kacau ia?">How much does it bug you?</span>
+                <span class="opt" data-en="(optional)" data-bm="(pilihan)">(optional)</span>
+              </label>
+              <div class="sev-group" id="sevGroup" role="group" aria-label="Severity">
+                <button type="button" class="sev-pill" data-sev="idea" aria-pressed="false">
+                  <span class="se" aria-hidden="true">💡</span>
+                  <span data-en="Just an idea" data-bm="Idea je">Just an idea</span>
+                </button>
+                <button type="button" class="sev-pill" data-sev="minor" aria-pressed="false">
+                  <span class="se" aria-hidden="true">🙂</span>
+                  <span data-en="Minor" data-bm="Kecil">Minor</span>
+                </button>
+                <button type="button" class="sev-pill tone-bronze" data-sev="major" aria-pressed="false">
+                  <span class="se" aria-hidden="true">😕</span>
+                  <span data-en="Annoying" data-bm="Menyampah">Annoying</span>
+                </button>
+                <button type="button" class="sev-pill tone-gold" data-sev="blocker" aria-pressed="false">
+                  <span class="se" aria-hidden="true">😣</span>
+                  <span data-en="Blocks me" data-bm="Tersekat">Blocks me</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- optional: screenshot -->
+            <div class="field">
+              <label>
+                <span data-en="Add a screenshot" data-bm="Tambah screenshot">Add a screenshot</span>
+                <span class="opt" data-en="(optional)" data-bm="(pilihan)">(optional)</span>
+              </label>
+              <div class="file-row">
+                <label class="file-btn" for="fbShot">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                  <span data-en="Choose image" data-bm="Pilih gambar">Choose image</span>
+                </label>
+                <input id="fbShot" name="screenshot" type="file" accept="image/png,image/jpeg,image/webp" class="hide">
+                <span class="file-name" id="fbShotName"></span>
+                <button type="button" class="file-clear hide" id="fbShotClear" data-en="remove" data-bm="buang">remove</button>
+              </div>
+            </div>
+
+            <button type="submit" id="submitBtn" class="btn btn-primary btn-block" style="margin-top:8px">
+              <span data-en="Send feedback" data-bm="Hantar feedback">Send feedback</span>
+            </button>
+          </form>
+
+          <div id="formMsg" class="msg" role="status" aria-live="polite"></div>
+
+          <div class="data-note">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+            <span>
+              <span data-en="Beta = pre-release — please keep your own records too. " data-bm="Beta = belum rasmi — sila simpan rekod sendiri juga. ">Beta = pre-release — please keep your own records too. </span>
+              <span data-en="Only you can see your reports. See our " data-bm="Anda je nampak report anda. Baca ">Only you can see your reports. See our </span><a href="/privacy.html" data-en="privacy policy" data-bm="dasar privasi">privacy policy</a>.
+            </span>
+          </div>
+        </div>
+
+        <!-- your reports -->
+        <div class="reports">
+          <h2>
+            <span data-en="Your reports" data-bm="Report anda">Your reports</span>
+            <span class="count hide" id="reportsCount">0</span>
+          </h2>
+          <div id="reportsList"></div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<!-- ════════════ FOOTER ════════════ -->
+<footer class="footer">
+  <div class="container">
+    <div class="flinks">
+      <a href="/" data-en="Home" data-bm="Laman utama">Home</a>
+      <a href="/privacy.html" data-en="Privacy" data-bm="Privasi">Privacy</a>
+      <a href="mailto:hello@jejakbaki.my" data-en="Contact" data-bm="Hubungi">Contact</a>
+    </div>
+    <span class="copy">© <span id="year">2026</span> Potraces · jejakbaki.my</span>
+    <p class="fdisc" data-en="Potraces is a calm money tracker, not financial advice. Beta software may change without notice." data-bm="Potraces alat jejak duit yang tenang, bukan nasihat kewangan. Perisian beta boleh berubah tanpa notis.">Potraces is a calm money tracker, not financial advice. Beta software may change without notice.</p>
+  </div>
+</footer>
+
+<!-- ════════════ NON-MODULE UI SCRIPT (lang toggle, wau, year) ════════════ -->
+<script>
+/* inline wau SVG (sage), injected into logo slots — identical to the marketing site */
+var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" role="img" aria-label="Potraces wau kite logo">\
+<rect width="1024" height="1024" fill="#5E7B6A"/>\
+<circle cx="512" cy="490" r="350" fill="#F1E7D3" opacity="0.05"/>\
+<circle cx="512" cy="490" r="262" fill="#F1E7D3" opacity="0.05"/>\
+<g transform="translate(0 96) rotate(-6 512 420)">\
+<path d="M494 278 L512 92 L530 278 Z" fill="#DEAB22" stroke="#B2780A" stroke-width="5" stroke-linejoin="round"/>\
+<circle cx="512" cy="86" r="9" fill="#DEAB22"/><circle cx="512" cy="86" r="4" fill="#B2780A"/>\
+<rect x="486" y="268" width="52" height="14" rx="7" fill="#B2780A"/>\
+<path d="M512 428 L540 464 L512 502 L484 464 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="6" stroke-linejoin="round"/>\
+<path d="M512 460 C470 535 432 600 374 660 C416 670 466 644 494 594 C504 560 510 510 512 460 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="7" stroke-linejoin="round"/>\
+<path d="M512 460 C554 535 592 600 650 660 C608 670 558 644 530 594 C520 560 514 510 512 460 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="7" stroke-linejoin="round"/>\
+<path d="M508 480 C478 546 448 598 402 646" stroke="#DEAB22" stroke-width="5" stroke-linecap="round"/>\
+<path d="M516 480 C546 546 576 598 622 646" stroke="#DEAB22" stroke-width="5" stroke-linecap="round"/>\
+<path d="M448 596 C432 588 420 592 414 606" stroke="#4F5104" stroke-width="4" stroke-linecap="round"/>\
+<circle cx="411" cy="610" r="4" fill="#DEAB22"/>\
+<path d="M576 596 C592 588 604 592 610 606" stroke="#4F5104" stroke-width="4" stroke-linecap="round"/>\
+<circle cx="613" cy="610" r="4" fill="#DEAB22"/>\
+<path d="M130 560 C250 340 400 272 512 272 C624 272 774 340 894 560 C760 470 640 436 512 436 C384 436 264 470 130 560 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="8" stroke-linejoin="round"/>\
+<path d="M220 500 C310 370 416 310 512 310 C608 310 714 370 804 500" stroke="#DEAB22" stroke-width="7" stroke-linecap="round"/>\
+<path d="M392 372 C352 354 318 360 300 392" stroke="#4F5104" stroke-width="6" stroke-linecap="round"/>\
+<circle cx="296" cy="398" r="6" fill="#DEAB22"/>\
+<path d="M342 440 C312 428 290 432 278 454" stroke="#4F5104" stroke-width="5" stroke-linecap="round"/>\
+<circle cx="274" cy="458" r="5" fill="#DEAB22"/>\
+<ellipse cx="430" cy="340" rx="7" ry="14" fill="#B2780A" opacity="0.85" transform="rotate(-35 430 340)"/>\
+<g transform="matrix(-1 0 0 1 1024 0)">\
+<path d="M392 372 C352 354 318 360 300 392" stroke="#4F5104" stroke-width="6" stroke-linecap="round"/>\
+<circle cx="296" cy="398" r="6" fill="#DEAB22"/>\
+<path d="M342 440 C312 428 290 432 278 454" stroke="#4F5104" stroke-width="5" stroke-linecap="round"/>\
+<circle cx="274" cy="458" r="5" fill="#DEAB22"/>\
+<ellipse cx="430" cy="340" rx="7" ry="14" fill="#B2780A" opacity="0.85" transform="rotate(-35 430 340)"/>\
+</g>\
+<circle cx="133" cy="557" r="6" fill="#DEAB22"/><circle cx="891" cy="557" r="6" fill="#DEAB22"/>\
+<circle cx="512" cy="368" r="48" stroke="#DEAB22" stroke-width="4" opacity="0.6"/>\
+<g>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(60 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(120 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(180 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(240 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(300 512 368)"/>\
+</g>\
+<circle cx="512" cy="368" r="11" fill="#B2780A"/>\
+</g></svg>';
+['navlogo','headlogo'].forEach(function(id){
+  var el = document.getElementById(id);
+  if (el) el.innerHTML = WAU_SVG;
+});
+
+/* language toggle (persisted, shared key with the marketing site) */
+(function(){
+  var STORAGE='potraces_lang';
+  function apply(lang){
+    document.documentElement.setAttribute('lang', lang);
+    document.querySelectorAll('.lang-toggle button').forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-lang')===lang));
+    });
+    // swap visible text in-place. Leaf elements only, so nested markup (e.g. a link
+    // inside a sentence) is never wiped — those carry their own data-* on each part.
+    document.querySelectorAll('[data-en]').forEach(function(el){
+      if(el.children.length) return;
+      var tx = lang==='ms' ? el.getAttribute('data-bm') : el.getAttribute('data-en');
+      if(tx!=null) el.textContent = tx;
+    });
+    document.querySelectorAll('[data-ph-en]').forEach(function(inp){
+      inp.setAttribute('placeholder', lang==='ms' ? inp.getAttribute('data-ph-bm') : inp.getAttribute('data-ph-en'));
+    });
+    try{ localStorage.setItem(STORAGE, lang); }catch(e){}
+    // let the module script re-render dynamic content (reports list) in the new language
+    try{ window.dispatchEvent(new Event('pt:lang')); }catch(e){}
+  }
+  var saved='en';
+  try{ saved = localStorage.getItem(STORAGE) || 'en'; }catch(e){}
+  apply(saved);
+  document.querySelectorAll('.lang-toggle button').forEach(function(b){
+    b.addEventListener('click', function(){ apply(b.getAttribute('data-lang')); });
+  });
+  // expose for the module script
+  window.__ptLang = function(){ return document.documentElement.getAttribute('lang') === 'ms' ? 'ms' : 'en'; };
+})();
+
+document.getElementById('year').textContent = String(new Date().getFullYear());
+</script>
+
+<!-- ════════════ SUPABASE AUTH + FEEDBACK (ES module) ════════════ -->
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+/* Public values — same as docs/order.html (public, RLS-protected; NEVER the service_role key). */
+const SB_URL = 'https://iydqeeonaljqapulboaz.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5ZHFlZW9uYWxqcWFwdWxib2F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NjQ1MDcsImV4cCI6MjA4ODQ0MDUwN30.IP0oJOs4DwwIM--ym2rPls51qpCHMVD-oB1UDjgS2Ec';
+
+const APP_VERSION = 'web-beta';
+const REDIRECT_TO = location.origin + '/beta.html'; // exact-match in Supabase URL config
+const SCREENSHOT_BUCKET = 'beta-screenshots';
+const MAX_SHOT_BYTES = 5 * 1024 * 1024; // 5MB client cap
+
+const sb = createClient(SB_URL, SB_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' }
+});
+
+/* ── tiny bilingual helper ── */
+const L = () => (window.__ptLang ? window.__ptLang() : 'en');
+const t = (en, ms) => (L() === 'ms' ? ms : en);
+
+/* ── element refs ── */
+const $ = (id) => document.getElementById(id);
+const loadingState = $('loadingState');
+const signinState  = $('signinState');
+const formState    = $('formState');
+
+const googleBtn = $('googleBtn');
+const magicForm = $('magicForm');
+const magicBtn  = $('magicBtn');
+const magicEmail= $('magicEmail');
+const signinMsg = $('signinMsg');
+
+const userEmailEl = $('userEmail');
+const userAvatar  = $('userAvatar');
+const signoutBtn  = $('signoutBtn');
+
+const feedbackForm = $('feedbackForm');
+const fbBody    = $('fbBody');
+const fbScreen  = $('fbScreen');
+const sevGroup  = $('sevGroup');
+const fbShot    = $('fbShot');
+const fbShotName= $('fbShotName');
+const fbShotClear=$('fbShotClear');
+const submitBtn = $('submitBtn');
+const formMsg   = $('formMsg');
+
+const reportsList = $('reportsList');
+const reportsCount= $('reportsCount');
+
+let selectedSeverity = '';
+
+/* ── message helpers ── */
+function setMsg(el, text, kind){
+  el.textContent = text;
+  el.className = 'msg show ' + (kind || 'info');
+}
+function clearMsg(el){ el.textContent=''; el.className='msg'; }
+
+/* ── view switching ── */
+function showLoading(){ loadingState.classList.remove('hide'); signinState.classList.add('hide'); formState.classList.add('hide'); }
+function showSignIn(){
+  loadingState.classList.add('hide');
+  signinState.classList.remove('hide');
+  formState.classList.add('hide');
+}
+function showForm(user){
+  loadingState.classList.add('hide');
+  signinState.classList.add('hide');
+  formState.classList.remove('hide');
+  const email = user?.email || '';
+  userEmailEl.textContent = email || t('your account','akaun anda');
+  userAvatar.textContent = (email ? email[0] : '·').toUpperCase();
+  loadReports();
+}
+
+/* ── severity pills ── */
+sevGroup.addEventListener('click', (e) => {
+  const pill = e.target.closest('.sev-pill');
+  if (!pill) return;
+  const val = pill.getAttribute('data-sev');
+  if (selectedSeverity === val){
+    selectedSeverity = '';
+    pill.setAttribute('aria-pressed','false');
+  } else {
+    selectedSeverity = val;
+    sevGroup.querySelectorAll('.sev-pill').forEach(p =>
+      p.setAttribute('aria-pressed', String(p === pill)));
+  }
+});
+
+/* ── screenshot picker ── */
+fbShot.addEventListener('change', () => {
+  clearMsg(formMsg);
+  const f = fbShot.files && fbShot.files[0];
+  if (!f){ fbShotName.textContent=''; fbShotClear.classList.add('hide'); return; }
+  if (f.size > MAX_SHOT_BYTES){
+    fbShot.value=''; fbShotName.textContent='';
+    fbShotClear.classList.add('hide');
+    setMsg(formMsg, t('That image is over 5MB — please pick a smaller one.','Gambar tu lebih 5MB — pilih yang kecik sikit ya.'), 'warn');
+    return;
+  }
+  fbShotName.textContent = f.name;
+  fbShotClear.classList.remove('hide');
+});
+fbShotClear.addEventListener('click', () => {
+  fbShot.value=''; fbShotName.textContent=''; fbShotClear.classList.add('hide');
+});
+
+/* ── Google OAuth (primary) ── */
+googleBtn.addEventListener('click', async () => {
+  clearMsg(signinMsg);
+  googleBtn.disabled = true;
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: REDIRECT_TO,
+      queryParams: { access_type: 'offline', prompt: 'select_account' }
+    }
+  });
+  if (error){
+    googleBtn.disabled = false;
+    setMsg(signinMsg, t('Could not start Google sign-in. Try the email link instead.','Tak boleh mula sign-in Google. Cuba link email pulak.'), 'warn');
+  }
+  // success → full-page redirect to Google
+});
+
+/* ── Email magic link (fallback) ── */
+magicForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearMsg(signinMsg);
+  const email = (magicEmail.value || '').trim();
+  if (!/\S+@\S+\.\S+/.test(email)){
+    setMsg(signinMsg, t('Pop in a valid email address.','Letak alamat email yang betul ya.'), 'warn');
+    return;
+  }
+  magicBtn.disabled = true;
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: REDIRECT_TO, shouldCreateUser: true }
+  });
+  magicBtn.disabled = false;
+  if (error){
+    setMsg(signinMsg, t('Could not send the link right now. Please try again.','Tak boleh hantar link sekarang. Cuba lagi ya.'), 'warn');
+    return;
+  }
+  setMsg(signinMsg, t('Check your email for the sign-in link.','Check email, klik link tu untuk masuk.'), 'ok');
+  magicForm.reset();
+});
+
+/* ── Sign out ── */
+signoutBtn.addEventListener('click', async () => {
+  signoutBtn.disabled = true;
+  await sb.auth.signOut();
+  signoutBtn.disabled = false;
+  // onAuthStateChange(SIGNED_OUT) handles the view; ensure UI even if event is slow
+  showSignIn();
+});
+
+/* ── Submit feedback ── */
+feedbackForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearMsg(formMsg);
+
+  const body = (fbBody.value || '').trim();
+  if (!body){
+    setMsg(formMsg, t('Please tell us what happened first.','Cerita dulu apa jadi ya.'), 'warn');
+    fbBody.focus();
+    return;
+  }
+
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session){
+    setMsg(formMsg, t('Your sign-in expired — please sign in again.','Sign-in dah tamat — masuk semula ya.'), 'warn');
+    showSignIn();
+    return;
+  }
+
+  submitBtn.disabled = true;
+  setMsg(formMsg, t('Sending…','Tengah hantar…'), 'info');
+
+  try {
+    // optional screenshot first (path MUST start with the user's uid)
+    let screenshotPath = null;
+    const file = fbShot.files && fbShot.files[0];
+    if (file){
+      const safeName = file.name.replace(/[^\w.\-]+/g, '_').slice(0, 80);
+      const path = `${session.user.id}/${crypto.randomUUID()}-${safeName}`;
+      const { error: upErr } = await sb.storage
+        .from(SCREENSHOT_BUCKET)
+        .upload(path, file, { upsert: false, contentType: file.type });
+      if (upErr) throw upErr;
+      screenshotPath = path;
+    }
+
+    const { error } = await sb.from('beta_feedback').insert({
+      email: session.user.email,        // convenience copy; RLS keys off user_id (DEFAULT auth.uid())
+      screen: fbScreen.value || null,
+      severity: selectedSeverity || null,
+      body,
+      screenshot_path: screenshotPath,
+      app_version: APP_VERSION,
+      user_agent: navigator.userAgent.slice(0, 500)
+    });
+    if (error) throw error;
+
+    // calm success
+    setMsg(formMsg, t('Got it — thank you! Your report is in.','Dah terima — terima kasih! Report anda dah masuk.'), 'ok');
+    feedbackForm.reset();
+    selectedSeverity = '';
+    sevGroup.querySelectorAll('.sev-pill').forEach(p => p.setAttribute('aria-pressed','false'));
+    fbShotName.textContent=''; fbShotClear.classList.add('hide');
+    loadReports();
+  } catch (err){
+    setMsg(formMsg, t('Could not send that — please try again in a moment.','Tak boleh hantar — cuba lagi sekejap ya.'), 'warn');
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+/* ── Load the signed-in tester's own reports (RLS-scoped) ── */
+function fmtDate(iso){
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString(L()==='ms'?'ms-MY':'en-MY', { day:'numeric', month:'short', year:'numeric' }) +
+      ' · ' + d.toLocaleTimeString(L()==='ms'?'ms-MY':'en-MY', { hour:'2-digit', minute:'2-digit' });
+  } catch(e){ return iso; }
+}
+function sevLabel(s){
+  const map = {
+    idea:    t('Idea','Idea'),
+    minor:   t('Minor','Kecil'),
+    major:   t('Annoying','Menyampah'),
+    blocker: t('Blocks me','Tersekat')
+  };
+  return map[s] || s;
+}
+function statusLabel(s){
+  const map = {
+    new:     t('New','Baru'),
+    triaged: t('Reviewing','Tengah semak'),
+    fixed:   t('Fixed','Dah baiki'),
+    done:    t('Done','Selesai'),
+    wontfix: t('Noted','Dicatat'),
+    dup:     t('Duplicate','Sama')
+  };
+  return map[s] || s;
+}
+function esc(str){ const d=document.createElement('div'); d.textContent=str==null?'':String(str); return d.innerHTML; }
+
+async function loadReports(){
+  reportsList.innerHTML = `<div class="reports-empty">${t('Loading your reports…','Memuatkan report anda…')}</div>`;
+  const { data, error } = await sb
+    .from('beta_feedback')
+    .select('id, created_at, screen, severity, body, screenshot_path, status')
+    .order('created_at', { ascending: false });
+
+  if (error){
+    reportsCount.classList.add('hide');
+    reportsList.innerHTML = `<div class="reports-empty">${t('Could not load your reports right now.','Tak boleh muat report anda sekarang.')}</div>`;
+    return;
+  }
+  if (!data || data.length === 0){
+    reportsCount.classList.add('hide');
+    reportsList.innerHTML = `<div class="reports-empty">${t("No reports yet — your first one will show up here.","Belum ada report — yang pertama akan muncul di sini.")}</div>`;
+    return;
+  }
+
+  reportsCount.textContent = String(data.length);
+  reportsCount.classList.remove('hide');
+
+  reportsList.innerHTML = data.map((r) => {
+    const sev = r.severity
+      ? `<span class="ri-chip s-${esc(r.severity)}">${esc(sevLabel(r.severity))}</span>` : '';
+    const screen = r.screen
+      ? `<span class="ri-screen">${esc(r.screen)}</span>` : '';
+    const shot = r.screenshot_path
+      ? `<span class="ri-shot"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>${t('screenshot attached','screenshot disertakan')}</span>` : '';
+    const status = `<span class="ri-status">${esc(statusLabel(r.status))}</span>`;
+    return `<article class="report-item">
+      <div class="ri-top">${sev}${screen}${status}<span class="ri-date">${esc(fmtDate(r.created_at))}</span></div>
+      <div class="ri-body">${esc(r.body)}</div>
+      ${shot}
+    </article>`;
+  }).join('');
+}
+
+/* ── PKCE: finish the code exchange, then clean the URL ── */
+async function completePkceIfNeeded(){
+  if (location.search.includes('code=')){
+    try { await sb.auth.exchangeCodeForSession(window.location.href); }
+    catch(e){ /* getSession below decides the gate */ }
+    history.replaceState({}, '', location.pathname);
+  }
+  // magic-link errors come back as #error=… — surface them gently
+  if (location.hash.includes('error')){
+    const params = new URLSearchParams(location.hash.slice(1));
+    if (params.get('error')){
+      setMsg(signinMsg, t('That sign-in link expired or was already used. Please request a new one.','Link tu dah tamat atau dah guna. Minta yang baru ya.'), 'warn');
+    }
+    history.replaceState({}, '', location.pathname);
+  }
+}
+
+/* ── react to auth changes ── */
+sb.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_OUT' || !session){
+    showSignIn();
+  } else {
+    // SIGNED_IN / INITIAL_SESSION / TOKEN_REFRESHED / USER_UPDATED
+    showForm(session.user);
+  }
+});
+
+/* ── re-render dynamic content (reports list) when the language toggle fires ── */
+window.addEventListener('pt:lang', () => {
+  if (!formState.classList.contains('hide')) loadReports();
+});
+
+/* ── boot ── */
+(async function boot(){
+  showLoading();
+  await completePkceIfNeeded();
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) showForm(session.user);
+  else showSignIn();
+})();
+</script>
+</body>
+</html>

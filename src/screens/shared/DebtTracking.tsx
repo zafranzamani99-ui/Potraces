@@ -51,7 +51,7 @@ const getDocumentScanner = (): typeof import('react-native-document-scanner-plug
 import * as Contacts from 'expo-contacts';
 import * as Sharing from 'expo-sharing';
 import * as Clipboard from 'expo-clipboard';
-import { scanReceipt } from '../../services/receiptScanner';
+import { scanReceipt, scanReceiptStream } from '../../services/receiptScanner';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useDebtStore } from '../../store/debtStore';
 import { useAppStore } from '../../store/appStore';
@@ -520,18 +520,21 @@ const DebtTracking: React.FC = () => {
         groups.drafts.push(s);
         return;
       }
-      const nonSelf = s.participants.filter((p) => p.contact.id !== '__self__');
-      const allPaid = nonSelf.length > 0 && nonSelf.every((p) => p.isPaid);
-      if (allPaid) {
-        groups.settled.push(s);
-        return;
-      }
+      // "I still owe my share" must win over settled: the payer is auto-marked isPaid at
+      // creation, so a "someone else paid" split would otherwise auto-bucket as settled
+      // and hide my own unpaid share. Check youOwe BEFORE settled.
       if (s.paidBy && s.paidBy.id !== '__self__') {
         const me = s.participants.find((p) => p.contact.id === '__self__');
         if (me && !me.isPaid) {
           groups.youOwe.push(s);
           return;
         }
+      }
+      const nonSelf = s.participants.filter((p) => p.contact.id !== '__self__');
+      const allPaid = nonSelf.length > 0 && nonSelf.every((p) => p.isPaid);
+      if (allPaid) {
+        groups.settled.push(s);
+        return;
       }
       groups.waiting.push(s);
     });
@@ -1460,10 +1463,14 @@ const DebtTracking: React.FC = () => {
       }
       const txWasDeleted = txId && !hasSiblings;
       if (!(debt.mode === 'personal' && txWasDeleted) && payment.walletId && currentWallets.some(w => w.id === payment.walletId)) {
+        // Business-mode payments charged the wallet amount+tip at creation, but the stored
+        // payment.amount is capped to the debt (tip excluded). Refund the tip too so the
+        // wallet nets to zero. Personal mode is reconciled by deleteTransaction — don't add tip there.
+        const refund = payment.amount + (debt.mode !== 'personal' ? (payment.tipAmount ?? 0) : 0);
         if (debt.type === 'they_owe') {
-          deductFromWallet(payment.walletId, payment.amount);
+          deductFromWallet(payment.walletId, refund);
         } else {
-          addToWallet(payment.walletId, payment.amount);
+          addToWallet(payment.walletId, refund);
         }
       }
     });
@@ -1618,7 +1625,9 @@ const DebtTracking: React.FC = () => {
 
     const newPaidAmount = currentDebt.paidAmount + amount;
     if (newPaidAmount >= currentDebt.totalAmount && currentDebt.splitId) {
-      markSplitParticipantPaid(currentDebt.splitId, currentDebt.contact.id);
+      // For an i_owe split debt the contact is the PAYER, not the owed participant — that's me.
+      const participantId = currentDebt.type === 'i_owe' ? '__self__' : currentDebt.contact.id;
+      markSplitParticipantPaid(currentDebt.splitId, participantId);
     }
     if (newPaidAmount >= currentDebt.totalAmount && currentDebt.sharedSubId && currentDebt.sharedSubMonth) {
       markSharedSubPayment(currentDebt.sharedSubId, currentDebt.sharedSubMonth, currentDebt.contact.id);
@@ -1698,7 +1707,7 @@ const DebtTracking: React.FC = () => {
               if (nId) nettedPaymentRefs.push({ debtId: d.id, paymentId: nId });
               const after = freshDebt(d.id);
               if (after?.status === 'settled') {
-                if (d.splitId) markSplitParticipantPaid(d.splitId, d.contact.id);
+                if (d.splitId) markSplitParticipantPaid(d.splitId, d.type === 'i_owe' ? '__self__' : d.contact.id);
                 if (d.sharedSubId && d.sharedSubMonth) markSharedSubPayment(d.sharedSubId, d.sharedSubMonth, d.contact.id);
               }
             }
@@ -1716,12 +1725,12 @@ const DebtTracking: React.FC = () => {
               if (nId) nettedPaymentRefs.push({ debtId: d.id, paymentId: nId });
               const after = freshDebt(d.id);
               if (after?.status === 'settled' && d.splitId) {
-                markSplitParticipantPaid(d.splitId, d.contact.id);
+                markSplitParticipantPaid(d.splitId, d.type === 'i_owe' ? '__self__' : d.contact.id);
               }
               offsetLeft -= pay;
             }
           }
-          if (iOweRem === theyOweRem) {
+          if (Math.abs(iOweRem - theyOweRem) < 0.01) {
             showToast(`Debts netted — settled`, 'success');
             setGroupPaymentId(null);
             setPaymentModalVisible(false);
@@ -1795,7 +1804,7 @@ const DebtTracking: React.FC = () => {
               if (!firstPaymentId) firstPaymentId = pId;
               const after = freshDebt(d.id);
               if (after?.status === 'settled') {
-                if (d.splitId) markSplitParticipantPaid(d.splitId, d.contact.id);
+                if (d.splitId) markSplitParticipantPaid(d.splitId, d.type === 'i_owe' ? '__self__' : d.contact.id);
                 if (d.sharedSubId && d.sharedSubMonth) markSharedSubPayment(d.sharedSubId, d.sharedSubMonth, d.contact.id);
               }
               lastPaidInfo = { debtId: d.id, paymentId: pId, amount: pay };
@@ -1897,8 +1906,12 @@ const DebtTracking: React.FC = () => {
           for (const p of allPayments) {
             const pw = p.payment;
             if (pw?.walletId && p.debt.mode !== 'personal') {
-              if (p.debt.type === 'they_owe') deductFromWallet(pw.walletId, pw.amount);
-              else addToWallet(pw.walletId, pw.amount);
+              // Single (non-consolidated) business payments store tipAmount separately and
+              // cap pw.amount to the debt — creation charged amount+tip, so refund the tip too.
+              // Consolidated payments fold the tip INTO pw.amount, so adding it would double-refund.
+              const refund = pw.amount + (isConsolidated ? 0 : (pw.tipAmount ?? 0));
+              if (p.debt.type === 'they_owe') deductFromWallet(pw.walletId, refund);
+              else addToWallet(pw.walletId, refund);
             }
           }
 
@@ -1909,7 +1922,7 @@ const DebtTracking: React.FC = () => {
                 .filter((px) => px.id !== p.paymentId)
                 .reduce((sum, px) => sum + px.amount, 0);
               if (remaining < p.debt.totalAmount) {
-                unmarkSplitParticipantPaid(p.debt.splitId, p.debt.contact.id);
+                unmarkSplitParticipantPaid(p.debt.splitId, p.debt.type === 'i_owe' ? '__self__' : p.debt.contact.id);
               }
             }
             if (p.debt.sharedSubId && p.debt.sharedSubMonth && p.debt.status === 'settled') {
@@ -2048,7 +2061,7 @@ const DebtTracking: React.FC = () => {
     if (amountChanged && freshDebt.splitId) {
       const updatedDebt = useDebtStore.getState().debts.find(d => d.id === payDetailDebtId);
       if (updatedDebt && updatedDebt.status !== 'settled' && freshDebt.status === 'settled') {
-        unmarkSplitParticipantPaid(freshDebt.splitId, freshDebt.contact.id);
+        unmarkSplitParticipantPaid(freshDebt.splitId, freshDebt.type === 'i_owe' ? '__self__' : freshDebt.contact.id);
       }
     }
     if (amountChanged && freshDebt.sharedSubId && freshDebt.sharedSubMonth) {
@@ -2139,10 +2152,14 @@ const DebtTracking: React.FC = () => {
                 if (!(freshDebt.mode === 'personal' && txWasDeleted) && freshPayment.walletId) {
                   const currentWallets = useWalletStore.getState().wallets;
                   if (currentWallets.some(w => w.id === freshPayment.walletId)) {
+                    // Single (non-consolidated) business payments store tipAmount separately and
+                    // cap freshPayment.amount to the debt — creation charged amount+tip, so refund the
+                    // tip too. Consolidated fold tip INTO amount; adding it would double-refund.
+                    const refund = freshPayment.amount + (hasSiblings ? 0 : (freshPayment.tipAmount ?? 0));
                     if (freshDebt.type === 'they_owe') {
-                      deductFromWallet(freshPayment.walletId, freshPayment.amount);
+                      deductFromWallet(freshPayment.walletId, refund);
                     } else {
-                      addToWallet(freshPayment.walletId, freshPayment.amount);
+                      addToWallet(freshPayment.walletId, refund);
                     }
                   }
                 }
@@ -2354,8 +2371,14 @@ const DebtTracking: React.FC = () => {
               else deleteBusinessTransaction(payment.linkedTransactionId);
             }
             if (ld.mode !== 'personal' && payment.walletId) {
-              if (ld.type === 'they_owe') deductFromWallet(payment.walletId, payment.amount);
-              else addToWallet(payment.walletId, payment.amount);
+              // Single (non-consolidated) business payments cap amount to the debt and store
+              // tipAmount separately — refund the tip too. Consolidated fold tip into amount.
+              const txSibling = payment.linkedTransactionId && useDebtStore.getState().debts.some(d =>
+                d.id !== ld.id && d.payments.some(p => p.linkedTransactionId === payment.linkedTransactionId)
+              );
+              const refund = payment.amount + (txSibling ? 0 : (payment.tipAmount ?? 0));
+              if (ld.type === 'they_owe') deductFromWallet(payment.walletId, refund);
+              else addToWallet(payment.walletId, refund);
             }
           });
           deleteDebt(ld.id);
@@ -2687,9 +2710,16 @@ const DebtTracking: React.FC = () => {
                       else deleteBusinessTransaction(txId);
                       deletedTxIds.add(txId);
                     }
-                    if (payment.walletId && currentWallets.some((w) => w.id === payment.walletId)) {
-                      if (debt.type === 'they_owe') deductFromWallet(payment.walletId, payment.amount);
-                      else addToWallet(payment.walletId, payment.amount);
+                    // Skip for personal mode — deleteTransaction already reversed the wallet
+                    if (debt.mode !== 'personal' && payment.walletId && currentWallets.some((w) => w.id === payment.walletId)) {
+                      // Single (non-consolidated) business payments store tipAmount separately and cap
+                      // amount to the debt — refund the tip too. Consolidated fold tip into amount.
+                      const txSibling = txId && debts.some(d =>
+                        d.id !== debt.id && d.payments.some(p => p.linkedTransactionId === txId)
+                      );
+                      const refund = payment.amount + (txSibling ? 0 : (payment.tipAmount ?? 0));
+                      if (debt.type === 'they_owe') deductFromWallet(payment.walletId, refund);
+                      else addToWallet(payment.walletId, refund);
                     }
                   });
                 }
@@ -2706,9 +2736,16 @@ const DebtTracking: React.FC = () => {
                       else deleteBusinessTransaction(txId);
                       deletedTxIds.add(txId);
                     }
-                    if (payment.walletId && currentWallets.some((w) => w.id === payment.walletId)) {
-                      if (ld.type === 'they_owe') deductFromWallet(payment.walletId, payment.amount);
-                      else addToWallet(payment.walletId, payment.amount);
+                    // Skip for personal mode — deleteTransaction already reversed the wallet
+                    if (ld.mode !== 'personal' && payment.walletId && currentWallets.some((w) => w.id === payment.walletId)) {
+                      // Single (non-consolidated) business payments store tipAmount separately and cap
+                      // amount to the debt — refund the tip too. Consolidated fold tip into amount.
+                      const txSibling = txId && debts.some(d =>
+                        d.id !== ld.id && d.payments.some(p => p.linkedTransactionId === txId)
+                      );
+                      const refund = payment.amount + (txSibling ? 0 : (payment.tipAmount ?? 0));
+                      if (ld.type === 'they_owe') deductFromWallet(payment.walletId, refund);
+                      else addToWallet(payment.walletId, refund);
                     }
                   });
                   deleteDebt(ld.id);
@@ -2877,16 +2914,45 @@ const DebtTracking: React.FC = () => {
     }
 
     setScanningReceipt(true);
+    // Tracks whether the streaming first-item callback already opened the wizard,
+    // so we don't re-open it (or fail to open it on the non-streaming fallback).
+    let opened = false;
     try {
-      const receipt = await scanReceipt(uri);
+      const receipt = await scanReceiptStream(uri, {
+        // First parsed item → drop the blocking overlay and open the wizard
+        // immediately, so items stream into view instead of after a blank wait.
+        onFirstItem: () => {
+          opened = true;
+          setScanningReceipt(false);
+          setWizardReceipt(null);
+          setWizardDescription('');
+          setWizardTotal('');
+          setWizardStep(1);
+          setWizardVisible(true);
+        },
+        // Each time more items complete, refresh the live list.
+        onItems: (items) => {
+          setWizardItems(
+            items.map((item) => ({
+              name: item.name,
+              amount: item.amount,
+              assignedTo: [] as Contact[],
+            }))
+          );
+        },
+      });
       premium.incrementScanCount();
       if (receipt.items.length === 0 && receipt.total === 0) {
+        if (opened) setWizardVisible(false);
         showToast('Could not read receipt', 'error');
         return;
       }
+      // Finalize with the authoritative parsed data (vendor/total/tax + clean items).
+      // Use functional updates for fields the user can already edit at step 1 so
+      // a finished stream never clobbers something they started typing.
       setWizardReceipt(receipt);
-      setWizardDescription(receipt.vendor || '');
-      setWizardTotal(receipt.total.toFixed(2));
+      setWizardDescription((prev) => (prev.trim() ? prev : receipt.vendor || ''));
+      setWizardTotal((prev) => (prev ? prev : receipt.total.toFixed(2)));
       setWizardItems(
         receipt.items.map((item) => ({
           name: item.name,
@@ -2894,9 +2960,14 @@ const DebtTracking: React.FC = () => {
           assignedTo: [] as Contact[],
         }))
       );
-      setWizardStep(1);
-      setWizardVisible(true);
+      // No items streamed (non-streaming fallback, or a total-only receipt) —
+      // open the wizard now.
+      if (!opened) {
+        setWizardStep(1);
+        setWizardVisible(true);
+      }
     } catch (e: any) {
+      if (opened) setWizardVisible(false);
       showToast(e.message || 'Scan failed', 'error');
     } finally {
       setScanningReceipt(false);
@@ -3011,8 +3082,15 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
 
   const handleWizardBack = () => {
     if (wizardStep === 1) {
-      setWizardVisible(false);
-      resetWizardForm();
+      // Editing an existing draft → preserve edits (the draft already exists, so
+      // closing it must not silently revert your changes). A brand-new split has
+      // nothing saved yet, so an explicit cancel discards it.
+      if (wizardDraftId.current) {
+        stashOrDiscardWizard();
+      } else {
+        setWizardVisible(false);
+        resetWizardForm();
+      }
     } else if (wizardStep === 2) {
       setWizardStep(1);
     } else if (wizardStep === 3) {
@@ -3146,24 +3224,29 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
     showToast('Split created!', 'success');
   };
 
+  // Shared builder for a draft-split payload (status: 'draft' — drafts never
+  // create debts/transactions, so this never touches a wallet). Used by the
+  // manual "draft" button and the accidental-exit safety net below.
+  const buildWizardDraftData = useCallback((description: string) => ({
+    description,
+    totalAmount: parseFloat(wizardTotal) || 0,
+    splitMethod: 'item_based' as const,
+    participants: wizardParticipants.map((c) => ({ contact: c, amount: 0, isPaid: false })),
+    items: wizardItems,
+    taxAmount: wizardTaxAmount > 0 ? wizardTaxAmount : undefined,
+    taxHandling: wizardTaxAmount > 0 ? wizardTaxHandling : undefined,
+    draftReceipt: wizardReceipt || undefined,
+    status: 'draft' as const,
+    mode,
+  }), [wizardTotal, wizardParticipants, wizardItems, wizardTaxAmount, wizardTaxHandling, wizardReceipt, mode]);
+
   const handleSaveAsDraft = useCallback(() => {
     if (!wizardDescription.trim()) {
       showToast('add a description first', 'error');
       return;
     }
     const assignedCount = wizardItems.filter((item) => item.assignedTo.length > 0).length;
-    const draftData = {
-      description: wizardDescription.trim(),
-      totalAmount: parseFloat(wizardTotal) || 0,
-      splitMethod: 'item_based' as const,
-      participants: wizardParticipants.map((c) => ({ contact: c, amount: 0, isPaid: false })),
-      items: wizardItems,
-      taxAmount: wizardTaxAmount > 0 ? wizardTaxAmount : undefined,
-      taxHandling: wizardTaxAmount > 0 ? wizardTaxHandling : undefined,
-      draftReceipt: wizardReceipt || undefined,
-      status: 'draft' as const,
-      mode,
-    };
+    const draftData = buildWizardDraftData(wizardDescription.trim());
     if (wizardDraftId.current) {
       updateSplit(wizardDraftId.current, draftData);
       showToast('draft updated', 'success');
@@ -3173,8 +3256,46 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
     }
     setWizardVisible(false);
     resetWizardForm();
-  }, [wizardDescription, wizardTotal, wizardItems, wizardParticipants, wizardTaxAmount,
-      wizardTaxHandling, wizardReceipt, mode, addSplit, updateSplit, showToast, resetWizardForm]);
+  }, [wizardDescription, wizardItems, buildWizardDraftData, addSplit, updateSplit, showToast, resetWizardForm]);
+
+  // Accidental-exit safety net: when the user leaves the wizard via an UNLABELED
+  // gesture (Android hardware/swipe back at step 1, or tapping the dim overlay),
+  // keep meaningful in-progress work as a draft instead of discarding it. The
+  // explicit "cancel" button (handleWizardBack) still discards on purpose.
+  const stashOrDiscardWizard = useCallback(() => {
+    const hasWork = wizardItems.length > 0 || wizardDescription.trim().length > 0;
+    if (hasWork) {
+      const desc = wizardDescription.trim() || wizardItems[0]?.name?.trim() || t.debts.untitledSplit;
+      const draftData = buildWizardDraftData(desc);
+      if (wizardDraftId.current) {
+        updateSplit(wizardDraftId.current, draftData);
+      } else {
+        addSplit(draftData);
+      }
+      showToast('draft saved', 'success');
+    }
+    setWizardVisible(false);
+    resetWizardForm();
+  }, [wizardItems, wizardDescription, buildWizardDraftData, updateSplit, addSplit, showToast, resetWizardForm, t]);
+
+  // Android hardware/swipe back (Modal onRequestClose): step down through the
+  // wizard like the Back button, but if exiting from step 1, run the safety-net
+  // stash instead of a hard discard.
+  const handleWizardRequestClose = useCallback(() => {
+    if (wizardStep === 1) {
+      stashOrDiscardWizard();
+    } else if (wizardStep === 2) {
+      setWizardStep(1);
+    } else if (wizardStep === 3) {
+      setWizardStep(2);
+    } else if (wizardStep === 4) {
+      setWizardStep(wizardHasTax ? 3 : 2);
+    } else if (wizardStep === 5) {
+      setWizardStep(4);
+    } else if (wizardStep === 6) {
+      setWizardStep(5);
+    }
+  }, [wizardStep, wizardHasTax, stashOrDiscardWizard]);
 
   const openDraftInWizard = useCallback((draft: SplitExpense) => {
     wizardDraftId.current = draft.id;
@@ -3492,6 +3613,13 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   }, [debts, showToast]);
 
   const handleDeleteSharedSub = useCallback((subId: string) => {
+    // Reverse linked transactions/wallet for each cascaded debt BEFORE the store drops them,
+    // else their payments' linked personal transactions are orphaned (and the wallet credit
+    // from recorded payments is never reversed). cleanupDebtPayments routes personal-mode
+    // deletes through deleteTransaction (store owns wallet) and business-mode wallet reversal.
+    useDebtStore.getState().debts
+      .filter((d) => d.sharedSubId === subId)
+      .forEach((d) => cleanupDebtPayments(d));
     deleteSharedSubscription(subId);
     showToast(t.sharedSubs.subDeleted, 'success');
   }, [deleteSharedSubscription, showToast, t]);
@@ -3527,6 +3655,9 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
   const showSplitChoice = useCallback(() => {
     setSplitChoiceVisible(true);
   }, []);
+
+  // ScreenGuide spotlight target — the scrim cuts a hole around the real FAB.
+  const guideTargetRef = useRef<any>(null);
 
   const handleFABPress = useCallback(() => {
     setFabChoiceVisible(true);
@@ -4362,6 +4493,7 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         </View>
       ) : (
         <FAB
+          ref={guideTargetRef}
           onPress={handleFABPress}
           icon="plus"
           color={C.accent}
@@ -6248,12 +6380,16 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
                                 else deleteBusinessTransaction(txId);
                               }
                               if (!(freshDebt.mode === 'personal' && txId) && freshPayment.walletId) {
-                                if (freshDebt.type === 'they_owe') deductFromWallet(freshPayment.walletId, freshPayment.amount);
-                                else addToWallet(freshPayment.walletId, freshPayment.amount);
+                                // Consolidated already exited above via handleDeletePayment, so this is the
+                                // single case: amount is capped to the debt with tipAmount stored separately —
+                                // refund the tip too (business charged amount+tip at creation).
+                                const refund = freshPayment.amount + (freshPayment.tipAmount ?? 0);
+                                if (freshDebt.type === 'they_owe') deductFromWallet(freshPayment.walletId, refund);
+                                else addToWallet(freshPayment.walletId, refund);
                               }
                               if (freshDebt.splitId && freshDebt.status === 'settled') {
                                 const newPaid = freshDebt.payments.filter((p) => p.id !== snapPaymentId).reduce((s, p) => s + p.amount, 0);
-                                if (newPaid < freshDebt.totalAmount) unmarkSplitParticipantPaid(freshDebt.splitId, freshDebt.contact.id);
+                                if (newPaid < freshDebt.totalAmount) unmarkSplitParticipantPaid(freshDebt.splitId, freshDebt.type === 'i_owe' ? '__self__' : freshDebt.contact.id);
                               }
                               if (freshDebt.sharedSubId && freshDebt.sharedSubMonth && freshDebt.status === 'settled') {
                                 const newPaid = freshDebt.payments.filter((p) => p.id !== snapPaymentId).reduce((s, p) => s + p.amount, 0);
@@ -7264,11 +7400,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         animationType="fade"
         transparent
         statusBarTranslucent
-        onRequestClose={handleWizardBack}
+        onRequestClose={handleWizardRequestClose}
       >
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.modalOverlay}>
-          <Pressable style={{ flex: 1 }} onPress={() => { setWizardVisible(false); resetWizardForm(); }} />
+          <Pressable style={{ flex: 1 }} onPress={stashOrDiscardWizard} />
           <View style={styles.wizardContent} onStartShouldSetResponder={() => true}>
             {/* Step Indicator */}
             <View style={styles.wizardStepRow}>
@@ -8759,6 +8895,11 @@ const wizardHasTax = useMemo(() => wizardReceipt?.tax != null && wizardReceipt.t
         icon="git-branch"
         description={t.guide.descDebt}
         accent={iOweColor}
+        points={[
+          { icon: 'plus', text: t.guide.debtPoint1 },
+          { icon: 'check-circle', text: t.guide.debtPoint2 },
+        ]}
+        spotlight={{ targetRef: guideTargetRef, label: t.guide.debtPoint1, sublabel: t.guide.debtPoint2 }}
       />
       {/* Floats above the keyboard with a "Done" button — needed because multi-line
           inputs use Enter for new lines instead of submit.
@@ -9392,7 +9533,7 @@ const makeStyles = (C: typeof CALM, isDark: boolean) => {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: SPACING.sm + 2,
-    backgroundColor: withAlpha(C.textPrimary, 0.025),
+    backgroundColor: withAlpha(C.textPrimary, C === CALM_DARK ? 0.07 : 0.025),
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.sm + 2,
     paddingVertical: SPACING.sm + 2,

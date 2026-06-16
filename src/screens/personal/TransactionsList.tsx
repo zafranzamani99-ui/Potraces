@@ -12,17 +12,14 @@ import {
   Keyboard,
   InteractionManager,
   RefreshControl,
-  Platform,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import Reanimated, {
   FadeInDown,
 } from 'react-native-reanimated';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { format, isValid, startOfMonth, endOfMonth, subMonths, isWithinInterval, startOfYear, getDay, getDaysInMonth } from 'date-fns';
+import { format, isValid, startOfMonth, endOfMonth, subMonths, isWithinInterval, startOfYear, getDay } from 'date-fns';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
@@ -30,12 +27,7 @@ import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import TransactionItem from '../../components/common/TransactionItem';
-import EmptyState from '../../components/common/EmptyState';
 import WalletLogo from '../../components/common/WalletLogo';
-import Button from '../../components/common/Button';
-import CategoryPicker from '../../components/common/CategoryPicker';
-import WalletPicker from '../../components/common/WalletPicker';
-import WhyCategoryChip from '../../components/common/WhyCategoryChip';
 import EditTransactionSheet from '../../components/transactions/EditTransactionSheet';
 import { Transaction, CategoryOption } from '../../types';
 import { useWalletStore } from '../../store/walletStore';
@@ -105,8 +97,6 @@ const TransactionsList: React.FC = () => {
   const { transactions, updateTransaction, deleteTransaction } = usePersonalStore();
   const currency = useSettingsStore(state => state.currency);
   const wallets = useWalletStore((s) => s.wallets);
-  const deductFromWallet = useWalletStore((s) => s.deductFromWallet);
-  const addToWallet = useWalletStore((s) => s.addToWallet);
   const unmarkOrdersTransferred = useSellerStore((s) => s.unmarkOrdersTransferred);
   const updateIngredientCost = useSellerStore((s) => s.updateIngredientCost);
   const deleteTransfer = useBusinessStore((s) => s.deleteTransfer);
@@ -334,32 +324,6 @@ const TransactionsList: React.FC = () => {
     return { income, expenses, net: income - expenses };
   }, [filteredTransactions]);
 
-  // ── Sparkline data — last 14 days of daily nets (Strava-borrowed activity chart) ──
-  const sparklineData = useMemo(() => {
-    if (sortBy !== 'date') return [];
-    return sections
-      .filter((s) => s.titleDate)
-      .slice(0, 14)
-      .map((s) => s.dailyNet)
-      .reverse(); // oldest → newest, left to right
-  }, [sections, sortBy]);
-
-  const sparklineMax = useMemo(
-    () => Math.max(1, ...sparklineData.map((v) => Math.abs(v))),
-    [sparklineData]
-  );
-
-  // ── Streak — consecutive most-recent days where dailyNet > 0 (Strava-borrowed badge) ──
-  const streakDays = useMemo(() => {
-    if (sortBy !== 'date') return 0;
-    let count = 0;
-    for (const s of sections) {
-      if (s.dailyNet > 0) count++;
-      else break;
-    }
-    return count;
-  }, [sections, sortBy]);
-
   // ── Filter modal handlers ────────────────────────────────────
   const openFilterModal = useCallback(() => {
     lightTap();
@@ -454,14 +418,10 @@ const TransactionsList: React.FC = () => {
           text: t.common.delete,
           style: 'destructive',
           onPress: () => {
-            const currentWallets = useWalletStore.getState().wallets;
             for (const id of deletableIds) {
               const txn = transactions.find((t) => t.id === id);
               if (!txn) continue;
-              if (txn.walletId && currentWallets.some((w) => w.id === txn.walletId)) {
-                if (txn.type === 'expense') addToWallet(txn.walletId, txn.amount);
-                else deductFromWallet(txn.walletId, txn.amount);
-              }
+              // Wallet reconciliation is owned by personalStore.deleteTransaction. Do NOT adjust here.
               if (txn.id.startsWith('transfer-')) {
                 const transferId = txn.id.replace('transfer-', '');
                 unmarkOrdersTransferred(transferId);
@@ -480,7 +440,7 @@ const TransactionsList: React.FC = () => {
         },
       ]
     );
-  }, [selectedIds, transactions, addToWallet, deductFromWallet, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, exitSelectMode, showToast, t]);
+  }, [selectedIds, transactions, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, exitSelectMode, showToast, t]);
 
   // ── Edit handlers ────────────────────────────────────────────
   const handleEditTransaction = useCallback((transaction: Transaction) => {
@@ -519,13 +479,7 @@ const TransactionsList: React.FC = () => {
 
     // Set timer for hard delete
     const timerId = setTimeout(() => {
-      if (txn.walletId) {
-        const currentWallets = useWalletStore.getState().wallets;
-        if (currentWallets.some((w) => w.id === txn.walletId)) {
-          if (txn.type === 'expense') addToWallet(txn.walletId, txn.amount);
-          else deductFromWallet(txn.walletId, txn.amount);
-        }
-      }
+      // Wallet reconciliation is owned by personalStore.deleteTransaction. Do NOT adjust here.
       usePlaybookStore.getState().unlinkAllFromTransaction(id);
       deleteTransaction(id);
       setPendingDeleteIds((prev) => {
@@ -553,7 +507,7 @@ const TransactionsList: React.FC = () => {
         });
       },
     });
-  }, [transactions, handleEditTransaction, addToWallet, deductFromWallet, deleteTransaction, showToast, t]);
+  }, [transactions, handleEditTransaction, deleteTransaction, showToast, t]);
 
   const handleUpdateTransaction = useCallback(() => {
     if (!editingTransaction) return;
@@ -581,37 +535,17 @@ const TransactionsList: React.FC = () => {
       return;
     }
 
-    if (!editAmount || parseFloat(editAmount) <= 0) {
+    if (!editAmount || isNaN(parseFloat(editAmount)) || parseFloat(editAmount) <= 0) {
       showToast(t.transaction.invalidAmount, 'error');
       return;
     }
 
     const newAmount = parseFloat(editAmount);
     const oldAmount = editingTransaction.amount;
-    const oldWalletId = editingTransaction.walletId;
     const oldType = editingTransaction.type;
 
-    const currentWallets = useWalletStore.getState().wallets;
-    const oldWalletExists = oldWalletId ? currentWallets.some(w => w.id === oldWalletId) : false;
-    const newWalletExists = editWalletId ? currentWallets.some(w => w.id === editWalletId) : false;
-
-    if (oldWalletId === editWalletId && oldWalletId && oldWalletExists) {
-      const oldEffect = oldType === 'expense' ? -oldAmount : oldAmount;
-      const newEffect = editType === 'expense' ? -newAmount : newAmount;
-      const diff = newEffect - oldEffect;
-      if (diff > 0) addToWallet(oldWalletId, diff);
-      else if (diff < 0) deductFromWallet(oldWalletId, Math.abs(diff));
-    } else {
-      if (oldWalletId && oldWalletExists) {
-        if (oldType === 'expense') addToWallet(oldWalletId, oldAmount);
-        else deductFromWallet(oldWalletId, oldAmount);
-      }
-      if (editWalletId && newWalletExists) {
-        if (editType === 'expense') deductFromWallet(editWalletId, newAmount);
-        else addToWallet(editWalletId, newAmount);
-      }
-    }
-
+    // Wallet reconciliation is owned by personalStore.updateTransaction (it reverses
+    // the old adjustment and applies the new one). Do NOT adjust the wallet here.
     updateTransaction(editingTransaction.id, {
       amount: newAmount,
       description: editDescription.trim(),
@@ -661,7 +595,7 @@ const TransactionsList: React.FC = () => {
     setEditModalVisible(false);
     setEditingTransaction(null);
     showToast(t.transactionList.transactionUpdated, 'success');
-  }, [editingTransaction, editAmount, editDescription, editCategory, editType, editTags, editWalletId, updateTransaction, addToWallet, deductFromWallet, updateIngredientCost, showToast, t]);
+  }, [editingTransaction, editAmount, editDescription, editCategory, editType, editTags, editWalletId, updateTransaction, updateIngredientCost, showToast, t]);
 
   const handleDeleteTransaction = useCallback(() => {
     if (!editingTransaction) return;
@@ -675,16 +609,8 @@ const TransactionsList: React.FC = () => {
     const transferId = isTransferLinked ? editingTransaction.id.replace('transfer-', '') : null;
 
     const doDelete = () => {
-      if (editingTransaction.walletId) {
-        const deleteWallets = useWalletStore.getState().wallets;
-        if (deleteWallets.some(w => w.id === editingTransaction.walletId)) {
-          if (editingTransaction.type === 'expense') {
-            addToWallet(editingTransaction.walletId, editingTransaction.amount);
-          } else {
-            deductFromWallet(editingTransaction.walletId, editingTransaction.amount);
-          }
-        }
-      }
+      // Wallet reconciliation is owned by personalStore.deleteTransaction (it rolls
+      // back the balance). Do NOT adjust the wallet here.
       if (isTransferLinked && transferId) {
         unmarkOrdersTransferred(transferId);
         deleteTransfer(transferId);
@@ -712,7 +638,7 @@ const TransactionsList: React.FC = () => {
         { text: t.common.delete, style: 'destructive', onPress: doDelete },
       ]
     );
-  }, [editingTransaction, addToWallet, deductFromWallet, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, showToast, t]);
+  }, [editingTransaction, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, showToast, t]);
 
   const handleEditTypeChange = (newType: 'expense' | 'income') => {
     setEditType(newType);
@@ -1287,31 +1213,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.accent,
     letterSpacing: 0.1,
-  },
-
-  // ── Section headers ──────────────────────────────────────────
-  // Calm Record section header — hairline | inline summary | hairline
-  // Vocabulary: Linear § 3 (1px hair lines, no chunky chrome) + Mercury § 2 (quiet typography).
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING['2xl'],
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.sm,
-    backgroundColor: C.background,
-    gap: SPACING.sm,
-  },
-  sectionHeaderRule: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: C.border,
-  },
-  sectionHeaderInline: {
-    fontSize: TYPOGRAPHY.size.xs,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textMuted,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 0.2, // small airy tracking for the muted summary
   },
 
   // ── List ─────────────────────────────────────────────────────

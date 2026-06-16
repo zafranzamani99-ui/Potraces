@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,9 @@ import { lightTap, mediumTap, warningNotification } from '../../services/haptics
 const NotesHome: React.FC = () => {
   const C = useCalm();
   const t = useT();
+  // ScreenGuide spotlight target — the + FAB (hidden in select mode; the
+  // guide falls back to inline points if it can't be measured).
+  const guideTargetRef = useRef<any>(null);
   const styles = useMemo(() => makeStyles(C), [C]);
   const pages = useNotesStore((s) => s.pages);
   const isFirstWrite = useNotesStore((s) => s.isFirstWrite);
@@ -218,6 +221,7 @@ const NotesHome: React.FC = () => {
       )}
       {!selectMode && (
         <TouchableOpacity
+          ref={guideTargetRef}
           style={styles.fab}
           activeOpacity={0.8}
           onPress={handleNewNote}
@@ -231,6 +235,11 @@ const NotesHome: React.FC = () => {
         icon="edit-3"
         description={t.guide.descNotes}
         accent="#8B7355"
+        points={[
+          { icon: 'edit-3', text: t.guide.notesPoint1 },
+          { icon: 'zap', text: t.guide.notesPoint2 },
+        ]}
+        spotlight={{ targetRef: guideTargetRef, label: t.guide.notesPoint1, sublabel: t.guide.notesPoint2 }}
       />
     </View>
   );

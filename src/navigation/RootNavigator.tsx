@@ -25,6 +25,7 @@ import ReceiptScanner from '../screens/shared/ReceiptScanner';
 import ReceiptHistory from '../screens/shared/ReceiptHistory';
 import ReceiptDetail from '../screens/shared/ReceiptDetail';
 import BackupRestore from '../screens/shared/BackupRestore';
+import AccountScreen from '../screens/shared/AccountScreen';
 import Onboarding from '../screens/shared/Onboarding';
 import WalletManagement from '../screens/personal/WalletManagement';
 import ImportFromStatement from '../screens/personal/ImportFromStatement';
@@ -361,6 +362,11 @@ const RootNavigator: React.FC = () => {
           options={makeBackHeader(C, mode, 'Backups & Restore')}
         />
         <Stack.Screen
+          name="Account"
+          component={AccountScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
           name="AccountOverview"
           component={AccountOverview}
           options={makeBackHeader(C, mode, 'Account Overview')}
@@ -373,7 +379,7 @@ const RootNavigator: React.FC = () => {
         <Stack.Screen
           name="MoneyChat"
           component={MoneyChat}
-          options={makeBackHeader(C, mode, 'Money Chat')}
+          options={makeBackHeader(C, mode, 'Echo')}
         />
         <Stack.Screen
           name="Goals"

@@ -5,7 +5,6 @@ import { DebtState, DebtStatus, DebtEdit } from '../types';
 import { useTombstoneStore } from './tombstoneStore';
 import { newId } from '../utils/id';
 import { roundMoney } from '../utils/money';
-import { useWalletStore } from './walletStore';
 
 export const useDebtStore = create<DebtState>()(
   persist(
@@ -163,15 +162,17 @@ export const useDebtStore = create<DebtState>()(
       },
 
       deletePayment: (debtId, paymentId) => {
-        let deletedPayment: { walletId?: string; amount: number } | null = null as { walletId?: string; amount: number } | null;
+        // Wallet is NOT adjusted here. Payment creation/deletion never touches the
+        // wallet in this store (see addPayment) — the caller owns it: personal-mode
+        // payments via their linked transaction's delete/updateTransaction, business
+        // mode via DebtTracking's `mode !== 'personal'` reversal loop. Refunding here
+        // double-counted on every wallet-linked payment deletion.
         set((state) => ({
           debts: state.debts.map((debt) => {
             if (debt.id !== debtId) return debt;
 
             const payment = debt.payments.find((p) => p.id === paymentId);
             if (!payment) return debt;
-
-            deletedPayment = { walletId: payment.walletId, amount: payment.amount };
 
             const newPayments = debt.payments.filter((p) => p.id !== paymentId);
             const rawPaidAmount = roundMoney(newPayments.reduce((sum, p) => sum + p.amount, 0));
@@ -192,9 +193,6 @@ export const useDebtStore = create<DebtState>()(
             };
           }),
         }));
-        if (deletedPayment?.walletId) {
-          useWalletStore.getState().addToWallet(deletedPayment.walletId, deletedPayment.amount);
-        }
       },
 
       updatePayment: (debtId, paymentId, updates) =>
@@ -345,12 +343,19 @@ export const useDebtStore = create<DebtState>()(
           ),
         })),
 
-      deleteSharedSubscription: (id) =>
+      deleteSharedSubscription: (id) => {
+        const deletedDebtIds = (useDebtStore.getState() as DebtState).debts
+          .filter((d) => d.sharedSubId === id)
+          .map((d) => d.id);
         set((state) => ({
           sharedSubscriptions: state.sharedSubscriptions.filter((s) => s.id !== id),
           _deletedSharedSubIds: [...(state._deletedSharedSubIds ?? []), id],
+          _deletedDebtIds: [...(state._deletedDebtIds ?? []), ...deletedDebtIds],
           debts: state.debts.filter((d) => d.sharedSubId !== id),
-        })),
+        }));
+        // Tombstone the sub + each cascade-deleted debt so sync doesn't resurrect them.
+        useTombstoneStore.getState().addTombstones([id, ...deletedDebtIds]);
+      },
 
       addSharedSubMember: (subId, member) =>
         set((state) => ({
@@ -506,7 +511,25 @@ export const useDebtStore = create<DebtState>()(
             if (d.sharedSubId !== subId || d.sharedSubMonth !== month) return d;
             const share = memberShares.find((s) => s.contactId === d.contact.id);
             if (!share) return d;
-            return { ...d, totalAmount: share.shareAmount, updatedAt: new Date() };
+            const newTotal = share.shareAmount;
+            if (newTotal === d.totalAmount) return d;
+
+            // Recompute paidAmount + status from existing payments (mirror addPayment/updateDebt)
+            const rawPaid = roundMoney(d.payments.reduce((sum, p) => sum + p.amount, 0));
+            const paidAmount = roundMoney(Math.min(newTotal, rawPaid));
+            let status: DebtStatus = 'pending';
+            if (paidAmount >= newTotal) status = 'settled';
+            else if (paidAmount > 0) status = 'partial';
+
+            const edit: DebtEdit = { editedAt: new Date(), field: 'totalAmount', previousValue: d.totalAmount, newValue: newTotal };
+            return {
+              ...d,
+              totalAmount: newTotal,
+              paidAmount,
+              status,
+              editLog: [...(d.editLog ?? []), edit],
+              updatedAt: new Date(),
+            };
           }),
         })),
 

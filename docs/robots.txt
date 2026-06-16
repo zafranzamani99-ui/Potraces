@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+# gated / utility pages
+Disallow: /beta.html
+Disallow: /order.html
+# internal working docs that happen to live in the served folder
+Disallow: /*.md$
+Disallow: /*.docx$
+Disallow: /*.pdf$
+
+Sitemap: https://jejakbaki.my/sitemap.xml

@@ -15,6 +15,7 @@ try {
 export const statusCodes = _statusCodes;
 
 const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
 
 export function configureGoogleSignIn() {
   if (!GoogleSignin) return;
@@ -24,6 +25,7 @@ export function configureGoogleSignIn() {
   }
   GoogleSignin.configure({
     webClientId: WEB_CLIENT_ID,
+    iosClientId: IOS_CLIENT_ID,
     offlineAccess: false,
   });
 }

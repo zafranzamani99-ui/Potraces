@@ -6,6 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALM, SPACING, RADIUS, TYPOGRAPHY, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
 import { selectionChanged } from '../../services/haptics';
+import DuoIcon, { FEATHER_TO_GLYPH } from '../common/DuoIcon';
+import { useAIInsightsStore } from '../../store/aiInsightsStore';
 
 // CIMB-style: full-width bar matching app bg, labels always visible,
 // big colored circle popping out with a border ring
@@ -25,6 +27,9 @@ interface TabItemProps {
   tabButtonStyle: any;
   tabLabelStyle: any;
   accessibilityLabel?: string;
+  badgeCount?: number;
+  badgeStyle?: any;
+  badgeTextStyle?: any;
   onPress: () => void;
   onLongPress: () => void;
 }
@@ -38,6 +43,9 @@ const TabItem = React.memo<TabItemProps>(({
   tabButtonStyle,
   tabLabelStyle,
   accessibilityLabel,
+  badgeCount,
+  badgeStyle,
+  badgeTextStyle,
   onPress,
   onLongPress,
 }) => (
@@ -50,11 +58,30 @@ const TabItem = React.memo<TabItemProps>(({
     style={tabButtonStyle}
     activeOpacity={0.7}
   >
-    <Feather
-      name={iconName}
-      size={24}
-      color={isFocused ? activeColor : inactiveColor}
-    />
+    <View style={{ position: 'relative' }}>
+      {FEATHER_TO_GLYPH[iconName] ? (
+        <DuoIcon
+          glyph={FEATHER_TO_GLYPH[iconName]}
+          size={25}
+          color={isFocused ? activeColor : inactiveColor}
+          duo={isFocused}
+          fillAlpha={0.3}
+        />
+      ) : (
+        <Feather
+          name={iconName}
+          size={24}
+          color={isFocused ? activeColor : inactiveColor}
+        />
+      )}
+      {!!badgeCount && badgeCount > 0 && (
+        <View style={badgeStyle}>
+          <Text style={badgeTextStyle} numberOfLines={1}>
+            {badgeCount > 9 ? '9+' : String(badgeCount)}
+          </Text>
+        </View>
+      )}
+    </View>
     <Text
       style={[
         tabLabelStyle,
@@ -101,7 +128,11 @@ const CenterTabItem = React.memo<CenterTabItemProps>(({
     >
       <View style={centerRingStyle}>
         <View style={[centerButtonStyle, { backgroundColor: accentColor }]}>
-          <Feather name={iconName} size={28} color="#FFFFFF" />
+          {FEATHER_TO_GLYPH[iconName] ? (
+            <DuoIcon glyph={FEATHER_TO_GLYPH[iconName]} size={30} color="#FFFFFF" fillAlpha={0.3} />
+          ) : (
+            <Feather name={iconName} size={28} color="#FFFFFF" />
+          )}
         </View>
       </View>
       <Text style={centerLabelStyle}>{label}</Text>
@@ -117,6 +148,7 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
 }) => {
   const C = useCalm();
   const styles = useMemo(() => makeStyles(C), [C]);
+  const pendingCount = useAIInsightsStore((s) => s.pendingActions.length);
   const ACTIVE_COLOR = C.textPrimary;
   const INACTIVE_COLOR = C.textMuted;
   const insets = useSafeAreaInsets();
@@ -201,6 +233,9 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({
             tabButtonStyle={styles.tabButton}
             tabLabelStyle={styles.tabLabel}
             accessibilityLabel={options.tabBarAccessibilityLabel}
+            badgeCount={route.name === 'MoneyChat' ? pendingCount : 0}
+            badgeStyle={styles.tabBadge}
+            badgeTextStyle={styles.tabBadgeText}
             onPress={() => handlePress(route.key, route.name, isFocused)}
             onLongPress={() => handleLongPress(route.key)}
           />
@@ -245,6 +280,25 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.medium,
     textAlign: 'center',
     letterSpacing: 0.2,
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -10,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    backgroundColor: C.bronze,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: C.surface,
+  },
+  tabBadgeText: {
+    fontSize: 9,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.onAccent,
   },
   centerButtonContainer: {
     flex: 1,

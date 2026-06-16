@@ -377,6 +377,16 @@ verify_jwt = false
 [functions.order-page]
 verify_jwt = false
 
+# Public order-submission gateway hit by browsers without auth.
+[functions.place-order]
+verify_jwt = false
+
+# AI gateway. JWT-free so signed-out personal users can call it with the anon key;
+# the function resolves identity itself (user JWT if present, else x-device-id) and
+# meters every call against a per-identity monthly token budget.
+[functions.ai-proxy]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

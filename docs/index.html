@@ -1,921 +1,1534 @@
 <!DOCTYPE html>
+<!--
+  Potraces — marketing site V2 (site root /).  jejakbaki.my
+  Single self-contained file. Inline CSS + minimal vanilla JS. No build step, no framework.
+  Palette: CALM design system (matches src/constants/index.ts + docs/order.html). NO red, NO bright green; positive = olive.
+  Bilingual EN / Bahasa Melayu via data-en / data-bm on LEAF elements only, swapped in-place by JS (persisted).
+
+  ── PLACEHOLDERS / TODO (swap when real assets exist) ──────────────────────────
+  • STORE BADGES: app not yet on App Store / Play Store. Badges render in an honest
+    "Coming soon" state and link to #waitlist. When listings go live, replace href with the
+    real store URLs and swap to official downloaded artwork.
+  • SCREENSHOTS: no PNGs yet. Phone screens are CSS mockups using exact CALM colors.
+  • OG IMAGE: /assets/og-card.png (1200×630, CALM olive card). Regenerate via `node docs/scripts/gen-og-card.js` if copy changes.
+  ───────────────────────────────────────────────────────────────────────────────
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://iydqeeonaljqapulboaz.supabase.co; img-src * data:; frame-ancestors 'none'">
-<meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#3D3E04">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#4F5104">
+
+<title>Potraces — Calm money tracking for irregular earners in Malaysia</title>
+<meta name="description" content="Know what's safe to spend, even when the money isn't steady. For kuih sellers, gig riders and freelancers. RM + Bahasa Melayu, works offline. Join the beta.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://jejakbaki.my/">
+
+<!-- Open Graph -->
 <meta property="og:type" content="website">
-<meta property="og:title" content="Order Online">
-<meta property="og:description" content="Order directly from the seller — fast, easy, and secure.">
-<title>Online Store</title>
+<meta property="og:site_name" content="Potraces">
+<meta property="og:title" content="Potraces — Calm money tracking for irregular earners in Malaysia">
+<meta property="og:description" content="Know what's safe to spend, even when the money isn't steady. For kuih sellers, gig riders and freelancers. RM + Bahasa Melayu, works offline.">
+<meta property="og:url" content="https://jejakbaki.my/">
+<meta property="og:image" content="https://jejakbaki.my/assets/og-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Potraces — calm money tracking for irregular earners in Malaysia">
+<meta property="og:locale" content="en_MY">
+<meta property="og:locale:alternate" content="ms_MY">
+
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Potraces — Calm money tracking for irregular earners in Malaysia">
+<meta name="twitter:description" content="Know what's safe to spend, even when the money isn't steady. Built in Malaysia, RM + Bahasa Melayu.">
+<meta name="twitter:image" content="https://jejakbaki.my/assets/og-card.png">
+<meta name="twitter:image:alt" content="Potraces — calm money tracking for irregular earners in Malaysia">
+
+<!-- Favicons -->
+<link rel="icon" href="/assets/icon.png" type="image/png">
+<link rel="apple-touch-icon" href="/assets/icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Structured data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "MobileApplication",
+      "name": "Potraces",
+      "operatingSystem": "iOS, Android",
+      "applicationCategory": "FinanceApplication",
+      "inLanguage": ["en", "ms"],
+      "areaServed": "MY",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "MYR" },
+      "description": "Calm money tracking for Malaysians with irregular income. Know what's safe to spend, even when the money isn't steady.",
+      "url": "https://jejakbaki.my/"
+    },
+    { "@type": "Organization", "name": "Potraces", "url": "https://jejakbaki.my/", "logo": "https://jejakbaki.my/assets/icon.png" },
+    { "@type": "WebSite", "name": "Potraces", "url": "https://jejakbaki.my/" },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "When does Potraces launch?", "acceptedAnswer": { "@type": "Answer", "text": "It's in beta now. Join the waitlist and we'll message you once, when it's live." } },
+        { "@type": "Question", "name": "What if I earn from a few different places?", "acceptedAnswer": { "@type": "Answer", "text": "That's exactly the point. Kuih orders, gig shifts, freelance jobs — log them all and see what came in, in one calm view." } },
+        { "@type": "Question", "name": "Can I use it for Raya season then go back to personal?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Switch between personal and seller mode anytime — your stuff stays put in each space." } },
+        { "@type": "Question", "name": "Is my data safe?", "acceptedAnswer": { "@type": "Answer", "text": "It stays on your phone by default, and only on your own cloud if you turn on backup. We don't sell it." } },
+        { "@type": "Question", "name": "Does it work offline?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Log even with patchy signal — it saves on your phone and syncs later." } },
+        { "@type": "Question", "name": "Is it free?", "acceptedAnswer": { "@type": "Answer", "text": "Free during the beta, no card needed. Fair pricing comes later and we'll tell you first." } },
+        { "@type": "Question", "name": "Is this financial advice?", "acceptedAnswer": { "@type": "Answer", "text": "No. Potraces shows your own money clearly so you can decide — it's a tracker, not an advisor." } }
+      ]
+    }
+  ]
+}
+</script>
+
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#F5F3EF;--surface:#fff;--olive:#4F5104;--olive-dark:#3D3E04;--olive-light:#6B6D1A;
-  --bronze:#8B7355;--gold:#B2780A;--sky:#6BA3BE;--sky-dark:#5A8FA8;
-  --text:#1A1A1A;--text2:#555;--text3:#999;--mauve:#A688B8;
-  --border:#E5E0D8;--border2:#F0EDE8;--terracotta:#C1694F;
-  --r:14px;--rs:10px;--rr:20px;
+  --bg:#F9F9F7;--bg2:#F5F3EF;--surface:#fff;
+  --olive:#4F5104;--olive-dark:#3D3E04;--olive-light:#6B6D1A;--olive-deep:#332D03;
+  --bronze:#8B7355;--bronze2:#9A6400;--gold:#B2780A;--gold-bright:#DEAB22;
+  --sky:#6BA3BE;--mauve:#A688B8;--terracotta:#C1694F;--biz:#B2780A;
+  --text:#1A1A1A;--text2:#555;--text3:#6B6B6B;--text-muted:#A0A0A0;
+  --border:#E5E0D8;--border2:#F0EDE8;--cream:#FFF7E6;
+  --r-xs:4px;--r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-2xl:28px;--r-full:9999px;
   --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
-  --shadow-lg:0 4px 12px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.04);
-  --shadow-xl:0 12px 40px rgba(0,0,0,.12),0 4px 12px rgba(0,0,0,.06)
+  --shadow-md:0 4px 16px rgba(0,0,0,.08);
+  --shadow-lg:0 8px 24px rgba(0,0,0,.10);
+  --shadow-xl:0 12px 40px rgba(0,0,0,.12),0 4px 12px rgba(0,0,0,.06);
+  --maxw:1120px;
+  --nav-h:64px;
+  --d:0ms; /* per-tile reveal stagger */
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --ff:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 }
-html{scroll-behavior:smooth}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
-.wrap{max-width:480px;margin:0 auto;padding-bottom:140px}
+html{scroll-behavior:smooth;overflow-x:clip}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{font-family:var(--ff);background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
+img,svg{max-width:100%;display:block}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+.tnum{font-variant-numeric:tabular-nums}
+.block{display:block}
 
-/* ═══ SKELETON ═══ */
-.skel{padding:0;min-height:100vh;min-height:100dvh;background:var(--bg);max-width:480px;margin:0 auto}
-.skel-header{height:160px;background:linear-gradient(135deg,var(--olive-dark),var(--olive));position:relative;overflow:hidden}
-.skel-header::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent 30%,rgba(255,255,255,.06) 50%,transparent 70%);animation:shimmer 1.8s ease infinite}
-@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
-.skel-bar{height:36px;margin:0;background:var(--surface);border-bottom:1px solid var(--border2)}
-.skel-body{padding:20px 16px}
-.skel-card{background:var(--surface);border-radius:var(--r);height:80px;margin-bottom:8px;position:relative;overflow:hidden}
-.skel-card::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent 30%,rgba(0,0,0,.02) 50%,transparent 70%);animation:shimmer 1.8s ease infinite}
-.skel-title{width:60px;height:12px;background:var(--border);border-radius:4px;margin-bottom:14px}
-.skel-err{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;min-height:100dvh;text-align:center;padding:40px 24px;color:var(--text2)}
-.skel-err-icon{font-size:40px;margin-bottom:16px;opacity:.3}
-.skel-err-title{font-size:16px;font-weight:600;color:var(--text);margin-bottom:4px}
-.skel-err-sub{font-size:13px;color:var(--text3)}
+/* full-page soft-light grain — kills the flat figma look */
+.grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.04;mix-blend-mode:soft-light;background-image:var(--grain)}
 
-/* ═══ HEADER ═══ */
-.header{background:linear-gradient(135deg,var(--olive-dark) 0%,var(--olive) 50%,var(--olive-light) 100%);padding:28px 20px 24px;text-align:center;position:relative;overflow:hidden}
-.header::before{content:'';position:absolute;top:-40%;right:-20%;width:200px;height:200px;background:radial-gradient(circle,rgba(255,255,255,.06) 0%,transparent 70%);border-radius:50%}
-.header::after{content:'';position:absolute;bottom:-30%;left:-15%;width:160px;height:160px;background:radial-gradient(circle,rgba(255,255,255,.04) 0%,transparent 70%);border-radius:50%}
-.hdr-actions{display:flex;gap:8px;position:absolute;top:16px;right:16px;z-index:2}
-.hdr-btn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.15);border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .2s,transform .15s}
-.hdr-btn:active{background:rgba(255,255,255,.25);transform:scale(.92)}
-.hdr-btn svg{width:16px;height:16px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.hdr-avatar{width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;font-size:20px;font-weight:700;color:#fff;letter-spacing:-.5px;position:relative;z-index:1;backdrop-filter:blur(4px);overflow:hidden}
-.hdr-avatar img{width:100%;height:100%;object-fit:cover}
-.hdr-name{font-size:28px;font-weight:800;color:#fff;letter-spacing:-.5px;position:relative;z-index:1;line-height:1.2}
-.hdr-sub{font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;position:relative;z-index:1}
-.shop-notice{margin:14px 16px 0;padding:0;font-size:13px;color:rgba(255,255,255,.55);line-height:1.5;text-align:center;position:relative;z-index:1;font-style:italic}
+/* layout */
+.container{width:100%;max-width:var(--maxw);margin:0 auto;padding:0 20px}
+section{position:relative;z-index:2}
+.eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--bronze2);background:rgba(154,100,0,.07);padding:6px 13px;border-radius:var(--r-full);border:1px solid rgba(154,100,0,.12)}
+.section-head{max-width:680px;margin:0 auto 44px;text-align:center}
+.section-head h2{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:600;letter-spacing:-.5px;line-height:1.2;margin:18px 0 14px}
+.section-head p{font-size:clamp(1rem,2vw,1.12rem);color:var(--text2);line-height:1.6}
+.h-accent{color:var(--olive)}
 
-/* ═══ TRUST BAR ═══ */
-.trust-bar{display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border2);font-size:11px;color:var(--text2);flex-wrap:wrap}
-.trust-item{display:flex;align-items:center;gap:4px;font-weight:500}
-.trust-dot{width:3px;height:3px;border-radius:50%;background:var(--border)}
-.trust-icon{width:13px;height:13px;flex-shrink:0}
+/* skip link */
+.skip{position:absolute;left:0;top:-60px;z-index:1000;background:var(--olive);color:#fff;padding:12px 18px;border-radius:0 0 var(--r-md) 0;font-weight:600}
+.skip:focus{top:0}
 
-/* ═══ STEPS ═══ */
-.steps{display:flex;align-items:center;justify-content:center;gap:0;padding:18px 24px 6px}
-.step{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--text3);transition:color .3s}
-.step.active{color:var(--olive)}
-.step.done{color:var(--olive)}
-.step-num{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;transition:all .3s}
-.step.active .step-num{border-color:var(--olive);background:var(--olive);color:#fff}
-.step.done .step-num{border-color:var(--olive);background:var(--olive);color:#fff}
-.step-line{width:32px;height:2px;background:var(--border);margin:0 4px;border-radius:1px;transition:background .3s}
-.step-line.done{background:var(--olive)}
+/* focus */
+a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(79,81,4,.4);border-radius:var(--r-sm)}
 
-/* ═══ SECTION ═══ */
-.sec{padding:20px 16px 8px}
-.sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.sec-title{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze)}
-.sec-count{font-size:11px;color:var(--text3);background:var(--border2);padding:2px 10px;border-radius:20px;font-weight:500}
+/* ─── NAV ─── */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--nav-h);display:flex;align-items:center;transition:background .25s ease,box-shadow .25s ease,border-color .25s ease;border-bottom:1px solid transparent}
+.nav.scrolled{background:rgba(249,249,247,.88);backdrop-filter:saturate(140%) blur(14px);-webkit-backdrop-filter:saturate(140%) blur(14px);border-bottom-color:var(--border);box-shadow:0 1px 0 rgba(0,0,0,.02),0 6px 18px rgba(0,0,0,.04)}
+.nav .container{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.18rem;letter-spacing:-.4px}
+.brand .logo{width:38px;height:38px;border-radius:11px;overflow:hidden;flex-shrink:0;box-shadow:var(--shadow);display:block}
+.brand .logo svg{width:100%;height:100%;display:block}
+.nav-links{display:none;align-items:center;gap:4px}
+.nav-links a{font-size:.94rem;font-weight:500;color:var(--text2);padding:9px 13px;border-radius:var(--r-md);transition:color .15s,background .15s}
+.nav-links a:hover{color:var(--text);background:rgba(26,26,26,.05)}
+.nav-right{display:flex;align-items:center;gap:10px}
 
-/* ═══ PRODUCTS ═══ */
-.prod-list{display:flex;flex-direction:column;gap:6px}
-.prod-card{background:var(--surface);border-radius:var(--r);padding:12px 14px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow);transition:transform .15s,box-shadow .15s,border-color .2s;position:relative;overflow:hidden;border-left:3px solid transparent}
-.prod-card:active{transform:scale(.985)}
-.prod-card.in-cart{border-left-color:var(--olive)}
-.prod-card.in-cart::after{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,rgba(79,81,4,.015),transparent);pointer-events:none}
-.prod-card.sold-out{opacity:.5;pointer-events:none}
-.prod-img{width:52px;height:52px;border-radius:var(--rs);background:linear-gradient(135deg,var(--border2),var(--bg));display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px;overflow:hidden}
-.prod-img img{width:100%;height:100%;object-fit:cover}
-.prod-info{flex:1;min-width:0}
-.prod-name{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.2px;display:flex;align-items:center;gap:6px}
-.prod-unit{font-size:11px;color:var(--text3);margin-top:1px;text-transform:lowercase}
-.prod-price{font-size:17px;font-weight:800;color:var(--olive);margin-top:3px;letter-spacing:-.3px}
-.popular-badge{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--gold);background:rgba(178,120,10,.08);padding:2px 7px;border-radius:8px;flex-shrink:0;white-space:nowrap}
+.lang-toggle{display:inline-flex;background:rgba(26,26,26,.06);border:1px solid var(--border);border-radius:var(--r-full);padding:3px;gap:2px}
+.lang-toggle button{border:none;background:transparent;color:var(--text3);font-size:.8rem;font-weight:600;padding:6px 12px;border-radius:var(--r-full);min-height:34px;transition:color .15s}
+.lang-toggle button[aria-pressed="true"]{background:var(--surface);color:var(--olive);box-shadow:var(--shadow)}
 
-/* ═══ QTY ═══ */
-.qty-wrap{display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0}
-.qty-ctrl{display:flex;align-items:center;background:var(--bg);border-radius:var(--rr);overflow:hidden;border:1px solid var(--border2);transition:border-color .2s,background .2s}
-.qty-ctrl.active{background:rgba(79,81,4,.06);border-color:rgba(79,81,4,.15)}
-.qty-btn{width:36px;height:36px;border:none;background:transparent;color:var(--text3);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;transition:color .15s,background .1s,transform .1s;font-weight:300}
-.qty-btn:active{background:rgba(0,0,0,.04);transform:scale(.9)}
-.qty-ctrl.active .qty-btn{color:var(--olive);font-weight:500}
-.qty-val{min-width:28px;text-align:center;font-size:16px;font-weight:700;color:var(--text3);transition:color .15s,transform .15s}
-.qty-ctrl.active .qty-val{color:var(--olive)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:.95rem;border:none;border-radius:var(--r-full);padding:12px 22px;min-height:46px;transition:transform .12s ease,box-shadow .2s,background .2s;white-space:nowrap}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--olive);color:#fff;box-shadow:0 4px 14px rgba(79,81,4,.22)}
+.btn-primary:hover{background:var(--olive-dark);box-shadow:0 6px 20px rgba(79,81,4,.28)}
+.btn-ghost{background:var(--surface);color:var(--text);border:1px solid var(--border);box-shadow:var(--shadow)}
+.btn-ghost:hover{border-color:var(--bronze)}
+.nav .btn{padding:9px 18px;min-height:42px;font-size:.9rem}
+.btn-sm{padding:8px 16px;min-height:40px;font-size:.88rem}
 
-/* ═══ FORM ═══ */
-.field{background:var(--surface);border-radius:var(--r);padding:14px 16px;margin-bottom:8px;box-shadow:var(--shadow);transition:box-shadow .2s}
-.field:focus-within{box-shadow:var(--shadow),0 0 0 2px rgba(79,81,4,.1)}
-.field-label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--bronze);margin-bottom:8px;display:flex;align-items:center;gap:4px}
-.req{color:var(--gold);font-size:14px;line-height:1}
-.opt{color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px}
-.field input,.field textarea{width:100%;border:none;outline:none;font-size:16px;color:var(--text);background:transparent;font-family:inherit;resize:none;line-height:1.5}
-.field input::placeholder,.field textarea::placeholder{color:#bbb}
-.field-hint{font-size:11px;color:var(--text3);margin-top:6px;line-height:1.4}
-.opt-toggle{display:flex;align-items:center;gap:6px;padding:10px 0 4px;font-size:13px;color:var(--bronze);font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;border:none;background:none}
-.opt-toggle svg{width:14px;height:14px;transition:transform .2s}
-.opt-toggle.open svg{transform:rotate(180deg)}
-.opt-fields{display:none;padding-top:4px}
-.opt-fields.show{display:block}
+/* hamburger */
+.hamburger{display:inline-flex;flex-direction:column;justify-content:center;gap:5px;width:44px;height:44px;align-items:center;background:transparent;border:1px solid var(--border);border-radius:var(--r-md)}
+.hamburger span{width:20px;height:2px;background:var(--text);border-radius:2px;transition:transform .2s,opacity .2s}
+.hamburger[aria-expanded="true"] span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+.hamburger[aria-expanded="true"] span:nth-child(2){opacity:0}
+.hamburger[aria-expanded="true"] span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
 
-/* ═══ CART ═══ */
-.cart-sec{padding:0 16px}
-.cart{background:var(--surface);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
-.cart-row{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border2)}
-.cart-row:last-of-type{border-bottom:none}
-.ci-name{font-size:14px;font-weight:500}
-.ci-sub{font-size:12px;color:var(--text3);margin-top:2px}
-.ci-price{font-size:14px;font-weight:700;flex-shrink:0;margin-left:12px;color:var(--olive)}
-.cart-empty{padding:28px 16px;text-align:center;color:var(--text3);font-size:13px}
-.cart-empty-icon{font-size:28px;margin-bottom:6px;opacity:.35}
-.cart-total{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:linear-gradient(135deg,var(--olive-dark),var(--olive))}
-.total-label{font-size:13px;font-weight:600;color:rgba(255,255,255,.7)}
-.total-amt{font-size:20px;font-weight:800;color:#fff;letter-spacing:-.3px}
+.mobile-sheet{position:fixed;inset:0;z-index:99;background:rgba(249,249,247,.98);backdrop-filter:blur(8px);display:flex;flex-direction:column;padding:calc(var(--nav-h) + 16px) 24px 32px;transform:translateY(-12px);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+.mobile-sheet.open{opacity:1;transform:translateY(0);pointer-events:auto}
+.mobile-sheet a{font-size:1.3rem;font-weight:600;padding:16px 4px;border-bottom:1px solid var(--border2);color:var(--text)}
+.mobile-sheet .btn-primary{margin-top:24px;font-size:1.05rem;padding:16px}
 
-/* ═══ FLOATING CART BADGE ═══ */
-.cart-badge{position:fixed;bottom:86px;right:16px;background:var(--olive);color:#fff;min-width:52px;height:52px;border-radius:26px;display:none;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:700;box-shadow:var(--shadow-lg),0 0 0 3px rgba(79,81,4,.1);z-index:50;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .2s;padding:0 16px}
-.cart-badge:active{transform:scale(.9)}
-.cart-badge.show{display:flex}
-.cart-badge-text{font-size:12px;font-weight:700;white-space:nowrap}
+/* ─── HERO ─── */
+.hero{padding:calc(var(--nav-h) + 56px) 0 72px;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;inset:-15% -10% 0;z-index:0;pointer-events:none;
+  background:radial-gradient(60% 50% at 18% 22%,rgba(79,81,4,.10),transparent 70%),
+            radial-gradient(50% 45% at 85% 18%,rgba(178,120,10,.10),transparent 70%),
+            radial-gradient(55% 50% at 75% 80%,rgba(139,115,85,.08),transparent 72%),
+            radial-gradient(45% 40% at 30% 90%,rgba(107,163,190,.06),transparent 70%);
+  filter:blur(6px);animation:meshDrift 46s ease-in-out infinite}
+@keyframes meshDrift{0%,100%{transform:translate(0,0)}50%{transform:translate(-10px,8px)}}
+.hero-bg-wau{position:absolute;top:-80px;right:-140px;width:560px;height:560px;opacity:.06;pointer-events:none;z-index:0;animation:floaty 10s ease-in-out infinite}
+.hero-bg-wau.lo{top:auto;right:auto;bottom:-40px;left:-90px;width:180px;height:180px;opacity:.03;animation:floaty 13s ease-in-out infinite reverse}
+@keyframes floaty{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-18px) rotate(2deg)}}
+.hero .container{position:relative;z-index:2;display:grid;grid-template-columns:1fr;gap:48px;align-items:center}
+.hero-copy h1{font-size:clamp(2.1rem,6vw,3.6rem);font-weight:700;letter-spacing:-.8px;line-height:1.08;margin:20px 0 18px;color:var(--text)}
+.hero-copy .lead{font-size:clamp(1.02rem,2.3vw,1.2rem);color:var(--text2);line-height:1.6;max-width:560px}
 
-/* ═══ FLYING ITEM ═══ */
-.fly-item{position:fixed;z-index:999;pointer-events:none;font-size:22px;transition:none}
-@keyframes flyToCart{
-  0%{opacity:1;transform:scale(1)}
-  60%{opacity:.8;transform:scale(.6)}
-  100%{opacity:0;transform:scale(.3)}
+/* waitlist (elevated cream tile) */
+.waitlist{margin-top:26px;max-width:480px}
+.wl-tile{background:var(--cream);border:1px solid rgba(178,120,10,.20);border-radius:var(--r-xl);padding:18px;box-shadow:var(--shadow)}
+.wl-frame{display:flex;align-items:center;gap:9px;font-size:.86rem;font-weight:600;color:var(--bronze2);margin-bottom:12px;line-height:1.4}
+.wl-frame .wl-ic{width:22px;height:22px;border-radius:7px;overflow:hidden;flex-shrink:0}
+.wl-frame .wl-ic svg{width:100%;height:100%}
+.waitlist form{display:flex;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:6px 6px 6px 18px;box-shadow:var(--shadow);transition:box-shadow .2s,border-color .2s}
+.waitlist form:focus-within{box-shadow:var(--shadow),0 0 0 3px rgba(79,81,4,.12);border-color:var(--bronze)}
+.waitlist input{flex:1;border:none;outline:none;background:transparent;font-family:inherit;font-size:1rem;color:var(--text);min-width:0}
+.waitlist input::placeholder{color:var(--text-muted)}
+.waitlist .btn{flex-shrink:0}
+.wl-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.waitlist .micro{font-size:.78rem;color:var(--text3);margin-top:10px;padding-left:4px}
+.wl-msg{font-size:.86rem;font-weight:600;margin-top:10px;padding-left:4px;color:var(--olive);min-height:1.2em}
+
+/* store badges */
+.store-cta{margin-top:28px}
+.store-label{font-size:.82rem;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.store-label .soon-tag{font-size:.66rem;letter-spacing:.6px;background:rgba(178,120,10,.12);color:var(--gold);padding:3px 8px;border-radius:var(--r-full);font-weight:700}
+.badges{display:flex;flex-wrap:wrap;gap:12px}
+.badge-link{display:inline-block;border-radius:11px;transition:transform .12s,opacity .2s;opacity:.92;line-height:0;padding:0}
+.badge-link:hover{transform:translateY(-2px);opacity:1}
+.badge-link svg{height:54px;width:auto;display:block;border-radius:9px}
+.hero-trust{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-top:26px;font-size:.85rem;color:var(--text3);font-weight:500}
+.hero-trust span{display:inline-flex;align-items:center;gap:7px}
+.hero-trust svg{width:16px;height:16px;stroke:var(--olive);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hero-trust .dot{width:3px;height:3px;border-radius:50%;background:var(--border);padding:0}
+
+/* ─── PHONE MOCKUP ─── */
+.phone{width:280px;max-width:100%;margin:0 auto;border-radius:38px;
+  background:linear-gradient(145deg,#2A2A28,#141413 55%,#000);padding:11px;position:relative;
+  border:1px solid rgba(255,255,255,.04);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 2px 4px rgba(51,45,3,.10),0 16px 32px rgba(51,45,3,.14),0 40px 80px rgba(26,26,26,.18)}
+.phone::before{content:'';position:absolute;top:20px;left:50%;transform:translateX(-50%);width:90px;height:7px;background:#000;border-radius:var(--r-full);z-index:5;opacity:.65}
+.phone-screen{background:var(--bg);border-radius:28px;overflow:hidden;aspect-ratio:9/19.3;display:flex;flex-direction:column;position:relative;box-shadow:inset 0 0 3px 1px rgba(0,0,0,.35)}
+.phone-screen::after{content:'';position:absolute;inset:0;background:linear-gradient(120deg,rgba(255,255,255,.10) 0%,transparent 25%);pointer-events:none;z-index:4}
+.hero-phone-wrap{position:relative;display:flex;justify-content:center}
+.hero-phone-wrap::after{content:'';position:absolute;inset:-40px;background:radial-gradient(circle at 50% 42%,rgba(139,115,85,.22),rgba(79,81,4,.10) 40%,transparent 68%);z-index:-1;filter:blur(8px)}
+.hero-phone-wrap .phone{transform:perspective(1200px) rotateY(-4deg) rotateX(2deg) scale(1.02)}
+
+/* floating live chips on hero phone */
+.chip{position:absolute;background:rgba(255,255,255,.92);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid var(--border);box-shadow:var(--shadow-lg);border-radius:14px;padding:10px 13px;font-size:.8rem;font-weight:600;max-width:170px;z-index:3;color:var(--text);line-height:1.35}
+.chip .ca{color:var(--olive)}
+.chip.c-a{top:9%;left:-22px;animation:bob 6s ease-in-out infinite}
+.chip.c-b{top:44%;right:-26px;animation:bob 6s ease-in-out .8s infinite;display:flex;align-items:center;gap:9px}
+.chip.c-c{bottom:9%;left:-14px;animation:bob 6s ease-in-out 1.6s infinite;display:flex;align-items:center;gap:9px}
+.chip .spark{display:flex;align-items:flex-end;gap:2px;height:18px}
+.chip .spark i{width:3px;border-radius:2px;background:var(--olive);display:block}
+.chip .miniqr{width:26px;height:26px;border-radius:6px;flex-shrink:0;background:conic-gradient(from 0deg,#1A1A1A 25%,#fff 0 50%,#1A1A1A 0 75%,#fff 0) 0 0/8px 8px,#fff}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+/* app header inside mockup */
+.app-hd{background:linear-gradient(135deg,var(--olive-dark) 0%,var(--olive) 55%,var(--olive-light) 100%);padding:26px 18px 22px;color:#fff;position:relative;overflow:hidden}
+.app-hd::before{content:'';position:absolute;top:-40%;right:-15%;width:160px;height:160px;background:radial-gradient(circle,rgba(255,255,255,.08),transparent 70%);border-radius:50%}
+.app-hd .lbl{font-size:9px;letter-spacing:1.4px;text-transform:uppercase;color:rgba(255,255,255,.65);font-weight:600}
+.app-hd .bal{font-size:38px;font-weight:500;letter-spacing:-1px;margin:4px 0 2px;position:relative;z-index:1}
+.app-hd .bal small{font-size:18px;font-weight:400;opacity:.8;margin-right:3px}
+.app-hd .sub{font-size:10.5px;color:rgba(255,255,255,.7)}
+.app-pills{display:flex;gap:8px;margin-top:16px;position:relative;z-index:1}
+.app-pill{flex:1;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:9px 10px}
+.app-pill .pl{font-size:8px;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.6);font-weight:600}
+.app-pill .pv{font-size:14px;font-weight:500;margin-top:2px}
+.app-body{padding:14px;flex:1;background:var(--bg);display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.app-card{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:13px 14px;border:1px solid var(--border2)}
+.app-seclbl{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--bronze);font-weight:700;margin-bottom:9px}
+.weekbar{display:flex;align-items:flex-end;gap:6px;height:54px}
+.weekbar .wb{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end}
+.weekbar .wb i{width:100%;background:var(--border);border-radius:4px;display:block}
+.weekbar .wb.on i{background:var(--olive)}
+.weekbar .wb span{font-size:8px;color:var(--text-muted);font-weight:600}
+.txn{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border2)}
+.txn:last-child{border-bottom:none}
+.txn .ic{width:32px;height:32px;border-radius:9px;background:var(--bg2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.txn .ic svg{width:15px;height:15px;stroke:var(--olive);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.txn .nm{flex:1;min-width:0}
+.txn .nm b{font-size:12px;font-weight:600;display:block}
+.txn .nm em{font-size:9.5px;color:var(--text3);font-style:normal}
+.txn .amt{font-size:12.5px;font-weight:600;letter-spacing:-.2px}
+.txn .amt.in{color:var(--olive)}
+.txn .amt.out{color:var(--text)}
+
+/* ─── MARQUEE ─── */
+.marquee-band{background:var(--cream);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:18px 0;overflow:hidden}
+.marquee-lbl{text-align:center;font-size:.78rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--bronze2);margin-bottom:14px}
+.marquee-wrap{position:relative;overflow:hidden}
+.marquee{display:flex;gap:14px;width:max-content;animation:scroll 34s linear infinite}
+.marquee:hover{animation-play-state:paused}
+@keyframes scroll{to{transform:translateX(-50%)}}
+.mq-chip{border:1px solid var(--border);background:var(--surface);border-radius:var(--r-full);padding:8px 15px;font-size:.85rem;font-weight:600;color:var(--text2);white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
+.mq-chip.trust::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--gold);flex-shrink:0}
+.marquee-fade{position:absolute;top:0;bottom:0;width:60px;pointer-events:none;z-index:2}
+.marquee-fade.l{left:0;background:linear-gradient(90deg,var(--cream),rgba(255,247,230,0))}
+.marquee-fade.r{right:0;background:linear-gradient(270deg,var(--cream),rgba(255,247,230,0))}
+
+/* ─── HERO-FEATURE (big device, safe to spend) ─── */
+.herofeat{padding:96px 0;background:var(--surface)}
+.herofeat .container{display:grid;grid-template-columns:1fr;gap:48px;align-items:center}
+.herofeat .hf-copy h2{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:600;letter-spacing:-.5px;line-height:1.18;margin:16px 0 16px}
+.herofeat .hf-copy p{font-size:1.06rem;color:var(--text2);line-height:1.6;margin-bottom:22px}
+.hf-list{list-style:none;display:flex;flex-direction:column;gap:13px}
+.hf-list li{display:flex;align-items:flex-start;gap:11px;font-size:1rem;color:var(--text2);font-weight:500}
+.hf-list li svg{width:20px;height:20px;stroke:var(--olive);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;margin-top:2px}
+
+/* ─── BENTO ─── */
+.bento{padding:72px 0;background:var(--bg2)}
+.bento-grid{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}
+.tile{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-xl);box-shadow:none;padding:22px;transition:transform .15s ease,box-shadow .2s,border-color .2s;display:flex;flex-direction:column;gap:12px}
+.tile:hover{transform:translateY(-2px);border-color:var(--border);box-shadow:var(--shadow-sm)}
+.tile.cream{background:var(--cream)}
+.tile.olive{background:rgba(79,81,4,.06);border-color:rgba(79,81,4,.18)}
+.tile h3{font-size:1.12rem;font-weight:600;letter-spacing:-.2px;line-height:1.3}
+.tile .ti-sub{font-size:.9rem;color:var(--text3);line-height:1.5}
+.tile .ti-ic{width:40px;height:40px;border-radius:var(--r-md);background:var(--cream);border:1px solid rgba(178,120,10,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tile.cream .ti-ic,.tile.olive .ti-ic{background:var(--surface)}
+.tile .ti-ic svg{width:21px;height:21px;stroke:var(--olive);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+/* bento mock: parsed quick-add */
+.parsed{display:flex;flex-direction:column;gap:8px}
+.parsed .ptyped{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:10px 15px;font-size:.9rem;color:var(--text);font-weight:500}
+.parsed .prow{display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-md);padding:9px 13px;font-size:.85rem}
+.parsed .prow .k{color:var(--text3);font-size:.72rem;letter-spacing:.4px;text-transform:uppercase;font-weight:600}
+.parsed .prow .v{font-weight:600}
+.tag-olive{color:var(--olive)}
+/* receipt */
+.receipt{background:var(--bg2);border:1px dashed var(--border);border-radius:var(--r-md);padding:14px 16px;font-size:.84rem;color:var(--text2)}
+.receipt .rh{font-weight:700;color:var(--text);font-size:.95rem;margin-bottom:8px}
+.receipt .rrow{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dotted var(--border)}
+.receipt .rtot{display:flex;justify-content:space-between;padding-top:8px;margin-top:4px;font-weight:700;color:var(--olive)}
+.scan-tag{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;font-size:.78rem;font-weight:600;color:var(--olive);background:rgba(79,81,4,.08);padding:6px 12px;border-radius:var(--r-full);margin-top:10px}
+.scan-tag svg{width:14px;height:14px;stroke:var(--olive);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* debt rows */
+.debt-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border2)}
+.debt-row:last-child{border-bottom:none}
+.debt-row .av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;color:#fff;flex-shrink:0}
+.debt-row .info{flex:1;min-width:0}
+.debt-row .info b{font-size:.9rem;font-weight:600;display:block}
+.dchip{display:inline-block;font-size:.62rem;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:3px 8px;border-radius:var(--r-full);margin-top:3px}
+.dchip-owe{background:rgba(193,105,79,.12);color:var(--terracotta)}
+.dchip-owed{background:rgba(79,81,4,.1);color:var(--olive)}
+.debt-row .da{font-weight:600;font-size:.92rem}
+.da.owe{color:var(--terracotta)}
+.da.owed{color:var(--olive)}
+/* budget */
+.budgrow{display:flex;flex-direction:column;gap:6px}
+.budgrow .bt{display:flex;justify-content:space-between;font-size:.86rem}
+.budgrow .bt b{font-weight:600}
+.budgrow .bt span{color:var(--text3)}
+.bar{height:8px;border-radius:var(--r-full);background:var(--border2);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:var(--r-full);background:var(--olive)}
+.bar.warn i{background:var(--gold)}
+.budnote{font-size:.78rem;color:var(--bronze);display:flex;align-items:center;gap:6px}
+.budnote svg{width:14px;height:14px;stroke:var(--bronze);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* wallets */
+.wrow{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--border2)}
+.wrow:last-child{border-bottom:none}
+.wrow .wi{width:30px;height:30px;border-radius:8px;background:var(--bg2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.wrow .wi svg{width:15px;height:15px;stroke:var(--olive);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.wrow .wn{flex:1;min-width:0}
+.wrow .wn b{font-size:.88rem;font-weight:600;display:block}
+.wrow .wn em{font-size:.72rem;color:var(--text3);font-style:normal}
+.wrow .wa{font-size:.9rem;font-weight:600}
+.wrow .wa.muted{color:var(--text3)}
+
+/* ─── DARK AI ─── */
+.darkai{padding:80px 0;background:linear-gradient(135deg,var(--olive-deep) 0%,var(--olive) 55%,var(--olive-light) 110%);color:#fff;position:relative;overflow:hidden}
+.darkai::before{content:'';position:absolute;top:-30%;right:-10%;width:340px;height:340px;background:radial-gradient(circle,rgba(255,255,255,.08),transparent 70%);border-radius:50%}
+.darkai::after{content:'';position:absolute;bottom:-40%;left:-8%;width:300px;height:300px;background:radial-gradient(circle,rgba(255,255,255,.05),transparent 70%);border-radius:50%}
+.darkai-wau{position:absolute;top:50%;left:50%;width:420px;height:420px;transform:translate(-50%,-50%);opacity:.10;pointer-events:none;z-index:0;animation:floaty 12s ease-in-out infinite}
+.darkai .container{position:relative;z-index:2;display:grid;grid-template-columns:1fr;gap:44px;align-items:center}
+.darkai .eyebrow{color:#fff;background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.2)}
+.darkai h2{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:700;letter-spacing:-.5px;line-height:1.18;margin:16px 0 14px}
+.darkai .ai-body{font-size:1.06rem;color:rgba(255,255,255,.85);line-height:1.6}
+.ai-chat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:var(--r-2xl);padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow-lg);backdrop-filter:blur(4px)}
+.ai-chat .bub{max-width:84%;padding:11px 14px;border-radius:16px;font-size:.92rem;line-height:1.5}
+.ai-chat .bub.user{align-self:flex-end;background:var(--olive);color:#fff;border-bottom-right-radius:5px;border:1px solid rgba(255,255,255,.12)}
+.ai-chat .bub.bot{align-self:flex-start;background:var(--surface);color:var(--text);border-bottom-left-radius:5px;box-shadow:var(--shadow)}
+.ai-chat .ai-tag{font-size:.82rem;color:rgba(255,255,255,.7);text-align:center;margin-top:4px}
+
+/* ─── TWO MODES ─── */
+.modes{padding:56px 0;background:var(--surface)}
+.modes-grid{display:grid;grid-template-columns:1fr;gap:20px;max-width:920px;margin:32px auto 0}
+.mode-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2xl);padding:28px;box-shadow:var(--shadow-md);position:relative;overflow:hidden;display:flex;flex-direction:column;gap:16px}
+.mode-card .badge-mode{display:inline-flex;align-items:center;gap:7px;font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:6px 12px;border-radius:var(--r-full);align-self:flex-start}
+.mode-personal .badge-mode{background:rgba(79,81,4,.1);color:var(--olive)}
+.mode-business .badge-mode{background:rgba(178,120,10,.12);color:var(--biz)}
+.mode-card h3{font-size:1.4rem;font-weight:600;letter-spacing:-.4px}
+.mode-card p{color:var(--text2);line-height:1.6;font-size:.96rem}
+.mode-card ul{list-style:none;display:flex;flex-direction:column;gap:10px}
+.mode-card li{display:flex;align-items:flex-start;gap:10px;font-size:.94rem;color:var(--text2)}
+.mode-card li svg{width:17px;height:17px;flex-shrink:0;margin-top:2px;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.mode-personal li svg{stroke:var(--olive)}
+.mode-business li svg{stroke:var(--biz)}
+/* mode mini mocks */
+.mini-dash{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r-lg);padding:14px;margin-top:auto}
+.mini-dash .md-lbl{font-size:.66rem;letter-spacing:1px;text-transform:uppercase;color:var(--bronze);font-weight:700}
+.mini-dash .md-bal{font-size:1.5rem;font-weight:300;letter-spacing:-.5px;color:var(--text);margin-top:2px}
+.mini-dash .md-bal small{font-size:.85rem;font-weight:400;color:var(--text3);margin-right:2px}
+.mini-dash .md-pills{display:flex;gap:8px;margin-top:10px}
+.mini-dash .md-pill{flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 9px}
+.mini-dash .md-pill em{font-size:.6rem;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);font-style:normal;font-weight:600;display:block}
+.mini-dash .md-pill b{font-size:.82rem;font-weight:600;color:var(--olive)}
+.mini-pos{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+.mini-pos .mp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mini-pos .mp-tile{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r-sm);padding:9px 10px}
+.mini-pos .mp-tile b{font-size:.78rem;font-weight:600;color:var(--text);display:block}
+.mini-pos .mp-tile span{font-size:.82rem;font-weight:700;color:var(--biz)}
+.mini-qr{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r-md);padding:11px 12px;display:flex;align-items:center;gap:11px}
+.mini-qr .mq{width:40px;height:40px;border-radius:7px;flex-shrink:0;background:conic-gradient(from 0deg,#1A1A1A 25%,#fff 0 50%,#1A1A1A 0 75%,#fff 0) 0 0/10px 10px,#fff}
+.mini-qr .mqi b{font-size:.72rem;font-weight:700;color:var(--text);display:block}
+.mini-qr .mqi span{font-size:.9rem;font-weight:700;color:var(--biz)}
+.mini-qr .mqi em{font-size:.66rem;color:var(--text3);font-style:normal;display:block}
+
+/* ─── HOW ─── */
+.how{padding:72px 0;background:var(--bg2)}
+.steps-grid{display:grid;grid-template-columns:1fr;gap:24px;max-width:920px;margin:0 auto}
+.step-card{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--olive);border-radius:var(--r-xl);padding:28px 26px;box-shadow:var(--shadow);text-align:left;position:relative}
+.step-card .si{width:40px;height:40px;margin:0 0 16px}
+.step-card .si svg{width:40px;height:40px;stroke:var(--olive);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.step-card h3{font-size:1.2rem;font-weight:600;margin-bottom:9px}
+.step-card p{color:var(--text2);font-size:.95rem;line-height:1.55}
+
+/* ─── SCREENSHOTS GALLERY ─── */
+.gallery{padding:72px 0;background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);overflow:hidden}
+.gallery-wrap{position:relative;margin-top:36px}
+.gallery-scroll{display:flex;gap:24px;overflow-x:auto;padding:10px 20px 28px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.gallery-scroll::-webkit-scrollbar{display:none}
+.gallery-item{scroll-snap-align:center;flex-shrink:0;width:256px;display:flex;flex-direction:column;gap:10px}
+.gallery-item .phone{width:256px}
+.gallery-item .gl-cap{text-align:center;font-size:.8rem;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--bronze)}
+.gallery-fade{position:absolute;top:0;right:0;bottom:0;width:48px;background:linear-gradient(270deg,var(--bg2),rgba(245,243,239,0));pointer-events:none;z-index:2}
+.gallery-hint{text-align:center;font-size:.82rem;color:var(--text3);margin-top:4px}
+
+/* goals arc mock */
+.goal-screen{padding:20px 16px;display:flex;flex-direction:column;align-items:center;gap:12px;background:var(--bg);flex:1}
+.goal-title{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze);font-weight:700;align-self:flex-start}
+.goal-arc{width:150px;height:150px;border-radius:50%;background:conic-gradient(var(--olive) 0deg 216deg,var(--border2) 216deg 360deg);display:flex;align-items:center;justify-content:center;position:relative;margin-top:6px}
+.goal-arc::after{content:'';position:absolute;inset:14px;background:var(--bg);border-radius:50%}
+.goal-arc .ga-in{position:relative;z-index:1;text-align:center}
+.goal-arc .ga-in b{font-size:20px;font-weight:700;color:var(--olive);display:block}
+.goal-arc .ga-in span{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+.goal-meta{text-align:center;margin-top:4px}
+.goal-meta b{font-size:13px;font-weight:700;color:var(--text);display:block}
+.goal-meta span{font-size:11px;color:var(--text3)}
+/* notes mock */
+.note-screen{padding:16px;display:flex;flex-direction:column;gap:10px;background:var(--bg);flex:1}
+.note-title{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze);font-weight:700}
+.note-paper{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-lg);padding:13px;font-size:12px;color:var(--text);line-height:1.6;box-shadow:var(--shadow)}
+.note-detect{background:var(--cream);border:1px solid rgba(178,120,10,.22);border-radius:var(--r-lg);padding:12px;display:flex;flex-direction:column;gap:9px}
+.note-detect .nd-h{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--gold);font-weight:700;display:flex;align-items:center;gap:5px}
+.note-detect .nd-h svg{width:12px;height:12px;stroke:var(--gold);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.note-detect .nd-row{display:flex;justify-content:space-between;font-size:11px}
+.note-detect .nd-row .k{color:var(--text3)}
+.note-detect .nd-row .v{font-weight:600}
+.note-detect .nd-btn{background:var(--olive);color:#fff;text-align:center;font-size:11px;font-weight:600;padding:8px;border-radius:var(--r-full);margin-top:2px}
+/* echo mock */
+.echo-screen{padding:16px;display:flex;flex-direction:column;gap:10px;background:var(--bg);flex:1}
+.bubble{max-width:80%;padding:10px 13px;border-radius:16px;font-size:11.5px;line-height:1.5}
+.bubble.user{align-self:flex-end;background:var(--olive);color:#fff;border-bottom-right-radius:5px}
+.bubble.bot{align-self:flex-start;background:var(--surface);border:1px solid var(--border2);color:var(--text);border-bottom-left-radius:5px;box-shadow:var(--shadow)}
+.echo-bar{margin-top:auto;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:7px 8px 7px 14px}
+.echo-bar .pt{flex:1;font-size:11px;color:var(--text-muted)}
+.echo-bar .mic{width:30px;height:30px;border-radius:50%;background:var(--olive);display:flex;align-items:center;justify-content:center}
+.echo-bar .mic svg{width:13px;height:13px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* debts gallery screen */
+.dscreen{padding:16px;display:flex;flex-direction:column;gap:6px;background:var(--bg);flex:1}
+.dscreen .ds-title{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze);font-weight:700;margin-bottom:6px}
+.dscreen .dcard{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-lg);padding:6px 13px;box-shadow:var(--shadow)}
+
+/* ─── PERSONAS ─── */
+.who{padding:72px 0;background:var(--surface)}
+.persona-grid{display:grid;grid-template-columns:1fr;gap:18px}
+.persona{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:24px;box-shadow:var(--shadow);transition:transform .15s,box-shadow .2s,border-color .2s}
+.persona:hover{transform:translateY(-3px);box-shadow:var(--shadow-md);border-color:var(--bronze)}
+.persona .pe{width:46px;height:46px;border-radius:50%;background:var(--cream);border:1px solid rgba(178,120,10,.18);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.persona .pe svg{width:23px;height:23px;stroke:var(--olive);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.persona h3{font-size:1.12rem;font-weight:600;margin-bottom:8px}
+.persona .sit{font-size:.92rem;color:var(--text3);line-height:1.5;margin-bottom:10px}
+.persona .help{font-size:.92rem;color:var(--text2);line-height:1.5}
+.persona .help b{color:var(--olive);font-weight:600}
+
+/* ─── STORY ─── */
+.story{padding:72px 0;background:var(--cream);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.story .container{max-width:860px}
+.story-inner{display:grid;grid-template-columns:1fr;gap:34px;align-items:center}
+.story-wau{width:200px;margin:0 auto;animation:floaty 11s ease-in-out infinite}
+.story-wau svg{border-radius:28px;box-shadow:var(--shadow-lg)}
+.story-text .kicker{font-size:1.3rem;font-weight:600;color:var(--olive);letter-spacing:-.3px;margin-bottom:14px}
+.story-text p{color:var(--text2);line-height:1.75;font-size:1.04rem;margin-bottom:14px;max-width:600px}
+.story-text p:last-child{margin-bottom:0}
+
+/* ─── SECURITY ─── */
+.security{padding:72px 0;background:var(--bg)}
+.sec-grid{display:grid;grid-template-columns:1fr;gap:18px;margin-top:36px}
+.sec-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:22px;box-shadow:var(--shadow);display:flex;gap:15px;align-items:flex-start}
+.sec-item .si-ic{width:42px;height:42px;border-radius:var(--r-md);background:var(--cream);border:1px solid rgba(178,120,10,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sec-item .si-ic svg{width:21px;height:21px;stroke:var(--olive);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.sec-item h3{font-size:1.05rem;font-weight:600;margin-bottom:6px}
+.sec-item p{font-size:.92rem;color:var(--text2);line-height:1.55}
+.sec-item p a{color:var(--olive);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.disclaimer{margin-top:30px;text-align:center;font-size:.9rem;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-lg);padding:18px 22px;max-width:680px;margin-left:auto;margin-right:auto}
+.disclaimer b{color:var(--text2)}
+
+/* ─── PRICING NOTE ─── */
+.pricing{padding:56px 0;background:var(--surface)}
+.pricing-card{max-width:680px;margin:0 auto;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2xl);padding:36px 28px;box-shadow:var(--shadow-md);position:relative;overflow:hidden}
+.pricing-card::before{content:'';position:absolute;top:-50px;right:-50px;width:160px;height:160px;background:radial-gradient(circle,rgba(178,120,10,.10),transparent 70%);border-radius:50%}
+.pricing-card .tag{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--olive);background:rgba(79,81,4,.1);padding:6px 13px;border-radius:var(--r-full);margin-bottom:14px}
+.pricing-card h3{font-size:1.6rem;font-weight:600;letter-spacing:-.4px;margin-bottom:10px}
+.pricing-card p{color:var(--text2);line-height:1.6;position:relative;z-index:1}
+
+/* ─── FAQ ─── */
+.faq{padding:72px 0;background:var(--surface);border-top:1px solid var(--border)}
+.faq-list{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.faq-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow);transition:border-color .2s}
+.faq-item[open]{border-color:var(--bronze)}
+.faq-item summary{list-style:none;cursor:pointer;padding:20px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:1.05rem;font-weight:600;color:var(--text)}
+.faq-item summary::-webkit-details-marker{display:none}
+.faq-item summary .q-ic{width:24px;height:24px;flex-shrink:0;position:relative;transition:transform .2s}
+.faq-item[open] summary .q-ic{transform:rotate(45deg)}
+.faq-item summary .q-ic::before,.faq-item summary .q-ic::after{content:'';position:absolute;background:var(--olive);border-radius:2px}
+.faq-item summary .q-ic::before{top:11px;left:4px;width:16px;height:2px}
+.faq-item summary .q-ic::after{top:4px;left:11px;width:2px;height:16px}
+.faq-answer{padding:0 22px 22px;color:var(--text2);line-height:1.65;font-size:.98rem}
+
+/* ─── FINAL CTA ─── */
+.final-cta{padding:80px 0;background:linear-gradient(135deg,var(--olive-deep) 0%,var(--olive) 55%,var(--olive-light) 110%);color:#fff;position:relative;overflow:hidden;text-align:center}
+.final-cta::before{content:'';position:absolute;top:-30%;right:-10%;width:340px;height:340px;background:radial-gradient(circle,rgba(255,255,255,.08),transparent 70%);border-radius:50%}
+.final-cta::after{content:'';position:absolute;bottom:-40%;left:-8%;width:300px;height:300px;background:radial-gradient(circle,rgba(255,255,255,.05),transparent 70%);border-radius:50%}
+.final-cta-wau{position:absolute;top:50%;left:50%;width:150px;height:150px;transform:translate(-50%,-50%);opacity:.15;pointer-events:none;z-index:0;animation:floaty 11s ease-in-out infinite}
+.final-cta .container{position:relative;z-index:2;max-width:640px}
+.final-cta h2{font-size:clamp(1.8rem,5vw,2.7rem);font-weight:700;letter-spacing:-.6px;line-height:1.15;margin-bottom:16px}
+.final-cta p{font-size:1.1rem;color:rgba(255,255,255,.85);line-height:1.6;margin-bottom:30px}
+.final-cta .waitlist{margin:30px auto 0}
+.final-cta .wl-tile{background:var(--cream);border-color:rgba(255,255,255,.25)}
+.final-cta .waitlist .micro{color:rgba(255,255,255,.78)}
+.final-cta .wl-msg{color:#fff}
+.final-cta .beta-link{margin-top:22px;display:inline-flex;align-items:center;gap:7px;font-size:.95rem;font-weight:600;color:#fff;text-decoration:underline;text-underline-offset:3px;transition:color .15s}
+.final-cta .beta-link:hover{color:var(--cream)}
+
+/* ─── FOOTER ─── */
+.footer{background:var(--bg);border-top:1px solid var(--border);padding:56px 0 32px}
+.footer-grid{display:grid;grid-template-columns:1fr;gap:36px;margin-bottom:40px}
+.footer-brand .brand{margin-bottom:14px}
+.footer-brand .bline{font-size:.92rem;color:var(--text3);line-height:1.6;max-width:300px}
+.footer-cols{display:grid;grid-template-columns:1fr 1fr;gap:30px}
+.footer-col h4{font-size:.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--bronze);font-weight:700;margin-bottom:14px}
+.footer-col a,.footer-col span{display:block;font-size:.92rem;color:var(--text2);padding:6px 0;transition:color .15s}
+.footer-col a:hover{color:var(--olive)}
+.footer-bottom{border-top:1px solid var(--border2);padding-top:24px;display:flex;flex-direction:column;gap:14px;align-items:flex-start}
+.footer-bottom .fb-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;width:100%}
+.footer-bottom .copy{font-size:.84rem;color:var(--text3)}
+.footer-bottom .made{font-size:.84rem;color:var(--text3);display:inline-flex;align-items:center;gap:6px}
+.footer-disclaimer{font-size:.78rem;color:var(--text-muted);line-height:1.5;max-width:680px}
+
+/* reveal */
+.reveal{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease;transition-delay:var(--d)}
+.reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  .reveal{opacity:1;transform:none;transition:none}
+  .hero::before,.hero-bg-wau,.chip,.marquee,.story-wau,.darkai-wau,.final-cta-wau{animation:none !important}
 }
 
-/* ═══ SUBMIT BAR ═══ */
-.bar{position:fixed;bottom:0;left:0;right:0;background:rgba(245,243,239,.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid rgba(229,224,216,.6);padding:8px 16px;padding-bottom:calc(8px + env(safe-area-inset-bottom));z-index:40}
-.bar-info{display:flex;align-items:center;justify-content:space-between;padding:0 4px 8px;font-size:12px}
-.bar-count{color:var(--text3);font-weight:500}
-.bar-total{color:var(--olive);font-weight:800;font-size:14px}
-.submit-btn{width:100%;max-width:480px;display:flex;align-items:center;justify-content:center;gap:8px;margin:0 auto;background:linear-gradient(135deg,var(--olive-dark),var(--olive));color:#fff;border:none;border-radius:var(--r);padding:15px;font-size:16px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:opacity .15s,transform .15s;box-shadow:0 2px 8px rgba(79,81,4,.2);letter-spacing:-.2px}
-.submit-btn:disabled{background:var(--border);color:var(--text3);cursor:not-allowed;box-shadow:none}
-.submit-btn:not(:disabled):active{opacity:.88;transform:scale(.98)}
-.bar-secure{text-align:center;padding-top:5px;font-size:10px;color:var(--text3);display:flex;align-items:center;justify-content:center;gap:4px}
-
-/* ═══ SUCCESS ═══ */
-.success{display:none;min-height:100vh;min-height:100dvh;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center;background:var(--bg)}
-.success.show{display:flex}
-.s-anim{animation:popIn .5s cubic-bezier(.34,1.56,.64,1) both}
-@keyframes popIn{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
-.s-icon{width:72px;height:72px;background:linear-gradient(135deg,var(--olive-dark),var(--olive));border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:20px;box-shadow:0 8px 24px rgba(79,81,4,.2)}
-.s-icon svg{width:36px;height:36px;stroke:#fff;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
-.s-title{font-size:22px;font-weight:800;color:var(--olive);margin-bottom:6px;letter-spacing:-.3px}
-.s-text{font-size:14px;color:var(--text2);line-height:1.6;max-width:280px}
-.s-eta{display:inline-flex;align-items:center;gap:6px;margin-top:12px;padding:8px 16px;background:var(--surface);border-radius:var(--rr);font-size:12px;color:var(--text2);box-shadow:var(--shadow)}
-.s-actions{display:flex;flex-direction:column;gap:10px;width:100%;max-width:360px;margin-top:20px}
-.s-btn{padding:14px;border-radius:var(--r);font-size:15px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .15s;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;border:none}
-.s-btn:active{transform:scale(.97)}
-.s-btn-wa{background:#25D366;color:#fff;box-shadow:0 2px 8px rgba(37,211,102,.25)}
-.s-btn-primary{background:linear-gradient(135deg,var(--olive-dark),var(--olive));color:#fff;box-shadow:0 2px 8px rgba(79,81,4,.2)}
-.s-btn-outline{background:transparent;color:var(--olive);border:1.5px solid var(--border)}
-
-/* ═══ ERROR ═══ */
-.err-box{display:none;background:rgba(193,105,79,.08);border:1px solid rgba(193,105,79,.2);border-radius:var(--rs);padding:12px 16px;margin:12px 16px 0;font-size:13px;color:var(--terracotta);line-height:1.4}
-.err-box.show{display:block;animation:shake .4s ease}
-@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
-
-/* ═══ DIVIDER ═══ */
-.div{height:1px;background:linear-gradient(to right,transparent,var(--border),transparent);margin:8px 24px}
-
-/* ═══ SPINNER ═══ */
-.spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
-@keyframes sp{to{transform:rotate(360deg)}}
-
-/* ═══ HISTORY ═══ */
-.hist-view{display:none;min-height:100vh;min-height:100dvh;padding-bottom:40px;background:var(--bg)}
-.hist-view.show{display:block}
-.hist-card{background:var(--surface);border-radius:var(--r);margin:0 16px 12px;overflow:hidden;box-shadow:var(--shadow)}
-.hist-hdr{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border2)}
-.hist-time{font-size:11px;color:var(--text3);background:var(--border2);padding:2px 8px;border-radius:8px}
-.hist-name{font-size:14px;font-weight:600;color:var(--olive)}
-.hist-item{display:flex;justify-content:space-between;padding:10px 16px;font-size:13px;color:var(--text2)}
-.hist-total{display:flex;justify-content:space-between;padding:12px 16px;font-weight:700;font-size:14px;background:linear-gradient(135deg,rgba(79,81,4,.04),rgba(79,81,4,.08))}
-.hist-empty{padding:80px 24px;text-align:center;color:var(--text3);font-size:14px}
-.hist-empty-icon{font-size:36px;margin-bottom:8px;opacity:.3}
-
-/* ═══ CONFIRM MODAL ═══ */
-.confirm-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:100;align-items:flex-end;justify-content:center;padding:0}
-.confirm-overlay.show{display:flex;animation:fadeIn .2s ease}
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
-.confirm-card{background:var(--surface);border-radius:var(--rr) var(--rr) 0 0;width:100%;max-width:480px;max-height:85vh;max-height:85dvh;overflow:auto;-webkit-overflow-scrolling:touch;animation:slideUp .3s cubic-bezier(.22,.68,0,1.04);padding-bottom:env(safe-area-inset-bottom)}
-@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
-.confirm-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:10px auto 4px}
-.confirm-header{padding:16px 20px 12px;text-align:center}
-.confirm-title{font-size:18px;font-weight:800;color:var(--olive);letter-spacing:-.3px}
-.confirm-sub{font-size:13px;color:var(--text3);margin-top:2px}
-.confirm-sec{padding:0 16px}
-.confirm-sec-label{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--bronze);padding:14px 0 8px}
-.confirm-item{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border2);font-size:14px}
-.confirm-item:last-child{border-bottom:none}
-.confirm-total{display:flex;justify-content:space-between;padding:14px 16px;background:linear-gradient(135deg,var(--olive-dark),var(--olive));font-weight:800;font-size:16px;color:#fff;margin:8px 16px;border-radius:var(--rs)}
-.confirm-info{padding:0 16px 8px}
-.confirm-info-row{display:flex;gap:8px;padding:6px 0;font-size:13px}
-.confirm-info-label{color:var(--text3);min-width:72px;flex-shrink:0;font-weight:500}
-.confirm-info-value{color:var(--text);font-weight:600;word-break:break-word}
-.confirm-note{margin:0 16px 8px;padding:10px 14px;background:var(--border2);border-radius:var(--rs);font-size:13px;color:var(--text2);font-style:italic;line-height:1.5}
-.confirm-actions{display:flex;gap:10px;padding:16px}
-.confirm-cancel{flex:1;padding:15px;border:1.5px solid var(--border);border-radius:var(--r);background:transparent;color:var(--text2);font-size:15px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s}
-.confirm-cancel:active{background:var(--border2)}
-.confirm-go{flex:2;padding:15px;border:none;border-radius:var(--r);background:linear-gradient(135deg,var(--olive-dark),var(--olive));color:#fff;font-size:15px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 2px 8px rgba(79,81,4,.2);display:flex;align-items:center;justify-content:center;gap:6px}
-.confirm-go:active{opacity:.88}
-.confirm-trust{display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 16px 4px;font-size:11px;color:var(--text3)}
-
-/* ═══ FOOTER ═══ */
-.footer{text-align:center;padding:24px 16px 8px;font-size:11px;color:var(--text3);letter-spacing:.3px}
-.footer a{color:var(--bronze);text-decoration:none;font-weight:600}
-
-/* ═══ HONEYPOT ═══ */
-.hp-field{position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden;pointer-events:none;tab-index:-1}
-
-/* ═══ UTILS ═══ */
-@keyframes bumpIn{0%{transform:scale(1)}50%{transform:scale(1.12)}100%{transform:scale(1)}}
-.bump{animation:bumpIn .25s ease}
-.empty-prods{padding:48px 24px;text-align:center;color:var(--text3);font-size:14px}
-.empty-prods-icon{font-size:36px;margin-bottom:8px;opacity:.3}
-.img-lightbox{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .2s;pointer-events:none}
-.img-lightbox.show{opacity:1;pointer-events:auto}
-.img-lightbox img{max-width:85%;max-height:75%;border-radius:12px;object-fit:contain}
-.prod-img img,.hdr-avatar img{cursor:pointer}
+/* ─── RESPONSIVE ─── */
+@media (max-width:559px){.chip{display:none}}
+@media (min-width:560px){
+  .footer-cols{grid-template-columns:repeat(3,1fr)}
+  .bento-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media (min-width:768px){
+  .container{padding:0 32px}
+  .modes-grid{grid-template-columns:1fr 1fr}
+  .steps-grid{grid-template-columns:repeat(3,1fr)}
+  .persona-grid{grid-template-columns:1fr 1fr}
+  .sec-grid{grid-template-columns:1fr 1fr}
+  .story-inner{grid-template-columns:220px 1fr}
+  .footer-grid{grid-template-columns:1.4fr 2fr}
+  .footer-cols{grid-template-columns:repeat(3,1fr)}
+  .herofeat .container{grid-template-columns:.95fr 1.05fr;gap:64px}
+  .darkai .container{grid-template-columns:1.05fr .95fr;gap:56px}
+}
+@media (min-width:900px){
+  .nav-links{display:flex}
+  .hamburger{display:none}
+  .hero .container{grid-template-columns:1.05fr .95fr;gap:56px}
+  .hero-copy{order:1}
+  .hero-phone-wrap{order:2}
+  .persona-grid{grid-template-columns:repeat(3,1fr)}
+  /* bento → clean 3-col; tiles hug their content (no stretched/empty cards) */
+  .bento-grid{grid-template-columns:repeat(3,1fr)}
+}
+@media (min-width:1100px){
+  .persona-grid{grid-template-columns:repeat(5,1fr)}
+}
+@media (max-width:899px){
+  .nav-right .lang-toggle{display:none}
+  .nav-right .btn-beta-nav{display:none}
+}
+@media (max-width:379px){
+  .badges{flex-direction:column}
+  .badge-link svg{height:50px}
+}
 </style>
 </head>
 <body>
+<div class="grain" aria-hidden="true"></div>
+<a class="skip" href="#main" data-en="Skip to content" data-bm="Terus ke kandungan">Skip to content</a>
 
-<!-- Image lightbox -->
-<div class="img-lightbox" id="img-lightbox" onclick="this.classList.remove('show')"><img id="lb-img" src="" alt=""></div>
-
-<!-- Skeleton loader -->
-<div id="loading" class="skel">
-  <div class="skel-header"></div>
-  <div class="skel-bar"></div>
-  <div class="skel-body">
-    <div class="skel-title"></div>
-    <div class="skel-card"></div>
-    <div class="skel-card"></div>
-    <div class="skel-card"></div>
-    <div class="skel-card"></div>
-  </div>
-</div>
-
-<div id="app" style="display:none">
-  <div id="main">
-    <div class="header">
-      <div class="hdr-actions" id="hdr-actions" style="display:none">
-        <button class="hdr-btn" onclick="showHistory()" title="Order history">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        </button>
+<!-- ════════════ NAV ════════════ -->
+<header class="nav" id="nav">
+  <div class="container">
+    <a class="brand" href="#top" aria-label="Potraces home">
+      <span class="logo" aria-hidden="true" id="navlogo"></span>
+      <span>Potraces</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#features" data-en="Features" data-bm="Ciri">Features</a>
+      <a href="#how" data-en="How it works" data-bm="Cara guna">How it works</a>
+      <a href="#who" data-en="Who it's for" data-bm="Untuk siapa">Who it's for</a>
+      <a href="#privacy" data-en="Privacy" data-bm="Privasi">Privacy</a>
+      <a href="#faq" data-en="FAQ" data-bm="Soalan">FAQ</a>
+    </nav>
+    <div class="nav-right">
+      <div class="lang-toggle" role="group" aria-label="Language / Bahasa">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="ms" aria-pressed="false">BM</button>
       </div>
-      <div class="hdr-avatar" id="hdr-avatar"></div>
-      <div class="hdr-name" id="shop-name">...</div>
-      <div class="hdr-sub" id="hdr-sub"></div>
-      <div class="shop-notice" id="shop-notice" style="display:none"></div>
-    </div>
-
-    <!-- Trust bar -->
-    <div class="trust-bar" id="trust-bar">
-      <div class="trust-item" style="color:var(--olive)">
-        <svg class="trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        <span>Verified Seller</span>
-      </div>
-      <div class="trust-dot"></div>
-      <div class="trust-item" id="trust-orders" style="display:none;color:var(--bronze)">
-        <span id="order-count-text"></span>
-      </div>
-      <div class="trust-dot" id="trust-dot2" style="display:none"></div>
-      <div class="trust-item" id="trust-response" style="display:none;color:var(--text3)">
-        <svg class="trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <span>Replies within hours</span>
-      </div>
-    </div>
-
-    <!-- Progress steps -->
-    <div class="steps" id="steps">
-      <div class="step active" id="step-1"><div class="step-num">1</div><span>Pick</span></div>
-      <div class="step-line" id="line-1"></div>
-      <div class="step" id="step-2"><div class="step-num">2</div><span>Details</span></div>
-      <div class="step-line" id="line-2"></div>
-      <div class="step" id="step-3"><div class="step-num">3</div><span>Order</span></div>
-    </div>
-
-    <div class="wrap">
-      <div class="sec">
-        <div class="sec-head">
-          <div class="sec-title">Menu</div>
-          <div class="sec-count" id="prod-count"></div>
-        </div>
-        <div class="prod-list" id="prod-list"></div>
-      </div>
-
-      <div class="div"></div>
-
-      <div class="sec" id="form-sec">
-        <div class="sec-head">
-          <div class="sec-title">Your Details</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Name <span class="req">*</span></div>
-          <input id="cname" type="text" placeholder="Your full name" autocomplete="name" maxlength="100" oninput="updBtn();updSteps()">
-        </div>
-        <div class="field">
-          <div class="field-label">WhatsApp No. <span class="req">*</span></div>
-          <input id="cphone" type="tel" inputmode="tel" placeholder="01X-XXXXXXX" autocomplete="tel" maxlength="20" oninput="updBtn();updSteps()">
-          <div class="field-hint">Required — so the seller can confirm your order</div>
-        </div>
-        <button class="opt-toggle" id="opt-toggle" onclick="toggleOptFields()">
-          <span>Add address & notes</span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <div class="opt-fields" id="opt-fields">
-          <div class="field">
-            <div class="field-label">Delivery Address</div>
-            <textarea id="caddr" rows="2" placeholder="Full address..." autocomplete="street-address" maxlength="300"></textarea>
-          </div>
-          <div class="field">
-            <div class="field-label">Special Notes</div>
-            <textarea id="cnote" rows="2" placeholder="Special requests, allergies, etc..." maxlength="500"></textarea>
-          </div>
-        </div>
-        <div class="hp-field" aria-hidden="true"><label>Do not fill<input id="hp-email" type="email" tabindex="-1" autocomplete="off"></label></div>
-      </div>
-
-      <div class="div"></div>
-
-      <div class="sec">
-        <div class="sec-head">
-          <div class="sec-title">Summary</div>
-        </div>
-      </div>
-      <div class="cart-sec"><div class="cart" id="cart"></div></div>
-      <div class="err-box" id="err"></div>
-
-      <div class="footer">Powered by <a href="https://potraces.vercel.app" target="_blank" rel="noopener">Potraces</a></div>
-    </div>
-  </div>
-
-  <!-- Floating cart badge -->
-  <div class="cart-badge" id="cart-badge" onclick="scrollToCart()">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>
-    <div class="cart-badge-text" id="badge-text">0</div>
-  </div>
-
-  <!-- Success -->
-  <div class="success" id="success">
-    <div class="s-anim">
-      <div style="display:flex;justify-content:center">
-        <div class="s-icon">
-          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
-        </div>
-      </div>
-      <div class="s-title">Order Placed!</div>
-      <div class="s-text" id="s-text">Thank you! The seller will contact you to confirm your order.</div>
-      <div class="s-eta">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <span>Usually replies within a few hours</span>
-      </div>
-    </div>
-    <div id="order-summary" style="width:100%;max-width:380px;margin-top:24px"></div>
-    <div class="s-actions">
-      <a class="s-btn s-btn-wa" id="s-wa-btn" href="#" style="display:none">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-        WhatsApp Seller
-      </a>
-      <button class="s-btn s-btn-primary" onclick="orderAgain()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-        Order Again
+      <a class="btn btn-primary btn-sm btn-beta-nav" href="#waitlist" data-en="Join the beta" data-bm="Sertai beta">Join the beta</a>
+      <button class="hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false" aria-controls="mobileSheet">
+        <span></span><span></span><span></span>
       </button>
-      <button class="s-btn s-btn-outline" onclick="showHistory()">View Order History</button>
     </div>
   </div>
+</header>
 
-  <!-- History -->
-  <div class="hist-view" id="hist-view">
-    <div class="header">
-      <div class="hdr-actions" style="display:flex">
-        <button class="hdr-btn" onclick="hideHistory()">
-          <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-      </div>
-      <div class="hdr-avatar" id="hist-avatar"></div>
-      <div class="hdr-name" id="hist-shop-name">...</div>
-      <div class="hdr-sub">Your order history</div>
-    </div>
-    <div style="padding-top:16px" id="hist-list"></div>
+<!-- mobile sheet -->
+<div class="mobile-sheet" id="mobileSheet" aria-hidden="true">
+  <a href="#features" data-en="Features" data-bm="Ciri">Features</a>
+  <a href="#how" data-en="How it works" data-bm="Cara guna">How it works</a>
+  <a href="#who" data-en="Who it's for" data-bm="Untuk siapa">Who it's for</a>
+  <a href="#privacy" data-en="Privacy" data-bm="Privasi">Privacy</a>
+  <a href="#faq" data-en="FAQ" data-bm="Soalan">FAQ</a>
+  <div class="lang-toggle" role="group" aria-label="Language / Bahasa" style="margin-top:24px;align-self:flex-start">
+    <button type="button" data-lang="en" aria-pressed="true">EN</button>
+    <button type="button" data-lang="ms" aria-pressed="false">BM</button>
   </div>
-
-  <!-- Confirm Modal -->
-  <div class="confirm-overlay" id="confirm-modal" onclick="hideConfirm()">
-    <div class="confirm-card" onclick="event.stopPropagation()">
-      <div class="confirm-handle"></div>
-      <div class="confirm-header">
-        <div class="confirm-title">Confirm Order</div>
-        <div class="confirm-sub">Review before submitting</div>
-      </div>
-      <div class="confirm-sec">
-        <div class="confirm-sec-label">Order Items</div>
-        <div id="confirm-items"></div>
-      </div>
-      <div class="confirm-total" id="confirm-total"></div>
-      <div class="confirm-sec">
-        <div class="confirm-sec-label">Customer Info</div>
-      </div>
-      <div class="confirm-info" id="confirm-info"></div>
-      <div id="confirm-note"></div>
-      <div class="confirm-trust">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-        <span>Order goes directly to the seller — no middleman</span>
-      </div>
-      <div class="confirm-actions">
-        <button class="confirm-cancel" onclick="hideConfirm()">Edit</button>
-        <button class="confirm-go" id="confirm-go" onclick="confirmSubmit()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          Submit Order
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Submit bar -->
-  <div class="bar" id="bar">
-    <div class="bar-info" id="bar-info" style="display:none">
-      <span class="bar-count" id="bar-count"></span>
-      <span class="bar-total" id="bar-total"></span>
-    </div>
-    <button class="submit-btn" id="sbtn" disabled onclick="showConfirm()">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-      Submit Order
-    </button>
-    <div class="bar-secure">
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-      <span>Secure & direct to seller</span>
-    </div>
-  </div>
+  <a class="btn btn-primary" href="#waitlist" data-en="Join the beta" data-bm="Sertai beta">Join the beta</a>
 </div>
+
+<main id="main">
+<span id="top"></span>
+
+<!-- ════════════ HERO ════════════ -->
+<section class="hero">
+  <div class="hero-bg-wau" aria-hidden="true" id="herowau"></div>
+  <div class="hero-bg-wau lo" aria-hidden="true" id="herowau2"></div>
+  <div class="container">
+    <div class="hero-copy">
+      <span class="eyebrow" data-en="Built in Malaysia, for irregular income" data-bm="Buatan Malaysia, untuk rezeki tak tetap">Built in Malaysia, for irregular income</span>
+      <h1>
+        <span data-en="Know " data-bm="Tau ">Know </span><span class="h-accent" data-en="what's safe to spend" data-bm="berapa boleh belanja">what's safe to spend</span><span data-en=" — even when the money's not steady." data-bm=" — walaupun duit masuk tak tetap."> — even when the money's not steady.</span>
+      </h1>
+      <p class="lead">
+        <span data-en="For kuih sellers, gig riders and freelancers. Track what came in, what went out, what's kept — calmly." data-bm="Untuk penjual kuih, rider gig & freelancer. Track duit masuk, duit keluar, apa yang berbaki — tak yah stress." class="block">For kuih sellers, gig riders and freelancers. Track what came in, what went out, what's kept — calmly.</span>
+      </p>
+
+      <!-- waitlist (elevated) -->
+      <div class="waitlist" id="waitlist">
+        <div class="wl-tile">
+          <div class="wl-frame">
+            <span class="wl-ic" aria-hidden="true" id="wlicon"></span>
+            <span data-en="Be first in line. One ping when it's live." data-bm="Jadi yang pertama tau. Satu ping je bila dah live.">Be first in line. One ping when it's live.</span>
+          </div>
+          <form id="waitlistForm" novalidate>
+            <label for="wl-email" class="wl-label">
+              <span data-en="Email or phone" data-bm="Emel atau nombor telefon">Email or phone</span>
+            </label>
+            <input id="wl-email" name="contact" type="text" inputmode="email" autocomplete="email"
+              data-ph-en="Email or phone (010…)" data-ph-bm="Emel atau no. telefon (010…)"
+              placeholder="Email or phone (010…)" required>
+            <button type="submit" class="btn btn-primary" data-en="Notify me" data-bm="Bagitau saya">Notify me</button>
+          </form>
+          <p class="wl-msg" id="wlMsg" role="status" aria-live="polite"></p>
+          <p class="micro" data-en="No card. We message you once when it's live." data-bm="Takde kad. Kami msg sekali je bila dah ready.">No card. We message you once when it's live.</p>
+        </div>
+      </div>
+
+      <!-- store badges -->
+      <div class="store-cta">
+        <div class="store-label">
+          <span data-en="Coming soon to" data-bm="Akan datang di">Coming soon to</span>
+          <span class="soon-tag" data-en="Beta" data-bm="Beta">Beta</span>
+        </div>
+        <div class="badges">
+          <a class="badge-link" href="/beta.html" aria-label="Coming soon on the App Store — join the beta">
+            <svg width="162" height="54" viewBox="0 0 162 54" role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <rect width="162" height="54" rx="9" fill="#000"/>
+              <rect x="0.5" y="0.5" width="161" height="53" rx="8.5" fill="none" stroke="#A6A6A6" stroke-width="1"/>
+              <path d="M33.5 27.2c0-2.9 2.4-4.3 2.5-4.4-1.4-2-3.5-2.3-4.3-2.3-1.8-.2-3.5 1.1-4.5 1.1-.9 0-2.4-1-3.9-1-2 0-3.8 1.2-4.9 3-2.1 3.6-.5 9 1.5 11.9 1 1.5 2.2 3 3.7 3 1.5-.1 2.1-1 3.9-1s2.4 1 3.9 1 2.6-1.4 3.6-2.9c1.1-1.7 1.6-3.3 1.6-3.4-.1 0-3.1-1.2-3.1-4.6zm-3-8.4c.8-1 1.4-2.4 1.2-3.8-1.2.1-2.6.8-3.5 1.8-.8.9-1.4 2.3-1.3 3.7 1.3.1 2.7-.7 3.6-1.7z" fill="#fff"/>
+              <text x="48" y="22" fill="#fff" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="9" font-weight="400">Download on the</text>
+              <text x="48" y="40" fill="#fff" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="20" font-weight="600" letter-spacing="-0.5">App Store</text>
+            </svg>
+          </a>
+          <a class="badge-link" href="/beta.html" aria-label="Coming soon on Google Play — join the beta">
+            <svg width="182" height="54" viewBox="0 0 182 54" role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <rect width="182" height="54" rx="9" fill="#000"/>
+              <rect x="0.5" y="0.5" width="181" height="53" rx="8.5" fill="none" stroke="#A6A6A6" stroke-width="1"/>
+              <g transform="translate(18 14)">
+                <path d="M0 0.9C0 .3.3-.1.8.1l13.2 13L10.6 16 0 .9z" fill="#34A853" transform="translate(0 0)"/>
+                <path d="M.4.2 12.4 12 9.8 14.6.5 24.8C.2 24.6 0 24.2 0 23.7V1.3C0 .9.2.4.4.2z" fill="#00D2FF"/>
+                <path d="M9.8 14.6 12.4 12l3.9 2.2c1.3.7 1.3 1.9 0 2.6l-3.5 2-3-4.2z" fill="#FFBC00"/>
+                <path d="M.5 24.8 9.8 14.6l3 4.2-9.6 5.4c-1 .6-1.9.3-2.7-.4z" fill="#EA4335"/>
+              </g>
+              <text x="52" y="22" fill="#fff" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="9" font-weight="400">GET IT ON</text>
+              <text x="52" y="41" fill="#fff" font-family="-apple-system,Roboto,Arial,sans-serif" font-size="20" font-weight="500" letter-spacing="0">Google Play</text>
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="hero-trust">
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span data-en="Your data stays yours" data-bm="Data kau, milik kau">Your data stays yours</span></span>
+        <span class="dot" aria-hidden="true"></span>
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12" y2="20"/></svg><span data-en="Works offline" data-bm="Boleh guna offline">Works offline</span></span>
+        <span class="dot" aria-hidden="true"></span>
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-4.5-9-9a4.8 4.8 0 0 1 9-2 4.8 4.8 0 0 1 9 2c-2 4.5-9 9-9 9z"/></svg><span data-en="RM + Bahasa Melayu" data-bm="RM + Bahasa Melayu">RM + Bahasa Melayu</span></span>
+      </div>
+    </div>
+
+    <!-- HERO PHONE -->
+    <div class="hero-phone-wrap reveal">
+      <span class="chip c-a" aria-hidden="true"><span class="tnum">+ RM 45 </span><span class="ca" data-en="came in" data-bm="masuk">came in</span><span data-en=" · kuih order" data-bm=" · order kuih"> · kuih order</span></span>
+      <span class="chip c-b" aria-hidden="true">
+        <span class="spark"><i style="height:40%"></i><i style="height:70%"></i><i style="height:55%"></i><i style="height:90%"></i><i style="height:65%"></i></span>
+        <span class="block"><span data-en="kept this week" data-bm="berbaki minggu ni">kept this week</span><br><span class="ca tnum">RM 320</span></span>
+      </span>
+      <span class="chip c-c" aria-hidden="true">
+        <span class="miniqr"></span>
+        <span class="block"><span data-en="paid " data-bm="bayar ">paid </span><span class="ca tnum">RM 12</span><br>DuitNow</span>
+      </span>
+      <div class="phone" role="img" aria-label="Potraces dashboard showing the balance kept this month, with came-in and went-out amounts">
+        <div class="phone-screen">
+          <div class="app-hd">
+            <div class="lbl" data-en="Kept this month" data-bm="Berbaki bulan ni">Kept this month</div>
+            <div class="bal tnum"><small>RM</small>1,284<span style="font-size:18px;font-weight:400;opacity:.8">.50</span></div>
+            <div class="sub" data-en="across cash, bank & e-wallet" data-bm="merentas tunai, bank & e-wallet">across cash, bank &amp; e-wallet</div>
+            <div class="app-pills">
+              <div class="app-pill">
+                <div class="pl" data-en="Came in" data-bm="Masuk">Came in</div>
+                <div class="pv tnum">RM 2,940</div>
+              </div>
+              <div class="app-pill">
+                <div class="pl" data-en="Went out" data-bm="Keluar">Went out</div>
+                <div class="pv tnum">RM 1,655</div>
+              </div>
+            </div>
+          </div>
+          <div class="app-body">
+            <div class="app-card">
+              <div class="app-seclbl" data-en="Last 7 days" data-bm="7 hari lepas">Last 7 days</div>
+              <div class="weekbar" aria-hidden="true">
+                <span class="wb"><i style="height:30%"></i><span>M</span></span>
+                <span class="wb on"><i style="height:62%"></i><span>T</span></span>
+                <span class="wb"><i style="height:45%"></i><span>W</span></span>
+                <span class="wb on"><i style="height:80%"></i><span>T</span></span>
+                <span class="wb"><i style="height:38%"></i><span>F</span></span>
+                <span class="wb on"><i style="height:95%"></i><span>S</span></span>
+                <span class="wb"><i style="height:50%"></i><span>S</span></span>
+              </div>
+            </div>
+            <div class="app-card">
+              <div class="app-seclbl" data-en="Recent" data-bm="Terkini">Recent</div>
+              <div class="txn">
+                <span class="ic"><svg viewBox="0 0 24 24"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg></span>
+                <span class="nm"><b>Nasi lemak</b><em data-en="Food · cash" data-bm="Makan · tunai">Food · cash</em></span>
+                <span class="amt out tnum">-RM 8.00</span>
+              </div>
+              <div class="txn">
+                <span class="ic"><svg viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></span>
+                <span class="nm"><b data-en="Kuih order" data-bm="Order kuih">Kuih order</b><em data-en="Came in · TNG" data-bm="Masuk · TNG">Came in · TNG</em></span>
+                <span class="amt in tnum">+RM 45.00</span>
+              </div>
+              <div class="txn">
+                <span class="ic"><svg viewBox="0 0 24 24"><path d="M3 13v-2l1-5a2 2 0 0 1 2-1h6a2 2 0 0 1 2 1l1 5v2"/><circle cx="6.5" cy="16.5" r="1.5"/><circle cx="12.5" cy="16.5" r="1.5"/></svg></span>
+                <span class="nm"><b data-en="Petrol" data-bm="Minyak">Petrol</b><em data-en="Transport · bank" data-bm="Pengangkutan · bank">Transport · bank</em></span>
+                <span class="amt out tnum">-RM 30.00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ MARQUEE ════════════ -->
+<section class="marquee-band reveal" aria-label="Plays nice with your money">
+  <div class="container">
+    <div class="marquee-lbl" data-en="Plays nice with your money" data-bm="Sesuai dengan duit korang">Plays nice with your money</div>
+  </div>
+  <div class="marquee-wrap">
+    <div class="marquee-fade l" aria-hidden="true"></div>
+    <div class="marquee-fade r" aria-hidden="true"></div>
+    <div class="marquee" aria-hidden="true" id="marquee">
+      <!-- track is duplicated by JS for a seamless loop -->
+      <span class="mq-chip">Maybank</span>
+      <span class="mq-chip">CIMB</span>
+      <span class="mq-chip">Touch 'n Go eWallet</span>
+      <span class="mq-chip">GrabPay</span>
+      <span class="mq-chip">Boost</span>
+      <span class="mq-chip">ShopeePay</span>
+      <span class="mq-chip">Atome</span>
+      <span class="mq-chip">DuitNow QR</span>
+      <span class="mq-chip trust" data-en="RM-native" data-bm="RM asli">RM-native</span>
+      <span class="mq-chip trust" data-en="Bahasa Melayu" data-bm="Bahasa Melayu">Bahasa Melayu</span>
+      <span class="mq-chip trust" data-en="Works offline" data-bm="Guna offline">Works offline</span>
+      <span class="mq-chip trust" data-en="Your data stays yours" data-bm="Data kau, milik kau">Your data stays yours</span>
+      <span class="mq-chip trust" data-en="No card needed" data-bm="Takde kad">No card needed</span>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ HERO-FEATURE ════════════ -->
+<section class="herofeat">
+  <div class="container">
+    <div class="hero-phone-wrap reveal" style="order:1">
+      <div class="phone" role="img" aria-label="Potraces safe-to-spend dashboard">
+        <div class="phone-screen">
+          <div class="app-hd">
+            <div class="lbl" data-en="Kept this month" data-bm="Berbaki bulan ni">Kept this month</div>
+            <div class="bal tnum"><small>RM</small>1,284<span style="font-size:18px;font-weight:400;opacity:.8">.50</span></div>
+            <div class="sub" data-en="across cash, bank & e-wallet" data-bm="merentas tunai, bank & e-wallet">across cash, bank &amp; e-wallet</div>
+            <div class="app-pills">
+              <div class="app-pill">
+                <div class="pl" data-en="Came in" data-bm="Masuk">Came in</div>
+                <div class="pv tnum">RM 2,940</div>
+              </div>
+              <div class="app-pill">
+                <div class="pl" data-en="Went out" data-bm="Keluar">Went out</div>
+                <div class="pv tnum">RM 1,655</div>
+              </div>
+            </div>
+          </div>
+          <div class="app-body">
+            <div class="app-card">
+              <div class="app-seclbl" data-en="Safe to spend" data-bm="Boleh belanja">Safe to spend</div>
+              <div class="budgrow">
+                <div class="bt"><b data-en="This week" data-bm="Minggu ni">This week</b><span class="tnum">RM 380 / 540</span></div>
+                <div class="bar"><i style="width:70%"></i></div>
+                <div class="budnote" style="color:var(--olive)"><span data-en="Comfortable — RM 160 to spare" data-bm="Selesa — lebih RM 160">Comfortable — RM 160 to spare</span></div>
+              </div>
+            </div>
+            <div class="app-card">
+              <div class="app-seclbl" data-en="Recent" data-bm="Terkini">Recent</div>
+              <div class="txn">
+                <span class="ic"><svg viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></span>
+                <span class="nm"><b data-en="Kuih order" data-bm="Order kuih">Kuih order</b><em data-en="Came in · TNG" data-bm="Masuk · TNG">Came in · TNG</em></span>
+                <span class="amt in tnum">+RM 45.00</span>
+              </div>
+              <div class="txn">
+                <span class="ic"><svg viewBox="0 0 24 24"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4z"/></svg></span>
+                <span class="nm"><b>Kopi O</b><em data-en="Food · cash" data-bm="Makan · tunai">Food · cash</em></span>
+                <span class="amt out tnum">-RM 2.50</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="hf-copy reveal" style="order:2">
+      <span class="eyebrow" data-en="The whole point" data-bm="Tujuan utama">The whole point</span>
+      <h2>
+        <span data-en="See " data-bm="Tengok ">See </span><span class="h-accent" data-en="what's safe to spend" data-bm="berapa boleh belanja">what's safe to spend</span><span data-en=" today." data-bm=" hari ni."> today.</span>
+      </h2>
+      <p>
+        <span data-en="Your hero balance shows real cash only — credit and BNPL never get counted as money you have." data-bm="Baki utama tunjuk duit betul je — kredit & BNPL tak dikira duit kau ada." class="block">Your hero balance shows real cash only — credit and BNPL never get counted as money you have.</span>
+      </p>
+      <ul class="hf-list">
+        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Soft ceilings, never red alerts" data-bm="Siling lembut, takde alert merah">Soft ceilings, never red alerts</span></li>
+        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="'Getting close' — not 'over budget'" data-bm="'Dah dekat' — bukan 'dah lebih'">'Getting close' — not 'over budget'</span></li>
+        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="One number you can trust at a glance" data-bm="Satu nombor yang kau boleh percaya sekali pandang">One number you can trust at a glance</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ BENTO (FEATURES) ════════════ -->
+<section class="bento" id="features">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow" data-en="What it does" data-bm="Apa ia buat">What it does</span>
+      <h2>
+        <span data-en="Everything for money that " data-bm="Semua untuk duit yang ">Everything for money that </span><span class="h-accent" data-en="doesn't arrive on schedule" data-bm="masuk tak ikut jadual">doesn't arrive on schedule</span><span data-en="." data-bm=".">.</span>
+      </h2>
+      <p data-en="Plain tools, plain language. Log it your way — snap, type, or just ask." data-bm="Alat simple, bahasa simple. Catat ikut gaya kau — snap, taip, atau tanya je.">Plain tools, plain language. Log it your way — snap, type, or just ask.</p>
+    </div>
+    <div class="bento-grid">
+      <!-- quick-add (cream, big) -->
+      <article class="tile cream t-quick reveal" style="--d:0ms">
+        <div class="ti-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></div>
+        <h3 data-en="Type it like you'd text a friend. We sort it." data-bm="Taip macam tekan member. Kami susun.">Type it like you'd text a friend. We sort it.</h3>
+        <div class="parsed">
+          <div class="ptyped">nasi lemak rm8</div>
+          <div class="prow"><span class="k" data-en="Amount" data-bm="Jumlah">Amount</span><span class="v tnum">RM 8.00</span></div>
+          <div class="prow"><span class="k" data-en="Category" data-bm="Kategori">Category</span><span class="v" data-en="Food" data-bm="Makan">Food</span></div>
+          <div class="prow"><span class="k" data-en="Wallet" data-bm="Dompet">Wallet</span><span class="v" data-en="Cash" data-bm="Tunai">Cash</span></div>
+          <div class="prow"><span class="k" data-en="Type" data-bm="Jenis">Type</span><span class="v tag-olive" data-en="Went out" data-bm="Keluar">Went out</span></div>
+        </div>
+        <p class="ti-sub" data-en="Understands EN, BM and Manglish." data-bm="Faham EN, BM dan Manglish.">Understands EN, BM and Manglish.</p>
+      </article>
+      <!-- receipt -->
+      <article class="tile t-receipt reveal" style="--d:70ms">
+        <div class="ti-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/></svg></div>
+        <h3 data-en="Snap the receipt. Done in seconds." data-bm="Snap resit. Siap dalam saat.">Snap the receipt. Done in seconds.</h3>
+        <div class="receipt">
+          <div class="rh">Kedai Runcit Pak Mat</div>
+          <div class="rrow"><span>Roti</span><span class="tnum">RM 3.50</span></div>
+          <div class="rrow"><span>Telur</span><span class="tnum">RM 6.90</span></div>
+          <div class="rrow"><span>Susu</span><span class="tnum">RM 8.20</span></div>
+          <div class="rtot"><span data-en="Total" data-bm="Jumlah">Total</span><span class="tnum">RM 18.60</span></div>
+        </div>
+        <span class="scan-tag"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Read & sorted automatically" data-bm="Dibaca & disusun automatik">Read &amp; sorted automatically</span></span>
+      </article>
+      <!-- debts -->
+      <article class="tile t-debts reveal" style="--d:140ms">
+        <div class="ti-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg></div>
+        <h3 data-en="Who owes who — no awkward chats." data-bm="Sapa hutang sapa — tak yah kekok.">Who owes who — no awkward chats.</h3>
+        <div>
+          <div class="debt-row">
+            <span class="av" style="background:var(--terracotta)">A</span>
+            <span class="info"><b>Ali</b><span class="dchip dchip-owe" data-en="I owe" data-bm="Aku hutang">I owe</span></span>
+            <span class="da owe tnum">RM 25.00</span>
+          </div>
+          <div class="debt-row">
+            <span class="av" style="background:var(--olive)">S</span>
+            <span class="info"><b>Siti</b><span class="dchip dchip-owed" data-en="They owe me" data-bm="Dia hutang aku">They owe me</span></span>
+            <span class="da owed tnum">RM 60.00</span>
+          </div>
+        </div>
+      </article>
+      <!-- budget (olive) -->
+      <article class="tile olive t-budget reveal" style="--d:210ms">
+        <div class="ti-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></div>
+        <h3 data-en="You're getting close — not over. Chill." data-bm="Dah dekat — belum lebih. Chill.">You're getting close — not over. Chill.</h3>
+        <div class="budgrow">
+          <div class="bt"><b data-en="Transport" data-bm="Pengangkutan">Transport</b><span class="tnum">RM 175 / 200</span></div>
+          <div class="bar warn"><i style="width:88%"></i></div>
+          <div class="budnote"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg><span data-en="Getting close — RM 25 left" data-bm="Dah dekat — tinggal RM 25">Getting close — RM 25 left</span></div>
+        </div>
+      </article>
+      <!-- wallets -->
+      <article class="tile t-wallets reveal" style="--d:280ms">
+        <div class="ti-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg></div>
+        <h3 data-en="Cash, bank and e-wallet in one place." data-bm="Tunai, bank & e-wallet satu tempat.">Cash, bank and e-wallet in one place.</h3>
+        <div>
+          <div class="wrow"><span class="wi"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg></span><span class="wn"><b data-en="Cash" data-bm="Tunai">Cash</b><em data-en="in hand" data-bm="dalam tangan">in hand</em></span><span class="wa tnum">RM 320.00</span></div>
+          <div class="wrow"><span class="wi"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10l7-5 7 5v11"/><path d="M9 21v-6h6v6"/></svg></span><span class="wn"><b>Maybank</b><em data-en="bank" data-bm="bank">bank</em></span><span class="wa tnum">RM 740.50</span></div>
+          <div class="wrow"><span class="wi"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg></span><span class="wn"><b>TNG eWallet</b><em data-en="e-wallet" data-bm="e-wallet">e-wallet</em></span><span class="wa tnum">RM 224.00</span></div>
+          <div class="wrow"><span class="wi"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span><span class="wn"><b>Atome</b><em data-en="credit · not your money" data-bm="kredit · bukan duit kau">credit · not your money</em></span><span class="wa muted tnum">-RM 90.00</span></div>
+        </div>
+      </article>
+      <!-- offline -->
+      <article class="tile t-offline reveal" style="--d:350ms">
+        <div class="ti-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12" y2="20"/></svg></div>
+        <h3 data-en="Patchy signal? Log now, it syncs later." data-bm="Line teruk? Log dulu, sync kemudian.">Patchy signal? Log now, it syncs later.</h3>
+        <p class="ti-sub" data-en="Saves on your phone first." data-bm="Simpan dalam phone kau dulu.">Saves on your phone first.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ DARK AI ════════════ -->
+<section class="darkai">
+  <div class="darkai-wau" aria-hidden="true" id="darkwau"></div>
+  <div class="container">
+    <div class="ai-copy reveal">
+      <span class="eyebrow" data-en="Your money, answered" data-bm="Duit kau, dijawab">Your money, answered</span>
+      <h2>
+        <span data-en="Ask about your money. In your own words." data-bm="Tanya pasal duit kau. Guna ayat kau sendiri." class="block">Ask about your money. In your own words.</span>
+      </h2>
+      <p class="ai-body">
+        <span data-en="Type a question in English, BM or Manglish and get a straight answer — Echo reads your own numbers, nothing else." data-bm="Taip soalan dalam English, BM atau Manglish, dapat jawapan terus — Echo baca nombor kau je, takde benda lain." class="block">Type a question in English, BM or Manglish and get a straight answer — Echo reads your own numbers, nothing else.</span>
+      </p>
+    </div>
+    <div class="ai-chat reveal">
+      <span class="bub user">berapa aku belanja makan bulan ni?</span>
+      <span class="bub bot" data-en="RM 240 so far — RM 160 under your soft ceiling." data-bm="RM 240 setakat ni — RM 160 bawah siling lembut kau.">RM 240 so far — RM 160 under your soft ceiling.</span>
+      <span class="bub user">boleh ke aku belanja RM 100 weekend ni?</span>
+      <span class="bub bot" data-en="Yep — you'd still keep RM 380 for the month." data-bm="Boleh — kau masih berbaki RM 380 bulan ni.">Yep — you'd still keep RM 380 for the month.</span>
+      <span class="ai-tag" data-en="Calm by design. No scolding, no red numbers." data-bm="Tenang by design. Takde leter, takde nombor merah.">Calm by design. No scolding, no red numbers.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ TWO MODES ════════════ -->
+<section class="modes">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow" data-en="Two modes, one app" data-bm="Dua mod, satu app">Two modes, one app</span>
+      <h2>
+        <span data-en="Your own money and your " data-bm="Duit sendiri dan ">Your own money and your </span><span class="h-accent" data-en="little business" data-bm="bisnes kecik kau">little business</span><span data-en=", side by side." data-bm=", sebelah-menyebelah.">, side by side.</span>
+      </h2>
+      <p data-en="Switch in a tap. Same calm app, two clear spaces." data-bm="Tukar dengan satu ketik. App yang sama, dua ruang jelas.">Switch in a tap. Same calm app, two clear spaces.</p>
+    </div>
+    <div class="modes-grid">
+      <article class="mode-card mode-personal reveal" style="--d:0ms">
+        <span class="badge-mode" data-en="Personal" data-bm="Peribadi">Personal</span>
+        <h3 data-en="For your own money" data-bm="Untuk duit sendiri">For your own money</h3>
+        <p data-en="Log what came in and went out, set soft budgets, build goals, ask plain questions." data-bm="Catat duit masuk & keluar, set bajet lembut, bina matlamat, tanya soalan biasa.">Log what came in and went out, set soft budgets, build goals, ask plain questions.</p>
+        <ul>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Quick-add by text, voice or photo" data-bm="Tambah cepat guna teks, suara atau foto">Quick-add by text, voice or photo</span></li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Soft budgets & goals" data-bm="Bajet lembut & matlamat">Soft budgets &amp; goals</span></li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Wallets for cash, bank & e-wallet" data-bm="Dompet untuk tunai, bank & e-wallet">Wallets for cash, bank &amp; e-wallet</span></li>
+        </ul>
+        <div class="mini-dash" aria-hidden="true">
+          <div class="md-lbl" data-en="Kept this month" data-bm="Berbaki bulan ni">Kept this month</div>
+          <div class="md-bal tnum"><small>RM</small>1,284.50</div>
+          <div class="md-pills">
+            <div class="md-pill"><em data-en="Came in" data-bm="Masuk">Came in</em><b class="tnum">RM 2,940</b></div>
+            <div class="md-pill"><em data-en="Went out" data-bm="Keluar">Went out</em><b class="tnum" style="color:var(--text)">RM 1,655</b></div>
+          </div>
+        </div>
+      </article>
+      <article class="mode-card mode-business reveal" style="--d:90ms">
+        <span class="badge-mode" data-en="Seller / Stall" data-bm="Penjual / Gerai">Seller / Stall</span>
+        <h3 data-en="For your little business" data-bm="Untuk bisnes kecik kau">For your little business</h3>
+        <p data-en="Share one shop link, take orders, and see what you kept each season." data-bm="Kongsi satu link kedai, terima order, tengok berapa berbaki tiap musim.">Share one shop link, take orders, and see what you kept each season.</p>
+        <ul>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="One shareable shop link" data-bm="Satu link kedai boleh kongsi">One shareable shop link</span></li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="DuitNow QR for exact amounts" data-bm="DuitNow QR untuk jumlah tepat">DuitNow QR for exact amounts</span></li>
+          <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span data-en="Close a season, see what's kept" data-bm="Tutup musim, tengok apa berbaki">Close a season, see what's kept</span></li>
+        </ul>
+        <div class="mini-pos" aria-hidden="true">
+          <div class="mp-grid">
+            <div class="mp-tile"><b data-en="Kuih lapis" data-bm="Kuih lapis">Kuih lapis</b><span class="tnum">RM 4.00</span></div>
+            <div class="mp-tile"><b data-en="Brownies" data-bm="Brownies">Brownies</b><span class="tnum">RM 12.00</span></div>
+          </div>
+          <div class="mini-qr">
+            <span class="mq"></span>
+            <span class="mqi"><b data-en="DuitNow QR" data-bm="DuitNow QR">DuitNow QR</b><span class="tnum">RM 16.00</span><em data-en="exact amount" data-bm="jumlah tepat">exact amount</em></span>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ HOW ════════════ -->
+<section class="how" id="how">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow" data-en="How it works" data-bm="Cara guna">How it works</span>
+      <h2>
+        <span data-en="Three steps. That's it." data-bm="Tiga langkah. Itu je." class="block">Three steps. That's it.</span>
+      </h2>
+    </div>
+    <div class="steps-grid">
+      <article class="step-card reveal" style="--d:0ms">
+        <div class="si" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></div>
+        <h3 data-en="Add it your way" data-bm="Tambah ikut gaya kau">Add it your way</h3>
+        <p data-en="Snap a receipt, type a line, or just ask." data-bm="Snap resit, taip satu baris, atau tanya je.">Snap a receipt, type a line, or just ask.</p>
+      </article>
+      <article class="step-card reveal" style="--d:90ms">
+        <div class="si" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
+        <h3 data-en="We sort it" data-bm="Kami susun">We sort it</h3>
+        <p data-en="Amount, category and wallet, filled in for you." data-bm="Jumlah, kategori & dompet, kami isikan.">Amount, category and wallet, filled in for you.</p>
+      </article>
+      <article class="step-card reveal" style="--d:180ms">
+        <div class="si" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3 data-en="See what's kept" data-bm="Tengok apa berbaki">See what's kept</h3>
+        <p data-en="Your real balance and what's safe to spend." data-bm="Baki betul kau dan berapa boleh belanja.">Your real balance and what's safe to spend.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ SCREENSHOTS ════════════ -->
+<section class="gallery">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow" data-en="A look inside" data-bm="Tengok dalam">A look inside</span>
+      <h2>
+        <span data-en="Calm screens, real numbers." data-bm="Skrin tenang, nombor betul." class="block">Calm screens, real numbers.</span>
+      </h2>
+    </div>
+  </div>
+  <div class="gallery-wrap reveal">
+    <div class="gallery-fade" aria-hidden="true"></div>
+    <div class="gallery-scroll">
+      <!-- 1 Goals -->
+      <div class="gallery-item">
+        <div class="phone" role="img" aria-label="Goals screen with a savings progress arc">
+          <div class="phone-screen">
+            <div class="goal-screen">
+              <div class="goal-title" data-en="Raya fund" data-bm="Tabung Raya">Raya fund</div>
+              <div class="goal-arc"><span class="ga-in"><b class="tnum">60%</b><span data-en="saved" data-bm="disimpan">saved</span></span></div>
+              <div class="goal-meta"><b class="tnum">RM 1,800 / 3,000</b><span data-en="RM 1,200 to go" data-bm="lagi RM 1,200">RM 1,200 to go</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="gl-cap" data-en="Goals" data-bm="Matlamat">Goals</div>
+      </div>
+      <!-- 2 Notes & AI -->
+      <div class="gallery-item">
+        <div class="phone" role="img" aria-label="Notes screen detecting a commitment">
+          <div class="phone-screen">
+            <div class="note-screen">
+              <div class="note-title" data-en="Notes" data-bm="Nota">Notes</div>
+              <div class="note-paper">bayar Astro 89.90 tiap bulan</div>
+              <div class="note-detect">
+                <div class="nd-h"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1-6.3-4.6L5.7 21 8 13.9 2 9.4h7.6z"/></svg><span data-en="Commitment found" data-bm="Komitmen dijumpai">Commitment found</span></div>
+                <div class="nd-row"><span class="k">Astro</span><span class="v tnum" data-en="RM 89.90 / month" data-bm="RM 89.90 / bulan">RM 89.90 / month</span></div>
+                <div class="nd-btn" data-en="Add it" data-bm="Tambah">Add it</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="gl-cap" data-en="Notes & AI" data-bm="Nota & AI">Notes &amp; AI</div>
+      </div>
+      <!-- 3 Echo -->
+      <div class="gallery-item">
+        <div class="phone" role="img" aria-label="Echo chat screen">
+          <div class="phone-screen">
+            <div class="echo-screen">
+              <span class="bubble user">berapa aku belanja makan bulan ni?</span>
+              <span class="bubble bot" data-en="RM 240 so far — RM 160 under your soft ceiling." data-bm="RM 240 setakat ni — RM 160 bawah siling lembut kau.">RM 240 so far — RM 160 under your soft ceiling.</span>
+              <span class="bubble user">boleh ke aku belanja RM 100 weekend ni?</span>
+              <span class="bubble bot" data-en="Yep — you'd still keep RM 380 for the month." data-bm="Boleh — kau masih berbaki RM 380 bulan ni.">Yep — you'd still keep RM 380 for the month.</span>
+              <div class="echo-bar">
+                <span class="pt" data-en="Ask anything…" data-bm="Tanya apa-apa…">Ask anything…</span>
+                <span class="mic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="gl-cap" data-en="Ask Echo" data-bm="Tanya Echo">Ask Echo</div>
+      </div>
+      <!-- 4 Debts -->
+      <div class="gallery-item">
+        <div class="phone" role="img" aria-label="Debts and splits screen">
+          <div class="phone-screen">
+            <div class="dscreen">
+              <div class="ds-title" data-en="Debts & splits" data-bm="Hutang & pecah bil">Debts &amp; splits</div>
+              <div class="dcard">
+                <div class="debt-row"><span class="av" style="background:var(--terracotta)">A</span><span class="info"><b>Ali</b><span class="dchip dchip-owe" data-en="I owe" data-bm="Aku hutang">I owe</span></span><span class="da owe tnum">RM 25.00</span></div>
+              </div>
+              <div class="dcard">
+                <div class="debt-row"><span class="av" style="background:var(--olive)">S</span><span class="info"><b>Siti</b><span class="dchip dchip-owed" data-en="They owe me" data-bm="Dia hutang aku">They owe me</span></span><span class="da owed tnum">RM 60.00</span></div>
+              </div>
+              <div class="dcard">
+                <div class="debt-row"><span class="av" style="background:var(--bronze)">R</span><span class="info"><b data-en="Raya split" data-bm="Pecah bil Raya">Raya split</b><span class="dchip dchip-owed" data-en="They owe me" data-bm="Dia hutang aku">They owe me</span></span><span class="da owed tnum">RM 40.00</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="gl-cap" data-en="Debts & splits" data-bm="Hutang & pecah bil">Debts &amp; splits</div>
+      </div>
+    </div>
+  </div>
+  <div class="container">
+    <p class="gallery-hint" data-en="Swipe to look inside" data-bm="Leret untuk tengok dalam">Swipe to look inside</p>
+  </div>
+</section>
+
+<!-- ════════════ WHO IT'S FOR ════════════ -->
+<section class="who" id="who">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow" data-en="Who it's for" data-bm="Untuk siapa">Who it's for</span>
+      <h2>
+        <span data-en="Made for how you actually earn." data-bm="Dibuat ikut cara kau betul-betul buat duit." class="block">Made for how you actually earn.</span>
+      </h2>
+    </div>
+    <div class="persona-grid">
+      <article class="persona reveal" style="--d:0ms">
+        <div class="pe" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 21h16"/><path d="M5 21v-7h14v7"/><path d="M6 14a6 6 0 0 1 12 0"/><path d="M9 8V6"/><path d="M12 8V5"/><path d="M15 8V6"/></svg></div>
+        <h3 data-en="Kuih sellers" data-bm="Penjual kuih">Kuih sellers</h3>
+        <p class="sit" data-en="Orders spike at Raya, quiet after." data-bm="Order melambak masa Raya, lengang lepas tu.">Orders spike at Raya, quiet after.</p>
+        <p class="help"><span data-en="See what each season " data-bm="Tengok tiap musim ">See what each season </span><b data-en="actually kept" data-bm="berapa betul berbaki">actually kept</b><span data-en="." data-bm=".">.</span></p>
+      </article>
+      <article class="persona reveal" style="--d:70ms">
+        <div class="pe" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="5" cy="17" r="3"/><circle cx="19" cy="17" r="3"/><path d="M5 17l4-9h4l3 5h3"/><path d="M9 8l1-3h3"/></svg></div>
+        <h3 data-en="Gig riders" data-bm="Rider gig">Gig riders</h3>
+        <p class="sit" data-en="Earnings change every single day." data-bm="Duit masuk lain tiap-tiap hari.">Earnings change every single day.</p>
+        <p class="help"><span data-en="Track what " data-bm="Track ">Track what </span><b data-en="came in" data-bm="duit masuk">came in</b><span data-en=" across apps." data-bm=" merentas app."> across apps.</span></p>
+      </article>
+      <article class="persona reveal" style="--d:140ms">
+        <div class="pe" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><line x1="2" y1="20" x2="22" y2="20"/></svg></div>
+        <h3 data-en="Freelancers" data-bm="Freelancer">Freelancers</h3>
+        <p class="sit" data-en="Five clients, five payment dates." data-bm="Lima client, lima tarikh bayar.">Five clients, five payment dates.</p>
+        <p class="help"><span data-en="Keep " data-bm="Pastikan ">Keep </span><b data-en="what came in" data-bm="duit masuk">what came in</b><span data-en=" clear, month to month." data-bm=" jelas, bulan ke bulan."> clear, month to month.</span></p>
+      </article>
+      <article class="persona reveal" style="--d:210ms">
+        <div class="pe" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 22V12"/><path d="M12 12C12 8 9 5 4 5c0 5 3 8 8 8z"/><path d="M12 14c0-3 3-6 8-6 0 4-3 7-8 7z"/></svg></div>
+        <h3 data-en="Young savers" data-bm="Penyimpan muda">Young savers</h3>
+        <p class="sit" data-en="First job, learning the ropes." data-bm="Kerja pertama, tengah belajar.">First job, learning the ropes.</p>
+        <p class="help"><span data-en="Build a goal without the " data-bm="Bina matlamat tanpa ">Build a goal without the </span><b data-en="scary words" data-bm="perkataan menakutkan">scary words</b><span data-en="." data-bm=".">.</span></p>
+      </article>
+      <article class="persona reveal" style="--d:280ms">
+        <div class="pe" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg></div>
+        <h3 data-en="Night-shift earners" data-bm="Pekerja syif malam">Night-shift earners</h3>
+        <p class="sit" data-en="Odd hours, cash and e-wallet mixed." data-bm="Waktu pelik, tunai & e-wallet bercampur.">Odd hours, cash and e-wallet mixed.</p>
+        <p class="help"><span data-en="One calm view of " data-bm="Satu paparan tenang ">One calm view of </span><b data-en="all your money" data-bm="semua duit kau">all your money</b><span data-en="." data-bm=".">.</span></p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ STORY ════════════ -->
+<section class="story">
+  <div class="container">
+    <div class="story-inner">
+      <div class="story-wau reveal" aria-hidden="true" id="storywau"></div>
+      <div class="story-text reveal">
+        <div class="kicker" data-en="Why a kite?" data-bm="Kenapa wau?">Why a kite?</div>
+        <p data-en="The wau — the kite — is our motif: something light you keep an eye on, steady on its string." data-bm="Wau — layang-layang — jadi motif kami: benda ringan yang kau perhati, stabil atas talinya.">The wau — the kite — is our motif: something light you keep an eye on, steady on its string.</p>
+        <p data-en="That's your balance. Potraces just helps you keep it in view." data-bm="Itu baki kau. Potraces tolong kau pantau je.">That's your balance. Potraces just helps you keep it in view.</p>
+        <p data-en="'Jejak baki' means track your balance. No scolding, no red numbers — just your money, calmly." data-bm="'Jejak baki' maksudnya pantau baki kau. Takde leter, takde nombor merah — duit kau, dengan tenang.">'Jejak baki' means track your balance. No scolding, no red numbers — just your money, calmly.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ SECURITY ════════════ -->
+<section class="security" id="privacy">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow" data-en="Your data, your call" data-bm="Data kau, kau yang tentukan">Your data, your call</span>
+      <h2>
+        <span data-en="Private by default." data-bm="Privasi by default." class="block">Private by default.</span>
+      </h2>
+    </div>
+    <div class="sec-grid">
+      <article class="sec-item reveal" style="--d:0ms">
+        <span class="si-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg></span>
+        <div>
+          <h3 data-en="Stays on your phone" data-bm="Simpan dalam phone kau">Stays on your phone</h3>
+          <p data-en="Your records live on your device first, not on our servers." data-bm="Rekod kau duduk dalam phone kau dulu, bukan server kami.">Your records live on your device first, not on our servers.</p>
+        </div>
+      </article>
+      <article class="sec-item reveal" style="--d:70ms">
+        <span class="si-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span>
+        <div>
+          <h3 data-en="Backup only if you want" data-bm="Backup kalau kau nak je">Backup only if you want</h3>
+          <p data-en="Turn on backup to your own cloud — off until you say so." data-bm="Hidupkan backup ke cloud kau sendiri — off sampai kau kata ya.">Turn on backup to your own cloud — off until you say so.</p>
+        </div>
+      </article>
+      <article class="sec-item reveal" style="--d:140ms">
+        <span class="si-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+        <div>
+          <h3 data-en="Export or delete anytime" data-bm="Export atau padam bila-bila">Export or delete anytime</h3>
+          <p data-en="Take everything with you, or wipe it. Your choice." data-bm="Bawa semua sekali, atau padam terus. Kau punya pilihan.">Take everything with you, or wipe it. Your choice.</p>
+        </div>
+      </article>
+      <article class="sec-item reveal" style="--d:210ms">
+        <span class="si-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg></span>
+        <div>
+          <h3 data-en="Just a tracker, not advice" data-bm="Alat jejak je, bukan nasihat">Just a tracker, not advice</h3>
+          <p><span data-en="We show your own numbers clearly — you decide. Read our " data-bm="Kami tunjuk nombor kau dengan jelas — kau yang decide. Baca ">We show your own numbers clearly — you decide. Read our </span><a href="/privacy.html" data-en="privacy policy" data-bm="dasar privasi">privacy policy</a><span data-en="." data-bm=".">.</span></p>
+        </div>
+      </article>
+    </div>
+    <div class="disclaimer reveal">
+      <b data-en="Potraces is a calm tracker, not a financial advisor." data-bm="Potraces alat jejak yang tenang, bukan penasihat kewangan.">Potraces is a calm tracker, not a financial advisor.</b>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ PRICING NOTE ════════════ -->
+<section class="pricing">
+  <div class="container">
+    <div class="pricing-card reveal">
+      <span class="tag" data-en="Free during beta" data-bm="Free masa beta">Free during beta</span>
+      <h3 data-en="No card. No catch." data-bm="Takde kad. Takde tipu.">No card. No catch.</h3>
+      <p data-en="Free while we're in beta. Fair pricing comes later — we'll tell you first." data-bm="Free masa beta. Harga berpatutan nanti — kami bagitau dulu.">Free while we're in beta. Fair pricing comes later — we'll tell you first.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ FAQ ════════════ -->
+<section class="faq" id="faq">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow" data-en="FAQ" data-bm="Soalan">FAQ</span>
+      <h2>
+        <span data-en="Quick answers." data-bm="Jawapan pantas." class="block">Quick answers.</span>
+      </h2>
+    </div>
+    <div class="faq-list">
+      <details class="faq-item reveal">
+        <summary><span data-en="When does Potraces launch?" data-bm="Bila Potraces keluar?">When does Potraces launch?</span><span class="q-ic" aria-hidden="true"></span></summary>
+        <div class="faq-answer"><span data-en="It's in beta now. Join the waitlist and we'll message you once, when it's live." data-bm="Tengah beta sekarang. Join waitlist, kami msg sekali je bila dah live.">It's in beta now. Join the waitlist and we'll message you once, when it's live.</span></div>
+      </details>
+      <details class="faq-item reveal">
+        <summary><span data-en="What if I earn from a few different places?" data-bm="Macam mana kalau aku buat duit dari banyak tempat?">What if I earn from a few different places?</span><span class="q-ic" aria-hidden="true"></span></summary>
+        <div class="faq-answer"><span data-en="That's exactly the point. Kuih orders, gig shifts, freelance jobs — log them all and see what came in, in one calm view." data-bm="Itu memang tujuannya. Order kuih, shift gig, kerja freelance — log semua, tengok apa masuk dalam satu paparan tenang.">That's exactly the point. Kuih orders, gig shifts, freelance jobs — log them all and see what came in, in one calm view.</span></div>
+      </details>
+      <details class="faq-item reveal">
+        <summary><span data-en="Can I use it for Raya season then go back to personal?" data-bm="Boleh ke guna masa musim Raya pastu balik ke peribadi?">Can I use it for Raya season then go back to personal?</span><span class="q-ic" aria-hidden="true"></span></summary>
+        <div class="faq-answer"><span data-en="Yes. Switch between personal and seller mode anytime — your stuff stays put in each space." data-bm="Boleh. Tukar antara mod peribadi & penjual bila-bila — barang kau kekal dalam ruang masing-masing.">Yes. Switch between personal and seller mode anytime — your stuff stays put in each space.</span></div>
+      </details>
+      <details class="faq-item reveal">
+        <summary><span data-en="Is my data safe?" data-bm="Data aku selamat tak?">Is my data safe?</span><span class="q-ic" aria-hidden="true"></span></summary>
+        <div class="faq-answer"><span data-en="It stays on your phone by default, and only on your own cloud if you turn on backup. We don't sell it." data-bm="Simpan dalam phone kau by default, dan ke cloud kau je kalau kau on backup. Kami tak jual.">It stays on your phone by default, and only on your own cloud if you turn on backup. We don't sell it.</span></div>
+      </details>
+      <details class="faq-item reveal">
+        <summary><span data-en="Does it work offline?" data-bm="Boleh guna offline tak?">Does it work offline?</span><span class="q-ic" aria-hidden="true"></span></summary>
+        <div class="faq-answer"><span data-en="Yep. Log even with patchy signal — it saves on your phone and syncs later." data-bm="Boleh. Log walaupun line teruk — simpan dalam phone, sync kemudian.">Yep. Log even with patchy signal — it saves on your phone and syncs later.</span></div>
+      </details>
+      <details class="faq-item reveal">
+        <summary><span data-en="Is it free?" data-bm="Free ke?">Is it free?</span><span class="q-ic" aria-hidden="true"></span></summary>
+        <div class="faq-answer"><span data-en="Free during the beta, no card needed. Fair pricing comes later and we'll tell you first." data-bm="Free masa beta, takde kad. Harga berpatutan nanti, kami bagitau dulu.">Free during the beta, no card needed. Fair pricing comes later and we'll tell you first.</span></div>
+      </details>
+      <details class="faq-item reveal">
+        <summary><span data-en="Is this financial advice?" data-bm="Ni nasihat kewangan ke?">Is this financial advice?</span><span class="q-ic" aria-hidden="true"></span></summary>
+        <div class="faq-answer"><span data-en="No. Potraces shows your own money clearly so you can decide — it's a tracker, not an advisor." data-bm="Bukan. Potraces tunjuk duit kau dengan jelas supaya kau boleh decide — alat jejak, bukan penasihat.">No. Potraces shows your own money clearly so you can decide — it's a tracker, not an advisor.</span></div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ FINAL CTA ════════════ -->
+<section class="final-cta">
+  <div class="final-cta-wau" aria-hidden="true" id="ctawau"></div>
+  <div class="container">
+    <h2>
+      <span data-en="Jom mula. It's free during beta." data-bm="Jom mula. Free masa beta." class="block">Jom mula. It's free during beta.</span>
+    </h2>
+    <p>
+      <span data-en="Money that comes in lumps, finally making sense. Get in early." data-bm="Duit yang masuk tak menentu, akhirnya masuk akal. Join awal." class="block">Money that comes in lumps, finally making sense. Get in early.</span>
+    </p>
+    <div class="waitlist">
+      <div class="wl-tile">
+        <div class="wl-frame">
+          <span class="wl-ic" aria-hidden="true" id="wlicon2"></span>
+          <span data-en="Be first in line. One ping when it's live." data-bm="Jadi yang pertama tau. Satu ping je bila dah live.">Be first in line. One ping when it's live.</span>
+        </div>
+        <form id="waitlistForm2" novalidate>
+          <label for="wl-email2" class="wl-label">
+            <span data-en="Email or phone" data-bm="Emel atau nombor telefon">Email or phone</span>
+          </label>
+          <input id="wl-email2" name="contact" type="text" inputmode="email" autocomplete="email"
+            data-ph-en="Email or phone (010…)" data-ph-bm="Emel atau no. telefon (010…)"
+            placeholder="Email or phone (010…)" required>
+          <button type="submit" class="btn btn-primary" data-en="Notify me" data-bm="Bagitau saya">Notify me</button>
+        </form>
+        <p class="wl-msg" id="wlMsg2" role="status" aria-live="polite"></p>
+        <p class="micro" data-en="No card. We message you once when it's live." data-bm="Takde kad. Kami msg sekali je bila dah ready.">No card. We message you once when it's live.</p>
+      </div>
+    </div>
+    <a class="beta-link" href="/beta.html">
+      <span data-en="Already testing? Send beta feedback" data-bm="Tengah test? Hantar feedback beta">Already testing? Send beta feedback</span>
+    </a>
+  </div>
+</section>
+</main>
+
+<!-- ════════════ FOOTER ════════════ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="#top" aria-label="Potraces home">
+          <span class="logo" aria-hidden="true" id="footlogo"></span>
+          <span>Potraces</span>
+        </a>
+        <p class="bline" data-en="Calm money tracking for irregular earners in Malaysia." data-bm="Jejak duit yang tenang untuk pencari rezeki tak tetap di Malaysia.">Calm money tracking for irregular earners in Malaysia.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <h4 data-en="Product" data-bm="Produk">Product</h4>
+          <a href="#features" data-en="Features" data-bm="Ciri">Features</a>
+          <a href="#how" data-en="How it works" data-bm="Cara guna">How it works</a>
+          <a href="#who" data-en="Who it's for" data-bm="Untuk siapa">Who it's for</a>
+        </div>
+        <div class="footer-col">
+          <h4 data-en="More" data-bm="Lagi">More</h4>
+          <a href="/privacy.html" data-en="Privacy" data-bm="Privasi">Privacy</a>
+          <a href="#faq" data-en="FAQ" data-bm="Soalan">FAQ</a>
+          <a href="/beta.html" data-en="Beta feedback" data-bm="Feedback beta">Beta feedback</a>
+        </div>
+        <div class="footer-col">
+          <h4 data-en="Say hi" data-bm="Tegur kami">Say hi</h4>
+          <a href="mailto:hello@jejakbaki.my" data-en="Email us" data-bm="Emel kami">Email us</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="fb-row">
+        <span class="copy">© <span id="year">2026</span> Potraces · jejakbaki.my</span>
+        <span class="made">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8B7355" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-4.5-9-9a4.8 4.8 0 0 1 9-2 4.8 4.8 0 0 1 9 2c-2 4.5-9 9-9 9z"/></svg>
+          <span data-en="Made in Malaysia" data-bm="Buatan Malaysia">Made in Malaysia</span>
+        </span>
+      </div>
+      <p class="footer-disclaimer" data-en="Potraces is a calm money tracker, not financial advice. Beta software may change without notice." data-bm="Potraces alat jejak duit yang tenang, bukan nasihat kewangan. Perisian beta boleh berubah tanpa notis.">Potraces is a calm money tracker, not financial advice. Beta software may change without notice.</p>
+    </div>
+  </div>
+</footer>
 
 <script>
-var SB_URL='https://iydqeeonaljqapulboaz.supabase.co';
-var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5ZHFlZW9uYWxqcWFwdWxib2F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NjQ1MDcsImV4cCI6MjA4ODQ0MDUwN30.IP0oJOs4DwwIM--ym2rPls51qpCHMVD-oB1UDjgS2Ec';
+/* ── inline wau SVG (sage), injected into logo + watermark slots ── */
+var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" role="img" aria-label="Potraces wau kite logo">\
+<rect width="1024" height="1024" fill="#5E7B6A"/>\
+<circle cx="512" cy="490" r="350" fill="#F1E7D3" opacity="0.05"/>\
+<circle cx="512" cy="490" r="262" fill="#F1E7D3" opacity="0.05"/>\
+<g transform="translate(0 96) rotate(-6 512 420)">\
+<path d="M494 278 L512 92 L530 278 Z" fill="#DEAB22" stroke="#B2780A" stroke-width="5" stroke-linejoin="round"/>\
+<circle cx="512" cy="86" r="9" fill="#DEAB22"/><circle cx="512" cy="86" r="4" fill="#B2780A"/>\
+<rect x="486" y="268" width="52" height="14" rx="7" fill="#B2780A"/>\
+<path d="M512 428 L540 464 L512 502 L484 464 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="6" stroke-linejoin="round"/>\
+<path d="M512 460 C470 535 432 600 374 660 C416 670 466 644 494 594 C504 560 510 510 512 460 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="7" stroke-linejoin="round"/>\
+<path d="M512 460 C554 535 592 600 650 660 C608 670 558 644 530 594 C520 560 514 510 512 460 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="7" stroke-linejoin="round"/>\
+<path d="M508 480 C478 546 448 598 402 646" stroke="#DEAB22" stroke-width="5" stroke-linecap="round"/>\
+<path d="M516 480 C546 546 576 598 622 646" stroke="#DEAB22" stroke-width="5" stroke-linecap="round"/>\
+<path d="M448 596 C432 588 420 592 414 606" stroke="#4F5104" stroke-width="4" stroke-linecap="round"/>\
+<circle cx="411" cy="610" r="4" fill="#DEAB22"/>\
+<path d="M576 596 C592 588 604 592 610 606" stroke="#4F5104" stroke-width="4" stroke-linecap="round"/>\
+<circle cx="613" cy="610" r="4" fill="#DEAB22"/>\
+<path d="M130 560 C250 340 400 272 512 272 C624 272 774 340 894 560 C760 470 640 436 512 436 C384 436 264 470 130 560 Z" fill="#F1E7D3" stroke="#4F5104" stroke-width="8" stroke-linejoin="round"/>\
+<path d="M220 500 C310 370 416 310 512 310 C608 310 714 370 804 500" stroke="#DEAB22" stroke-width="7" stroke-linecap="round"/>\
+<path d="M392 372 C352 354 318 360 300 392" stroke="#4F5104" stroke-width="6" stroke-linecap="round"/>\
+<circle cx="296" cy="398" r="6" fill="#DEAB22"/>\
+<path d="M342 440 C312 428 290 432 278 454" stroke="#4F5104" stroke-width="5" stroke-linecap="round"/>\
+<circle cx="274" cy="458" r="5" fill="#DEAB22"/>\
+<ellipse cx="430" cy="340" rx="7" ry="14" fill="#B2780A" opacity="0.85" transform="rotate(-35 430 340)"/>\
+<g transform="matrix(-1 0 0 1 1024 0)">\
+<path d="M392 372 C352 354 318 360 300 392" stroke="#4F5104" stroke-width="6" stroke-linecap="round"/>\
+<circle cx="296" cy="398" r="6" fill="#DEAB22"/>\
+<path d="M342 440 C312 428 290 432 278 454" stroke="#4F5104" stroke-width="5" stroke-linecap="round"/>\
+<circle cx="274" cy="458" r="5" fill="#DEAB22"/>\
+<ellipse cx="430" cy="340" rx="7" ry="14" fill="#B2780A" opacity="0.85" transform="rotate(-35 430 340)"/>\
+</g>\
+<circle cx="133" cy="557" r="6" fill="#DEAB22"/><circle cx="891" cy="557" r="6" fill="#DEAB22"/>\
+<circle cx="512" cy="368" r="48" stroke="#DEAB22" stroke-width="4" opacity="0.6"/>\
+<g>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(60 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(120 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(180 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(240 512 368)"/>\
+<ellipse cx="512" cy="342" rx="13" ry="24" fill="#DEAB22" transform="rotate(300 512 368)"/>\
+</g>\
+<circle cx="512" cy="368" r="11" fill="#B2780A"/>\
+</g></svg>';
+['navlogo','footlogo','herowau','herowau2','storywau','darkwau','ctawau','wlicon','wlicon2'].forEach(function(id){
+  var el = document.getElementById(id);
+  if (el) el.innerHTML = WAU_SVG;
+});
 
-var PRODS=[],SELLER_ID=null,SELLER_PHONE=null,CUR='RM',cart={},ORDER_COUNT=0,POPULAR_IDS=[];
-
-function params(){var m=location.search.match(/[?&]slug=([^&]*)/);return m?decodeURIComponent(m[1]):null}
-function fmt(n){return CUR+' '+n.toFixed(2)}
-function total(){return PRODS.reduce(function(s,p){return s+(cart[p.id]||0)*p.price_per_unit},0)}
-function cartCount(){var c=0;for(var k in cart)c+=cart[k];return c}
-function cartItems(){return PRODS.filter(function(p){return(cart[p.id]||0)>0}).map(function(p){return{p:p,q:cart[p.id],sub:cart[p.id]*p.price_per_unit}})}
-function escH(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}
-function escA(s){return String(s).replace(/[&"'<>]/g,function(c){return{'&':'&amp;','"':'&quot;',"'":'&#39;','<':'&lt;','>':'&gt;'}[c]})}
-function showLightbox(src){var lb=document.getElementById('img-lightbox');document.getElementById('lb-img').src=src;lb.classList.add('show')}
-
-var MAX_QTY=9999,_submitting=false,_lastSubmitTime=0,_submitCount=0;
-var RATE_LIMIT_WINDOW=300000,RATE_LIMIT_MAX=3,COOLDOWN_MS=15000;
-
-var EMOJI={'tin':'🥫','bekas':'📦','balang':'🫙','pack':'📦','piece':'🍪','kotak':'📦','biji':'🔸','keping':'🍪','cup':'☕','botol':'🍶','pek':'📦'};
-function getEmoji(unit){return EMOJI[unit.toLowerCase()]||'🛒'}
-
-function getInitials(name){
-  if(!name)return '?';
-  var parts=name.trim().split(/\s+/);
-  if(parts.length===1)return parts[0].charAt(0).toUpperCase();
-  return (parts[0].charAt(0)+parts[parts.length-1].charAt(0)).toUpperCase();
-}
-
-function toggleOptFields(){
-  var f=document.getElementById('opt-fields');
-  var t=document.getElementById('opt-toggle');
-  var open=f.classList.contains('show');
-  f.classList.toggle('show');
-  t.classList.toggle('open');
-}
-
-// Flying item animation
-function flyToCart(el){
-  var badge=document.getElementById('cart-badge');
-  if(!badge||!badge.classList.contains('show'))return;
-  var rect=el.getBoundingClientRect();
-  var badgeRect=badge.getBoundingClientRect();
-  var fly=document.createElement('div');
-  fly.className='fly-item';
-  fly.textContent=el.querySelector('.prod-img')?.textContent||'🛒';
-  fly.style.left=rect.left+'px';
-  fly.style.top=rect.top+'px';
-  document.body.appendChild(fly);
-  requestAnimationFrame(function(){
-    fly.style.transition='all .45s cubic-bezier(.2,.8,.3,1)';
-    fly.style.left=badgeRect.left+'px';
-    fly.style.top=badgeRect.top+'px';
-    fly.style.animation='flyToCart .45s ease forwards';
-  });
-  setTimeout(function(){fly.remove()},500);
-}
-
-function setQty(id,d){
-  if(!PRODS.some(function(p){return p.id===id}))return;
-  var old=cart[id]||0;
-  var n=Math.max(0,Math.min(MAX_QTY,old+d));
-  if(n===0)delete cart[id];else cart[id]=n;
-  var qv=document.getElementById('qv-'+id);
-  var qc=document.getElementById('qc-'+id);
-  var pc=document.getElementById('pc-'+id);
-  if(qv){qv.textContent=n;qv.style.transform='scale(1.2)';setTimeout(function(){qv.style.transform='scale(1)'},150)}
-  if(qc){qc.className='qty-ctrl'+(n>0?' active':'')}
-  if(pc){
-    pc.className='prod-card'+(n>0?' in-cart':'');
-    if(d>0&&n===1)flyToCart(pc);
-  }
-  renderCart();updBtn();updBadge();updSteps();updBarInfo();
-  var badge=document.getElementById('cart-badge');
-  if(badge&&d>0){badge.classList.remove('bump');void badge.offsetWidth;badge.classList.add('bump')}
-}
-
-function renderProds(){
-  var el=document.getElementById('prod-list');
-  var cnt=document.getElementById('prod-count');
-  if(!PRODS.length){el.innerHTML='<div class="empty-prods"><div class="empty-prods-icon">📦</div>No products available at the moment.</div>';cnt.textContent='';return}
-  cnt.textContent=PRODS.length+' item';
-  el.innerHTML=PRODS.map(function(p){
-    var sid=escA(p.id);var q=cart[p.id]||0;
-    var isPopular=POPULAR_IDS.indexOf(p.id)!==-1;
-    var imgHtml=p.image_url?'<img src="'+escA(p.image_url)+'" alt="'+escA(p.name)+'" loading="lazy" onclick="event.stopPropagation();showLightbox(this.src)">':getEmoji(p.unit);
-    return '<div class="prod-card'+(q>0?' in-cart':'')+'" id="pc-'+sid+'">'+
-      '<div class="prod-img">'+imgHtml+'</div>'+
-      '<div class="prod-info">'+
-        '<div class="prod-name">'+escH(p.name)+(isPopular?'<span class="popular-badge">🔥 Popular</span>':'')+'</div>'+
-        '<div class="prod-unit">per '+escH(p.unit)+'</div>'+
-        '<div class="prod-price">'+fmt(p.price_per_unit)+'</div>'+
-      '</div>'+
-      '<div class="qty-wrap">'+
-        '<div class="qty-ctrl'+(q>0?' active':'')+'" id="qc-'+sid+'">'+
-          '<button class="qty-btn" onclick="setQty(\''+sid+'\',-1)" aria-label="Decrease">&#8722;</button>'+
-          '<span class="qty-val" id="qv-'+sid+'">'+q+'</span>'+
-          '<button class="qty-btn" onclick="setQty(\''+sid+'\',1)" aria-label="Increase">+</button>'+
-        '</div>'+
-      '</div>'+
-    '</div>'
-  }).join('')
-}
-
-function renderCart(){
-  var items=cartItems(),t=total(),el=document.getElementById('cart');
-  if(!items.length){
-    el.innerHTML='<div class="cart-empty"><div class="cart-empty-icon">🛒</div>Pick items from the menu above</div>';
-    return;
-  }
-  el.innerHTML=items.map(function(x){
-    return '<div class="cart-row">'+
-      '<div><div class="ci-name">'+escH(x.p.name)+'</div>'+
-      '<div class="ci-sub">'+x.q+' '+escH(x.p.unit)+' × '+fmt(x.p.price_per_unit)+'</div></div>'+
-      '<div class="ci-price">'+fmt(x.sub)+'</div>'+
-    '</div>'
-  }).join('')+
-  '<div class="cart-total"><div class="total-label">Total</div><div class="total-amt">'+fmt(t)+'</div></div>'
-}
-
-function validPhone(p){var d=(p||'').replace(/[^0-9]/g,'');return d.length>=8&&d.length<=15}
-
-function updBtn(){
-  var name=document.getElementById('cname').value.trim();
-  var phone=document.getElementById('cphone').value.trim();
-  document.getElementById('sbtn').disabled=!(cartItems().length>0&&name.length>0&&validPhone(phone))
-}
-
-function updBadge(){
-  var c=cartCount();var t=total();
-  var badge=document.getElementById('cart-badge');
-  var txt=document.getElementById('badge-text');
-  txt.textContent=c+' · '+fmt(t);
-  badge.className='cart-badge'+(c>0?' show':'');
-}
-
-function updBarInfo(){
-  var c=cartCount();var t=total();
-  var info=document.getElementById('bar-info');
-  if(c>0){
-    info.style.display='flex';
-    document.getElementById('bar-count').textContent=c+' item'+(c>1?'s':'')+' selected';
-    document.getElementById('bar-total').textContent=fmt(t);
-  }else{
-    info.style.display='none';
-  }
-}
-
-function updSteps(){
-  var hasItems=cartCount()>0;
-  var hasName=document.getElementById('cname').value.trim().length>0;
-  var hasPhone=validPhone(document.getElementById('cphone').value.trim());
-  var hasDetails=hasName&&hasPhone;
-  var s1=document.getElementById('step-1');
-  var s2=document.getElementById('step-2');
-  var s3=document.getElementById('step-3');
-  var l1=document.getElementById('line-1');
-  var l2=document.getElementById('line-2');
-  if(hasItems){s1.className='step done';l1.className='step-line done'}
-  else{s1.className='step active';l1.className='step-line'}
-  if(hasItems&&hasDetails){s2.className='step done';l2.className='step-line done'}
-  else if(hasItems){s2.className='step active';l2.className='step-line'}
-  else{s2.className='step';l2.className='step-line'}
-  if(hasItems&&hasDetails){s3.className='step active'}
-  else{s3.className='step'}
-}
-
-function scrollToCart(){
-  document.getElementById('cart').scrollIntoView({behavior:'smooth',block:'center'})
-}
-
-// Hide cart badge when summary section is scrolled into view
+/* ── language toggle (persisted, shared key with beta.html) ── */
 (function(){
-  var el=document.getElementById('cart');
-  if(!el||!window.IntersectionObserver)return;
-  new IntersectionObserver(function(entries){
-    var vis=entries[0].isIntersecting;
-    var b=document.getElementById('cart-badge');
-    if(b){b.style.opacity=vis?'0':'';b.style.pointerEvents=vis?'none':'';}
-  },{threshold:0.1}).observe(el);
+  var STORAGE='potraces_lang';
+  function apply(lang){
+    document.documentElement.setAttribute('lang', lang);
+    document.querySelectorAll('.lang-toggle button').forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-lang')===lang));
+    });
+    document.querySelectorAll('[data-en]').forEach(function(el){
+      if(el.children.length) return;
+      var t = lang==='ms' ? el.getAttribute('data-bm') : el.getAttribute('data-en');
+      if(t!=null) el.textContent = t;
+    });
+    document.querySelectorAll('[data-ph-en]').forEach(function(inp){
+      inp.setAttribute('placeholder', lang==='ms' ? inp.getAttribute('data-ph-bm') : inp.getAttribute('data-ph-en'));
+    });
+    try{ localStorage.setItem(STORAGE, lang); }catch(e){}
+  }
+  var saved='en';
+  try{ saved = localStorage.getItem(STORAGE) || 'en'; }catch(e){}
+  apply(saved);
+  document.querySelectorAll('.lang-toggle button').forEach(function(b){
+    b.addEventListener('click', function(){ apply(b.getAttribute('data-lang')); });
+  });
 })();
 
-function sbFetch(path,opts){
-  var h=Object.assign({'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY},opts&&opts.headers);
-  return fetch(SB_URL+path,Object.assign({},opts,{headers:h}))
-}
+/* ── duplicate marquee track for a seamless loop ── */
+(function(){
+  var mq=document.getElementById('marquee');
+  if(mq){ mq.innerHTML = mq.innerHTML + mq.innerHTML; }
+})();
 
-async function loadShop(slug){
-  try{
-    var r1=await sbFetch('/rest/v1/seller_profiles_public?select=id,user_id,display_name,currency,shop_notice,phone,logo_url&slug=eq.'+encodeURIComponent(slug)+'&limit=1');
-    var profiles=await r1.json();
-    if(!profiles||!profiles.length){
-      document.getElementById('loading').innerHTML='<div class="skel-err"><div class="skel-err-icon">🔍</div><div class="skel-err-title">Store not found</div><div class="skel-err-sub">Please check your link</div></div>';
-      return
-    }
-    var profile=profiles[0];
-    SELLER_ID=profile.id;
-    CUR=profile.currency||'RM';
-    SELLER_PHONE=profile.phone||null;
-    var shopName=profile.display_name||slug;
-    document.getElementById('shop-name').textContent=shopName;
-    // Avatar: logo image or store icon fallback
-    var avatarEl=document.getElementById('hdr-avatar');
-    if(profile.logo_url){
-      avatarEl.innerHTML='<img src="'+escA(profile.logo_url)+'" alt="'+escA(shopName)+'" onclick="showLightbox(this.src)">';
-    }else{
-      avatarEl.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>';
-    }
-    document.getElementById('hist-avatar').innerHTML=avatarEl.innerHTML;
-    document.title=shopName+' — Order Online';
-    document.querySelector('meta[property="og:title"]').content=shopName+' — Order Online';
-    if(profile.shop_notice){
-      var ne=document.getElementById('shop-notice');
-      ne.textContent=profile.shop_notice;
-      ne.style.display='block'
-    }
+/* ── nav scroll state ── */
+(function(){
+  var nav=document.getElementById('nav');
+  function onScroll(){ nav.classList.toggle('scrolled', window.scrollY>12); }
+  onScroll();
+  window.addEventListener('scroll', onScroll, {passive:true});
+})();
 
-    var r2=await sbFetch('/rest/v1/seller_products?select=id,name,description,price_per_unit,unit,image_url&user_id=eq.'+encodeURIComponent(profile.user_id)+'&is_active=eq.true&order=name');
-    var prods=await r2.json();
-    PRODS=(prods||[]).map(function(p){return{id:p.id,name:p.name,description:p.description||'',price_per_unit:parseFloat(p.price_per_unit),unit:p.unit,image_url:p.image_url||null}});
-
-    // Show response time trust item
-    document.getElementById('trust-response').style.display='flex';
-    document.getElementById('trust-dot2').style.display='';
-
-    // Non-blocking social proof
-    loadOrderCount(profile.id);
-    loadPopularProducts(profile.id);
-
-    // Setup WhatsApp button if phone available
-    if(SELLER_PHONE){
-      var waBtn=document.getElementById('s-wa-btn');
-      waBtn.style.display='flex';
-    }
-
-    document.getElementById('loading').style.display='none';
-    document.getElementById('app').style.display='block';
-    if(getHistory().length>0)document.getElementById('hdr-actions').style.display='flex';
-    renderProds();renderCart();updBadge();updBarInfo()
-  }catch(e){
-    document.getElementById('loading').innerHTML='<div class="skel-err"><div class="skel-err-icon">⚠️</div><div class="skel-err-title">Failed to load</div><div class="skel-err-sub">Please reload the page</div></div>'
+/* ── mobile menu ── */
+(function(){
+  var btn=document.getElementById('hamburger');
+  var sheet=document.getElementById('mobileSheet');
+  function setOpen(open){
+    btn.setAttribute('aria-expanded', String(open));
+    btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    sheet.classList.toggle('open', open);
+    sheet.setAttribute('aria-hidden', String(!open));
+    document.body.style.overflow = open ? 'hidden' : '';
   }
-}
+  btn.addEventListener('click', function(){ setOpen(!sheet.classList.contains('open')); });
+  sheet.querySelectorAll('a').forEach(function(a){ a.addEventListener('click', function(){ setOpen(false); }); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') setOpen(false); });
+})();
 
-async function loadOrderCount(sellerId){
-  try{
-    var r=await sbFetch('/rest/v1/seller_orders?select=id&seller_id=eq.'+encodeURIComponent(sellerId)+'&source=eq.order_link',{method:'HEAD',headers:{'Prefer':'count=exact'}});
-    var countHeader=r.headers.get('content-range');
-    if(countHeader){
-      var parts=countHeader.split('/');
-      var count=parseInt(parts[1]);
-      if(count>0){
-        ORDER_COUNT=count;
-        var display=count>=100?Math.floor(count/10)*10+'+':count;
-        document.getElementById('order-count-text').textContent=display+' orders';
-        document.getElementById('trust-orders').style.display='flex'
+/* ── scroll reveal ── */
+(function(){
+  var els=document.querySelectorAll('.reveal');
+  if(!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    els.forEach(function(el){ el.classList.add('in'); }); return;
+  }
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
+  }, {threshold:0.12, rootMargin:'0px 0px -40px 0px'});
+  els.forEach(function(el){ io.observe(el); });
+})();
+
+/* ── waitlist (local-only stub; wire to Supabase later) ── */
+(function(){
+  function bind(formId, msgId){
+    var form=document.getElementById(formId), msg=document.getElementById(msgId);
+    if(!form) return;
+    form.addEventListener('submit', function(e){
+      e.preventDefault();
+      var v=(form.querySelector('input').value||'').trim();
+      var ms = document.documentElement.getAttribute('lang')==='ms';
+      var ok = /\S+@\S+\.\S+/.test(v) || /^(\+?6?0)1\d[\s-]?\d{3,4}[\s-]?\d{4}$/.test(v.replace(/\s|-/g,''));
+      if(!ok){
+        msg.textContent = ms ? 'Letak emel atau no. telefon yang betul ya.' : 'Pop in a valid email or phone number.';
+        msg.style.color = 'var(--bronze)';
+        return;
       }
-    }
-  }catch(e){}
-}
-
-async function loadPopularProducts(sellerId){
-  try{
-    var r=await sbFetch('/rest/v1/seller_orders?select=items&seller_id=eq.'+encodeURIComponent(sellerId)+'&source=eq.order_link&order=created_at.desc&limit=50');
-    var orders=await r.json();
-    if(!orders||!orders.length)return;
-    var freq={};
-    for(var i=0;i<orders.length;i++){
-      var items=orders[i].items;
-      if(!items)continue;
-      for(var j=0;j<items.length;j++){
-        var pid=items[j].productId;
-        if(pid)freq[pid]=(freq[pid]||0)+items[j].quantity;
-      }
-    }
-    var sorted=Object.keys(freq).sort(function(a,b){return freq[b]-freq[a]});
-    POPULAR_IDS=sorted.slice(0,2);
-    if(POPULAR_IDS.length>0)renderProds()
-  }catch(e){}
-}
-
-function showConfirm(){
-  var items=cartItems(),t=total();
-  var name=document.getElementById('cname').value.trim();
-  if(!name||!items.length)return;
-  if(!validPhone(document.getElementById('cphone').value.trim())){showErr('Please enter a valid WhatsApp number so the seller can confirm your order.');document.getElementById('cphone').focus();return}
-  if(document.getElementById('hp-email').value)return;
-  var now=Date.now();
-  if(now-_lastSubmitTime<COOLDOWN_MS){showErr('Please wait a moment before submitting again.');return}
-  if(_submitCount>=RATE_LIMIT_MAX&&now-_lastSubmitTime<RATE_LIMIT_WINDOW){showErr('Too many orders. Please try again in a few minutes.');return}
-
-  document.getElementById('confirm-items').innerHTML=items.map(function(x){
-    return '<div class="confirm-item"><span>'+x.q+' '+escH(x.p.unit)+' '+escH(x.p.name)+'</span><span style="font-weight:700">'+fmt(x.sub)+'</span></div>'
-  }).join('');
-  document.getElementById('confirm-total').innerHTML='<span>Total</span><span>'+fmt(t)+'</span>';
-
-  var phone=document.getElementById('cphone').value.trim();
-  var addr=document.getElementById('caddr').value.trim();
-  var note=document.getElementById('cnote').value.trim();
-  var info='<div class="confirm-info-row"><span class="confirm-info-label">Name</span><span class="confirm-info-value">'+escH(name)+'</span></div>';
-  if(phone)info+='<div class="confirm-info-row"><span class="confirm-info-label">WhatsApp</span><span class="confirm-info-value">'+escH(phone)+'</span></div>';
-  if(addr)info+='<div class="confirm-info-row"><span class="confirm-info-label">Address</span><span class="confirm-info-value">'+escH(addr)+'</span></div>';
-  document.getElementById('confirm-info').innerHTML=info;
-  document.getElementById('confirm-note').innerHTML=note?'<div class="confirm-note">'+escH(note)+'</div>':'';
-  document.getElementById('confirm-modal').classList.add('show')
-}
-
-function hideConfirm(){document.getElementById('confirm-modal').classList.remove('show')}
-
-function showErr(msg){
-  var el=document.getElementById('err');
-  el.textContent=msg;el.classList.remove('show');
-  void el.offsetWidth;
-  el.classList.add('show');
-  el.scrollIntoView({behavior:'smooth',block:'nearest'})
-}
-
-async function confirmSubmit(){
-  if(_submitting)return;
-  if(document.getElementById('hp-email').value){hideConfirm();return}
-  var name=document.getElementById('cname').value.trim().slice(0,100);
-  var phone=document.getElementById('cphone').value.trim().slice(0,20);
-  var addr=document.getElementById('caddr').value.trim().slice(0,300);
-  var note=document.getElementById('cnote').value.trim().slice(0,500);
-  var items=cartItems(),t=total();
-  if(!name||!items.length)return;
-  if(!validPhone(phone))return;
-
-  _submitting=true;
-  var goBtn=document.getElementById('confirm-go');
-  goBtn.disabled=true;
-  goBtn.innerHTML='<span class="spin"></span>Submitting...';
-  document.getElementById('err').classList.remove('show');
-
-  try{
-    var res=await sbFetch('/rest/v1/seller_orders',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
-      body:JSON.stringify({
-        user_id:null,source:'order_link',seller_id:SELLER_ID,
-        items:items.map(function(x){return{productId:x.p.id,productName:x.p.name,quantity:x.q,unitPrice:x.p.price_per_unit,unit:x.p.unit}}),
-        customer_name:name||null,customer_phone:phone||null,customer_address:addr||null,note:note||null,
-        total_amount:t,status:'pending',is_paid:false
-      })
+      msg.textContent = ms ? 'Dah masuk senarai! Kami colek bila dah live.' : "You're on the list — we'll ping you when it's live.";
+      msg.style.color = '';
+      form.reset();
     });
-    if(!res.ok)throw new Error('Failed to submit');
-    _lastSubmitTime=Date.now();_submitCount++;
-    hideConfirm();showSuccess(items,t,name,phone)
-  }catch(err){
-    hideConfirm();
-    showErr('Error: '+(err.message||'Please try again'));
-    document.getElementById('sbtn').disabled=false;
-    resetSubmitBtn()
   }
-  goBtn.disabled=false;
-  goBtn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Submit Order';
-  _submitting=false
-}
+  bind('waitlistForm','wlMsg');
+  bind('waitlistForm2','wlMsg2');
+})();
 
-function resetSubmitBtn(){
-  document.getElementById('sbtn').innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Submit Order'
-}
-
-function getHistory(){try{return JSON.parse(localStorage.getItem('potraces_history')||'[]')}catch(e){return[]}}
-function saveToHistory(items,t,name){
-  var hist=getHistory();
-  hist.unshift({items:items.map(function(x){return{name:x.p.name,qty:x.q,unit:x.p.unit,price:x.p.price_per_unit}}),total:t,name:name,time:new Date().toISOString()});
-  if(hist.length>20)hist=hist.slice(0,20);
-  localStorage.setItem('potraces_history',JSON.stringify(hist));
-  document.getElementById('hdr-actions').style.display='flex'
-}
-
-function showSuccess(items,t,name,phone){
-  saveToHistory(items,t,name);
-  document.getElementById('main').style.display='none';
-  document.getElementById('bar').style.display='none';
-  document.getElementById('cart-badge').className='cart-badge';
-
-  // WhatsApp deep link
-  if(SELLER_PHONE){
-    var waBtn=document.getElementById('s-wa-btn');
-    var digits=SELLER_PHONE.replace(/[^0-9]/g,'');
-    if(digits.startsWith('0'))digits='60'+digits.slice(1);
-    var msg='Hi, I\'m '+name+'. I just placed an order through your store link.\n\nOrder:\n';
-    for(var i=0;i<items.length;i++){var x=items[i];msg+='- '+x.p.name+' x'+x.q+' '+x.p.unit+'\n'}
-    msg+='\nTotal: '+fmt(t)+'\n\nThank you!';
-    waBtn.href='https://wa.me/'+digits+'?text='+encodeURIComponent(msg);
-    waBtn.style.display='flex';
-  }
-
-  // Personalized text
-  document.getElementById('s-text').textContent='Thank you '+name.split(' ')[0]+'! The seller will contact you to confirm your order.';
-
-  var html='<div class="cart" style="box-shadow:var(--shadow-lg)">';
-  html+='<div style="padding:14px 16px 8px;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze)">Your Order</div>';
-  for(var i=0;i<items.length;i++){var x=items[i];
-    html+='<div class="cart-row"><span>'+x.q+' '+escH(x.p.unit)+' '+escH(x.p.name)+'</span><span style="font-weight:700;color:var(--olive)">'+fmt(x.sub)+'</span></div>'
-  }
-  html+='<div class="cart-total"><div class="total-label">Total</div><div class="total-amt">'+fmt(t)+'</div></div></div>';
-  document.getElementById('order-summary').innerHTML=html;
-  document.getElementById('success').classList.add('show');
-  window.scrollTo({top:0})
-}
-
-function orderAgain(){
-  cart={};
-  document.getElementById('success').classList.remove('show');
-  document.getElementById('main').style.display='';
-  document.getElementById('bar').style.display='';
-  document.getElementById('cname').value='';
-  document.getElementById('cphone').value='';
-  document.getElementById('caddr').value='';
-  document.getElementById('cnote').value='';
-  document.getElementById('sbtn').disabled=true;
-  resetSubmitBtn();
-  renderProds();renderCart();updBadge();updBarInfo();updSteps();
-  window.scrollTo({top:0,behavior:'smooth'})
-}
-
-function fmtTime(iso){
-  var d=new Date(iso);var h=d.getHours(),m=d.getMinutes();
-  var ap=h>=12?'PM':'AM';h=h%12||12;
-  var day=d.getDate();var mon=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
-  return day+' '+mon+', '+h+':'+(m<10?'0':'')+m+' '+ap
-}
-
-function showHistory(){
-  var hist=getHistory();
-  document.getElementById('main').style.display='none';
-  document.getElementById('bar').style.display='none';
-  document.getElementById('success').classList.remove('show');
-  document.getElementById('cart-badge').className='cart-badge';
-  document.getElementById('hist-shop-name').textContent=document.getElementById('shop-name').textContent;
-  document.getElementById('hist-avatar').innerHTML=document.getElementById('hdr-avatar').innerHTML;
-  var el=document.getElementById('hist-list');
-  if(!hist.length){
-    el.innerHTML='<div class="hist-empty"><div class="hist-empty-icon">📋</div>No orders yet</div>'
-  }else{
-    el.innerHTML=hist.map(function(o){
-      var h='<div class="hist-card">';
-      h+='<div class="hist-hdr"><span class="hist-name">'+escH(o.name)+'</span><span class="hist-time">'+fmtTime(o.time)+'</span></div>';
-      for(var i=0;i<o.items.length;i++){var it=o.items[i];
-        h+='<div class="hist-item"><span>'+it.qty+' '+escH(it.unit)+' '+escH(it.name)+'</span><span>'+CUR+' '+(it.qty*it.price).toFixed(2)+'</span></div>'
-      }
-      h+='<div class="hist-total"><span>Total</span><span>'+CUR+' '+o.total.toFixed(2)+'</span></div></div>';
-      return h
-    }).join('')
-  }
-  document.getElementById('hist-view').classList.add('show');
-  window.scrollTo({top:0})
-}
-
-function hideHistory(){
-  document.getElementById('hist-view').classList.remove('show');
-  document.getElementById('main').style.display='';
-  document.getElementById('bar').style.display='';
-  updBadge();
-  window.scrollTo({top:0})
-}
-
-var slug=params();
-if(slug&&/^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$/.test(slug)){loadShop(slug)}
-else{document.getElementById('loading').innerHTML='<div class="skel-err"><div class="skel-err-icon">🔗</div><div class="skel-err-title">'+(slug?'Invalid link':'No store link')+'</div><div class="skel-err-sub">Ask the seller to resend the link</div></div>'}
+document.getElementById('year').textContent = String(new Date().getFullYear());
 </script>
 </body>
 </html>

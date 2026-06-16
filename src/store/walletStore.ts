@@ -210,6 +210,17 @@ export const useWalletStore = create<WalletState>()(
               return { ...w, balance: roundMoney(w.balance + t.amount), updatedAt: new Date() };
             }
             if (w.id === t.toWalletId) {
+              // A repayment reduces the credit wallet's usedCredit on creation
+              // (repayCredit); reversing it must restore usedCredit too. A plain
+              // transfer to a credit wallet only moved balance, so leave usedCredit.
+              if (t.kind === 'repayment' && w.type === 'credit') {
+                return {
+                  ...w,
+                  balance: roundMoney(w.balance - t.amount),
+                  usedCredit: roundMoney((w.usedCredit || 0) + t.amount),
+                  updatedAt: new Date(),
+                };
+              }
               return { ...w, balance: roundMoney(w.balance - t.amount), updatedAt: new Date() };
             }
             return w;
