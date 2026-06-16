@@ -2,11 +2,12 @@
   "buildCommand": null,
   "outputDirectory": "site",
   "framework": null,
-  "rewrites": [
+  "redirects": [
     {
       "source": "/",
       "has": [{ "type": "query", "key": "slug" }],
-      "destination": "/order.html"
+      "destination": "/order.html",
+      "permanent": false
     }
   ]
 }
