@@ -92,9 +92,9 @@
 :root{
   --bg:#F9F9F7;--bg2:#F5F3EF;--surface:#fff;
   --olive:#4F5104;--olive-dark:#3D3E04;--olive-light:#6B6D1A;--olive-deep:#332D03;
-  --bronze:#8B7355;--bronze2:#9A6400;--gold:#B2780A;--gold-bright:#DEAB22;
-  --sky:#6BA3BE;--mauve:#A688B8;--terracotta:#C1694F;--biz:#B2780A;
-  --text:#1A1A1A;--text2:#555;--text3:#6B6B6B;--text-muted:#A0A0A0;
+  --bronze:#786148;--bronze2:#855800;--gold:#8A5C00;--gold-bright:#DEAB22;
+  --sky:#6BA3BE;--mauve:#A688B8;--terracotta:#A8482E;--biz:#8A5C00;
+  --text:#1A1A1A;--text2:#555;--text3:#6B6B6B;--text-muted:#6E6E6E;
   --border:#E5E0D8;--border2:#F0EDE8;--cream:#FFF7E6;
   --r-xs:4px;--r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-2xl:28px;--r-full:9999px;
   --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
@@ -148,7 +148,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 .nav-right{display:flex;align-items:center;gap:10px}
 
 .lang-toggle{display:inline-flex;background:rgba(26,26,26,.06);border:1px solid var(--border);border-radius:var(--r-full);padding:3px;gap:2px}
-.lang-toggle button{border:none;background:transparent;color:var(--text3);font-size:.8rem;font-weight:600;padding:6px 12px;border-radius:var(--r-full);min-height:34px;transition:color .15s}
+.lang-toggle button{border:none;background:transparent;color:var(--text3);font-size:.8rem;font-weight:600;padding:8px 14px;border-radius:var(--r-full);min-height:44px;transition:color .15s}
 .lang-toggle button[aria-pressed="true"]{background:var(--surface);color:var(--olive);box-shadow:var(--shadow)}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:.95rem;border:none;border-radius:var(--r-full);padding:12px 22px;min-height:46px;transition:transform .12s ease,box-shadow .2s,background .2s;white-space:nowrap}
@@ -411,10 +411,13 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 /* ─── SCREENSHOTS GALLERY ─── */
 .gallery{padding:72px 0;background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);overflow:hidden}
 .gallery-wrap{position:relative;margin-top:36px}
-.gallery-scroll{display:flex;gap:24px;overflow-x:auto;padding:10px 20px 28px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.gallery-scroll{display:flex;justify-content:safe center;gap:24px;overflow-x:auto;padding:10px 20px 28px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .gallery-scroll::-webkit-scrollbar{display:none}
 .gallery-item{scroll-snap-align:center;flex-shrink:0;width:256px;display:flex;flex-direction:column;gap:10px}
 .gallery-item .phone{width:256px}
+/* placeholder mocks: size the screen to its content so there's no empty lower half.
+   When real full-height screenshots go in, restore aspect-ratio:9/19.3 here. */
+.gallery-item .phone-screen{aspect-ratio:auto;min-height:380px}
 .gallery-item .gl-cap{text-align:center;font-size:.8rem;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--bronze)}
 .gallery-fade{position:absolute;top:0;right:0;bottom:0;width:48px;background:linear-gradient(270deg,var(--bg2),rgba(245,243,239,0));pointer-events:none;z-index:2}
 .gallery-hint{text-align:center;font-size:.82rem;color:var(--text3);margin-top:4px}
@@ -430,6 +433,11 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 .goal-meta{text-align:center;margin-top:4px}
 .goal-meta b{font-size:13px;font-weight:700;color:var(--text);display:block}
 .goal-meta span{font-size:11px;color:var(--text3)}
+.goal-list{align-self:stretch;margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.goal-list .gl-row{display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-md);padding:9px 12px;font-size:11px}
+.goal-list .gl-k{color:var(--text3)}
+.goal-list .gl-v{font-weight:700;color:var(--text)}
+.goal-list .gl-v.in{color:var(--olive)}
 /* notes mock */
 .note-screen{padding:16px;display:flex;flex-direction:column;gap:10px;background:var(--bg);flex:1}
 .note-title{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze);font-weight:700}
@@ -520,10 +528,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 .final-cta h2{font-size:clamp(1.8rem,5vw,2.7rem);font-weight:700;letter-spacing:-.6px;line-height:1.15;margin-bottom:16px}
 .final-cta p{font-size:1.1rem;color:rgba(255,255,255,.85);line-height:1.6;margin-bottom:30px}
 .final-cta .waitlist{margin:30px auto 0}
-.final-cta .wl-tile{background:var(--cream);border-color:rgba(255,255,255,.25)}
-.final-cta .waitlist .micro{color:rgba(255,255,255,.78)}
-.final-cta .wl-msg{color:#fff}
-.final-cta .beta-link{margin-top:22px;display:inline-flex;align-items:center;gap:7px;font-size:.95rem;font-weight:600;color:#fff;text-decoration:underline;text-underline-offset:3px;transition:color .15s}
+.final-cta .wl-tile{background:var(--cream);border-color:rgba(178,120,10,.20)}
+.final-cta .beta-link{margin-top:16px;display:inline-flex;align-items:center;gap:7px;font-size:.95rem;font-weight:600;color:#fff;text-decoration:underline;text-underline-offset:3px;transition:color .15s;padding:11px 6px}
 .final-cta .beta-link:hover{color:var(--cream)}
 
 /* ─── FOOTER ─── */
@@ -533,7 +539,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 .footer-brand .bline{font-size:.92rem;color:var(--text3);line-height:1.6;max-width:300px}
 .footer-cols{display:grid;grid-template-columns:1fr 1fr;gap:30px}
 .footer-col h4{font-size:.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--bronze);font-weight:700;margin-bottom:14px}
-.footer-col a,.footer-col span{display:block;font-size:.92rem;color:var(--text2);padding:6px 0;transition:color .15s}
+.footer-col a,.footer-col span{display:block;font-size:.92rem;color:var(--text2);padding:10px 0;transition:color .15s}
 .footer-col a:hover{color:var(--olive)}
 .footer-bottom{border-top:1px solid var(--border2);padding-top:24px;display:flex;flex-direction:column;gap:14px;align-items:flex-start}
 .footer-bottom .fb-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;width:100%}
@@ -1083,6 +1089,11 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
               <div class="goal-title" data-en="Raya fund" data-bm="Tabung Raya">Raya fund</div>
               <div class="goal-arc"><span class="ga-in"><b class="tnum">60%</b><span data-en="saved" data-bm="disimpan">saved</span></span></div>
               <div class="goal-meta"><b class="tnum">RM 1,800 / 3,000</b><span data-en="RM 1,200 to go" data-bm="lagi RM 1,200">RM 1,200 to go</span></div>
+              <div class="goal-list">
+                <div class="gl-row"><span class="gl-k" data-en="Auto-save" data-bm="Auto-simpan">Auto-save</span><span class="gl-v tnum" data-en="RM 300 / mo" data-bm="RM 300 / bln">RM 300 / mo</span></div>
+                <div class="gl-row"><span class="gl-k" data-en="Added in Jun" data-bm="Masuk Jun">Added in Jun</span><span class="gl-v in tnum">+ RM 300</span></div>
+                <div class="gl-row"><span class="gl-k" data-en="Added in May" data-bm="Masuk Mei">Added in May</span><span class="gl-v in tnum">+ RM 300</span></div>
+              </div>
             </div>
           </div>
         </div>

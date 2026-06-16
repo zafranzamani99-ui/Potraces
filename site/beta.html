@@ -70,9 +70,9 @@
 :root{
   --bg:#F9F9F7;--bg2:#F5F3EF;--surface:#fff;
   --olive:#4F5104;--olive-dark:#3D3E04;--olive-light:#6B6D1A;--olive-deep:#332D03;
-  --bronze:#8B7355;--bronze2:#9A6400;--gold:#B2780A;--gold-bright:#DEAB22;
-  --sky:#6BA3BE;--mauve:#A688B8;--terracotta:#C1694F;--biz:#B2780A;
-  --text:#1A1A1A;--text2:#555;--text3:#6B6B6B;--text-muted:#A0A0A0;
+  --bronze:#786148;--bronze2:#855800;--gold:#8A5C00;--gold-bright:#DEAB22;
+  --sky:#6BA3BE;--mauve:#A688B8;--terracotta:#A8482E;--biz:#8A5C00;
+  --text:#1A1A1A;--text2:#555;--text3:#6B6B6B;--text-muted:#6E6E6E;
   --border:#E5E0D8;--border2:#F0EDE8;--cream:#FFF7E6;
   --r-xs:4px;--r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-2xl:28px;--r-full:9999px;
   --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
@@ -122,7 +122,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 
 /* lang toggle pill */
 .lang-toggle{display:inline-flex;background:rgba(26,26,26,.06);border:1px solid var(--border);border-radius:var(--r-full);padding:3px;gap:2px}
-.lang-toggle button{border:none;background:transparent;color:var(--text3);font-size:.8rem;font-weight:600;padding:6px 12px;border-radius:var(--r-full);min-height:34px;transition:color .15s}
+.lang-toggle button{border:none;background:transparent;color:var(--text3);font-size:.8rem;font-weight:600;padding:8px 14px;border-radius:var(--r-full);min-height:44px;transition:color .15s}
 .lang-toggle button[aria-pressed="true"]{background:var(--surface);color:var(--olive);box-shadow:var(--shadow)}
 
 /* buttons */
@@ -253,7 +253,7 @@ main{flex:1;padding:36px 0 64px}
 .footer{background:var(--bg);border-top:1px solid var(--border);padding:32px 0;margin-top:auto}
 .footer .container{display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center}
 .footer .flinks{display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:center}
-.footer .flinks a{font-size:.88rem;color:var(--text2);transition:color .15s}
+.footer .flinks a{font-size:.88rem;color:var(--text2);transition:color .15s;display:inline-block;padding:9px 6px}
 .footer .flinks a:hover{color:var(--olive)}
 .footer .copy{font-size:.82rem;color:var(--text3)}
 .footer .fdisc{font-size:.76rem;color:var(--text-muted);line-height:1.5;max-width:560px}
