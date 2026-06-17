@@ -10,11 +10,13 @@ import {
   Modal,
   Animated,
   Image,
+  Linking,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
@@ -61,7 +63,13 @@ import { useDebtStore } from '../../store/debtStore';
 import { usePersonalStore } from '../../store/personalStore';
 import ReviewEntriesSheet from '../../components/common/ReviewEntriesSheet';
 import { lightTap, successNotification } from '../../services/haptics';
-import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useVoiceInput, VoiceErrorKind } from '../../hooks/useVoiceInput';
+
+function formatSecs(total: number): string {
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 const ACTION_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   add_expense: 'arrow-up-right',
@@ -880,6 +888,7 @@ const MoneyChat: React.FC = () => {
   // headerHeight (content sits below the JS header). For the native-stack screen on edge-to-edge
   // Android the content draws partly under the native header — headerHeight over-shoots (gap) and
   // 0 under-shoots (input hidden) — so we measure the real top in the window instead of guessing.
+  const insets = useSafeAreaInsets();
   const tabBarHeight = useContext(BottomTabBarHeightContext);
   const isRootStack = tabBarHeight === undefined;
   const containerRef = useRef<View>(null);
@@ -890,7 +899,9 @@ const MoneyChat: React.FC = () => {
       if (typeof y === 'number' && !Number.isNaN(y)) setMeasuredTop(y);
     });
   }, [isRootStack]);
-  const kavOffset = isRootStack ? measuredTop : headerHeight;
+  // measuredTop aligns the input to the keyboard top; on edge-to-edge Android the keyboard
+  // sits above the gesture nav bar, so add the bottom inset to clear that last strip.
+  const kavOffset = isRootStack ? measuredTop + insets.bottom : headerHeight;
   const initialContext = route.params?.noteContext as string | undefined;
   const extractionContext = route.params?.extractionContext as string | undefined;
   const budgetContext = route.params?.budgetContext as string | undefined;
@@ -941,8 +952,11 @@ const MoneyChat: React.FC = () => {
   const requestIdRef = useRef(0);
 
   // Voice input
-  const { isRecording, isTranscribing, error: voiceError, startRecording, stopAndTranscribe } = useVoiceInput();
+  const { isRecording, isTranscribing, metering, liveTranscript, error: voiceError, startRecording, stopAndTranscribe, cancelRecording } = useVoiceInput();
   const recordingAnim = useRef(new Animated.Value(1)).current;
+  const inputRef = useRef<TextInput>(null);
+  const [voiceErrorKind, setVoiceErrorKind] = useState<VoiceErrorKind | null>(null);
+  const [recordSecs, setRecordSecs] = useState(0);
 
   const isBusinessMode = mode === 'business';
   const suggestions = useMemo(
@@ -1052,9 +1066,11 @@ const MoneyChat: React.FC = () => {
     errorTimerRef.current = setTimeout(() => setErrorNotice(null), 4000);
   }, []);
 
-  // Recording pulse animation
+  // Recording pulse animation + elapsed timer
   useEffect(() => {
     if (isRecording) {
+      setRecordSecs(0);
+      const ticker = setInterval(() => setRecordSecs((s) => s + 1), 1000);
       const pulse = Animated.loop(
         Animated.sequence([
           Animated.timing(recordingAnim, { toValue: 0.3, duration: 600, useNativeDriver: true }),
@@ -1062,16 +1078,17 @@ const MoneyChat: React.FC = () => {
         ])
       );
       pulse.start();
-      return () => pulse.stop();
+      return () => { pulse.stop(); clearInterval(ticker); };
     } else {
       recordingAnim.setValue(1);
+      setRecordSecs(0);
     }
   }, [isRecording, recordingAnim]);
 
-  // Show voice errors
+  // Surface voice errors as a calm, persistent row (kind-mapped copy + affordance)
   useEffect(() => {
-    if (voiceError) showError(voiceError);
-  }, [voiceError, showError]);
+    if (voiceError) setVoiceErrorKind(voiceError.kind);
+  }, [voiceError]);
 
   // Photo — direct launch with permission request
   const handlePickImage = useCallback(async (source: 'camera' | 'gallery') => {
@@ -1096,16 +1113,35 @@ const MoneyChat: React.FC = () => {
   const handlePickCamera = useCallback(() => handlePickImage('camera'), [handlePickImage]);
   const handlePickGallery = useCallback(() => handlePickImage('gallery'), [handlePickImage]);
 
-  // Mic — toggle recording
+  // Mic — toggle recording (transcript lands in the composer for review; never auto-sends)
   const handleMicPress = useCallback(async () => {
     if (isRecording) {
       const text = await stopAndTranscribe();
-      if (text) setInput(text);
+      if (text) {
+        setInput(text);
+        inputRef.current?.focus();
+      }
     } else {
       lightTap();
+      setVoiceErrorKind(null);
       await startRecording();
     }
   }, [isRecording, startRecording, stopAndTranscribe]);
+
+  const handleCancelVoice = useCallback(() => {
+    lightTap();
+    cancelRecording();
+  }, [cancelRecording]);
+
+  const voiceErrorCopy = useCallback((kind: VoiceErrorKind): string => {
+    switch (kind) {
+      case 'permission': return t.moneyChat.voicePermDenied;
+      case 'no-speech': return t.moneyChat.voiceNoSpeech;
+      case 'network': return t.moneyChat.voiceNetwork;
+      case 'quota': return t.moneyChat.voiceLimit;
+      default: return t.moneyChat.voiceNoSpeech;
+    }
+  }, [t]);
 
   // Header buttons — history + new chat
   useLayoutEffect(() => {
@@ -1924,18 +1960,72 @@ const MoneyChat: React.FC = () => {
           </View>
         )}
 
-        {/* Recording indicator */}
+        {/* Live caption — words as you speak (interim, dimmed; clears into the composer on stop) */}
+        {isRecording && !!liveTranscript && (
+          <View style={styles.liveCaptionBar}>
+            <Text style={styles.liveCaptionText}>{liveTranscript}</Text>
+          </View>
+        )}
+
+        {/* Recording indicator (calm: olive pulse + amplitude + timer + cancel) */}
         {isRecording && (
           <View style={styles.recordingBar}>
             <Animated.View style={[styles.recordingDot, { opacity: recordingAnim }]} />
-            <Text style={styles.recordingText}>recording...</Text>
+            <Text style={styles.recordingText}>{t.moneyChat.voiceListening}</Text>
+            <View style={styles.amplitudeTrack}>
+              <View style={[styles.amplitudeFill, { width: `${Math.max(6, Math.round(metering * 100))}%` }]} />
+            </View>
+            <Text style={styles.recordingTimer}>{formatSecs(recordSecs)}</Text>
+            <TouchableOpacity
+              onPress={handleCancelVoice}
+              style={styles.voiceCancelBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel={t.moneyChat.voiceCancel}
+            >
+              <Feather name="x" size={16} color={C.textSecondary} />
+            </TouchableOpacity>
           </View>
         )}
 
         {/* Transcribing indicator */}
         {isTranscribing && (
           <View style={styles.recordingBar}>
-            <Text style={styles.recordingText}>transcribing...</Text>
+            <Text style={styles.recordingText}>{t.moneyChat.voiceTranscribing}</Text>
+          </View>
+        )}
+
+        {/* Voice error — calm, persistent, never red */}
+        {voiceErrorKind && !isRecording && !isTranscribing && (
+          <View style={styles.errorNotice}>
+            <Feather name="alert-circle" size={14} color={C.bronze} />
+            <Text style={styles.errorNoticeText}>{voiceErrorCopy(voiceErrorKind)}</Text>
+            {voiceErrorKind === 'permission' && (
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => { setVoiceErrorKind(null); Linking.openSettings(); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.voiceActionText}>{t.moneyChat.voiceOpenSettings}</Text>
+              </TouchableOpacity>
+            )}
+            {(voiceErrorKind === 'network' || voiceErrorKind === 'generic') && (
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => { setVoiceErrorKind(null); inputRef.current?.focus(); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.voiceActionText}>{t.moneyChat.voiceTypeInstead}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={() => setVoiceErrorKind(null)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={t.moneyChat.voiceCancel}
+            >
+              <Feather name="x" size={14} color={C.bronze} />
+            </TouchableOpacity>
           </View>
         )}
 
@@ -1965,13 +2055,14 @@ const MoneyChat: React.FC = () => {
           </TouchableOpacity>
 
           <TextInput
+            ref={inputRef}
             style={styles.textInput}
             value={input}
             onChangeText={setInput}
             placeholder={isRecording ? '' : t.chat.askPlaceholder}
             placeholderTextColor={C.textSecondary}
             multiline
-            editable={!isLoading && !isRecording}
+            editable={!isLoading && !isRecording && !isTranscribing}
           />
 
           {/* Mic / Send toggle */}
@@ -1992,6 +2083,9 @@ const MoneyChat: React.FC = () => {
               ]}
               onPress={handleMicPress}
               disabled={isLoading || isTranscribing}
+              accessibilityRole="button"
+              accessibilityLabel={isRecording ? t.moneyChat.voiceStop : t.moneyChat.voiceStart}
+              accessibilityState={{ selected: isRecording, busy: isTranscribing }}
             >
               <Feather
                 name={isRecording ? 'square' : 'mic'}
@@ -2736,7 +2830,7 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderColor: C.border,
   },
   micButtonActive: {
-    backgroundColor: '#C1694F',
+    backgroundColor: C.accent,
   },
 
   // Image preview
@@ -2775,6 +2869,18 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 
   // Recording indicator
+  liveCaptionBar: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: 6,
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
+  },
+  liveCaptionText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    lineHeight: TYPOGRAPHY.size.sm * 1.4,
+  },
   recordingBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2782,16 +2888,51 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: 6,
     backgroundColor: C.surface,
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
   },
   recordingDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#C1694F',
+    backgroundColor: C.accent,
   },
   recordingText: {
     fontSize: TYPOGRAPHY.size.xs,
-    color: '#C1694F',
+    color: C.textSecondary,
+    fontWeight: TYPOGRAPHY.weight.medium,
+  },
+  amplitudeTrack: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: withAlpha(C.accent, 0.15),
+    overflow: 'hidden',
+  },
+  amplitudeFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: C.accent,
+  },
+  recordingTimer: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.textSecondary,
+    fontVariant: ['tabular-nums'],
+    minWidth: 34,
+    textAlign: 'right',
+  },
+  voiceCancelBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(C.textSecondary, 0.1),
+  },
+  voiceActionText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.bronze,
     fontWeight: TYPOGRAPHY.weight.medium,
   },
 

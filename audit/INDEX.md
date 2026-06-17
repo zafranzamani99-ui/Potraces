@@ -40,6 +40,17 @@ When an auditor agent writes a new report, it adds one line here.
 |---|---|---|
 | [SCALABILITY.md](SCALABILITY.md) | scalability-auditor | Performance ceilings as data/users grow |
 
+## Echo Voice Input
+| Report | Owner agent | What it covers |
+|---|---|---|
+| [ECHO_VOICE_V1_PLAN.md](ECHO_VOICE_V1_PLAN.md) | lead architect | V1 voice-input build plan (3 phases) — fuses [ECHO_VOICE_FORENSICS.md](ECHO_VOICE_FORENSICS.md) (defects) + [ECHO_VOICE_RESEARCH.md](ECHO_VOICE_RESEARCH.md) (UX) |
+
+## Store submission
+| Report | Owner agent | What it covers |
+|---|---|---|
+| [STORE_COMPLIANCE_AUDIT.md](STORE_COMPLIANCE_AUDIT.md) | 5-agent compliance sweep | 🔴 App Store / Play submission blockers + risks (IAP, account deletion, entitlements, keys, permissions, privacy) — incl. 2026-06-17 resolution status |
+| [STORE_DATA_DISCLOSURE.md](STORE_DATA_DISCLOSURE.md) | store-compliance | Copy-paste Apple Nutrition Label + Play Data Safety answers from real data flows |
+
 ## Lives elsewhere (linked, not moved)
 - Root `AUDIT.md` — legacy top-level audit (referenced by production-readiness-auditor)
 - Root `WCAG_AUDIT.md` / `WCAG_FIX_PLAN.md` — accessibility (color contrast, tap targets)

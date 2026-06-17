@@ -24,7 +24,7 @@ import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { lightTap, mediumTap, warningNotification } from '../../services/haptics';
 import { useIntentEngine } from '../../hooks/useIntentEngine';
-import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useVoiceInput, VoiceErrorKind } from '../../hooks/useVoiceInput';
 import { useCategories } from '../../hooks/useCategories';
 import { usePremiumStore } from '../../store/premiumStore';
 import ModalToastHost from '../../components/common/ModalToastHost';
@@ -110,9 +110,11 @@ const NoteEditor: React.FC = () => {
   const {
     isRecording,
     isTranscribing,
+    liveTranscript,
     error: voiceError,
     startRecording,
     stopAndTranscribe,
+    cancelRecording,
   } = useVoiceInput();
 
   const handleSkip = useCallback((id: string) => {
@@ -249,14 +251,32 @@ const NoteEditor: React.FC = () => {
         const separator = text.trim() ? '\n' : '';
         const newText = text + separator + transcription;
         handleTextChange(newText);
-      } else if (voiceError === 'ai limit reached — upgrade for unlimited') {
-        setShowPaywall(true);
       }
     } else {
       lightTap();
       await startRecording();
     }
-  }, [isRecording, text, voiceError, stopAndTranscribe, startRecording, handleTextChange]);
+  }, [isRecording, text, stopAndTranscribe, startRecording, handleTextChange]);
+
+  const handleCancelVoice = useCallback(() => {
+    lightTap();
+    cancelRecording();
+  }, [cancelRecording]);
+
+  const voiceErrorCopy = useCallback((kind: VoiceErrorKind): string => {
+    switch (kind) {
+      case 'permission': return t.moneyChat.voicePermDenied;
+      case 'no-speech': return t.moneyChat.voiceNoSpeech;
+      case 'network': return t.moneyChat.voiceNetwork;
+      case 'quota': return t.moneyChat.voiceLimit;
+      default: return t.moneyChat.voiceNoSpeech;
+    }
+  }, [t]);
+
+  // Quota → open paywall (gating happens inside startRecording)
+  useEffect(() => {
+    if (voiceError?.kind === 'quota') setShowPaywall(true);
+  }, [voiceError]);
 
   const handleExtract = useCallback(() => {
     lightTap();
@@ -513,6 +533,21 @@ const NoteEditor: React.FC = () => {
           <View style={styles.recordingBar}>
             <View style={styles.recordingDot} />
             <Text style={styles.recordingText}>{t.notes.recordingHint}</Text>
+            <TouchableOpacity
+              onPress={handleCancelVoice}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel={t.moneyChat.voiceCancel}
+            >
+              <Feather name="x" size={14} color={C.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
+        {isRecording && !!liveTranscript && (
+          <View style={styles.recordingBar}>
+            <Text style={[styles.recordingText, { color: C.textSecondary, flex: 1 }]} numberOfLines={4}>
+              {liveTranscript}
+            </Text>
           </View>
         )}
         {isTranscribing && (
@@ -521,9 +556,9 @@ const NoteEditor: React.FC = () => {
             <Text style={styles.recordingText}>{t.notes.transcribing}</Text>
           </View>
         )}
-        {voiceError && (
+        {voiceError && voiceError.kind !== 'quota' && (
           <View style={styles.recordingBar}>
-            <Text style={[styles.recordingText, { color: C.bronze }]}>{voiceError}</Text>
+            <Text style={[styles.recordingText, { color: C.bronze }]}>{voiceErrorCopy(voiceError.kind)}</Text>
           </View>
         )}
 

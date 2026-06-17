@@ -127,6 +127,31 @@ export async function clearPersonalDataRemote(): Promise<void> {
   );
 }
 
+/**
+ * Permanently delete the signed-in user's ACCOUNT — all personal + business cloud
+ * rows, owned Storage objects, AND the Supabase auth user — via the delete-account
+ * Edge Function (service role). Required by App Store 5.1.1(v) + Play.
+ *
+ * Throws on failure so the caller can keep local data intact and let the user
+ * retry, rather than wiping the device while the account still lives on the server.
+ * A user with no session (never signed in → no server account) is a no-op.
+ */
+export async function deleteAccountRemote(): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to delete account (${res.status})`);
+  }
+}
+
 export type SupabaseSellerProduct = {
   id: string;
   user_id: string;

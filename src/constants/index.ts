@@ -405,11 +405,6 @@ export const DEBT_STATUSES_SAFE = [
   { label: 'Settled', value: 'settled', color: { light: '#3F6E84', dark: '#8ABCD2' } }, // 5.2 / 7.6
 ] as const;
 
-export const RECEIPT_SCANNER_CONFIG = {
-  apiUrl: 'https://vision.googleapis.com/v1/images:annotate',
-  apiKey: process.env.EXPO_PUBLIC_GOOGLE_VISION_API_KEY || 'YOUR_API_KEY_HERE',
-};
-
 export const APP_CONFIG = {
   currency: 'RM',
   dateFormat: 'MMM dd, yyyy',

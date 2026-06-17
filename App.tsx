@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableWithoutFeedback, Keyboard, AppState, Linking, Platform } from 'react-native';
-import { requestTrackingPermissionsAsync, getTrackingPermissionsAsync } from 'expo-tracking-transparency';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -176,19 +175,6 @@ export default function App() {
           lastTxCount = count;
         }
       });
-
-      // iOS ATT: request tracking permission after onboarding (once, non-blocking).
-      // Only meaningful on iOS 14.5+; harmless no-op elsewhere.
-      if (Platform.OS === 'ios' && useSettingsStore.getState().hasCompletedOnboarding) {
-        try {
-          const current = await getTrackingPermissionsAsync();
-          if (current.status === 'undetermined') {
-            await requestTrackingPermissionsAsync();
-          }
-        } catch {
-          // ignore — App Store requires the prompt; if system denies we fall through
-        }
-      }
 
       // Sync + push for any authenticated session (anonymous or verified)
       if (session) {

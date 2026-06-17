@@ -1820,6 +1820,10 @@ const Settings: React.FC = () => {
           </TouchableOpacity>
         </Card>
 
+        <Text style={{ fontSize: TYPOGRAPHY.size.xs, lineHeight: 18, color: C.textMuted, textAlign: 'center', paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
+          {t.settings.financialDisclaimer}
+        </Text>
+
         <View style={{ height: SPACING['3xl'] }} />
         </>}
       </ScrollView>

@@ -21,11 +21,11 @@ import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { signInWithGoogle, statusCodes } from '../../services/googleAuth';
 import { signInWithApple } from '../../services/appleAuth';
 import { ensureProfile, clearProfileCache } from '../../services/sellerSync';
-import { signOut, getAuthSession, signInWithPhone, signUpWithPhone } from '../../services/supabase';
+import { signOut, getAuthSession, signInWithPhone, signUpWithPhone, deleteAccountRemote } from '../../services/supabase';
 import { syncPersonal, disablePersonalSync } from '../../services/personalSync';
 import { resetBackoff } from '../../services/syncBackoff';
 import { useAuthStore } from '../../store/authStore';
-import { useSettingsStore } from '../../store/settingsStore';
+import { useSettingsStore, clearBusinessLocalData } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
 import { lightTap } from '../../services/haptics';
 import { useT } from '../../i18n';
@@ -63,6 +63,7 @@ export default function AccountScreen() {
   const [email, setEmail] = useState<string | null>(null);
   const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Phone form
   const [isLogin, setIsLogin] = useState(true);
@@ -236,6 +237,39 @@ export default function AccountScreen() {
       },
     ]);
   }, [tr]);
+
+  const handleDeleteAccount = useCallback(() => {
+    if (deleting) return;
+    lightTap();
+    Alert.alert(tr.auth.acctDeleteTitle, tr.auth.acctDeleteWarning, [
+      { text: tr.common.cancel, style: 'cancel' },
+      {
+        text: tr.auth.acctDeleteCta,
+        style: 'destructive',
+        onPress: async () => {
+          setDeleting(true);
+          try {
+            // Server FIRST (needs the live session): deletes all cloud rows, owned
+            // storage objects, and the Supabase auth user itself. Throws on failure
+            // so we never wipe the device while the account still lives server-side.
+            await deleteAccountRemote();
+            // Then wipe everything on-device — personal + business stores.
+            await useSettingsStore.getState().clearPersonalData();
+            await clearBusinessLocalData();
+            await disablePersonalSync(false);
+            clearProfileCache();
+            await signOut().catch(() => {});
+            useAuthStore.getState().reset();
+            // RootNavigator returns to Onboarding reactively (hasCompletedOnboarding=false).
+            showToast(tr.auth.acctDeleteDone, 'success');
+          } catch {
+            setDeleting(false);
+            showToast(tr.auth.acctDeleteFailed, 'info');
+          }
+        },
+      },
+    ]);
+  }, [deleting, showToast, tr]);
 
   const providerName =
     provider === 'apple' ? tr.auth.acctProviderApple
@@ -563,6 +597,25 @@ export default function AccountScreen() {
                   <View style={[styles.signOutInner, pressed && { opacity: 0.7 }]}>
                     <Feather name="log-out" size={16} color={C.bronze} />
                     <Text style={styles.signOutText}>{tr.settings.signOut}</Text>
+                  </View>
+                )}
+              </Pressable>
+
+              {/* Delete account — permanent, server-side (App Store 5.1.1(v) + Play). */}
+              <Pressable
+                style={styles.deleteAcctBtn}
+                onPress={handleDeleteAccount}
+                disabled={deleting}
+                accessibilityRole="button"
+                accessibilityLabel={tr.auth.acctDeleteAccount}
+              >
+                {({ pressed }) => (
+                  <View style={[styles.deleteAcctInner, pressed && { opacity: 0.7 }]}>
+                    {deleting ? (
+                      <ActivityIndicator color={C.textMuted} size="small" />
+                    ) : (
+                      <Text style={styles.deleteAcctText}>{tr.auth.acctDeleteAccount}</Text>
+                    )}
                   </View>
                 )}
               </Pressable>
@@ -966,5 +1019,22 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontSize: TYPOGRAPHY.size.base,
     fontWeight: TYPOGRAPHY.weight.medium,
     color: C.bronze,
+  },
+  deleteAcctBtn: {
+    marginTop: SPACING.xs,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  deleteAcctInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    minHeight: 20,
+  },
+  deleteAcctText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textMuted,
+    textDecorationLine: 'underline',
   },
 });

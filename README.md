@@ -889,7 +889,6 @@ c:\Project\Potraces\
     │   ├── spendingMirror.ts            # AI spending insights + pattern analysis
     │   ├── receiptScanner.ts            # Gemini receipt parsing (vendor, items, tax, total)
     │   ├── ocrService.ts                # Google Cloud Vision OCR
-    │   ├── speechService.ts             # Google Cloud Speech-to-Text (legacy, replaced by Gemini)
     │   ├── supabase.ts                  # Supabase client (auth + storage + realtime + session)
     │   ├── sellerSync.ts                # Push/pull sync, image uploads, profile management
     │   ├── pushNotifications.ts          # Expo push notification setup + handling
@@ -942,9 +941,10 @@ cd Potraces
 npm install
 
 # Environment variables (create .env from .env.example)
-EXPO_PUBLIC_GEMINI_API_KEY=your_gemini_api_key
 EXPO_PUBLIC_SUPABASE_URL=https://iydqeeonaljqapulboaz.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+# AI keys (Gemini/Anthropic) are SERVER secrets for the ai-proxy Edge Function —
+# never EXPO_PUBLIC_* (those ship inside the client bundle). See docs/ai-proxy-deploy.md.
 
 # Run
 npm start
