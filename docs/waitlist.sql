@@ -11,6 +11,14 @@
 -- (it defines public.is_admin(), used by the admin SELECT policy).
 -- ============================================================
 
+-- Fail fast with a clear message if the prerequisite is missing, instead of
+-- creating half the objects and then aborting on the admin SELECT policy below.
+do $$ begin
+  if to_regprocedure('public.is_admin()') is null then
+    raise exception 'Run docs/beta_feedback.sql first — it defines public.is_admin(), used by this file.';
+  end if;
+end $$;
+
 create extension if not exists "pgcrypto";
 
 create table if not exists public.waitlist (

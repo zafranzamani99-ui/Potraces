@@ -629,6 +629,7 @@ const submitLabel = $('submitLabel');
 let selectedSeverity = '';
 let editingId = null;        // null = creating; otherwise the report id being edited
 let myReports = [];          // last-loaded rows, for populating the edit form
+const deletingIds = new Set(); // in-flight deletes — guard against double-tap
 
 /* ── message helpers ── */
 function setMsg(el, text, kind){
@@ -851,15 +852,21 @@ function startEdit(id){
   fbBody.focus();
 }
 async function deleteReport(id){
+  if (deletingIds.has(id)) return;             // already deleting — ignore a double-tap
   const r = myReports.find(x => x.id === id);
   if (!confirm(t('Delete this report? This cannot be undone.','Padam report ni? Tak boleh undo.'))) return;
-  const { data: del, error } = await sb.from('beta_feedback').delete().eq('id', id).select('id');
-  if (error){ setMsg(formMsg, t('Could not delete that — please try again.','Tak boleh padam — cuba lagi ya.'), 'warn'); return; }
-  if (!del || del.length === 0){ setMsg(formMsg, t('That report no longer exists.','Report tu dah tak wujud lagi.'), 'warn'); loadReports(); return; }
-  if (r?.screenshot_path){ sb.storage.from(SCREENSHOT_BUCKET).remove([r.screenshot_path]).catch(()=>{}); }
-  if (editingId === id) exitEditMode();
-  setMsg(formMsg, t('Report deleted.','Report dah dipadam.'), 'ok');
-  loadReports();
+  deletingIds.add(id);
+  try {
+    const { data: del, error } = await sb.from('beta_feedback').delete().eq('id', id).select('id');
+    if (error){ setMsg(formMsg, t('Could not delete that — please try again.','Tak boleh padam — cuba lagi ya.'), 'warn'); return; }
+    if (!del || del.length === 0){ setMsg(formMsg, t('That report no longer exists.','Report tu dah tak wujud lagi.'), 'warn'); loadReports(); return; }
+    if (r?.screenshot_path){ sb.storage.from(SCREENSHOT_BUCKET).remove([r.screenshot_path]).catch(()=>{}); }
+    if (editingId === id) exitEditMode();
+    setMsg(formMsg, t('Report deleted.','Report dah dipadam.'), 'ok');
+    loadReports();
+  } finally {
+    deletingIds.delete(id);
+  }
 }
 
 cancelEditBtn.addEventListener('click', () => {
@@ -965,6 +972,11 @@ async function completePkceIfNeeded(){
     if (params.get('error')){
       setMsg(signinMsg, t('That sign-in link expired or was already used. Please request a new one.','Link tu dah tamat atau dah guna. Minta yang baru ya.'), 'warn');
     }
+    history.replaceState({}, '', location.pathname);
+  }
+  // OAuth (PKCE) failures — e.g. cancelling the Google prompt — come back as ?error=… in the query
+  if (new URLSearchParams(location.search).get('error')){
+    setMsg(signinMsg, t("Sign-in didn't finish. Please try again.","Sign-in tak sempat siap. Cuba lagi ya."), 'warn');
     history.replaceState({}, '', location.pathname);
   }
 }

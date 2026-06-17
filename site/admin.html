@@ -444,6 +444,10 @@ async function completePkceIfNeeded(){
     history.replaceState({}, '', location.pathname);
     setMsg(signinMsg,'That sign-in link expired or was already used. Request a new one.','warn');
   }
+  if (new URLSearchParams(location.search).get('error')){
+    history.replaceState({}, '', location.pathname);
+    setMsg(signinMsg,"Sign-in didn't finish. Please try again.",'warn');
+  }
 }
 
 async function gate(session){
