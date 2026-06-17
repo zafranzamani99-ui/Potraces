@@ -1380,6 +1380,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
         <div class="footer-col">
           <h4 data-en="More" data-bm="Lagi">More</h4>
           <a href="/privacy.html" data-en="Privacy policy" data-bm="Dasar privasi">Privacy policy</a>
+          <a href="/delete-account.html" data-en="Delete account" data-bm="Padam akaun">Delete account</a>
           <a href="#faq" data-en="FAQ" data-bm="Soalan">FAQ</a>
           <a href="/beta.html" data-en="Beta feedback" data-bm="Feedback beta">Beta feedback</a>
         </div>
@@ -1526,6 +1527,8 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5ZHFlZW9uYWxqcWFwdWxib2F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NjQ1MDcsImV4cCI6MjA4ODQ0MDUwN30.IP0oJOs4DwwIM--ym2rPls51qpCHMVD-oB1UDjgS2Ec';
   function isEmail(v){ return /\S+@\S+\.\S+/.test(v); }
   function valid(v){ return isEmail(v) || /^(\+?6?0)1\d[\s-]?\d{3,4}[\s-]?\d{4}$/.test(v.replace(/\s|-/g,'')); }
+  // store phones in one canonical form (digits only; +60/60 → 0) so the same number dedupes
+  function normContact(v){ return isEmail(v) ? v : v.replace(/\D/g,'').replace(/^60/, '0'); }
   function bind(formId, msgId, source){
     var form=document.getElementById(formId), msg=document.getElementById(msgId);
     if(!form) return;
@@ -1554,7 +1557,7 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
             'Content-Type':'application/json',
             'Prefer':'return=minimal'
           },
-          body: JSON.stringify({ contact:v, kind:isEmail(v)?'email':'phone', source:source, user_agent:(navigator.userAgent||'').slice(0,300) })
+          body: JSON.stringify({ contact:normContact(v), kind:isEmail(v)?'email':'phone', source:source, user_agent:(navigator.userAgent||'').slice(0,300) })
         });
         // 409 = already on the list (hits the unique index) → success for the user.
         // (We avoid Prefer:resolution=ignore-duplicates because that upsert path
