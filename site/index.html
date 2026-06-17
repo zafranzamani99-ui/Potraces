@@ -1552,11 +1552,14 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
           headers:{
             'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,
             'Content-Type':'application/json',
-            'Prefer':'return=minimal, resolution=ignore-duplicates'
+            'Prefer':'return=minimal'
           },
           body: JSON.stringify({ contact:v, kind:isEmail(v)?'email':'phone', source:source, user_agent:(navigator.userAgent||'').slice(0,300) })
         });
-        if(!res.ok) throw new Error('http '+res.status);
+        // 409 = already on the list (hits the unique index) → success for the user.
+        // (We avoid Prefer:resolution=ignore-duplicates because that upsert path
+        //  needs SELECT, which anon doesn't have — the list is private.)
+        if(!res.ok && res.status!==409) throw new Error('http '+res.status);
         msg.textContent = ms ? 'Dah masuk senarai! Kami colek bila dah live.' : "You're on the list — we'll ping you when it's live.";
         msg.style.color=''; form.reset();
       }catch(err){
