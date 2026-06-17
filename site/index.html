@@ -197,6 +197,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 .waitlist form{display:flex;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:6px 6px 6px 18px;box-shadow:var(--shadow);transition:box-shadow .2s,border-color .2s}
 .waitlist form:focus-within{box-shadow:var(--shadow),0 0 0 3px rgba(79,81,4,.12);border-color:var(--bronze)}
 .waitlist input{flex:1;border:none;outline:none;background:transparent;font-family:inherit;font-size:1rem;color:var(--text);min-width:0}
+/* the pill wrapper already shows focus (form:focus-within), so don't stack the
+   global input focus ring on top — it would draw a mismatched inner box. */
+.waitlist input:focus,.waitlist input:focus-visible{box-shadow:none}
 .waitlist input::placeholder{color:var(--text-muted)}
 .waitlist .btn{flex-shrink:0}
 .wl-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
