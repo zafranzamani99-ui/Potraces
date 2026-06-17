@@ -42,6 +42,7 @@
 </head>
 <body>
 <div class="wrap">
+  <p style="margin:0 0 16px;font-size:14px"><a href="/" style="color:var(--accent);text-decoration:none">← Potraces</a></p>
   <div class="lang-switch" role="group" aria-label="Language">
     <button id="btn-en" class="active" aria-pressed="true" onclick="show('en')">English</button>
     <button id="btn-ms" aria-pressed="false" onclick="show('ms')">Bahasa Malaysia</button>
@@ -49,7 +50,7 @@
 
   <section id="en">
     <h1>Privacy Policy</h1>
-    <p class="meta">Last updated: 16 June 2026</p>
+    <p class="meta">Last updated: 17 June 2026</p>
 
     <div class="card">
       <p>Potraces is a personal &amp; small-business finance app built in Malaysia. This policy explains what we collect, why, where we store it, and how to get your data out or delete it.</p>
@@ -74,6 +75,7 @@
       <li><strong>Personal mode</strong>: data is stored locally on your device (encrypted device storage) and, if you enable cloud backup, synced to our Supabase project hosted in Singapore (ap-southeast-1).</li>
       <li><strong>Business/seller mode</strong>: data syncs to the same Supabase project so it can reach your customers' order pages.</li>
       <li>Receipt images are stored in Supabase Storage, access-controlled to your account.</li>
+      <li><strong>Sign-in providers</strong>: when you create or access your account with <strong>Google Sign-In</strong> or <strong>Sign in with Apple</strong>, that provider returns a stable user ID, your email, and your name to create and identify your account. We don't get your password.</li>
       <li><strong>Other service providers</strong> (some outside Malaysia): Telegram (delivers your one-time login code), Stripe (card payments for sellers; PCI-compliant — we don't store card numbers), Vercel (hosts the seller order-link page), Expo (push notifications), and the AI providers in section 6. They process data only to provide their feature.</li>
     </ul>
 
@@ -83,12 +85,17 @@
     <h2>5. Your rights</h2>
     <ul>
       <li><strong>Export</strong>: Settings → Export Data. You can download everything as CSV or PDF.</li>
-      <li><strong>Delete</strong>: Settings → Danger Zone → Delete Account. This removes all cloud data and signs you out.</li>
+      <li><strong>Delete</strong>: Settings → Danger Zone → Delete Account. This removes all cloud data and signs you out. You can also request deletion — including if you've already uninstalled the app — on our <a href="delete-account.html">account &amp; data deletion page</a>.</li>
       <li><strong>Access</strong>: email us for a copy of what we have.</li>
     </ul>
 
     <h2>6. AI features</h2>
-    <p>Optional AI features (receipt scanning, note-to-entry, and Money Chat) send the text or image you submit — and, for Money Chat, a short summary of your finances — to our third-party AI providers <strong>Anthropic (Claude)</strong> and <strong>Google (Gemini)</strong>, both in the United States, strictly to generate the response. We do not store prompts or responses beyond what you save. The AI gives general information only — not financial, investment, tax, or legal advice. We strip card numbers from receipts before sending. Providers' terms apply — do not submit data you consider highly sensitive.</p>
+    <p>Optional AI features (receipt scanning, note-to-entry, voice input "Echo", and Money Chat) send the text, image, or voice recording you submit — and, for Money Chat, a short summary of your finances — to our third-party AI providers <strong>Anthropic (Claude)</strong> and <strong>Google (Gemini)</strong>, both in the United States, strictly to generate the response. Specifically:</p>
+    <ul>
+      <li><strong>Receipt photos</strong> you scan are sent to Google (Gemini) to read the amount, date, and line items.</li>
+      <li><strong>Voice input (Echo)</strong> records audio and uploads the raw recording to Google (Gemini) for transcription. Where your device supports it, on-device speech recognition is used first; the upload is the fallback when on-device recognition isn't available.</li>
+    </ul>
+    <p>Providers process this data only to return the result and, per their terms, do not retain it to train their models. We do not store prompts, recordings, or responses beyond what you save. The AI gives general information only — not financial, investment, tax, or legal advice. We strip card numbers from receipts before sending. Providers' terms apply — do not submit data you consider highly sensitive.</p>
 
     <h2>7. Children</h2>
     <p>Potraces is not directed at children under 13. If we learn we've collected data from a child, we delete it.</p>
@@ -102,7 +109,7 @@
 
   <section id="ms" class="hide">
     <h1>Dasar Privasi</h1>
-    <p class="meta">Kemas kini terakhir: 16 Jun 2026</p>
+    <p class="meta">Kemas kini terakhir: 17 Jun 2026</p>
 
     <div class="card">
       <p>Potraces ialah aplikasi kewangan peribadi &amp; perniagaan kecil yang dibina di Malaysia. Dasar ini menerangkan apa yang kami kumpul, mengapa, di mana ia disimpan, dan bagaimana untuk mengeluarkan atau memadam data anda.</p>
@@ -127,6 +134,7 @@
       <li><strong>Mod peribadi</strong>: data disimpan secara tempatan pada peranti anda dan, jika anda aktifkan sandaran awan, disegerakkan ke projek Supabase kami di Singapura (ap-southeast-1).</li>
       <li><strong>Mod perniagaan/penjual</strong>: data disegerakkan ke Supabase yang sama supaya halaman pesanan pelanggan anda boleh berfungsi.</li>
       <li>Imej resit disimpan dalam Supabase Storage, dikawal akses kepada akaun anda sahaja.</li>
+      <li><strong>Pembekal log masuk</strong>: apabila anda mencipta atau mengakses akaun dengan <strong>Google Sign-In</strong> atau <strong>Sign in with Apple</strong>, pembekal itu memulangkan ID pengguna yang stabil, emel, dan nama anda untuk mencipta dan mengenal pasti akaun anda. Kami tidak menerima kata laluan anda.</li>
       <li><strong>Pembekal perkhidmatan lain</strong> (sebahagiannya di luar Malaysia): Telegram (menghantar kod log masuk sekali guna anda), Stripe (pembayaran kad untuk penjual; mematuhi PCI — kami tidak simpan nombor kad), Vercel (menghoskan halaman pautan pesanan penjual), Expo (notifikasi tolak), dan pembekal AI dalam seksyen 6. Mereka memproses data hanya untuk menyediakan ciri mereka.</li>
     </ul>
 
@@ -136,12 +144,17 @@
     <h2>5. Hak anda</h2>
     <ul>
       <li><strong>Eksport</strong>: Tetapan → Eksport Data. Anda boleh muat turun semua sebagai CSV atau PDF.</li>
-      <li><strong>Padam</strong>: Tetapan → Zon Bahaya → Padam Akaun. Ini akan membuang semua data awan dan mengeluarkan anda dari akaun.</li>
+      <li><strong>Padam</strong>: Tetapan → Zon Bahaya → Padam Akaun. Ini akan membuang semua data awan dan mengeluarkan anda dari akaun. Anda juga boleh memohon pemadaman — termasuk jika anda telah pun menyahpasang aplikasi — di <a href="delete-account.html">halaman pemadaman akaun &amp; data</a> kami.</li>
       <li><strong>Akses</strong>: emel kami untuk salinan data yang kami simpan.</li>
     </ul>
 
     <h2>6. Ciri AI</h2>
-    <p>Ciri AI pilihan (imbasan resit, nota-ke-entri, dan Money Chat) menghantar teks atau imej yang anda masukkan — dan, untuk Money Chat, ringkasan ringkas kewangan anda — kepada pembekal AI pihak ketiga kami <strong>Anthropic (Claude)</strong> dan <strong>Google (Gemini)</strong>, kedua-duanya di Amerika Syarikat, secara ketat hanya untuk menjana respons. Kami tidak menyimpan arahan atau respons melebihi apa yang anda simpan. AI memberi maklumat umum sahaja — bukan nasihat kewangan, pelaburan, cukai, atau undang-undang. Kami membuang nombor kad daripada resit sebelum menghantar. Syarat pembekal terpakai — jangan masukkan data yang anda anggap sangat sensitif.</p>
+    <p>Ciri AI pilihan (imbasan resit, nota-ke-entri, input suara "Echo", dan Money Chat) menghantar teks, imej, atau rakaman suara yang anda masukkan — dan, untuk Money Chat, ringkasan ringkas kewangan anda — kepada pembekal AI pihak ketiga kami <strong>Anthropic (Claude)</strong> dan <strong>Google (Gemini)</strong>, kedua-duanya di Amerika Syarikat, secara ketat hanya untuk menjana respons. Secara khusus:</p>
+    <ul>
+      <li><strong>Gambar resit</strong> yang anda imbas dihantar ke Google (Gemini) untuk membaca jumlah, tarikh, dan butiran barisan.</li>
+      <li><strong>Input suara (Echo)</strong> merakam audio dan memuat naik rakaman mentah ke Google (Gemini) untuk transkripsi. Jika peranti anda menyokongnya, pengecaman suara atas-peranti digunakan dahulu; muat naik hanyalah sandaran apabila pengecaman atas-peranti tidak tersedia.</li>
+    </ul>
+    <p>Pembekal memproses data ini hanya untuk memulangkan hasil dan, mengikut syarat mereka, tidak menyimpannya untuk melatih model mereka. Kami tidak menyimpan arahan, rakaman, atau respons melebihi apa yang anda simpan. AI memberi maklumat umum sahaja — bukan nasihat kewangan, pelaburan, cukai, atau undang-undang. Kami membuang nombor kad daripada resit sebelum menghantar. Syarat pembekal terpakai — jangan masukkan data yang anda anggap sangat sensitif.</p>
 
     <h2>7. Kanak-kanak</h2>
     <p>Potraces tidak ditujukan kepada kanak-kanak di bawah 13 tahun. Jika kami dapat tahu kami telah mengumpul data kanak-kanak, kami akan memadamnya.</p>
