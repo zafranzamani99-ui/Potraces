@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<!--
+  Potraces — Beta feedback ADMIN (founder triage).  jejakbaki.my/admin.html
+  Self-contained. Sign in with an admin account (app_admins table) to see EVERY
+  tester's report, change status, open screenshots, delete spam.
+  Security: anon key only (RLS + is_admin() gate everything). NEVER service_role.
+  Backend DDL: docs/beta_feedback.sql (v2 admin block).
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#4F5104">
+
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  base-uri 'self';
+  form-action 'self';
+  frame-ancestors 'none';
+  img-src 'self' data:;
+  font-src 'self' https://fonts.gstatic.com;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  script-src 'self' 'unsafe-inline' https://esm.sh;
+  connect-src 'self' https://iydqeeonaljqapulboaz.supabase.co https://esm.sh https://accounts.google.com;
+">
+
+<title>Potraces — Beta admin</title>
+<meta name="description" content="Founder triage view for Potraces beta feedback.">
+<meta name="robots" content="noindex, nofollow">
+<link rel="canonical" href="https://jejakbaki.my/admin.html">
+<link rel="icon" href="/assets/icon.png" type="image/png">
+<link rel="apple-touch-icon" href="/assets/icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F9F9F7;--bg2:#F5F3EF;--surface:#fff;
+  --olive:#4F5104;--olive-dark:#3D3E04;--olive-light:#6B6D1A;--olive-deep:#332D03;
+  --bronze:#786148;--bronze2:#855800;--gold:#8A5C00;--gold-bright:#DEAB22;
+  --sky:#6BA3BE;--mauve:#A688B8;--terracotta:#A8482E;--biz:#8A5C00;
+  --text:#1A1A1A;--text2:#555;--text3:#6B6B6B;--text-muted:#6E6E6E;
+  --border:#E5E0D8;--border2:#F0EDE8;--cream:#FFF7E6;
+  --r-xs:4px;--r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-2xl:28px;--r-full:9999px;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:0 4px 16px rgba(0,0,0,.08);
+  --shadow-lg:0 8px 24px rgba(0,0,0,.10);
+  --maxw:1120px;--nav-h:64px;
+  --ff:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{font-family:var(--ff);background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden;min-height:100vh;display:flex;flex-direction:column}
+img,svg{max-width:100%;display:block}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+.tnum{font-variant-numeric:tabular-nums}
+.grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.04;mix-blend-mode:soft-light;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.container{width:100%;max-width:var(--maxw);margin:0 auto;padding:0 20px;position:relative;z-index:2}
+.skip{position:absolute;left:0;top:-60px;z-index:1000;background:var(--olive);color:#fff;padding:12px 18px;border-radius:0 0 var(--r-md) 0;font-weight:600}
+.skip:focus{top:0}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(79,81,4,.4);border-radius:var(--r-sm)}
+
+/* nav */
+.nav{position:sticky;top:0;z-index:100;height:var(--nav-h);display:flex;align-items:center;background:rgba(249,249,247,.88);backdrop-filter:saturate(140%) blur(14px);-webkit-backdrop-filter:saturate(140%) blur(14px);border-bottom:1px solid var(--border)}
+.nav .container{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.18rem;letter-spacing:-.4px}
+.brand .logo{width:38px;height:38px;border-radius:11px;overflow:hidden;flex-shrink:0;box-shadow:var(--shadow)}
+.brand .beta-pill{font-size:.62rem;letter-spacing:.6px;text-transform:uppercase;font-weight:700;color:var(--gold);background:rgba(178,120,10,.12);padding:3px 8px;border-radius:var(--r-full);border:1px solid rgba(178,120,10,.18)}
+.nav-right{display:flex;align-items:center;gap:10px}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;font-weight:600;font-size:.95rem;border:none;border-radius:var(--r-full);padding:13px 22px;min-height:48px;transition:transform .12s ease,box-shadow .2s,background .2s,border-color .2s;white-space:nowrap}
+.btn:active{transform:scale(.98)}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+.btn-primary{background:var(--olive);color:#fff;box-shadow:0 4px 14px rgba(79,81,4,.22)}
+.btn-primary:hover:not([disabled]){background:var(--olive-dark)}
+.btn-block{width:100%}
+.btn-google{background:#fff;color:#1F1F1F;border:1px solid var(--border);box-shadow:var(--shadow);font-weight:600}
+.btn-google:hover:not([disabled]){border-color:var(--bronze);box-shadow:var(--shadow-md)}
+.btn-google svg{width:19px;height:19px}
+.signout{font-size:.86rem;font-weight:600;color:var(--bronze);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:8px 15px;flex-shrink:0;transition:border-color .15s}
+.signout:hover{border-color:var(--bronze)}
+
+main{flex:1;padding:32px 0 64px}
+.wrap{max-width:760px;margin:0 auto}
+.head{margin-bottom:24px}
+.head h1{font-size:clamp(1.5rem,4vw,2rem);font-weight:700;letter-spacing:-.5px;line-height:1.15;margin-bottom:6px}
+.head .lead{font-size:1rem;color:var(--text2);line-height:1.55}
+
+/* card / signin */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2xl);box-shadow:var(--shadow-md);padding:28px 24px;max-width:480px;margin:0 auto}
+@media (min-width:560px){.card{padding:34px 32px}}
+.signin-h{font-size:1.3rem;font-weight:600;letter-spacing:-.3px;margin-bottom:8px}
+.signin-sub{color:var(--text2);line-height:1.6;font-size:.96rem;margin-bottom:22px}
+.auth-actions{display:flex;flex-direction:column;gap:12px}
+.divider{display:flex;align-items:center;gap:14px;margin:18px 0;color:var(--text-muted);font-size:.82rem;font-weight:500}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border)}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:.86rem;font-weight:600;margin-bottom:7px}
+.field input,.field select{width:100%;font-family:inherit;font-size:1rem;color:var(--text);background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-md);padding:12px 14px;outline:none;transition:border-color .15s,box-shadow .15s}
+.field input:focus,.field select:focus{border-color:var(--bronze);background:var(--surface);box-shadow:0 0 0 3px rgba(79,81,4,.1)}
+.msg{font-size:.9rem;font-weight:500;line-height:1.5;margin-top:14px;padding:12px 14px;border-radius:var(--r-md);display:none}
+.msg.show{display:block}
+.msg.ok{background:rgba(79,81,4,.08);color:var(--olive);border:1px solid rgba(79,81,4,.16)}
+.msg.info{background:var(--cream);color:var(--bronze2);border:1px solid rgba(178,120,10,.18)}
+.msg.warn{background:rgba(139,115,85,.1);color:var(--bronze);border:1px solid rgba(139,115,85,.22)}
+
+/* toolbar (stats + filters) */
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.stat{flex:1;min-width:110px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:13px 15px;box-shadow:var(--shadow)}
+.stat b{display:block;font-size:1.5rem;font-weight:700;letter-spacing:-.5px;line-height:1.1}
+.stat span{font-size:.74rem;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--text3)}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;align-items:center}
+.toolbar select,.toolbar input{font-family:inherit;font-size:.9rem;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 13px;outline:none;transition:border-color .15s}
+.toolbar input{flex:1;min-width:160px}
+.toolbar select:focus,.toolbar input:focus{border-color:var(--bronze);box-shadow:0 0 0 3px rgba(79,81,4,.1)}
+.toolbar .refresh{font-size:.86rem;font-weight:600;color:var(--olive);background:rgba(79,81,4,.07);border:1px solid rgba(79,81,4,.14);border-radius:var(--r-md);padding:10px 14px;transition:background .15s}
+.toolbar .refresh:hover{background:rgba(79,81,4,.12)}
+
+/* rows */
+.arow{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:15px 16px;margin-bottom:11px}
+.arow-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:9px}
+.ri-chip{font-size:.66rem;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:3px 9px;border-radius:var(--r-full)}
+.ri-chip.s-idea{background:rgba(79,81,4,.1);color:var(--olive)}
+.ri-chip.s-minor{background:rgba(107,163,190,.14);color:var(--sky)}
+.ri-chip.s-major{background:rgba(139,115,85,.12);color:var(--bronze)}
+.ri-chip.s-blocker{background:rgba(178,120,10,.12);color:var(--gold)}
+.arow-email{font-size:.82rem;font-weight:600;color:var(--olive);word-break:break-all}
+.ri-screen{font-size:.78rem;font-weight:600;color:var(--text3)}
+.ri-date{font-size:.76rem;color:var(--text-muted);margin-left:auto}
+.arow .ri-body{font-size:.93rem;color:var(--text2);line-height:1.55;white-space:pre-wrap;word-break:break-word;margin-bottom:11px}
+.arow-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--border2);padding-top:11px}
+.arow-foot label{font-size:.74rem;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);display:inline-flex;align-items:center;gap:7px}
+.status-sel{font-family:inherit;font-size:.86rem;font-weight:600;color:var(--text);background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-md);padding:7px 11px;outline:none;transition:border-color .15s}
+.status-sel:focus{border-color:var(--bronze);box-shadow:0 0 0 3px rgba(79,81,4,.1)}
+.status-sel.st-new{color:var(--bronze2)}
+.status-sel.st-triaged{color:var(--sky)}
+.status-sel.st-fixed,.status-sel.st-done{color:var(--olive)}
+.afoot-btn{font-size:.82rem;font-weight:600;border-radius:var(--r-md);padding:7px 13px;border:1px solid var(--border);background:var(--surface);transition:border-color .15s,background .15s;display:inline-flex;align-items:center;gap:6px}
+.ashot{color:var(--olive)}
+.ashot:hover{border-color:var(--olive)}
+.ashot svg{width:14px;height:14px;stroke:var(--olive);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.adel{color:var(--bronze);margin-left:auto}
+.adel:hover{border-color:var(--bronze);background:rgba(139,115,85,.06)}
+.empty{text-align:center;color:var(--text3);font-size:.95rem;padding:34px 16px;background:var(--bg2);border:1px dashed var(--border);border-radius:var(--r-lg);line-height:1.6}
+.loading{text-align:center;padding:50px 16px;color:var(--text3)}
+.spinner{width:30px;height:30px;border:3px solid var(--border);border-top-color:var(--olive);border-radius:50%;margin:0 auto 14px;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation:none}}
+.flash{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);z-index:200;background:var(--olive);color:#fff;font-size:.88rem;font-weight:600;padding:11px 18px;border-radius:var(--r-full);box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+.flash.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.hide{display:none !important}
+.footer{background:var(--bg);border-top:1px solid var(--border);padding:28px 0;margin-top:auto}
+.footer .container{text-align:center}
+.footer .copy{font-size:.82rem;color:var(--text3)}
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="container">
+    <a class="brand" href="/">
+      <img class="logo" src="/assets/icon.png" alt="" width="38" height="38">
+      <span>Potraces</span>
+      <span class="beta-pill">Admin</span>
+    </a>
+    <div class="nav-right">
+      <button type="button" id="signoutBtn" class="signout hide">Sign out</button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="container">
+    <div class="wrap">
+
+      <!-- loading -->
+      <div id="loadingState" class="loading" role="status" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Loading…</p>
+      </div>
+
+      <!-- signed out -->
+      <section id="signinState" class="card hide" aria-labelledby="sih">
+        <h2 class="signin-h" id="sih">Admin sign-in</h2>
+        <p class="signin-sub">Sign in with the founder account to triage beta feedback. Only accounts in the admin list can see all reports.</p>
+        <div class="auth-actions">
+          <button type="button" id="googleBtn" class="btn btn-google btn-block">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.26 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>
+            Continue with Google
+          </button>
+          <div class="divider">or</div>
+          <form id="magicForm" novalidate>
+            <div class="field">
+              <label for="magicEmail">Email a sign-in link</label>
+              <input id="magicEmail" name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">
+            </div>
+            <button type="submit" id="magicBtn" class="btn btn-primary btn-block">Send link</button>
+          </form>
+        </div>
+        <div id="signinMsg" class="msg" role="status" aria-live="polite"></div>
+      </section>
+
+      <!-- signed in, not admin -->
+      <section id="denyState" class="card hide" aria-labelledby="dh">
+        <h2 class="signin-h" id="dh">Not an admin account</h2>
+        <p class="signin-sub">You're signed in as <b id="denyEmail">—</b>, but that account isn't on the admin list. To send beta feedback instead, use the beta page.</p>
+        <div class="auth-actions">
+          <a class="btn btn-primary btn-block" href="/beta.html">Go to beta feedback</a>
+          <button type="button" id="signoutBtn2" class="btn btn-google btn-block">Sign out</button>
+        </div>
+      </section>
+
+      <!-- dashboard -->
+      <section id="dashState" class="hide">
+        <div class="head">
+          <h1>Beta feedback</h1>
+          <p class="lead">Every tester's report. Set a status, open screenshots, remove spam.</p>
+        </div>
+
+        <div class="stats" id="stats"></div>
+
+        <div class="toolbar">
+          <select id="fStatus" aria-label="Filter by status">
+            <option value="">All statuses</option>
+            <option value="new">New</option>
+            <option value="triaged">Looking into it</option>
+            <option value="fixed">Fixed</option>
+            <option value="wontfix">Noted</option>
+            <option value="dup">Duplicate</option>
+            <option value="done">Done</option>
+          </select>
+          <select id="fSev" aria-label="Filter by severity">
+            <option value="">All severities</option>
+            <option value="blocker">Blocks me</option>
+            <option value="major">Annoying</option>
+            <option value="minor">Minor</option>
+            <option value="idea">Idea</option>
+          </select>
+          <input id="fSearch" type="search" placeholder="Search text or email…" aria-label="Search">
+          <button type="button" id="refreshBtn" class="refresh">Refresh</button>
+        </div>
+
+        <div id="list"></div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<div class="flash" id="flash" role="status" aria-live="polite"></div>
+
+<footer class="footer">
+  <div class="container">
+    <span class="copy">© <span id="year">2026</span> Potraces · internal</span>
+  </div>
+</footer>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+/* Public anon key — RLS + is_admin() protect everything. NEVER the service_role key. */
+const SB_URL = 'https://iydqeeonaljqapulboaz.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5ZHFlZW9uYWxqcWFwdWxib2F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NjQ1MDcsImV4cCI6MjA4ODQ0MDUwN30.IP0oJOs4DwwIM--ym2rPls51qpCHMVD-oB1UDjgS2Ec';
+const REDIRECT_TO = location.origin + '/admin.html';
+const BUCKET = 'beta-screenshots';
+
+const sb = createClient(SB_URL, SB_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' }
+});
+
+const $ = (id) => document.getElementById(id);
+const loadingState=$('loadingState'), signinState=$('signinState'), denyState=$('denyState'), dashState=$('dashState');
+const googleBtn=$('googleBtn'), magicForm=$('magicForm'), magicBtn=$('magicBtn'), magicEmail=$('magicEmail'), signinMsg=$('signinMsg');
+const signoutBtn=$('signoutBtn'), signoutBtn2=$('signoutBtn2'), denyEmail=$('denyEmail');
+const listEl=$('list'), statsEl=$('stats'), fStatus=$('fStatus'), fSev=$('fSev'), fSearch=$('fSearch'), refreshBtn=$('refreshBtn'), flash=$('flash');
+
+let allReports = [];
+
+const STATUS = [['new','New'],['triaged','Looking into it'],['fixed','Fixed'],['wontfix','Noted'],['dup','Duplicate'],['done','Done']];
+const SEV = { idea:'Idea', minor:'Minor', major:'Annoying', blocker:'Blocks me' };
+
+function setMsg(el,text,kind){ el.textContent=text; el.className='msg show '+(kind||'info'); }
+function clearMsg(el){ el.textContent=''; el.className='msg'; }
+function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+/* attribute-safe escape — text-node serialization does NOT encode quotes, so
+   values placed inside "double-quoted" attributes need this to prevent breakout. */
+function escA(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function fmtDate(iso){ try{ const d=new Date(iso); return d.toLocaleDateString('en-MY',{day:'numeric',month:'short',year:'numeric'})+' · '+d.toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso; } }
+function statusText(s){ const m=Object.fromEntries(STATUS); return m[s]||s; }
+let flashT;
+function showFlash(text){ flash.textContent=text; flash.classList.add('show'); clearTimeout(flashT); flashT=setTimeout(()=>flash.classList.remove('show'),2200); }
+
+function show(state){
+  [loadingState,signinState,denyState,dashState].forEach(s=>s.classList.add('hide'));
+  state.classList.remove('hide');
+  signoutBtn.classList.toggle('hide', state!==dashState);
+}
+
+/* ── auth ── */
+googleBtn.addEventListener('click', async () => {
+  clearMsg(signinMsg); googleBtn.disabled=true;
+  const { error } = await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo:REDIRECT_TO, queryParams:{ access_type:'offline', prompt:'select_account' } } });
+  if (error){ googleBtn.disabled=false; setMsg(signinMsg,'Could not start Google sign-in. Try the email link.','warn'); }
+});
+magicForm.addEventListener('submit', async (e) => {
+  e.preventDefault(); clearMsg(signinMsg);
+  const email=(magicEmail.value||'').trim();
+  if(!/\S+@\S+\.\S+/.test(email)){ setMsg(signinMsg,'Enter a valid email.','warn'); return; }
+  magicBtn.disabled=true;
+  const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo:REDIRECT_TO, shouldCreateUser:true } });
+  magicBtn.disabled=false;
+  if(error){ setMsg(signinMsg,'Could not send the link. Try again.','warn'); return; }
+  setMsg(signinMsg,'Check your email for the sign-in link.','ok'); magicForm.reset();
+});
+async function doSignOut(){ await sb.auth.signOut(); show(signinState); }
+signoutBtn.addEventListener('click', doSignOut);
+signoutBtn2.addEventListener('click', doSignOut);
+
+/* ── load all reports (admin RLS lets us see everyone) ── */
+async function loadAll(){
+  listEl.innerHTML = `<div class="loading"><div class="spinner" aria-hidden="true"></div><p>Loading reports…</p></div>`;
+  const { data, error } = await sb
+    .from('beta_feedback')
+    .select('id, created_at, email, screen, severity, body, screenshot_path, status')
+    .order('created_at', { ascending:false });
+  if (error){ listEl.innerHTML = `<div class="empty">Could not load reports.<br><small>${esc(error.message)}</small></div>`; statsEl.innerHTML=''; return; }
+  allReports = data || [];
+  renderStats();
+  render();
+}
+
+function renderStats(){
+  const total = allReports.length;
+  const open = allReports.filter(r => r.status==='new' || r.status==='triaged').length;
+  const blockers = allReports.filter(r => r.severity==='blocker').length;
+  statsEl.innerHTML =
+    `<div class="stat"><b class="tnum">${total}</b><span>Total</span></div>`+
+    `<div class="stat"><b class="tnum">${open}</b><span>Open</span></div>`+
+    `<div class="stat"><b class="tnum">${blockers}</b><span>Blockers</span></div>`;
+}
+
+function statusOptions(cur){
+  return STATUS.map(([v,l]) => `<option value="${v}"${v===cur?' selected':''}>${l}</option>`).join('');
+}
+
+function render(){
+  const st=fStatus.value, sv=fSev.value, q=(fSearch.value||'').trim().toLowerCase();
+  const rows = allReports.filter(r => {
+    if (st && r.status!==st) return false;
+    if (sv && r.severity!==sv) return false;
+    if (q){
+      const hay = ((r.body||'')+' '+(r.email||'')+' '+(r.screen||'')).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  if (rows.length === 0){
+    listEl.innerHTML = `<div class="empty">${allReports.length ? 'No reports match these filters.' : 'No feedback yet.'}</div>`;
+    return;
+  }
+  listEl.innerHTML = rows.map(r => {
+    const sev = r.severity ? `<span class="ri-chip s-${escA(r.severity)}">${esc(SEV[r.severity]||r.severity)}</span>` : '';
+    const screen = r.screen ? `<span class="ri-screen">${esc(r.screen)}</span>` : '';
+    const shot = r.screenshot_path
+      ? `<button type="button" class="afoot-btn ashot" data-shot="${escA(r.screenshot_path)}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Screenshot</button>`
+      : '';
+    return `<article class="arow" data-id="${escA(r.id)}">
+      <div class="arow-head">${sev}${screen}<span class="arow-email">${esc(r.email||'—')}</span><span class="ri-date">${esc(fmtDate(r.created_at))}</span></div>
+      <div class="ri-body">${esc(r.body)}</div>
+      <div class="arow-foot">
+        <label>Status <select class="status-sel st-${escA(r.status)}" data-id="${escA(r.id)}">${statusOptions(r.status)}</select></label>
+        ${shot}
+        <button type="button" class="afoot-btn adel" data-del="${escA(r.id)}">Delete</button>
+      </div>
+    </article>`;
+  }).join('');
+}
+
+/* ── status change (via security-definer rpc) ── */
+listEl.addEventListener('change', async (e) => {
+  const sel = e.target.closest('.status-sel');
+  if (!sel) return;
+  const id = sel.getAttribute('data-id');
+  const val = sel.value;
+  const r = allReports.find(x => x.id===id);
+  const prev = r ? r.status : val;
+  sel.disabled = true;
+  const { error } = await sb.rpc('admin_set_status', { p_id:id, p_status:val });
+  sel.disabled = false;
+  if (error){ sel.value = prev; showFlash('Could not update status'); return; }
+  if (r) r.status = val;
+  renderStats();
+  render();   // re-apply the active filter so the row stays consistent with its new status
+  showFlash('Status → '+statusText(val));
+});
+
+/* ── screenshot (signed URL) + delete ── */
+listEl.addEventListener('click', async (e) => {
+  const shotBtn = e.target.closest('.ashot');
+  if (shotBtn){
+    const path = shotBtn.getAttribute('data-shot');
+    shotBtn.disabled = true;
+    const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(path, 3600);
+    shotBtn.disabled = false;
+    if (error || !data?.signedUrl){ showFlash('Could not open screenshot'); return; }
+    window.open(data.signedUrl, '_blank', 'noopener');
+    return;
+  }
+  const delBtn = e.target.closest('.adel');
+  if (delBtn){
+    const id = delBtn.getAttribute('data-del');
+    const r = allReports.find(x => x.id===id);
+    if (!confirm('Delete this report permanently?')) return;
+    delBtn.disabled = true;
+    const { error } = await sb.from('beta_feedback').delete().eq('id', id);
+    if (error){ delBtn.disabled=false; showFlash('Could not delete'); return; }
+    if (r?.screenshot_path){ sb.storage.from(BUCKET).remove([r.screenshot_path]).catch(()=>{}); }
+    allReports = allReports.filter(x => x.id!==id);
+    renderStats(); render();
+    showFlash('Deleted');
+  }
+});
+
+fStatus.addEventListener('change', render);
+fSev.addEventListener('change', render);
+fSearch.addEventListener('input', render);
+refreshBtn.addEventListener('click', loadAll);
+
+/* ── PKCE finish ── */
+async function completePkceIfNeeded(){
+  if (location.search.includes('code=')){
+    try { await sb.auth.exchangeCodeForSession(window.location.href); } catch(e){}
+    history.replaceState({}, '', location.pathname);
+  }
+  if (location.hash.includes('error')){
+    history.replaceState({}, '', location.pathname);
+    setMsg(signinMsg,'That sign-in link expired or was already used. Request a new one.','warn');
+  }
+}
+
+async function gate(session){
+  if (!session){ show(signinState); return; }
+  // confirm admin via the security-definer rpc
+  const { data: isAdm, error } = await sb.rpc('is_admin');
+  if (error){ show(signinState); setMsg(signinMsg,'Could not verify access. Try again.','warn'); return; }
+  if (isAdm === true){ show(dashState); loadAll(); }
+  else { denyEmail.textContent = session.user?.email || 'this account'; show(denyState); }
+}
+
+sb.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_OUT' || !session){ show(signinState); }
+  else { gate(session); }
+});
+
+$('year').textContent = String(new Date().getFullYear());
+(async function boot(){
+  show(loadingState);
+  await completePkceIfNeeded();
+  const { data: { session } } = await sb.auth.getSession();
+  gate(session);
+})();
+</script>
+</body>
+</html>

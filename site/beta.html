@@ -29,7 +29,7 @@
   base-uri 'self';
   form-action 'self';
   frame-ancestors 'none';
-  img-src 'self' data: https:;
+  img-src 'self' data:;
   font-src 'self' https://fonts.gstatic.com;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   script-src 'self' 'unsafe-inline' https://esm.sh;
@@ -240,6 +240,18 @@ main{flex:1;padding:36px 0 64px}
 .report-item .ri-shot{font-size:.78rem;color:var(--bronze);margin-top:8px;display:inline-flex;align-items:center;gap:6px}
 .report-item .ri-shot svg{width:14px;height:14px;stroke:var(--bronze);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .reports-empty{text-align:center;color:var(--text3);font-size:.92rem;padding:24px 16px;background:var(--bg2);border:1px dashed var(--border);border-radius:var(--r-lg);line-height:1.6}
+/* per-report actions */
+.ri-actions{display:flex;gap:8px;margin-top:11px;border-top:1px solid var(--border2);padding-top:11px}
+.ri-btn{font-size:.8rem;font-weight:600;border-radius:var(--r-md);padding:7px 13px;border:1px solid var(--border);background:var(--surface);transition:border-color .15s,background .15s;display:inline-flex;align-items:center;gap:6px}
+.ri-edit{color:var(--olive)}
+.ri-edit:hover{border-color:var(--olive)}
+.ri-del{color:var(--bronze);margin-left:auto}
+.ri-del:hover{border-color:var(--bronze);background:rgba(139,115,85,.06)}
+/* editing banner on the form */
+.editing-bar{display:none;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px;padding:11px 14px;background:var(--cream);border:1px solid rgba(178,120,10,.22);border-radius:var(--r-md);font-size:.86rem;font-weight:600;color:var(--bronze2)}
+.editing-bar.show{display:flex}
+.editing-bar button{font-size:.82rem;font-weight:600;color:var(--bronze);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:6px 13px;transition:border-color .15s}
+.editing-bar button:hover{border-color:var(--bronze)}
 
 /* loading state */
 .loading{text-align:center;padding:50px 16px;color:var(--text3)}
@@ -355,6 +367,11 @@ main{flex:1;padding:36px 0 64px}
         <div class="card">
           <h2 class="signin-h" id="formHeading" data-en="Send feedback" data-bm="Hantar feedback">Send feedback</h2>
 
+          <div class="editing-bar" id="editingBar">
+            <span data-en="Editing your report" data-bm="Tengah edit report anda">Editing your report</span>
+            <button type="button" id="cancelEditBtn" data-en="Cancel edit" data-bm="Batal edit">Cancel edit</button>
+          </div>
+
           <form id="feedbackForm" novalidate>
             <!-- required: what happened -->
             <div class="field">
@@ -428,7 +445,7 @@ main{flex:1;padding:36px 0 64px}
             </div>
 
             <button type="submit" id="submitBtn" class="btn btn-primary btn-block" style="margin-top:8px">
-              <span data-en="Send feedback" data-bm="Hantar feedback">Send feedback</span>
+              <span id="submitLabel" data-en="Send feedback" data-bm="Hantar feedback">Send feedback</span>
             </button>
           </form>
 
@@ -605,8 +622,13 @@ const formMsg   = $('formMsg');
 
 const reportsList = $('reportsList');
 const reportsCount= $('reportsCount');
+const editingBar  = $('editingBar');
+const cancelEditBtn = $('cancelEditBtn');
+const submitLabel = $('submitLabel');
 
 let selectedSeverity = '';
+let editingId = null;        // null = creating; otherwise the report id being edited
+let myReports = [];          // last-loaded rows, for populating the edit form
 
 /* ── message helpers ── */
 function setMsg(el, text, kind){
@@ -735,11 +757,12 @@ feedbackForm.addEventListener('submit', async (e) => {
   }
 
   submitBtn.disabled = true;
-  setMsg(formMsg, t('Sending…','Tengah hantar…'), 'info');
+  setMsg(formMsg, editingId ? t('Saving…','Tengah simpan…') : t('Sending…','Tengah hantar…'), 'info');
 
+  let newShotPath = null;   // declared out here so a failed save can clean it up
   try {
-    // optional screenshot first (path MUST start with the user's uid)
-    let screenshotPath = null;
+    // optional screenshot upload (path MUST start with the user's uid). A new
+    // file here REPLACES the existing screenshot when editing.
     const file = fbShot.files && fbShot.files[0];
     if (file){
       const safeName = file.name.replace(/[^\w.\-]+/g, '_').slice(0, 80);
@@ -748,32 +771,111 @@ feedbackForm.addEventListener('submit', async (e) => {
         .from(SCREENSHOT_BUCKET)
         .upload(path, file, { upsert: false, contentType: file.type });
       if (upErr) throw upErr;
-      screenshotPath = path;
+      newShotPath = path;
     }
 
-    const { error } = await sb.from('beta_feedback').insert({
-      email: session.user.email,        // convenience copy; RLS keys off user_id (DEFAULT auth.uid())
-      screen: fbScreen.value || null,
-      severity: selectedSeverity || null,
-      body,
-      screenshot_path: screenshotPath,
-      app_version: APP_VERSION,
-      user_agent: navigator.userAgent.slice(0, 500)
-    });
-    if (error) throw error;
+    if (editingId){
+      // EDIT — content columns only (status/user_id are not grantable to testers)
+      const patch = { body, screen: fbScreen.value || null, severity: selectedSeverity || null };
+      if (newShotPath) patch.screenshot_path = newShotPath;
+      const { data: upd, error } = await sb.from('beta_feedback').update(patch).eq('id', editingId).select('id');
+      if (error) throw error;
+      if (!upd || upd.length === 0){
+        // the row is gone (e.g. an admin deleted it) — don't claim a phantom save
+        if (newShotPath){ sb.storage.from(SCREENSHOT_BUCKET).remove([newShotPath]).catch(()=>{}); }
+        setMsg(formMsg, t('That report no longer exists.','Report tu dah tak wujud lagi.'), 'warn');
+        exitEditMode(); loadReports();
+        return;
+      }
+      const prev = myReports.find(x => x.id === editingId);
+      if (newShotPath && prev?.screenshot_path){
+        sb.storage.from(SCREENSHOT_BUCKET).remove([prev.screenshot_path]).catch(()=>{});
+      }
+      setMsg(formMsg, t('Saved your changes.','Perubahan disimpan.'), 'ok');
+      exitEditMode();
+    } else {
+      // CREATE
+      const { error } = await sb.from('beta_feedback').insert({
+        email: session.user.email,        // convenience copy; RLS keys off user_id (DEFAULT auth.uid())
+        screen: fbScreen.value || null,
+        severity: selectedSeverity || null,
+        body,
+        screenshot_path: newShotPath,
+        app_version: APP_VERSION,
+        user_agent: navigator.userAgent.slice(0, 500)
+      });
+      if (error) throw error;
+      setMsg(formMsg, t('Got it — thank you! Your report is in.','Dah terima — terima kasih! Report anda dah masuk.'), 'ok');
+    }
 
-    // calm success
-    setMsg(formMsg, t('Got it — thank you! Your report is in.','Dah terima — terima kasih! Report anda dah masuk.'), 'ok');
     feedbackForm.reset();
     selectedSeverity = '';
     sevGroup.querySelectorAll('.sev-pill').forEach(p => p.setAttribute('aria-pressed','false'));
     fbShotName.textContent=''; fbShotClear.classList.add('hide');
     loadReports();
   } catch (err){
-    setMsg(formMsg, t('Could not send that — please try again in a moment.','Tak boleh hantar — cuba lagi sekejap ya.'), 'warn');
+    if (newShotPath){ sb.storage.from(SCREENSHOT_BUCKET).remove([newShotPath]).catch(()=>{}); } // don't strand the upload
+    setMsg(formMsg, editingId
+      ? t('Could not save that — please try again in a moment.','Tak boleh simpan — cuba lagi sekejap ya.')
+      : t('Could not send that — please try again in a moment.','Tak boleh hantar — cuba lagi sekejap ya.'), 'warn');
   } finally {
     submitBtn.disabled = false;
   }
+});
+
+/* ── edit-mode helpers ── */
+function setSubmitLabel(en, ms){
+  submitLabel.setAttribute('data-en', en);
+  submitLabel.setAttribute('data-bm', ms);
+  submitLabel.textContent = t(en, ms);
+}
+function exitEditMode(){
+  editingId = null;
+  editingBar.classList.remove('show');
+  setSubmitLabel('Send feedback','Hantar feedback');
+}
+function startEdit(id){
+  const r = myReports.find(x => x.id === id);
+  if (!r) return;
+  editingId = id;
+  fbBody.value = r.body || '';
+  fbScreen.value = r.screen || '';
+  selectedSeverity = r.severity || '';
+  sevGroup.querySelectorAll('.sev-pill').forEach(p =>
+    p.setAttribute('aria-pressed', String(p.getAttribute('data-sev') === selectedSeverity)));
+  fbShot.value=''; fbShotName.textContent=''; fbShotClear.classList.add('hide');
+  editingBar.classList.add('show');
+  setSubmitLabel('Save changes','Simpan perubahan');
+  clearMsg(formMsg);
+  $('formHeading').scrollIntoView({ behavior:'smooth', block:'start' });
+  fbBody.focus();
+}
+async function deleteReport(id){
+  const r = myReports.find(x => x.id === id);
+  if (!confirm(t('Delete this report? This cannot be undone.','Padam report ni? Tak boleh undo.'))) return;
+  const { data: del, error } = await sb.from('beta_feedback').delete().eq('id', id).select('id');
+  if (error){ setMsg(formMsg, t('Could not delete that — please try again.','Tak boleh padam — cuba lagi ya.'), 'warn'); return; }
+  if (!del || del.length === 0){ setMsg(formMsg, t('That report no longer exists.','Report tu dah tak wujud lagi.'), 'warn'); loadReports(); return; }
+  if (r?.screenshot_path){ sb.storage.from(SCREENSHOT_BUCKET).remove([r.screenshot_path]).catch(()=>{}); }
+  if (editingId === id) exitEditMode();
+  setMsg(formMsg, t('Report deleted.','Report dah dipadam.'), 'ok');
+  loadReports();
+}
+
+cancelEditBtn.addEventListener('click', () => {
+  exitEditMode();
+  feedbackForm.reset();
+  selectedSeverity = '';
+  sevGroup.querySelectorAll('.sev-pill').forEach(p => p.setAttribute('aria-pressed','false'));
+  fbShotName.textContent=''; fbShotClear.classList.add('hide');
+  clearMsg(formMsg);
+});
+
+reportsList.addEventListener('click', (e) => {
+  const ed = e.target.closest('[data-edit]');
+  if (ed){ startEdit(ed.getAttribute('data-edit')); return; }
+  const dl = e.target.closest('[data-del]');
+  if (dl){ deleteReport(dl.getAttribute('data-del')); return; }
 });
 
 /* ── Load the signed-in tester's own reports (RLS-scoped) ── */
@@ -805,6 +907,8 @@ function statusLabel(s){
   return map[s] || s;
 }
 function esc(str){ const d=document.createElement('div'); d.textContent=str==null?'':String(str); return d.innerHTML; }
+/* attribute-safe escape (text-node serialization does NOT encode quotes) */
+function escA(str){ return String(str==null?'':str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 async function loadReports(){
   reportsList.innerHTML = `<div class="reports-empty">${t('Loading your reports…','Memuatkan report anda…')}</div>`;
@@ -818,6 +922,7 @@ async function loadReports(){
     reportsList.innerHTML = `<div class="reports-empty">${t('Could not load your reports right now.','Tak boleh muat report anda sekarang.')}</div>`;
     return;
   }
+  myReports = data || [];
   if (!data || data.length === 0){
     reportsCount.classList.add('hide');
     reportsList.innerHTML = `<div class="reports-empty">${t("No reports yet — your first one will show up here.","Belum ada report — yang pertama akan muncul di sini.")}</div>`;
@@ -829,16 +934,20 @@ async function loadReports(){
 
   reportsList.innerHTML = data.map((r) => {
     const sev = r.severity
-      ? `<span class="ri-chip s-${esc(r.severity)}">${esc(sevLabel(r.severity))}</span>` : '';
+      ? `<span class="ri-chip s-${escA(r.severity)}">${esc(sevLabel(r.severity))}</span>` : '';
     const screen = r.screen
       ? `<span class="ri-screen">${esc(r.screen)}</span>` : '';
     const shot = r.screenshot_path
       ? `<span class="ri-shot"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>${t('screenshot attached','screenshot disertakan')}</span>` : '';
     const status = `<span class="ri-status">${esc(statusLabel(r.status))}</span>`;
-    return `<article class="report-item">
+    return `<article class="report-item" data-id="${escA(r.id)}">
       <div class="ri-top">${sev}${screen}${status}<span class="ri-date">${esc(fmtDate(r.created_at))}</span></div>
       <div class="ri-body">${esc(r.body)}</div>
       ${shot}
+      <div class="ri-actions">
+        <button type="button" class="ri-btn ri-edit" data-edit="${escA(r.id)}">${t('Edit','Edit')}</button>
+        <button type="button" class="ri-btn ri-del" data-del="${escA(r.id)}">${t('Delete','Padam')}</button>
+      </div>
     </article>`;
   }).join('');
 }
