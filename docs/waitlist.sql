@@ -185,9 +185,11 @@ begin
   -- Mint a unique 8-char url-safe code, retrying on the rare collision.
   loop
     v_attempts := v_attempts + 1;
-    -- base64url of 6 random bytes -> 8 chars, then strip any +/=
-    v_code := translate(encode(gen_random_bytes(6), 'base64'), '+/=', '');
-    v_code := substr(v_code, 1, 8);
+    -- 8 hex chars from a random UUID. gen_random_uuid() lives in pg_catalog (always on
+    -- the search_path), unlike pgcrypto's gen_random_bytes(), which on Supabase sits in
+    -- the `extensions` schema and is NOT visible under `set search_path = public` — that
+    -- mismatch made every real signup fail while count/consent checks still passed.
+    v_code := substr(replace(gen_random_uuid()::text, '-', ''), 1, 8);
     begin
       insert into public.waitlist (contact, kind, source, user_agent, referral_code, referred_by, consent_at)
       values (v_contact, v_kind, v_source, null, v_code,
