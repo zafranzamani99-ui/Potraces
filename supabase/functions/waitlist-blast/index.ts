@@ -20,9 +20,14 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 
-// The sending identity. The jejakbaki.my domain MUST be verified in Resend
-// (add the DKIM/SPF DNS records Resend gives you) or every send will be rejected.
-const FROM = 'Potraces <hello@jejakbaki.my>';
+// The sending identity, overridable via the RESEND_FROM secret so test vs. launch
+// is a config flag, not a code edit.
+//   TEST (no DNS needed): leave the default 'onboarding@resend.dev' — Resend's test
+//     sender delivers ONLY to the email on your own Resend account. Great for a smoke test.
+//   LAUNCH (emails real users): verify jejakbaki.my in Resend (add its DKIM/SPF DNS records),
+//     then `supabase secrets set RESEND_FROM="Potraces <hello@jejakbaki.my>"`. The test
+//     sender CANNOT email anyone but you, so this switch is mandatory before a real blast.
+const FROM = Deno.env.get('RESEND_FROM') ?? 'Potraces <onboarding@resend.dev>';
 
 const BATCH_SIZE = 20; // small batches + a short pause = friendlier to deliverability
 const BATCH_DELAY_MS = 1000;
