@@ -387,6 +387,12 @@ verify_jwt = false
 [functions.ai-proxy]
 verify_jwt = false
 
+# Admin-only launch-blast sender. The function does its own authz: it requires the
+# caller's user access token and verifies rpc('is_admin') before sending. JWT-free at the
+# gateway so the in-code is_admin gate (not the platform default) is the single source of truth.
+[functions.waitlist-blast]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

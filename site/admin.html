@@ -121,6 +121,9 @@ main{flex:1;padding:32px 0 64px}
 .toolbar select:focus,.toolbar input:focus{border-color:var(--bronze);box-shadow:0 0 0 3px rgba(79,81,4,.1)}
 .toolbar .refresh{font-size:.86rem;font-weight:600;color:var(--olive);background:rgba(79,81,4,.07);border:1px solid rgba(79,81,4,.14);border-radius:var(--r-md);padding:10px 14px;transition:background .15s}
 .toolbar .refresh:hover{background:rgba(79,81,4,.12)}
+.toolbar .refresh.send{color:#fff;background:var(--olive);border-color:var(--olive)}
+.toolbar .refresh.send:hover:not([disabled]){background:var(--olive-dark)}
+.toolbar .refresh[disabled]{opacity:.5;cursor:not-allowed}
 
 /* tabs */
 .tabs{display:flex;gap:4px;margin-bottom:24px;border-bottom:1px solid var(--border)}
@@ -281,6 +284,8 @@ main{flex:1;padding:32px 0 64px}
           <div class="stats" id="wlStats"></div>
           <div class="toolbar">
             <input id="wlSearch" type="search" placeholder="Search email or phone…" aria-label="Search waitlist">
+            <!-- (N) reflects the currently-loaded page; PostgREST caps the waitlist fetch at ~1000 rows. An exact server-side count can be added later if the list ever grows. -->
+            <button type="button" id="wlSendBtn" class="refresh send" disabled><span id="wlSendLabel">Send launch email</span> (<span id="wlSendCount">0</span>)</button>
             <button type="button" id="wlExportBtn" class="refresh">Export CSV</button>
             <button type="button" id="wlRefreshBtn" class="refresh">Refresh</button>
           </div>
@@ -320,6 +325,7 @@ const signoutBtn=$('signoutBtn'), signoutBtn2=$('signoutBtn2'), denyEmail=$('den
 const listEl=$('list'), statsEl=$('stats'), fStatus=$('fStatus'), fSev=$('fSev'), fSearch=$('fSearch'), refreshBtn=$('refreshBtn'), flash=$('flash');
 const tabFeedback=$('tabFeedback'), tabWaitlist=$('tabWaitlist'), feedbackView=$('feedbackView'), waitlistView=$('waitlistView');
 const wlStatsEl=$('wlStats'), wlListEl=$('wlList'), wlSearch=$('wlSearch'), wlExportBtn=$('wlExportBtn'), wlRefreshBtn=$('wlRefreshBtn');
+const wlSendBtn=$('wlSendBtn'), wlSendCount=$('wlSendCount'), wlSendLabel=$('wlSendLabel');
 
 let allReports = [];
 let allWaitlist = [], wlLoaded = false;
@@ -492,23 +498,82 @@ async function loadWaitlist(){
     .from('waitlist')
     .select('id, created_at, contact, kind, source, notified_at')
     .order('created_at', { ascending:false });
-  if (error){ wlListEl.innerHTML = `<div class="empty">Could not load the waitlist.<br><small>${esc(error.message)}</small></div>`; wlStatsEl.innerHTML=''; return; }
+  if (error){ wlListEl.innerHTML = `<div class="empty">Could not load the waitlist.<br><small>${esc(error.message)}</small></div>`; wlStatsEl.innerHTML=''; allWaitlist=[]; refreshSendButton(); return; }
   allWaitlist = data || [];
   wlLoaded = true;
   renderWaitlistStats();
   renderWaitlist();
+  refreshSendButton();
 }
 
 function renderWaitlistStats(){
   const total = allWaitlist.length;
   const emails = allWaitlist.filter(r => r.kind==='email').length;
   const phones = allWaitlist.filter(r => r.kind==='phone').length;
-  const pending = allWaitlist.filter(r => !r.notified_at).length;
+  const emailPending = allWaitlist.filter(r => r.kind==='email' && !r.notified_at).length;
+  const phonePending = allWaitlist.filter(r => r.kind==='phone' && !r.notified_at).length;
   wlStatsEl.innerHTML =
     `<div class="stat"><b class="tnum">${total}</b><span>Total</span></div>`+
     `<div class="stat"><b class="tnum">${emails}</b><span>Emails</span></div>`+
     `<div class="stat"><b class="tnum">${phones}</b><span>Phones</span></div>`+
-    `<div class="stat"><b class="tnum">${pending}</b><span>Not notified</span></div>`;
+    `<div class="stat"><b class="tnum">${emailPending}</b><span>Email pending</span></div>`+
+    `<div class="stat"><b class="tnum">${phonePending}</b><span>Phone (DIY)</span></div>`;
+}
+
+/* N = not-yet-notified EMAIL signups (phones can't be emailed). */
+let wlSending = false;
+function notNotifiedEmailCount(){
+  return allWaitlist.filter(r => r.kind==='email' && !r.notified_at).length;
+}
+function refreshSendButton(){
+  const n = notNotifiedEmailCount();
+  wlSendCount.textContent = n;
+  wlSendBtn.disabled = (n === 0) || wlSending;
+}
+
+async function sendLaunchEmail(){
+  if (wlSending) return;
+  const n = notNotifiedEmailCount();
+  if (n === 0) return;
+  if (!confirm(`Send the launch email to ${n} ${n===1?'person':'people'} now? Each person is messaged once and can't be un-sent.`)) return;
+
+  wlSending = true;
+  wlSendBtn.disabled = true;
+  wlSendLabel.textContent = 'Sending…'; // persistent busy label — the flash auto-hides but the blast runs much longer
+  showFlash('Sending launch email…');
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session){ showFlash('Sign in again to send'); return; }
+    const res = await fetch(`${SB_URL}/functions/v1/waitlist-blast`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': SB_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({})
+    });
+    let result = {};
+    try { result = await res.json(); } catch(e){}
+    if (!res.ok){
+      showFlash(result && result.error ? `Could not send: ${result.error}` : `Could not send (${res.status})`);
+      return;
+    }
+    if (result.configured === false){
+      showFlash("Email sending isn't set up yet (add RESEND_API_KEY)");
+      return;
+    }
+    const sent = result.sent || 0;
+    const failed = result.failed || 0;
+    showFlash(failed ? `Sent to ${sent} · ${failed} failed` : `Sent to ${sent}`);
+    await loadWaitlist();
+  } catch(e){
+    showFlash('Could not send — check your connection');
+  } finally {
+    wlSending = false;
+    wlSendLabel.textContent = 'Send launch email'; // restore label whether it succeeded or failed
+    refreshSendButton();
+  }
 }
 
 function renderWaitlist(){
@@ -546,6 +611,7 @@ tabWaitlist.addEventListener('click', () => switchTab('waitlist'));
 wlSearch.addEventListener('input', renderWaitlist);
 wlRefreshBtn.addEventListener('click', loadWaitlist);
 wlExportBtn.addEventListener('click', exportWaitlistCsv);
+wlSendBtn.addEventListener('click', sendLaunchEmail);
 
 /* ── PKCE finish ── */
 async function completePkceIfNeeded(){

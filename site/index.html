@@ -19,6 +19,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#4F5104">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://iydqeeonaljqapulboaz.supabase.co">
 
 <title>Potraces — Calm money tracking for irregular earners in Malaysia</title>
 <meta name="description" content="Know what's safe to spend, even when the money isn't steady. For kuih sellers, gig riders and freelancers. RM + Bahasa Melayu, works offline. Join the beta.">
@@ -192,9 +193,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 .wl-frame{display:flex;align-items:center;gap:9px;font-size:.86rem;font-weight:600;color:var(--bronze2);margin-bottom:12px;line-height:1.4}
 .wl-frame .wl-ic{width:22px;height:22px;border-radius:7px;overflow:hidden;flex-shrink:0}
 .wl-frame .wl-ic svg{width:100%;height:100%}
-.waitlist form{display:flex;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:6px 6px 6px 18px;box-shadow:var(--shadow);transition:box-shadow .2s,border-color .2s}
-.waitlist form:focus-within{box-shadow:var(--shadow),0 0 0 3px rgba(79,81,4,.12);border-color:var(--bronze)}
-.waitlist input{flex:1;border:none;outline:none;background:transparent;font-family:inherit;font-size:1rem;color:var(--text);min-width:0}
+.waitlist .wl-pill{display:flex;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-full);padding:6px 6px 6px 18px;box-shadow:var(--shadow);transition:box-shadow .2s,border-color .2s}
+.waitlist .wl-pill:focus-within{box-shadow:var(--shadow),0 0 0 3px rgba(79,81,4,.12);border-color:var(--bronze)}
+.waitlist .wl-pill input[name="contact"]{flex:1;border:none;outline:none;background:transparent;font-family:inherit;font-size:1rem;color:var(--text);min-width:0}
 /* the pill wrapper already shows focus (form:focus-within), so don't stack the
    global input focus ring on top — it would draw a mismatched inner box. */
 .waitlist input:focus,.waitlist input:focus-visible{box-shadow:none}
@@ -203,6 +204,30 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
 .wl-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .waitlist .micro{font-size:.78rem;color:var(--text3);margin-top:10px;padding-left:4px}
 .wl-msg{font-size:.86rem;font-weight:600;margin-top:10px;padding-left:4px;color:var(--olive);min-height:1.2em}
+/* PDPA consent row */
+.wl-consent{display:flex;align-items:flex-start;gap:9px;margin-top:12px;padding-left:2px;font-size:.8rem;line-height:1.45;color:var(--text2);cursor:pointer}
+.wl-consent input{flex-shrink:0;width:18px;height:18px;margin:1px 0 0;accent-color:var(--olive);cursor:pointer}
+.wl-consent span{flex:1}
+/* social proof line */
+.wl-proof{font-size:.82rem;font-weight:600;color:var(--bronze2);margin-top:12px;padding-left:4px;display:none;font-variant-numeric:tabular-nums}
+.wl-proof.show{display:block}
+/* success state (replaces the form in-place) */
+.wl-success{animation:wlFade .35s ease}
+@keyframes wlFade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.wl-success .wl-pos{display:flex;align-items:center;gap:11px;font-size:1.02rem;font-weight:700;color:var(--text);line-height:1.35}
+.wl-success .wl-pos .wl-tick{flex-shrink:0;width:28px;height:28px;border-radius:var(--r-full);background:var(--olive);display:inline-flex;align-items:center;justify-content:center}
+.wl-success .wl-pos .wl-tick svg{width:15px;height:15px;stroke:#fff;stroke-width:3;fill:none}
+.wl-success .wl-pos span{font-variant-numeric:tabular-nums}
+.wl-success .wl-share-lbl{font-size:.82rem;font-weight:600;color:var(--text2);margin:16px 0 8px;line-height:1.45}
+.wl-share-row{display:flex;gap:8px;align-items:stretch}
+.wl-share-row .wl-link{flex:1;min-width:0;border:1px solid var(--border);background:var(--surface);border-radius:var(--r-md);padding:11px 13px;font-family:inherit;font-size:.86rem;color:var(--text2);outline:none}
+.wl-share-row .wl-link:focus{border-color:var(--bronze)}
+.wl-copy{flex-shrink:0;background:var(--surface);color:var(--olive);border:1px solid var(--border);border-radius:var(--r-md);font-family:inherit;font-weight:600;font-size:.86rem;padding:0 16px;min-height:44px;cursor:pointer;transition:background .15s,border-color .15s}
+.wl-copy:hover{border-color:var(--bronze)}
+.wl-copy.done{color:var(--olive);border-color:var(--olive);background:rgba(79,81,4,.06)}
+.wl-wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:9px;background:rgba(79,81,4,.07);color:var(--olive);border:1px solid rgba(79,81,4,.18);border-radius:var(--r-full);font-family:inherit;font-weight:600;font-size:.9rem;min-height:46px;text-decoration:none;cursor:pointer;transition:background .15s}
+.wl-wa:hover{background:rgba(79,81,4,.12)}
+.wl-wa svg{width:18px;height:18px;flex-shrink:0}
 
 /* store badges */
 .store-cta{margin-top:28px}
@@ -667,16 +692,23 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
             <span data-en="Be first in line. One ping when it's live." data-bm="Jadi yang pertama tau. Satu ping je bila dah live.">Be first in line. One ping when it's live.</span>
           </div>
           <form id="waitlistForm" novalidate>
-            <label for="wl-email" class="wl-label">
-              <span data-en="Email or phone" data-bm="Emel atau nombor telefon">Email or phone</span>
+            <div class="wl-pill">
+              <label for="wl-email" class="wl-label">
+                <span data-en="Email or phone" data-bm="Emel atau nombor telefon">Email or phone</span>
+              </label>
+              <input id="wl-email" name="contact" type="text" inputmode="email" autocomplete="email"
+                data-ph-en="Email or phone (010…)" data-ph-bm="Emel atau no. telefon (010…)"
+                placeholder="Email or phone (010…)" required>
+              <input type="text" name="hp_company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0">
+              <button type="submit" class="btn btn-primary" data-en="Notify me" data-bm="Bagitau saya">Notify me</button>
+            </div>
+            <label class="wl-consent">
+              <input type="checkbox" name="consent">
+              <span data-en="I agree to be emailed once when Potraces launches." data-bm="Aku setuju kena email sekali je bila Potraces dah live.">I agree to be emailed once when Potraces launches.</span>
             </label>
-            <input id="wl-email" name="contact" type="text" inputmode="email" autocomplete="email"
-              data-ph-en="Email or phone (010…)" data-ph-bm="Emel atau no. telefon (010…)"
-              placeholder="Email or phone (010…)" required>
-            <input type="text" name="hp_company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0">
-            <button type="submit" class="btn btn-primary" data-en="Notify me" data-bm="Bagitau saya">Notify me</button>
           </form>
           <p class="wl-msg" id="wlMsg" role="status" aria-live="polite"></p>
+          <p class="wl-proof" id="wlProof" role="status" aria-live="polite"></p>
           <p class="micro" data-en="No card. We message you once when it's live." data-bm="Takde kad. Kami msg sekali je bila dah ready.">No card. We message you once when it's live.</p>
         </div>
       </div>
@@ -1337,16 +1369,23 @@ a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{o
           <span data-en="Be first in line. One ping when it's live." data-bm="Jadi yang pertama tau. Satu ping je bila dah live.">Be first in line. One ping when it's live.</span>
         </div>
         <form id="waitlistForm2" novalidate>
-          <label for="wl-email2" class="wl-label">
-            <span data-en="Email or phone" data-bm="Emel atau nombor telefon">Email or phone</span>
+          <div class="wl-pill">
+            <label for="wl-email2" class="wl-label">
+              <span data-en="Email or phone" data-bm="Emel atau nombor telefon">Email or phone</span>
+            </label>
+            <input id="wl-email2" name="contact" type="text" inputmode="email" autocomplete="email"
+              data-ph-en="Email or phone (010…)" data-ph-bm="Emel atau no. telefon (010…)"
+              placeholder="Email or phone (010…)" required>
+            <input type="text" name="hp_company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0">
+            <button type="submit" class="btn btn-primary" data-en="Notify me" data-bm="Bagitau saya">Notify me</button>
+          </div>
+          <label class="wl-consent">
+            <input type="checkbox" name="consent">
+            <span data-en="I agree to be emailed once when Potraces launches." data-bm="Aku setuju kena email sekali je bila Potraces dah live.">I agree to be emailed once when Potraces launches.</span>
           </label>
-          <input id="wl-email2" name="contact" type="text" inputmode="email" autocomplete="email"
-            data-ph-en="Email or phone (010…)" data-ph-bm="Emel atau no. telefon (010…)"
-            placeholder="Email or phone (010…)" required>
-          <input type="text" name="hp_company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0">
-          <button type="submit" class="btn btn-primary" data-en="Notify me" data-bm="Bagitau saya">Notify me</button>
         </form>
         <p class="wl-msg" id="wlMsg2" role="status" aria-live="polite"></p>
+        <p class="wl-proof" id="wlProof2" role="status" aria-live="polite"></p>
         <p class="micro" data-en="No card. We message you once when it's live." data-bm="Takde kad. Kami msg sekali je bila dah ready.">No card. We message you once when it's live.</p>
       </div>
     </div>
@@ -1467,6 +1506,9 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
     document.querySelectorAll('[data-ph-en]').forEach(function(inp){
       inp.setAttribute('placeholder', lang==='ms' ? inp.getAttribute('data-ph-bm') : inp.getAttribute('data-ph-en'));
     });
+    document.querySelectorAll('[data-aria-en]').forEach(function(el){
+      el.setAttribute('aria-label', lang==='ms' ? el.getAttribute('data-aria-bm') : el.getAttribute('data-aria-en'));
+    });
     try{ localStorage.setItem(STORAGE, lang); }catch(e){}
   }
   var saved='en';
@@ -1519,60 +1561,178 @@ var WAU_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" f
   els.forEach(function(el){ io.observe(el); });
 })();
 
-/* ── waitlist (saves to Supabase: public anon key, RLS = insert-only, no read) ── */
+/* ── waitlist (Supabase RPC: waitlist_signup + waitlist_public_count via the public anon key) ── */
 (function(){
   var SB_URL='https://iydqeeonaljqapulboaz.supabase.co';
   var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5ZHFlZW9uYWxqcWFwdWxib2F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NjQ1MDcsImV4cCI6MjA4ODQ0MDUwN30.IP0oJOs4DwwIM--ym2rPls51qpCHMVD-oB1UDjgS2Ec';
   function isEmail(v){ return /\S+@\S+\.\S+/.test(v); }
   function valid(v){ return isEmail(v) || /^(\+?6?0)1\d[\s-]?\d{3,4}[\s-]?\d{4}$/.test(v.replace(/\s|-/g,'')); }
-  // store phones in one canonical form (digits only; +60/60 → 0) so the same number dedupes
-  function normContact(v){ return isEmail(v) ? v : v.replace(/\D/g,'').replace(/^60/, '0'); }
+  function ms(){ return document.documentElement.getAttribute('lang')==='ms'; }
+  function esc(s){ var d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+  // attribute-safe escape — text-node serialization does NOT encode quotes, so
+  // values placed inside "double-quoted" attributes need this to prevent breakout.
+  function escA(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  // remember a referral code from ?ref=CODE on load (carried into every signup)
+  var REF=null;
+  try{ REF = new URLSearchParams(location.search).get('ref'); if(REF){ REF=REF.trim().slice(0,32) || null; } }catch(e){}
+
+  // call a Postgres RPC through PostgREST with the public anon key
+  async function rpc(fn, body){
+    var res = await fetch(SB_URL+'/rest/v1/rpc/'+fn,{
+      method:'POST',
+      headers:{ 'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json' },
+      body: JSON.stringify(body||{})
+    });
+    var data=null; try{ data=await res.json(); }catch(e){}
+    if(!res.ok){ var m=(data&&data.message)||('http '+res.status); var err=new Error(m); err.payload=data; throw err; }
+    return data;
+  }
+
+  // build the share row + WhatsApp button for a referral code
+  function shareBlock(code){
+    var link='https://jejakbaki.my/?ref='+encodeURIComponent(code);
+    var inviteEn='Found Potraces — a calm money app for irregular income in Malaysia. Join the waitlist with me: ';
+    var inviteBm='Jumpa Potraces — app duit calm untuk rezeki tak tetap kat Malaysia. Jom join waitlist sekali: ';
+    var invite = ms() ? inviteBm : inviteEn;
+    var wa='https://wa.me/?text='+encodeURIComponent(invite+link);
+    var copyEn='Copy', copyBm='Salin';
+    var waEn='Share on WhatsApp', waBm='Share kat WhatsApp';
+    var shareLblEn='Jump the queue — invite a friend:', shareLblBm='Nak naik queue? Ajak member:';
+    return ''
+      + '<p class="wl-share-lbl" data-en="'+escA(shareLblEn)+'" data-bm="'+escA(shareLblBm)+'">'+esc(ms()?shareLblBm:shareLblEn)+'</p>'
+      + '<div class="wl-share-row">'
+      +   '<input class="wl-link" type="text" readonly value="'+escA(link)+'" data-aria-en="Your invite link" data-aria-bm="Pautan jemputan kau" aria-label="'+escA(ms()?'Pautan jemputan kau':'Your invite link')+'" onclick="this.select()">'
+      +   '<button type="button" class="wl-copy" data-link="'+escA(link)+'" data-en="'+escA(copyEn)+'" data-bm="'+escA(copyBm)+'">'+esc(ms()?copyBm:copyEn)+'</button>'
+      + '</div>'
+      + '<a class="wl-wa" href="'+escA(wa)+'" target="_blank" rel="noopener">'
+      +   '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M17.5 14.4c-.3-.2-1.7-.8-1.9-.9-.3-.1-.5-.2-.7.1-.2.3-.7.9-.9 1.1-.2.2-.3.2-.6.1-1.5-.7-2.5-1.3-3.5-3-.3-.5.3-.4.7-1.4.1-.2 0-.4 0-.5 0-.2-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.2.2 2.1 3.3 5.2 4.6.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 1.9-1.4.2-.7.2-1.3.2-1.4-.1-.1-.3-.2-.6-.4zM12 2a10 10 0 0 0-8.6 15l-1.3 4.7L7 20.4A10 10 0 1 0 12 2z"/></svg>'
+      +   '<span data-en="'+escA(waEn)+'" data-bm="'+escA(waBm)+'">'+esc(ms()?waBm:waEn)+'</span>'
+      + '</a>';
+  }
+
+  // swap the form (+ status lines) for a calm success state, in place inside the tile
+  function showSuccess(form, data, source){
+    var pos = (data&&data.position)||0;
+    var code = (data&&data.referral_code)||'';
+    // "already on the list" now returns { already:true, position:null, referral_code:null }
+    // — show a calm generic confirmation, no #N and no share block (nothing to share).
+    var already = !!(data&&data.already) || pos<=0 || !code;
+    var tick='<span class="wl-tick" aria-hidden="true"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>';
+    var posEn, posBm, html;
+    if(already){
+      posEn = "You're already on the list — we'll email you once at launch.";
+      posBm = "Kau dah ada dalam senarai — nanti kami email sekali je bila dah live.";
+      html = '<div class="wl-success">'
+        + '<div class="wl-pos">'+tick+'<span data-en="'+escA(posEn)+'" data-bm="'+escA(posBm)+'">'+esc(ms()?posBm:posEn)+'</span></div>'
+        + '</div>';
+    } else {
+      // both languages carry the same number, so a later language toggle keeps the position right
+      posEn = "You're #"+pos+" on the list";
+      posBm = "Kau #"+pos+" dalam senarai";
+      html = '<div class="wl-success">'
+        + '<div class="wl-pos">'+tick+'<span data-en="'+escA(posEn)+'" data-bm="'+escA(posBm)+'">'+esc(ms()?posBm:posEn)+'</span></div>'
+        + shareBlock(code)
+        + '</div>';
+    }
+    var tile = form.closest('.wl-tile');
+    if(!tile){ form.outerHTML = html; return; }
+    // remove the form + its trailing status/proof lines, keep the .wl-frame header + micro note
+    var msg = tile.querySelector('.wl-msg'); if(msg) msg.remove();
+    var proof = tile.querySelector('.wl-proof'); if(proof) proof.remove();
+    form.insertAdjacentHTML('afterend', html);
+    form.remove();
+    // wire the copy button
+    var copyBtn = tile.querySelector('.wl-copy');
+    if(copyBtn){
+      copyBtn.addEventListener('click', function(){
+        var link = copyBtn.getAttribute('data-link');
+        var done = function(){
+          copyBtn.classList.add('done');
+          copyBtn.textContent = ms() ? 'Dah salin' : 'Copied';
+          setTimeout(function(){
+            copyBtn.classList.remove('done');
+            copyBtn.textContent = ms() ? copyBtn.getAttribute('data-bm') : copyBtn.getAttribute('data-en');
+          }, 1800);
+        };
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(link).then(done, function(){ var i=tile.querySelector('.wl-link'); if(i){ i.select(); document.execCommand&&document.execCommand('copy'); } done(); });
+        } else { var i=tile.querySelector('.wl-link'); if(i){ i.select(); try{ document.execCommand('copy'); }catch(e){} } done(); }
+      });
+    }
+  }
+
   function bind(formId, msgId, source){
     var form=document.getElementById(formId), msg=document.getElementById(msgId);
     if(!form) return;
     form.addEventListener('submit', async function(e){
       e.preventDefault();
-      var ms = document.documentElement.getAttribute('lang')==='ms';
+      var m = ms();
       var input=form.querySelector('input[name="contact"]');
       var v=((input&&input.value)||'').trim();
       var hp=form.querySelector('input[name="hp_company"]');
+      var consentEl=form.querySelector('input[name="consent"]');
+      var consent=!!(consentEl&&consentEl.checked);
       if(hp && hp.value){ // honeypot tripped → looks like a bot; fake success, save nothing
-        msg.textContent = ms ? 'Dah masuk senarai!' : "You're on the list.";
+        msg.textContent = m ? 'Dah masuk senarai!' : "You're on the list.";
         msg.style.color=''; form.reset(); return;
       }
       if(!valid(v)){
-        msg.textContent = ms ? 'Letak emel atau no. telefon yang betul ya.' : 'Pop in a valid email or phone number.';
+        msg.textContent = m ? 'Letak emel atau no. telefon yang betul ya.' : 'Pop in a valid email or phone number.';
+        msg.style.color = 'var(--bronze)'; return;
+      }
+      if(!consent){
+        msg.textContent = m ? 'Tick kotak tu dulu ya — nak pastikan kau ok kena email.' : 'Tick the box first so we know it’s okay to email you.';
         msg.style.color = 'var(--bronze)'; return;
       }
       var btn=form.querySelector('button[type="submit"]');
       if(btn) btn.disabled=true;
-      msg.textContent = ms ? 'Sat…' : 'One sec…'; msg.style.color='';
+      msg.textContent = m ? 'Sat…' : 'One sec…'; msg.style.color='';
       try{
-        var res=await fetch(SB_URL+'/rest/v1/waitlist',{
-          method:'POST',
-          headers:{
-            'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,
-            'Content-Type':'application/json',
-            'Prefer':'return=minimal'
-          },
-          body: JSON.stringify({ contact:normContact(v), kind:isEmail(v)?'email':'phone', source:source, user_agent:(navigator.userAgent||'').slice(0,300) })
+        var data = await rpc('waitlist_signup', {
+          p_contact: v,
+          p_kind: isEmail(v) ? 'email' : 'phone',
+          p_source: source,
+          p_ref: REF || null,
+          p_consent: consent
         });
-        // 409 = already on the list (hits the unique index) → success for the user.
-        // (We avoid Prefer:resolution=ignore-duplicates because that upsert path
-        //  needs SELECT, which anon doesn't have — the list is private.)
-        if(!res.ok && res.status!==409) throw new Error('http '+res.status);
-        msg.textContent = ms ? 'Dah masuk senarai! Kami colek bila dah live.' : "You're on the list — we'll ping you when it's live.";
-        msg.style.color=''; form.reset();
+        msg.textContent='';
+        showSuccess(form, data, source);
       }catch(err){
-        msg.textContent = ms ? 'Alamak, tak jadi. Cuba lagi sekejap ya.' : "Hmm, that didn't go through — try again in a moment.";
+        var code=(err&&err.payload&&err.payload.message)||(err&&err.message)||'';
+        if(/consent_required/.test(code)){
+          msg.textContent = m ? 'Tick kotak tu dulu ya — nak pastikan kau ok kena email.' : 'Tick the box first so we know it’s okay to email you.';
+        } else if(/invalid_contact/.test(code)){
+          msg.textContent = m ? 'Letak emel atau no. telefon yang betul ya.' : 'Pop in a valid email or phone number.';
+        } else {
+          msg.textContent = m ? 'Alamak, tak jadi. Cuba lagi sekejap ya.' : "Hmm, that didn't go through — try again in a moment.";
+        }
         msg.style.color='var(--bronze)';
-      }finally{
         if(btn) btn.disabled=false;
       }
     });
   }
   bind('waitlistForm','wlMsg','hero');
   bind('waitlistForm2','wlMsg2','final');
+
+  // social proof: real count under both forms, only when it's worth showing (>= 10)
+  (async function(){
+    var proofs=[document.getElementById('wlProof'), document.getElementById('wlProof2')].filter(Boolean);
+    if(!proofs.length) return;
+    try{
+      var n = await rpc('waitlist_public_count', {});
+      n = parseInt(n,10);
+      if(!isFinite(n) || n < 10) return;
+      // plain text (no child node) so the existing language swapper re-translates it on toggle
+      var en='join '+n+' others waiting';
+      var bm='jom join '+n+' orang lagi yang tengah tunggu';
+      proofs.forEach(function(proof){
+        proof.setAttribute('data-en', en);
+        proof.setAttribute('data-bm', bm);
+        proof.textContent = ms() ? bm : en;
+        proof.classList.add('show');
+      });
+    }catch(e){ /* count is best-effort; stay silent on failure */ }
+  })();
 })();
 
 document.getElementById('year').textContent = String(new Date().getFullYear());
