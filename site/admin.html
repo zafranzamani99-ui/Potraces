@@ -122,6 +122,19 @@ main{flex:1;padding:32px 0 64px}
 .toolbar .refresh{font-size:.86rem;font-weight:600;color:var(--olive);background:rgba(79,81,4,.07);border:1px solid rgba(79,81,4,.14);border-radius:var(--r-md);padding:10px 14px;transition:background .15s}
 .toolbar .refresh:hover{background:rgba(79,81,4,.12)}
 
+/* tabs */
+.tabs{display:flex;gap:4px;margin-bottom:24px;border-bottom:1px solid var(--border)}
+.tab{background:none;border:none;font-family:inherit;font-size:.95rem;font-weight:600;color:var(--text3);padding:11px 16px;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s}
+.tab:hover{color:var(--text2)}
+.tab.active{color:var(--olive);border-bottom-color:var(--olive)}
+
+/* waitlist chips + contact */
+.ri-chip.k-email{background:rgba(79,81,4,.1);color:var(--olive)}
+.ri-chip.k-phone{background:rgba(107,163,190,.14);color:var(--sky)}
+.ri-chip.src{background:rgba(139,115,85,.1);color:var(--bronze)}
+.ri-chip.sent{background:rgba(178,120,10,.12);color:var(--gold)}
+.arow-contact{font-size:.92rem;font-weight:600;color:var(--text);word-break:break-all}
+
 /* rows */
 .arow{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:15px 16px;margin-bottom:11px}
 .arow-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:9px}
@@ -220,6 +233,14 @@ main{flex:1;padding:32px 0 64px}
 
       <!-- dashboard -->
       <section id="dashState" class="hide">
+
+        <div class="tabs" role="tablist" aria-label="Admin views">
+          <button type="button" id="tabFeedback" class="tab active" role="tab" aria-selected="true">Beta feedback</button>
+          <button type="button" id="tabWaitlist" class="tab" role="tab" aria-selected="false">Waitlist</button>
+        </div>
+
+        <!-- feedback view -->
+        <div id="feedbackView">
         <div class="head">
           <h1>Beta feedback</h1>
           <p class="lead">Every tester's report. Set a status, open screenshots, remove spam.</p>
@@ -249,6 +270,22 @@ main{flex:1;padding:32px 0 64px}
         </div>
 
         <div id="list"></div>
+        </div><!-- /feedbackView -->
+
+        <!-- waitlist view -->
+        <div id="waitlistView" class="hide">
+          <div class="head">
+            <h1>Launch waitlist</h1>
+            <p class="lead">People who asked to be told when Potraces goes live. Export to send the one launch message — then stamp them notified so no one gets it twice.</p>
+          </div>
+          <div class="stats" id="wlStats"></div>
+          <div class="toolbar">
+            <input id="wlSearch" type="search" placeholder="Search email or phone…" aria-label="Search waitlist">
+            <button type="button" id="wlExportBtn" class="refresh">Export CSV</button>
+            <button type="button" id="wlRefreshBtn" class="refresh">Refresh</button>
+          </div>
+          <div id="wlList"></div>
+        </div><!-- /waitlistView -->
       </section>
 
     </div>
@@ -281,8 +318,11 @@ const loadingState=$('loadingState'), signinState=$('signinState'), denyState=$(
 const googleBtn=$('googleBtn'), magicForm=$('magicForm'), magicBtn=$('magicBtn'), magicEmail=$('magicEmail'), signinMsg=$('signinMsg');
 const signoutBtn=$('signoutBtn'), signoutBtn2=$('signoutBtn2'), denyEmail=$('denyEmail');
 const listEl=$('list'), statsEl=$('stats'), fStatus=$('fStatus'), fSev=$('fSev'), fSearch=$('fSearch'), refreshBtn=$('refreshBtn'), flash=$('flash');
+const tabFeedback=$('tabFeedback'), tabWaitlist=$('tabWaitlist'), feedbackView=$('feedbackView'), waitlistView=$('waitlistView');
+const wlStatsEl=$('wlStats'), wlListEl=$('wlList'), wlSearch=$('wlSearch'), wlExportBtn=$('wlExportBtn'), wlRefreshBtn=$('wlRefreshBtn');
 
 let allReports = [];
+let allWaitlist = [], wlLoaded = false;
 
 const STATUS = [['new','New'],['triaged','Looking into it'],['fixed','Fixed'],['wontfix','Noted'],['dup','Duplicate'],['done','Done']];
 const SEV = { idea:'Idea', minor:'Minor', major:'Annoying', blocker:'Blocks me' };
@@ -320,7 +360,7 @@ magicForm.addEventListener('submit', async (e) => {
   if(error){ setMsg(signinMsg,'Could not send the link. Try again.','warn'); return; }
   setMsg(signinMsg,'Check your email for the sign-in link.','ok'); magicForm.reset();
 });
-async function doSignOut(){ await sb.auth.signOut(); show(signinState); }
+async function doSignOut(){ await sb.auth.signOut(); wlLoaded=false; switchTab('feedback'); show(signinState); }
 signoutBtn.addEventListener('click', doSignOut);
 signoutBtn2.addEventListener('click', doSignOut);
 
@@ -433,6 +473,79 @@ fStatus.addEventListener('change', render);
 fSev.addEventListener('change', render);
 fSearch.addEventListener('input', render);
 refreshBtn.addEventListener('click', loadAll);
+
+/* ── waitlist (admin RLS lets us read it) ── */
+function switchTab(which){
+  const wl = which==='waitlist';
+  tabFeedback.classList.toggle('active', !wl);
+  tabWaitlist.classList.toggle('active', wl);
+  tabFeedback.setAttribute('aria-selected', String(!wl));
+  tabWaitlist.setAttribute('aria-selected', String(wl));
+  feedbackView.classList.toggle('hide', wl);
+  waitlistView.classList.toggle('hide', !wl);
+  if (wl && !wlLoaded) loadWaitlist();
+}
+
+async function loadWaitlist(){
+  wlListEl.innerHTML = `<div class="loading"><div class="spinner" aria-hidden="true"></div><p>Loading waitlist…</p></div>`;
+  const { data, error } = await sb
+    .from('waitlist')
+    .select('id, created_at, contact, kind, source, notified_at')
+    .order('created_at', { ascending:false });
+  if (error){ wlListEl.innerHTML = `<div class="empty">Could not load the waitlist.<br><small>${esc(error.message)}</small></div>`; wlStatsEl.innerHTML=''; return; }
+  allWaitlist = data || [];
+  wlLoaded = true;
+  renderWaitlistStats();
+  renderWaitlist();
+}
+
+function renderWaitlistStats(){
+  const total = allWaitlist.length;
+  const emails = allWaitlist.filter(r => r.kind==='email').length;
+  const phones = allWaitlist.filter(r => r.kind==='phone').length;
+  const pending = allWaitlist.filter(r => !r.notified_at).length;
+  wlStatsEl.innerHTML =
+    `<div class="stat"><b class="tnum">${total}</b><span>Total</span></div>`+
+    `<div class="stat"><b class="tnum">${emails}</b><span>Emails</span></div>`+
+    `<div class="stat"><b class="tnum">${phones}</b><span>Phones</span></div>`+
+    `<div class="stat"><b class="tnum">${pending}</b><span>Not notified</span></div>`;
+}
+
+function renderWaitlist(){
+  const q = (wlSearch.value||'').trim().toLowerCase();
+  const rows = allWaitlist.filter(r => !q || (r.contact||'').toLowerCase().includes(q));
+  if (rows.length === 0){
+    wlListEl.innerHTML = `<div class="empty">${allWaitlist.length ? 'No signups match your search.' : 'No signups yet.'}</div>`;
+    return;
+  }
+  wlListEl.innerHTML = rows.map(r => {
+    const kind = r.kind ? `<span class="ri-chip k-${escA(r.kind)}">${esc(r.kind)}</span>` : '';
+    const src  = r.source ? `<span class="ri-chip src">${esc(r.source)}</span>` : '';
+    const sent = r.notified_at ? `<span class="ri-chip sent">notified</span>` : '';
+    return `<article class="arow">
+      <div class="arow-head">${kind}${src}${sent}<span class="arow-contact">${esc(r.contact)}</span><span class="ri-date">${esc(fmtDate(r.created_at))}</span></div>
+    </article>`;
+  }).join('');
+}
+
+function exportWaitlistCsv(){
+  if (!allWaitlist.length){ showFlash('Nothing to export'); return; }
+  const head = ['contact','kind','source','signed_up','notified_at'];
+  const lines = [head].concat(allWaitlist.map(r => [r.contact, r.kind||'', r.source||'', r.created_at||'', r.notified_at||'']));
+  const csv = lines.map(row => row.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob = new Blob(['﻿'+csv], { type:'text/csv;charset=utf-8' }); // BOM so Excel reads UTF-8
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'potraces-waitlist.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+tabFeedback.addEventListener('click', () => switchTab('feedback'));
+tabWaitlist.addEventListener('click', () => switchTab('waitlist'));
+wlSearch.addEventListener('input', renderWaitlist);
+wlRefreshBtn.addEventListener('click', loadWaitlist);
+wlExportBtn.addEventListener('click', exportWaitlistCsv);
 
 /* ── PKCE finish ── */
 async function completePkceIfNeeded(){

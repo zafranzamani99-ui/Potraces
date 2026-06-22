@@ -32,6 +32,10 @@ create table if not exists public.waitlist (
 
 create index if not exists waitlist_created_idx on public.waitlist(created_at desc);
 
+-- launch-blast bookkeeping: stamped when this contact was sent the one "we're live"
+-- message, so re-running the blast never messages the same person twice. NULL = not yet notified.
+alter table public.waitlist add column if not exists notified_at timestamptz;
+
 -- length guard (mirrors the WITH CHECK below)
 alter table public.waitlist drop constraint if exists waitlist_contact_len;
 alter table public.waitlist
