@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useStallStore } from '../../store/stallStore';
 import { useBusinessStore } from '../../store/businessStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -118,6 +119,8 @@ const SessionSummary: React.FC = () => {
       }).start();
     }, 3000);
   };
+
+  const guardedTransfer = useSubmitGuard(handleTransfer);
 
   const handleSkipTransfer = () => {
     setTransferSkipped(true);
@@ -395,12 +398,12 @@ const SessionSummary: React.FC = () => {
                 selectTextOnFocus
                 accessibilityLabel="Transfer amount"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
             <TouchableOpacity
               style={styles.transferButton}
-              onPress={handleTransfer}
+              onPress={guardedTransfer}
               activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel="Transfer to personal wallet"

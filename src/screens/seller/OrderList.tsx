@@ -10,13 +10,13 @@ import {
   Alert,
   Linking,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   AppState,
   RefreshControl,
   Keyboard,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -38,6 +38,7 @@ import { usePendingPaymentsStore } from '../../store/pendingPaymentsStore';
 import { scheduleUnpaidQrReminder, cancelUnpaidQrReminder } from '../../services/qrPaymentReminder';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { SellerOrder, SellerOrderItem, OrderStatus, SellerPaymentMethod, SellerProduct, DepositEntry } from '../../types';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import FloatingModal from '../../components/common/FloatingModal';
@@ -1255,6 +1256,151 @@ const OrderList: React.FC = () => {
     setSelectedPaymentMethod(null);
     setPaymentNote('');
   }, [pendingPayOrder, bulkPayIds, selectedPaymentMethod, paymentNote, markOrderPaid, markOrdersPaid, showToast, cardOffline, qrForPay, t]);
+  const guardedConfirmPayment = useSubmitGuard(handleConfirmPayment);
+
+  const handleSaveDeposit = useCallback(() => {
+    if (!selectedOrder) return;
+    if (!depositMethod) return;
+    const amt = parseFloat(depositAmount);
+    if (!amt || amt <= 0) {
+      warningNotification();
+      showToast('enter a valid amount.', 'error');
+      return;
+    }
+    const remaining = selectedOrder.totalAmount - (selectedOrder.paidAmount || 0);
+    // Auto-append tip note when overpaying
+    let finalNote = depositNote.trim();
+    if (amt > remaining && remaining > 0) {
+      const tip = amt - remaining;
+      const tipText = `tip ${currency} ${tip.toFixed(2)}`;
+      finalNote = finalNote ? `${finalNote} · ${tipText}` : tipText;
+    }
+    if (depositMethod === 'card') {
+      if (cardOffline) { showToast(t.tapToPay.offlineToast, 'info'); return; }
+      // Charge first. Close the detail/deposit modal so the charge
+      // sheet isn't stacked on it (iOS); the order list reflects the
+      // payment when the store updates. Record only on confirm.
+      const order = selectedOrder;
+      setShowDepositInput(false);
+      setSelectedOrder(null);
+      setTimeout(() => {
+        setCardSheet({
+          amountCents: Math.round(amt * 100),
+          label: order.customerName || `#${order.orderNumber || order.id.slice(0, 4)}`,
+          refId: order.id,
+          onDone: (txnId: string) => { recordPayment(order.id, amt, 'card', finalNote || undefined, txnId); },
+        });
+      }, 60);
+      return;
+    }
+    if (isQrFamily(depositMethod) && qrForPay?.payload) {
+      // Show the exact-amount QR for this deposit, then record on confirm.
+      const order = selectedOrder;
+      const method = depositMethod;
+      const note = finalNote || undefined;
+      const payAmt = amt;
+      setShowDepositInput(false);
+      setSelectedOrder(null);
+      setTimeout(() => {
+        void openQrSheet({
+          amountCents: Math.round(payAmt * 100),
+          refId: order.id,
+          orderNumber: order.orderNumber,
+          onComplete: () => { setQrSheet(null); cancelUnpaidQrReminder(order.id); recordPayment(order.id, payAmt, method, note); },
+        });
+      }, 60);
+      return;
+    }
+    mediumTap();
+    recordPayment(selectedOrder.id, amt, depositMethod, finalNote || undefined);
+    const freshOrder = useSellerStore.getState().orders.find(o => o.id === selectedOrder.id);
+    if (freshOrder) {
+      setSelectedOrder(freshOrder);
+    } else {
+      const newPaid = (selectedOrder.paidAmount || 0) + amt;
+      const fullyPaid = newPaid >= selectedOrder.totalAmount;
+      setSelectedOrder({
+        ...selectedOrder,
+        paidAmount: newPaid,
+        isPaid: fullyPaid,
+        paymentMethod: depositMethod,
+        paidAt: fullyPaid ? new Date() : selectedOrder.paidAt,
+        updatedAt: new Date(),
+      });
+    }
+    setShowDepositInput(false);
+    const newPaid = (selectedOrder.paidAmount || 0) + amt;
+    const fullyPaid = newPaid >= selectedOrder.totalAmount;
+    const tipAmt = newPaid - selectedOrder.totalAmount;
+    showToast(
+      tipAmt > 0
+        ? `fully paid! +${currency} ${tipAmt.toFixed(2)} tip`
+        : fullyPaid ? 'fully paid!' : `deposit of ${currency} ${amt.toFixed(2)} recorded.`,
+      'info'
+    );
+  }, [selectedOrder, depositMethod, depositAmount, depositNote, currency, cardOffline, t, qrForPay, recordPayment, openQrSheet, showToast]);
+  const guardedSaveDeposit = useSubmitGuard(handleSaveDeposit);
+
+  const handleSaveSwipePayment = useCallback(() => {
+    if (!swipePayOrder) return;
+    if (!depositMethod) return;
+    const amt = parseFloat(depositAmount);
+    if (!amt || amt <= 0) {
+      warningNotification();
+      showToast(t.seller.olEnterValidAmount, 'error');
+      return;
+    }
+    const remaining = swipePayOrder.totalAmount - (swipePayOrder.paidAmount || 0);
+    let finalNote = depositNote.trim();
+    if (amt > remaining && remaining > 0) {
+      const tip = amt - remaining;
+      const tipText = `tip ${currency} ${tip.toFixed(2)}`;
+      finalNote = finalNote ? `${finalNote} · ${tipText}` : tipText;
+    }
+    if (depositMethod === 'card') {
+      if (cardOffline) { showToast(t.tapToPay.offlineToast, 'info'); return; }
+      const order = swipePayOrder;
+      setSwipePayOrder(null);
+      setTimeout(() => {
+        setCardSheet({
+          amountCents: Math.round(amt * 100),
+          label: order.customerName || `#${order.orderNumber || order.id.slice(0, 4)}`,
+          refId: order.id,
+          onDone: (txnId: string) => { recordPayment(order.id, amt, 'card', finalNote || undefined, txnId); },
+        });
+      }, 60);
+      return;
+    }
+    if (isQrFamily(depositMethod) && qrForPay?.payload) {
+      const order = swipePayOrder;
+      const method = depositMethod;
+      const note = finalNote || undefined;
+      const payAmt = amt;
+      setSwipePayOrder(null);
+      setTimeout(() => {
+        void openQrSheet({
+          amountCents: Math.round(payAmt * 100),
+          refId: order.id,
+          orderNumber: order.orderNumber,
+          onComplete: () => { setQrSheet(null); cancelUnpaidQrReminder(order.id); recordPayment(order.id, payAmt, method, note); },
+        });
+      }, 60);
+      return;
+    }
+    mediumTap();
+    recordPayment(swipePayOrder.id, amt, depositMethod, finalNote || undefined);
+    setSwipePayOrder(null);
+    const newPaid = (swipePayOrder.paidAmount || 0) + amt;
+    const fullyPaid = newPaid >= swipePayOrder.totalAmount;
+    const tipAmt = newPaid - swipePayOrder.totalAmount;
+    showToast(
+      tipAmt > 0
+        ? t.seller.olFullyPaidTip.replace('{currency}', currency).replace('{amount}', tipAmt.toFixed(2))
+        : fullyPaid ? t.seller.olFullyPaid : t.seller.olAmountRecorded.replace('{currency}', currency).replace('{amount}', amt.toFixed(2)),
+      'info'
+    );
+  }, [swipePayOrder, depositMethod, depositAmount, depositNote, currency, cardOffline, t, qrForPay, recordPayment, openQrSheet, showToast]);
+  const guardedSaveSwipePayment = useSubmitGuard(handleSaveSwipePayment);
 
   const handleCloseModal = useCallback(() => {
     setSelectedOrder(null);
@@ -1400,7 +1546,7 @@ const OrderList: React.FC = () => {
           'Add your payment QR code in Settings first.',
           [
             { text: 'Later', style: 'cancel' },
-            { text: 'Go to Settings', onPress: () => navigation.navigate('SellerSettings', { scrollTo: 'qr' }) },
+            { text: 'Go to Settings', onPress: () => navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'qr' }) },
           ]
         );
         return;
@@ -1795,7 +1941,7 @@ const OrderList: React.FC = () => {
             accessibilityLabel="Search orders"
             accessibilityRole="search"
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
           {searchInput.length > 0 && (
             <TouchableOpacity
@@ -2262,14 +2408,14 @@ const OrderList: React.FC = () => {
                 placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 returnKeyType="done"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             )}
 
             <TouchableOpacity
               activeOpacity={0.7}
               style={[styles.paymentConfirmBtn, !selectedPaymentMethod && styles.paymentConfirmBtnDisabled]}
-              onPress={handleConfirmPayment}
+              onPress={guardedConfirmPayment}
               disabled={!selectedPaymentMethod}
               accessibilityRole="button"
               accessibilityLabel="Confirm payment"
@@ -2438,7 +2584,7 @@ const OrderList: React.FC = () => {
                         placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                         keyboardType="phone-pad"
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                       />
 
                       {/* ── Address ── */}
@@ -2452,7 +2598,7 @@ const OrderList: React.FC = () => {
                         multiline
                         numberOfLines={3}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                       />
 
                       {/* ── Delivery date (keyboard modal) ── */}
@@ -2483,7 +2629,7 @@ const OrderList: React.FC = () => {
                         placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                         multiline
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                       />
 
                       <View style={styles.editActions}>
@@ -2953,7 +3099,7 @@ const OrderList: React.FC = () => {
                   placeholder="search products..."
                   placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
                 {addProductSearch.length > 0 && (
                   <TouchableOpacity onPress={() => setAddProductSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -3043,7 +3189,7 @@ const OrderList: React.FC = () => {
                 keyboardType="decimal-pad"
                 autoFocus
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
             {(() => {
@@ -3086,7 +3232,7 @@ const OrderList: React.FC = () => {
                 placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 returnKeyType="done"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             )}
 
@@ -3094,86 +3240,7 @@ const OrderList: React.FC = () => {
               activeOpacity={0.7}
               style={[styles.paymentConfirmBtn, !depositMethod && styles.paymentConfirmBtnDisabled]}
               disabled={!depositMethod}
-              onPress={() => {
-                if (!depositMethod) return;
-                const amt = parseFloat(depositAmount);
-                if (!amt || amt <= 0) {
-                  warningNotification();
-                  showToast('enter a valid amount.', 'error');
-                  return;
-                }
-                const remaining = selectedOrder.totalAmount - (selectedOrder.paidAmount || 0);
-                // Auto-append tip note when overpaying
-                let finalNote = depositNote.trim();
-                if (amt > remaining && remaining > 0) {
-                  const tip = amt - remaining;
-                  const tipText = `tip ${currency} ${tip.toFixed(2)}`;
-                  finalNote = finalNote ? `${finalNote} · ${tipText}` : tipText;
-                }
-                if (depositMethod === 'card') {
-                  if (cardOffline) { showToast(t.tapToPay.offlineToast, 'info'); return; }
-                  // Charge first. Close the detail/deposit modal so the charge
-                  // sheet isn't stacked on it (iOS); the order list reflects the
-                  // payment when the store updates. Record only on confirm.
-                  const order = selectedOrder;
-                  setShowDepositInput(false);
-                  setSelectedOrder(null);
-                  setTimeout(() => {
-                    setCardSheet({
-                      amountCents: Math.round(amt * 100),
-                      label: order.customerName || `#${order.orderNumber || order.id.slice(0, 4)}`,
-                      refId: order.id,
-                      onDone: (txnId: string) => { recordPayment(order.id, amt, 'card', finalNote || undefined, txnId); },
-                    });
-                  }, 60);
-                  return;
-                }
-                if (isQrFamily(depositMethod) && qrForPay?.payload) {
-                  // Show the exact-amount QR for this deposit, then record on confirm.
-                  const order = selectedOrder;
-                  const method = depositMethod;
-                  const note = finalNote || undefined;
-                  const payAmt = amt;
-                  setShowDepositInput(false);
-                  setSelectedOrder(null);
-                  setTimeout(() => {
-                    void openQrSheet({
-                      amountCents: Math.round(payAmt * 100),
-                      refId: order.id,
-                      orderNumber: order.orderNumber,
-                      onComplete: () => { setQrSheet(null); cancelUnpaidQrReminder(order.id); recordPayment(order.id, payAmt, method, note); },
-                    });
-                  }, 60);
-                  return;
-                }
-                mediumTap();
-                recordPayment(selectedOrder.id, amt, depositMethod, finalNote || undefined);
-                const freshOrder = useSellerStore.getState().orders.find(o => o.id === selectedOrder.id);
-                if (freshOrder) {
-                  setSelectedOrder(freshOrder);
-                } else {
-                  const newPaid = (selectedOrder.paidAmount || 0) + amt;
-                  const fullyPaid = newPaid >= selectedOrder.totalAmount;
-                  setSelectedOrder({
-                    ...selectedOrder,
-                    paidAmount: newPaid,
-                    isPaid: fullyPaid,
-                    paymentMethod: depositMethod,
-                    paidAt: fullyPaid ? new Date() : selectedOrder.paidAt,
-                    updatedAt: new Date(),
-                  });
-                }
-                setShowDepositInput(false);
-                const newPaid = (selectedOrder.paidAmount || 0) + amt;
-                const fullyPaid = newPaid >= selectedOrder.totalAmount;
-                const tipAmt = newPaid - selectedOrder.totalAmount;
-                showToast(
-                  tipAmt > 0
-                    ? `fully paid! +${currency} ${tipAmt.toFixed(2)} tip`
-                    : fullyPaid ? 'fully paid!' : `deposit of ${currency} ${amt.toFixed(2)} recorded.`,
-                  'info'
-                );
-              }}
+              onPress={guardedSaveDeposit}
               accessibilityRole="button"
               accessibilityLabel="Save deposit"
             >
@@ -3280,7 +3347,7 @@ const OrderList: React.FC = () => {
                           placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                           returnKeyType="done"
                           keyboardAppearance={isDark ? 'dark' : 'light'}
-                          selectionColor={C.accent}
+                          selectionColor={withAlpha(C.accent, 0.25)}
                         />
                       </View>
                       {(() => {
@@ -3300,7 +3367,7 @@ const OrderList: React.FC = () => {
                         placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                         returnKeyType="done"
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                       />
                       <View style={styles.paymentPickerRow}>
                         {PAYMENT_METHODS.map((m) => {
@@ -3518,7 +3585,7 @@ const OrderList: React.FC = () => {
                 keyboardType="decimal-pad"
                 autoFocus
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
 
@@ -3594,7 +3661,7 @@ const OrderList: React.FC = () => {
                 placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                 returnKeyType="done"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             )}
 
@@ -3602,64 +3669,7 @@ const OrderList: React.FC = () => {
               activeOpacity={0.7}
               style={[styles.paymentConfirmBtn, !depositMethod && styles.paymentConfirmBtnDisabled]}
               disabled={!depositMethod}
-              onPress={() => {
-                if (!depositMethod) return;
-                const amt = parseFloat(depositAmount);
-                if (!amt || amt <= 0) {
-                  warningNotification();
-                  showToast(t.seller.olEnterValidAmount, 'error');
-                  return;
-                }
-                const remaining = swipePayOrder.totalAmount - (swipePayOrder.paidAmount || 0);
-                let finalNote = depositNote.trim();
-                if (amt > remaining && remaining > 0) {
-                  const tip = amt - remaining;
-                  const tipText = `tip ${currency} ${tip.toFixed(2)}`;
-                  finalNote = finalNote ? `${finalNote} · ${tipText}` : tipText;
-                }
-                if (depositMethod === 'card') {
-                  if (cardOffline) { showToast(t.tapToPay.offlineToast, 'info'); return; }
-                  const order = swipePayOrder;
-                  setSwipePayOrder(null);
-                  setTimeout(() => {
-                    setCardSheet({
-                      amountCents: Math.round(amt * 100),
-                      label: order.customerName || `#${order.orderNumber || order.id.slice(0, 4)}`,
-                      refId: order.id,
-                      onDone: (txnId: string) => { recordPayment(order.id, amt, 'card', finalNote || undefined, txnId); },
-                    });
-                  }, 60);
-                  return;
-                }
-                if (isQrFamily(depositMethod) && qrForPay?.payload) {
-                  const order = swipePayOrder;
-                  const method = depositMethod;
-                  const note = finalNote || undefined;
-                  const payAmt = amt;
-                  setSwipePayOrder(null);
-                  setTimeout(() => {
-                    void openQrSheet({
-                      amountCents: Math.round(payAmt * 100),
-                      refId: order.id,
-                      orderNumber: order.orderNumber,
-                      onComplete: () => { setQrSheet(null); cancelUnpaidQrReminder(order.id); recordPayment(order.id, payAmt, method, note); },
-                    });
-                  }, 60);
-                  return;
-                }
-                mediumTap();
-                recordPayment(swipePayOrder.id, amt, depositMethod, finalNote || undefined);
-                setSwipePayOrder(null);
-                const newPaid = (swipePayOrder.paidAmount || 0) + amt;
-                const fullyPaid = newPaid >= swipePayOrder.totalAmount;
-                const tipAmt = newPaid - swipePayOrder.totalAmount;
-                showToast(
-                  tipAmt > 0
-                    ? t.seller.olFullyPaidTip.replace('{currency}', currency).replace('{amount}', tipAmt.toFixed(2))
-                    : fullyPaid ? t.seller.olFullyPaid : t.seller.olAmountRecorded.replace('{currency}', currency).replace('{amount}', amt.toFixed(2)),
-                  'info'
-                );
-              }}
+              onPress={guardedSaveSwipePayment}
               accessibilityRole="button"
               accessibilityLabel="Save payment"
             >

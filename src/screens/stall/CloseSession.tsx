@@ -5,9 +5,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -17,6 +16,7 @@ import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { SessionCondition } from '../../types';
 import { useT } from '../../i18n';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import BusinessHeroNumber from '../../components/business/BusinessHeroNumber';
 
 const CloseSession: React.FC = () => {
@@ -77,6 +77,7 @@ const CloseSession: React.FC = () => {
     setExpenseName('');
     setExpenseAmount('');
   };
+  const guardedAddExpense = useSubmitGuard(handleAddExpense);
 
   const handleClose = () => {
     if (!activeSession) return;
@@ -89,6 +90,7 @@ const CloseSession: React.FC = () => {
     closeSession(selectedCondition, note.trim() || undefined);
     navigation.getParent()?.navigate('StallSessionSummary', { sessionId });
   };
+  const guardedClose = useSubmitGuard(handleClose);
 
   // Safeguard: if no active session, go back
   if (!activeSession || !summary) {
@@ -120,7 +122,7 @@ const CloseSession: React.FC = () => {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
     >
       <ScrollView
         style={styles.scrollView}
@@ -214,7 +216,7 @@ const CloseSession: React.FC = () => {
                 placeholderTextColor={C.neutral}
                 keyboardType="decimal-pad"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
                 accessibilityLabel="Starting cash float, optional"
               />
             </View>
@@ -237,7 +239,7 @@ const CloseSession: React.FC = () => {
                 placeholderTextColor={C.neutral}
                 keyboardType="decimal-pad"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
                 accessibilityLabel="Counted cash, optional"
               />
             </View>
@@ -289,7 +291,7 @@ const CloseSession: React.FC = () => {
               placeholder={t.stall.expenseNamePlaceholder}
               placeholderTextColor={C.neutral}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
               accessibilityLabel="What the cost was for"
             />
             <View style={styles.expenseAmountWrap}>
@@ -302,15 +304,15 @@ const CloseSession: React.FC = () => {
                 placeholderTextColor={C.neutral}
                 keyboardType="decimal-pad"
                 returnKeyType="done"
-                onSubmitEditing={handleAddExpense}
+                onSubmitEditing={guardedAddExpense}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
                 accessibilityLabel="Cost amount"
               />
             </View>
             <TouchableOpacity
               style={styles.expenseAddBtn}
-              onPress={handleAddExpense}
+              onPress={guardedAddExpense}
               accessibilityRole="button"
               accessibilityLabel={t.stall.addExpenseBtn}
             >
@@ -406,14 +408,14 @@ const CloseSession: React.FC = () => {
             accessibilityLabel="Session note, optional"
             accessibilityHint="Add a note about this selling session"
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         </View>
 
         {/* Close session button */}
         <TouchableOpacity
           style={styles.closeButton}
-          onPress={handleClose}
+          onPress={guardedClose}
           activeOpacity={0.8}
           accessibilityRole="button"
           accessibilityLabel="Close this selling session"

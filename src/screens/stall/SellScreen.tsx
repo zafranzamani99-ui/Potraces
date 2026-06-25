@@ -11,9 +11,8 @@ import {
   Pressable,
   Keyboard,
   Modal,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -21,6 +20,7 @@ import { useStallStore } from '../../store/stallStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import { StallProduct, StallModifier } from '../../types';
 
@@ -314,6 +314,7 @@ const SellScreen: React.FC = () => {
     },
     [cart, session, addSale, collapseCart, showToast, subtotal, discountAmount, t, servingCustomerId, recordServingVisit],
   );
+  const guardedCheckout = useSubmitGuard(handleCheckout);
 
   // ── Card (Tap to Pay) cart checkout: charge first, record on success ──
   const openCardCheckout = useCallback(() => {
@@ -331,12 +332,13 @@ const SellScreen: React.FC = () => {
   // If no QR is set up, fall straight through to today's one-tap behavior.
   const openQrCheckout = useCallback(() => {
     if (cart.length === 0 || !session) return;
-    if (!qrForPay) { handleCheckout('qr'); return; }
+    if (!qrForPay) { guardedCheckout('qr'); return; }
     setQrSheet({
       amountCents: Math.round(totalAmount * 100),
       onComplete: () => { setQrSheet(null); handleCheckout('qr'); },
     });
-  }, [cart, session, qrForPay, totalAmount, handleCheckout]);
+  }, [cart, session, qrForPay, totalAmount, handleCheckout, guardedCheckout]);
+  const guardedOpenQrCheckout = useSubmitGuard(openQrCheckout);
 
   // ── Quick-sell: tap a tile = 1 sale at the session default payment ──
   const handleQuickSale = useCallback(
@@ -378,6 +380,7 @@ const SellScreen: React.FC = () => {
     },
     [addSale, priceOf, defaultPayment, servingCustomerId, recordServingVisit, removeSale, showToast, currency, t],
   );
+  const guardedModifierSale = useSubmitGuard(handleModifierSale);
 
   // ── Tile press dispatcher: modifier chooser, else quick/cart ──
   const handleTilePress = useCallback(
@@ -486,6 +489,7 @@ const SellScreen: React.FC = () => {
     Keyboard.dismiss();
     finishCustomSale(amt, label, save);
   }, [customAmount, customLabel, customMethod, customSaveProduct, cardOffline, qrForPay, finishCustomSale, showToast, t]);
+  const guardedConfirmCustom = useSubmitGuard(handleConfirmCustom);
 
   // ── Restock during session ──
   const handleConfirmRestock = useCallback(() => {
@@ -502,6 +506,7 @@ const SellScreen: React.FC = () => {
     setRestockAmount('');
     Keyboard.dismiss();
   }, [restockTarget, restockAmount, restockProduct, showToast]);
+  const guardedConfirmRestock = useSubmitGuard(handleConfirmRestock);
 
   // ─── No active session ──────────────────────────────────────
   if (!session) {
@@ -720,7 +725,7 @@ const SellScreen: React.FC = () => {
               returnKeyType="search"
               onSubmitEditing={Keyboard.dismiss}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
@@ -991,7 +996,7 @@ const SellScreen: React.FC = () => {
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
               </View>
             )}
@@ -1033,7 +1038,7 @@ const SellScreen: React.FC = () => {
             <View style={styles.paymentRow}>
               <TouchableOpacity
                 style={styles.cashButton}
-                onPress={() => handleCheckout('cash')}
+                onPress={() => guardedCheckout('cash')}
                 activeOpacity={0.85}
                 disabled={cart.length === 0}
                 accessibilityLabel={`Pay cash, ${currency} ${totalAmount.toFixed(2)}`}
@@ -1047,7 +1052,7 @@ const SellScreen: React.FC = () => {
 
               <TouchableOpacity
                 style={[styles.qrButton, cart.length === 0 && styles.qrButtonDisabled]}
-                onPress={openQrCheckout}
+                onPress={guardedOpenQrCheckout}
                 activeOpacity={0.85}
                 disabled={cart.length === 0}
                 accessibilityLabel={`Pay QR, ${currency} ${totalAmount.toFixed(2)}`}
@@ -1206,7 +1211,7 @@ const SellScreen: React.FC = () => {
       >
         <Pressable style={styles.centerOverlay} onPress={() => { Keyboard.dismiss(); setCustomVisible(false); }}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
             style={styles.centerKav}
             pointerEvents="box-none"
           >
@@ -1222,7 +1227,7 @@ const SellScreen: React.FC = () => {
                   placeholderTextColor={C.neutral}
                   keyboardType="decimal-pad"
                   autoFocus
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
               </View>
@@ -1232,7 +1237,7 @@ const SellScreen: React.FC = () => {
                 onChangeText={setCustomLabel}
                 placeholder={t.stall.customLabelPlaceholder}
                 placeholderTextColor={C.neutral}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
               />
               <View style={styles.customPayRow}>
@@ -1275,7 +1280,7 @@ const SellScreen: React.FC = () => {
                 <TouchableOpacity style={[styles.centerBtn, styles.centerCancelBtn]} onPress={() => { Keyboard.dismiss(); setCustomVisible(false); }}>
                   <Text style={styles.centerCancelText}>{t.common.cancel}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.centerBtn, styles.centerPrimaryBtn]} onPress={handleConfirmCustom}>
+                <TouchableOpacity style={[styles.centerBtn, styles.centerPrimaryBtn]} onPress={guardedConfirmCustom}>
                   <Text style={styles.centerPrimaryText}>{t.stall.addSaleBtn}</Text>
                 </TouchableOpacity>
               </View>
@@ -1294,7 +1299,7 @@ const SellScreen: React.FC = () => {
       >
         <Pressable style={styles.centerOverlay} onPress={() => { Keyboard.dismiss(); setRestockTarget(null); }}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
             style={styles.centerKav}
             pointerEvents="box-none"
           >
@@ -1311,7 +1316,7 @@ const SellScreen: React.FC = () => {
                   placeholderTextColor={C.neutral}
                   keyboardType="number-pad"
                   autoFocus
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
               </View>
@@ -1319,7 +1324,7 @@ const SellScreen: React.FC = () => {
                 <TouchableOpacity style={[styles.centerBtn, styles.centerCancelBtn]} onPress={() => { Keyboard.dismiss(); setRestockTarget(null); }}>
                   <Text style={styles.centerCancelText}>{t.common.cancel}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.centerBtn, styles.centerPrimaryBtn]} onPress={handleConfirmRestock}>
+                <TouchableOpacity style={[styles.centerBtn, styles.centerPrimaryBtn]} onPress={guardedConfirmRestock}>
                   <Text style={styles.centerPrimaryText}>{t.stall.restockBtn}</Text>
                 </TouchableOpacity>
               </View>
@@ -1338,7 +1343,7 @@ const SellScreen: React.FC = () => {
       >
         <Pressable style={styles.sheetOverlay} onPress={() => { Keyboard.dismiss(); setCustomerPickerVisible(false); }}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
             style={styles.sheetKav}
             pointerEvents="box-none"
           >
@@ -1355,7 +1360,7 @@ const SellScreen: React.FC = () => {
                   placeholder={t.stall.searchRegulars}
                   placeholderTextColor={C.neutral}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
               </View>
 
@@ -1412,7 +1417,7 @@ const SellScreen: React.FC = () => {
         onRequestClose={() => setClearanceVisible(false)}
       >
         <Pressable style={styles.centerOverlay} onPress={() => { Keyboard.dismiss(); setClearanceVisible(false); }}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.centerKav} pointerEvents="box-none">
+          <KeyboardAvoidingView behavior="padding" style={styles.centerKav} pointerEvents="box-none">
             <View style={styles.centerCard} onStartShouldSetResponder={() => true}>
               <Text style={styles.centerTitle}>{t.stall.clearanceTitle}</Text>
               <View style={styles.customAmountRow}>
@@ -1425,7 +1430,7 @@ const SellScreen: React.FC = () => {
                   placeholderTextColor={C.neutral}
                   keyboardType="number-pad"
                   autoFocus
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 <Text style={styles.customCurrency}>%</Text>
@@ -1457,7 +1462,7 @@ const SellScreen: React.FC = () => {
               <Text style={styles.centerTitle}>{modifierProduct?.name}</Text>
               <TouchableOpacity
                 style={styles.optionRow}
-                onPress={() => modifierProduct && handleModifierSale(modifierProduct, null)}
+                onPress={() => modifierProduct && guardedModifierSale(modifierProduct, null)}
                 activeOpacity={0.7}
               >
                 <Text style={styles.optionName}>{t.stall.optionNone}</Text>
@@ -1469,7 +1474,7 @@ const SellScreen: React.FC = () => {
                   <TouchableOpacity
                     key={m.id}
                     style={styles.optionRow}
-                    onPress={() => modifierProduct && handleModifierSale(modifierProduct, m)}
+                    onPress={() => modifierProduct && guardedModifierSale(modifierProduct, m)}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.optionName}>

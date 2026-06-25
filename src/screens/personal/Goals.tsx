@@ -9,12 +9,11 @@ import {
   TextInput,
   Alert,
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   useWindowDimensions,
 } from 'react-native';
-import { ScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { ScrollView, Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardAwareScrollView, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Reanimated, {
   FadeIn,
@@ -55,6 +54,7 @@ import {
   withAlpha,
 } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import CalendarPicker from '../../components/common/CalendarPicker';
 import EmptyState from '../../components/common/EmptyState';
@@ -750,6 +750,7 @@ const Goals: React.FC = () => {
     closeGoalModal,
     showToast,
   ]);
+  const guardedSaveGoal = useSubmitGuard(handleSaveGoal);
 
   // ── Delete Goal ──
   const handleDeleteGoal = useCallback(
@@ -860,6 +861,7 @@ const Goals: React.FC = () => {
 
     closeContributeModal();
   }, [contributingGoal, contributeAmount, contributeNote, contributeWalletId, contributeToGoal, addTransaction, closeContributeModal, showToast, currency, t]);
+  const guardedContribute = useSubmitGuard(handleContribute);
 
   // ── Handle Withdraw ──
   const handleWithdraw = useCallback(() => {
@@ -903,6 +905,7 @@ const Goals: React.FC = () => {
     showToast(`${currency} ${capped.toFixed(2)} ${t.goals.withdrawn}`, 'success');
     closeContributeModal();
   }, [contributingGoal, contributeAmount, contributeNote, contributeWalletId, withdrawFromGoal, addTransaction, closeContributeModal, showToast, currency, t]);
+  const guardedWithdraw = useSubmitGuard(handleWithdraw);
 
   // ── Handle undo contribution ──
   const handleUndoContribution = useCallback((goalId: string, contrib: GoalContribution) => {
@@ -1503,7 +1506,7 @@ const Goals: React.FC = () => {
         ) : (
           /* ── Empty State ── */
           <EmptyState
-            icon="target"
+            icon="m/target"
             title={t.goals.whatSavingFor}
             message={t.goals.setGoalWatch}
             actionLabel={t.goals.addGoal}
@@ -1523,6 +1526,7 @@ const Goals: React.FC = () => {
 
       {/* ═══ ADD / EDIT GOAL SHEET ═══ */}
       {goalModalVisible && <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={closeGoalModal}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={StyleSheet.absoluteFill}>
           <Reanimated.View style={[styles.detailBackdrop, goalBackdropAnimStyle]}>
             <Pressable style={{ flex: 1 }} onPress={closeGoalModal} />
@@ -1711,7 +1715,7 @@ const Goals: React.FC = () => {
 
             {/* Anchored save zone */}
             <View style={[styles.gfSaveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
-              <Pressable style={[styles.gfSaveBtn, { backgroundColor: goalColor }]} onPress={handleSaveGoal}>
+              <Pressable style={[styles.gfSaveBtn, { backgroundColor: goalColor }]} onPress={guardedSaveGoal}>
                 <View style={styles.gfSaveBtnInner}>
                   <Feather name={editingGoal ? 'check' : 'plus'} size={16} color={C.onAccent} />
                   <Text style={styles.gfSaveBtnText}>
@@ -1788,7 +1792,7 @@ const Goals: React.FC = () => {
               </Pressable>
               <KeyboardAvoidingView
                 style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                behavior="padding"
                 pointerEvents="box-none"
               >
                 <View style={styles.ipCard} onStartShouldSetResponder={() => true}>
@@ -1874,10 +1878,12 @@ const Goals: React.FC = () => {
           )}
         </View>
         <ModalToastHost />
+        </GestureHandlerRootView>
       </Modal>}
 
       {/* ═══ CONTRIBUTE SHEET ═══ */}
       {contributeModalVisible && <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={closeContributeModal}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={StyleSheet.absoluteFill}>
           <Reanimated.View style={[styles.detailBackdrop, contribBackdropAnimStyle]}>
             <Pressable style={{ flex: 1 }} onPress={closeContributeModal} />
@@ -2037,7 +2043,7 @@ const Goals: React.FC = () => {
             <View style={[styles.gfSaveZone, { paddingBottom: Math.max(SPACING.lg, insets.bottom + SPACING.sm) }]}>
               <Pressable
                 style={[styles.gfSaveBtn, { backgroundColor: isWithdrawMode ? C.bronze : (contributingGoal?.color || C.accent) }]}
-                onPress={isWithdrawMode ? handleWithdraw : handleContribute}
+                onPress={isWithdrawMode ? guardedWithdraw : guardedContribute}
               >
                 {({ pressed }: { pressed: boolean }) => (
                   <View style={[styles.gfSaveBtnInner, pressed && { opacity: 0.7 }]}>
@@ -2060,10 +2066,12 @@ const Goals: React.FC = () => {
           </Reanimated.View>
         </View>
         <ModalToastHost />
+        </GestureHandlerRootView>
       </Modal>}
 
       {/* ═══ CONTRIBUTION HISTORY SHEET ═══ */}
       {historyModalVisible && <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={closeHistoryModal}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={StyleSheet.absoluteFill}>
           <Reanimated.View style={[styles.detailBackdrop, historyBackdropAnimStyle]}>
             <Pressable style={{ flex: 1 }} onPress={closeHistoryModal} />
@@ -2158,6 +2166,7 @@ const Goals: React.FC = () => {
           </Reanimated.View>
         </View>
         <ModalToastHost />
+        </GestureHandlerRootView>
       </Modal>}
 
       {/* ═══ SORT MENU ═══ */}
@@ -2208,6 +2217,7 @@ const Goals: React.FC = () => {
 
         return (
           <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={closeGoalDetail}>
+            <GestureHandlerRootView style={{ flex: 1 }}>
             <View style={StyleSheet.absoluteFill}>
               <Reanimated.View style={[styles.detailBackdrop, detailBackdropAnimStyle]}>
                 <Pressable style={{ flex: 1 }} onPress={closeGoalDetail} />
@@ -2429,6 +2439,7 @@ const Goals: React.FC = () => {
                 </View>
               </Reanimated.View>
             </View>
+            </GestureHandlerRootView>
           </Modal>
         );
       })()}

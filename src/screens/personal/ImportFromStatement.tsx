@@ -9,6 +9,9 @@ import {
   FlatList,
   Modal,
   Pressable,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -26,6 +29,8 @@ import {
   parseStatement,
   isParseError,
   ParsedTransaction,
+  StatementParseResult,
+  StatementParseError,
 } from '../../services/statementImport';
 import { usePersonalStore } from '../../store/personalStore';
 import { useWalletStore } from '../../store/walletStore';
@@ -56,6 +61,34 @@ const ImportFromStatement: React.FC = () => {
   const [selectedWalletId, setSelectedWalletId] = useState<string | undefined>(defaultWallet?.id);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [categoryPicker, setCategoryPicker] = useState<{ rowId: string; type: 'income' | 'expense' } | null>(null);
+  const [passwordPrompt, setPasswordPrompt] = useState<{ base64: string; filename: string } | null>(null);
+  const [passwordValue, setPasswordValue] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+
+  // Apply a (successful or terminal-error) parse result to the screen.
+  const finishParse = useCallback((res: StatementParseResult | StatementParseError) => {
+    if (isParseError(res)) {
+      setStep('start');
+      Alert.alert(t.importStatement.couldNotParse, res.message ?? res.error);
+      return;
+    }
+    if (res.transactions.length === 0) {
+      setStep('start');
+      Alert.alert(t.importStatement.nothingFound, t.importStatement.nothingFoundMsg);
+      return;
+    }
+    setRemaining(res.remaining);
+    setRows(
+      res.transactions.map((tx, i) => ({
+        ...tx,
+        _id: `imp-${Date.now()}-${i}`,
+        _include: true,
+        _category: tx.suggested_category,
+      })),
+    );
+    setStep('review');
+  }, [t]);
 
   const handlePick = useCallback(async () => {
     lightTap();
@@ -64,31 +97,43 @@ const ImportFromStatement: React.FC = () => {
       if (!picked) return;
       setStep('parsing');
       const res = await parseStatement(picked.base64, picked.filename);
-      if (isParseError(res)) {
+      // Locked statement (e.g. Maybank/CIMB IC-protected) — ask for the password.
+      if (isParseError(res) && res.error === 'password_required') {
         setStep('start');
-        Alert.alert(t.importStatement.couldNotParse, res.message ?? res.error);
+        setPasswordValue('');
+        setPasswordError(false);
+        setPasswordPrompt({ base64: picked.base64, filename: picked.filename });
         return;
       }
-      if (res.transactions.length === 0) {
-        setStep('start');
-        Alert.alert(t.importStatement.nothingFound, t.importStatement.nothingFoundMsg);
-        return;
-      }
-      setRemaining(res.remaining);
-      setRows(
-        res.transactions.map((t, i) => ({
-          ...t,
-          _id: `imp-${Date.now()}-${i}`,
-          _include: true,
-          _category: t.suggested_category,
-        })),
-      );
-      setStep('review');
+      finishParse(res);
     } catch (e: any) {
       setStep('start');
       Alert.alert(t.importStatement.errorTitle, e?.message ?? t.importStatement.couldNotRead);
     }
-  }, []);
+  }, [finishParse, t]);
+
+  const handleUnlock = useCallback(async () => {
+    if (!passwordPrompt || !passwordValue.trim() || unlocking) return;
+    lightTap();
+    setUnlocking(true);
+    setPasswordError(false);
+    try {
+      const res = await parseStatement(passwordPrompt.base64, passwordPrompt.filename, passwordValue);
+      if (isParseError(res) && res.error === 'password_wrong') {
+        setPasswordError(true);
+        setUnlocking(false);
+        return;
+      }
+      // Unlocked (or a different terminal error) — close the sheet and continue.
+      setPasswordPrompt(null);
+      setPasswordValue('');
+      setUnlocking(false);
+      finishParse(res);
+    } catch (e: any) {
+      setUnlocking(false);
+      setPasswordError(true);
+    }
+  }, [passwordPrompt, passwordValue, unlocking, finishParse]);
 
   const toggleRow = useCallback((id: string) => {
     setRows((prev) => prev.map((r) => (r._id === id ? { ...r, _include: !r._include } : r)));
@@ -239,6 +284,58 @@ const ImportFromStatement: React.FC = () => {
             {t.importStatement.freeImports}
           </Text>
         </View>
+
+        {/* Password sheet — shown only when the statement PDF is locked */}
+        <Modal
+          visible={!!passwordPrompt}
+          transparent
+          animationType="fade"
+          onRequestClose={() => { if (!unlocking) { setPasswordPrompt(null); setPasswordValue(''); } }}
+        >
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <Pressable
+              style={styles.modalBackdrop}
+              onPress={() => { if (!unlocking) { setPasswordPrompt(null); setPasswordValue(''); } }}
+            >
+              <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
+                <View style={styles.lockIconWrap}>
+                  <Feather name="lock" size={22} color={C.accent} />
+                </View>
+                <Text style={[styles.pickerTitle, styles.lockedTitle]}>{t.importStatement.lockedTitle}</Text>
+                <Text style={styles.lockedDesc}>{t.importStatement.lockedDesc}</Text>
+                <TextInput
+                  style={[styles.passwordInput, passwordError && styles.passwordInputError]}
+                  value={passwordValue}
+                  onChangeText={(v) => { setPasswordValue(v); if (passwordError) setPasswordError(false); }}
+                  placeholder={t.importStatement.passwordPlaceholder}
+                  placeholderTextColor={C.textSecondary}
+                  secureTextEntry
+                  autoFocus
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  selectionColor={withAlpha(C.accent, 0.25)}
+                  editable={!unlocking}
+                  returnKeyType="go"
+                  onSubmitEditing={handleUnlock}
+                  accessibilityLabel="statement password"
+                />
+                {passwordError && (
+                  <Text style={styles.passwordErrorText}>{t.importStatement.wrongPassword}</Text>
+                )}
+                <View style={{ height: SPACING.md }} />
+                <Button
+                  title={unlocking ? t.importStatement.unlocking : t.importStatement.unlockBtn}
+                  onPress={handleUnlock}
+                  disabled={unlocking || !passwordValue.trim()}
+                />
+              </Pressable>
+            </Pressable>
+          </KeyboardAvoidingView>
+          <ModalToastHost />
+        </Modal>
       </View>
     );
   }
@@ -434,11 +531,48 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   pickerCard: {
     width: '90%',
+    maxWidth: 420,
     maxHeight: '70%',
     backgroundColor: C.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: C.border,
     ...SHADOWS.lg,
+  },
+  lockIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.accent, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: SPACING.md,
+  },
+  lockedTitle: { textAlign: 'center', marginBottom: SPACING.xs },
+  lockedDesc: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textSecondary,
+    textAlign: 'center',
+    lineHeight: TYPOGRAPHY.size.sm * 1.5,
+    marginBottom: SPACING.lg,
+  },
+  passwordInput: {
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    fontSize: TYPOGRAPHY.size.base,
+    color: C.textPrimary,
+    backgroundColor: C.background,
+  },
+  passwordInputError: { borderColor: C.gold },
+  passwordErrorText: {
+    marginTop: SPACING.xs,
+    fontSize: TYPOGRAPHY.size.xs,
+    color: C.gold,
   },
   pickerTitle: {
     fontSize: TYPOGRAPHY.size.base,

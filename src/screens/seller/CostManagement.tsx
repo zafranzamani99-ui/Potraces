@@ -30,6 +30,7 @@ import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import { IngredientCost, RecurringFrequency } from '../../types';
 import { createTransfer } from '../../utils/transferBridge';
@@ -40,6 +41,7 @@ import ReceiptViewer from '../../components/seller/ReceiptViewer';
 import PaywallModal from '../../components/common/PaywallModal';
 import ImageSourcePills from '../../components/common/ImageSourcePills';
 import ModalToastHost from '../../components/common/ModalToastHost';
+import CategoryIcon from '../../components/common/CategoryIcon';
 import {
   lightTap,
   successNotification,
@@ -437,6 +439,35 @@ const CostManagement: React.FC = () => {
     setSyncToPersonal(false);
     setSaveAsTemplate(false);
   }, [costDescription, costAmount, editingCostId, syncToPersonal, saveAsTemplate, costCategory, costVendor, receiptUrl, receiptLocalUri, getCostCategory, addIngredientCost, updateIngredientCost, addTransaction, addCostTemplate, markCostSynced, activeSeason, showToast]);
+  const guardedSaveCost = useSubmitGuard(handleSaveCost);
+
+  // Apply a single due recurring cost (extracted from the per-row .map button).
+  const handleApplyRecurring = useCallback((r: { id: string; description: string }) => {
+    if (!activeSeason) {
+      showToast(t.seller.startSeasonFirst, 'error');
+      return;
+    }
+    lightTap();
+    applyRecurringCost(r.id, activeSeason.id);
+    showToast(t.seller.loggedToast.replace('{desc}', r.description), 'success');
+  }, [activeSeason, applyRecurringCost, showToast, t]);
+  const guardedApplyRecurring = useSubmitGuard(handleApplyRecurring);
+
+  // Save a new recurring cost (extracted from the Recurring Cost Modal save button).
+  const handleSaveRecurring = useCallback(() => {
+    const desc = recurringDesc.trim();
+    const amount = parseFloat(recurringAmount);
+    if (!desc || isNaN(amount) || amount <= 0) return;
+    const now = new Date();
+    let nextDue = new Date(now);
+    if (recurringFreq === 'weekly') nextDue.setDate(nextDue.getDate() + 7);
+    else if (recurringFreq === 'biweekly') nextDue.setDate(nextDue.getDate() + 14);
+    else nextDue.setMonth(nextDue.getMonth() + 1);
+    addRecurringCost({ description: desc, amount, frequency: recurringFreq, nextDue, isActive: true, seasonId: activeSeason?.id });
+    showToast(t.seller.recurringCostAdded, 'success');
+    setShowRecurringModal(false);
+  }, [recurringDesc, recurringAmount, recurringFreq, addRecurringCost, activeSeason, showToast, t]);
+  const guardedSaveRecurring = useSubmitGuard(handleSaveRecurring);
 
   const handleDeleteCost = useCallback((cost: IngredientCost) => {
     warningNotification();
@@ -508,6 +539,7 @@ const CostManagement: React.FC = () => {
     showToast(t.seller.transferredToPersonal, 'success');
     setShowTransfer(false);
   }, [transferAmount, activeSeason, untransferredOrders, addTransfer, addTransferIncome, markOrdersTransferred, showToast, t]);
+  const guardedTransferToPersonal = useSubmitGuard(handleTransferToPersonal);
 
   return (
     <View style={styles.container}>
@@ -666,13 +698,13 @@ const CostManagement: React.FC = () => {
                     keyboardType="decimal-pad"
                     selectTextOnFocus
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
                 </View>
                 <TouchableOpacity
                   style={styles.transferConfirmBtn}
                   activeOpacity={0.7}
-                  onPress={handleTransferToPersonal}
+                  onPress={guardedTransferToPersonal}
                   accessibilityRole="button"
                   accessibilityLabel="Confirm transfer"
                 >
@@ -724,15 +756,7 @@ const CostManagement: React.FC = () => {
                   <View style={{ gap: 6 }}>
                     <TouchableOpacity
                       style={[styles.recurringApplyBtn, !isDue && styles.recurringApplyBtnMuted]}
-                      onPress={() => {
-                        if (!activeSeason) {
-                          showToast(t.seller.startSeasonFirst, 'error');
-                          return;
-                        }
-                        lightTap();
-                        applyRecurringCost(r.id, activeSeason.id);
-                        showToast(t.seller.loggedToast.replace('{desc}', r.description), 'success');
-                      }}
+                      onPress={() => guardedApplyRecurring(r)}
                       activeOpacity={0.7}
                     >
                       <Text style={[styles.recurringApplyText, !isDue && { color: C.textMuted }]}>{t.seller.apply}</Text>
@@ -780,7 +804,7 @@ const CostManagement: React.FC = () => {
                 onChangeText={setCostSearch}
                 returnKeyType="search"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               {costSearch.length > 0 && (
                 <TouchableOpacity
@@ -819,7 +843,7 @@ const CostManagement: React.FC = () => {
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
                     >
-                      <Feather name={cat.icon as any} size={12} color={active ? cat.color : C.textSecondary} />
+                      <CategoryIcon icon={cat.icon} size={12} color={active ? cat.color : C.textSecondary} />
                       <Text style={[styles.filterChipText, active && { color: cat.color }]}>{cat.name}</Text>
                     </Pressable>
                   );
@@ -874,7 +898,7 @@ const CostManagement: React.FC = () => {
                         accessibilityLabel={`${cost.description}, ${cat.name}, ${currency} ${cost.amount.toFixed(2)}. Tap to edit, hold to delete.`}
                       >
                         <View style={[styles.historyAvatar, { backgroundColor: withAlpha(cat.color, isDark ? 0.2 : 0.12) }]}>
-                          <Feather name={cat.icon as any} size={15} color={cat.color} />
+                          <CategoryIcon icon={cat.icon} size={15} color={cat.color} />
                         </View>
                         <View style={styles.historyItemContent}>
                           <View style={styles.historyItemTop}>
@@ -968,7 +992,7 @@ const CostManagement: React.FC = () => {
                   placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   autoFocus
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.bronze}
+                  selectionColor={withAlpha(C.bronze, 0.25)}
                 />
               </View>
 
@@ -984,7 +1008,7 @@ const CostManagement: React.FC = () => {
                     placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     keyboardType="numeric"
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.bronze}
+                    selectionColor={withAlpha(C.bronze, 0.25)}
                   />
                 </View>
               </View>
@@ -1016,19 +1040,7 @@ const CostManagement: React.FC = () => {
                   <Text style={styles.modalCancelText}>{t.seller.cmCancel}</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => {
-                    const desc = recurringDesc.trim();
-                    const amount = parseFloat(recurringAmount);
-                    if (!desc || isNaN(amount) || amount <= 0) return;
-                    const now = new Date();
-                    let nextDue = new Date(now);
-                    if (recurringFreq === 'weekly') nextDue.setDate(nextDue.getDate() + 7);
-                    else if (recurringFreq === 'biweekly') nextDue.setDate(nextDue.getDate() + 14);
-                    else nextDue.setMonth(nextDue.getMonth() + 1);
-                    addRecurringCost({ description: desc, amount, frequency: recurringFreq, nextDue, isActive: true, seasonId: activeSeason?.id });
-                    showToast(t.seller.recurringCostAdded, 'success');
-                    setShowRecurringModal(false);
-                  }}
+                  onPress={guardedSaveRecurring}
                   style={({ pressed }) => [styles.modalConfirm, pressed && { opacity: 0.85 }]}
                   accessibilityRole="button"
                   accessibilityLabel="Save recurring cost"
@@ -1174,7 +1186,7 @@ const CostManagement: React.FC = () => {
                     placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     autoFocus
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.bronze}
+                    selectionColor={withAlpha(C.bronze, 0.25)}
                   />
                 </Animated.View>
               </View>
@@ -1197,7 +1209,7 @@ const CostManagement: React.FC = () => {
                       placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                       keyboardType="decimal-pad"
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.bronze}
+                      selectionColor={withAlpha(C.bronze, 0.25)}
                     />
                   </View>
                 </Animated.View>
@@ -1217,7 +1229,7 @@ const CostManagement: React.FC = () => {
                   placeholder={t.seller.vendorPlaceholder}
                   placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.bronze}
+                  selectionColor={withAlpha(C.bronze, 0.25)}
                 />
               </View>
 
@@ -1276,7 +1288,7 @@ const CostManagement: React.FC = () => {
                   <Text style={styles.modalCancelText}>{t.seller.cmCancel}</Text>
                 </Pressable>
                 <Pressable
-                  onPress={handleSaveCost}
+                  onPress={guardedSaveCost}
                   style={({ pressed }) => [styles.modalConfirm, pressed && { opacity: 0.85 }]}
                   accessibilityRole="button"
                   accessibilityLabel={editingCostId ? 'Save cost' : 'Log cost'}
@@ -1325,7 +1337,7 @@ const CostManagement: React.FC = () => {
                   placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   autoFocus
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.bronze}
+                  selectionColor={withAlpha(C.bronze, 0.25)}
                 />
 
                 <View style={styles.currencyInputRow}>
@@ -1338,7 +1350,7 @@ const CostManagement: React.FC = () => {
                     placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     keyboardType="decimal-pad"
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.bronze}
+                    selectionColor={withAlpha(C.bronze, 0.25)}
                   />
                 </View>
 
@@ -1418,7 +1430,7 @@ const CostManagement: React.FC = () => {
                   keyboardType="decimal-pad"
                   autoFocus
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.bronze}
+                  selectionColor={withAlpha(C.bronze, 0.25)}
                 />
               </View>
 

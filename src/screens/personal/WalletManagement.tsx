@@ -23,6 +23,7 @@ import Reanimated, {
 import { Feather } from '@expo/vector-icons';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { WALLET_ICONS_BY_TYPE, WALLET_COLORS, WALLET_PRESETS, WALLET_TYPE_CONFIG, FREE_TIER, BANK_LOGOS, CARD_NETWORK_LOGOS } from '../../constants/premium';
 import { useWalletStore } from '../../store/walletStore';
 import { usePersonalStore } from '../../store/personalStore';
@@ -30,6 +31,7 @@ import { usePremiumStore } from '../../store/premiumStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { Wallet, WalletType } from '../../types';
 import WalletLogo from '../../components/common/WalletLogo';
+import CategoryIcon from '../../components/common/CategoryIcon';
 import FAB from '../../components/common/FAB';
 import EmptyState from '../../components/common/EmptyState';
 import PaywallModal from '../../components/common/PaywallModal';
@@ -854,6 +856,7 @@ const WalletManagement: React.FC = () => {
     setModalVisible(false);
     resetForm();
   }, [name, editingWallet, selectedIcon, selectedColor, selectedType, creditLimit, balance, wallets, selectedPresetId, selectedCreditBank, selectedNetwork, updateWallet, addWallet, resetForm]);
+  const guardedSave = useSubmitGuard(handleSave);
 
   const handleDelete = useCallback((walletId: string) => {
     setDeleteConfirmId(walletId);
@@ -949,6 +952,7 @@ const WalletManagement: React.FC = () => {
     setTransferAmount('');
     setTransferNote('');
   }, [transferAmount, transferFrom, transferTo, transferNote, wallets, transferBetweenWallets]);
+  const guardedTransfer = useSubmitGuard(handleTransfer);
 
   // Repay credit
   const handleRepay = useCallback(() => {
@@ -983,6 +987,7 @@ const WalletManagement: React.FC = () => {
     setRepaySourceId(null);
     setRepayAmount('');
   }, [repayAmount, repayWalletId, repaySourceId, wallets, repayCredit, deductFromWallet, logActivity]);
+  const guardedRepay = useSubmitGuard(handleRepay);
 
   const openRepay = useCallback((walletId: string) => {
     setRepayWalletId(walletId);
@@ -1184,11 +1189,7 @@ const WalletManagement: React.FC = () => {
               {wallet.presetId ? (
                 <WalletLogo wallet={wallet} size={40} />
               ) : (
-                <Feather
-                  name={wallet.icon as keyof typeof Feather.glyphMap}
-                  size={20}
-                  color={wallet.color}
-                />
+                <CategoryIcon icon={wallet.icon} size={20} color={wallet.color} />
               )}
             </View>
             <View style={styles.walletInfo}>
@@ -1380,7 +1381,7 @@ const WalletManagement: React.FC = () => {
         {/* Wallet List — Grouped by Type */}
         {wallets.length === 0 ? (
           <EmptyState
-            icon="credit-card"
+            icon="i/wallet-outline"
             title={t.wallets.noWalletsYet}
             message={t.wallets.createFirstWallet}
             actionLabel={t.wallets.createWallet}
@@ -1500,7 +1501,7 @@ const WalletManagement: React.FC = () => {
         selectedNetwork={selectedNetwork as any}
         setSelectedNetwork={setSelectedNetwork as any}
         resetForm={resetForm}
-        onSave={handleSave}
+        onSave={guardedSave}
         canAddType={canAddType}
         showTypePaywall={showTypePaywall}
         handleChooseTypeAndPreset={handleChooseTypeAndPreset}
@@ -1537,7 +1538,7 @@ const WalletManagement: React.FC = () => {
         transferToWallets={transferToWallets}
         wallets={wallets}
         currency={currency}
-        onTransfer={handleTransfer}
+        onTransfer={guardedTransfer}
       />
 
       {/* ─── Repay Credit Modal ─────────────────────────────── */}
@@ -1552,7 +1553,7 @@ const WalletManagement: React.FC = () => {
         wallets={wallets}
         nonCreditWallets={nonCreditWallets}
         currency={currency}
-        onRepay={handleRepay}
+        onRepay={guardedRepay}
       />
 
       {/* ─── Wallet Action Sheet ────────────────────────────── */}

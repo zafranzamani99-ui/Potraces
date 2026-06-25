@@ -29,6 +29,7 @@ import {
   withAlpha,
 } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
@@ -36,6 +37,7 @@ import ProgressBar from '../../components/common/ProgressBar';
 import ModalToastHost from '../../components/common/ModalToastHost';
 import FAB from '../../components/common/FAB';
 import { useToast } from '../../context/ToastContext';
+import { formatAmount } from '../../utils/formatters';
 import { Customer, CustomerOrder, OrderItem } from '../../types';
 
 // ─── LOCAL TYPES ──────────────────────────────────────────────
@@ -393,6 +395,8 @@ const CRM: React.FC = () => {
     resetOrderForm();
   }, [orderItems, orderCustomerId, editingOrderId, orderStatus, orderNotes, updateOrder, addOrder, showToast, resetOrderForm]);
 
+  const guardedSaveOrder = useSubmitGuard(handleSaveOrder);
+
   const handleDeleteOrder = useCallback((orderId: string) => {
     Alert.alert('Delete Order', 'Are you sure you want to delete this order?', [
       { text: 'Cancel', style: 'cancel' },
@@ -448,13 +452,11 @@ const CRM: React.FC = () => {
     showToast('Payment recorded!', 'success');
   }, [paymentOrderId, paymentAmount, orders, currency, selectedCustomer, addOrderPayment, showToast]);
 
+  const guardedRecordPayment = useSubmitGuard(handleRecordPayment);
+
   // ── Render helpers ──────────────────────────────────────────
   const getInitial = (name: string): string => {
     return name.charAt(0).toUpperCase();
-  };
-
-  const formatCurrency = (amount: number): string => {
-    return `${currency} ${amount.toFixed(2)}`;
   };
 
   const formatDate = (date: Date): string => {
@@ -546,7 +548,7 @@ const CRM: React.FC = () => {
             <View style={[styles.statIconWrap, { backgroundColor: withAlpha(C.positive, 0.12) }]}>
               <Feather name="dollar-sign" size={18} color={C.positive} />
             </View>
-            <Text style={styles.statValue}>{formatCurrency(globalStats.revenue)}</Text>
+            <Text style={styles.statValue}>{formatAmount(globalStats.revenue, currency)}</Text>
             <Text style={styles.statLabel}>Revenue</Text>
           </View>
           <View style={styles.statBox}>
@@ -554,7 +556,7 @@ const CRM: React.FC = () => {
               <Feather name="alert-circle" size={18} color={C.neutral} />
             </View>
             <Text style={[styles.statValue, globalStats.outstanding > 0 && { color: C.neutral }]}>
-              {formatCurrency(globalStats.outstanding)}
+              {formatAmount(globalStats.outstanding, currency)}
             </Text>
             <Text style={styles.statLabel}>Outstanding</Text>
           </View>
@@ -577,7 +579,7 @@ const CRM: React.FC = () => {
             returnKeyType="search"
             clearButtonMode="while-editing"
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         </View>
 
@@ -612,7 +614,7 @@ const CRM: React.FC = () => {
                     </View>
                     <View style={styles.customerStats}>
                       <Text style={styles.customerRevenue}>
-                        {formatCurrency(stats.totalSpent)}
+                        {formatAmount(stats.totalSpent, currency)}
                       </Text>
                       <Text style={styles.customerOrderCount}>
                         {stats.orderCount} order{stats.orderCount !== 1 ? 's' : ''}
@@ -659,7 +661,7 @@ const CRM: React.FC = () => {
                         color={C.neutral}
                       />
                       <Text style={styles.outstandingText}>
-                        {formatCurrency(stats.outstanding)} outstanding
+                        {formatAmount(stats.outstanding, currency)} outstanding
                       </Text>
                     </View>
                   )}
@@ -669,7 +671,7 @@ const CRM: React.FC = () => {
           })
         ) : (
           <EmptyState
-            icon="users"
+            icon="i/people-outline"
             title="No customers yet"
             message="Add your first customer to start managing your CRM"
             actionLabel="Add Customer"
@@ -728,7 +730,7 @@ const CRM: React.FC = () => {
                   onSubmitEditing={() => phoneRef.current?.focus()}
                   autoCapitalize="words"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <Text style={styles.formLabel}>Phone</Text>
@@ -743,7 +745,7 @@ const CRM: React.FC = () => {
                   returnKeyType="next"
                   onSubmitEditing={() => emailRef.current?.focus()}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <Text style={styles.formLabel}>Email</Text>
@@ -759,7 +761,7 @@ const CRM: React.FC = () => {
                   returnKeyType="next"
                   onSubmitEditing={() => companyRef.current?.focus()}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <Text style={styles.formLabel}>Company</Text>
@@ -773,7 +775,7 @@ const CRM: React.FC = () => {
                   returnKeyType="next"
                   onSubmitEditing={() => addressRef.current?.focus()}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <Text style={styles.formLabel}>Address (for COD)</Text>
@@ -791,7 +793,7 @@ const CRM: React.FC = () => {
                   returnKeyType="next"
                   onSubmitEditing={() => notesRef.current?.focus()}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <Text style={styles.formLabel}>Notes</Text>
@@ -807,7 +809,7 @@ const CRM: React.FC = () => {
                   textAlignVertical="top"
                   blurOnSubmit
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
@@ -939,7 +941,7 @@ const CRM: React.FC = () => {
                     <View style={styles.detailStatsRow}>
                       <View style={styles.detailStatItem}>
                         <Text style={styles.detailStatValue}>
-                          {formatCurrency(stats.totalSpent)}
+                          {formatAmount(stats.totalSpent, currency)}
                         </Text>
                         <Text style={styles.detailStatLabel}>Total Spent</Text>
                       </View>
@@ -958,7 +960,7 @@ const CRM: React.FC = () => {
                             stats.outstanding > 0 && { color: C.neutral },
                           ]}
                         >
-                          {formatCurrency(stats.outstanding)}
+                          {formatAmount(stats.outstanding, currency)}
                         </Text>
                         <Text style={styles.detailStatLabel}>Outstanding</Text>
                       </View>
@@ -984,7 +986,7 @@ const CRM: React.FC = () => {
                             setDetailModalVisible(false);
                             openEditOrder(order);
                           }}
-                          accessibilityLabel={`Order from ${formatDate(order.date)}, total ${formatCurrency(order.totalAmount)}`}
+                          accessibilityLabel={`Order from ${formatDate(order.date)}, total ${formatAmount(order.totalAmount, currency)}`}
                         >
                           <View style={styles.orderHeader}>
                             <View style={styles.orderInfo}>
@@ -992,7 +994,7 @@ const CRM: React.FC = () => {
                                 {formatDate(order.date)}
                               </Text>
                               <Text style={styles.orderTotal}>
-                                {formatCurrency(order.totalAmount)}
+                                {formatAmount(order.totalAmount, currency)}
                               </Text>
                             </View>
                             <View style={styles.orderBadges}>
@@ -1248,7 +1250,7 @@ const CRM: React.FC = () => {
                             placeholderTextColor={C.neutral}
                             autoFocus
                             keyboardAppearance={isDark ? 'dark' : 'light'}
-                            selectionColor={C.accent}
+                            selectionColor={withAlpha(C.accent, 0.25)}
                           />
                           {productPickerSearch.length > 0 && (
                             <TouchableOpacity onPress={() => setProductPickerSearch('')}>
@@ -1299,7 +1301,7 @@ const CRM: React.FC = () => {
                         placeholderTextColor={C.neutral}
                         keyboardType="number-pad"
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                       />
                       <TextInput
                         style={[styles.formInput, styles.itemPriceInput]}
@@ -1311,7 +1313,7 @@ const CRM: React.FC = () => {
                         placeholderTextColor={C.neutral}
                         keyboardType="decimal-pad"
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                       />
                       <TouchableOpacity
                         style={styles.removeItemButton}
@@ -1338,7 +1340,7 @@ const CRM: React.FC = () => {
                 <View style={styles.orderTotalRow}>
                   <Text style={styles.orderTotalLabel}>Total</Text>
                   <Text style={styles.orderTotalValue}>
-                    {formatCurrency(computeOrderTotal(orderItems))}
+                    {formatAmount(computeOrderTotal(orderItems), currency)}
                   </Text>
                 </View>
 
@@ -1394,7 +1396,7 @@ const CRM: React.FC = () => {
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <View style={styles.modalActions}>
@@ -1409,7 +1411,7 @@ const CRM: React.FC = () => {
                   />
                   <Button
                     title={editingOrderId ? 'Update' : 'Add Order'}
-                    onPress={handleSaveOrder}
+                    onPress={guardedSaveOrder}
                     icon="check"
                     style={styles.actionButton}
                   />
@@ -1456,7 +1458,7 @@ const CRM: React.FC = () => {
                       <View style={styles.paymentInfoRow}>
                         <Text style={styles.paymentInfoLabel}>Order Total</Text>
                         <Text style={styles.paymentInfoValue}>
-                          {formatCurrency(order.totalAmount)}
+                          {formatAmount(order.totalAmount, currency)}
                         </Text>
                       </View>
                       <View style={styles.paymentInfoRow}>
@@ -1467,7 +1469,7 @@ const CRM: React.FC = () => {
                             { color: C.positive },
                           ]}
                         >
-                          {formatCurrency(order.paidAmount)}
+                          {formatAmount(order.paidAmount, currency)}
                         </Text>
                       </View>
                       <View style={styles.paymentInfoRow}>
@@ -1478,7 +1480,7 @@ const CRM: React.FC = () => {
                             { color: C.neutral },
                           ]}
                         >
-                          {formatCurrency(remaining)}
+                          {formatAmount(remaining, currency)}
                         </Text>
                       </View>
 
@@ -1492,9 +1494,9 @@ const CRM: React.FC = () => {
                         placeholderTextColor={C.neutral}
                         keyboardType="decimal-pad"
                         returnKeyType="done"
-                        onSubmitEditing={handleRecordPayment}
+                        onSubmitEditing={guardedRecordPayment}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                         autoFocus
                       />
                     </>
@@ -1510,7 +1512,7 @@ const CRM: React.FC = () => {
                   />
                   <Button
                     title="Record"
-                    onPress={handleRecordPayment}
+                    onPress={guardedRecordPayment}
                     icon="check"
                     style={styles.actionButton}
                   />

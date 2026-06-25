@@ -20,9 +20,11 @@ import { useCRMStore } from '../../store/crmStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, PAYMENT_METHODS, PRODUCT_CATEGORIES, withAlpha } from '../../constants';
 import { useCalm } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
+import CategoryIcon from '../../components/common/CategoryIcon';
 
 import { SaleItem } from '../../types';
 import { useToast } from '../../context/ToastContext';
@@ -251,11 +253,13 @@ const POS: React.FC = () => {
     showToast('Sale completed.', 'success');
   };
 
+  const guardedCheckout = useSubmitGuard(handleCheckout);
+
   if (products.length === 0) {
     return (
       <View style={styles.container}>
         <EmptyState
-          icon="package"
+          icon="i/cube-outline"
           title="No Products"
           message="Add products to your inventory to start making sales"
         />
@@ -308,8 +312,8 @@ const POS: React.FC = () => {
                   style={[styles.categoryTab, selectedCategory === cat.id && styles.categoryTabActive]}
                   onPress={() => setSelectedCategory(cat.id)}
                 >
-                  <Feather
-                    name={cat.icon as keyof typeof Feather.glyphMap}
+                  <CategoryIcon
+                    icon={cat.icon}
                     size={14}
                     color={selectedCategory === cat.id ? '#fff' : C.textSecondary}
                   />
@@ -809,7 +813,7 @@ const POS: React.FC = () => {
                     <TouchableOpacity
                       key={method.value}
                       style={styles.paymentButton}
-                      onPress={() => handleCheckout(method.value as 'cash' | 'digital' | 'card')}
+                      onPress={() => guardedCheckout(method.value as 'cash' | 'digital' | 'card')}
                       activeOpacity={0.8}
                     >
                       <View style={styles.paymentIconContainer}>

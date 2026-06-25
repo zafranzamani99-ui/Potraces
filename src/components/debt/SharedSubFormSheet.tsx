@@ -11,7 +11,7 @@ import {
   Keyboard,
   useWindowDimensions,
 } from 'react-native';
-import { ScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { ScrollView, Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -27,6 +27,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import { useDebtStore } from '../../store/debtStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -300,12 +301,15 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
     setTimeout(closeSheet, 400);
   }, [canSave, name, iconName, imageUri, totalNum, billingCycle, billingDay, members, note, isEditing, editingSub, closeSheet, t]);
 
+  const guardedSave = useSubmitGuard(handleSave);
+
   if (!visible) return null;
 
   const selectedContacts = members.map((m) => m.contact);
 
   return (
     <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={closeSheet}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
       {/* Animated backdrop */}
       <Reanimated.View style={[styles.backdrop, backdropAnimStyle]}>
         <Pressable style={{ flex: 1 }} onPress={closeSheet} />
@@ -370,7 +374,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
                   placeholder={t.sharedSubs.namePlaceholder}
                   placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
               </View>
             </View>
@@ -409,7 +413,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
           </View>)}
@@ -445,7 +449,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
               keyboardType="number-pad"
               maxLength={2}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
           </View>
 
@@ -483,7 +487,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
                         placeholder={t.sharedSubs.tagPlaceholder}
                         placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                       />
                       {!isEditing && (
                         <TextInput
@@ -494,7 +498,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
                           placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
                           keyboardType="decimal-pad"
                           keyboardAppearance={isDark ? 'dark' : 'light'}
-                          selectionColor={C.accent}
+                          selectionColor={withAlpha(C.accent, 0.25)}
                         />
                       )}
                     </View>
@@ -548,7 +552,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
               placeholder="anything to remember"
               placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
           </View>
         </KeyboardAwareScrollView>
@@ -558,7 +562,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
           <Reanimated.View style={saveAnimStyle}>
             <Pressable
               style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
-              onPress={handleSave}
+              onPress={guardedSave}
               onPressIn={() => { saveScale.value = withTiming(0.97, { duration: 120 }); }}
               onPressOut={() => { saveScale.value = withSpring(1, { damping: 18, stiffness: 240 }); }}
               accessibilityRole="button"
@@ -690,6 +694,7 @@ const SharedSubFormSheet: React.FC<SharedSubFormSheetProps> = ({ visible, onClos
           </View>
         </>
       )}
+      </GestureHandlerRootView>
     </Modal>
   );
 };

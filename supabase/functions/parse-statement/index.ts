@@ -7,6 +7,8 @@
 // Auth: requires authenticated Supabase user (either anon or phone).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { decryptPDF, isEncrypted } from 'npm:@pdfsmaller/pdf-decrypt@1.0.1';
+import { decodeBase64, encodeBase64 } from 'https://deno.land/std@0.224.0/encoding/base64.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -90,6 +92,8 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json();
     const pdfBase64: string | undefined = body?.pdfBase64;
+    const password: string | undefined =
+      typeof body?.password === 'string' && body.password.length > 0 ? body.password : undefined;
     if (!pdfBase64 || typeof pdfBase64 !== 'string') {
       return json({ error: 'pdfBase64 required' }, 400);
     }
@@ -98,9 +102,41 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'PDF too large — max 10MB' }, 413);
     }
 
-    // Call Gemini 2.0 Flash with inline PDF data
+    // ─── Decrypt password-protected statements before Gemini ──────────────────
+    // MY banks (Maybank/CIMB/etc.) lock e-statements with the holder's IC; Gemini
+    // returns 400 "document has no pages" on an encrypted PDF, so we strip the
+    // /Encrypt layer first. Detection needs no password. The password is used
+    // in-memory only — never logged, never persisted. A password_required /
+    // password_wrong return happens BEFORE the Gemini call, so it consumes no
+    // monthly quota (quota is only logged after a successful Gemini call below).
+    let pdfData = pdfBase64;
+    try {
+      const rawBytes = decodeBase64(pdfBase64);
+      const enc = await isEncrypted(rawBytes);
+      if (enc.encrypted) {
+        if (!password) {
+          return json({ error: 'password_required' }, 422);
+        }
+        let decrypted: Uint8Array;
+        try {
+          decrypted = await decryptPDF(rawBytes, password);
+        } catch {
+          // Never log the caught error here — it could echo the password.
+          return json({ error: 'password_wrong' }, 422);
+        }
+        pdfData = encodeBase64(decrypted);
+      }
+    } catch (e) {
+      // base64/parse failure on the encryption probe — fall through and let Gemini
+      // try the original bytes; if it can't read them we surface ai_failed below.
+      console.error('[parse-statement] encryption probe failed:', (e as Error).message);
+    }
+
+    // Call Gemini 2.5 Flash with inline PDF data.
+    // NOTE: gemini-2.0-flash was retired 2026-06-01 — that caused the prod 502s.
+    // gemini-2.5-flash is GA but sunsets 2026-10-16; migrate to gemini-3.5-flash before then.
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -108,7 +144,7 @@ Deno.serve(async (req: Request) => {
           contents: [{
             role: 'user',
             parts: [
-              { inline_data: { mime_type: 'application/pdf', data: pdfBase64 } },
+              { inline_data: { mime_type: 'application/pdf', data: pdfData } },
               { text: EXTRACTION_PROMPT },
             ],
           }],
@@ -122,8 +158,10 @@ Deno.serve(async (req: Request) => {
 
     if (!geminiRes.ok) {
       const err = await geminiRes.text();
-      console.error('[parse-statement] gemini error:', err);
-      return json({ error: 'ai_failed', detail: err.slice(0, 500) }, 502);
+      // Log the upstream HTTP status so a future non-2xx is diagnosable from logs
+      // (404 = dead model, 400 = unreadable/encrypted PDF, 403 = bad key, 429 = quota).
+      console.error(`[parse-statement] gemini error ${geminiRes.status}:`, err);
+      return json({ error: 'ai_failed', status: geminiRes.status, detail: err.slice(0, 500) }, 502);
     }
 
     const geminiData = await geminiRes.json();

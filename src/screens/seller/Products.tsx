@@ -34,6 +34,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { useToast } from '../../context/ToastContext';
 import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha, BIZ, BIZ_SAFE, semantic } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
+import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useT } from '../../i18n';
 import { SellerProduct, IngredientCost, StockAdjustmentReason } from '../../types';
 import {
@@ -500,6 +501,7 @@ const Products: React.FC = () => {
     setBulkResults(null);
     setBulkSelected(new Set());
   }, [bulkResults, bulkSelected, addProduct, addProductCategory, showToast]);
+  const guardedBulkAdd = useSubmitGuard(handleBulkAdd);
 
   const updateBulkResult = useCallback((idx: number, updates: Partial<ParsedProduct>) => {
     setBulkResults((prev) => {
@@ -613,6 +615,7 @@ const Products: React.FC = () => {
     setNameError(false);
     setPriceError(false);
   }, [newName, newDescription, newPrice, newCostPerUnit, newUnit, newCategory, addProduct, addProductCategory, showToast]);
+  const guardedAddProduct = useSubmitGuard(handleAddProduct);
 
   const handleSaveEdit = useCallback(() => {
     if (!editingProduct) return;
@@ -734,6 +737,7 @@ const Products: React.FC = () => {
     setSyncToPersonal(false);
     setShowCostModal(false);
   }, [costDescription, costAmount, editingCostId, syncToPersonal, addIngredientCost, updateIngredientCost, addTransaction, updateTransaction, markCostSynced, activeSeason, ingredientCosts, showToast]);
+  const guardedAddCost = useSubmitGuard(handleAddCost);
 
   const toggleSelectProduct = useCallback((id: string) => {
     selectionChanged();
@@ -818,6 +822,7 @@ const Products: React.FC = () => {
     setStockAdjNote('');
     setStockAdjReason('received');
   }, [stockAdjProduct, stockAdjDelta, stockAdjReason, stockAdjNote, addStockAdjustment, showToast]);
+  const guardedStockAdjust = useSubmitGuard(handleStockAdjust);
 
   const handleClone = useCallback((product: SellerProduct) => {
     lightTap();
@@ -1009,7 +1014,7 @@ const Products: React.FC = () => {
           accessibilityLabel={sl.searchProductsLabel}
           accessibilityRole="search"
           keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={C.bronze}
+          selectionColor={withAlpha(C.bronze, 0.25)}
         />
         {search.length > 0 ? (
           <TouchableOpacity
@@ -1234,7 +1239,7 @@ const Products: React.FC = () => {
               onFocus={() => setFocusedField('name')}
               onBlur={() => setFocusedField(null)}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.bronze}
+              selectionColor={withAlpha(C.bronze, 0.25)}
             />
           </Animated.View>
           {duplicateWarning && (
@@ -1262,7 +1267,7 @@ const Products: React.FC = () => {
                 onFocus={() => setFocusedField('price')}
                 onBlur={() => setFocusedField(null)}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.bronze}
+                selectionColor={withAlpha(C.bronze, 0.25)}
               />
             </View>
           </Animated.View>
@@ -1280,7 +1285,7 @@ const Products: React.FC = () => {
               onFocus={() => setFocusedField('cost')}
               onBlur={() => setFocusedField(null)}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.bronze}
+              selectionColor={withAlpha(C.bronze, 0.25)}
             />
           </View>
         </View>
@@ -1331,7 +1336,7 @@ const Products: React.FC = () => {
             onFocus={() => setFocusedField('stock')}
             onBlur={() => setFocusedField(null)}
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.bronze}
+            selectionColor={withAlpha(C.bronze, 0.25)}
           />
           <Text style={styles.currencyPrefix}>{newUnit}</Text>
         </View>
@@ -1352,7 +1357,7 @@ const Products: React.FC = () => {
             onFocus={() => setFocusedField('desc')}
             onBlur={() => setFocusedField(null)}
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.bronze}
+            selectionColor={withAlpha(C.bronze, 0.25)}
           />
           {productCategories.length > 0 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.formCategoryChipRow}>
@@ -1383,7 +1388,7 @@ const Products: React.FC = () => {
               onFocus={() => setFocusedField('category')}
               onBlur={() => setFocusedField(null)}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.bronze}
+              selectionColor={withAlpha(C.bronze, 0.25)}
             />
           )}
         </View>
@@ -1450,7 +1455,7 @@ const Products: React.FC = () => {
             <Text style={styles.modalCancelText}>{sl.cancelBtn}</Text>
           </Pressable>
           <Pressable
-            onPress={handleAddProduct}
+            onPress={guardedAddProduct}
             style={({ pressed }) => [styles.modalConfirm, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
             accessibilityLabel={sl.addProduct}
@@ -1915,7 +1920,7 @@ const Products: React.FC = () => {
                   placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   autoFocus
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.bronze}
+                  selectionColor={withAlpha(C.bronze, 0.25)}
                 />
               </Animated.View>
 
@@ -1930,7 +1935,7 @@ const Products: React.FC = () => {
                     placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                     keyboardType="decimal-pad"
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.bronze}
+                    selectionColor={withAlpha(C.bronze, 0.25)}
                   />
                 </View>
               </Animated.View>
@@ -1957,7 +1962,7 @@ const Products: React.FC = () => {
                   <Text style={styles.modalCancelText}>{sl.cancelBtn}</Text>
                 </Pressable>
                 <Pressable
-                  onPress={handleAddCost}
+                  onPress={guardedAddCost}
                   style={({ pressed }) => [styles.modalConfirm, pressed && { opacity: 0.85 }]}
                   accessibilityRole="button"
                   accessibilityLabel={editingCostId ? sl.saveBtn : sl.logCostBtn}
@@ -2015,7 +2020,7 @@ const Products: React.FC = () => {
                     onChangeText={setBulkText}
                     textAlignVertical="top"
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.bronze}
+                    selectionColor={withAlpha(C.bronze, 0.25)}
                   />
 
                   {bulkParsing ? (
@@ -2093,7 +2098,7 @@ const Products: React.FC = () => {
                       <Text style={styles.modalCancelText}>{t.common.back.toLowerCase()}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={handleBulkAdd}
+                      onPress={guardedBulkAdd}
                       style={[styles.modalConfirm, bulkSelected.size === 0 && { opacity: 0.5 }]}
                       activeOpacity={0.7}
                       disabled={bulkSelected.size === 0}
@@ -2153,7 +2158,7 @@ const Products: React.FC = () => {
                       onChangeText={(v) => updateBulkResult(idx, { name: v })}
                       placeholder={sl.productNamePlaceholder}
                       placeholderTextColor={withAlpha(C.textMuted, 0.6)}
-                      selectionColor={C.bronze}
+                      selectionColor={withAlpha(C.bronze, 0.25)}
                       onFocus={() => setBdFocused('bd-name')}
                       onBlur={() => setBdFocused(null)}
                     />
@@ -2171,7 +2176,7 @@ const Products: React.FC = () => {
                           placeholder={sl.sellingPricePlaceholder}
                           placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                           keyboardType="decimal-pad"
-                          selectionColor={C.bronze}
+                          selectionColor={withAlpha(C.bronze, 0.25)}
                           onFocus={() => setBdFocused('bd-price')}
                           onBlur={() => setBdFocused(null)}
                         />
@@ -2187,7 +2192,7 @@ const Products: React.FC = () => {
                           placeholder={sl.yourCostPlaceholder}
                           placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                           keyboardType="decimal-pad"
-                          selectionColor={C.bronze}
+                          selectionColor={withAlpha(C.bronze, 0.25)}
                           onFocus={() => setBdFocused('bd-cost')}
                           onBlur={() => setBdFocused(null)}
                         />
@@ -2216,7 +2221,7 @@ const Products: React.FC = () => {
                         onChangeText={(v) => updateBulkResult(idx, { unit: v })}
                         placeholder="pcs"
                         placeholderTextColor={withAlpha(C.textMuted, 0.6)}
-                        selectionColor={C.bronze}
+                        selectionColor={withAlpha(C.bronze, 0.25)}
                         onFocus={() => setBdFocused('bd-unit')}
                         onBlur={() => setBdFocused(null)}
                       />
@@ -2229,7 +2234,7 @@ const Products: React.FC = () => {
                         onChangeText={(v) => updateBulkResult(idx, { category: v || undefined })}
                         placeholder={t.common.optional.toLowerCase()}
                         placeholderTextColor={withAlpha(C.textMuted, 0.6)}
-                        selectionColor={C.bronze}
+                        selectionColor={withAlpha(C.bronze, 0.25)}
                         onFocus={() => setBdFocused('bd-cat')}
                         onBlur={() => setBdFocused(null)}
                       />
@@ -2244,7 +2249,7 @@ const Products: React.FC = () => {
                       onChangeText={(v) => updateBulkResult(idx, { description: v || undefined })}
                       placeholder={sl.descriptionPlaceholder}
                       placeholderTextColor={withAlpha(C.textMuted, 0.6)}
-                      selectionColor={C.bronze}
+                      selectionColor={withAlpha(C.bronze, 0.25)}
                       multiline
                       returnKeyType="default"
                       onFocus={() => { setBdFocused('bd-desc'); setBdDescFocused(true); }}
@@ -2361,7 +2366,7 @@ const Products: React.FC = () => {
                   placeholder={sl.quantityPlaceholder}
                   placeholderTextColor={withAlpha(C.textMuted, 0.6)}
                   keyboardType="decimal-pad"
-                  selectionColor={C.bronze}
+                  selectionColor={withAlpha(C.bronze, 0.25)}
                   onFocus={() => setFocusedField('adj-qty')}
                   onBlur={() => setFocusedField(null)}
                 />
@@ -2375,7 +2380,7 @@ const Products: React.FC = () => {
                   onChangeText={setStockAdjNote}
                   placeholder={sl.noteOptionalPlaceholder}
                   placeholderTextColor={withAlpha(C.textMuted, 0.6)}
-                  selectionColor={C.bronze}
+                  selectionColor={withAlpha(C.bronze, 0.25)}
                   onFocus={() => setFocusedField('adj-note')}
                   onBlur={() => setFocusedField(null)}
                 />
@@ -2406,7 +2411,7 @@ const Products: React.FC = () => {
               <TouchableOpacity
                 style={[styles.modalConfirm, !stockAdjDelta.trim() && { opacity: 0.5 }]}
                 activeOpacity={0.7}
-                onPress={handleStockAdjust}
+                onPress={guardedStockAdjust}
                 disabled={!stockAdjDelta.trim()}
               >
                 <Text style={styles.modalConfirmText}>{sl.saveAdjustment}</Text>
