@@ -1,8 +1,8 @@
 import React, { memo } from 'react';
 import { View, Text } from 'react-native';
 import { Image } from 'expo-image';
-import { Feather } from '@expo/vector-icons';
 import { BANK_LOGOS, BANK_LOGOS_SMALL, CARD_NETWORK_LOGOS } from '../../constants/premium';
+import CategoryIcon from './CategoryIcon';
 import { Wallet } from '../../types';
 import { useCalm } from '../../hooks/useCalm';
 
@@ -41,7 +41,7 @@ function WalletLogo({ wallet, size = 40 }: { wallet: Wallet; size?: number }) {
       />
     );
   }
-  return <Feather name={wallet.icon as keyof typeof Feather.glyphMap} size={size * 0.6} color={wallet.color} />;
+  return <CategoryIcon icon={wallet.icon} size={size * 0.6} color={wallet.color} />;
 }
 
 export default memo(WalletLogo);

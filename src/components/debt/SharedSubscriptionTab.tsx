@@ -51,7 +51,7 @@ const SharedSubscriptionTab: React.FC<SharedSubscriptionTabProps> = ({ onPressSu
   if (subs.length === 0) {
     return (
       <EmptyState
-        icon="repeat"
+        icon="i/repeat"
         title={t.sharedSubs.noSharedSubs}
         message={t.sharedSubs.noSharedSubsHint}
         actionLabel={t.sharedSubs.addSharedSub}

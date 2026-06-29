@@ -16,6 +16,7 @@ import { Feather } from '@expo/vector-icons';
 import { CALM, CALM_DARK, SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import ModalToastHost from './ModalToastHost';
+import CategoryIcon from './CategoryIcon';
 import { useSettingsStore } from '../../store/settingsStore';
 import { DEFAULT_PAYMENT_METHODS } from '../../constants/taxCategories';
 import { CategoryOption } from '../../types';
@@ -23,9 +24,9 @@ import { lightTap } from '../../services/haptics';
 import { useToast } from '../../context/ToastContext';
 
 const ICON_OPTIONS: string[] = [
-  'dollar-sign', 'credit-card', 'smartphone', 'zap', 'shopping-bag',
-  'globe', 'maximize', 'more-horizontal', 'briefcase', 'gift',
-  'tag', 'star', 'heart', 'shield', 'layers',
+  'm/cash', 'i/card', 'm/wallet', 'm/qrcode', 'm/bank',
+  'i/bag-handle', 'm/cellphone', 'm/contactless-payment', 'm/credit-card-outline', 'm/bank-transfer',
+  'm/gift', 'm/cash-multiple', 'i/wallet', 'i/shield-checkmark', 'i/ellipsis-horizontal',
 ];
 
 const COLOR_OPTIONS: string[] = [
@@ -169,7 +170,7 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
                 activeOpacity={0.6}
               >
                 <View style={[styles.methodIcon, { backgroundColor: withAlpha(item.color, 0.15) }]}>
-                  <Feather name={item.icon as keyof typeof Feather.glyphMap} size={20} color={item.color} />
+                  <CategoryIcon icon={item.icon} size={20} color={item.color} />
                 </View>
                 <View style={styles.methodInfo}>
                   <Text style={styles.methodName}>{item.name}</Text>
@@ -220,7 +221,7 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
                 returnKeyType="done"
                 onSubmitEditing={Keyboard.dismiss}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               <Text style={styles.fieldLabel}>Icon</Text>
@@ -234,7 +235,7 @@ const PaymentMethodManager: React.FC<PaymentMethodManagerProps> = ({ visible, on
                     ]}
                     onPress={() => setEditIcon(iconName)}
                   >
-                    <Feather name={iconName as keyof typeof Feather.glyphMap} size={18} color={editIcon === iconName ? editColor : C.textSecondary} />
+                    <CategoryIcon icon={iconName} size={18} color={editIcon === iconName ? editColor : C.textSecondary} />
                   </TouchableOpacity>
                 ))}
               </View>

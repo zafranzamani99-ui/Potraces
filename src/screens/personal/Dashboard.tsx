@@ -16,8 +16,12 @@ import {
   InteractionManager,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+// RN's ScrollView is required for the OUTER pull-to-refresh: RNGH's ScrollView sets
+// disallowInterruption=true, which blocks Android's SwipeRefreshLayout so onRefresh
+// never fires. The horizontal card rows below stay on RNGH's ScrollView.
+import { ScrollView as RNScrollView } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { addDays, isWithinInterval, startOfMonth, endOfMonth, startOfDay, subMonths, getDaysInMonth } from 'date-fns';
 
 import { useNavigation } from '@react-navigation/native';
@@ -38,7 +42,7 @@ import CategoryPicker from '../../components/common/CategoryPicker';
 import WalletPicker from '../../components/common/WalletPicker';
 import WeekBar from '../../components/common/WeekBar';
 import CollapsibleSection from '../../components/common/CollapsibleSection';
-import DuoIcon, { FEATHER_TO_GLYPH } from '../../components/common/DuoIcon';
+import DuoIcon from '../../components/common/DuoIcon';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useWalletStore } from '../../store/walletStore';
 import { useSellerStore } from '../../store/sellerStore';
@@ -72,18 +76,29 @@ const getGreetingKey = (): 'goodMorning' | 'goodAfternoon' | 'goodEvening' => {
 
 // Quick-action color tokens. Resolved against the active palette so dark-mode
 // contrast is preserved (DESIGN-H1, UX-H5). No more raw hex.
+// Quick-action glyphs use a lib-prefixed spec (`i/` Ionicons, `m/` MaterialCommunityIcons,
+// default Feather) rendered solid in the action colour over its tinted container —
+// see renderActionIcon. Echo (chat) and Budget share their glyph with the matching tab.
 const getQuickActions = (C: typeof CALM) => [
-  { key: 'wallets' as const, icon: 'credit-card' as const, screen: 'WalletManagement', color: C.accent },
-  { key: 'savings' as const, icon: 'archive' as const, screen: 'SavingsTracker', color: C.gold },
-  { key: 'debts' as const, icon: 'git-branch' as const, screen: 'DebtTracking', color: C.bronze },
-  { key: 'bills' as const, icon: 'refresh-cw' as const, screen: 'SubscriptionList', color: C.accent },
-  { key: 'budgets' as const, icon: 'sliders' as const, screen: 'BudgetPlanning', color: C.bronze },
-  { key: 'reports' as const, icon: 'trending-up' as const, screen: 'PersonalReports', color: C.deepOlive },
-  { key: 'goals' as const, icon: 'flag' as const, screen: 'Goals', color: C.gold },
-  { key: 'receipts' as const, icon: 'file-text' as const, screen: 'ReceiptHistory', color: C.deepOlive },
-  { key: 'chat' as const, icon: 'zap' as const, screen: 'MoneyChat', color: C.gold },
-  { key: 'pulse' as const, icon: 'activity' as const, screen: 'FinancialPulse', color: C.accent },
+  { key: 'wallets' as const, icon: 'i/wallet', screen: 'WalletManagement', color: C.accent },
+  { key: 'savings' as const, icon: 'm/piggy-bank', screen: 'SavingsTracker', color: C.gold },
+  { key: 'debts' as const, icon: 'm/hand-coin', screen: 'DebtTracking', color: C.bronze },
+  { key: 'bills' as const, icon: 'i/repeat', screen: 'SubscriptionList', color: C.accent },
+  { key: 'budgets' as const, icon: 'i/pie-chart', screen: 'BudgetPlanning', color: C.bronze },
+  { key: 'reports' as const, icon: 'i/stats-chart', screen: 'PersonalReports', color: C.deepOlive },
+  { key: 'goals' as const, icon: 'm/target', screen: 'Goals', color: C.gold },
+  { key: 'receipts' as const, icon: 'i/receipt', screen: 'ReceiptHistory', color: C.deepOlive },
+  { key: 'chat' as const, icon: 'i/flash', screen: 'MoneyChat', color: C.gold },
+  { key: 'pulse' as const, icon: 'i/pulse', screen: 'FinancialPulse', color: C.accent },
 ];
+
+// Render a lib-prefixed glyph spec (mirrors the multi-library pattern in Goals.tsx).
+const renderActionIcon = (spec: string, color: string, size = 27) => {
+  const [lib, name] = spec.includes('/') ? spec.split('/') : ['f', spec];
+  if (lib === 'm') return <MaterialCommunityIcons name={name as any} size={size} color={color} />;
+  if (lib === 'i') return <Ionicons name={name as any} size={size} color={color} />;
+  return <Feather name={name as any} size={size} color={color} />;
+};
 
 // ─── Insight micro-visualizations ─────────────────────────────
 // Each insight card carries a tiny instrument of the user's real data
@@ -722,12 +737,15 @@ const PersonalDashboard: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView
+      <RNScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + SPACING.md }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
+        scrollEventThrottle={16}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.textMuted} colors={[C.accent]} />
         }
       >
         <ModeToggle />
@@ -748,7 +766,7 @@ const PersonalDashboard: React.FC = () => {
                   t.dashboard.noQrMessage,
                   [
                     { text: t.common.later, style: 'cancel' },
-                    { text: t.dashboard.goToSettings, onPress: () => navigation.navigate('Settings', { scrollTo: 'qr' }) },
+                    { text: t.dashboard.goToSettings, onPress: () => navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'qr' }) },
                   ]
                 );
               }
@@ -789,6 +807,7 @@ const PersonalDashboard: React.FC = () => {
         <RAnimated.View entering={FadeInDown.delay(150).duration(200)} style={styles.insightStripWrap}>
         <ScrollView
           horizontal
+          nestedScrollEnabled
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.insightStripRow}
           style={styles.insightStripScroll}
@@ -934,6 +953,7 @@ const PersonalDashboard: React.FC = () => {
             <View key={rowIdx} style={styles.quickActionsRowWrap}>
               <ScrollView
                 horizontal
+                nestedScrollEnabled
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.quickActionsRow}
                 style={styles.quickActionsScroll}
@@ -956,12 +976,7 @@ const PersonalDashboard: React.FC = () => {
                       end={{ x: 0.85, y: 1 }}
                       style={[styles.quickActionIcon, { borderColor: withAlpha(action.color, isDark ? 0.28 : 0.16) }]}
                     >
-                      <DuoIcon
-                        glyph={FEATHER_TO_GLYPH[action.icon]}
-                        color={action.color}
-                        size={27}
-                        fillAlpha={isDark ? 0.32 : 0.26}
-                      />
+                      {renderActionIcon(action.icon, action.color, 27)}
                       {action.key === 'bills' && billsBadge > 0 && (
                         <View style={styles.quickActionBadge}>
                           <Text style={styles.quickActionBadgeText}>{billsBadge}</Text>
@@ -1095,14 +1110,14 @@ const PersonalDashboard: React.FC = () => {
               ))
             ) : (
               <EmptyState
-                icon="inbox"
+                icon="i/receipt-outline"
                 title={t.dashboard.noTransactionsTitle}
                 message={t.dashboard.noTransactionsMessage}
               />
             )}
           </View>
         </CollapsibleSection>
-      </ScrollView>
+      </RNScrollView>
 
       {/* Transaction Edit Modal */}
       {editModalVisible && (
@@ -1190,7 +1205,7 @@ const PersonalDashboard: React.FC = () => {
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                   accessibilityLabel={t.transaction.amount}
                 />
 
@@ -1217,7 +1232,7 @@ const PersonalDashboard: React.FC = () => {
                   placeholder={t.transaction.descriptionPlaceholder}
                   placeholderTextColor={C.textSecondary}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                   accessibilityLabel={t.transaction.description}
                 />
 
@@ -1231,7 +1246,7 @@ const PersonalDashboard: React.FC = () => {
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                   accessibilityLabel={t.transaction.tagsOptional}
                 />
 

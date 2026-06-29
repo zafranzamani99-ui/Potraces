@@ -9,17 +9,16 @@ import {
   TouchableOpacity,
   Pressable,
   Keyboard,
-  Platform,
   Switch,
-  KeyboardAvoidingView,
   FlatList,
   Animated as RNAnimated,
   useWindowDimensions,
   AccessibilityInfo,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { ScrollView, Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -57,6 +56,7 @@ import CircularProgress from '../../components/common/CircularProgress';
 import HalfGauge from '../../components/common/HalfGauge';
 import PaywallModal from '../../components/common/PaywallModal';
 import EmptyState from '../../components/common/EmptyState';
+import BudgetPlannerSheet from '../../components/common/BudgetPlannerSheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePremiumStore } from '../../store/premiumStore';
 import { useToast } from '../../context/ToastContext';
@@ -120,7 +120,13 @@ const BudgetPlanning: React.FC = () => {
   // (present on first visit; the guide falls back to inline points if not).
   const guideTargetRef = useRef<any>(null);
   const { showToast } = useToast();
-  const { budgets, addBudget, updateBudget, deleteBudget, transactions, subscriptions, goals } = usePersonalStore();
+  const budgets = usePersonalStore((s) => s.budgets);
+  const addBudget = usePersonalStore((s) => s.addBudget);
+  const updateBudget = usePersonalStore((s) => s.updateBudget);
+  const deleteBudget = usePersonalStore((s) => s.deleteBudget);
+  const transactions = usePersonalStore((s) => s.transactions);
+  const subscriptions = usePersonalStore((s) => s.subscriptions);
+  const goals = usePersonalStore((s) => s.goals);
   const currency = useSettingsStore(state => state.currency);
   const echoHidden = useSettingsStore((s) => s.budgetEchoHidden);
   const setEchoHidden = useSettingsStore((s) => s.setBudgetEchoHidden);
@@ -129,6 +135,7 @@ const BudgetPlanning: React.FC = () => {
   const expenseCategories = useCategories('expense');
 
   const [modalVisible, setModalVisible] = useState(false);
+  const [budgetPlannerVisible, setBudgetPlannerVisible] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
   const [echoPaywallVisible, setEchoPaywallVisible] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
@@ -1382,6 +1389,16 @@ const BudgetPlanning: React.FC = () => {
             {/* Top row — solid, visible add-budget button */}
             <View style={styles.heroTopRowV3}>
               <TouchableOpacity
+                style={styles.heroPlanBtn}
+                onPress={() => { lightTap(); setBudgetPlannerVisible(true); }}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t.budget.planner.entryPill}
+              >
+                <Feather name="zap" size={13} color={C.accent} />
+                <Text style={styles.heroPlanBtnText}>{t.budget.planner.entryPill}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={styles.heroAddBtn}
                 onPress={openAddModal}
                 activeOpacity={0.85}
@@ -1701,6 +1718,16 @@ const BudgetPlanning: React.FC = () => {
               <Feather name="plus" size={18} color={C.onAccent} />
               <Text style={styles.emptyButtonText}>{t.budget.addBudget.toLowerCase()}</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.emptyPlanLink}
+              onPress={() => { lightTap(); setBudgetPlannerVisible(true); }}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t.budget.planner.entryEmpty}
+            >
+              <Feather name="zap" size={14} color={C.bronze} />
+              <Text style={styles.emptyPlanLinkText}>{t.budget.planner.entryEmpty}</Text>
+            </TouchableOpacity>
           </Reanimated.View>
         )}
 
@@ -1906,7 +1933,7 @@ const BudgetPlanning: React.FC = () => {
               );
             })() : (
               <EmptyState
-                icon="book-open"
+                icon="i/book-outline"
                 title="no active playbooks"
                 message="create one when income arrives to track where every ringgit goes"
               />
@@ -1980,7 +2007,7 @@ const BudgetPlanning: React.FC = () => {
               </View>
             ) : (
               <EmptyState
-                icon="book-open"
+                icon="i/book-outline"
                 title="no past playbooks"
                 message="closed playbooks will appear here"
               />
@@ -2014,7 +2041,7 @@ const BudgetPlanning: React.FC = () => {
           accessibilityLabel="Close"
         >
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
             style={styles.mathKAV}
             pointerEvents="box-none"
           >
@@ -2153,6 +2180,8 @@ const BudgetPlanning: React.FC = () => {
         const dTxnsHasMore = dTxnsAll.length > DETAIL_TXN_CAP;
         return (
         <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={() => dCloseSheet()}>
+          {/* Android: RNGH gestures inside a Modal need their own root (Modal = separate window) */}
+          <GestureHandlerRootView style={{ flex: 1 }}>
           <Reanimated.View style={[styles.modalBackdrop, dBackdropAnimatedStyle]}>
             <Pressable style={{ flex: 1 }} onPress={() => dCloseSheet()} />
           </Reanimated.View>
@@ -2277,12 +2306,15 @@ const BudgetPlanning: React.FC = () => {
               </TouchableOpacity>
             </View>
           </Reanimated.View>
+          </GestureHandlerRootView>
         </Modal>
         );
       })()}
 
       {/* ── Add / Edit Budget — bottom-sheet (drag-to-dismiss, animated backdrop) ─── */}
       {modalVisible && (<Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={bCloseSheet}>
+        {/* Android: RNGH gestures inside a Modal need their own root (Modal = separate window) */}
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <Reanimated.View style={[styles.modalBackdrop, bBackdropAnimatedStyle]}>
           <Pressable style={{ flex: 1 }} onPress={bCloseSheet} />
         </Reanimated.View>
@@ -2310,7 +2342,7 @@ const BudgetPlanning: React.FC = () => {
           </GestureDetector>
 
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
             style={{ flex: 1 }}
             keyboardVerticalOffset={10}
           >
@@ -2338,7 +2370,8 @@ const BudgetPlanning: React.FC = () => {
                     onSubmitEditing={Keyboard.dismiss}
                     selectTextOnFocus
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
+                    cursorColor={C.accent}
                     accessibilityLabel="budget amount"
                   />
                 </View>
@@ -2451,6 +2484,7 @@ const BudgetPlanning: React.FC = () => {
           </View>
         </Reanimated.View>
         <ModalToastHost />
+        </GestureHandlerRootView>
       </Modal>)}
 
       <PaywallModal
@@ -2465,6 +2499,13 @@ const BudgetPlanning: React.FC = () => {
         visible={echoPaywallVisible}
         onClose={() => setEchoPaywallVisible(false)}
         feature="ai"
+      />
+
+      {/* Echo plan — deterministic monthly-budget planner (engine + model freedom → real budgets) */}
+      <BudgetPlannerSheet
+        visible={budgetPlannerVisible}
+        onClose={() => setBudgetPlannerVisible(false)}
+        onApplied={(n) => showToast(t.budget.planner.createdToast.replace('{{n}}', String(n)), 'success')}
       />
 
       {/* ── Playbook FAB ── */}
@@ -2497,7 +2538,7 @@ const BudgetPlanning: React.FC = () => {
           <View style={styles.modalOverlay}>
             <Pressable style={StyleSheet.absoluteFill} onPress={closePlaybookModal} />
             <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              behavior="padding"
               style={styles.modalKAV}
             >
               <View style={[styles.modalCard, { maxHeight: undefined }]} onStartShouldSetResponder={() => true}>
@@ -2523,7 +2564,7 @@ const BudgetPlanning: React.FC = () => {
                     placeholderTextColor={C.textMuted}
                     autoFocus={!editingPlaybook}
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
 
                   <Text style={styles.label}>amount ({currency})</Text>
@@ -2540,7 +2581,7 @@ const BudgetPlanning: React.FC = () => {
                       onSubmitEditing={Keyboard.dismiss}
                       editable={!editingPlaybook}
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.accent}
+                      selectionColor={withAlpha(C.accent, 0.25)}
                     />
                   </View>
                   {editingPlaybook && (
@@ -3452,6 +3493,37 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.bold,
     color: C.onAccent,
     textTransform: 'lowercase',
+  },
+  heroPlanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.accent, 0.08),
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.2),
+    marginRight: SPACING.sm,
+  },
+  heroPlanBtnText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.accent,
+    textTransform: 'lowercase',
+  },
+  emptyPlanLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+  },
+  emptyPlanLinkText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.bronze,
   },
   heroEyebrowV3: {
     fontSize: TYPOGRAPHY.size.sm,

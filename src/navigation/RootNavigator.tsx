@@ -457,6 +457,11 @@ const RootNavigator: React.FC = () => {
           options={makeBackHeader(C, mode, 'Settings')}
         />
         <Stack.Screen
+          name="SettingsDetail"
+          component={Settings}
+          options={makeBackHeader(C, mode, 'Settings')}
+        />
+        <Stack.Screen
           name="PastSeasons"
           component={PastSeasons}
           options={makeBackHeader(C, mode, 'Seasons')}

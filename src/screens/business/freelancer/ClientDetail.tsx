@@ -13,7 +13,7 @@ import { format } from 'date-fns';
 import { useFreelancerStore } from '../../../store/freelancerStore';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { RootStackParamList } from '../../../types';
 import { useToast } from '../../../context/ToastContext';
@@ -131,7 +131,7 @@ const ClientDetail: React.FC = () => {
             onSubmitEditing={saveName}
             returnKeyType="done"
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         ) : (
           <TouchableOpacity onPress={() => setEditingName(true)}>
@@ -152,7 +152,7 @@ const ClientDetail: React.FC = () => {
             onSubmitEditing={saveContact}
             returnKeyType="done"
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         ) : (
           <TouchableOpacity onPress={() => setEditingContact(true)}>
@@ -176,7 +176,7 @@ const ClientDetail: React.FC = () => {
             returnKeyType="done"
             multiline
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         ) : (
           <TouchableOpacity onPress={() => setEditingNotes(true)}>

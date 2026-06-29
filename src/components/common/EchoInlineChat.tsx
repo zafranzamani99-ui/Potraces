@@ -359,7 +359,7 @@ const EchoInlineChat: React.FC<Props> = ({
                 maxLength={500}
                 editable={!sending}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               <TouchableOpacity
                 style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}

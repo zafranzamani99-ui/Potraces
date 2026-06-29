@@ -3166,6 +3166,12 @@ export const ms: Translations = {
     wrongPassword: 'Kata laluan tak kena — cuba lagi.',
   },
 
+  forcedUpdate: {
+    title: 'Masa untuk kemas kini',
+    message: 'Versi Potraces yang lebih baru dah ada. Kemas kini supaya data duit anda selamat dan berfungsi.',
+    button: 'kemas kini sekarang',
+  },
+
   onTheRoad: {
     setupHeading: 'apa yang anda buat atas jalan?',
     descriptionPlaceholder: 'pemandu Grab, penghantar Foodpanda, runner...',

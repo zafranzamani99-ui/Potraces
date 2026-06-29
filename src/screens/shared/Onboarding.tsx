@@ -12,10 +12,12 @@ import {
   Animated,
   Easing,
   LayoutChangeEvent,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { SPACING, TYPOGRAPHY, RADIUS, withAlpha } from '../../constants';
 import { useIsDark } from '../../hooks/useCalm';
 import { useSettingsStore, ThemePreference } from '../../store/settingsStore';
@@ -161,7 +163,9 @@ const accentFor = (hex: string, dark: boolean) => (dark ? NIGHT_ACCENT[hex] ?? '
 // ─── Tiny animation primitives ────────────────────────────
 // Shared building blocks so every page can stage its entrance. All native-driver.
 
-/** Fades + slides children in when `active` flips true; resets when false so a revisit replays. */
+/** Fades + slides children in when `active` flips true. Plays once and stays —
+ *  no reset on inactive, which would blink the outgoing page to invisible while
+ *  it's still partly on screen during a swipe (the Android flicker). */
 const Reveal: React.FC<{
   active: boolean;
   delay?: number;
@@ -176,8 +180,6 @@ const Reveal: React.FC<{
         Animated.delay(delay),
         Animated.spring(v, { toValue: 1, friction: 8, tension: 60, useNativeDriver: true }),
       ]).start();
-    } else {
-      v.setValue(0);
     }
   }, [active, delay, v]);
   return (
@@ -380,7 +382,10 @@ const SlideMockup: React.FC<{ slideId: string; accent: string; sky: SkyPalette; 
     borderColor: sky.cardBorder,
     padding: SPACING.md,
     overflow: 'hidden' as const,
-    ...(isDark ? NO_SHADOW : WARM_SHADOW),
+    // borderRadius + overflow:'hidden' + elevation on Android renders a ghost
+    // ring/inset ("padding") around the card, worst mid-reveal. iOS clips this
+    // shadow via overflow anyway, so drop the Android elevation; border defines it.
+    ...(isDark ? NO_SHADOW : { ...WARM_SHADOW, elevation: 0 }),
   };
 
   switch (slideId) {
@@ -467,14 +472,22 @@ const Onboarding: React.FC = () => {
   const isDark = useIsDark();
   const t = useT();
   const insets = useSafeAreaInsets();
+  // Android (SDK 54 edge-to-edge) can report a stale/too-wide module-load
+  // Dimensions snapshot, which made the pager's pages wider than the real
+  // screen and clipped page content on the right. Measure the list's actual
+  // width instead and drive page width + getItemLayout from it.
+  const { width: winW } = useWindowDimensions();
+  const [listW, setListW] = useState(winW);
   const flatListRef = useRef<FlatList>(null);
+  // The pager's native scroll, exposed as an RNGH gesture so the wau kite drag
+  // can be declared simultaneous with it — instead of a JS kill-switch that
+  // froze paging a frame late on Android.
+  const nativePager = useMemo(() => Gesture.Native(), []);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [name, setName] = useState('');
   const [nameFocused, setNameFocused] = useState(false);
   const [selectedLang, setSelectedLang] = useState<'en' | 'ms'>('en');
   const [selectedMode, setSelectedMode] = useState<ModeChoice | null>(null);
-  // While the wau is being dragged, the pager + welcome scroll must not move.
-  const [wauDragging, setWauDragging] = useState(false);
   const setHasCompletedOnboarding = useSettingsStore((s) => s.setHasCompletedOnboarding);
   const setUserName = useSettingsStore((s) => s.setUserName);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
@@ -594,7 +607,9 @@ const Onboarding: React.FC = () => {
     }
   ).current;
 
-  const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
+  // Flip `currentIndex` only once a page is mostly settled (not at 50% mid-swipe),
+  // so an outgoing page's content isn't reset/re-animated while still on screen.
+  const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 80 }).current;
 
   const renderPage = useCallback(({ item, index }: { item: PageItem; index: number }) => {
     const active = currentIndex === index;
@@ -606,7 +621,7 @@ const Onboarding: React.FC = () => {
         ? t.onboarding.hiThere.replace(/!?$/, `, ${firstName}!`)
         : t.onboarding.hiThere;
       return (
-        <View style={styles.welcomePage}>
+        <View style={[styles.welcomePage, { width: listW }]}>
           <KeyboardAwareScrollView
             style={styles.welcomeScroll}
             contentContainerStyle={styles.welcomeScrollContent}
@@ -614,7 +629,6 @@ const Onboarding: React.FC = () => {
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled
             bounces={false}
-            scrollEnabled={!wauDragging}
             bottomOffset={24}
           >
             <View style={styles.welcomeInner}>
@@ -627,7 +641,7 @@ const Onboarding: React.FC = () => {
                   panelW={HERO_SKY_W}
                   panelH={HERO_SKY_H}
                   dark={skyDark}
-                  onDraggingChange={setWauDragging}
+                  pagerGesture={nativePager}
                 />
               </View>
 
@@ -705,7 +719,7 @@ const Onboarding: React.FC = () => {
 
     if (item.type === 'mode') {
       return (
-        <View style={styles.page}>
+        <View style={[styles.page, { width: listW }]}>
           <View style={styles.pageInner}>
             <Reveal active={active} delay={60} from={12} style={{ alignSelf: 'stretch' }}>
               <Text style={styles.title} accessibilityRole="header">{t.onboarding.modePickTitle}</Text>
@@ -763,7 +777,7 @@ const Onboarding: React.FC = () => {
 
     const slide = item.data;
     return (
-      <View style={styles.page}>
+      <View style={[styles.page, { width: listW }]}>
         <View style={styles.pageInner}>
           <View style={styles.mockupContainer}>
             <Reveal active={active} delay={40} from={20}>
@@ -777,7 +791,7 @@ const Onboarding: React.FC = () => {
         </View>
       </View>
     );
-  }, [name, nameFocused, selectedLang, selectedMode, currentIndex, effectiveTheme, skyDark, sky, wauDragging, segW, segAnim, t, styles, handleNameChange, handleLangChange, handleThemeChange, handleModePick, onSegLayout]);
+  }, [name, nameFocused, selectedLang, selectedMode, currentIndex, effectiveTheme, skyDark, sky, segW, segAnim, t, styles, listW, handleNameChange, handleLangChange, handleThemeChange, handleModePick, onSegLayout]);
 
   const isLastPage = currentIndex === ALL_PAGES.length - 1;
   // FIRSTRUN-C4 — skip available on every page except the final mode-pick (where the button
@@ -817,29 +831,38 @@ const Onboarding: React.FC = () => {
         )}
       </View>
 
-      {/* Pages */}
-      <FlatList
-        ref={flatListRef}
-        data={ALL_PAGES}
-        renderItem={renderPage}
-        keyExtractor={(_, index) => `page-${index}`}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        bounces={false}
-        scrollEnabled={!wauDragging}
-        removeClippedSubviews
-        maxToRenderPerBatch={6}
-        windowSize={7}
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={viewabilityConfig}
-        getItemLayout={(_, index) => ({
-          length: SCREEN_WIDTH,
-          offset: SCREEN_WIDTH * index,
-          index,
-        })}
-        keyboardShouldPersistTaps="handled"
-      />
+      {/* Pages — wrapped so the wau kite drag can run simultaneously with the
+          pager's native scroll (Gesture.Native) instead of blocking it. */}
+      <GestureDetector gesture={nativePager}>
+        <FlatList
+          ref={flatListRef}
+          data={ALL_PAGES}
+          renderItem={renderPage}
+          keyExtractor={(_, index) => `page-${index}`}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          bounces={false}
+          // removeClippedSubviews unmounts/remounts pages on this 5-item list,
+          // restarting entrance animations and flickering on Android. They all
+          // fit in memory — keep them mounted.
+          removeClippedSubviews={false}
+          maxToRenderPerBatch={6}
+          windowSize={7}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          onLayout={(e) => {
+            const w = e.nativeEvent.layout.width;
+            if (w > 0 && w !== listW) setListW(w);
+          }}
+          getItemLayout={(_, index) => ({
+            length: listW,
+            offset: listW * index,
+            index,
+          })}
+          keyboardShouldPersistTaps="handled"
+        />
+      </GestureDetector>
 
       {/* Bottom: dots + button */}
       <View style={styles.footer}>
@@ -921,7 +944,6 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     textAlign: 'right',
   },
   page: {
-    width: SCREEN_WIDTH,
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -949,6 +971,10 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.bold,
     color: sky.ink,
     textAlign: 'center',
+    // Stretch to full width so the centered text measures against the real
+    // width — bare auto-width children mis-measure narrow inside the nested
+    // scroll + horizontal pager on Android, wrapping short strings.
+    alignSelf: 'stretch',
     letterSpacing: -0.5,
     marginBottom: SPACING.xs,
   },
@@ -957,6 +983,9 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     fontWeight: TYPOGRAPHY.weight.regular,
     color: sky.sub,
     textAlign: 'center',
+    // Full width so short centered strings (e.g. BM "jom mula") don't wrap from
+    // a too-narrow auto-width measurement inside the nested scroll on Android.
+    alignSelf: 'stretch',
     lineHeight: TYPOGRAPHY.size.base * TYPOGRAPHY.lineHeight.relaxed,
     paddingHorizontal: SPACING.md,
   },
@@ -990,7 +1019,6 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
 
   // ── Welcome page ──
   welcomePage: {
-    width: SCREEN_WIDTH,
     flex: 1,
   },
   welcomeScroll: {
@@ -1038,7 +1066,10 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     borderColor: sky.fieldBorder,
     paddingHorizontal: SPACING.md,
     minHeight: 56,
-    ...(skyDark ? NO_SHADOW : WARM_SHADOW),
+    // Android renders elevation shadows BEHIND a translucent surface, so the
+    // shadow shows through the glass field as a doubled/ghosted box. Keep the
+    // soft iOS shadow; drop the Android elevation (the 1.5px border defines it).
+    ...(skyDark ? NO_SHADOW : { ...WARM_SHADOW, elevation: 0 }),
   },
   inputCardFocused: {
     borderColor: sky.focusBorder,
@@ -1067,7 +1098,7 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     backgroundColor: sky.segThumb,
     borderWidth: 1,
     borderColor: sky.segThumbBorder,
-    ...(skyDark ? NO_SHADOW : WARM_SHADOW_SM),
+    ...(skyDark ? NO_SHADOW : { ...WARM_SHADOW_SM, elevation: 0 }),
   },
   segItem: {
     flex: 1,
@@ -1101,7 +1132,7 @@ const makeStyles = (skyDark: boolean, sky: SkyPalette) => StyleSheet.create({
     borderWidth: 1.5,
     borderColor: sky.choiceBorder,
     gap: SPACING.md,
-    ...(skyDark ? NO_SHADOW : WARM_SHADOW_SM),
+    ...(skyDark ? NO_SHADOW : { ...WARM_SHADOW_SM, elevation: 0 }),
   },
   modeCardActive: {
     borderColor: sky.accent,

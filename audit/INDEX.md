@@ -38,7 +38,9 @@ When an auditor agent writes a new report, it adds one line here.
 ## Scalability
 | Report | Owner agent | What it covers |
 |---|---|---|
-| [SCALABILITY.md](SCALABILITY.md) | scalability-auditor | Performance ceilings as data/users grow |
+| [SCALABILITY.md](SCALABILITY.md) | scalability-auditor | Performance ceilings — 6 CRITICAL / 12 HIGH (4 new); biggest new = push tombstone reads unbounded at >1,000 orders (SCALE-C6 silent mass-deletion) + missing flood-cap index on seller_orders (SCALE-H11) |
+| [ANDROID_SCROLL_AUDIT.md](ANDROID_SCROLL_AUDIT.md) | android-scroll-auditor | 🔴 "always hard to scroll on Android dev build" — root cause = RNGH `ScrollView` on all 84 files (0 native; only 1 truly needs it) + 17 redundant `GestureHandlerRootView` inside Modals + module-level `LayoutAnimation`/focus JS-thread stalls; ships to release (Hermes already ON, not the cause); 12-step iOS-safe fix plan, biggest lever = migrate gesture-free scrolls to native RN ScrollView |
+| [LOAD_READINESS.md](LOAD_READINESS.md) | load-readiness lead | 🟡 1,000-user / ~100-concurrent verdict = **CONDITIONAL-GO** — synthesis of 4 verified dimension audits; blockers = unverified seller multi-device tombstone-delete + buyer double-submit (data-loss, always-on) + shared AI provider RPM (free tier ~15) + plan-gated Supavisor pool; ends with k6 + 2-device load-test plan |
 
 ## Echo Voice Input
 | Report | Owner agent | What it covers |
@@ -50,6 +52,7 @@ When an auditor agent writes a new report, it adds one line here.
 |---|---|---|
 | [STORE_COMPLIANCE_AUDIT.md](STORE_COMPLIANCE_AUDIT.md) | 5-agent compliance sweep | 🔴 App Store / Play submission blockers + risks (IAP, account deletion, entitlements, keys, permissions, privacy) — incl. 2026-06-17 resolution status |
 | [STORE_DATA_DISCLOSURE.md](STORE_DATA_DISCLOSURE.md) | store-compliance | Copy-paste Apple Nutrition Label + Play Data Safety answers from real data flows |
+| [VIBE_CLEANUP_REVIEW.md](VIBE_CLEANUP_REVIEW.md) | vibe-cleanup-mobile | 🔴 Pre-launch cleanup review — 2 confirmed CRITICAL blockers (REL-01 wallet double-count, PARITY-1 Tap-to-Pay entitlement) + 4 HIGH + 11 optional MEDIUM |
 
 ## Lives elsewhere (linked, not moved)
 - Root `AUDIT.md` — legacy top-level audit (referenced by production-readiness-auditor)

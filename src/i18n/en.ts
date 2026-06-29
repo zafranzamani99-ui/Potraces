@@ -3195,6 +3195,12 @@ export const en = {
     wrongPassword: "That password didn't work — try again.",
   },
 
+  forcedUpdate: {
+    title: 'Time to update',
+    message: 'A newer version of Potraces is ready. Update to keep your money data safe and working.',
+    button: 'update now',
+  },
+
   onTheRoad: {
     setupHeading: 'what do you do on the road?',
     descriptionPlaceholder: 'Grab driver, Foodpanda rider, runner...',

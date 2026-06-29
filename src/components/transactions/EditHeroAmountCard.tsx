@@ -149,7 +149,7 @@ const EditHeroAmountCard: React.FC<EditHeroAmountCardProps> = ({
           selectTextOnFocus={!isLocked}
           editable={!isLocked}
           keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={C.accent}
+          selectionColor={withAlpha(C.accent, 0.25)}
           accessibilityLabel={t.transaction.amount.toLowerCase()}
         />
       </View>

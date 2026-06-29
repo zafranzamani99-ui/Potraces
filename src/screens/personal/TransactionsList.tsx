@@ -15,11 +15,10 @@ import {
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
-import Reanimated, {
-  FadeInDown,
-} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { format, isValid, startOfMonth, endOfMonth, subMonths, isWithinInterval, startOfYear, getDay } from 'date-fns';
+import { format, isValid, isToday, isYesterday, startOfMonth, endOfMonth, subMonths, isWithinInterval, startOfYear, getDay } from 'date-fns';
+import { shallow } from 'zustand/shallow';
 import { usePersonalStore } from '../../store/personalStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { CALM, SPACING, TYPOGRAPHY, RADIUS, SHADOWS, withAlpha } from '../../constants';
@@ -27,8 +26,10 @@ import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { useCategories } from '../../hooks/useCategories';
 import TransactionItem from '../../components/common/TransactionItem';
+import CategoryIcon from '../../components/common/CategoryIcon';
 import WalletLogo from '../../components/common/WalletLogo';
 import EditTransactionSheet from '../../components/transactions/EditTransactionSheet';
+import TransactionDetailSheet from '../../components/transactions/TransactionDetailSheet';
 import { Transaction, CategoryOption } from '../../types';
 import { useWalletStore } from '../../store/walletStore';
 import { useSellerStore } from '../../store/sellerStore';
@@ -42,6 +43,13 @@ import { lightTap, selectionChanged } from '../../services/haptics';
 import { formatAmount } from '../../utils/formatters';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import ModalToastHost from '../../components/common/ModalToastHost';
+
+// Delete is the one place we allow a true red — only while actively pressing
+// the delete button (mirrors NotesHome).
+const DELETE_RED = '#E5484D';
+
+// Max transactions shown per page (date-grouped, with a prev/next pager).
+const PAGE_SIZE = 13;
 
 type FilterType = 'all' | 'expense' | 'income';
 type DateRange = 'this_month' | 'last_month' | 'last_3_months' | 'this_year' | 'all_time';
@@ -80,6 +88,11 @@ const TransactionsList: React.FC = () => {
   // detail sheet "see all transactions"). Seeded once into the filter state so
   // the list lands pre-filtered to that category instead of the full dump.
   const initialFilterCategory: string | undefined = route.params?.filterCategory;
+  // Optional initial date-range + search, passed from Reports drill-down so a
+  // tapped category/merchant lands pre-scoped to the same window. Both optional
+  // → existing callers are unaffected.
+  const initialFilterDateRange: DateRange | undefined = route.params?.filterDateRange;
+  const initialFilterSearch: string | undefined = route.params?.filterSearch;
 
   const TYPE_FILTERS = useMemo(() => [
     { key: 'all' as FilterType, label: t.transactionList.all.toLowerCase() },
@@ -92,9 +105,16 @@ const TransactionsList: React.FC = () => {
     { key: 'last_month' as DateRange, label: t.transactionList.lastMonth.toLowerCase() },
     { key: 'last_3_months' as DateRange, label: t.transactionList.last3Months.toLowerCase() },
     { key: 'this_year' as DateRange, label: t.transactionList.thisYear.toLowerCase() },
-    { key: 'all_time' as DateRange, label: t.transactionList.all.toLowerCase() },
+    { key: 'all_time' as DateRange, label: t.transactionList.allTime.toLowerCase() },
   ], [t]);
-  const { transactions, updateTransaction, deleteTransaction } = usePersonalStore();
+  const { transactions, updateTransaction, deleteTransaction } = usePersonalStore(
+    (s) => ({
+      transactions: s.transactions,
+      updateTransaction: s.updateTransaction,
+      deleteTransaction: s.deleteTransaction,
+    }),
+    shallow
+  );
   const currency = useSettingsStore(state => state.currency);
   const wallets = useWalletStore((s) => s.wallets);
   const unmarkOrdersTransferred = useSellerStore((s) => s.unmarkOrdersTransferred);
@@ -119,9 +139,9 @@ const TransactionsList: React.FC = () => {
   }, [wallets]);
 
   // ── Search & filter state ────────────────────────────────────
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialFilterSearch ?? '');
   const [typeFilter, setTypeFilter] = useState<FilterType>('all');
-  const [dateRange, setDateRange] = useState<DateRange>('all_time');
+  const [dateRange, setDateRange] = useState<DateRange>(initialFilterDateRange ?? 'all_time');
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
     () => (initialFilterCategory ? new Set([initialFilterCategory]) : new Set())
   );
@@ -142,6 +162,18 @@ const TransactionsList: React.FC = () => {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // ── Pagination (13 per page, date-grouped) ───────────────────
+  const [page, setPage] = useState(0);
+
+  // ── Detail sheet state (tap → view; edit/delete from inside) ──
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
+
+  // Remembers the last category picked per type while editing, so toggling
+  // went out ⇄ came in (even by accident) restores the previous category
+  // instead of snapping to the first one.
+  const lastCategoryByType = useRef<{ expense?: string; income?: string }>({});
+
   // ── Edit modal state ─────────────────────────────────────────
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -157,20 +189,29 @@ const TransactionsList: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 300);
+    // Local-first data is already reactive — this is a deliberate, brief
+    // acknowledge-the-gesture spinner, then jump back to the first page.
+    setPage(0);
+    setTimeout(() => setRefreshing(false), 700);
   }, []);
 
   // ── Swipe-to-delete with undo ─────────────────────────────
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set());
   const pendingDeleteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  // Cleanup timers on unmount — clear handles AND empty the Map so any stragglers
-  // can't fire store mutations against an unmounted component.
+  // On unmount, FLUSH any pending soft-deletes instead of cancelling them.
+  // Leaving the screen within the 4.2s undo window (e.g. tapping back to the
+  // dashboard) must still commit the delete — otherwise the row only *looked*
+  // deleted (local state) while the store kept it. Zustand actions are safe to
+  // call after unmount (unlike component setState).
   useEffect(() => {
     const timers = pendingDeleteTimers.current;
     return () => {
-      timers.forEach((handle) => {
+      const { deleteTransaction: del } = usePersonalStore.getState();
+      timers.forEach((handle, id) => {
         if (handle) clearTimeout(handle);
+        usePlaybookStore.getState().unlinkAllFromTransaction(id);
+        del(id);
       });
       timers.clear();
     };
@@ -245,6 +286,23 @@ const TransactionsList: React.FC = () => {
     return result;
   }, [transactions, typeFilter, dateRange, selectedCategories, selectedWalletId, searchQuery, sortBy, sortOrder, pendingDeleteIds]);
 
+  // ── Pagination derivation ────────────────────────────────────
+  // Reset to page 1 whenever the filtered set changes (new filter/search/sort).
+  useEffect(() => {
+    setPage(0);
+  }, [typeFilter, dateRange, selectedCategories, selectedWalletId, searchQuery, sortBy, sortOrder]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / PAGE_SIZE));
+  // Clamp so deleting items off the last page can't strand us on an empty page.
+  const currentPage = Math.min(page, totalPages - 1);
+  useEffect(() => {
+    if (page > totalPages - 1) setPage(totalPages - 1);
+  }, [page, totalPages]);
+  const pageItems = useMemo(
+    () => filteredTransactions.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE),
+    [filteredTransactions, currentPage]
+  );
+
   // ── Average daily expense for micro-insights ────────────────
   const avgDailyExpense = useMemo(() => {
     const now = new Date();
@@ -264,14 +322,14 @@ const TransactionsList: React.FC = () => {
       return [{
         title: t.transactionList.sortedByAmount.replace('{order}', sortOrder === 'desc' ? t.transactionList.highestFirst : t.transactionList.lowestFirst),
         titleDate: null as Date | null,
-        data: filteredTransactions,
+        data: pageItems,
         dailyNet: 0,
         microInsight: '',
       }];
     }
 
     const grouped: Record<string, Transaction[]> = {};
-    filteredTransactions.forEach((t) => {
+    pageItems.forEach((t) => {
       const dateKey = isValid(t.date) ? format(t.date, 'yyyy-MM-dd') : 'unknown';
       if (!grouped[dateKey]) grouped[dateKey] = [];
       grouped[dateKey].push(t);
@@ -288,7 +346,13 @@ const TransactionsList: React.FC = () => {
         } else {
           try {
             titleDate = new Date(dateKey + 'T00:00:00');
-            title = isValid(titleDate) ? format(titleDate, 'EEE, MMM d').toLowerCase() : t.transactionList.unknownDate;
+            title = !isValid(titleDate)
+              ? t.transactionList.unknownDate
+              : isToday(titleDate)
+              ? t.transactionList.today.toLowerCase()
+              : isYesterday(titleDate)
+              ? t.transactionList.yesterday.toLowerCase()
+              : format(titleDate, 'EEE, d MMM').toLowerCase();
           } catch {
             title = t.transactionList.unknownDate;
           }
@@ -312,7 +376,7 @@ const TransactionsList: React.FC = () => {
 
         return { title, titleDate, data, dailyNet, microInsight };
       });
-  }, [filteredTransactions, sortBy, sortOrder, avgDailyExpense, t]);
+  }, [pageItems, sortBy, sortOrder, avgDailyExpense, t]);
 
   // ── Totals ───────────────────────────────────────────────────
   const totals = useMemo(() => {
@@ -376,14 +440,10 @@ const TransactionsList: React.FC = () => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      if (next.size === 0) setSelectMode(false);
       return next;
     });
   }, []);
-
-  const selectAll = useCallback(() => {
-    lightTap();
-    setSelectedIds(new Set(filteredTransactions.map((t) => t.id)));
-  }, [filteredTransactions]);
 
   const exitSelectMode = useCallback(() => {
     setSelectMode(false);
@@ -456,6 +516,8 @@ const TransactionsList: React.FC = () => {
     setEditTags(transaction.tags?.join(', ') || '');
     setEditWalletId(transaction.walletId || null);
     setEditDate(isValid(transaction.date) ? transaction.date : new Date());
+    // Seed the per-type memory with this transaction's own category.
+    lastCategoryByType.current = { [transaction.type]: transaction.category };
     setEditModalVisible(true);
   }, [selectMode, toggleSelect]);
 
@@ -641,9 +703,17 @@ const TransactionsList: React.FC = () => {
   }, [editingTransaction, unmarkOrdersTransferred, deleteTransfer, deleteTransaction, showToast, t]);
 
   const handleEditTypeChange = (newType: 'expense' | 'income') => {
+    // Remember the category we're leaving, then restore the one last used for
+    // the type we're switching to (falling back to the first only if there's
+    // nothing to restore). Prevents an accidental toggle from wiping the category.
+    lastCategoryByType.current[editType] = editCategory;
     setEditType(newType);
     const newCategories = newType === 'expense' ? expenseCategories : incomeCategories;
-    setEditCategory(newCategories[0].id);
+    const remembered = lastCategoryByType.current[newType];
+    const restored = remembered && newCategories.some((c) => c.id === remembered)
+      ? remembered
+      : newCategories[0]?.id ?? '';
+    setEditCategory(restored);
   };
 
   // ── Render helpers ───────────────────────────────────────────
@@ -651,8 +721,19 @@ const TransactionsList: React.FC = () => {
 
   const handleItemPress = useCallback((id: string) => {
     const txn = transactions.find((t) => t.id === id);
-    if (txn) handleEditTransaction(txn);
-  }, [transactions, handleEditTransaction]);
+    if (!txn) return;
+    if (selectMode) { toggleSelect(txn.id); return; }
+    // Tap = view. Open the read-only detail sheet; edit/delete happen from inside.
+    setDetailTransaction(txn);
+    setDetailVisible(true);
+  }, [transactions, selectMode, toggleSelect]);
+
+  // Edit from the detail sheet. The sheet animates itself closed first and only
+  // then calls this; we defer one more tick so the dismissing detail modal and
+  // the presenting edit modal never overlap on iOS.
+  const handleDetailEdit = useCallback((txn: Transaction) => {
+    setTimeout(() => handleEditTransaction(txn), 60);
+  }, [handleEditTransaction]);
 
   const handleItemLongPress = useCallback((id: string) => {
     if (!selectMode) enterSelectMode(id);
@@ -672,12 +753,46 @@ const TransactionsList: React.FC = () => {
       isFirst={index === 0}
       isLast={index === section.data.length - 1}
       index={index}
+      animateEntrance={false}
     />
   ), [currency, categoryMap, walletMap, handleItemPress, handleItemLongPress, handleSwipeDelete, selectMode, selectedIds]);
 
-  // Section headers killed for the pill-card layout \u2014 each card carries its own date.
-  // Matches reference pattern (My Transactions screenshot): separated cards, no day-group chrome.
-  const renderSectionHeader = useCallback(() => null, []);
+  // Date group header (today / yesterday / "wed 17 jun"). Sticky, opaque bg.
+  const renderSectionHeader = useCallback(({ section }: { section: { title: string } }) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionHeaderText}>{section.title}</Text>
+    </View>
+  ), [styles]);
+
+  // Prev/next pager \u2014 rendered under the list, hidden when there's only one page.
+  const renderPager = useCallback(() => {
+    if (totalPages <= 1) return null;
+    const atStart = currentPage <= 0;
+    const atEnd = currentPage >= totalPages - 1;
+    return (
+      <View style={styles.pager}>
+        <TouchableOpacity
+          style={[styles.pagerBtn, atStart && styles.pagerBtnDisabled]}
+          disabled={atStart}
+          onPress={() => { lightTap(); setPage(Math.max(0, currentPage - 1)); }}
+          accessibilityRole="button"
+          accessibilityLabel="previous page"
+        >
+          <Feather name="chevron-left" size={20} color={atStart ? C.textMuted : C.textPrimary} />
+        </TouchableOpacity>
+        <Text style={styles.pagerText}>{currentPage + 1} / {totalPages}</Text>
+        <TouchableOpacity
+          style={[styles.pagerBtn, atEnd && styles.pagerBtnDisabled]}
+          disabled={atEnd}
+          onPress={() => { lightTap(); setPage(Math.min(totalPages - 1, currentPage + 1)); }}
+          accessibilityRole="button"
+          accessibilityLabel="next page"
+        >
+          <Feather name="chevron-right" size={20} color={atEnd ? C.textMuted : C.textPrimary} />
+        </TouchableOpacity>
+      </View>
+    );
+  }, [totalPages, currentPage, styles, C]);
 
   // ── Categories for filter modal ──────────────────────────────
   const filterCategories = useMemo(() => {
@@ -704,99 +819,82 @@ const TransactionsList: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Select mode header */}
-      {selectMode ? (
-        <View style={styles.selectHeader}>
-          <TouchableOpacity
-            onPress={exitSelectMode}
-            style={styles.selectHeaderBtn}
-            accessibilityLabel={t.common.done.toLowerCase()}
-            accessibilityRole="button"
-          >
-            <Text style={styles.selectHeaderBtnText}>{t.common.done.toLowerCase()}</Text>
-          </TouchableOpacity>
-          <Text style={styles.selectHeaderTitle}>{selectedIds.size} {t.transactionList.selected}</Text>
-          <TouchableOpacity
-            onPress={selectAll}
-            style={styles.selectHeaderBtn}
-            accessibilityLabel={t.transactionList.selectAll.toLowerCase()}
-            accessibilityRole="button"
-          >
-            <Text style={styles.selectHeaderBtnText}>{t.transactionList.selectAll.toLowerCase()}</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
+      {/* Search + filters — hidden in select mode (Notes-style floating bar takes over) */}
+      {!selectMode && (
         <>
-          {/* Search Bar */}
-          <View style={styles.searchContainer}>
-            <Feather name="search" size={18} color={C.textMuted} />
-            <TextInput
-              style={styles.searchInput}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder={t.transactionList.searchPlaceholder}
-              placeholderTextColor={C.textMuted}
-              returnKeyType="search"
-              accessibilityLabel={t.transactionList.searchPlaceholder}
-              accessibilityRole="search"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity
-                onPress={() => setSearchQuery('')}
-                hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-                accessibilityLabel={t.common.clear.toLowerCase()}
-                accessibilityRole="button"
-              >
-                <Feather name="x-circle" size={16} color={C.textMuted} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Filter pills — 3 separate pills matching reference: dark filled active, light unfilled inactive.
-              Each pill stands alone with horizontal scroll if it overflows. */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.filterPillsScroll}
-            contentContainerStyle={styles.filterPillsContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            {TYPE_FILTERS.map((f) => {
-              const active = typeFilter === f.key;
-              return (
+          {/* Search bar + filter button on one row */}
+          <View style={styles.searchRow}>
+            <View style={styles.searchContainer}>
+              <Feather name="search" size={18} color={C.textMuted} />
+              <TextInput
+                style={styles.searchInput}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder={t.transactionList.searchPlaceholder}
+                placeholderTextColor={C.textMuted}
+                returnKeyType="search"
+                accessibilityLabel={t.transactionList.searchPlaceholder}
+                accessibilityRole="search"
+              />
+              {searchQuery.length > 0 && (
                 <TouchableOpacity
-                  key={f.key}
-                  style={[styles.filterPill, active && styles.filterPillActive]}
-                  onPress={() => { lightTap(); setTypeFilter(f.key); }}
-                  activeOpacity={0.7}
-                  accessibilityLabel={f.label}
+                  onPress={() => setSearchQuery('')}
+                  hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+                  accessibilityLabel={t.common.clear.toLowerCase()}
                   accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
                 >
-                  <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
-                    {f.label}
-                  </Text>
+                  <Feather name="x-circle" size={16} color={C.textMuted} />
                 </TouchableOpacity>
-              );
-            })}
+              )}
+            </View>
             <TouchableOpacity
-              style={[styles.filterPill, hasAdvancedFilters && styles.filterPillAdvActive]}
+              style={[styles.filterBtn, hasAdvancedFilters && styles.filterBtnActive]}
               onPress={openFilterModal}
               activeOpacity={0.7}
               accessibilityLabel={t.transactionList.filter.toLowerCase()}
               accessibilityRole="button"
             >
-              <Feather
-                name="sliders"
-                size={13}
-                color={hasAdvancedFilters ? C.accent : C.textMuted}
-                style={{ marginRight: 5 }}
-              />
-              <Text style={[styles.filterPillText, hasAdvancedFilters && { color: C.accent }]}>
-                {t.transactionList.filter.toLowerCase()}
-              </Text>
+              <Feather name="sliders" size={18} color={hasAdvancedFilters ? C.accent : C.textMuted} />
             </TouchableOpacity>
-          </ScrollView>
+          </View>
+
+          {/* Type filter pills (all / expenses / income) — horizontal scroll with a
+              right-edge fade so longer labels (e.g. Malay) never hard-clip. */}
+          <View style={styles.filterPillsWrap}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.filterPillsScroll}
+              contentContainerStyle={styles.filterPillsContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              {TYPE_FILTERS.map((f) => {
+                const active = typeFilter === f.key;
+                return (
+                  <TouchableOpacity
+                    key={f.key}
+                    style={[styles.filterPill, active && styles.filterPillActive]}
+                    onPress={() => { lightTap(); setTypeFilter(f.key); }}
+                    activeOpacity={0.7}
+                    accessibilityLabel={f.label}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
+                      {f.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <LinearGradient
+              colors={[`${C.background}00`, C.background]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              pointerEvents="none"
+              style={styles.filterPillsFade}
+            />
+          </View>
 
           {/* Active filter chips */}
           {hasAdvancedFilters && (
@@ -843,42 +941,44 @@ const TransactionsList: React.FC = () => {
           Title + 1-line summary. NO gradient, NO sparkline, NO streak, NO AI chip.
           The richness comes from the cards below, not from chrome up here. */}
       {!selectMode && (
-        <Reanimated.View
-          entering={FadeInDown.duration(480).springify().damping(20).stiffness(110).mass(0.7)}
-          style={styles.headerZone}
-        >
+        <View style={styles.headerZone}>
           <Text style={styles.headerTitle}>
-            {t.transactionList.youKept.toLowerCase()}{' '}
+            {(totals.net >= 0 ? t.transactionList.summaryKept : t.transactionList.summaryWentOut).toLowerCase()}{' '}
             <Text style={styles.headerTitleAmount}>
-              {totals.net >= 0 ? '+' : '−'}{formatAmount(Math.abs(totals.net), currency, 0)}
+              {formatAmount(Math.abs(totals.net), currency, 0)}
             </Text>
-            {' '}
+            {' · '}
             <Text style={styles.headerTitlePeriod}>
-              {((DATE_RANGES.find(d => d.key === dateRange)?.label) ?? t.transactionList.all).toLowerCase()}
+              {((DATE_RANGES.find(d => d.key === dateRange)?.label) ?? t.transactionList.allTime).toLowerCase()}
             </Text>
           </Text>
-        </Reanimated.View>
+        </View>
       )}
 
       {/* Transaction List */}
       {sections.length > 0 && sections.some((s) => s.data.length > 0) ? (
         <SectionList
+          // Remount on page change so each page starts at the top.
+          key={`txn-page-${currentPage}`}
           sections={sections}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
+          ListFooterComponent={renderPager}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
           stickySectionHeadersEnabled={true}
-          removeClippedSubviews={true}
+          // Page is capped at PAGE_SIZE items — render them all, no clipping
+          // (clipping/recycling is what made scrolling stutter & flash).
+          removeClippedSubviews={false}
+          initialNumToRender={PAGE_SIZE}
+          maxToRenderPerBatch={PAGE_SIZE}
           windowSize={5}
-          maxToRenderPerBatch={10}
-          initialNumToRender={12}
           updateCellsBatchingPeriod={50}
           keyboardShouldPersistTaps="handled"
           onScrollBeginDrag={Keyboard.dismiss}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.textMuted} colors={[C.accent]} />
           }
         />
       ) : (
@@ -922,22 +1022,40 @@ const TransactionsList: React.FC = () => {
         </View>
       )}
 
-      {/* Select mode bottom bar */}
+      {/* Select mode — floating bar: cancel · N selected · delete (red on press), like Notes */}
       {selectMode && (
-        <View style={[styles.selectBottomBar, { paddingBottom: Math.max(insets.bottom, SPACING.md) }]}>
+        <View style={[styles.selectBar, { bottom: insets.bottom + SPACING.md }]}>
           <TouchableOpacity
-            style={[styles.bulkDeleteBtn, selectedIds.size === 0 && { opacity: 0.4 }]}
-            onPress={handleBulkDelete}
-            disabled={selectedIds.size === 0}
-            activeOpacity={0.7}
+            onPress={exitSelectMode}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.selectBarCloseBtn}
           >
-            <Feather name="trash-2" size={18} color={C.surface} />
-            <Text style={styles.bulkDeleteText}>
-              {selectedIds.size > 0
-                ? (selectedIds.size > 1 ? t.transactionList.deleteItemsPlural : t.transactionList.deleteItems).replace('{n}', String(selectedIds.size))
-                : t.transactionList.selectItemsToDelete}
-            </Text>
+            <Feather name="x" size={18} color={C.textSecondary} />
           </TouchableOpacity>
+          <Text style={styles.selectBarCount}>
+            {selectedIds.size} {t.transactionList.selected}
+          </Text>
+          <Pressable
+            onPress={handleBulkDelete}
+            style={({ pressed }) => [
+              styles.selectBarDeleteBtn,
+              pressed && styles.selectBarDeleteBtnPressed,
+            ]}
+          >
+            {({ pressed }) => (
+              <>
+                <Feather name="trash-2" size={15} color={pressed ? DELETE_RED : C.textMuted} />
+                <Text
+                  style={[
+                    styles.selectBarDeleteText,
+                    pressed && styles.selectBarDeleteTextPressed,
+                  ]}
+                >
+                  {t.common.delete}
+                </Text>
+              </>
+            )}
+          </Pressable>
         </View>
       )}
 
@@ -994,8 +1112,8 @@ const TransactionsList: React.FC = () => {
                     onPress={() => { lightTap(); toggleTempCategory(cat.id); }}
                     activeOpacity={0.7}
                   >
-                    <Feather
-                      name={(cat.icon as keyof typeof Feather.glyphMap) || 'tag'}
+                    <CategoryIcon
+                      icon={cat.icon || 'tag'}
                       size={14}
                       color={tempCategories.has(cat.id) ? C.surface : cat.color || C.textSecondary}
                     />
@@ -1101,6 +1219,17 @@ const TransactionsList: React.FC = () => {
         editDate={editDate}
         setEditDate={setEditDate}
       />
+
+      {/* ── Tap-to-view detail sheet ──────────────────────── */}
+      <TransactionDetailSheet
+        visible={detailVisible}
+        transaction={detailTransaction}
+        category={detailTransaction ? categoryMap.get(detailTransaction.category) : undefined}
+        wallet={detailTransaction?.walletId ? walletMap.get(detailTransaction.walletId) : undefined}
+        currency={currency}
+        onClose={() => setDetailVisible(false)}
+        onEdit={handleDetailEdit}
+      />
     </View>
   );
 };
@@ -1137,15 +1266,35 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 
   // ── Search bar — quietened ───────────────────────────────────
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginHorizontal: SPACING['2xl'],
+    marginTop: SPACING.sm,
+  },
   searchContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: withAlpha(C.textMuted, 0.06),
-    marginHorizontal: SPACING['2xl'],
-    marginTop: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
     gap: SPACING.sm,
+    minHeight: 44,
+  },
+  filterBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(C.textMuted, 0.06),
+  },
+  filterBtnActive: {
+    backgroundColor: withAlpha(C.accent, 0.10),
+    borderWidth: 1,
+    borderColor: withAlpha(C.accent, 0.20),
   },
   searchInput: {
     flex: 1,
@@ -1155,9 +1304,19 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
 
   // ── Filter pills — separate pills, dark active, light inactive (reference-matched) ──
-  filterPillsScroll: {
+  filterPillsWrap: {
     marginTop: SPACING.md,
+    position: 'relative',
+  },
+  filterPillsScroll: {
     flexGrow: 0,
+  },
+  filterPillsFade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 40,
   },
   filterPillsContent: {
     paddingHorizontal: SPACING['2xl'],
@@ -1174,11 +1333,6 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
   },
   filterPillActive: {
     backgroundColor: C.textPrimary,
-  },
-  filterPillAdvActive: {
-    backgroundColor: withAlpha(C.accent, 0.10),
-    borderWidth: 1,
-    borderColor: withAlpha(C.accent, 0.20),
   },
   filterPillText: {
     fontSize: TYPOGRAPHY.size.sm,
@@ -1220,6 +1374,46 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     paddingHorizontal: SPACING['2xl'],
     paddingBottom: SPACING['2xl'],
   },
+  // Date group header — sticky, opaque so list rows don't bleed through.
+  sectionHeader: {
+    backgroundColor: C.background,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+  },
+  sectionHeaderText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textSecondary,
+    letterSpacing: 0.2,
+  },
+  // Prev/next pager beneath the list.
+  pager: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.sm,
+  },
+  pagerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(C.textMuted, 0.08),
+  },
+  pagerBtnDisabled: {
+    opacity: 0.4,
+  },
+  pagerText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+    minWidth: 56,
+    textAlign: 'center',
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -1254,60 +1448,53 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     letterSpacing: 0.1,
   },
 
-  // ── Select mode — quieter pill chrome, no chunky borders ─
-  selectHeader: {
+  // ── Select mode — floating bordered bar (cancel · N selected · delete), like Notes ─
+  selectBar: {
+    position: 'absolute',
+    left: SPACING.lg,
+    right: SPACING.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING['2xl'],
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.md,
-  },
-  selectHeaderTitle: {
-    fontSize: TYPOGRAPHY.size.base,
-    fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.textPrimary,
-    letterSpacing: -0.2,
-    fontVariant: ['tabular-nums'],
-  },
-  selectHeaderBtn: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
-    backgroundColor: withAlpha(C.textMuted, 0.06),
-  },
-  selectHeaderBtnText: {
-    fontSize: TYPOGRAPHY.size.sm,
-    fontWeight: TYPOGRAPHY.weight.medium,
-    color: C.textPrimary,
-    letterSpacing: 0.1,
-  },
-  selectBottomBar: {
-    paddingHorizontal: SPACING['2xl'],
-    paddingTop: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
     backgroundColor: C.background,
-    // Soft top shadow instead of hard hairline border (cleaner)
-    shadowColor: C.textPrimary,
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 4,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: C.border,
+    ...SHADOWS.md,
   },
-  // Bulk delete — no red. Neutral fill, semibold white text. Per N8.
-  bulkDeleteBtn: {
-    flexDirection: 'row',
+  selectBarCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,
-    backgroundColor: C.textPrimary, // dark fill — confidence without red
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.full,
   },
-  bulkDeleteText: {
-    fontSize: TYPOGRAPHY.size.base,
+  selectBarCount: {
+    fontSize: TYPOGRAPHY.size.sm,
     fontWeight: TYPOGRAPHY.weight.semibold,
-    color: C.surface,
-    letterSpacing: 0.2,
+    color: C.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  selectBarDeleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: RADIUS.md,
+  },
+  selectBarDeleteBtnPressed: {
+    backgroundColor: withAlpha(DELETE_RED, 0.12),
+  },
+  selectBarDeleteText: {
+    fontSize: TYPOGRAPHY.size.sm,
+    color: C.textMuted,
+  },
+  selectBarDeleteTextPressed: {
+    color: DELETE_RED,
+    fontWeight: TYPOGRAPHY.weight.semibold,
   },
 
   // ── Modal shared — softer backdrop alpha ───────────────────

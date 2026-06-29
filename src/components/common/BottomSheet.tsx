@@ -7,7 +7,7 @@ import {
   Pressable,
   useWindowDimensions,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, {
   useAnimatedStyle,
   useSharedValue,
@@ -130,6 +130,7 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
 
   return (
     <Modal visible animationType="none" transparent statusBarTranslucent onRequestClose={close}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={StyleSheet.absoluteFill}>
         <Reanimated.View style={[styles.backdrop, backdropAnimStyle]}>
           <Pressable
@@ -182,6 +183,7 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
           </View>
         </Reanimated.View>
       </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 };

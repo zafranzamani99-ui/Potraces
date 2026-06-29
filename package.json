@@ -7,11 +7,16 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
     "lint:i18n": "bash scripts/check-hardcoded-strings.sh",
     "lint:i18n:staged": "bash scripts/check-hardcoded-strings.sh --staged",
-    "test:sync": "tsx scripts/test-personal-sync-roundtrip.ts"
+    "test:sync": "tsx scripts/test-personal-sync-roundtrip.ts",
+    "test:wallet": "tsx scripts/test-wallet-reconcile.ts"
   },
   "dependencies": {
+    "@dr.pogodin/react-native-audio": "^1.18.2",
     "@expo/metro-runtime": "~6.1.2",
     "@expo/vector-icons": "^15.0.3",
     "@infinitered/react-native-mlkit-text-recognition": "^5.0.1",
@@ -75,6 +80,7 @@
     "react-native-draggable-flatlist": "^4.0.3",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-keyboard-controller": "1.18.5",
+    "react-native-permissions": "^5.6.0",
     "react-native-purchases": "^10.3.0",
     "react-native-purchases-ui": "^10.3.0",
     "react-native-qrcode-svg": "^6.3.21",
@@ -92,6 +98,9 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "@types/react": "~19.1.0",
+    "eslint": "^9.39.4",
+    "eslint-config-expo": "^56.0.4",
+    "prettier": "^3.8.4",
     "tsx": "^4.22.4",
     "typescript": "^5.3.0"
   },

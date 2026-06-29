@@ -12,9 +12,8 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Platform,
-  KeyboardAvoidingView,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
@@ -136,7 +135,7 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
       >
         <KeyboardAvoidingView
           style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
         >
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
@@ -183,7 +182,7 @@ const FreshStart: React.FC<FreshStartProps> = ({ onDismiss }) => {
                         placeholder={lastSpent ? lastSpent.toFixed(0) : '—'}
                         placeholderTextColor={C.textMuted}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                       />
                     </View>
                   </View>

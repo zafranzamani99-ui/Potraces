@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import { COLORS, TYPOGRAPHY } from '../constants';
@@ -179,7 +180,10 @@ const BusinessNavigator: React.FC = () => {
       )}
       screenOptions={({ route }) => ({
         lazy: true,
-        freezeOnBlur: true,
+        // Android: freezing/unfreezing a tab on blur forces a heavy re-render on
+        // re-focus, dropping the first touches so scroll needs 2-3 taps to start.
+        // Keep it on iOS (memory) but off on Android. (scroll-responsiveness fix)
+        freezeOnBlur: Platform.OS === 'ios',
         tabBarIcon: ({ color, size }: { color: string; size: number }) =>
           getIcon(route.name, color, size),
         tabBarActiveTintColor: COLORS.business,

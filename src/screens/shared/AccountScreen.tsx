@@ -415,7 +415,7 @@ export default function AccountScreen() {
                     returnKeyType="next"
                     onSubmitEditing={() => passwordRef.current?.focus()}
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
                 </View>
               </View>
@@ -438,7 +438,7 @@ export default function AccountScreen() {
                       else handlePhoneSubmit();
                     }}
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
                   <Pressable
                     onPress={() => setShowPassword(!showPassword)}
@@ -468,7 +468,7 @@ export default function AccountScreen() {
                       returnKeyType="done"
                       onSubmitEditing={handlePhoneSubmit}
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.accent}
+                      selectionColor={withAlpha(C.accent, 0.25)}
                     />
                   </View>
                 </View>

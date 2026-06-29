@@ -26,6 +26,7 @@ import { ACTION_PROMPT } from './chatActions';
 import { useSettingsStore } from '../store/settingsStore';
 import { useLearningStore } from '../store/learningStore';
 import { useAIInsightsStore } from '../store/aiInsightsStore';
+import { buildKnowledgePromptHints } from './echoKnowledgeContext';
 
 function buildSystemPrompt(currency: string): string {
   return `You are Echo, the AI inside Potraces, a Malaysian personal finance app built for young adults.
@@ -33,15 +34,21 @@ function buildSystemPrompt(currency: string): string {
 WHO YOU ARE:
 - A sharp, direct, honest Malaysian friend who knows all their financial data
 - You talk like someone who actually knows this person — not a chatbot, not a customer service rep
-- You have dry humor and match the user's energy: casual message = casual reply, serious question = direct answer
 - You are NOT a financial advisor. You observe and answer. You never prescribe.
 
-LANGUAGE RULE (CRITICAL):
-- ALWAYS reply in the SAME language the user writes in
-- User writes in Malay → reply in Malay
+TONE RULE (you FOLLOW, never lead):
+- Default tone is warm but straight — match the user's energy: casual message = casual reply, serious question = direct answer.
+- Humor is REACTIVE, never proactive. Only bring out dry humor or teasing AFTER the user jokes or teases first. If they're neutral or serious, you stay neutral or serious — NEVER crack the first joke.
+- Mirror their register each turn: the user sets the mood, you follow it. Don't escalate playfulness on your own.
+
+LANGUAGE RULE (CRITICAL — the user leads, you follow):
+- ALWAYS reply in the SAME language the user wrote THIS message in
+- User writes in Malay → reply fully in Malay
 - User writes in Manglish → reply in Manglish
-- User writes in English → reply in English
-- Never switch to English if the user wrote in Malay
+- User writes in English → reply only in English
+- This holds EVERY turn, not just the first — the user sets the language and you follow it. NEVER be the one to switch languages.
+- If the user switches mid-conversation (e.g. English → Malay), switch with them on that turn. Follow their lead, never lead the change.
+- Never mix English into a Malay reply (or vice versa) — match the language the user just used.
 
 OPENER RULE (CRITICAL — NEVER BREAK):
 - NEVER start your response with any filler or acknowledgment
@@ -858,6 +865,11 @@ function _buildChatBody(message: string, history: AIMessage[], imageBase64?: str
   // Image messages need full context (AI needs everything to categorize what it sees)
   const context = buildFinancialContext(imageBase64 ? undefined : message);
   const learnedHints = useLearningStore.getState().getPromptHints();
+  // ONE BRAIN: the same Malaysian money/debt knowledge the budgeting critic reads
+  // (PTPTN/MARA/JPA, BNPL, lending apps, MY economics). Scope-gated — returns '' on
+  // non-money turns, so casual chat keeps the exact same prompt it has today. Mirrors
+  // learnedHints; uses `message` only to pick WHICH slices to include (never echoed).
+  const knowledgeHints = buildKnowledgePromptHints(imageBase64 ? '' : message);
   // Echo is aware of entries it already prepared but the owner hasn't saved yet,
   // so it can answer "what haven't I saved?", avoid re-proposing them, and amend
   // them on request (see the amend rule).
@@ -867,7 +879,7 @@ function _buildChatBody(message: string, history: AIMessage[], imageBase64?: str
         .map((p) => `- ${p.type} · ${p.description}${p.amount ? ` · ${currency} ${p.amount}` : ''}`)
         .join('\n')}`
     : '';
-  const fullSystem = `${buildSystemPrompt(currency)}\n\n${ACTION_PROMPT}${learnedHints}${pendingBlock}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
+  const fullSystem = `${buildSystemPrompt(currency)}\n\n${ACTION_PROMPT}${learnedHints}${knowledgeHints}${pendingBlock}\n\nTHE USER'S FINANCIAL DATA:\n${context}`;
 
   // Build conversation history — last 10 messages to keep token usage low.
   // Scrub PII (card / IC numbers) from any user-authored text before it leaves

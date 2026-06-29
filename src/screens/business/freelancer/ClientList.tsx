@@ -15,7 +15,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useFreelancerStore } from '../../../store/freelancerStore';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { lightTap } from '../../../services/haptics';
 import { useToast } from '../../../context/ToastContext';
@@ -209,7 +209,7 @@ const FreelancerClientList: React.FC = () => {
               autoFocus
               returnKeyType="next"
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <TextInput
               style={styles.modalInput}
@@ -219,7 +219,7 @@ const FreelancerClientList: React.FC = () => {
               placeholderTextColor={C.textMuted}
               returnKeyType="next"
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <TextInput
               style={styles.modalInput}
@@ -230,7 +230,7 @@ const FreelancerClientList: React.FC = () => {
               returnKeyType="done"
               onSubmitEditing={handleAddClient}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
 
             <TouchableOpacity

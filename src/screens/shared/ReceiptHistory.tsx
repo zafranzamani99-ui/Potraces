@@ -22,6 +22,7 @@ import { MYTAX_CATEGORIES } from '../../constants/taxCategories';
 import { useCalm } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { lightTap } from '../../services/haptics';
+import CategoryIcon from '../../components/common/CategoryIcon';
 import type { RootStackParamList, SavedReceipt } from '../../types';
 
 type NavigationProp = StackNavigationProp<RootStackParamList>;
@@ -129,8 +130,8 @@ const ReceiptHistory: React.FC = () => {
                   <View style={styles.taxRowTop}>
                     <View style={styles.taxRowLeft}>
                       <View style={[styles.iconCircle, { backgroundColor: withAlpha(C.accent, 0.08) }]}>
-                        <Feather
-                          name={(cat?.icon || 'file') as keyof typeof Feather.glyphMap}
+                        <CategoryIcon
+                          icon={cat?.icon || 'file'}
                           size={14}
                           color={C.accent}
                         />

@@ -67,6 +67,9 @@ export function reconcileWalletBalances(): ReconcileResult[] {
     for (const debt of debts) {
       for (const payment of debt.payments) {
         if (payment.walletId !== wallet.id) continue;
+        // Skip payments already reflected by a linked personal transaction —
+        // that transaction is replayed above, so deducting here would double-count.
+        if (payment.linkedTransactionId) continue;
         computed = roundMoney(computed - payment.amount);
       }
     }
@@ -75,6 +78,9 @@ export function reconcileWalletBalances(): ReconcileResult[] {
     for (const goal of goals) {
       for (const contrib of goal.contributions) {
         if (contrib.walletId !== wallet.id) continue;
+        // Skip contributions already reflected by a linked savings transaction —
+        // that transaction is replayed above, so deducting here would double-count.
+        if (contrib.transactionId) continue;
         // Positive contribution = money moved out of wallet (deduct)
         // Negative contribution (withdrawal) = money returned to wallet (add)
         computed = roundMoney(computed - contrib.amount);

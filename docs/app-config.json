@@ -1,0 +1,12 @@
+{
+  "_comment": "Forced-update gate config, fetched by the app at startup. To require an update: raise minVersion above the shipped app.json version and redeploy this file to Vercel. Keep minVersion <= current shipped version to stay dormant. The app fails open if this file is unreachable.",
+  "minVersion": "1.0.0",
+  "latestVersion": "1.0.0",
+  "message": "",
+  "ios": {
+    "url": "https://apps.apple.com/app/potraces/id000000000"
+  },
+  "android": {
+    "url": "https://play.google.com/store/apps/details?id=com.potraces.app"
+  }
+}

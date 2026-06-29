@@ -23,6 +23,7 @@ import ModalToastHost from '../../components/common/ModalToastHost';
 import { lightTap } from '../../services/haptics';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
+import EmptyState from '../../components/common/EmptyState';
 import WalletPicker from '../../components/common/WalletPicker';
 import {
   pickStatementPdf,
@@ -65,19 +66,23 @@ const ImportFromStatement: React.FC = () => {
   const [passwordValue, setPasswordValue] = useState('');
   const [passwordError, setPasswordError] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
+  // Inline error/empty state on the start screen (replaces Alert popups for the
+  // parse phase — the pick button doubles as retry). See EmptyState.
+  const [notice, setNotice] = useState<{ icon: string; title: string; message: string } | null>(null);
 
   // Apply a (successful or terminal-error) parse result to the screen.
   const finishParse = useCallback((res: StatementParseResult | StatementParseError) => {
     if (isParseError(res)) {
       setStep('start');
-      Alert.alert(t.importStatement.couldNotParse, res.message ?? res.error);
+      setNotice({ icon: 'alert-triangle', title: t.importStatement.couldNotParse, message: res.message ?? res.error });
       return;
     }
     if (res.transactions.length === 0) {
       setStep('start');
-      Alert.alert(t.importStatement.nothingFound, t.importStatement.nothingFoundMsg);
+      setNotice({ icon: 'inbox', title: t.importStatement.nothingFound, message: t.importStatement.nothingFoundMsg });
       return;
     }
+    setNotice(null);
     setRemaining(res.remaining);
     setRows(
       res.transactions.map((tx, i) => ({
@@ -92,6 +97,7 @@ const ImportFromStatement: React.FC = () => {
 
   const handlePick = useCallback(async () => {
     lightTap();
+    setNotice(null);
     try {
       const picked = await pickStatementPdf();
       if (!picked) return;
@@ -108,7 +114,7 @@ const ImportFromStatement: React.FC = () => {
       finishParse(res);
     } catch (e: any) {
       setStep('start');
-      Alert.alert(t.importStatement.errorTitle, e?.message ?? t.importStatement.couldNotRead);
+      setNotice({ icon: 'alert-triangle', title: t.importStatement.errorTitle, message: e?.message ?? t.importStatement.couldNotRead });
     }
   }, [finishParse, t]);
 
@@ -270,20 +276,30 @@ const ImportFromStatement: React.FC = () => {
           <Text style={styles.title}>{t.importStatement.title}</Text>
           <View style={{ width: 24 }} />
         </View>
-        <View style={styles.startBody}>
-          <View style={styles.heroIcon}>
-            <Feather name="file-text" size={40} color={C.accent} />
+        {notice ? (
+          <EmptyState
+            icon={notice.icon}
+            title={notice.title}
+            message={notice.message}
+            actionLabel={t.importStatement.pickPdf}
+            onAction={handlePick}
+          />
+        ) : (
+          <View style={styles.startBody}>
+            <View style={styles.heroIcon}>
+              <Feather name="file-text" size={40} color={C.accent} />
+            </View>
+            <Text style={styles.heroTitle}>{t.importStatement.heroTitle}</Text>
+            <Text style={styles.heroDesc}>
+              {t.importStatement.heroDesc}
+            </Text>
+            <View style={{ height: SPACING.lg }} />
+            <Button title={t.importStatement.pickPdf} onPress={handlePick} icon="upload" />
+            <Text style={styles.fineprint}>
+              {t.importStatement.freeImports}
+            </Text>
           </View>
-          <Text style={styles.heroTitle}>{t.importStatement.heroTitle}</Text>
-          <Text style={styles.heroDesc}>
-            {t.importStatement.heroDesc}
-          </Text>
-          <View style={{ height: SPACING.lg }} />
-          <Button title={t.importStatement.pickPdf} onPress={handlePick} icon="upload" />
-          <Text style={styles.fineprint}>
-            {t.importStatement.freeImports}
-          </Text>
-        </View>
+        )}
 
         {/* Password sheet — shown only when the statement PDF is locked */}
         <Modal

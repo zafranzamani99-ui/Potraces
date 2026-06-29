@@ -27,7 +27,7 @@ export const usePersonalStore = create<PersonalState>()(
       }),
 
       addTransaction: (transaction) => {
-        if (transaction.amount <= 0) return '';
+        if (!Number.isFinite(transaction.amount) || transaction.amount <= 0) return '';
         const id = newId();
         set((state) => ({
           transactions: [
@@ -359,7 +359,8 @@ export const usePersonalStore = create<PersonalState>()(
         useTombstoneStore.getState().addTombstones([id]);
       },
 
-      contributeToGoal: (goalId, amount, note, walletId, transactionId) =>
+      contributeToGoal: (goalId, amount, note, walletId, transactionId) => {
+        if (!Number.isFinite(amount) || amount <= 0) return;
         set((state) => ({
           goals: state.goals.map((goal) => {
             if (goal.id !== goalId) return goal;
@@ -388,7 +389,8 @@ export const usePersonalStore = create<PersonalState>()(
               updatedAt: new Date(),
             };
           }),
-        })),
+        }));
+      },
 
       withdrawFromGoal: (goalId, amount, note, walletId, transactionId) =>
         set((state) => ({

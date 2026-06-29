@@ -8,7 +8,7 @@ import {
   Platform,
   KeyboardAvoidingView,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -139,6 +139,7 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
       statusBarTranslucent
       onRequestClose={dismiss}
     >
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <Reanimated.View style={[styles.backdrop, backdropAnimatedStyle]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
       </Reanimated.View>
@@ -162,6 +163,7 @@ const FloatingModal: React.FC<FloatingModalProps> = ({
         )}
       </Reanimated.View>
       <ModalToastHost />
+      </GestureHandlerRootView>
     </Modal>
   );
 };

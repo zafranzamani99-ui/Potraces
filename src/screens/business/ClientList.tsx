@@ -12,7 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
+import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { Client } from '../../types';
@@ -162,7 +162,7 @@ const ClientList: React.FC = () => {
               placeholderTextColor={C.textSecondary}
               autoFocus
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <View style={styles.modalActions}>
               <TouchableOpacity onPress={() => setShowAddClient(false)} style={styles.modalCancel}>
@@ -193,7 +193,7 @@ const ClientList: React.FC = () => {
               keyboardType="numeric"
               autoFocus
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <View style={styles.modalActions}>
               <TouchableOpacity

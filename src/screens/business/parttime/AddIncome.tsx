@@ -15,7 +15,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { usePartTimeStore } from '../../../store/partTimeStore';
 import { useBusinessStore } from '../../../store/businessStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
+import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS } from '../../../constants';
 import { useCalm, useIsDark } from '../../../hooks/useCalm';
 import { useToast } from '../../../context/ToastContext';
 import { lightTap, successNotification } from '../../../services/haptics';
@@ -131,7 +131,7 @@ const AddIncome: React.FC = () => {
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         </View>
 
@@ -216,7 +216,7 @@ const AddIncome: React.FC = () => {
             returnKeyType="done"
             onSubmitEditing={Keyboard.dismiss}
             keyboardAppearance={isDark ? 'dark' : 'light'}
-            selectionColor={C.accent}
+            selectionColor={withAlpha(C.accent, 0.25)}
           />
         </View>
 

@@ -1,15 +1,100 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+
+/**
+ * SecureStore-backed storage adapter for the Supabase auth session.
+ *
+ * The session (incl. the long-lived refresh token) is sensitive PII/credential
+ * material, so it lives in the OS keychain/keystore instead of plaintext
+ * AsyncStorage. expo-secure-store caps a single value at 2048 bytes and a
+ * Supabase session can exceed that, so large values are CHUNKED: an index key
+ * holds the chunk count and chunk_0..chunk_n hold the slices. Small values are
+ * stored directly (no index) for simplicity. A one-time migration moves any
+ * pre-existing AsyncStorage session into SecureStore so updating users are not
+ * logged out.
+ */
+const SECURE_CHUNK_SIZE = 1800; // bytes of headroom under the 2048 limit
+const chunkIndexKey = (key: string) => `${key}.chunks`;
+const chunkPartKey = (key: string, i: number) => `${key}.chunk_${i}`;
+
+async function secureRemove(key: string): Promise<void> {
+  const indexRaw = await SecureStore.getItemAsync(chunkIndexKey(key));
+  if (indexRaw != null) {
+    const count = parseInt(indexRaw, 10) || 0;
+    const removals: Promise<void>[] = [SecureStore.deleteItemAsync(chunkIndexKey(key))];
+    for (let i = 0; i < count; i++) {
+      removals.push(SecureStore.deleteItemAsync(chunkPartKey(key, i)));
+    }
+    await Promise.all(removals);
+  }
+  await SecureStore.deleteItemAsync(key);
+}
+
+async function secureWrite(key: string, value: string): Promise<void> {
+  // Clear any previous representation (direct or chunked) first.
+  await secureRemove(key);
+
+  if (value.length <= SECURE_CHUNK_SIZE) {
+    await SecureStore.setItemAsync(key, value);
+    return;
+  }
+
+  const chunks: string[] = [];
+  for (let i = 0; i < value.length; i += SECURE_CHUNK_SIZE) {
+    chunks.push(value.slice(i, i + SECURE_CHUNK_SIZE));
+  }
+  await Promise.all(
+    chunks.map((part, i) => SecureStore.setItemAsync(chunkPartKey(key, i), part)),
+  );
+  await SecureStore.setItemAsync(chunkIndexKey(key), String(chunks.length));
+}
+
+async function secureRead(key: string): Promise<string | null> {
+  const indexRaw = await SecureStore.getItemAsync(chunkIndexKey(key));
+  if (indexRaw != null) {
+    const count = parseInt(indexRaw, 10) || 0;
+    const parts = await Promise.all(
+      Array.from({ length: count }, (_, i) => SecureStore.getItemAsync(chunkPartKey(key, i))),
+    );
+    if (parts.some((p) => p == null)) return null; // corrupt/incomplete
+    return parts.join('');
+  }
+  return SecureStore.getItemAsync(key);
+}
+
+const SecureStoreAdapter = {
+  async getItem(key: string): Promise<string | null> {
+    const existing = await secureRead(key);
+    if (existing != null) return existing;
+
+    // One-time migration: pull an old plaintext session out of AsyncStorage,
+    // move it into SecureStore, then delete the AsyncStorage copy.
+    const legacy = await AsyncStorage.getItem(key);
+    if (legacy != null) {
+      await secureWrite(key, legacy);
+      await AsyncStorage.removeItem(key);
+      return legacy;
+    }
+    return null;
+  },
+  async setItem(key: string, value: string): Promise<void> {
+    await secureWrite(key, value);
+  },
+  async removeItem(key: string): Promise<void> {
+    await secureRemove(key);
+  },
+};
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
-    storage: AsyncStorage,
+    storage: SecureStoreAdapter,
   },
 });
 

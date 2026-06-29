@@ -50,13 +50,11 @@ const MixedReports: React.FC = () => {
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
   const currency = useSettingsStore((s) => s.currency);
-  const { businessTransactions } = useBusinessStore();
-  const {
-    mixedDetails,
-    getMonthlyBreakdown,
-    getStreamConsistency,
-    getSixMonthAverageTotal,
-  } = useMixedStore();
+  const businessTransactions = useBusinessStore((s) => s.businessTransactions);
+  const mixedDetails = useMixedStore((s) => s.mixedDetails);
+  const getMonthlyBreakdown = useMixedStore((s) => s.getMonthlyBreakdown);
+  const getStreamConsistency = useMixedStore((s) => s.getStreamConsistency);
+  const getSixMonthAverageTotal = useMixedStore((s) => s.getSixMonthAverageTotal);
 
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);

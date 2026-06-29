@@ -19,7 +19,8 @@ const BusinessReports: React.FC = () => {
   const C = useCalm();
   const t = useT();
   const styles = useMemo(() => makeStyles(C), [C]);
-  const { sales, products } = useBusinessStore();
+  const sales = useBusinessStore((s) => s.sales);
+  const products = useBusinessStore((s) => s.products);
   const currency = useSettingsStore(state => state.currency);
 
   const monthlySalesData = useMemo(() => {
@@ -199,7 +200,7 @@ const BusinessReports: React.FC = () => {
     return (
       <View style={styles.container}>
         <EmptyState
-          icon="trending-up"
+          icon="i/bar-chart-outline"
           title={t.business.reportsEmptyTitle}
           message={t.business.reportsEmptyMsg}
         />

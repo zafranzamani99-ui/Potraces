@@ -123,7 +123,7 @@ export const useDebtStore = create<DebtState>()(
         })),
 
       addPayment: (debtId, payment) => {
-        if (!payment.amount || payment.amount <= 0) return null;
+        if (!Number.isFinite(payment.amount) || payment.amount <= 0) return null;
         const debt = (useDebtStore.getState() as DebtState).debts.find((d) => d.id === debtId);
         if (!debt) return null;
         if (debt.status === 'settled') return null;

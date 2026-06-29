@@ -15,6 +15,7 @@ import { Feather } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { Gesture, GestureDetector, GestureHandlerRootView, ScrollView, ComposedGesture, GestureType } from 'react-native-gesture-handler';
 import ModalToastHost from '../common/ModalToastHost';
+import CategoryIcon from '../common/CategoryIcon';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Reanimated, {
   useAnimatedStyle,
@@ -484,7 +485,7 @@ const AddEditWalletModal: React.FC<Props> = ({
               placeholder={`e.g. ${WALLET_TYPE_CONFIG[selectedType].label}`}
               placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
               accessibilityLabel={t.wallets.walletName.toLowerCase()}
             />
           </View>
@@ -522,7 +523,7 @@ const AddEditWalletModal: React.FC<Props> = ({
                 keyboardType="decimal-pad"
                 selectTextOnFocus
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
                 accessibilityLabel={selectedType === 'credit' ? t.wallets.creditLimit.toLowerCase() : t.wallets.currentBalance.toLowerCase()}
               />
             </View>
@@ -562,7 +563,7 @@ const AddEditWalletModal: React.FC<Props> = ({
                       accessibilityLabel={icon}
                       accessibilityState={{ selected: selectedIcon === icon }}
                     >
-                      <Feather name={icon as keyof typeof Feather.glyphMap} size={20} color={selectedIcon === icon ? selectedColor : C.textSecondary} />
+                      <CategoryIcon icon={icon} size={20} color={selectedIcon === icon ? selectedColor : C.textSecondary} />
                     </TouchableOpacity>
                   ))}
                 </View>

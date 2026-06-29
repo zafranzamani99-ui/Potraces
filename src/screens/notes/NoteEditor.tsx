@@ -8,13 +8,13 @@ import {
   Alert,
   Keyboard,
   Platform,
-  KeyboardAvoidingView,
   ActivityIndicator,
   Modal,
   Pressable,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -115,7 +115,12 @@ const NoteEditor: React.FC = () => {
     startRecording,
     stopAndTranscribe,
     cancelRecording,
-  } = useVoiceInput();
+  } = useVoiceInput({
+    onResult: (transcription) => {
+      const separator = text.trim() ? '\n' : '';
+      handleTextChange(text + separator + transcription);
+    },
+  });
 
   const handleSkip = useCallback((id: string) => {
     const ext = extractions.find((e) => e.id === id);
@@ -182,7 +187,7 @@ const NoteEditor: React.FC = () => {
     setEditModalAnim('none');
     setEditingExtraction(null);
     setTimeout(() => {
-      navigation.navigate('Settings', { scrollTo: 'categories' });
+      navigation.navigate('SettingsDetail', { section: 'money', scrollTo: 'categories' });
       setEditModalAnim('fade');
     }, 50);
   }, [navigation]);
@@ -246,17 +251,12 @@ const NoteEditor: React.FC = () => {
   const handleMicPress = useCallback(async () => {
     if (isRecording) {
       mediumTap();
-      const transcription = await stopAndTranscribe();
-      if (transcription) {
-        const separator = text.trim() ? '\n' : '';
-        const newText = text + separator + transcription;
-        handleTextChange(newText);
-      }
+      stopAndTranscribe(); // transcript delivered via onResult (manual stop OR auto-end)
     } else {
       lightTap();
       await startRecording();
     }
-  }, [isRecording, text, stopAndTranscribe, startRecording, handleTextChange]);
+  }, [isRecording, stopAndTranscribe, startRecording]);
 
   const handleCancelVoice = useCallback(() => {
     lightTap();
@@ -268,6 +268,8 @@ const NoteEditor: React.FC = () => {
       case 'permission': return t.moneyChat.voicePermDenied;
       case 'no-speech': return t.moneyChat.voiceNoSpeech;
       case 'network': return t.moneyChat.voiceNetwork;
+      case 'setup': return t.moneyChat.voiceSetup;
+      case 'unavailable': return t.moneyChat.voiceSetup;
       case 'quota': return t.moneyChat.voiceLimit;
       default: return t.moneyChat.voiceNoSpeech;
     }
@@ -574,7 +576,7 @@ const NoteEditor: React.FC = () => {
           autoCorrect={false}
           autoCapitalize="none"
           keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={C.accent}
+          selectionColor={withAlpha(C.accent, 0.25)}
         >
           <Text style={styles.titleLine}>{title}</Text>
           {body !== '' && <Text style={styles.bodyLine}>{'\n' + body}</Text>}
@@ -588,7 +590,7 @@ const NoteEditor: React.FC = () => {
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Feather name="zap" size={13} color={C.bronze} />
+            <Ionicons name="flash" size={13} color={C.bronze} />
             <Text style={styles.extractBtnText}>{t.notes.extractLower}</Text>
           </TouchableOpacity>
         )}
@@ -691,7 +693,7 @@ const NoteEditor: React.FC = () => {
           />
           <KeyboardAvoidingView
             style={styles.extractCard}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
           >
             {/* Close button */}
             <TouchableOpacity
@@ -751,7 +753,7 @@ const NoteEditor: React.FC = () => {
               <Pressable style={styles.editOverlay} onPress={handleEditCancel} />
               <KeyboardAvoidingView
                 style={styles.editOverlayCard}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                behavior="padding"
                 pointerEvents="box-none"
               >
                 <View style={styles.editInnerCard} onStartShouldSetResponder={() => true}>
@@ -800,7 +802,7 @@ const NoteEditor: React.FC = () => {
                       placeholder="0.00"
                       placeholderTextColor={withAlpha(C.textMuted, 0.4)}
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.accent}
+                      selectionColor={withAlpha(C.accent, 0.25)}
                     />
                   </View>
 
@@ -819,7 +821,7 @@ const NoteEditor: React.FC = () => {
                       onFocus={() => setMultilineFocused(true)}
                       onBlur={() => setMultilineFocused(false)}
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.accent}
+                      selectionColor={withAlpha(C.accent, 0.25)}
                     />
                   </View>
 
@@ -861,7 +863,7 @@ const NoteEditor: React.FC = () => {
                           placeholder={t.notes.personName}
                           placeholderTextColor={C.textMuted}
                           keyboardAppearance={isDark ? 'dark' : 'light'}
-                          selectionColor={C.accent}
+                          selectionColor={withAlpha(C.accent, 0.25)}
                         />
                       </View>
                       {showEditDebtDirection && (

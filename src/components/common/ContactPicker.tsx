@@ -10,11 +10,11 @@ import {
   TextInput,
   FlatList,
   Alert,
+  ActivityIndicator,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView, KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +32,12 @@ interface ContactPickerProps {
   selfName?: string;
   /** When true, skip rendering the internal label — caller renders its own. */
   hideLabel?: boolean;
+  /** 'input' renders a free-type name field (avatar + placeholder + contacts pill + recent chips), matching the seller New Order customer input. Single mode. */
+  variant?: 'pills' | 'input';
+  /** Recent people shown as quick-pick chips below the input (variant='input' only). */
+  recent?: Contact[];
+  /** Placeholder for the input variant. */
+  placeholder?: string;
 }
 
 const ContactPicker: React.FC<ContactPickerProps> = ({
@@ -42,6 +48,9 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
   includeSelf = false,
   selfName = 'me',
   hideLabel = false,
+  variant = 'pills',
+  recent = [],
+  placeholder = "who's this for?",
 }) => {
   const C = useCalm();
   const isDark = useIsDark();
@@ -50,38 +59,47 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
   const [phoneModalVisible, setPhoneModalVisible] = useState(false);
   const [manualModalVisible, setManualModalVisible] = useState(false);
   const [phoneContacts, setPhoneContacts] = useState<Contact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [manualName, setManualName] = useState('');
   const [manualPhone, setManualPhone] = useState('');
   const phoneInputRef = useRef<TextInput>(null);
 
   const loadPhoneContacts = useCallback(async () => {
-    const { status } = await Contacts.requestPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        'Permission Required',
-        'Please grant contacts permission in Settings to use this feature.'
-      );
-      return;
-    }
-
-    const { data } = await Contacts.getContactsAsync({
-      fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Emails],
-      sort: Contacts.SortTypes.FirstName,
-    });
-
-    const mapped: Contact[] = data
-      .filter((c) => c.name)
-      .map((c) => ({
-        id: c.id || Date.now().toString() + Math.random().toString(36),
-        name: c.name || 'Unknown',
-        phone: c.phoneNumbers?.[0]?.number,
-        email: c.emails?.[0]?.email,
-        isFromPhone: true,
-      }));
-
-    setPhoneContacts(mapped);
+    // Open the picker instantly, then load contacts behind a spinner (the fetch can lag).
+    setPhoneContacts([]);
+    setContactsLoading(true);
     setPhoneModalVisible(true);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        setPhoneModalVisible(false);
+        Alert.alert(
+          'Permission Required',
+          'Please grant contacts permission in Settings to use this feature.'
+        );
+        return;
+      }
+
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Emails],
+        sort: Contacts.SortTypes.FirstName,
+      });
+
+      const mapped: Contact[] = data
+        .filter((c) => c.name)
+        .map((c) => ({
+          id: c.id || Date.now().toString() + Math.random().toString(36),
+          name: c.name || 'Unknown',
+          phone: c.phoneNumbers?.[0]?.number,
+          email: c.emails?.[0]?.email,
+          isFromPhone: true,
+        }));
+
+      setPhoneContacts(mapped);
+    } finally {
+      setContactsLoading(false);
+    }
   }, []);
 
   const handleSelectPhoneContact = useCallback((contact: Contact) => {
@@ -126,6 +144,19 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
     onSelect(selectedContacts.filter((c) => c.id !== contactId));
   }, [onSelect, selectedContacts]);
 
+  // ── Input variant: free-type name bound to a single contact ──
+  const name = selectedContacts[0]?.name ?? '';
+  const handleNameChange = useCallback((text: string) => {
+    if (text.length === 0) { onSelect([]); return; }
+    const existing = selectedContacts[0];
+    onSelect([{
+      id: existing?.id ?? `manual-${Date.now()}`,
+      name: text,
+      phone: existing?.phone,
+      isFromPhone: existing?.isFromPhone ?? false,
+    }]);
+  }, [onSelect, selectedContacts]);
+
   const filteredPhoneContacts = useMemo(() => phoneContacts.filter((c) =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
   ), [phoneContacts, searchQuery]);
@@ -160,6 +191,65 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
     <View style={styles.container}>
       {!hideLabel && <Text style={styles.label}>{label}</Text>}
 
+      {variant === 'input' ? (
+        <>
+          <View style={styles.inputCard}>
+            <View style={styles.inputMainRow}>
+              <View style={[styles.avatarCircle, name.trim() ? styles.avatarCircleFilled : null]}>
+                {name.trim() ? (
+                  <Text style={styles.avatarText}>{name.trim()[0]?.toUpperCase() ?? ''}</Text>
+                ) : (
+                  <Feather name="user" size={14} color={C.textMuted} />
+                )}
+              </View>
+              <TextInput
+                style={styles.nameInput}
+                value={name}
+                onChangeText={handleNameChange}
+                placeholder={placeholder}
+                placeholderTextColor={withAlpha(C.textMuted, 0.6)}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={withAlpha(C.accent, 0.25)}
+              />
+              {!name.trim() && (
+                <TouchableOpacity style={styles.contactsPill} onPress={loadPhoneContacts} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Import from contacts">
+                  <Feather name="book" size={12} color={C.accent} />
+                  <Text style={styles.contactsPillText}>contacts</Text>
+                </TouchableOpacity>
+              )}
+              {name.length > 0 && (
+                <TouchableOpacity onPress={() => onSelect([])} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.inputClearBtn} accessibilityRole="button" accessibilityLabel="Clear">
+                  <Feather name="x" size={14} color={C.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+          {recent.length > 0 && !name.trim() && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled contentContainerStyle={styles.recentScroll} keyboardShouldPersistTaps="handled">
+              {recent.map((c, i) => (
+                <Pressable
+                  key={c.id ?? i}
+                  onPress={() => onSelect([c])}
+                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select ${c.name}`}
+                  style={({ pressed }) => [styles.recentPill, pressed && styles.recentPillPressed]}
+                >
+                  {({ pressed }) => (
+                    <>
+                      <View style={[styles.recentPillAvatar, pressed && styles.recentPillAvatarPressed]}>
+                        <Text style={[styles.recentPillAvatarText, pressed && styles.recentPillAvatarTextPressed]}>{c.name?.[0]?.toUpperCase() ?? '?'}</Text>
+                      </View>
+                      <Text style={[styles.recentName, pressed && styles.recentNamePressed]} numberOfLines={1}>{c.name}</Text>
+                    </>
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
+        </>
+      ) : (
+        <>
       {/* Selected contacts pills */}
       {selectedContacts.length > 0 && (
         <View style={styles.pillContainer}>
@@ -209,12 +299,14 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
           <Text style={styles.actionText}>add manually</Text>
         </TouchableOpacity>
       </View>
+        </>
+      )}
 
       {/* Phone Contacts Modal */}
       <Modal visible={phoneModalVisible} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setPhoneModalVisible(false)}>
         <KeyboardAvoidingView
           style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
         >
           <Pressable style={{ flex: 1 }} onPress={() => setPhoneModalVisible(false)} />
             <View style={[styles.modalContent, { paddingBottom: Math.max(24, insets.bottom + SPACING.lg) }]} onStartShouldSetResponder={() => true}>
@@ -235,7 +327,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                 returnKeyType="search"
                 onSubmitEditing={Keyboard.dismiss}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
 
               <FlatList
@@ -248,10 +340,17 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                 maxToRenderPerBatch={8}
                 renderItem={renderPhoneContact}
                 ListEmptyComponent={
-                  <View style={styles.emptyContainer}>
-                    <Feather name="users" size={32} color={C.neutral} />
-                    <Text style={styles.emptyText}>No contacts found</Text>
-                  </View>
+                  contactsLoading ? (
+                    <View style={styles.emptyContainer}>
+                      <ActivityIndicator color={C.accent} />
+                      <Text style={styles.emptyText}>loading contacts…</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.emptyContainer}>
+                      <Feather name="users" size={32} color={C.neutral} />
+                      <Text style={styles.emptyText}>No contacts found</Text>
+                    </View>
+                  )
                 }
                 showsVerticalScrollIndicator={false}
                 style={{ maxHeight: 400 }}
@@ -296,7 +395,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                   autoFocus
                   onSubmitEditing={() => phoneInputRef.current?.focus()}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <Text style={styles.inputLabel}>Phone (optional)</Text>
@@ -311,7 +410,7 @@ const ContactPicker: React.FC<ContactPickerProps> = ({
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <View style={styles.modalActions}>
@@ -397,6 +496,116 @@ const makeStyles = (C: typeof CALM) => StyleSheet.create({
     borderColor: C.accent,
   },
   actionTextSelected: {
+    color: C.onAccent,
+  },
+
+  // ── Input variant (matches seller New Order customer input) ──
+  inputCard: {
+    backgroundColor: C.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    overflow: 'hidden',
+  },
+  inputMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    minHeight: 52,
+  },
+  avatarCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.sm,
+  },
+  avatarCircleFilled: {
+    backgroundColor: C.bronze,
+    borderColor: C.bronze,
+  },
+  avatarText: {
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.bold,
+    color: C.onAccent,
+  },
+  nameInput: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.size.base,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.textPrimary,
+    paddingVertical: SPACING.sm,
+  },
+  contactsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.accent, 0.08),
+  },
+  contactsPillText: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.medium,
+    color: C.accent,
+  },
+  inputClearBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: withAlpha(C.textMuted, C === CALM_DARK ? 0.16 : 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: SPACING.sm,
+  },
+  recentScroll: {
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    paddingTop: SPACING.sm,
+  },
+  recentPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+    backgroundColor: withAlpha(C.bronze, 0.06),
+  },
+  recentPillPressed: {
+    backgroundColor: C.bronze,
+  },
+  recentPillAvatar: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: withAlpha(C.bronze, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recentPillAvatarPressed: {
+    backgroundColor: withAlpha(C.onAccent, 0.2),
+  },
+  recentPillAvatarText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: C.bronze,
+  },
+  recentPillAvatarTextPressed: {
+    color: C.onAccent,
+  },
+  recentName: {
+    fontSize: TYPOGRAPHY.size.xs,
+    fontWeight: TYPOGRAPHY.weight.semibold,
+    color: C.bronze,
+    maxWidth: 100,
+  },
+  recentNamePressed: {
     color: C.onAccent,
   },
 

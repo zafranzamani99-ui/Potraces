@@ -230,7 +230,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
               returnKeyType="next"
               onSubmitEditing={() => passwordRef.current?.focus()}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
           </View>
         </View>
@@ -254,7 +254,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
                 else { Keyboard.dismiss(); handleSubmit(); }
               }}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <Pressable
               onPress={() => setShowPassword(!showPassword)}
@@ -283,7 +283,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onVerificationNeeded, onAuthent
                 returnKeyType="done"
                 onSubmitEditing={() => { Keyboard.dismiss(); handleSubmit(); }}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               <Pressable
                 onPress={() => setShowPassword(!showPassword)}

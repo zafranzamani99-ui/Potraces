@@ -148,7 +148,7 @@ const SupplierList: React.FC = () => {
               returnKeyType="search"
               onSubmitEditing={Keyboard.dismiss}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
@@ -238,7 +238,7 @@ const SupplierList: React.FC = () => {
           </View>
         ) : (
           <EmptyState
-            icon="truck"
+            icon="m/truck-outline"
             title={tr.business.supplierEmptyTitle}
             message={tr.business.supplierEmptyMsg}
             actionLabel={tr.business.supplierAdd}
@@ -287,7 +287,7 @@ const SupplierList: React.FC = () => {
                   placeholderTextColor={C.textSecondary}
                   returnKeyType="next"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <Text style={styles.label}>{tr.business.supplierContactPerson}</Text>
@@ -299,7 +299,7 @@ const SupplierList: React.FC = () => {
                   placeholderTextColor={C.textSecondary}
                   returnKeyType="next"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <Text style={styles.label}>{tr.business.supplierPhone}</Text>
@@ -313,7 +313,7 @@ const SupplierList: React.FC = () => {
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <Text style={styles.label}>{tr.business.supplierEmail}</Text>
@@ -327,7 +327,7 @@ const SupplierList: React.FC = () => {
                   autoCapitalize="none"
                   returnKeyType="next"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <Text style={styles.label}>{tr.business.supplierAddress}</Text>
@@ -340,7 +340,7 @@ const SupplierList: React.FC = () => {
                   multiline
                   numberOfLines={2}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <Text style={styles.label}>{tr.business.supplierPaymentTerms}</Text>
@@ -353,7 +353,7 @@ const SupplierList: React.FC = () => {
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
 
                 <View style={styles.modalActions}>

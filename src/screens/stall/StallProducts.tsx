@@ -5,9 +5,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useStallStore } from '../../store/stallStore';
@@ -101,7 +100,7 @@ const StallProducts: React.FC = () => {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
     >
       <ScrollView
         style={styles.scrollView}
@@ -126,7 +125,7 @@ const StallProducts: React.FC = () => {
               autoFocus
               accessibilityLabel="Product name"
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <View style={styles.priceRow}>
               <Text style={styles.priceCurrency}>{currency}</Text>
@@ -139,7 +138,7 @@ const StallProducts: React.FC = () => {
                 keyboardType="decimal-pad"
                 accessibilityLabel="Product price"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
 
@@ -156,7 +155,7 @@ const StallProducts: React.FC = () => {
                 keyboardType="number-pad"
                 accessibilityLabel="Default starting stock, optional"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
 
@@ -173,7 +172,7 @@ const StallProducts: React.FC = () => {
                 keyboardType="decimal-pad"
                 accessibilityLabel="Cost per unit, optional"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
             </View>
 
@@ -189,7 +188,7 @@ const StallProducts: React.FC = () => {
                   placeholder={t.stall.modifierNamePlaceholder}
                   placeholderTextColor={C.neutral}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
                 <View style={styles.modDeltaWrap}>
                   <Text style={styles.priceCurrency}>{currency}</Text>
@@ -201,7 +200,7 @@ const StallProducts: React.FC = () => {
                     placeholderTextColor={C.neutral}
                     keyboardType="numbers-and-punctuation"
                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                    selectionColor={C.accent}
+                    selectionColor={withAlpha(C.accent, 0.25)}
                   />
                 </View>
                 <TouchableOpacity onPress={() => removeModifierRow(m.key)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Remove option">

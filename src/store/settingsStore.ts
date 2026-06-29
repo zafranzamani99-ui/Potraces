@@ -146,6 +146,22 @@ interface SettingsState {
   /** Per-device opt-in for accepting card payments via Tap to Pay (iOS pilot). */
   tapToPayEnabled: boolean;
   setTapToPayEnabled: (value: boolean) => void;
+  /** One-time: the user has seen/dismissed the "download Malay voice" nudge in Echo. */
+  malayVoicePromptSeen: boolean;
+  setMalayVoicePromptSeen: (value: boolean) => void;
+  /** Bumped after the Malay voice model is installed → the voice hook re-probes installed locales. */
+  voiceModelEpoch: number;
+  bumpVoiceModelEpoch: () => void;
+  /** One-time: the user has seen the "Malay voice uses the cloud to transcribe" disclosure. */
+  voiceCloudNoticeSeen: boolean;
+  setVoiceCloudNoticeSeen: (value: boolean) => void;
+  /** Opt-in: transcribe Malay voice via the cloud (works on any phone; no on-device model download). */
+  malayCloudVoice: boolean;
+  setMalayCloudVoice: (value: boolean) => void;
+  /** Stage 2 (real-time words-as-you-speak via streaming STT). Requires the @soniox native module + a
+   *  rebuild; inert until that's wired. Default off; gated behind an on-device accuracy A/B. */
+  malayLiveStreaming: boolean;
+  setMalayLiveStreaming: (value: boolean) => void;
   getPaymentMethods: () => CategoryOption[];
   addCustomPaymentMethod: (method: CategoryOption) => void;
   removeCustomPaymentMethod: (id: string) => void;
@@ -211,6 +227,11 @@ export const useSettingsStore = create<SettingsState>()(
       spendingAlertsEnabled: true,
       quickAddConfirm: false,
       tapToPayEnabled: false,
+      malayVoicePromptSeen: false,
+      voiceModelEpoch: 0,
+      voiceCloudNoticeSeen: false,
+      malayCloudVoice: false,
+      malayLiveStreaming: false,
 
       setPersonalSyncEnabled: (personalSyncEnabled) => set({ personalSyncEnabled }),
       setLastPersonalSyncAt: (lastPersonalSyncAt) => set({ lastPersonalSyncAt }),
@@ -218,6 +239,11 @@ export const useSettingsStore = create<SettingsState>()(
       setSpendingAlertsEnabled: (spendingAlertsEnabled) => set({ spendingAlertsEnabled }),
       setQuickAddConfirm: (quickAddConfirm) => set({ quickAddConfirm }),
       setTapToPayEnabled: (tapToPayEnabled) => set({ tapToPayEnabled }),
+      setMalayVoicePromptSeen: (malayVoicePromptSeen) => set({ malayVoicePromptSeen }),
+      bumpVoiceModelEpoch: () => set((s) => ({ voiceModelEpoch: s.voiceModelEpoch + 1 })),
+      setVoiceCloudNoticeSeen: (voiceCloudNoticeSeen) => set({ voiceCloudNoticeSeen }),
+      setMalayCloudVoice: (malayCloudVoice) => set({ malayCloudVoice }),
+      setMalayLiveStreaming: (malayLiveStreaming) => set({ malayLiveStreaming }),
 
       getPaymentMethods: () => {
         const { customPaymentMethods, paymentMethodOverrides } = get();

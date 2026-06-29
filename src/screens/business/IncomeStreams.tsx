@@ -12,7 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import { startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { useBusinessStore } from '../../store/businessStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, BIZ } from '../../constants';
+import { withAlpha, CALM, CALM_DARK, TYPE, SPACING, TYPOGRAPHY, RADIUS, BIZ } from '../../constants';
 import { useCalm, useIsDark } from '../../hooks/useCalm';
 import { useT } from '../../i18n';
 import { IncomeStream } from '../../types';
@@ -122,7 +122,7 @@ const IncomeStreamsScreen: React.FC = () => {
               placeholderTextColor={C.textSecondary}
               autoFocus
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
             <View style={styles.colorPicker}>
               {PRESET_COLORS.map((color) => (

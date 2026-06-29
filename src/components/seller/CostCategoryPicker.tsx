@@ -11,12 +11,13 @@ import { useToast } from '../../context/ToastContext';
 import { SellerCostCategory } from '../../types';
 import { lightTap, successNotification } from '../../services/haptics';
 import ModalToastHost from '../common/ModalToastHost';
+import CategoryIcon from '../common/CategoryIcon';
 
 const ICON_CHOICES = [
-  'box', 'package', 'tool', 'zap', 'home', 'truck', 'speaker', 'credit-card',
-  'users', 'shopping-bag', 'shopping-cart', 'coffee', 'droplet', 'wifi',
-  'phone', 'printer', 'scissors', 'gift', 'briefcase', 'dollar-sign',
-  'file-text', 'tag', 'clipboard', 'more-horizontal',
+  'm/cube-outline', 'm/package-variant-closed', 'm/wrench', 'i/flash', 'm/home-city',
+  'm/truck-delivery', 'm/bullhorn', 'i/card', 'm/account-group', 'm/water', 'm/wifi',
+  'm/cellphone', 'm/printer', 'm/cart', 'i/bag-handle', 'm/coffee', 'm/gift',
+  'i/briefcase', 'm/cash-multiple', 'i/receipt', 'i/clipboard', 'i/ellipsis-horizontal',
 ];
 
 const COLOR_CHOICES = [
@@ -126,7 +127,7 @@ const CostCategoryPicker: React.FC<Props> = ({ selected, onSelect }) => {
         <View style={styles.triggerSelected}>
           {current && (
             <View style={[styles.triggerIcon, { backgroundColor: withAlpha(current.color, 0.15) }]}>
-              <Feather name={current.icon as any} size={18} color={current.color} />
+              <CategoryIcon icon={current.icon} size={18} color={current.color} />
             </View>
           )}
           <Text style={styles.triggerText} numberOfLines={1}>{current ? label(current) : ''}</Text>
@@ -156,7 +157,7 @@ const CostCategoryPicker: React.FC<Props> = ({ selected, onSelect }) => {
                     accessibilityState={{ selected: active }}
                   >
                     <View style={[styles.dropdownItemIcon, { backgroundColor: active ? c.color : withAlpha(c.color, 0.15) }]}>
-                      <Feather name={c.icon as any} size={18} color={active ? C.onAccent : c.color} />
+                      <CategoryIcon icon={c.icon} size={18} color={active ? C.onAccent : c.color} />
                     </View>
                     <Text style={[styles.dropdownItemText, active && { color: c.color, fontWeight: TYPOGRAPHY.weight.bold }]} numberOfLines={1}>
                       {label(c)}
@@ -194,7 +195,7 @@ const CostCategoryPicker: React.FC<Props> = ({ selected, onSelect }) => {
               {sorted.map((c) => (
                 <View key={c.id} style={styles.managerRow}>
                   <View style={[styles.managerIcon, { backgroundColor: withAlpha(c.color, 0.12) }]}>
-                    <Feather name={c.icon as any} size={15} color={c.color} />
+                    <CategoryIcon icon={c.icon} size={15} color={c.color} />
                   </View>
                   <Text style={styles.managerName} numberOfLines={1}>{label(c)}</Text>
                   <Pressable onPress={() => openEdit(c)} hitSlop={8} style={styles.managerAction} accessibilityLabel={sl.editCostCategory}>
@@ -234,7 +235,7 @@ const CostCategoryPicker: React.FC<Props> = ({ selected, onSelect }) => {
               placeholder={sl.categoryNamePlaceholder}
               placeholderTextColor={withAlpha(C.textMuted, 0.6)}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.bronze}
+              selectionColor={withAlpha(C.bronze, 0.25)}
               autoFocus
             />
             <ScrollView style={styles.iconGrid} contentContainerStyle={styles.gridContent} nestedScrollEnabled keyboardShouldPersistTaps="handled">
@@ -245,7 +246,7 @@ const CostCategoryPicker: React.FC<Props> = ({ selected, onSelect }) => {
                     onPress={() => { lightTap(); setFormIcon(ic); }}
                     style={[styles.gridIcon, formIcon === ic && { borderColor: formColor, backgroundColor: withAlpha(formColor, 0.1) }]}
                   >
-                    <Feather name={ic as any} size={16} color={formIcon === ic ? formColor : C.textSecondary} />
+                    <CategoryIcon icon={ic} size={16} color={formIcon === ic ? formColor : C.textSecondary} />
                   </Pressable>
                 ))}
               </View>

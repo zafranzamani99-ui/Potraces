@@ -230,7 +230,7 @@ const TransferModal: React.FC<TransferModalProps> = ({
                   onSubmitEditing={Keyboard.dismiss}
                   selectTextOnFocus
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                   accessibilityLabel={t.wallets.amount.toLowerCase()}
                 />
               </View>
@@ -274,7 +274,7 @@ const TransferModal: React.FC<TransferModalProps> = ({
                 placeholder={t.wallets.topUpPlaceholder}
                 placeholderTextColor={withAlpha(C.textPrimary, 0.25)}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
                 accessibilityLabel={t.wallets.noteOptional.toLowerCase()}
               />
             </View>

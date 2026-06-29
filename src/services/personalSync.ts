@@ -13,6 +13,7 @@ import {
   txFromRemote, walletFromRemote, transferFromRemote, subFromRemote, budgetFromRemote,
   goalFromRemote, debtFromRemote, splitFromRemote, contactFromRemote, savingsFromRemote, receiptFromRemote,
 } from './personalSyncMappers';
+import type { Debt, Goal, SavingsAccount } from '../types';
 
 // ─── Session helper ───────────────────────────────────────────────────────────
 let _sessionExpired = false;
@@ -244,7 +245,7 @@ async function pullAll(userId: string): Promise<boolean> {
     };
     // Append-only-safe merges: scalar fields by LWW, children UNIONED, derived
     // totals recomputed from the merged children (matches the store formulas).
-    const mergeDebt = (l: any, r: any) => {
+    const mergeDebt = (l: Debt, r: Debt): Debt => {
       const base = newer(l, r);
       const payments = childUnion(l.payments ?? [], r.payments ?? []);
       const paidAmount = round2(Math.min(base.totalAmount, payments.reduce((s: number, p: any) => s + (p.amount || 0), 0)));
@@ -256,15 +257,17 @@ async function pullAll(userId: string): Promise<boolean> {
         groupId: keep(base.groupId, l.groupId, r.groupId),
         description: keep(base.description, l.description, r.description) ?? '',
         category: keep(base.category, l.category, r.category),
-        walletId: keep(base.walletId, l.walletId, r.walletId),
+        // walletId is carried through sync at runtime (debtFromRemote sets it) but
+        // isn't declared on the Debt interface — read it off-type, params stay typed.
+        walletId: keep((base as any).walletId, (l as any).walletId, (r as any).walletId),
         mode: keep(base.mode, l.mode, r.mode) ?? 'personal',
         isArchived: base.isArchived ?? l.isArchived,
         archivedAt: base.archivedAt ?? l.archivedAt,
         editLog: (base.editLog && base.editLog.length) ? base.editLog : (l.editLog ?? r.editLog),
         contact: (base.contact && base.contact.name) ? base.contact : (l.contact ?? r.contact),
-      };
+      } as Debt;
     };
-    const mergeGoal = (l: any, r: any) => {
+    const mergeGoal = (l: Goal, r: Goal): Goal => {
       const base = newer(l, r);
       const contributions = childUnion(l.contributions ?? [], r.contributions ?? []);
       const currentAmount = round2(contributions.reduce((s: number, c: any) => s + (c.amount || 0), 0));
@@ -274,12 +277,13 @@ async function pullAll(userId: string): Promise<boolean> {
         ...base, contributions, currentAmount,
         icon: keep(base.icon, l.icon, r.icon),
         color: keep(base.color, l.color, r.color),
-        iconName: keep(base.iconName, l.iconName, r.iconName),
+        // iconName isn't on the Goal interface — read it off-type, params stay typed.
+        iconName: keep((base as any).iconName, (l as any).iconName, (r as any).iconName),
         imageUri: keep(base.imageUri, l.imageUri, r.imageUri),
         category: keep(base.category, l.category, r.category),
-      };
+      } as Goal;
     };
-    const mergeSavings = (l: any, r: any) => {
+    const mergeSavings = (l: SavingsAccount, r: SavingsAccount): SavingsAccount => {
       const base = newer(l, r);
       const history = childUnion<any>(l.history ?? [], r.history ?? []);
       let currentValue = base.currentValue;
@@ -288,7 +292,7 @@ async function pullAll(userId: string): Promise<boolean> {
           (new Date(b.date).getTime() > new Date(a.date).getTime() ? b : a));
         currentValue = latest.value;
       }
-      return { ...base, history, currentValue };
+      return { ...base, history, currentValue } as SavingsAccount;
     };
 
     // skew-tolerant LWW: near-ties (within the window) fall back to a stable
@@ -323,30 +327,30 @@ async function pullAll(userId: string): Promise<boolean> {
     };
 
     usePersonalStore.setState({
-      transactions: mergeById(personalState.transactions, transactions.remote as any),
-      subscriptions: mergeById(personalState.subscriptions, subscriptions.remote as any),
-      budgets: mergeById(personalState.budgets, budgets.remote as any),
-      goals: mergeById(personalState.goals, goals.remote as any, mergeGoal as any),
-    } as any);
+      transactions: mergeById(personalState.transactions, transactions.remote),
+      subscriptions: mergeById(personalState.subscriptions, subscriptions.remote),
+      budgets: mergeById(personalState.budgets, budgets.remote),
+      goals: mergeById(personalState.goals, goals.remote, mergeGoal),
+    });
 
     useWalletStore.setState({
-      wallets: mergeById(walletState.wallets, wallets.remote as any),
-      transfers: mergeById(walletState.transfers as any, transfers.remote as any) as any,
-    } as any);
+      wallets: mergeById(walletState.wallets, wallets.remote),
+      transfers: mergeById(walletState.transfers, transfers.remote),
+    });
 
     useDebtStore.setState({
-      debts: mergeById(debtState.debts, debts.remote as any, mergeDebt as any),
-      splits: mergeById(debtState.splits as any, splits.remote as any) as any,
-      contacts: mergeById(debtState.contacts as any, contacts.remote as any) as any,
-    } as any);
+      debts: mergeById(debtState.debts, debts.remote, mergeDebt),
+      splits: mergeById(debtState.splits, splits.remote),
+      contacts: mergeById(debtState.contacts, contacts.remote),
+    });
 
     useReceiptStore.setState({
-      receipts: mergeById(receiptState.receipts as any, receipts.remote as any) as any,
-    } as any);
+      receipts: mergeById(receiptState.receipts, receipts.remote),
+    });
 
     useSavingsStore.setState({
-      accounts: mergeById(savingsState.accounts, savings.remote as any, mergeSavings as any),
-    } as any);
+      accounts: mergeById(savingsState.accounts, savings.remote, mergeSavings),
+    });
 
     return true;
   } catch (e: any) {

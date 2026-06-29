@@ -30,6 +30,7 @@ import { useCalm } from '../../hooks/useCalm';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
+import CategoryIcon from '../../components/common/CategoryIcon';
 import ProgressBar from '../../components/common/ProgressBar';
 import Sparkline from '../../components/common/Sparkline';
 import { useToast } from '../../context/ToastContext';
@@ -806,7 +807,7 @@ const SavingsTracker: React.FC = () => {
                 {/* Header row: icon + name + edit */}
                 <View style={styles.accountHeader}>
                   <View style={[styles.accountTypeIcon, { backgroundColor: withAlpha(info.color, 0.1) }]}>
-                    <Feather name={info.icon as keyof typeof Feather.glyphMap} size={18} color={info.color} />
+                    <CategoryIcon icon={info.icon} size={18} color={info.color} />
                   </View>
                   <View style={styles.accountInfo}>
                     <Text style={styles.accountName} numberOfLines={1}>{account.name}</Text>
@@ -931,7 +932,7 @@ const SavingsTracker: React.FC = () => {
           })
         ) : (
           <EmptyState
-            icon="trending-up"
+            icon="m/piggy-bank-outline"
             title={t.savings.startBuilding}
             message={t.savings.setAside}
             actionLabel={t.savings.addSavings}
@@ -994,7 +995,7 @@ const SavingsTracker: React.FC = () => {
               >
                 <View style={styles.dropdownTriggerLeft}>
                   <View style={[styles.dropdownIcon, { backgroundColor: withAlpha(getTypeInfo(selectedType).color, 0.12) }]}>
-                    <Feather name={getTypeInfo(selectedType).icon as keyof typeof Feather.glyphMap} size={16} color={getTypeInfo(selectedType).color} />
+                    <CategoryIcon icon={getTypeInfo(selectedType).icon} size={16} color={getTypeInfo(selectedType).color} />
                   </View>
                   <Text style={styles.dropdownTriggerText}>{getTypeInfo(selectedType).name}</Text>
                 </View>
@@ -1013,7 +1014,7 @@ const SavingsTracker: React.FC = () => {
                         activeOpacity={0.7}
                       >
                         <View style={[styles.dropdownItemIcon, { backgroundColor: withAlpha(type.color, 0.12) }]}>
-                          <Feather name={type.icon as keyof typeof Feather.glyphMap} size={16} color={type.color} />
+                          <CategoryIcon icon={type.icon} size={16} color={type.color} />
                         </View>
                         <Text style={[styles.dropdownItemText, isSelected && { color: C.accent, fontWeight: TYPOGRAPHY.weight.bold }]}>
                           {type.name}

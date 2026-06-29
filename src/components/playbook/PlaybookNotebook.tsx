@@ -10,11 +10,11 @@ import {
   Alert,
   FlatList,
   ScrollView,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   InputAccessoryView,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
@@ -1363,7 +1363,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
               editable={!readOnly}
               scrollEnabled={false}
               keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={C.accent}
+              selectionColor={withAlpha(C.accent, 0.25)}
             />
           </View>
         );
@@ -1397,7 +1397,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
     >
       <KeyboardAvoidingView
         style={[styles.container, { backgroundColor: C.background }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
       >
         {/* Top bar */}
         <View style={[styles.topBar, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
@@ -1513,7 +1513,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
         <Modal visible={planEditorVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setPlanEditorVisible(false)}>
           <View style={styles.echoOverlay}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setPlanEditorVisible(false)} accessibilityLabel="close plan editor" accessibilityRole="button" />
-            <KeyboardAvoidingView style={styles.echoKAV} behavior={Platform.OS === 'ios' ? 'padding' : undefined} pointerEvents="box-none">
+            <KeyboardAvoidingView style={styles.echoKAV} behavior="padding" pointerEvents="box-none">
               <View style={[styles.echoModal, { backgroundColor: C.surface, borderColor: C.border }]} onStartShouldSetResponder={() => true}>
                 {/* header — title + close */}
                 <View style={styles.echoHeaderRow}>
@@ -1592,7 +1592,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                       textAlignVertical="top"
                       blurOnSubmit={false}
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.accent}
+                      selectionColor={withAlpha(C.accent, 0.25)}
                       accessibilityLabel="plan item name"
                     />
                     <View style={styles.planEditorAddAmountRow}>
@@ -1608,7 +1608,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                         returnKeyType="done"
                         onSubmitEditing={handleAddItem}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                         accessibilityLabel="plan item amount"
                       />
                       <TouchableOpacity
@@ -1644,7 +1644,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
       <Modal visible={!!editModalItem} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setEditModalItem(null)}>
         <View style={styles.oblOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setEditModalItem(null)} />
-          <KeyboardAvoidingView style={styles.floatEditKAV} behavior={Platform.OS === 'ios' ? 'padding' : undefined} pointerEvents="box-none">
+          <KeyboardAvoidingView style={styles.floatEditKAV} behavior="padding" pointerEvents="box-none">
             <View style={[styles.floatEditCard, { backgroundColor: C.surface }]} onStartShouldSetResponder={() => true}>
               <View style={styles.floatEditHeader}>
                 <Text style={[styles.modalTitle, { color: C.textPrimary }]}>edit item</Text>
@@ -1661,7 +1661,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                 autoFocus
                 returnKeyType="next"
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selectionColor={C.accent}
+                selectionColor={withAlpha(C.accent, 0.25)}
               />
               <View style={[styles.floatEditAmountRow, { borderColor: withAlpha(C.accent, 0.2), backgroundColor: withAlpha(C.textMuted, 0.05) }]}>
                 <Text style={[styles.floatEditCurrency, { color: C.textMuted }]}>{currency}</Text>
@@ -1675,7 +1675,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                   returnKeyType="done"
                   onSubmitEditing={handleEditModalSave}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
-                  selectionColor={C.accent}
+                  selectionColor={withAlpha(C.accent, 0.25)}
                 />
               </View>
               <TouchableOpacity style={[styles.floatEditSave, { backgroundColor: C.accent }]} onPress={handleEditModalSave} activeOpacity={0.85}>
@@ -1691,7 +1691,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
         <Modal visible={echoModalVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={handleDismissEcho}>
           <View style={styles.echoOverlay}>
             <Pressable style={StyleSheet.absoluteFill} onPress={handleDismissEcho} accessibilityLabel="close echo" accessibilityRole="button" />
-            <KeyboardAvoidingView style={styles.echoKAV} behavior={Platform.OS === 'ios' ? 'padding' : undefined} pointerEvents="box-none">
+            <KeyboardAvoidingView style={styles.echoKAV} behavior="padding" pointerEvents="box-none">
               <View style={[styles.echoModal, { backgroundColor: C.surface, borderColor: C.border }]} onStartShouldSetResponder={() => true}>
               {/* Header — title + close. "start over" only once we're mid-conversation. */}
               <View style={styles.echoHeaderRow}>
@@ -1768,7 +1768,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                         textAlignVertical="top"
                         blurOnSubmit={false}
                         keyboardAppearance={isDark ? 'dark' : 'light'}
-                        selectionColor={C.accent}
+                        selectionColor={withAlpha(C.accent, 0.25)}
                         accessibilityLabel="tell echo in your own words"
                       />
                       {echoFreeText.trim().length > 0 && (
@@ -1868,7 +1868,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                                     autoFocus
                                     returnKeyType="done"
                                     keyboardAppearance={isDark ? 'dark' : 'light'}
-                                    selectionColor={C.accent}
+                                    selectionColor={withAlpha(C.accent, 0.25)}
                                     accessibilityLabel={`amount for ${ei.label}`}
                                   />
                                 </View>
@@ -2032,7 +2032,7 @@ const PlaybookNotebook: React.FC<Props> = ({ playbook, readOnly = false, onClose
                       textAlignVertical="top"
                       blurOnSubmit={false}
                       keyboardAppearance={isDark ? 'dark' : 'light'}
-                      selectionColor={C.accent}
+                      selectionColor={withAlpha(C.accent, 0.25)}
                       accessibilityLabel="ask echo anything"
                     />
                     <TouchableOpacity
